@@ -1,0 +1,417 @@
+import { useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  Title,
+  Text,
+  Paper,
+  Group,
+  Button,
+  Loader,
+  Center,
+  Stack,
+  Avatar,
+  ActionIcon,
+  Menu,
+  Modal,
+  Divider,
+  TypographyStylesProvider,
+} from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
+import { notifications } from '@mantine/notifications';
+import {
+  IconArrowLeft,
+  IconDotsVertical,
+  IconEdit,
+  IconTrash,
+  IconSend,
+} from '@tabler/icons-react';
+import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+
+import { forumApi } from '../api/forum';
+import RichTextEditor from '../components/RichTextEditor';
+import type { Post, CreatePostData } from '../types';
+
+dayjs.extend(relativeTime);
+
+export default function ThreadPage() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const threadId = parseInt(id!, 10);
+
+  const [newPostContent, setNewPostContent] = useState('');
+  const [editingPost, setEditingPost] = useState<Post | null>(null);
+  const [editContent, setEditContent] = useState('');
+  const [deleteModalOpened, { open: openDeleteModal, close: closeDeleteModal }] =
+    useDisclosure(false);
+  const [postToDelete, setPostToDelete] = useState<number | null>(null);
+
+  const { data: thread, isLoading, error } = useQuery({
+    queryKey: ['thread', threadId],
+    queryFn: () => forumApi.getThread(threadId),
+    enabled: !isNaN(threadId),
+  });
+
+  const createPostMutation = useMutation({
+    mutationFn: (data: CreatePostData) => forumApi.createPost(threadId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['thread', threadId] });
+      setNewPostContent('');
+      notifications.show({
+        title: 'Reply posted',
+        message: 'Your reply has been added.',
+        color: 'green',
+      });
+    },
+    onError: () => {
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to post reply. Please try again.',
+        color: 'red',
+      });
+    },
+  });
+
+  const updatePostMutation = useMutation({
+    mutationFn: ({ postId, data }: { postId: number; data: CreatePostData }) =>
+      forumApi.updatePost(postId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['thread', threadId] });
+      setEditingPost(null);
+      setEditContent('');
+      notifications.show({
+        title: 'Post updated',
+        message: 'Your post has been updated.',
+        color: 'green',
+      });
+    },
+    onError: () => {
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to update post. Please try again.',
+        color: 'red',
+      });
+    },
+  });
+
+  const deletePostMutation = useMutation({
+    mutationFn: forumApi.deletePost,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['thread', threadId] });
+      closeDeleteModal();
+      setPostToDelete(null);
+      notifications.show({
+        title: 'Post deleted',
+        message: 'Your post has been deleted.',
+        color: 'blue',
+      });
+    },
+    onError: () => {
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to delete post. Please try again.',
+        color: 'red',
+      });
+    },
+  });
+
+  const deleteThreadMutation = useMutation({
+    mutationFn: forumApi.deleteThread,
+    onSuccess: () => {
+      notifications.show({
+        title: 'Thread deleted',
+        message: 'The thread has been deleted.',
+        color: 'blue',
+      });
+      navigate('/forum');
+    },
+    onError: () => {
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to delete thread. Please try again.',
+        color: 'red',
+      });
+    },
+  });
+
+  const handleSubmitPost = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPostContent.trim()) return;
+    createPostMutation.mutate({ content: newPostContent.trim() });
+  };
+
+  const handleStartEdit = (post: Post) => {
+    setEditingPost(post);
+    setEditContent(post.content);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingPost || !editContent.trim()) return;
+    updatePostMutation.mutate({
+      postId: editingPost.id,
+      data: { content: editContent.trim() },
+    });
+  };
+
+  const handleDeleteClick = (postId: number) => {
+    setPostToDelete(postId);
+    openDeleteModal();
+  };
+
+  const handleConfirmDelete = () => {
+    if (postToDelete) {
+      deletePostMutation.mutate(postToDelete);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <Center h={200}>
+        <Loader size="lg" />
+      </Center>
+    );
+  }
+
+  if (error || !thread) {
+    return (
+      <Center h={200}>
+        <Text c="red">Thread not found.</Text>
+      </Center>
+    );
+  }
+
+  return (
+    <>
+      <Button
+        variant="subtle"
+        leftSection={<IconArrowLeft size={16} />}
+        onClick={() => navigate(-1)}
+        mb="md"
+      >
+        Back
+      </Button>
+
+      <Paper withBorder p="lg" radius="md" mb="lg">
+        <Group justify="space-between" mb="md">
+          <div>
+            <Text size="sm" c="dimmed" mb={4}>
+              {thread.subgroup_name}
+            </Text>
+            <Title order={2}>{thread.title}</Title>
+          </div>
+          {thread.is_own && (
+            <Menu shadow="md" width={200}>
+              <Menu.Target>
+                <ActionIcon variant="subtle">
+                  <IconDotsVertical size={16} />
+                </ActionIcon>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item
+                  color="red"
+                  leftSection={<IconTrash size={14} />}
+                  onClick={() => deleteThreadMutation.mutate(threadId)}
+                >
+                  Delete Thread
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          )}
+        </Group>
+
+        <Group gap="sm">
+          <Avatar
+            src={thread.author.profile_picture}
+            radius="xl"
+            size="sm"
+          >
+            {thread.author.first_name?.[0]}
+            {thread.author.last_name?.[0]}
+          </Avatar>
+          <Text size="sm">
+            {thread.author.first_name} {thread.author.last_name}
+          </Text>
+          <Text size="sm" c="dimmed">
+            {dayjs(thread.created_at).format('MMM D, YYYY [at] h:mm A')}
+          </Text>
+        </Group>
+      </Paper>
+
+      <Title order={4} mb="md">
+        {thread.posts.length} {thread.posts.length === 1 ? 'Reply' : 'Replies'}
+      </Title>
+
+      <Stack gap="md" mb="xl">
+        {thread.posts.map((post, index) => (
+          <PostCard
+            key={post.id}
+            post={post}
+            isFirst={index === 0}
+            isEditing={editingPost?.id === post.id}
+            editContent={editContent}
+            onEditContentChange={setEditContent}
+            onStartEdit={() => handleStartEdit(post)}
+            onSaveEdit={handleSaveEdit}
+            onCancelEdit={() => {
+              setEditingPost(null);
+              setEditContent('');
+            }}
+            onDelete={() => handleDeleteClick(post.id)}
+            isSaving={updatePostMutation.isPending}
+          />
+        ))}
+      </Stack>
+
+      <Divider my="lg" />
+
+      <Paper withBorder p="lg" radius="md">
+        <form onSubmit={handleSubmitPost}>
+          <Stack gap="md">
+            <Text fw={500}>Add a Reply</Text>
+            <RichTextEditor
+              content={newPostContent}
+              onChange={setNewPostContent}
+              placeholder="Write your reply..."
+              minHeight={150}
+            />
+            <Group justify="flex-end">
+              <Button
+                type="submit"
+                leftSection={<IconSend size={16} />}
+                loading={createPostMutation.isPending}
+                disabled={!newPostContent.trim() || newPostContent === '<p></p>'}
+              >
+                Post Reply
+              </Button>
+            </Group>
+          </Stack>
+        </form>
+      </Paper>
+
+      <Modal
+        opened={deleteModalOpened}
+        onClose={closeDeleteModal}
+        title="Delete Post"
+        centered
+      >
+        <Text mb="lg">Are you sure you want to delete this post? This action cannot be undone.</Text>
+        <Group justify="flex-end">
+          <Button variant="light" onClick={closeDeleteModal}>
+            Cancel
+          </Button>
+          <Button
+            color="red"
+            onClick={handleConfirmDelete}
+            loading={deletePostMutation.isPending}
+          >
+            Delete
+          </Button>
+        </Group>
+      </Modal>
+    </>
+  );
+}
+
+interface PostCardProps {
+  post: Post;
+  isFirst: boolean;
+  isEditing: boolean;
+  editContent: string;
+  onEditContentChange: (content: string) => void;
+  onStartEdit: () => void;
+  onSaveEdit: () => void;
+  onCancelEdit: () => void;
+  onDelete: () => void;
+  isSaving: boolean;
+}
+
+function PostCard({
+  post,
+  isFirst,
+  isEditing,
+  editContent,
+  onEditContentChange,
+  onStartEdit,
+  onSaveEdit,
+  onCancelEdit,
+  onDelete,
+  isSaving,
+}: PostCardProps) {
+  return (
+    <Paper withBorder p="md" radius="md" bg={isFirst ? 'blue.0' : undefined}>
+      <Group justify="space-between" mb="sm">
+        <Group gap="sm">
+          <Avatar
+            src={post.author.profile_picture}
+            radius="xl"
+            size="md"
+          >
+            {post.author.first_name?.[0]}
+            {post.author.last_name?.[0]}
+          </Avatar>
+          <div>
+            <Text size="sm" fw={500}>
+              {post.author.first_name} {post.author.last_name}
+              {isFirst && (
+                <Text span c="blue" size="xs" ml="xs">
+                  (Original Post)
+                </Text>
+              )}
+            </Text>
+            <Text size="xs" c="dimmed">
+              {dayjs(post.created_at).format('MMM D, YYYY [at] h:mm A')}
+              {post.updated_at !== post.created_at && ' (edited)'}
+            </Text>
+          </div>
+        </Group>
+
+        {post.is_own && !isEditing && (
+          <Menu shadow="md" width={200}>
+            <Menu.Target>
+              <ActionIcon variant="subtle">
+                <IconDotsVertical size={16} />
+              </ActionIcon>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item leftSection={<IconEdit size={14} />} onClick={onStartEdit}>
+                Edit
+              </Menu.Item>
+              <Menu.Item
+                color="red"
+                leftSection={<IconTrash size={14} />}
+                onClick={onDelete}
+              >
+                Delete
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
+        )}
+      </Group>
+
+      {isEditing ? (
+        <Stack gap="sm">
+          <RichTextEditor
+            content={editContent}
+            onChange={onEditContentChange}
+            placeholder="Edit your post..."
+            minHeight={150}
+          />
+          <Group justify="flex-end">
+            <Button variant="light" size="sm" onClick={onCancelEdit}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={onSaveEdit} loading={isSaving}>
+              Save
+            </Button>
+          </Group>
+        </Stack>
+      ) : (
+        <TypographyStylesProvider>
+          <div dangerouslySetInnerHTML={{ __html: post.content }} />
+        </TypographyStylesProvider>
+      )}
+    </Paper>
+  );
+}

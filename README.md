@@ -1,0 +1,240 @@
+# KB Intra - Community Communication Platform
+
+An internal communication platform for a co-living community with forum, food management, messaging, calendar, and resident directory features.
+
+## Tech Stack
+
+- **Backend**: Django 5.x with Django REST Framework
+- **Frontend**: React 18 with Vite, Mantine UI v7, TypeScript
+- **Database**: SQLite (dev), PostgreSQL (production)
+- **Authentication**: JWT via djangorestframework-simplejwt
+- **Real-time**: Django Channels with WebSockets
+- **Package Management**: uv (Python), npm (JavaScript)
+- **Testing**: pytest (backend), React Testing Library (frontend)
+
+## Project Structure
+
+```
+kbintra/
+├── backend/                    # Django REST API
+│   ├── config/                 # Django project settings
+│   │   ├── settings.py         # Main settings with JWT, CORS, Channels
+│   │   ├── urls.py             # API route configuration
+│   │   └── asgi.py             # ASGI config for WebSockets
+│   ├── apps/
+│   │   ├── users/              # User management & profiles
+│   │   ├── houses/             # Houses and inhabitants
+│   │   ├── forum/              # Forum with subgroups, threads, files
+│   │   ├── announcements/      # Community announcements
+│   │   ├── food/               # Food module (menus, teams, tickets)
+│   │   ├── calendar_app/       # Community calendar
+│   │   ├── messaging/          # Direct messaging system
+│   │   └── notifications/      # Notification system with email
+│   ├── conftest.py             # Pytest fixtures
+│   ├── manage.py
+│   └── pyproject.toml          # uv project config
+├── frontend/                   # React SPA
+│   ├── src/
+│   │   ├── api/                # API client functions
+│   │   ├── components/         # Shared components
+│   │   ├── pages/              # Page components
+│   │   ├── store/              # Zustand state management
+│   │   ├── types/              # TypeScript type definitions
+│   │   └── hooks/              # Custom React hooks
+│   ├── package.json
+│   └── vite.config.ts          # Vite + PWA config
+└── README.md
+```
+
+## Quick Start
+
+### Prerequisites
+- Python 3.11+
+- Node.js 18+ (20+ recommended)
+- uv (Python package manager)
+
+### Backend Setup
+
+```bash
+cd backend
+
+# Install dependencies
+uv sync
+
+# Run migrations
+uv run python manage.py migrate
+
+# Create superuser (for admin access)
+uv run python manage.py createsuperuser
+
+# Create default forum subgroups
+uv run python manage.py shell -c "
+from apps.forum.models import Subgroup
+Subgroup.objects.get_or_create(name='Common', defaults={'is_default': True, 'description': 'General community discussions'})
+Subgroup.objects.get_or_create(name='Important', defaults={'is_default': True, 'description': 'Important announcements'})
+"
+
+# Run development server
+uv run python manage.py runserver
+```
+
+### Frontend Setup
+
+```bash
+cd frontend
+
+# Install dependencies
+npm install
+
+# Run development server
+npm run dev
+```
+
+### Access the Application
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:7000/api/
+- Admin: http://localhost:7000/admin/
+
+## Features Overview
+
+### User Management
+- Email-based authentication (no username)
+- Invitation-only registration system
+- Profile management with picture upload
+- House assignment for residents
+
+### Forum System
+- **Subgroups**: Organized discussion categories
+  - Regular groups and committees (udvalg) with distinct styling
+  - Subscription system with notification preferences
+  - Ordered by last activity (committees first)
+- **Threads & Posts**: Discussion threads with rich text (Tiptap editor)
+- **Documents**: File storage per subgroup
+  - Folder organization with nested subfolders
+  - Root-level files supported
+  - Move files between folders (owner/admin only)
+
+### Food Module
+- **Weekly Menus**: View and manage weekly meal menus (Mon-Thu)
+  - Menu templates for reusable dishes
+  - Meat option on Wednesdays
+- **Meal Registration**: Register for daily meals
+  - Default preferences per weekday
+  - Eat-in (2 seating times) or take-away
+- **Food Tickets**: Trade unused meal spots
+  - List tickets for sale or free
+  - Claim available tickets
+- **Food Teams**: Cooking team organization
+  - Team cycles with date ranges
+  - Wish submission for available dates
+  - Automatic team generation algorithm
+  - Team swap requests between members
+
+### Communication
+- **Announcements**: Priority community-wide posts
+- **Direct Messaging**: Real-time chat via WebSocket
+  - Typing indicators and read receipts
+  - Unread count in header
+- **Notifications**: In-app and email notifications
+  - Per-type preferences
+  - Real-time delivery via WebSocket
+
+### Calendar
+- Month view with event display
+- Create/edit/delete community events
+- All-day events supported
+- Dashboard widget for upcoming events
+
+## Running Tests
+
+### Backend Tests
+
+```bash
+cd backend
+
+# Run all tests
+uv run pytest
+
+# Run specific app tests
+uv run pytest apps/forum/tests.py -v
+uv run pytest apps/food/tests.py -v
+
+# Run with coverage
+uv run pytest --cov=apps --cov-report=html
+```
+
+### Frontend Tests
+
+```bash
+cd frontend
+
+# Run tests
+npm test
+
+# Run with coverage
+npm test -- --coverage
+```
+
+## API Documentation
+
+See the detailed API documentation in [backend/README.md](backend/README.md).
+
+Key endpoint groups:
+- `/api/auth/` - Authentication (login, register, invitations)
+- `/api/users/` - User profiles
+- `/api/houses/` - House directory
+- `/api/forum/` - Forum (subgroups, threads, posts, files)
+- `/api/announcements/` - Announcements
+- `/api/food/` - Food (menus, registrations, tickets, teams)
+- `/api/calendar/` - Calendar events
+- `/api/messages/` - Direct messaging
+- `/api/notifications/` - Notifications and preferences
+
+WebSocket: `ws://localhost:7000/ws/chat/?token=<jwt>`
+
+## Environment Variables
+
+Create `.env` in backend/:
+```
+SECRET_KEY=your-secret-key-here
+DEBUG=True
+ALLOWED_HOSTS=localhost,127.0.0.1
+CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+
+# Email Settings
+EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
+DEFAULT_FROM_EMAIL=KB Intra <noreply@kbintra.local>
+SITE_URL=http://localhost:5173
+```
+
+For production email:
+```
+EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+EMAIL_HOST=smtp.example.com
+EMAIL_PORT=587
+EMAIL_USE_TLS=True
+EMAIL_HOST_USER=your-email@example.com
+EMAIL_HOST_PASSWORD=your-password
+```
+
+## Development Notes
+
+- Frontend proxies `/api` and `/media` to backend (configured in vite.config.ts)
+- Profile pictures: `backend/media/profile_pictures/`
+- Forum files: `backend/media/forum_files/`
+- JWT access token: 1 hour, refresh token: 7 days
+- InMemoryChannelLayer used (sufficient for ~90 users)
+
+## Key Design Decisions
+
+1. **Email-based auth**: Users login with email, not username
+2. **Invitation-only**: New users need a valid invitation token linked to a house
+3. **Subscription model**: Users subscribe to forum subgroups for notifications
+4. **Simple permissions**: Admins via Django admin, users edit only own content
+5. **PWA**: Installable web app with service worker
+6. **Real-time**: WebSocket for messaging and notifications (no polling)
+
+## Project Documentation
+
+- [Backend README](backend/README.md) - API endpoints, models, testing
+- [Frontend README](frontend/README.md) - Components, pages, state management

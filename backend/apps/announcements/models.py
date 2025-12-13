@@ -1,0 +1,31 @@
+"""
+Models for Announcements app.
+"""
+
+from django.conf import settings
+from django.db import models
+
+
+class Announcement(models.Model):
+    """Important announcements for the community."""
+
+    title = models.CharField(max_length=255)
+    content = models.TextField()
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="announcements",
+    )
+    is_active = models.BooleanField(default=True)
+    priority = models.IntegerField(
+        default=0,
+        help_text="Higher priority announcements appear first",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-priority", "-created_at"]
+
+    def __str__(self) -> str:
+        return self.title

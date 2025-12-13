@@ -1,0 +1,484 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  Title,
+  Text,
+  Paper,
+  Group,
+  Button,
+  Loader,
+  Center,
+  Stack,
+  Badge,
+  NumberInput,
+  Textarea,
+  Modal,
+  Avatar,
+  SegmentedControl,
+  Tabs,
+  ActionIcon,
+  Menu,
+} from '@mantine/core';
+import { DateInput } from '@mantine/dates';
+import { useDisclosure } from '@mantine/hooks';
+import { notifications } from '@mantine/notifications';
+import {
+  IconArrowLeft,
+  IconPlus,
+  IconTicket,
+  IconPhone,
+  IconDotsVertical,
+  IconTrash,
+} from '@tabler/icons-react';
+import dayjs from 'dayjs';
+
+import { foodApi } from '../api/food';
+import type { FoodTicket, CreateFoodTicketData } from '../types';
+
+export default function FoodTicketsPage() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [createModalOpened, { open: openCreateModal, close: closeCreateModal }] =
+    useDisclosure(false);
+
+  const { data: availableTickets, isLoading: ticketsLoading } = useQuery({
+    queryKey: ['food', 'tickets', 'available'],
+    queryFn: () => foodApi.getTickets(),
+  });
+
+  const { data: myTickets, isLoading: myTicketsLoading } = useQuery({
+    queryKey: ['food', 'tickets', 'my'],
+    queryFn: foodApi.getMyTickets,
+  });
+
+  const isLoading = ticketsLoading || myTicketsLoading;
+
+  return (
+    <>
+      <Button
+        variant="subtle"
+        leftSection={<IconArrowLeft size={16} />}
+        onClick={() => navigate('/food')}
+        mb="md"
+      >
+        Back to Food
+      </Button>
+
+      <Group justify="space-between" mb="xl">
+        <div>
+          <Title order={1}>Food Tickets</Title>
+          <Text c="dimmed">Trade unused meal spots with others</Text>
+        </div>
+        <Button leftSection={<IconPlus size={16} />} onClick={openCreateModal}>
+          Offer Ticket
+        </Button>
+      </Group>
+
+      <Tabs defaultValue="available">
+        <Tabs.List mb="md">
+          <Tabs.Tab value="available" leftSection={<IconTicket size={16} />}>
+            Available ({availableTickets?.length || 0})
+          </Tabs.Tab>
+          <Tabs.Tab value="my">My Tickets ({myTickets?.length || 0})</Tabs.Tab>
+        </Tabs.List>
+
+        <Tabs.Panel value="available">
+          {isLoading ? (
+            <Center h={200}>
+              <Loader size="lg" />
+            </Center>
+          ) : availableTickets?.length === 0 ? (
+            <Paper withBorder p="xl" radius="md">
+              <Center>
+                <Stack align="center" gap="xs">
+                  <IconTicket size={48} color="gray" />
+                  <Text c="dimmed">No tickets available at the moment.</Text>
+                </Stack>
+              </Center>
+            </Paper>
+          ) : (
+            <Stack gap="md">
+              {availableTickets?.map((ticket) => (
+                <TicketCard key={ticket.id} ticket={ticket} showClaim />
+              ))}
+            </Stack>
+          )}
+        </Tabs.Panel>
+
+        <Tabs.Panel value="my">
+          {isLoading ? (
+            <Center h={200}>
+              <Loader size="lg" />
+            </Center>
+          ) : myTickets?.length === 0 ? (
+            <Paper withBorder p="xl" radius="md">
+              <Center>
+                <Stack align="center" gap="xs">
+                  <IconTicket size={48} color="gray" />
+                  <Text c="dimmed">You have no tickets.</Text>
+                  <Button onClick={openCreateModal} mt="sm">
+                    Offer a Ticket
+                  </Button>
+                </Stack>
+              </Center>
+            </Paper>
+          ) : (
+            <Stack gap="md">
+              {myTickets?.map((ticket) => (
+                <TicketCard key={ticket.id} ticket={ticket} showActions />
+              ))}
+            </Stack>
+          )}
+        </Tabs.Panel>
+      </Tabs>
+
+      <CreateTicketModal
+        opened={createModalOpened}
+        onClose={closeCreateModal}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['food', 'tickets'] });
+          closeCreateModal();
+        }}
+      />
+    </>
+  );
+}
+
+interface TicketCardProps {
+  ticket: FoodTicket;
+  showClaim?: boolean;
+  showActions?: boolean;
+}
+
+function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
+  const queryClient = useQueryClient();
+
+  const claimMutation = useMutation({
+    mutationFn: () => foodApi.claimTicket(ticket.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['food', 'tickets'] });
+      notifications.show({
+        title: 'Ticket claimed',
+        message: 'Contact the owner to arrange payment if needed.',
+        color: 'green',
+      });
+    },
+    onError: () => {
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to claim ticket.',
+        color: 'red',
+      });
+    },
+  });
+
+  const releaseMutation = useMutation({
+    mutationFn: () => foodApi.releaseTicket(ticket.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['food', 'tickets'] });
+      notifications.show({
+        title: 'Ticket released',
+        message: 'The ticket is now available again.',
+        color: 'blue',
+      });
+    },
+    onError: () => {
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to release ticket.',
+        color: 'red',
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => foodApi.deleteTicket(ticket.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['food', 'tickets'] });
+      notifications.show({
+        title: 'Ticket deleted',
+        message: 'Your ticket has been removed.',
+        color: 'blue',
+      });
+    },
+    onError: () => {
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to delete ticket.',
+        color: 'red',
+      });
+    },
+  });
+
+  const isClaimed = !ticket.is_available;
+  const isOwner = ticket.is_own;
+  const isClaimedByMe = ticket.claimed_by && !isOwner;
+
+  return (
+    <Paper withBorder p="md" radius="md">
+      <Group justify="space-between" wrap="nowrap">
+        <Group gap="md" wrap="nowrap" style={{ flex: 1 }}>
+          <Avatar
+            src={ticket.owner.profile_picture}
+            radius="xl"
+            size="lg"
+          >
+            {ticket.owner.first_name?.[0]}
+            {ticket.owner.last_name?.[0]}
+          </Avatar>
+          <div style={{ flex: 1 }}>
+            <Group gap="xs" mb={4}>
+              <Text fw={500}>
+                {ticket.owner.first_name} {ticket.owner.last_name}
+              </Text>
+              {ticket.is_free ? (
+                <Badge color="green" variant="light">
+                  Free
+                </Badge>
+              ) : (
+                <Badge color="blue" variant="light">
+                  {ticket.price} DKK
+                </Badge>
+              )}
+              {isClaimed && (
+                <Badge color="gray" variant="light">
+                  Claimed
+                </Badge>
+              )}
+            </Group>
+            <Text size="sm" c="dimmed">
+              {ticket.day_name}, {dayjs(ticket.date).format('MMM D')} •{' '}
+              {ticket.total_portions} {ticket.total_portions === 1 ? 'portion' : 'portions'}
+              {ticket.day_of_week === 2 && ` • ${ticket.meal_type}`}
+            </Text>
+            {ticket.description && (
+              <Text size="sm" mt={4}>
+                {ticket.description}
+              </Text>
+            )}
+            {isClaimed && ticket.claimed_by && (
+              <Text size="sm" c="dimmed" mt={4}>
+                Claimed by {ticket.claimed_by.first_name} {ticket.claimed_by.last_name}
+              </Text>
+            )}
+          </div>
+        </Group>
+
+        <Group gap="xs">
+          {/* Show phone number for claimed tickets */}
+          {(isClaimed && isClaimedByMe) && ticket.owner.phone_number && (
+            <Button
+              variant="light"
+              size="sm"
+              leftSection={<IconPhone size={14} />}
+              component="a"
+              href={`tel:${ticket.owner.phone_number}`}
+            >
+              {ticket.owner.phone_number}
+            </Button>
+          )}
+
+          {/* Claim button for available tickets */}
+          {showClaim && ticket.is_available && !ticket.is_own && (
+            <Button
+              onClick={() => claimMutation.mutate()}
+              loading={claimMutation.isPending}
+            >
+              Claim
+            </Button>
+          )}
+
+          {/* Actions for owned/claimed tickets */}
+          {showActions && (
+            <>
+              {isClaimedByMe && (
+                <Button
+                  variant="light"
+                  color="red"
+                  onClick={() => releaseMutation.mutate()}
+                  loading={releaseMutation.isPending}
+                >
+                  Release
+                </Button>
+              )}
+              {isOwner && (
+                <Menu shadow="md" width={200}>
+                  <Menu.Target>
+                    <ActionIcon variant="subtle">
+                      <IconDotsVertical size={16} />
+                    </ActionIcon>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    {!ticket.is_available && (
+                      <Menu.Item onClick={() => releaseMutation.mutate()}>
+                        Release Ticket
+                      </Menu.Item>
+                    )}
+                    {ticket.is_available && (
+                      <Menu.Item
+                        color="red"
+                        leftSection={<IconTrash size={14} />}
+                        onClick={() => deleteMutation.mutate()}
+                      >
+                        Delete
+                      </Menu.Item>
+                    )}
+                  </Menu.Dropdown>
+                </Menu>
+              )}
+            </>
+          )}
+        </Group>
+      </Group>
+    </Paper>
+  );
+}
+
+interface CreateTicketModalProps {
+  opened: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function CreateTicketModal({ opened, onClose, onSuccess }: CreateTicketModalProps) {
+  const [date, setDate] = useState<Date | null>(null);
+  const [adults, setAdults] = useState(1);
+  const [children, setChildren] = useState(0);
+  const [mealType, setMealType] = useState<'meat' | 'vegetarian'>('meat');
+  const [price, setPrice] = useState<number | ''>('');
+  const [description, setDescription] = useState('');
+
+  const createMutation = useMutation({
+    mutationFn: (data: CreateFoodTicketData) => foodApi.createTicket(data),
+    onSuccess: () => {
+      notifications.show({
+        title: 'Ticket created',
+        message: 'Your ticket is now available for others to claim.',
+        color: 'green',
+      });
+      // Reset form
+      setDate(null);
+      setAdults(1);
+      setChildren(0);
+      setMealType('meat');
+      setPrice('');
+      setDescription('');
+      onSuccess();
+    },
+    onError: () => {
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to create ticket.',
+        color: 'red',
+      });
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!date) return;
+
+    createMutation.mutate({
+      date: dayjs(date).format('YYYY-MM-DD'),
+      adults_count: adults,
+      children_count: children,
+      meal_type: mealType,
+      price: price === '' ? null : price,
+      description,
+    });
+  };
+
+  const isWednesday = date ? date.getDay() === 3 : false;
+
+  // Filter to only allow Mon-Thu
+  const excludeDate = (d: Date) => {
+    const day = d.getDay();
+    return day === 0 || day === 5 || day === 6; // Exclude Sun, Fri, Sat
+  };
+
+  return (
+    <Modal opened={opened} onClose={onClose} title="Offer a Food Ticket" size="md">
+      <form onSubmit={handleSubmit}>
+        <Stack gap="md">
+          <DateInput
+            label="Date"
+            placeholder="Select date"
+            value={date}
+            onChange={(value) => {
+              const dateValue = value ? new Date(value) : null;
+              setDate(dateValue);
+            }}
+            excludeDate={(dateStr) => excludeDate(new Date(dateStr))}
+            minDate={new Date()}
+            required
+          />
+
+          <Group grow>
+            <NumberInput
+              label="Adults"
+              value={adults}
+              onChange={(val) => setAdults(Number(val) || 0)}
+              min={0}
+              max={10}
+            />
+            <NumberInput
+              label="Children"
+              value={children}
+              onChange={(val) => setChildren(Number(val) || 0)}
+              min={0}
+              max={10}
+            />
+          </Group>
+
+          {isWednesday && (
+            <div>
+              <Text size="sm" fw={500} mb={4}>
+                Meal Type
+              </Text>
+              <SegmentedControl
+                value={mealType}
+                onChange={(val) => setMealType(val as 'meat' | 'vegetarian')}
+                data={[
+                  { label: 'Meat', value: 'meat' },
+                  { label: 'Vegetarian', value: 'vegetarian' },
+                ]}
+                fullWidth
+              />
+            </div>
+          )}
+
+          <NumberInput
+            label="Price (DKK)"
+            description="Leave empty for free"
+            placeholder="0"
+            value={price}
+            onChange={(val) => setPrice(val === '' ? '' : Number(val))}
+            min={0}
+            max={999}
+          />
+
+          <Textarea
+            label="Note (optional)"
+            placeholder="Any additional info..."
+            value={description}
+            onChange={(e) => setDescription(e.currentTarget.value)}
+          />
+
+          <Group justify="flex-end">
+            <Button variant="light" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              loading={createMutation.isPending}
+              disabled={!date || (adults === 0 && children === 0)}
+            >
+              Create Ticket
+            </Button>
+          </Group>
+        </Stack>
+      </form>
+    </Modal>
+  );
+}

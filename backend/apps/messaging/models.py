@@ -1,0 +1,75 @@
+"""
+Models for Messaging app.
+"""
+
+from django.conf import settings
+from django.db import models
+
+
+class Conversation(models.Model):
+    """A conversation between two or more users."""
+
+    participants = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name="conversations",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+    def __str__(self) -> str:
+        participant_names = ", ".join(
+            [p.first_name for p in self.participants.all()[:3]]
+        )
+        return f"Conversation: {participant_names}"
+
+    def get_other_participants(self, user):
+        """Get participants excluding the given user."""
+        return self.participants.exclude(id=user.id)
+
+
+class Message(models.Model):
+    """A message within a conversation."""
+
+    conversation = models.ForeignKey(
+        Conversation,
+        on_delete=models.CASCADE,
+        related_name="messages",
+    )
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="sent_messages",
+    )
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.sender.first_name}: {self.content[:50]}"
+
+
+class MessageReadStatus(models.Model):
+    """Tracks read status of messages per user."""
+
+    message = models.ForeignKey(
+        Message,
+        on_delete=models.CASCADE,
+        related_name="read_statuses",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="message_read_statuses",
+    )
+    read_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ["message", "user"]
+
+    def __str__(self) -> str:
+        return f"{self.user.first_name} read message {self.message.id}"
