@@ -42,6 +42,7 @@ import dayjs from 'dayjs';
 
 import { foodApi } from '../api/food';
 import { useAuthStore } from '../store/authStore';
+import { calculateDefaultTicketPrice } from '../utils/priceCalculation';
 import type { MealRegistration, CreateMealRegistrationData, CreateFoodTicketData, DiningOption, SeatingTime, DailyMenu, DailyRegistrationStats } from '../types';
 
 export default function FoodPage() {
@@ -480,8 +481,15 @@ function DayRegistrationCard({
   const [isActive, setIsActive] = useState(registration?.is_active ?? true);
 
   // Ticket creation state
-  const [ticketPrice, setTicketPrice] = useState<number | null>(null);
   const [ticketDescription, setTicketDescription] = useState('');
+
+  // Calculate default ticket price using shared utility
+  const calculateDefaultPrice = () => {
+    const portionCount = registration?.adults_count ?? adults;
+    const childCount = registration?.children_count ?? children;
+    return calculateDefaultTicketPrice(mealType, portionCount, childCount);
+  };
+  const [ticketPrice, setTicketPrice] = useState<number | null>(null);
 
   // Track if initial mount to prevent auto-save on mount
   const [hasInitialized, setHasInitialized] = useState(false);
@@ -588,13 +596,14 @@ function DayRegistrationCard({
   };
 
   const handleCreateTicketAndSave = () => {
-    // Create the ticket
+    // Create the ticket - use explicit price or calculated default
+    const finalPrice = ticketPrice ?? calculateDefaultPrice();
     const ticketData: CreateFoodTicketData = {
       date,
       adults_count: registration?.adults_count ?? adults,
       children_count: registration?.children_count ?? children,
       meal_type: mealType,
-      price: ticketPrice,
+      price: finalPrice,
       description: ticketDescription,
     };
     createTicketMutation.mutate(ticketData);
@@ -779,9 +788,9 @@ function DayRegistrationCard({
 
           <NumberInput
             label="Price (DKK)"
-            description="Leave at 0 for free"
-            value={ticketPrice ?? 0}
-            onChange={(val) => setTicketPrice(val === 0 ? null : Number(val))}
+            description={`Suggested price: ${calculateDefaultPrice()} kr (${mealType === 'meat' ? '37' : '26'}/adult + 18/child)`}
+            value={ticketPrice ?? calculateDefaultPrice()}
+            onChange={(val) => setTicketPrice(Number(val) || 0)}
             min={0}
             max={500}
             decimalScale={0}

@@ -30,6 +30,7 @@ from .serializers import (
     ApplyDefaultsSerializer,
     CreateSwapRequestSerializer,
     DailyMenuUpdateSerializer,
+    DefaultCookingDaysSerializer,
     FoodTeamCycleCreateSerializer,
     FoodTeamCycleSerializer,
     FoodTeamListSerializer,
@@ -44,6 +45,8 @@ from .serializers import (
     MealRegistrationCreateUpdateSerializer,
     MealRegistrationSerializer,
     MenuTemplateSerializer,
+    MonthlyFoodCostReportSerializer,
+    MonthlyFoodCostSerializer,
     RespondSwapRequestSerializer,
     TeamGenerationResultSerializer,
     TeamSwapRequestSerializer,
@@ -734,7 +737,7 @@ class FoodTeamCycleListCreateView(generics.ListCreateAPIView):
     """List all cycles or create a new one (admin only for create)."""
 
     permission_classes = [permissions.IsAuthenticated]
-    queryset = FoodTeamCycle.objects.all().order_by("-start_date")
+    queryset = FoodTeamCycle.objects.all().order_by("-created_at")
 
     def get_serializer_class(self) -> type:
         if self.request.method == "POST":
@@ -780,22 +783,12 @@ class ActiveCycleView(APIView):
     def get(self, request: Request) -> Response:
         from .models import CycleStatus
 
+        # Get the most recent cycle that is accepting wishes
         cycle = (
             FoodTeamCycle.objects.filter(status=CycleStatus.COLLECTING_WISHES)
-            .order_by("-start_date")
+            .order_by("-created_at")
             .first()
         )
-
-        if not cycle:
-            # Try to get the next upcoming cycle
-            cycle = (
-                FoodTeamCycle.objects.filter(
-                    status=CycleStatus.COLLECTING_WISHES,
-                    start_date__gte=timezone.now().date(),
-                )
-                .order_by("start_date")
-                .first()
-            )
 
         if not cycle:
             return Response(
@@ -922,3 +915,139 @@ class GenerateTeamsView(APIView):
             TeamGenerationResultSerializer(result).data,
             status=status.HTTP_200_OK if result.success else status.HTTP_400_BAD_REQUEST,
         )
+
+
+class DefaultCookingDaysView(APIView):
+    """Get or update the current user's default cooking days preference."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        """Get the user's default cooking days."""
+        return Response({"default_cooking_days": request.user.default_cooking_days})
+
+    def put(self, request: Request) -> Response:
+        """Update the user's default cooking days."""
+        serializer = DefaultCookingDaysSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        request.user.default_cooking_days = serializer.validated_data["default_cooking_days"]
+        request.user.save(update_fields=["default_cooking_days"])
+
+        return Response({"default_cooking_days": request.user.default_cooking_days})
+
+
+class MonthlyFoodCostView(APIView):
+    """Get monthly food cost breakdown per house (admin only)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        """Get monthly food cost report for a specific month."""
+        # Only staff can access this report
+        if not request.user.is_staff:
+            return Response(
+                {"detail": "Only administrators can access food cost reports."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # Validate query params
+        year = request.query_params.get("year")
+        month = request.query_params.get("month")
+
+        if not year or not month:
+            return Response(
+                {"detail": "Please provide 'year' and 'month' query parameters."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            year = int(year)
+            month = int(month)
+        except ValueError:
+            return Response(
+                {"detail": "Year and month must be integers."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = MonthlyFoodCostSerializer(data={"year": year, "month": month})
+        serializer.is_valid(raise_exception=True)
+
+        # Get all claimed tickets for this month
+        from calendar import monthrange
+        from decimal import Decimal
+
+        from apps.houses.models import House
+
+        first_day = date(year, month, 1)
+        _, last_day_num = monthrange(year, month)
+        last_day = date(year, month, last_day_num)
+
+        # Get all houses
+        houses = House.objects.all()
+        house_costs = []
+        total_cost = Decimal("0.00")
+
+        for house in houses:
+            # Find claimed tickets where the OWNER belongs to this house
+            # The owner pays for the meal, not the person who claims the ticket
+            claimed_tickets = FoodTicket.objects.filter(
+                owner__house=house,
+                date__gte=first_day,
+                date__lte=last_day,
+                is_available=False,
+            )
+
+            house_total = Decimal("0.00")
+            ticket_count = 0
+            adult_portions = 0
+            child_portions = 0
+
+            for ticket in claimed_tickets:
+                if ticket.price:
+                    house_total += ticket.price
+                ticket_count += 1
+                adult_portions += ticket.adults_count
+                child_portions += ticket.children_count
+
+            house_costs.append(
+                {
+                    "house_id": house.id,
+                    "house_name": house.name,
+                    "total_cost": house_total,
+                    "ticket_count": ticket_count,
+                    "adult_portions": adult_portions,
+                    "child_portions": child_portions,
+                }
+            )
+            total_cost += house_total
+
+        # Sort by house name
+        house_costs.sort(key=lambda x: x["house_name"])
+
+        # Get month name
+        month_names = [
+            "",
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+        ]
+
+        result = {
+            "year": year,
+            "month": month,
+            "month_name": month_names[month],
+            "total_cost": total_cost,
+            "houses": house_costs,
+        }
+
+        return Response(MonthlyFoodCostReportSerializer(result).data)

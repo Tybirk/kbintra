@@ -14,6 +14,7 @@ from .views import (
     CycleWishesListView,
     DailyMenuUpdateView,
     DailyRegistrationStatsView,
+    DefaultCookingDaysView,
     FoodTeamCycleDetailView,
     FoodTeamCycleListCreateView,
     FoodTeamDetailView,
@@ -27,6 +28,7 @@ from .views import (
     MealRegistrationListCreateView,
     MenuTemplateDetailView,
     MenuTemplateListCreateView,
+    MonthlyFoodCostView,
     MyTeamsView,
     MyTicketsView,
     MyWishView,
@@ -83,4 +85,16 @@ urlpatterns = [
     path("cycles/<int:cycle_id>/my-wish/", MyWishView.as_view(), name="my-wish"),
     # Team Generation
     path("generate-teams/", GenerateTeamsView.as_view(), name="generate-teams"),
+    # User Preferences
+    path(
+        "default-cooking-days/",
+        DefaultCookingDaysView.as_view(),
+        name="default-cooking-days",
+    ),
+    # Admin Reports
+    path(
+        "admin/monthly-cost/",
+        MonthlyFoodCostView.as_view(),
+        name="monthly-food-cost",
+    ),
 ]

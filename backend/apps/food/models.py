@@ -518,11 +518,9 @@ class FoodTeamCycle(models.Model):
         max_length=100,
         help_text="Descriptive name for the cycle (e.g., 'December 2025 - January 2026')",
     )
-    start_date = models.DateField(
-        help_text="First cooking day of the cycle (must be a Monday)",
-    )
-    end_date = models.DateField(
-        help_text="Last cooking day of the cycle (must be a Thursday)",
+    cooking_dates = models.JSONField(
+        default=list,
+        help_text="List of cooking dates (ISO format strings: YYYY-MM-DD)",
     )
     wish_deadline = models.DateTimeField(
         help_text="Deadline for submitting date wishes",
@@ -542,24 +540,24 @@ class FoodTeamCycle(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["-start_date"]
+        ordering = ["-created_at"]
 
     def __str__(self) -> str:
-        return f"{self.name} ({self.start_date} - {self.end_date})"
+        if self.cooking_dates:
+            first = self.cooking_dates[0]
+            last = self.cooking_dates[-1]
+            return f"{self.name} ({first} - {last})"
+        return self.name
 
     @property
-    def cooking_dates(self) -> list:
-        """Get all cooking dates (Mon-Thu) in this cycle."""
-        from datetime import timedelta
+    def first_date(self) -> str | None:
+        """Get the first cooking date."""
+        return self.cooking_dates[0] if self.cooking_dates else None
 
-        dates = []
-        current = self.start_date
-        while current <= self.end_date:
-            # Only include Mon-Thu (weekday 0-3)
-            if current.weekday() <= 3:
-                dates.append(current)
-            current += timedelta(days=1)
-        return dates
+    @property
+    def last_date(self) -> str | None:
+        """Get the last cooking date."""
+        return self.cooking_dates[-1] if self.cooking_dates else None
 
     @property
     def is_accepting_wishes(self) -> bool:

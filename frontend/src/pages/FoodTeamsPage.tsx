@@ -21,9 +21,13 @@ import {
   Divider,
   Checkbox,
   SimpleGrid,
+  TextInput,
+  Select,
+  Table,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
+import { DatePickerInput, DateTimePicker } from '@mantine/dates';
 import {
   IconUsers,
   IconCalendar,
@@ -38,6 +42,7 @@ import {
   IconSettings,
   IconPlayerPlay,
   IconPlus,
+  IconReceipt,
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 
@@ -252,6 +257,7 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
   const queryClient = useQueryClient();
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [comment, setComment] = useState('');
+  const [defaultsApplied, setDefaultsApplied] = useState(false);
 
   // Fetch existing wish
   const { data: existingWish, isLoading: wishLoading } = useQuery({
@@ -260,6 +266,50 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
     retry: false,
     refetchOnMount: true,
   });
+
+  // Fetch default cooking days
+  const { data: defaultCookingDaysData } = useQuery({
+    queryKey: ['food', 'default-cooking-days'],
+    queryFn: foodApi.getDefaultCookingDays,
+  });
+
+  // Update default cooking days mutation
+  const updateDefaultsMutation = useMutation({
+    mutationFn: foodApi.updateDefaultCookingDays,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['food', 'default-cooking-days'] });
+      notifications.show({
+        title: 'Defaults saved',
+        message: 'Your default cooking days have been saved.',
+        color: 'green',
+      });
+    },
+  });
+
+  const defaultDays = defaultCookingDaysData?.default_cooking_days ?? [];
+
+  const handleDefaultDayToggle = (day: number) => {
+    const newDefaults = defaultDays.includes(day)
+      ? defaultDays.filter((d) => d !== day)
+      : [...defaultDays, day].sort();
+    updateDefaultsMutation.mutate(newDefaults);
+  };
+
+  // Apply defaults to selected dates when first loading (if no existing wish)
+  const applyDefaultsToSelection = () => {
+    if (defaultDays.length === 0) return;
+
+    // Find cooking dates that match the default weekdays
+    const matchingDates = cycle.cooking_dates.filter((date) => {
+      const weekday = dayjs(date).day(); // 0=Sunday, 1=Monday, etc.
+      // Convert to our format: 0=Monday, 1=Tuesday, 2=Wednesday, 3=Thursday
+      const adjustedDay = weekday === 0 ? 6 : weekday - 1;
+      return defaultDays.includes(adjustedDay);
+    });
+
+    setSelectedDates(matchingDates);
+    setDefaultsApplied(true);
+  };
 
   // Initialize selected dates from existing wish
   useState(() => {
@@ -342,7 +392,9 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
               </Badge>
             </Group>
             <Text c="dimmed" size="sm">
-              Cooking period: {dayjs(cycle.start_date).format('MMMM D')} - {dayjs(cycle.end_date).format('MMMM D, YYYY')}
+              Cooking period: {cycle.cooking_dates.length > 0
+                ? `${dayjs(cycle.cooking_dates[0]).format('MMMM D')} - ${dayjs(cycle.cooking_dates[cycle.cooking_dates.length - 1]).format('MMMM D, YYYY')} (${cycle.cooking_dates.length} days)`
+                : 'No dates selected'}
             </Text>
             <Text c="dimmed" size="sm">
               Deadline: {dayjs(cycle.wish_deadline).format('MMMM D, YYYY [at] HH:mm')}
@@ -364,6 +416,38 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
             </Alert>
           ) : (
             <>
+              {/* Default cooking days section */}
+              <Paper withBorder p="md" radius="md" bg="gray.0">
+                <Text fw={500} mb="sm">
+                  Your default cooking days
+                </Text>
+                <Text size="sm" c="dimmed" mb="md">
+                  Set your typical availability. These will be saved and can be applied to future cycles.
+                </Text>
+                <Group gap="md" mb="md">
+                  {['Monday', 'Tuesday', 'Wednesday', 'Thursday'].map((day, index) => (
+                    <Checkbox
+                      key={day}
+                      label={day}
+                      checked={defaultDays.includes(index)}
+                      onChange={() => handleDefaultDayToggle(index)}
+                    />
+                  ))}
+                </Group>
+                {defaultDays.length > 0 && !existingWish && (
+                  <Button
+                    variant="light"
+                    size="sm"
+                    onClick={applyDefaultsToSelection}
+                    disabled={defaultsApplied}
+                  >
+                    {defaultsApplied ? 'Defaults applied' : 'Apply defaults to selection below'}
+                  </Button>
+                )}
+              </Paper>
+
+              <Divider />
+
               <div>
                 <Group justify="space-between" mb="sm">
                   <Text fw={500}>Select dates you are available to cook:</Text>
@@ -589,7 +673,137 @@ function AdminPanel() {
         onCreate={(data) => createCycleMutation.mutate(data)}
         isLoading={createCycleMutation.isPending}
       />
+
+      <Divider my="xl" />
+
+      {/* Monthly Food Cost Report */}
+      <MonthlyCostReport />
     </Stack>
+  );
+}
+
+// Monthly Cost Report Component
+function MonthlyCostReport() {
+  const currentDate = dayjs();
+  const [selectedYear, setSelectedYear] = useState(currentDate.year().toString());
+  const [selectedMonth, setSelectedMonth] = useState((currentDate.month() + 1).toString());
+
+  const { data: costReport, isLoading } = useQuery({
+    queryKey: ['food', 'monthly-cost', selectedYear, selectedMonth],
+    queryFn: () => foodApi.getMonthlyFoodCost(parseInt(selectedYear), parseInt(selectedMonth)),
+    enabled: !!selectedYear && !!selectedMonth,
+  });
+
+  const years = Array.from({ length: 5 }, (_, i) => {
+    const year = currentDate.year() - 2 + i;
+    return { value: year.toString(), label: year.toString() };
+  });
+
+  const months = [
+    { value: '1', label: 'January' },
+    { value: '2', label: 'February' },
+    { value: '3', label: 'March' },
+    { value: '4', label: 'April' },
+    { value: '5', label: 'May' },
+    { value: '6', label: 'June' },
+    { value: '7', label: 'July' },
+    { value: '8', label: 'August' },
+    { value: '9', label: 'September' },
+    { value: '10', label: 'October' },
+    { value: '11', label: 'November' },
+    { value: '12', label: 'December' },
+  ];
+
+  return (
+    <>
+      <Group justify="space-between">
+        <Title order={3}>
+          <Group gap="xs">
+            <IconReceipt size={24} />
+            Monthly Food Cost Report
+          </Group>
+        </Title>
+        <Group>
+          <Select
+            value={selectedMonth}
+            onChange={(val) => val && setSelectedMonth(val)}
+            data={months}
+            w={140}
+          />
+          <Select
+            value={selectedYear}
+            onChange={(val) => val && setSelectedYear(val)}
+            data={years}
+            w={100}
+          />
+        </Group>
+      </Group>
+
+      {isLoading ? (
+        <Center h={200}>
+          <Loader size="lg" />
+        </Center>
+      ) : costReport ? (
+        <Card withBorder p="md" radius="md">
+          <Stack gap="md">
+            <Group justify="space-between">
+              <Text fw={600} size="lg">
+                {costReport.month_name} {costReport.year}
+              </Text>
+              <Badge size="lg" color="blue">
+                Total: {parseFloat(costReport.total_cost).toFixed(2)} kr
+              </Badge>
+            </Group>
+
+            {costReport.houses.length === 0 ? (
+              <Text c="dimmed">No food tickets claimed this month.</Text>
+            ) : (
+              <Table striped highlightOnHover>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>House</Table.Th>
+                    <Table.Th ta="right">Tickets</Table.Th>
+                    <Table.Th ta="right">Adults</Table.Th>
+                    <Table.Th ta="right">Children</Table.Th>
+                    <Table.Th ta="right">Total Cost</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {costReport.houses.map((house) => (
+                    <Table.Tr key={house.house_id}>
+                      <Table.Td>{house.house_name}</Table.Td>
+                      <Table.Td ta="right">{house.ticket_count}</Table.Td>
+                      <Table.Td ta="right">{house.adult_portions}</Table.Td>
+                      <Table.Td ta="right">{house.child_portions}</Table.Td>
+                      <Table.Td ta="right" fw={500}>
+                        {parseFloat(house.total_cost).toFixed(2)} kr
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+                <Table.Tfoot>
+                  <Table.Tr>
+                    <Table.Td fw={600}>Total</Table.Td>
+                    <Table.Td ta="right" fw={600}>
+                      {costReport.houses.reduce((sum, h) => sum + h.ticket_count, 0)}
+                    </Table.Td>
+                    <Table.Td ta="right" fw={600}>
+                      {costReport.houses.reduce((sum, h) => sum + h.adult_portions, 0)}
+                    </Table.Td>
+                    <Table.Td ta="right" fw={600}>
+                      {costReport.houses.reduce((sum, h) => sum + h.child_portions, 0)}
+                    </Table.Td>
+                    <Table.Td ta="right" fw={600}>
+                      {parseFloat(costReport.total_cost).toFixed(2)} kr
+                    </Table.Td>
+                  </Table.Tr>
+                </Table.Tfoot>
+              </Table>
+            )}
+          </Stack>
+        </Card>
+      ) : null}
+    </>
   );
 }
 
@@ -616,7 +830,9 @@ function CycleAdminCard({ cycle, onGenerate, isGenerating }: CycleAdminCardProps
             {cycle.name}
           </Text>
           <Text size="sm" c="dimmed">
-            {dayjs(cycle.start_date).format('MMM D')} - {dayjs(cycle.end_date).format('MMM D, YYYY')}
+            {cycle.cooking_dates.length > 0
+              ? `${dayjs(cycle.cooking_dates[0]).format('MMM D')} - ${dayjs(cycle.cooking_dates[cycle.cooking_dates.length - 1]).format('MMM D, YYYY')}`
+              : 'No dates'}
           </Text>
         </div>
         <Badge color={statusColors[cycle.status] || 'gray'} size="lg">
@@ -680,8 +896,7 @@ interface CreateCycleModalProps {
   onClose: () => void;
   onCreate: (data: {
     name: string;
-    start_date: string;
-    end_date: string;
+    cooking_dates: string[];
     wish_deadline: string;
   }) => void;
   isLoading: boolean;
@@ -689,91 +904,75 @@ interface CreateCycleModalProps {
 
 function CreateCycleModal({ opened, onClose, onCreate, isLoading }: CreateCycleModalProps) {
   const [name, setName] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [wishDeadline, setWishDeadline] = useState('');
+  const [cookingDates, setCookingDates] = useState<Date[]>([]);
+  const [wishDeadline, setWishDeadline] = useState<Date | null>(null);
 
   const handleSubmit = () => {
     onCreate({
       name,
-      start_date: startDate,
-      end_date: endDate,
-      wish_deadline: wishDeadline ? new Date(wishDeadline).toISOString() : '',
+      cooking_dates: cookingDates.map((d) => dayjs(d).format('YYYY-MM-DD')),
+      wish_deadline: wishDeadline ? dayjs(wishDeadline).toISOString() : '',
     });
   };
 
-  const isValid = name && startDate && endDate && wishDeadline;
+  const handleClose = () => {
+    // Reset form on close
+    setName('');
+    setCookingDates([]);
+    setWishDeadline(null);
+    onClose();
+  };
+
+  const isValid = name && cookingDates.length > 0 && wishDeadline;
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Create Food Team Cycle" centered>
+    <Modal opened={opened} onClose={handleClose} title="Create Food Team Cycle" centered size="lg">
       <Stack gap="md">
-        <Textarea
+        <TextInput
           label="Cycle Name"
           placeholder="e.g., January 2025 Cycle"
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
-          autosize
-          minRows={1}
-          maxRows={2}
         />
 
-        <div>
-          <Text size="sm" fw={500} mb={4}>
-            Start Date (Monday)
-          </Text>
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              border: '1px solid #ced4da',
-              borderRadius: '4px',
-              fontSize: '14px',
-            }}
-          />
-        </div>
+        <DatePickerInput
+          type="multiple"
+          label="Cooking Dates"
+          placeholder="Click to select dates"
+          value={cookingDates}
+          onChange={setCookingDates}
+          required
+          description={`${cookingDates.length} date${cookingDates.length !== 1 ? 's' : ''} selected. Click dates to add/remove them.`}
+          valueFormat="ddd, MMM D"
+          clearable
+        />
 
-        <div>
-          <Text size="sm" fw={500} mb={4}>
-            End Date (Thursday)
-          </Text>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              border: '1px solid #ced4da',
-              borderRadius: '4px',
-              fontSize: '14px',
-            }}
-          />
-        </div>
+        {cookingDates.length > 0 && (
+          <Paper withBorder p="sm" bg="gray.0">
+            <Text size="sm" fw={500} mb="xs">
+              Selected dates ({cookingDates.length}):
+            </Text>
+            <Text size="sm" c="dimmed">
+              {[...cookingDates]
+                .sort((a, b) => dayjs(a).valueOf() - dayjs(b).valueOf())
+                .map((d) => dayjs(d).format('ddd, MMM D'))
+                .join(' - ')}
+            </Text>
+          </Paper>
+        )}
 
-        <div>
-          <Text size="sm" fw={500} mb={4}>
-            Wish Deadline
-          </Text>
-          <input
-            type="datetime-local"
-            value={wishDeadline}
-            onChange={(e) => setWishDeadline(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              border: '1px solid #ced4da',
-              borderRadius: '4px',
-              fontSize: '14px',
-            }}
-          />
-        </div>
+        <DateTimePicker
+          label="Wish Deadline"
+          placeholder="Select deadline for wish submission"
+          value={wishDeadline}
+          onChange={setWishDeadline}
+          required
+          description="Users must submit their date preferences before this deadline"
+        />
 
         <Group justify="flex-end">
-          <Button variant="light" onClick={onClose}>
+          <Button variant="light" onClick={handleClose}>
             Cancel
           </Button>
           <Button onClick={handleSubmit} loading={isLoading} disabled={!isValid}>

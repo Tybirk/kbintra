@@ -271,4 +271,41 @@ export const foodApi = {
     });
     return response.data;
   },
+
+  // Default Cooking Days
+  getDefaultCookingDays: async (): Promise<{ default_cooking_days: number[] }> => {
+    const response = await apiClient.get('/food/default-cooking-days/');
+    return response.data;
+  },
+
+  updateDefaultCookingDays: async (days: number[]): Promise<{ default_cooking_days: number[] }> => {
+    const response = await apiClient.put('/food/default-cooking-days/', {
+      default_cooking_days: days,
+    });
+    return response.data;
+  },
+
+  // Admin Reports
+  getMonthlyFoodCost: async (
+    year: number,
+    month: number
+  ): Promise<{
+    year: number;
+    month: number;
+    month_name: string;
+    total_cost: string;
+    houses: Array<{
+      house_id: number;
+      house_name: string;
+      total_cost: string;
+      ticket_count: number;
+      adult_portions: number;
+      child_portions: number;
+    }>;
+  }> => {
+    const response = await apiClient.get('/food/admin/monthly-cost/', {
+      params: { year, month },
+    });
+    return response.data;
+  },
 };

@@ -34,6 +34,7 @@ class UserSerializer(serializers.ModelSerializer):
             "house_inhabitant_count",
             "is_staff",
             "date_joined",
+            "default_cooking_days",
         ]
         read_only_fields = ["id", "email", "is_staff", "date_joined"]
 

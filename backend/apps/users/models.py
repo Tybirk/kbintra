@@ -97,6 +97,11 @@ class User(AbstractUser):
         default=False,
         help_text="User prefers to be on the same team as their housemate",
     )
+    default_cooking_days = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Default days of the week user is available to cook (0=Mon, 1=Tue, 2=Wed, 3=Thu)",
+    )
     food_team_comment = models.TextField(
         blank=True,
         help_text="Special notes about food team participation",

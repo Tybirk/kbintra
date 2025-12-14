@@ -224,14 +224,26 @@ def food_ticket_free(db, user, monday_date):
     )
 
 
+def generate_cooking_dates(start_date, num_weeks=4):
+    """Generate cooking dates (Mon-Thu) for a given number of weeks."""
+    dates = []
+    current = start_date
+    end_date = start_date + timedelta(weeks=num_weeks)
+    while current < end_date:
+        # Only include Mon-Thu (weekday 0-3)
+        if current.weekday() <= 3:
+            dates.append(current.isoformat())
+        current += timedelta(days=1)
+    return dates
+
+
 @pytest.fixture
 def food_team_cycle(db, admin_user, monday_date):
     """Create a test food team cycle."""
-    end_date = monday_date + timedelta(weeks=4) - timedelta(days=4)  # End on Thursday
+    cooking_dates = generate_cooking_dates(monday_date, num_weeks=4)
     return FoodTeamCycle.objects.create(
         name="Test Cycle",
-        start_date=monday_date,
-        end_date=end_date,
+        cooking_dates=cooking_dates,
         wish_deadline=timezone.now() + timedelta(days=7),
         status=CycleStatus.COLLECTING_WISHES,
         created_by=admin_user,

@@ -71,7 +71,8 @@ class TeamGenerator:
 
     def __init__(self, cycle: FoodTeamCycle):
         self.cycle = cycle
-        self.cooking_dates = cycle.cooking_dates
+        # Convert ISO strings to date objects
+        self.cooking_dates = [date.fromisoformat(d) for d in cycle.cooking_dates]
 
         # Data structures for the algorithm
         self.persons: dict[int, PersonData] = {}  # user_id -> PersonData

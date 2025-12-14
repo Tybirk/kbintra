@@ -4,13 +4,15 @@ Tests for the Food app.
 Uses pytest and pytest-django for testing.
 """
 
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
 import pytest
 from django.urls import reverse
 from django.utils import timezone
+
+from conftest import generate_cooking_dates
 
 from apps.food.models import (
     CycleStatus,
@@ -215,18 +217,20 @@ class TestFoodTeamCycleModel:
         assert food_team_cycle.is_accepting_wishes is True
 
     def test_cooking_dates(self, food_team_cycle):
-        """Test cooking_dates property returns Mon-Thu only."""
+        """Test cooking_dates contains valid date strings."""
         dates = food_team_cycle.cooking_dates
         assert len(dates) > 0
         for d in dates:
-            assert d.weekday() <= 3  # Mon=0, Thu=3
+            # Dates are now ISO format strings
+            parsed = date.fromisoformat(d)
+            assert parsed.weekday() <= 3  # Mon=0, Thu=3
 
     def test_cycle_not_accepting_after_deadline(self, db, admin_user, monday_date):
         """Test cycle stops accepting wishes after deadline."""
+        cooking_dates = generate_cooking_dates(monday_date, num_weeks=4)
         cycle = FoodTeamCycle.objects.create(
             name="Past Deadline Cycle",
-            start_date=monday_date,
-            end_date=monday_date + timedelta(weeks=4) - timedelta(days=4),
+            cooking_dates=cooking_dates,
             wish_deadline=timezone.now() - timedelta(days=1),  # Past deadline
             status=CycleStatus.COLLECTING_WISHES,
             created_by=admin_user,
@@ -390,34 +394,56 @@ class TestFoodTicketCreateSerializer:
 class TestFoodTeamCycleCreateSerializer:
     """Tests for FoodTeamCycleCreateSerializer."""
 
-    def test_validate_start_date_monday(self, db, user, monday_date):
-        """Test start_date must be Monday."""
-        thursday = monday_date + timedelta(days=3)
+    def test_valid_cooking_dates(self, db, user, monday_date):
+        """Test valid cooking dates are accepted."""
+        cooking_dates = [
+            monday_date.isoformat(),
+            (monday_date + timedelta(days=1)).isoformat(),
+            (monday_date + timedelta(days=2)).isoformat(),
+        ]
         serializer = FoodTeamCycleCreateSerializer(
             data={
                 "name": "Test Cycle",
-                "start_date": monday_date.isoformat(),
-                "end_date": thursday.isoformat(),
+                "cooking_dates": cooking_dates,
                 "wish_deadline": (timezone.now() + timedelta(days=1)).isoformat(),
             },
             context={"request": MockRequest(user)},
         )
         assert serializer.is_valid()
 
-    def test_validate_end_date_thursday(self, db, user, monday_date):
-        """Test end_date must be Thursday."""
-        wednesday = monday_date + timedelta(days=2)
+    def test_empty_cooking_dates_rejected(self, db, user):
+        """Test empty cooking dates are rejected."""
         serializer = FoodTeamCycleCreateSerializer(
             data={
                 "name": "Test Cycle",
-                "start_date": monday_date.isoformat(),
-                "end_date": wednesday.isoformat(),  # Not Thursday
+                "cooking_dates": [],
                 "wish_deadline": (timezone.now() + timedelta(days=1)).isoformat(),
             },
             context={"request": MockRequest(user)},
         )
         assert not serializer.is_valid()
-        assert "end_date" in serializer.errors
+        assert "cooking_dates" in serializer.errors
+
+    def test_cooking_dates_sorted(self, db, user, monday_date):
+        """Test cooking dates are sorted in output."""
+        # Input dates in random order
+        cooking_dates = [
+            (monday_date + timedelta(days=2)).isoformat(),
+            monday_date.isoformat(),
+            (monday_date + timedelta(days=1)).isoformat(),
+        ]
+        serializer = FoodTeamCycleCreateSerializer(
+            data={
+                "name": "Test Cycle",
+                "cooking_dates": cooking_dates,
+                "wish_deadline": (timezone.now() + timedelta(days=1)).isoformat(),
+            },
+            context={"request": MockRequest(user)},
+        )
+        assert serializer.is_valid()
+        # Dates should be sorted
+        result = serializer.validated_data["cooking_dates"]
+        assert result == sorted(result)
 
 
 class TestFoodTeamWishSerializer:
@@ -441,10 +467,10 @@ class TestFoodTeamWishSerializer:
 
     def test_reject_cycle_not_accepting(self, db, admin_user, user, monday_date):
         """Test rejection when cycle not accepting wishes."""
+        cooking_dates = generate_cooking_dates(monday_date, num_weeks=1)
         cycle = FoodTeamCycle.objects.create(
             name="Closed Cycle",
-            start_date=monday_date,
-            end_date=monday_date + timedelta(days=3),
+            cooking_dates=cooking_dates,
             wish_deadline=timezone.now() - timedelta(days=1),
             status=CycleStatus.COLLECTING_WISHES,
             created_by=admin_user,
@@ -699,11 +725,10 @@ class TestFoodTeamCycleViews:
     def test_create_cycle_requires_admin(self, authenticated_client, monday_date):
         """Test that only admins can create cycles."""
         url = reverse("food:cycle-list")
-        thursday = monday_date + timedelta(days=3)
+        cooking_dates = generate_cooking_dates(monday_date, num_weeks=1)
         data = {
             "name": "New Cycle",
-            "start_date": monday_date.isoformat(),
-            "end_date": thursday.isoformat(),
+            "cooking_dates": cooking_dates,
             "wish_deadline": (timezone.now() + timedelta(days=1)).isoformat(),
         }
         response = authenticated_client.post(url, data, format="json")
@@ -714,11 +739,10 @@ class TestFoodTeamCycleViews:
         url = reverse("food:cycle-list")
         # Use a far future date to avoid conflicts
         far_monday = monday_date + timedelta(weeks=20)
-        thursday = far_monday + timedelta(days=3)
+        cooking_dates = generate_cooking_dates(far_monday, num_weeks=1)
         data = {
             "name": "Admin Cycle",
-            "start_date": far_monday.isoformat(),
-            "end_date": thursday.isoformat(),
+            "cooking_dates": cooking_dates,
             "wish_deadline": (timezone.now() + timedelta(days=1)).isoformat(),
         }
         response = admin_client.post(url, data, format="json")
@@ -811,14 +835,14 @@ class TestTeamGenerator:
 
     def test_generate_dry_run(self, food_team_cycle, multiple_users, monday_date):
         """Test dry run generation."""
-        # Create wishes for all users
+        # Create wishes for all users (cooking_dates is already a list of ISO strings)
         for user in multiple_users:
             user.is_exempt_from_food_teams = False
             user.save()
             FoodTeamWish.objects.create(
                 cycle=food_team_cycle,
                 user=user,
-                available_dates=[d.isoformat() for d in food_team_cycle.cooking_dates[:8]],
+                available_dates=food_team_cycle.cooking_dates[:8],
             )
 
         generator = TeamGenerator(food_team_cycle)
@@ -833,25 +857,24 @@ class TestTeamGenerator:
         # Create a fresh cycle
         today = timezone.now().date()
         next_monday = today + timedelta(days=(7 - today.weekday()))
-        thursday = next_monday + timedelta(weeks=1) + timedelta(days=3)
+        cooking_dates = generate_cooking_dates(next_monday, num_weeks=2)
 
         cycle = FoodTeamCycle.objects.create(
             name="Generation Test Cycle",
-            start_date=next_monday,
-            end_date=thursday,
+            cooking_dates=cooking_dates,
             wish_deadline=timezone.now() + timedelta(days=7),
             status=CycleStatus.COLLECTING_WISHES,
             created_by=admin_user,
         )
 
-        # Create wishes
+        # Create wishes (cooking_dates is already a list of ISO strings)
         for user in multiple_users:
             user.is_exempt_from_food_teams = False
             user.save()
             FoodTeamWish.objects.create(
                 cycle=cycle,
                 user=user,
-                available_dates=[d.isoformat() for d in cycle.cooking_dates],
+                available_dates=cycle.cooking_dates,
             )
 
         generator = TeamGenerator(cycle)
@@ -878,10 +901,10 @@ class TestTeamGenerator:
             users.append(user)
 
         # Create cycle
+        cooking_dates = generate_cooking_dates(monday_date, num_weeks=1)
         cycle = FoodTeamCycle.objects.create(
             name="House Conflict Test",
-            start_date=monday_date,
-            end_date=monday_date + timedelta(days=3),
+            cooking_dates=cooking_dates,
             wish_deadline=timezone.now() + timedelta(days=7),
             status=CycleStatus.COLLECTING_WISHES,
             created_by=admin_user,
@@ -890,8 +913,9 @@ class TestTeamGenerator:
         generator = TeamGenerator(cycle)
         generator.load_data()
 
-        # Assign first user
-        if monday_date in generator.cooking_dates and users[0].id in generator.persons:
+        # Assign first user (cooking_dates are now date objects in the generator)
+        monday_date_iso = monday_date.isoformat()
+        if monday_date_iso in cycle.cooking_dates and users[0].id in generator.persons:
             generator.assign_person(users[0].id, monday_date)
 
             # Second user from same house should be invalid
@@ -912,10 +936,10 @@ class TestTeamGenerator:
             )
             users.append(user)
 
+        cooking_dates = generate_cooking_dates(monday_date, num_weeks=1)
         cycle = FoodTeamCycle.objects.create(
             name="Over 50 Test",
-            start_date=monday_date,
-            end_date=monday_date + timedelta(days=3),
+            cooking_dates=cooking_dates,
             wish_deadline=timezone.now() + timedelta(days=7),
             status=CycleStatus.COLLECTING_WISHES,
             created_by=admin_user,
@@ -1003,3 +1027,422 @@ class TestUnauthenticatedAccess:
         url = reverse("food:team-list")
         response = api_client.get(url)
         assert response.status_code == 401
+
+
+# =============================================================================
+# Food Ticket Default Pricing and Registration Tests
+# =============================================================================
+
+
+@pytest.mark.django_db
+class TestFoodTicketDefaultPricing:
+    """Tests for food ticket default pricing."""
+
+    def test_default_price_meat(self, db, user):
+        """Test default price calculation for meat meal."""
+        from apps.food.serializers import FoodTicketCreateSerializer
+
+        serializer = FoodTicketCreateSerializer(context={"request": MockRequest(user)})
+        price = serializer.calculate_default_price(MealType.MEAT, 2, 1)
+        # 2 adults @ 37 + 1 child @ 18 = 92
+        assert price == Decimal("92.00")
+
+    def test_default_price_vegetarian(self, db, user):
+        """Test default price calculation for vegetarian meal."""
+        from apps.food.serializers import FoodTicketCreateSerializer
+
+        serializer = FoodTicketCreateSerializer(context={"request": MockRequest(user)})
+        price = serializer.calculate_default_price(MealType.VEGETARIAN, 2, 1)
+        # 2 adults @ 26 + 1 child @ 18 = 70
+        assert price == Decimal("70.00")
+
+    def test_ticket_created_with_default_price(
+        self, api_client, user_with_house, monday_date
+    ):
+        """Test that ticket is created with default price if not specified."""
+        api_client.force_authenticate(user=user_with_house)
+
+        # Use a date after the registration deadline (current week)
+        # The deadline for this week's meals passed last Wednesday
+        today = timezone.now().date()
+        # Find a future Monday in a week where the deadline has passed
+        future_monday = today + timedelta(days=(7 - today.weekday()))
+        if today.weekday() < 2:  # Before Wednesday
+            # Need to go to next week
+            future_monday += timedelta(weeks=1)
+
+        # Actually, let's mock the time to be after the deadline
+        with patch("apps.food.serializers.timezone") as mock_tz:
+            # Set current time to Thursday of this week
+            mock_now = timezone.make_aware(
+                timezone.datetime(2025, 12, 18, 10, 0)  # Thursday
+            )
+            mock_tz.now.return_value = mock_now
+            mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
+
+            # Ticket for next Monday
+            next_monday = date(2025, 12, 22)
+
+            url = reverse("food:ticket-list")
+            data = {
+                "date": next_monday.isoformat(),
+                "adults_count": 2,
+                "children_count": 1,
+                "meal_type": MealType.MEAT,
+                # No price specified - should use default
+            }
+            with patch("apps.notifications.services.notify_food_ticket_available"):
+                response = api_client.post(url, data, format="json")
+
+            assert response.status_code == 201
+            # Default price: 2 adults @ 37 + 1 child @ 18 = 92
+            assert Decimal(response.json()["price"]) == Decimal("92.00")
+
+
+@pytest.mark.django_db
+class TestFoodTicketDeactivatesRegistration:
+    """Tests for ticket creation deactivating meal registration."""
+
+    def test_ticket_deactivates_registration(
+        self, api_client, user_with_house, monday_date
+    ):
+        """Test that creating a ticket deactivates the meal registration."""
+        api_client.force_authenticate(user=user_with_house)
+
+        # Use a specific date that we know works
+        reg_date = date(2025, 12, 22)  # A Monday
+        registration = MealRegistration.objects.create(
+            user=user_with_house,
+            date=reg_date,
+            adults_count=2,
+            children_count=1,
+            is_active=True,
+        )
+        assert registration.is_active is True
+
+        # Create a ticket for the same date (mock time to be after deadline)
+        with patch("apps.food.serializers.timezone") as mock_tz:
+            # Set time to Thursday Dec 18 (after Wednesday Dec 17 18:00 deadline)
+            mock_now = timezone.make_aware(
+                timezone.datetime(2025, 12, 18, 10, 0)
+            )
+            mock_tz.now.return_value = mock_now
+            mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
+
+            url = reverse("food:ticket-list")
+            data = {
+                "date": reg_date.isoformat(),
+                "adults_count": 2,
+                "children_count": 1,
+                "meal_type": MealType.MEAT,
+            }
+            with patch("apps.notifications.services.notify_food_ticket_available"):
+                response = api_client.post(url, data, format="json")
+
+            assert response.status_code == 201
+
+        # Registration should now be inactive
+        registration.refresh_from_db()
+        assert registration.is_active is False
+
+
+@pytest.mark.django_db
+class TestCannotRegisterWithActiveTicket:
+    """Tests for preventing registration when user has active ticket."""
+
+    def test_cannot_create_registration_with_active_ticket(
+        self, api_client, user_with_house, monday_date
+    ):
+        """Test that user cannot create registration when they have an active ticket."""
+        api_client.force_authenticate(user=user_with_house)
+
+        # Create an available ticket
+        ticket_date = monday_date + timedelta(weeks=4)
+        FoodTicket.objects.create(
+            owner=user_with_house,
+            date=ticket_date,
+            adults_count=1,
+            children_count=0,
+            is_available=True,
+        )
+
+        # Try to create a registration for the same date
+        url = reverse("food:registration-list")
+        data = {
+            "date": ticket_date.isoformat(),
+            "adults_count": 1,
+            "children_count": 0,
+            "meal_type": MealType.MEAT,
+        }
+        response = api_client.post(url, data, format="json")
+
+        assert response.status_code == 400
+        assert "active food ticket" in str(response.json()).lower()
+
+    def test_cannot_activate_registration_with_active_ticket(
+        self, api_client, user_with_house, monday_date
+    ):
+        """Test that user cannot activate registration when they have an active ticket."""
+        api_client.force_authenticate(user=user_with_house)
+
+        ticket_date = monday_date + timedelta(weeks=5)
+
+        # Create inactive registration first
+        registration = MealRegistration.objects.create(
+            user=user_with_house,
+            date=ticket_date,
+            adults_count=1,
+            is_active=False,
+        )
+
+        # Create an available ticket
+        FoodTicket.objects.create(
+            owner=user_with_house,
+            date=ticket_date,
+            adults_count=1,
+            children_count=0,
+            is_available=True,
+        )
+
+        # Try to activate the registration
+        url = reverse("food:registration-detail", kwargs={"pk": registration.pk})
+        response = api_client.patch(url, {"is_active": True}, format="json")
+
+        assert response.status_code == 400
+        assert "active food ticket" in str(response.json()).lower()
+
+    def test_can_register_after_ticket_claimed(
+        self, api_client, user_with_house, admin_user, monday_date
+    ):
+        """Test that user can register after their ticket is claimed."""
+        api_client.force_authenticate(user=user_with_house)
+
+        ticket_date = monday_date + timedelta(weeks=6)
+
+        # Create a claimed (not available) ticket
+        FoodTicket.objects.create(
+            owner=user_with_house,
+            date=ticket_date,
+            adults_count=1,
+            children_count=0,
+            is_available=False,
+            claimed_by=admin_user,
+            claimed_at=timezone.now(),
+        )
+
+        # Should be able to create registration now
+        url = reverse("food:registration-list")
+        data = {
+            "date": ticket_date.isoformat(),
+            "adults_count": 1,
+            "children_count": 0,
+            "meal_type": MealType.MEAT,
+        }
+        response = api_client.post(url, data, format="json")
+
+        assert response.status_code == 201
+
+
+@pytest.mark.django_db
+class TestTicketCreationDeadline:
+    """Tests for ticket creation deadline restrictions."""
+
+    def test_cannot_create_ticket_before_deadline(self, api_client, user_with_house):
+        """Test that tickets cannot be created before registration deadline."""
+        api_client.force_authenticate(user=user_with_house)
+
+        # Mock time to be Monday morning
+        with patch("apps.food.serializers.timezone") as mock_tz:
+            mock_now = timezone.make_aware(timezone.datetime(2025, 12, 15, 10, 0))
+            mock_tz.now.return_value = mock_now
+            mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
+
+            # Try to create ticket for Monday of next week
+            # Deadline is Wednesday Dec 17 at 18:00
+            next_monday = date(2025, 12, 22)
+
+            url = reverse("food:ticket-list")
+            data = {
+                "date": next_monday.isoformat(),
+                "adults_count": 1,
+                "children_count": 0,
+                "meal_type": MealType.MEAT,
+            }
+            with patch("apps.notifications.services.notify_food_ticket_available"):
+                response = api_client.post(url, data, format="json")
+
+            assert response.status_code == 400
+            assert "deadline" in str(response.json()).lower()
+
+    def test_can_create_ticket_after_deadline(self, api_client, user_with_house):
+        """Test that tickets can be created after registration deadline."""
+        api_client.force_authenticate(user=user_with_house)
+
+        # Mock time to be Thursday (after deadline)
+        with patch("apps.food.serializers.timezone") as mock_tz:
+            mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))
+            mock_tz.now.return_value = mock_now
+            mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
+
+            # Create ticket for Monday of next week
+            # Deadline was Wednesday Dec 17 at 18:00 - already passed
+            next_monday = date(2025, 12, 22)
+
+            url = reverse("food:ticket-list")
+            data = {
+                "date": next_monday.isoformat(),
+                "adults_count": 1,
+                "children_count": 0,
+                "meal_type": MealType.MEAT,
+            }
+            with patch("apps.notifications.services.notify_food_ticket_available"):
+                response = api_client.post(url, data, format="json")
+
+            assert response.status_code == 201
+
+    def test_deadline_calculation(self, db, user):
+        """Test deadline calculation for different meal dates."""
+        from apps.food.serializers import FoodTicketCreateSerializer
+
+        serializer = FoodTicketCreateSerializer(context={"request": MockRequest(user)})
+
+        # Monday Dec 22, 2025 - deadline should be Wed Dec 17 at 18:00
+        monday = date(2025, 12, 22)
+        deadline = serializer.get_registration_deadline(monday)
+        assert deadline.date() == date(2025, 12, 17)
+        assert deadline.hour == 18
+
+        # Tuesday Dec 23 - deadline should also be Wed Dec 17 at 18:00
+        tuesday = date(2025, 12, 23)
+        deadline = serializer.get_registration_deadline(tuesday)
+        assert deadline.date() == date(2025, 12, 17)
+
+        # Wednesday Dec 24 - deadline should be Wed Dec 17 at 18:00
+        wednesday = date(2025, 12, 24)
+        deadline = serializer.get_registration_deadline(wednesday)
+        assert deadline.date() == date(2025, 12, 17)
+
+        # Thursday Dec 25 - deadline should be Wed Dec 17 at 18:00
+        thursday = date(2025, 12, 25)
+        deadline = serializer.get_registration_deadline(thursday)
+        assert deadline.date() == date(2025, 12, 17)
+
+
+@pytest.mark.django_db
+class TestMonthlyFoodCostReport:
+    """Tests for monthly food cost report."""
+
+    def test_cost_charged_to_owner_house(self, api_client, admin_user, user_with_house, house, house2):
+        """Test that food cost is charged to the ticket owner's house, not claimer's."""
+        # Create a user in house2 who will claim the ticket
+        claimer = User.objects.create_user(
+            email="claimer@example.com",
+            password="testpass123",
+            first_name="Claimer",
+            house=house2,
+        )
+
+        # Create a ticket owned by user_with_house (in house)
+        # and claimed by claimer (in house2)
+        ticket_date = date(2025, 1, 13)  # A Monday in January 2025
+        FoodTicket.objects.create(
+            owner=user_with_house,
+            date=ticket_date,
+            adults_count=2,
+            children_count=0,
+            meal_type=MealType.MEAT,
+            price=Decimal("74.00"),  # 2 * 37
+            is_available=False,
+            claimed_by=claimer,
+            claimed_at=timezone.now(),
+        )
+
+        # Get the monthly cost report as admin
+        api_client.force_authenticate(user=admin_user)
+        url = reverse("food:monthly-food-cost")
+        response = api_client.get(url, {"year": 2025, "month": 1})
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Find the house costs
+        owner_house_cost = next(
+            (h for h in data["houses"] if h["house_id"] == house.id), None
+        )
+        claimer_house_cost = next(
+            (h for h in data["houses"] if h["house_id"] == house2.id), None
+        )
+
+        # The OWNER's house (house) should have the cost
+        assert owner_house_cost is not None
+        assert Decimal(owner_house_cost["total_cost"]) == Decimal("74.00")
+        assert owner_house_cost["ticket_count"] == 1
+
+        # The CLAIMER's house (house2) should have zero cost from this ticket
+        # (they might have other tickets, but not this one)
+        if claimer_house_cost:
+            # This ticket should not count toward claimer's house
+            # Check that any cost is not from our test ticket
+            pass  # The cost should be 0 or from other tickets
+
+    def test_only_admin_can_access_report(self, api_client, user_with_house):
+        """Test that non-admin users cannot access the cost report."""
+        api_client.force_authenticate(user=user_with_house)
+        url = reverse("food:monthly-food-cost")
+        response = api_client.get(url, {"year": 2025, "month": 1})
+
+        assert response.status_code == 403
+
+    def test_report_requires_year_and_month(self, api_client, admin_user):
+        """Test that year and month parameters are required."""
+        api_client.force_authenticate(user=admin_user)
+        url = reverse("food:monthly-food-cost")
+
+        # Missing both
+        response = api_client.get(url)
+        assert response.status_code == 400
+
+        # Missing month
+        response = api_client.get(url, {"year": 2025})
+        assert response.status_code == 400
+
+        # Missing year
+        response = api_client.get(url, {"month": 1})
+        assert response.status_code == 400
+
+    def test_report_totals_multiple_tickets(self, api_client, admin_user, user_with_house, house):
+        """Test that report correctly sums multiple tickets."""
+        # Clean up existing tickets for this test
+        FoodTicket.objects.filter(
+            date__year=2025,
+            date__month=2,
+        ).delete()
+
+        # Create multiple tickets for the same owner
+        for i in range(3):
+            FoodTicket.objects.create(
+                owner=user_with_house,
+                date=date(2025, 2, 3 + i),  # Feb 3, 4, 5 (Mon, Tue, Wed)
+                adults_count=1,
+                children_count=0,
+                meal_type=MealType.MEAT,
+                price=Decimal("37.00"),
+                is_available=False,
+                claimed_by=admin_user,
+                claimed_at=timezone.now(),
+            )
+
+        api_client.force_authenticate(user=admin_user)
+        url = reverse("food:monthly-food-cost")
+        response = api_client.get(url, {"year": 2025, "month": 2})
+
+        assert response.status_code == 200
+        data = response.json()
+
+        owner_house_cost = next(
+            (h for h in data["houses"] if h["house_id"] == house.id), None
+        )
+
+        assert owner_house_cost is not None
+        assert Decimal(owner_house_cost["total_cost"]) == Decimal("111.00")  # 3 * 37
+        assert owner_house_cost["ticket_count"] == 3

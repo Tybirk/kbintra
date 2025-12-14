@@ -2,7 +2,8 @@
 Serializers for Food models.
 """
 
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
+from decimal import Decimal
 
 from django.utils import timezone
 from rest_framework import serializers
@@ -20,6 +21,7 @@ from .models import (
     FoodTicket,
     MealPreference,
     MealRegistration,
+    MealType,
     MenuTemplate,
     SwapRequestStatus,
     TeamSwapRequest,
@@ -284,6 +286,35 @@ class MealRegistrationCreateUpdateSerializer(serializers.ModelSerializer):
                 )
         return value
 
+    def _user_has_active_ticket(self, user, reg_date: date) -> bool:
+        """Check if user has an active ticket for the given date.
+
+        A user has an active ticket if they:
+        - Own a ticket that is still available (not claimed)
+        """
+        return FoodTicket.objects.filter(
+            owner=user,
+            date=reg_date,
+            is_available=True,
+        ).exists()
+
+    def validate(self, attrs: dict) -> dict:
+        """Validate that user doesn't have an active ticket for this date."""
+        user = self.context["request"].user
+        reg_date = attrs.get("date") or (self.instance.date if self.instance else None)
+        is_active = attrs.get("is_active", True)
+
+        # Only check if trying to create or activate a registration
+        if is_active and reg_date and self._user_has_active_ticket(user, reg_date):
+            raise serializers.ValidationError(
+                {
+                    "date": "You have an active food ticket for this date. "
+                    "Cancel your ticket or wait for it to be claimed before registering for this meal."
+                }
+            )
+
+        return attrs
+
     def create(self, validated_data: dict) -> MealRegistration:
         house_id = validated_data.pop("house_id", None)
         validated_data["user"] = self.context["request"].user
@@ -352,9 +383,27 @@ class FoodTicketSerializer(serializers.ModelSerializer):
 class FoodTicketCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating food tickets."""
 
+    # Default prices in DKK
+    PRICE_ADULT_MEAT = Decimal("37.00")
+    PRICE_ADULT_VEG = Decimal("26.00")
+    PRICE_CHILD = Decimal("18.00")
+
     class Meta:
         model = FoodTicket
         fields = ["date", "adults_count", "children_count", "meal_type", "price", "description"]
+
+    def get_registration_deadline(self, meal_date: date) -> datetime:
+        """Get the registration deadline for a meal date.
+
+        The deadline is Wednesday 18:00 of the week before the meal.
+        """
+        # Calculate Wednesday of the previous week
+        # meal_date.weekday(): 0=Mon, 1=Tue, 2=Wed, 3=Thu
+        # We need to go back to the previous week's Wednesday
+        days_to_prev_wednesday = meal_date.weekday() + 5  # Mon=5, Tue=6, Wed=7, Thu=8
+        deadline_date = meal_date - timedelta(days=days_to_prev_wednesday)
+        deadline_time = time(18, 0)  # 18:00
+        return datetime.combine(deadline_date, deadline_time, tzinfo=timezone.get_current_timezone())
 
     def validate_date(self, value: date) -> date:
         # Only allow Mon-Thu
@@ -363,13 +412,51 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
         # Don't allow past dates
         if value < timezone.now().date():
             raise serializers.ValidationError("Cannot create ticket for past dates.")
+
+        # Check if registration deadline has passed
+        # Tickets can only be created after the registration deadline
+        # (Wednesday 18:00 of the week before the meal)
+        deadline = self.get_registration_deadline(value)
+        if timezone.now() < deadline:
+            deadline_str = deadline.strftime("%A, %B %d at %H:%M")
+            raise serializers.ValidationError(
+                f"Tickets can only be created after the registration deadline ({deadline_str}). "
+                "You can still change your registration until then."
+            )
+
         return value
+
+    def calculate_default_price(
+        self, meal_type: str, adults_count: int, children_count: int
+    ) -> Decimal:
+        """Calculate default price based on meal type and portion counts."""
+        adult_price = (
+            self.PRICE_ADULT_MEAT if meal_type == MealType.MEAT else self.PRICE_ADULT_VEG
+        )
+        return (adult_price * adults_count) + (self.PRICE_CHILD * children_count)
 
     def create(self, validated_data: dict) -> FoodTicket:
         from apps.notifications.services import notify_food_ticket_available
 
-        validated_data["owner"] = self.context["request"].user
+        user = self.context["request"].user
+        validated_data["owner"] = user
+
+        # Set default price if not provided
+        if validated_data.get("price") is None:
+            validated_data["price"] = self.calculate_default_price(
+                validated_data.get("meal_type", MealType.MEAT),
+                validated_data.get("adults_count", 1),
+                validated_data.get("children_count", 0),
+            )
+
         ticket = super().create(validated_data)
+
+        # Deactivate the user's meal registration for this date
+        MealRegistration.objects.filter(
+            user=user,
+            date=ticket.date,
+            is_active=True,
+        ).update(is_active=False)
 
         # Notify all users about the new ticket
         notify_food_ticket_available(
@@ -612,7 +699,6 @@ class RespondSwapRequestSerializer(serializers.Serializer):
 class FoodTeamCycleSerializer(serializers.ModelSerializer):
     """Serializer for FoodTeamCycle model."""
 
-    cooking_dates = serializers.ListField(child=serializers.DateField(), read_only=True)
     is_accepting_wishes = serializers.BooleanField(read_only=True)
     team_count = serializers.SerializerMethodField()
     wish_count = serializers.SerializerMethodField()
@@ -623,11 +709,9 @@ class FoodTeamCycleSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "name",
-            "start_date",
-            "end_date",
+            "cooking_dates",
             "wish_deadline",
             "status",
-            "cooking_dates",
             "is_accepting_wishes",
             "team_count",
             "wish_count",
@@ -652,24 +736,20 @@ class FoodTeamCycleSerializer(serializers.ModelSerializer):
 class FoodTeamCycleCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating a FoodTeamCycle."""
 
+    cooking_dates = serializers.ListField(
+        child=serializers.DateField(),
+        min_length=1,
+        help_text="List of cooking dates",
+    )
+
     class Meta:
         model = FoodTeamCycle
-        fields = ["name", "start_date", "end_date", "wish_deadline"]
+        fields = ["name", "cooking_dates", "wish_deadline"]
 
-    def validate_start_date(self, value: date) -> date:
-        if value.weekday() != 0:
-            raise serializers.ValidationError("Start date must be a Monday.")
-        return value
-
-    def validate_end_date(self, value: date) -> date:
-        if value.weekday() != 3:
-            raise serializers.ValidationError("End date must be a Thursday.")
-        return value
-
-    def validate(self, attrs: dict) -> dict:
-        if attrs["end_date"] <= attrs["start_date"]:
-            raise serializers.ValidationError("End date must be after start date.")
-        return attrs
+    def validate_cooking_dates(self, value: list) -> list:
+        # Sort dates and convert to ISO format strings
+        sorted_dates = sorted(value)
+        return [d.isoformat() for d in sorted_dates]
 
     def create(self, validated_data: dict) -> FoodTeamCycle:
         validated_data["created_by"] = self.context["request"].user
@@ -775,3 +855,45 @@ class TeamGenerationResultSerializer(serializers.Serializer):
     teams_created = serializers.IntegerField()
     unassigned_persons = serializers.ListField(child=serializers.CharField())
     warnings = serializers.ListField(child=serializers.CharField())
+
+
+class DefaultCookingDaysSerializer(serializers.Serializer):
+    """Serializer for user's default cooking days preference."""
+
+    default_cooking_days = serializers.ListField(
+        child=serializers.IntegerField(min_value=0, max_value=3),
+        allow_empty=True,
+        help_text="List of weekday integers (0=Monday, 1=Tuesday, 2=Wednesday, 3=Thursday)",
+    )
+
+    def validate_default_cooking_days(self, value: list) -> list:
+        # Remove duplicates and sort
+        return sorted(set(value))
+
+
+class MonthlyFoodCostSerializer(serializers.Serializer):
+    """Serializer for monthly food cost query."""
+
+    year = serializers.IntegerField(min_value=2020, max_value=2100)
+    month = serializers.IntegerField(min_value=1, max_value=12)
+
+
+class HouseFoodCostSerializer(serializers.Serializer):
+    """Serializer for per-house food cost result."""
+
+    house_id = serializers.IntegerField()
+    house_name = serializers.CharField()
+    total_cost = serializers.DecimalField(max_digits=10, decimal_places=2)
+    ticket_count = serializers.IntegerField()
+    adult_portions = serializers.IntegerField()
+    child_portions = serializers.IntegerField()
+
+
+class MonthlyFoodCostReportSerializer(serializers.Serializer):
+    """Serializer for monthly food cost report result."""
+
+    year = serializers.IntegerField()
+    month = serializers.IntegerField()
+    month_name = serializers.CharField()
+    total_cost = serializers.DecimalField(max_digits=10, decimal_places=2)
+    houses = HouseFoodCostSerializer(many=True)

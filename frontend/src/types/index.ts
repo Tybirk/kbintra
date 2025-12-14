@@ -589,11 +589,9 @@ export type CycleStatus = 'draft' | 'collecting_wishes' | 'generating' | 'finali
 export interface FoodTeamCycle {
   id: number;
   name: string;
-  start_date: string;
-  end_date: string;
+  cooking_dates: string[];
   wish_deadline: string;
   status: CycleStatus;
-  cooking_dates: string[];
   is_accepting_wishes: boolean;
   team_count: number;
   wish_count: number;
@@ -604,8 +602,7 @@ export interface FoodTeamCycle {
 
 export interface CreateCycleData {
   name: string;
-  start_date: string;
-  end_date: string;
+  cooking_dates: string[];
   wish_deadline: string;
 }
 

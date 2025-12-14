@@ -12,7 +12,8 @@ import {
   Center,
   ActionIcon,
   Stack,
-  Divider,
+  Box,
+  ThemeIcon,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -136,31 +137,50 @@ export default function ForumPage() {
       {committees.length === 0 && regularGroups.length === 0 ? (
         <Text c="dimmed">No subgroups found.</Text>
       ) : (
-        <>
+        <Stack gap="xl">
           {/* Committees Section */}
           {committees.length > 0 && (
-            <>
-              <Group gap="xs" mb="md">
-                <IconUsers size={20} />
-                <Title order={3}>Udvalg</Title>
+            <Box
+              p="lg"
+              style={(theme) => ({
+                backgroundColor: theme.colors.teal[0],
+                borderRadius: theme.radius.md,
+                border: `1px solid ${theme.colors.teal[2]}`,
+              })}
+            >
+              <Group gap="sm" mb="lg">
+                <ThemeIcon size="lg" radius="md" variant="filled" color="teal">
+                  <IconUsers size={20} />
+                </ThemeIcon>
+                <div>
+                  <Title order={3}>Udvalg</Title>
+                  <Text size="sm" c="dimmed">Fællesskabets udvalg og arbejdsgrupper</Text>
+                </div>
               </Group>
-              <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg" mb="xl">
+              <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
                 {committees.map(renderSubgroupCard)}
               </SimpleGrid>
-            </>
+            </Box>
           )}
 
           {/* Regular Groups Section */}
           {regularGroups.length > 0 && (
-            <>
-              {committees.length > 0 && <Divider my="lg" />}
-              <Title order={3} mb="md">Grupper</Title>
+            <Box>
+              <Group gap="sm" mb="lg">
+                <ThemeIcon size="lg" radius="md" variant="light" color="blue">
+                  <IconMessageCircle size={20} />
+                </ThemeIcon>
+                <div>
+                  <Title order={3}>Grupper</Title>
+                  <Text size="sm" c="dimmed">Øvrige fora og diskussionsgrupper</Text>
+                </div>
+              </Group>
               <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
                 {regularGroups.map(renderSubgroupCard)}
               </SimpleGrid>
-            </>
+            </Box>
           )}
-        </>
+        </Stack>
       )}
     </>
   );
