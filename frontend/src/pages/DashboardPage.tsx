@@ -37,43 +37,43 @@ dayjs.extend(relativeTime);
 const features = [
   {
     icon: IconSpeakerphone,
-    title: 'Announcements',
-    description: 'Important community updates',
+    title: 'Opslag',
+    description: 'Vigtige fællesskabsopdateringer',
     color: 'red',
     path: '/announcements',
   },
   {
     icon: IconMessageCircle,
     title: 'Forum',
-    description: 'Community discussions',
+    description: 'Fællesskabsdiskussioner',
     color: 'blue',
     path: '/forum',
   },
   {
     icon: IconSoup,
-    title: 'Food',
-    description: 'Weekly menu & meal registration',
+    title: 'Mad',
+    description: 'Ugemenu & måltidstilmelding',
     color: 'green',
     path: '/food',
   },
   {
     icon: IconCalendar,
-    title: 'Calendar',
-    description: 'Community events',
+    title: 'Kalender',
+    description: 'Fællesskabsarrangementer',
     color: 'violet',
     path: '/calendar',
   },
   {
     icon: IconHome,
-    title: 'Directory',
-    description: 'Houses & inhabitants',
+    title: 'Beboeroversigt',
+    description: 'Huse & beboere',
     color: 'orange',
     path: '/directory',
   },
   {
     icon: IconUsers,
-    title: 'Messages',
-    description: 'Direct messaging',
+    title: 'Beskeder',
+    description: 'Direkte beskeder',
     color: 'cyan',
     path: '/messages',
   },
@@ -107,10 +107,10 @@ export default function DashboardPage() {
   return (
     <>
       <Title order={1} mb="xs">
-        Welcome, {user?.first_name || 'User'}!
+        Velkommen, {user?.first_name || 'bruger'}!
       </Title>
       <Text c="dimmed" mb="xl">
-        What would you like to do today?
+        Hvad vil du lave i dag?
       </Text>
 
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
@@ -147,7 +147,7 @@ export default function DashboardPage() {
               <ThemeIcon size="sm" color="red" radius="xl">
                 <IconBell size={14} />
               </ThemeIcon>
-              <Title order={3}>Unread Notifications</Title>
+              <Title order={3}>Ulæste notifikationer</Title>
               <Badge color="red" size="sm">
                 {recentNotifications.length}
               </Badge>
@@ -158,7 +158,7 @@ export default function DashboardPage() {
               rightSection={<IconArrowRight size={14} />}
               onClick={() => navigate('/notifications')}
             >
-              View all
+              Se alle
             </Button>
           </Group>
           <Stack gap="sm">
@@ -175,14 +175,14 @@ export default function DashboardPage() {
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg" mt="xl">
         <Paper withBorder p="lg" radius="md">
           <Group justify="space-between" mb="md">
-            <Title order={3}>Recent Announcements</Title>
+            <Title order={3}>Seneste opslag</Title>
             <Button
               variant="subtle"
               size="xs"
               rightSection={<IconArrowRight size={14} />}
               onClick={() => navigate('/announcements')}
             >
-              View all
+              Se alle
             </Button>
           </Group>
 
@@ -198,20 +198,20 @@ export default function DashboardPage() {
               ))}
             </Stack>
           ) : (
-            <Text c="dimmed">No announcements yet.</Text>
+            <Text c="dimmed">Ingen opslag endnu.</Text>
           )}
         </Paper>
 
         <Paper withBorder p="lg" radius="md">
           <Group justify="space-between" mb="md">
-            <Title order={3}>Upcoming Events</Title>
+            <Title order={3}>Kommende arrangementer</Title>
             <Button
               variant="subtle"
               size="xs"
               rightSection={<IconArrowRight size={14} />}
               onClick={() => navigate('/calendar')}
             >
-              View all
+              Se alle
             </Button>
           </Group>
 
@@ -224,7 +224,7 @@ export default function DashboardPage() {
               ))}
             </Stack>
           ) : (
-            <Text c="dimmed">No upcoming events.</Text>
+            <Text c="dimmed">Ingen kommende arrangementer.</Text>
           )}
         </Paper>
       </SimpleGrid>
@@ -283,9 +283,9 @@ function EventPreview({ event }: EventPreviewProps) {
   const isToday = dayjs(event.start_datetime).isSame(dayjs(), 'day');
   const isTomorrow = dayjs(event.start_datetime).isSame(dayjs().add(1, 'day'), 'day');
 
-  let dateLabel = dayjs(event.start_datetime).format('ddd, MMM D');
-  if (isToday) dateLabel = 'Today';
-  if (isTomorrow) dateLabel = 'Tomorrow';
+  let dateLabel = dayjs(event.start_datetime).format('ddd, D. MMM');
+  if (isToday) dateLabel = 'I dag';
+  if (isTomorrow) dateLabel = 'I morgen';
 
   return (
     <Paper

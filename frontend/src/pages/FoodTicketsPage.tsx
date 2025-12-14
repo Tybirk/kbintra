@@ -62,25 +62,25 @@ export default function FoodTicketsPage() {
         onClick={() => navigate('/food')}
         mb="md"
       >
-        Back to Food
+        Tilbage til mad
       </Button>
 
       <Group justify="space-between" mb="xl">
         <div>
-          <Title order={1}>Food Tickets</Title>
-          <Text c="dimmed">Trade unused meal spots with others</Text>
+          <Title order={1}>Madbilletter</Title>
+          <Text c="dimmed">Byt ubrugte måltider med andre</Text>
         </div>
         <Button leftSection={<IconPlus size={16} />} onClick={openCreateModal}>
-          Offer Ticket
+          Tilbyd billet
         </Button>
       </Group>
 
       <Tabs defaultValue="available">
         <Tabs.List mb="md">
           <Tabs.Tab value="available" leftSection={<IconTicket size={16} />}>
-            Available ({availableTickets?.length || 0})
+            Tilgængelige ({availableTickets?.length || 0})
           </Tabs.Tab>
-          <Tabs.Tab value="my">My Tickets ({myTickets?.length || 0})</Tabs.Tab>
+          <Tabs.Tab value="my">Mine billetter ({myTickets?.length || 0})</Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="available">
@@ -93,7 +93,7 @@ export default function FoodTicketsPage() {
               <Center>
                 <Stack align="center" gap="xs">
                   <IconTicket size={48} color="gray" />
-                  <Text c="dimmed">No tickets available at the moment.</Text>
+                  <Text c="dimmed">Ingen billetter tilgængelige i øjeblikket.</Text>
                 </Stack>
               </Center>
             </Paper>
@@ -116,9 +116,9 @@ export default function FoodTicketsPage() {
               <Center>
                 <Stack align="center" gap="xs">
                   <IconTicket size={48} color="gray" />
-                  <Text c="dimmed">You have no tickets.</Text>
+                  <Text c="dimmed">Du har ingen billetter.</Text>
                   <Button onClick={openCreateModal} mt="sm">
-                    Offer a Ticket
+                    Tilbyd en billet
                   </Button>
                 </Stack>
               </Center>
@@ -159,15 +159,15 @@ function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['food', 'tickets'] });
       notifications.show({
-        title: 'Ticket claimed',
-        message: 'Contact the owner to arrange payment if needed.',
+        title: 'Billet reserveret',
+        message: 'Kontakt ejeren for at aftale betaling hvis nødvendigt.',
         color: 'green',
       });
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to claim ticket.',
+        title: 'Fejl',
+        message: 'Kunne ikke reservere billet.',
         color: 'red',
       });
     },
@@ -178,15 +178,15 @@ function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['food', 'tickets'] });
       notifications.show({
-        title: 'Ticket released',
-        message: 'The ticket is now available again.',
+        title: 'Billet frigivet',
+        message: 'Billetten er nu tilgængelig igen.',
         color: 'blue',
       });
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to release ticket.',
+        title: 'Fejl',
+        message: 'Kunne ikke frigive billet.',
         color: 'red',
       });
     },
@@ -197,15 +197,15 @@ function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['food', 'tickets'] });
       notifications.show({
-        title: 'Ticket deleted',
-        message: 'Your ticket has been removed.',
+        title: 'Billet slettet',
+        message: 'Din billet er blevet fjernet.',
         color: 'blue',
       });
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to delete ticket.',
+        title: 'Fejl',
+        message: 'Kunne ikke slette billet.',
         color: 'red',
       });
     },
@@ -234,7 +234,7 @@ function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
               </Text>
               {ticket.is_free ? (
                 <Badge color="green" variant="light">
-                  Free
+                  Gratis
                 </Badge>
               ) : (
                 <Badge color="blue" variant="light">
@@ -243,14 +243,14 @@ function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
               )}
               {isClaimed && (
                 <Badge color="gray" variant="light">
-                  Claimed
+                  Reserveret
                 </Badge>
               )}
             </Group>
             <Text size="sm" c="dimmed">
-              {ticket.day_name}, {dayjs(ticket.date).format('MMM D')} •{' '}
-              {ticket.total_portions} {ticket.total_portions === 1 ? 'portion' : 'portions'}
-              {ticket.day_of_week === 2 && ` • ${ticket.meal_type}`}
+              {ticket.day_name}, {dayjs(ticket.date).format('D. MMM')} •{' '}
+              {ticket.total_portions} {ticket.total_portions === 1 ? 'portion' : 'portioner'}
+              {ticket.day_of_week === 2 && ` • ${ticket.meal_type === 'meat' ? 'Kød' : 'Vegetar'}`}
             </Text>
             {ticket.description && (
               <Text size="sm" mt={4}>
@@ -259,7 +259,7 @@ function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
             )}
             {isClaimed && ticket.claimed_by && (
               <Text size="sm" c="dimmed" mt={4}>
-                Claimed by {ticket.claimed_by.first_name} {ticket.claimed_by.last_name}
+                Reserveret af {ticket.claimed_by.first_name} {ticket.claimed_by.last_name}
               </Text>
             )}
           </div>
@@ -285,7 +285,7 @@ function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
               onClick={() => claimMutation.mutate()}
               loading={claimMutation.isPending}
             >
-              Claim
+              Reserver
             </Button>
           )}
 
@@ -299,7 +299,7 @@ function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
                   onClick={() => releaseMutation.mutate()}
                   loading={releaseMutation.isPending}
                 >
-                  Release
+                  Frigiv
                 </Button>
               )}
               {isOwner && (
@@ -312,7 +312,7 @@ function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
                   <Menu.Dropdown>
                     {!ticket.is_available && (
                       <Menu.Item onClick={() => releaseMutation.mutate()}>
-                        Release Ticket
+                        Frigiv billet
                       </Menu.Item>
                     )}
                     {ticket.is_available && (
@@ -321,7 +321,7 @@ function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
                         leftSection={<IconTrash size={14} />}
                         onClick={() => deleteMutation.mutate()}
                       >
-                        Delete
+                        Slet
                       </Menu.Item>
                     )}
                   </Menu.Dropdown>
@@ -353,8 +353,8 @@ function CreateTicketModal({ opened, onClose, onSuccess }: CreateTicketModalProp
     mutationFn: (data: CreateFoodTicketData) => foodApi.createTicket(data),
     onSuccess: () => {
       notifications.show({
-        title: 'Ticket created',
-        message: 'Your ticket is now available for others to claim.',
+        title: 'Billet oprettet',
+        message: 'Din billet er nu tilgængelig for andre.',
         color: 'green',
       });
       // Reset form
@@ -368,8 +368,8 @@ function CreateTicketModal({ opened, onClose, onSuccess }: CreateTicketModalProp
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to create ticket.',
+        title: 'Fejl',
+        message: 'Kunne ikke oprette billet.',
         color: 'red',
       });
     },
@@ -398,12 +398,12 @@ function CreateTicketModal({ opened, onClose, onSuccess }: CreateTicketModalProp
   };
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Offer a Food Ticket" size="md">
+    <Modal opened={opened} onClose={onClose} title="Tilbyd en madbillet" size="md">
       <form onSubmit={handleSubmit}>
         <Stack gap="md">
           <DateInput
-            label="Date"
-            placeholder="Select date"
+            label="Dato"
+            placeholder="Vælg dato"
             value={date}
             onChange={(value) => {
               const dateValue = value ? new Date(value) : null;
@@ -416,14 +416,14 @@ function CreateTicketModal({ opened, onClose, onSuccess }: CreateTicketModalProp
 
           <Group grow>
             <NumberInput
-              label="Adults"
+              label="Voksne"
               value={adults}
               onChange={(val) => setAdults(Number(val) || 0)}
               min={0}
               max={10}
             />
             <NumberInput
-              label="Children"
+              label="Børn"
               value={children}
               onChange={(val) => setChildren(Number(val) || 0)}
               min={0}
@@ -434,14 +434,14 @@ function CreateTicketModal({ opened, onClose, onSuccess }: CreateTicketModalProp
           {isWednesday && (
             <div>
               <Text size="sm" fw={500} mb={4}>
-                Meal Type
+                Måltidstype
               </Text>
               <SegmentedControl
                 value={mealType}
                 onChange={(val) => setMealType(val as 'meat' | 'vegetarian')}
                 data={[
-                  { label: 'Meat', value: 'meat' },
-                  { label: 'Vegetarian', value: 'vegetarian' },
+                  { label: 'Kød', value: 'meat' },
+                  { label: 'Vegetar', value: 'vegetarian' },
                 ]}
                 fullWidth
               />
@@ -449,8 +449,8 @@ function CreateTicketModal({ opened, onClose, onSuccess }: CreateTicketModalProp
           )}
 
           <NumberInput
-            label="Price (DKK)"
-            description="Leave empty for free"
+            label="Pris (DKK)"
+            description="Lad være tom for gratis"
             placeholder="0"
             value={price}
             onChange={(val) => setPrice(val === '' ? '' : Number(val))}
@@ -459,22 +459,22 @@ function CreateTicketModal({ opened, onClose, onSuccess }: CreateTicketModalProp
           />
 
           <Textarea
-            label="Note (optional)"
-            placeholder="Any additional info..."
+            label="Note (valgfrit)"
+            placeholder="Yderligere information..."
             value={description}
             onChange={(e) => setDescription(e.currentTarget.value)}
           />
 
           <Group justify="flex-end">
             <Button variant="light" onClick={onClose}>
-              Cancel
+              Annuller
             </Button>
             <Button
               type="submit"
               loading={createMutation.isPending}
               disabled={!date || (adults === 0 && children === 0)}
             >
-              Create Ticket
+              Opret billet
             </Button>
           </Group>
         </Stack>

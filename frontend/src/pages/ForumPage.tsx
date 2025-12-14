@@ -43,15 +43,15 @@ export default function ForumPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['subgroups'] });
       notifications.show({
-        title: 'Subscribed',
-        message: 'You will now receive updates from this subgroup.',
+        title: 'Tilmeldt',
+        message: 'Du modtager nu opdateringer fra denne gruppe.',
         color: 'green',
       });
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to subscribe. Please try again.',
+        title: 'Fejl',
+        message: 'Kunne ikke tilmelde. Prøv venligst igen.',
         color: 'red',
       });
     },
@@ -62,15 +62,15 @@ export default function ForumPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['subgroups'] });
       notifications.show({
-        title: 'Unsubscribed',
-        message: 'You will no longer receive updates from this subgroup.',
+        title: 'Afmeldt',
+        message: 'Du modtager ikke længere opdateringer fra denne gruppe.',
         color: 'blue',
       });
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to unsubscribe. Please try again.',
+        title: 'Fejl',
+        message: 'Kunne ikke afmelde. Prøv venligst igen.',
         color: 'red',
       });
     },
@@ -99,7 +99,7 @@ export default function ForumPage() {
   if (error) {
     return (
       <Center h={200}>
-        <Text c="red">Failed to load forum. Please try again.</Text>
+        <Text c="red">Kunne ikke indlæse forum. Prøv venligst igen.</Text>
       </Center>
     );
   }
@@ -121,12 +121,12 @@ export default function ForumPage() {
       <Group justify="space-between" mb="md">
         <div>
           <Title order={1}>Forum</Title>
-          <Text c="dimmed">Browse and discuss in community subgroups</Text>
+          <Text c="dimmed">Gennemse og deltag i fællesskabets grupper</Text>
         </div>
       </Group>
 
       <TextInput
-        placeholder="Search subgroups..."
+        placeholder="Søg i grupper..."
         leftSection={<IconSearch size={16} />}
         value={search}
         onChange={(e) => setSearch(e.currentTarget.value)}
@@ -135,7 +135,7 @@ export default function ForumPage() {
       />
 
       {committees.length === 0 && regularGroups.length === 0 ? (
-        <Text c="dimmed">No subgroups found.</Text>
+        <Text c="dimmed">Ingen grupper fundet.</Text>
       ) : (
         <Stack gap="xl">
           {/* Committees Section */}
@@ -234,7 +234,7 @@ function SubgroupCard({
             )}
             {subgroup.is_default && !subgroup.is_committee && (
               <Badge size="xs" variant="light" color="gray">
-                Default
+                Standard
               </Badge>
             )}
             <ActionIcon
@@ -242,7 +242,7 @@ function SubgroupCard({
               color={subgroup.is_subscribed ? 'blue' : 'gray'}
               onClick={handleSubscriptionClick}
               loading={isSubscribing || isUnsubscribing}
-              title={subgroup.is_subscribed ? 'Unsubscribe' : 'Subscribe'}
+              title={subgroup.is_subscribed ? 'Afmeld' : 'Tilmeld'}
             >
               {subgroup.is_subscribed ? (
                 <IconBell size={16} />
@@ -261,11 +261,11 @@ function SubgroupCard({
 
         <Group gap="xs">
           <Badge variant="light" color="blue">
-            {subgroup.thread_count} threads
+            {subgroup.thread_count} tråde
           </Badge>
           {subgroup.is_subscribed && (
             <Badge variant="outline" color="green">
-              Subscribed
+              Tilmeldt
             </Badge>
           )}
         </Group>

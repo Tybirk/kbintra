@@ -81,8 +81,8 @@ export default function NotificationsPage() {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
       queryClient.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
       notifications.show({
-        title: 'All marked as read',
-        message: 'All notifications have been marked as read.',
+        title: 'Alle markeret som læst',
+        message: 'Alle notifikationer er nu markeret som læst.',
         color: 'blue',
       });
     },
@@ -102,8 +102,8 @@ export default function NotificationsPage() {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
       queryClient.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
       notifications.show({
-        title: 'Notification deleted',
-        message: 'The notification has been deleted.',
+        title: 'Notifikation slettet',
+        message: 'Notifikationen er blevet slettet.',
         color: 'blue',
       });
     },
@@ -116,8 +116,8 @@ export default function NotificationsPage() {
       queryClient.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
       closeClearAll();
       notifications.show({
-        title: 'All notifications cleared',
-        message: 'All notifications have been deleted.',
+        title: 'Alle notifikationer ryddet',
+        message: 'Alle notifikationer er blevet slettet.',
         color: 'blue',
       });
     },
@@ -145,7 +145,7 @@ export default function NotificationsPage() {
   if (error) {
     return (
       <Center h={200}>
-        <Text c="red">Failed to load notifications. Please try again.</Text>
+        <Text c="red">Kunne ikke indlæse notifikationer. Prøv igen.</Text>
       </Center>
     );
   }
@@ -154,9 +154,9 @@ export default function NotificationsPage() {
     <>
       <Group justify="space-between" mb="md">
         <div>
-          <Title order={1}>Notifications</Title>
+          <Title order={1}>Notifikationer</Title>
           <Text c="dimmed">
-            {unreadCount > 0 ? `${unreadCount} unread notifications` : 'No unread notifications'}
+            {unreadCount > 0 ? `${unreadCount} ulæste notifikationer` : 'Ingen ulæste notifikationer'}
           </Text>
         </div>
         <Group>
@@ -165,7 +165,7 @@ export default function NotificationsPage() {
             leftSection={<IconSettings size={16} />}
             onClick={openPreferences}
           >
-            Preferences
+            Indstillinger
           </Button>
           {notificationsList && notificationsList.length > 0 && (
             <>
@@ -176,7 +176,7 @@ export default function NotificationsPage() {
                 loading={markAllReadMutation.isPending}
                 disabled={unreadCount === 0}
               >
-                Mark All Read
+                Markér alle som læst
               </Button>
               <Button
                 variant="light"
@@ -184,7 +184,7 @@ export default function NotificationsPage() {
                 leftSection={<IconTrash size={16} />}
                 onClick={openClearAll}
               >
-                Clear All
+                Ryd alle
               </Button>
             </>
           )}
@@ -197,9 +197,9 @@ export default function NotificationsPage() {
             <Center>
               <Stack align="center" gap="xs">
                 <IconBellOff size={48} color="gray" />
-                <Text c="dimmed">No notifications yet.</Text>
+                <Text c="dimmed">Ingen notifikationer endnu.</Text>
                 <Text size="sm" c="dimmed">
-                  You'll be notified about new messages, announcements, and more.
+                  Du bliver notificeret om nye beskeder, opslag og mere.
                 </Text>
               </Stack>
             </Center>
@@ -225,22 +225,22 @@ export default function NotificationsPage() {
       <Modal
         opened={clearAllOpened}
         onClose={closeClearAll}
-        title="Clear All Notifications"
+        title="Ryd alle notifikationer"
         centered
       >
         <Text mb="lg">
-          Are you sure you want to delete all notifications? This action cannot be undone.
+          Er du sikker på, at du vil slette alle notifikationer? Denne handling kan ikke fortrydes.
         </Text>
         <Group justify="flex-end">
           <Button variant="light" onClick={closeClearAll}>
-            Cancel
+            Annuller
           </Button>
           <Button
             color="red"
             onClick={() => clearAllMutation.mutate()}
             loading={clearAllMutation.isPending}
           >
-            Clear All
+            Ryd alle
           </Button>
         </Group>
       </Modal>
@@ -299,7 +299,7 @@ function NotificationCard({ notification, onClick, onMarkRead, onDelete }: Notif
               </Text>
               {!notification.is_read && (
                 <Badge size="xs" color="blue" variant="filled">
-                  New
+                  Ny
                 </Badge>
               )}
             </Group>
@@ -327,7 +327,7 @@ function NotificationCard({ notification, onClick, onMarkRead, onDelete }: Notif
                   onMarkRead();
                 }}
               >
-                Mark as read
+                Markér som læst
               </Menu.Item>
             )}
             <Menu.Item
@@ -338,7 +338,7 @@ function NotificationCard({ notification, onClick, onMarkRead, onDelete }: Notif
                 onDelete();
               }}
             >
-              Delete
+              Slet
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>
@@ -366,15 +366,15 @@ function NotificationPreferencesModal({ opened, onClose }: NotificationPreferenc
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notification-preferences'] });
       notifications.show({
-        title: 'Preferences updated',
-        message: 'Your notification preferences have been saved.',
+        title: 'Indstillinger opdateret',
+        message: 'Dine notifikationsindstillinger er blevet gemt.',
         color: 'green',
       });
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to update preferences. Please try again.',
+        title: 'Fejl',
+        message: 'Kunne ikke opdatere indstillinger. Prøv igen.',
         color: 'red',
       });
     },
@@ -388,7 +388,7 @@ function NotificationPreferencesModal({ opened, onClose }: NotificationPreferenc
     <Modal
       opened={opened}
       onClose={onClose}
-      title="Notification Preferences"
+      title="Notifikationsindstillinger"
       size="lg"
     >
       {isLoading ? (
@@ -399,51 +399,51 @@ function NotificationPreferencesModal({ opened, onClose }: NotificationPreferenc
         <Tabs defaultValue="in-app">
           <Tabs.List mb="md">
             <Tabs.Tab value="in-app" leftSection={<IconBell size={16} />}>
-              In-App
+              I appen
             </Tabs.Tab>
             <Tabs.Tab value="email" leftSection={<IconMessage size={16} />}>
-              Email
+              E-mail
             </Tabs.Tab>
           </Tabs.List>
 
           <Tabs.Panel value="in-app">
             <Stack gap="md">
               <Text size="sm" c="dimmed" mb="xs">
-                Choose which notifications you want to receive in the app.
+                Vælg hvilke notifikationer du vil modtage i appen.
               </Text>
               <Switch
-                label="New messages"
-                description="When someone sends you a direct message"
+                label="Nye beskeder"
+                description="Når nogen sender dig en direkte besked"
                 checked={preferences.notify_messages}
                 onChange={(e) => handleToggle('notify_messages', e.currentTarget.checked)}
               />
               <Switch
-                label="Announcements"
-                description="When new community announcements are posted"
+                label="Opslag"
+                description="Når nye fællesskabsopslag bliver oprettet"
                 checked={preferences.notify_announcements}
                 onChange={(e) => handleToggle('notify_announcements', e.currentTarget.checked)}
               />
               <Switch
-                label="Forum subscriptions"
-                description="New threads in subgroups you're subscribed to"
+                label="Forum-abonnementer"
+                description="Nye tråde i grupper du abonnerer på"
                 checked={preferences.notify_forum_subscriptions}
                 onChange={(e) => handleToggle('notify_forum_subscriptions', e.currentTarget.checked)}
               />
               <Switch
-                label="Thread replies"
-                description="When someone replies to your thread"
+                label="Trådsvar"
+                description="Når nogen svarer på din tråd"
                 checked={preferences.notify_thread_replies}
                 onChange={(e) => handleToggle('notify_thread_replies', e.currentTarget.checked)}
               />
               <Switch
-                label="Event reminders"
-                description="Reminders for upcoming calendar events"
+                label="Begivenhedspåmindelser"
+                description="Påmindelser om kommende kalenderbegivenheder"
                 checked={preferences.notify_event_reminders}
                 onChange={(e) => handleToggle('notify_event_reminders', e.currentTarget.checked)}
               />
               <Switch
-                label="Food tickets"
-                description="When new food tickets become available"
+                label="Madbilletter"
+                description="Når nye madbilletter bliver tilgængelige"
                 checked={preferences.notify_food_tickets}
                 onChange={(e) => handleToggle('notify_food_tickets', e.currentTarget.checked)}
               />
@@ -453,41 +453,41 @@ function NotificationPreferencesModal({ opened, onClose }: NotificationPreferenc
           <Tabs.Panel value="email">
             <Stack gap="md">
               <Text size="sm" c="dimmed" mb="xs">
-                Get an email whenever you receive a notification. Enable email for the notification types you want.
+                Få en e-mail når du modtager en notifikation. Aktivér e-mail for de notifikationstyper du ønsker.
               </Text>
               <Switch
-                label="New messages"
-                description="Email when someone sends you a direct message"
+                label="Nye beskeder"
+                description="E-mail når nogen sender dig en direkte besked"
                 checked={preferences.email_messages}
                 onChange={(e) => handleToggle('email_messages', e.currentTarget.checked)}
               />
               <Switch
-                label="Announcements"
-                description="Email when new community announcements are posted"
+                label="Opslag"
+                description="E-mail når nye fællesskabsopslag bliver oprettet"
                 checked={preferences.email_announcements}
                 onChange={(e) => handleToggle('email_announcements', e.currentTarget.checked)}
               />
               <Switch
-                label="Forum subscriptions"
-                description="Email for new threads in subgroups you're subscribed to"
+                label="Forum-abonnementer"
+                description="E-mail for nye tråde i grupper du abonnerer på"
                 checked={preferences.email_forum_subscriptions}
                 onChange={(e) => handleToggle('email_forum_subscriptions', e.currentTarget.checked)}
               />
               <Switch
-                label="Thread replies"
-                description="Email when someone replies to your thread"
+                label="Trådsvar"
+                description="E-mail når nogen svarer på din tråd"
                 checked={preferences.email_thread_replies}
                 onChange={(e) => handleToggle('email_thread_replies', e.currentTarget.checked)}
               />
               <Switch
-                label="Event reminders"
-                description="Email reminders for upcoming calendar events"
+                label="Begivenhedspåmindelser"
+                description="E-mail-påmindelser om kommende kalenderbegivenheder"
                 checked={preferences.email_event_reminders}
                 onChange={(e) => handleToggle('email_event_reminders', e.currentTarget.checked)}
               />
               <Switch
-                label="Food tickets"
-                description="Email when new food tickets become available"
+                label="Madbilletter"
+                description="E-mail når nye madbilletter bliver tilgængelige"
                 checked={preferences.email_food_tickets}
                 onChange={(e) => handleToggle('email_food_tickets', e.currentTarget.checked)}
               />

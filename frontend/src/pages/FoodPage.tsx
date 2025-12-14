@@ -96,15 +96,15 @@ export default function FoodPage() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['food', 'registrations'] });
       notifications.show({
-        title: 'Defaults applied',
+        title: 'Standardindstillinger anvendt',
         message: data.detail,
         color: 'green',
       });
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to apply defaults. Make sure you have set your preferences first.',
+        title: 'Fejl',
+        message: 'Kunne ikke anvende standardindstillinger. Sørg for at du har sat dine præferencer først.',
         color: 'red',
       });
     },
@@ -136,18 +136,18 @@ export default function FoodPage() {
 
   // Helper to get week label
   const getWeekLabel = (offset: number) => {
-    if (offset === 0) return 'This Week';
-    if (offset === 1) return 'Next Week';
-    if (offset === -1) return 'Last Week';
-    return `${offset > 0 ? '+' : ''}${offset} weeks`;
+    if (offset === 0) return 'Denne uge';
+    if (offset === 1) return 'Næste uge';
+    if (offset === -1) return 'Sidste uge';
+    return `${offset > 0 ? '+' : ''}${offset} uger`;
   };
 
   return (
     <>
       <Group justify="space-between" mb="md">
         <div>
-          <Title order={1}>Food</Title>
-          <Text c="dimmed">Weekly menu and meal registration</Text>
+          <Title order={1}>Mad</Title>
+          <Text c="dimmed">Ugemenu og måltidstilmelding</Text>
         </div>
         <Group>
           <Button
@@ -155,21 +155,21 @@ export default function FoodPage() {
             leftSection={<IconChefHat size={16} />}
             onClick={() => navigate('/food/manage')}
           >
-            Manage Menus
+            Administrer menuer
           </Button>
           <Button
             variant="light"
             leftSection={<IconSettings size={16} />}
             onClick={() => navigate('/food/preferences')}
           >
-            Preferences
+            Præferencer
           </Button>
           <Button
             variant="light"
             leftSection={<IconTicket size={16} />}
             onClick={() => navigate('/food/tickets')}
           >
-            Tickets
+            Billetter
           </Button>
         </Group>
       </Group>
@@ -180,7 +180,7 @@ export default function FoodPage() {
             Menu
           </Tabs.Tab>
           <Tabs.Tab value="registration" leftSection={<IconCalendar size={16} />}>
-            My Registration
+            Min tilmelding
           </Tabs.Tab>
         </Tabs.List>
 
@@ -222,7 +222,7 @@ export default function FoodPage() {
               </Center>
             ) : !selectedMenu ? (
               <Alert icon={<IconAlertCircle size={16} />} color="yellow">
-                No menu available for this week yet. Check back later!
+                Ingen menu tilgængelig for denne uge endnu. Kom tilbage senere!
               </Alert>
             ) : (
               <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
@@ -283,7 +283,7 @@ export default function FoodPage() {
                 onClick={() => applyDefaultsMutation.mutate()}
                 loading={applyDefaultsMutation.isPending}
               >
-                Apply Default Preferences
+                Anvend standardpræferencer
               </Button>
             </Group>
 
@@ -354,7 +354,7 @@ function MenuDayCard({ day, myRegistration, stats }: MenuDayCardProps) {
           </Badge>
           {myRegistration && myRegistration.is_active && (
             <Badge color="green" variant="light" size="sm">
-              You: {myRegistration.total_portions}
+              Dig: {myRegistration.total_portions}
             </Badge>
           )}
         </Stack>
@@ -364,24 +364,24 @@ function MenuDayCard({ day, myRegistration, stats }: MenuDayCardProps) {
         <Stack gap="xs" mb="sm">
           <div>
             <Badge size="xs" color="red" mb={4}>
-              Meat
+              Kød
             </Badge>
             <Text size="sm">
-              {day.effective_meat_description || 'To be announced'}
+              {day.effective_meat_description || 'Kommer snart'}
             </Text>
           </div>
           <div>
             <Badge size="xs" color="green" mb={4}>
-              Vegetarian
+              Vegetar
             </Badge>
             <Text size="sm">
-              {day.effective_vegetarian_description || 'To be announced'}
+              {day.effective_vegetarian_description || 'Kommer snart'}
             </Text>
           </div>
         </Stack>
       ) : (
         <Text size="sm" mb="sm">
-          {day.effective_description || 'Menu to be announced'}
+          {day.effective_description || 'Menu kommer snart'}
         </Text>
       )}
 
@@ -395,7 +395,7 @@ function MenuDayCard({ day, myRegistration, stats }: MenuDayCardProps) {
         <Group gap="xs">
           <IconUsers size={16} />
           <Text size="sm" fw={500}>
-            Total: {totalAdults} adults, {totalChildren} kids ({totalPortions})
+            Total: {totalAdults} voksne, {totalChildren} børn ({totalPortions})
           </Text>
         </Group>
         <ActionIcon variant="subtle" size="sm">
@@ -408,8 +408,8 @@ function MenuDayCard({ day, myRegistration, stats }: MenuDayCardProps) {
           <Table.Thead>
             <Table.Tr>
               <Table.Th></Table.Th>
-              <Table.Th ta="right">Adults</Table.Th>
-              <Table.Th ta="right">Kids</Table.Th>
+              <Table.Th ta="right">Voksne</Table.Th>
+              <Table.Th ta="right">Børn</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -419,12 +419,12 @@ function MenuDayCard({ day, myRegistration, stats }: MenuDayCardProps) {
               <Table.Td ta="right">{stats?.takeaway.children ?? 0}</Table.Td>
             </Table.Tr>
             <Table.Tr>
-              <Table.Td>Eat In 17:30</Table.Td>
+              <Table.Td>Spise i fælleshuset 17:30</Table.Td>
               <Table.Td ta="right">{stats?.eat_in_1730.adults ?? 0}</Table.Td>
               <Table.Td ta="right">{stats?.eat_in_1730.children ?? 0}</Table.Td>
             </Table.Tr>
             <Table.Tr>
-              <Table.Td>Eat In 18:30</Table.Td>
+              <Table.Td>Spise i fælleshuset 18:30</Table.Td>
               <Table.Td ta="right">{stats?.eat_in_1830.adults ?? 0}</Table.Td>
               <Table.Td ta="right">{stats?.eat_in_1830.children ?? 0}</Table.Td>
             </Table.Tr>
@@ -504,8 +504,8 @@ function DayRegistrationCard({
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to save registration. Please try again.',
+        title: 'Fejl',
+        message: 'Kunne ikke gemme tilmelding. Prøv venligst igen.',
         color: 'red',
       });
       setIsSaving(false);
@@ -523,8 +523,8 @@ function DayRegistrationCard({
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to save registration. Please try again.',
+        title: 'Fejl',
+        message: 'Kunne ikke gemme tilmelding. Prøv venligst igen.',
         color: 'red',
       });
       setIsSaving(false);
@@ -536,15 +536,15 @@ function DayRegistrationCard({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['food', 'tickets'] });
       notifications.show({
-        title: 'Ticket created',
-        message: 'Your meal ticket is now available for others to claim.',
+        title: 'Billet oprettet',
+        message: 'Din madbillet er nu tilgængelig for andre.',
         color: 'green',
       });
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to create ticket. Please try again.',
+        title: 'Fejl',
+        message: 'Kunne ikke oprette billet. Prøv venligst igen.',
         color: 'red',
       });
     },
@@ -642,8 +642,8 @@ function DayRegistrationCard({
         {dailyMenu && (
           <Text size="xs" c="dimmed" mb="sm" lineClamp={2}>
             {dailyMenu.has_meat_option
-              ? `Meat: ${dailyMenu.effective_meat_description || 'TBA'} / Veg: ${dailyMenu.effective_vegetarian_description || 'TBA'}`
-              : dailyMenu.effective_description || 'Menu to be announced'}
+              ? `Kød: ${dailyMenu.effective_meat_description || 'Kommer snart'} / Veg: ${dailyMenu.effective_vegetarian_description || 'Kommer snart'}`
+              : dailyMenu.effective_description || 'Menu kommer snart'}
           </Text>
         )}
 
@@ -652,8 +652,8 @@ function DayRegistrationCard({
             value={isActive ? 'yes' : 'no'}
             onChange={handleEatingChange}
             data={[
-              { label: 'Eating', value: 'yes' },
-              { label: 'Not eating', value: 'no' },
+              { label: 'Spiser', value: 'yes' },
+              { label: 'Spiser ikke', value: 'no' },
             ]}
             fullWidth
             disabled={isPast}
@@ -663,7 +663,7 @@ function DayRegistrationCard({
           <>
             <Group grow>
               <NumberInput
-                label="Adults"
+                label="Voksne"
                 value={adults}
                 onChange={(val) => setAdults(Number(val) || 0)}
                 min={0}
@@ -671,7 +671,7 @@ function DayRegistrationCard({
                 disabled={isPast}
               />
               <NumberInput
-                label="Children"
+                label="Børn"
                 value={children}
                 onChange={(val) => setChildren(Number(val) || 0)}
                 min={0}
@@ -683,14 +683,14 @@ function DayRegistrationCard({
             {isWednesday && (
               <div>
                 <Text size="sm" fw={500} mb={4}>
-                  Meal Type
+                  Måltidstype
                 </Text>
                 <SegmentedControl
                   value={mealType}
                   onChange={(val) => setMealType(val as 'meat' | 'vegetarian')}
                   data={[
-                    { label: 'Meat', value: 'meat' },
-                    { label: 'Vegetarian', value: 'vegetarian' },
+                    { label: 'Kød', value: 'meat' },
+                    { label: 'Vegetar', value: 'vegetarian' },
                   ]}
                   fullWidth
                   disabled={isPast}
@@ -702,13 +702,13 @@ function DayRegistrationCard({
 
             <div>
               <Text size="sm" fw={500} mb={4}>
-                Dining Option
+                Spisested
               </Text>
               <SegmentedControl
                 value={diningOption}
                 onChange={(val) => setDiningOption(val as DiningOption)}
                 data={[
-                  { label: 'Eat In', value: 'eat_in' },
+                  { label: 'Spise i fælleshuset', value: 'eat_in' },
                   { label: 'Take Away', value: 'take_away' },
                 ]}
                 fullWidth
@@ -719,7 +719,7 @@ function DayRegistrationCard({
             {diningOption === 'eat_in' && (
               <div>
                 <Text size="sm" fw={500} mb={4}>
-                  Seating Time
+                  Spisetid
                 </Text>
                 <SegmentedControl
                   value={seatingTime}
@@ -736,7 +736,7 @@ function DayRegistrationCard({
 
             {user?.house && (
               <Text size="xs" c="blue" ta="center">
-                Registering for House {user.house_name || user.house}
+                Tilmeldes for {user.house_name || `Hus ${user.house}`}
               </Text>
             )}
           </>
@@ -748,14 +748,14 @@ function DayRegistrationCard({
             {isSaving ? (
               <Group gap={4} justify="center">
                 <Loader size={12} />
-                Saving...
+                Gemmer...
               </Group>
             ) : lastSaved ? (
-              `Saved`
+              `Gemt`
             ) : registration ? (
-              'Auto-saves when changed'
+              'Gemmes automatisk ved ændringer'
             ) : (
-              'Will auto-save when changed'
+              'Gemmes automatisk ved ændringer'
             )}
           </Text>
         )}
@@ -763,11 +763,11 @@ function DayRegistrationCard({
         {registration && registration.is_active && (
           <Stack gap={2}>
             <Text size="xs" c="dimmed" ta="center">
-              {registration.total_portions} portions • {registration.dining_option === 'eat_in' ? `Eat in @ ${registration.seating_time}` : 'Take away'}
+              {registration.total_portions} portioner • {registration.dining_option === 'eat_in' ? `Spiser kl. ${registration.seating_time}` : 'Take away'}
             </Text>
             {registration.house && (
               <Text size="xs" c="blue" ta="center" fw={500}>
-                Registered for House {registration.house.name}
+                Tilmeldt for {registration.house.name}
               </Text>
             )}
           </Stack>
@@ -778,17 +778,17 @@ function DayRegistrationCard({
       <Modal
         opened={ticketModalOpened}
         onClose={closeTicketModal}
-        title="Make your meal available?"
+        title="Gør dit måltid tilgængeligt?"
         centered
       >
         <Stack gap="md">
           <Text size="sm">
-            Would you like to make your meal ticket available for someone else to claim?
+            Vil du gøre din madbillet tilgængelig for andre?
           </Text>
 
           <NumberInput
-            label="Price (DKK)"
-            description={`Suggested price: ${calculateDefaultPrice()} kr (${mealType === 'meat' ? '37' : '26'}/adult + 18/child)`}
+            label="Pris (DKK)"
+            description={`Foreslået pris: ${calculateDefaultPrice()} kr (${mealType === 'meat' ? '37' : '26'}/voksen + 18/barn)`}
             value={ticketPrice ?? calculateDefaultPrice()}
             onChange={(val) => setTicketPrice(Number(val) || 0)}
             min={0}
@@ -797,21 +797,21 @@ function DayRegistrationCard({
           />
 
           <Textarea
-            label="Note (optional)"
-            placeholder="Any additional information..."
+            label="Note (valgfrit)"
+            placeholder="Yderligere information..."
             value={ticketDescription}
             onChange={(e) => setTicketDescription(e.target.value)}
           />
 
           <Group justify="flex-end">
             <Button variant="light" onClick={handleSkipTicket}>
-              No, just mark as not eating
+              Nej, marker bare som ikke-spisende
             </Button>
             <Button
               onClick={handleCreateTicketAndSave}
               loading={createTicketMutation.isPending}
             >
-              Create Ticket
+              Opret billet
             </Button>
           </Group>
         </Stack>

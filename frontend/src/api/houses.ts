@@ -3,11 +3,11 @@
  */
 
 import { apiClient } from './client';
-import type { House, PaginatedResponse } from '../types';
+import type { House } from '../types';
 
 export const housesApi = {
-  async getHouses(): Promise<PaginatedResponse<House>> {
-    const response = await apiClient.get<PaginatedResponse<House>>('/houses/');
+  async getHouses(): Promise<House[]> {
+    const response = await apiClient.get<House[]>('/houses/');
     return response.data;
   },
 

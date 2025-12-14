@@ -37,8 +37,8 @@ export default function LoginPage() {
     try {
       await login(email, password);
       notifications.show({
-        title: 'Welcome back!',
-        message: 'You have successfully logged in.',
+        title: 'Velkommen tilbage!',
+        message: 'Du er nu logget ind.',
         color: 'green',
       });
       navigate(from, { replace: true });
@@ -53,7 +53,7 @@ export default function LoginPage() {
         KB Intra
       </Title>
       <Text c="dimmed" size="sm" ta="center" mt={5}>
-        Community communication platform
+        Fællesskabets kommunikationsplatform
       </Text>
 
       <Paper withBorder shadow="md" p={30} mt={30} radius="md">
@@ -61,13 +61,13 @@ export default function LoginPage() {
           <Stack>
             {error && (
               <Alert color="red" onClose={clearError}>
-                Invalid email or password. Please try again.
+                Forkert e-mail eller adgangskode. Prøv venligst igen.
               </Alert>
             )}
 
             <TextInput
-              label="Email"
-              placeholder="your@email.com"
+              label="E-mail"
+              placeholder="din@email.dk"
               required
               value={email}
               onChange={(e) => setEmail(e.currentTarget.value)}
@@ -75,23 +75,23 @@ export default function LoginPage() {
             />
 
             <PasswordInput
-              label="Password"
-              placeholder="Your password"
+              label="Adgangskode"
+              placeholder="Din adgangskode"
               required
               value={password}
               onChange={(e) => setPassword(e.currentTarget.value)}
             />
 
             <Button type="submit" fullWidth loading={isLoading}>
-              Sign in
+              Log ind
             </Button>
           </Stack>
         </form>
 
         <Text c="dimmed" size="sm" ta="center" mt={15}>
-          Have an invitation?{' '}
+          Har du en invitation?{' '}
           <Anchor href="/register" size="sm">
-            Register here
+            Registrer dig her
           </Anchor>
         </Text>
       </Paper>

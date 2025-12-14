@@ -56,15 +56,15 @@ export default function AnnouncementsPage() {
       closeDeleteModal();
       setAnnouncementToDelete(null);
       notifications.show({
-        title: 'Announcement deleted',
-        message: 'The announcement has been deleted.',
+        title: 'Opslag slettet',
+        message: 'Opslaget er blevet slettet.',
         color: 'blue',
       });
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to delete announcement. Please try again.',
+        title: 'Fejl',
+        message: 'Kunne ikke slette opslag. Prøv igen.',
         color: 'red',
       });
     },
@@ -92,7 +92,7 @@ export default function AnnouncementsPage() {
   if (error) {
     return (
       <Center h={200}>
-        <Text c="red">Failed to load announcements. Please try again.</Text>
+        <Text c="red">Kunne ikke indlæse opslag. Prøv igen.</Text>
       </Center>
     );
   }
@@ -101,11 +101,11 @@ export default function AnnouncementsPage() {
     <>
       <Group justify="space-between" mb="md">
         <div>
-          <Title order={1}>Announcements</Title>
-          <Text c="dimmed">Important updates for the community</Text>
+          <Title order={1}>Opslag</Title>
+          <Text c="dimmed">Vigtige opdateringer for fællesskabet</Text>
         </div>
         <Button leftSection={<IconPlus size={16} />} onClick={openCreateModal}>
-          New Announcement
+          Nyt opslag
         </Button>
       </Group>
 
@@ -115,9 +115,9 @@ export default function AnnouncementsPage() {
             <Center>
               <Stack align="center" gap="xs">
                 <IconSpeakerphone size={48} color="gray" />
-                <Text c="dimmed">No announcements yet.</Text>
+                <Text c="dimmed">Ingen opslag endnu.</Text>
                 <Button onClick={openCreateModal} mt="sm">
-                  Create First Announcement
+                  Opret første opslag
                 </Button>
               </Stack>
             </Center>
@@ -158,22 +158,22 @@ export default function AnnouncementsPage() {
       <Modal
         opened={deleteModalOpened}
         onClose={closeDeleteModal}
-        title="Delete Announcement"
+        title="Slet opslag"
         centered
       >
         <Text mb="lg">
-          Are you sure you want to delete this announcement? This action cannot be undone.
+          Er du sikker på, at du vil slette dette opslag? Denne handling kan ikke fortrydes.
         </Text>
         <Group justify="flex-end">
           <Button variant="light" onClick={closeDeleteModal}>
-            Cancel
+            Annuller
           </Button>
           <Button
             color="red"
             onClick={handleConfirmDelete}
             loading={deleteMutation.isPending}
           >
-            Delete
+            Slet
           </Button>
         </Group>
       </Modal>
@@ -212,7 +212,7 @@ function AnnouncementCard({ announcement, onEdit, onDelete }: AnnouncementCardPr
         <Group gap="xs">
           {announcement.priority > 0 && (
             <Badge color="red" variant="light">
-              Priority
+              Prioritet
             </Badge>
           )}
           {announcement.is_own && (
@@ -224,14 +224,14 @@ function AnnouncementCard({ announcement, onEdit, onDelete }: AnnouncementCardPr
               </Menu.Target>
               <Menu.Dropdown>
                 <Menu.Item leftSection={<IconEdit size={14} />} onClick={onEdit}>
-                  Edit
+                  Rediger
                 </Menu.Item>
                 <Menu.Item
                   color="red"
                   leftSection={<IconTrash size={14} />}
                   onClick={onDelete}
                 >
-                  Delete
+                  Slet
                 </Menu.Item>
               </Menu.Dropdown>
             </Menu>
@@ -265,8 +265,8 @@ function CreateAnnouncementModal({
       announcementsApi.createAnnouncement(data),
     onSuccess: () => {
       notifications.show({
-        title: 'Announcement created',
-        message: 'Your announcement has been posted.',
+        title: 'Opslag oprettet',
+        message: 'Dit opslag er blevet offentliggjort.',
         color: 'green',
       });
       setTitle('');
@@ -275,8 +275,8 @@ function CreateAnnouncementModal({
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to create announcement. Please try again.',
+        title: 'Fejl',
+        message: 'Kunne ikke oprette opslag. Prøv igen.',
         color: 'red',
       });
     },
@@ -289,37 +289,37 @@ function CreateAnnouncementModal({
   };
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Create Announcement" size="lg">
+    <Modal opened={opened} onClose={onClose} title="Opret opslag" size="lg">
       <form onSubmit={handleSubmit}>
         <Stack gap="md">
           <TextInput
-            label="Title"
-            placeholder="Announcement title"
+            label="Titel"
+            placeholder="Opslagstitel"
             value={title}
             onChange={(e) => setTitle(e.currentTarget.value)}
             required
           />
           <div>
             <Text size="sm" fw={500} mb={4}>
-              Content
+              Indhold
             </Text>
             <RichTextEditor
               content={content}
               onChange={setContent}
-              placeholder="Write your announcement..."
+              placeholder="Skriv dit opslag..."
               minHeight={200}
             />
           </div>
           <Group justify="flex-end">
             <Button variant="light" onClick={onClose}>
-              Cancel
+              Annuller
             </Button>
             <Button
               type="submit"
               loading={createMutation.isPending}
               disabled={!title.trim() || !content.trim() || content === '<p></p>'}
             >
-              Post Announcement
+              Opret opslag
             </Button>
           </Group>
         </Stack>
@@ -349,16 +349,16 @@ function EditAnnouncementModal({
       announcementsApi.updateAnnouncement(announcement.id, data),
     onSuccess: () => {
       notifications.show({
-        title: 'Announcement updated',
-        message: 'Your announcement has been updated.',
+        title: 'Opslag opdateret',
+        message: 'Dit opslag er blevet opdateret.',
         color: 'green',
       });
       onSuccess();
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to update announcement. Please try again.',
+        title: 'Fejl',
+        message: 'Kunne ikke opdatere opslag. Prøv igen.',
         color: 'red',
       });
     },
@@ -371,37 +371,37 @@ function EditAnnouncementModal({
   };
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Edit Announcement" size="lg">
+    <Modal opened={opened} onClose={onClose} title="Rediger opslag" size="lg">
       <form onSubmit={handleSubmit}>
         <Stack gap="md">
           <TextInput
-            label="Title"
-            placeholder="Announcement title"
+            label="Titel"
+            placeholder="Opslagstitel"
             value={title}
             onChange={(e) => setTitle(e.currentTarget.value)}
             required
           />
           <div>
             <Text size="sm" fw={500} mb={4}>
-              Content
+              Indhold
             </Text>
             <RichTextEditor
               content={content}
               onChange={setContent}
-              placeholder="Write your announcement..."
+              placeholder="Skriv dit opslag..."
               minHeight={200}
             />
           </div>
           <Group justify="flex-end">
             <Button variant="light" onClick={onClose}>
-              Cancel
+              Annuller
             </Button>
             <Button
               type="submit"
               loading={updateMutation.isPending}
               disabled={!title.trim() || !content.trim() || content === '<p></p>'}
             >
-              Save Changes
+              Gem ændringer
             </Button>
           </Group>
         </Stack>

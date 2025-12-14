@@ -28,7 +28,7 @@ export default function DirectoryPage() {
     queryFn: housesApi.getHouses,
   });
 
-  const filteredHouses = data?.results.filter((house) =>
+  const filteredHouses = data?.filter((house) =>
     house.name.toLowerCase().includes(search.toLowerCase())
   );
 

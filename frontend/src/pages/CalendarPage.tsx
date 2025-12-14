@@ -65,15 +65,15 @@ export default function CalendarPage() {
       closeDeleteModal();
       setEventToDelete(null);
       notifications.show({
-        title: 'Event deleted',
-        message: 'The event has been deleted.',
+        title: 'Begivenhed slettet',
+        message: 'Begivenheden er blevet slettet.',
         color: 'blue',
       });
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to delete event. Please try again.',
+        title: 'Fejl',
+        message: 'Kunne ikke slette begivenhed. Prøv igen.',
         color: 'red',
       });
     },
@@ -127,7 +127,7 @@ export default function CalendarPage() {
   if (error) {
     return (
       <Center h={200}>
-        <Text c="red">Failed to load events. Please try again.</Text>
+        <Text c="red">Kunne ikke indlæse begivenheder. Prøv igen.</Text>
       </Center>
     );
   }
@@ -136,11 +136,11 @@ export default function CalendarPage() {
     <>
       <Group justify="space-between" mb="md">
         <div>
-          <Title order={1}>Calendar</Title>
-          <Text c="dimmed">Community events and activities</Text>
+          <Title order={1}>Kalender</Title>
+          <Text c="dimmed">Fællesskabsbegivenheder og aktiviteter</Text>
         </div>
         <Button leftSection={<IconPlus size={16} />} onClick={openCreateModal}>
-          New Event
+          Ny begivenhed
         </Button>
       </Group>
 
@@ -160,7 +160,7 @@ export default function CalendarPage() {
               </ActionIcon>
             </Group>
             <Button variant="subtle" size="xs" onClick={goToToday}>
-              Today
+              I dag
             </Button>
           </Group>
 
@@ -196,7 +196,7 @@ export default function CalendarPage() {
         {/* Events List */}
         <Paper withBorder p="md" radius="md">
           <Text fw={500} mb="md">
-            Events in {dayjs(selectedMonth).format('MMMM YYYY')}
+            Begivenheder i {dayjs(selectedMonth).format('MMMM YYYY')}
           </Text>
 
           {isLoading ? (
@@ -207,9 +207,9 @@ export default function CalendarPage() {
             <Center h={200}>
               <Stack align="center" gap="xs">
                 <IconCalendarEvent size={48} color="gray" />
-                <Text c="dimmed">No events this month.</Text>
+                <Text c="dimmed">Ingen begivenheder denne måned.</Text>
                 <Button onClick={openCreateModal} mt="sm">
-                  Create Event
+                  Opret begivenhed
                 </Button>
               </Stack>
             </Center>
@@ -252,22 +252,22 @@ export default function CalendarPage() {
       <Modal
         opened={deleteModalOpened}
         onClose={closeDeleteModal}
-        title="Delete Event"
+        title="Slet begivenhed"
         centered
       >
         <Text mb="lg">
-          Are you sure you want to delete this event? This action cannot be undone.
+          Er du sikker på, at du vil slette denne begivenhed? Denne handling kan ikke fortrydes.
         </Text>
         <Group justify="flex-end">
           <Button variant="light" onClick={closeDeleteModal}>
-            Cancel
+            Annuller
           </Button>
           <Button
             color="red"
             onClick={handleConfirmDelete}
             loading={deleteMutation.isPending}
           >
-            Delete
+            Slet
           </Button>
         </Group>
       </Modal>
@@ -304,12 +304,12 @@ function EventCard({ event, onEdit, onDelete }: EventCardProps) {
               </Text>
               {event.is_all_day && (
                 <Badge size="xs" variant="light">
-                  All Day
+                  Hele dagen
                 </Badge>
               )}
               {isToday && (
                 <Badge size="xs" color="blue">
-                  Today
+                  I dag
                 </Badge>
               )}
             </Group>
@@ -350,14 +350,14 @@ function EventCard({ event, onEdit, onDelete }: EventCardProps) {
             </Menu.Target>
             <Menu.Dropdown>
               <Menu.Item leftSection={<IconEdit size={14} />} onClick={onEdit}>
-                Edit
+                Rediger
               </Menu.Item>
               <Menu.Item
                 color="red"
                 leftSection={<IconTrash size={14} />}
                 onClick={onDelete}
               >
-                Delete
+                Slet
               </Menu.Item>
             </Menu.Dropdown>
           </Menu>
@@ -385,8 +385,8 @@ function CreateEventModal({ opened, onClose, onSuccess }: CreateEventModalProps)
     mutationFn: (data: CreateEventData) => calendarApi.createEvent(data),
     onSuccess: () => {
       notifications.show({
-        title: 'Event created',
-        message: 'Your event has been added to the calendar.',
+        title: 'Begivenhed oprettet',
+        message: 'Din begivenhed er blevet tilføjet til kalenderen.',
         color: 'green',
       });
       resetForm();
@@ -394,8 +394,8 @@ function CreateEventModal({ opened, onClose, onSuccess }: CreateEventModalProps)
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to create event. Please try again.',
+        title: 'Fejl',
+        message: 'Kunne ikke oprette begivenhed. Prøv igen.',
         color: 'red',
       });
     },
@@ -430,42 +430,42 @@ function CreateEventModal({ opened, onClose, onSuccess }: CreateEventModalProps)
   };
 
   return (
-    <Modal opened={opened} onClose={handleClose} title="Create Event" size="md">
+    <Modal opened={opened} onClose={handleClose} title="Opret begivenhed" size="md">
       <form onSubmit={handleSubmit}>
         <Stack gap="md">
           <TextInput
-            label="Title"
-            placeholder="Event title"
+            label="Titel"
+            placeholder="Begivenhedstitel"
             value={title}
             onChange={(e) => setTitle(e.currentTarget.value)}
             required
           />
 
           <Textarea
-            label="Description"
-            placeholder="Event description (optional)"
+            label="Beskrivelse"
+            placeholder="Beskrivelse (valgfrit)"
             value={description}
             onChange={(e) => setDescription(e.currentTarget.value)}
             rows={3}
           />
 
           <TextInput
-            label="Location"
-            placeholder="Event location (optional)"
+            label="Sted"
+            placeholder="Sted (valgfrit)"
             leftSection={<IconMapPin size={16} />}
             value={location}
             onChange={(e) => setLocation(e.currentTarget.value)}
           />
 
           <Switch
-            label="All day event"
+            label="Hele dagen"
             checked={isAllDay}
             onChange={(e) => setIsAllDay(e.currentTarget.checked)}
           />
 
           <DateTimePicker
             label="Start"
-            placeholder="Select start date and time"
+            placeholder="Vælg startdato og -tid"
             value={startDatetime}
             onChange={(value) => setStartDatetime(value ? new Date(value) : null)}
             withSeconds={false}
@@ -473,8 +473,8 @@ function CreateEventModal({ opened, onClose, onSuccess }: CreateEventModalProps)
           />
 
           <DateTimePicker
-            label="End"
-            placeholder="Select end date and time"
+            label="Slut"
+            placeholder="Vælg slutdato og -tid"
             value={endDatetime}
             onChange={(value) => setEndDatetime(value ? new Date(value) : null)}
             withSeconds={false}
@@ -484,14 +484,14 @@ function CreateEventModal({ opened, onClose, onSuccess }: CreateEventModalProps)
 
           <Group justify="flex-end">
             <Button variant="light" onClick={handleClose}>
-              Cancel
+              Annuller
             </Button>
             <Button
               type="submit"
               loading={createMutation.isPending}
               disabled={!title.trim() || !startDatetime || !endDatetime}
             >
-              Create Event
+              Opret begivenhed
             </Button>
           </Group>
         </Stack>
@@ -523,16 +523,16 @@ function EditEventModal({ opened, onClose, event, onSuccess }: EditEventModalPro
     mutationFn: (data: CreateEventData) => calendarApi.updateEvent(event.id, data),
     onSuccess: () => {
       notifications.show({
-        title: 'Event updated',
-        message: 'Your event has been updated.',
+        title: 'Begivenhed opdateret',
+        message: 'Din begivenhed er blevet opdateret.',
         color: 'green',
       });
       onSuccess();
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to update event. Please try again.',
+        title: 'Fejl',
+        message: 'Kunne ikke opdatere begivenhed. Prøv igen.',
         color: 'red',
       });
     },
@@ -553,42 +553,42 @@ function EditEventModal({ opened, onClose, event, onSuccess }: EditEventModalPro
   };
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Edit Event" size="md">
+    <Modal opened={opened} onClose={onClose} title="Rediger begivenhed" size="md">
       <form onSubmit={handleSubmit}>
         <Stack gap="md">
           <TextInput
-            label="Title"
-            placeholder="Event title"
+            label="Titel"
+            placeholder="Begivenhedstitel"
             value={title}
             onChange={(e) => setTitle(e.currentTarget.value)}
             required
           />
 
           <Textarea
-            label="Description"
-            placeholder="Event description (optional)"
+            label="Beskrivelse"
+            placeholder="Beskrivelse (valgfrit)"
             value={description}
             onChange={(e) => setDescription(e.currentTarget.value)}
             rows={3}
           />
 
           <TextInput
-            label="Location"
-            placeholder="Event location (optional)"
+            label="Sted"
+            placeholder="Sted (valgfrit)"
             leftSection={<IconMapPin size={16} />}
             value={location}
             onChange={(e) => setLocation(e.currentTarget.value)}
           />
 
           <Switch
-            label="All day event"
+            label="Hele dagen"
             checked={isAllDay}
             onChange={(e) => setIsAllDay(e.currentTarget.checked)}
           />
 
           <DateTimePicker
             label="Start"
-            placeholder="Select start date and time"
+            placeholder="Vælg startdato og -tid"
             value={startDatetime}
             onChange={(value) => setStartDatetime(value ? new Date(value) : null)}
             withSeconds={false}
@@ -596,8 +596,8 @@ function EditEventModal({ opened, onClose, event, onSuccess }: EditEventModalPro
           />
 
           <DateTimePicker
-            label="End"
-            placeholder="Select end date and time"
+            label="Slut"
+            placeholder="Vælg slutdato og -tid"
             value={endDatetime}
             onChange={(value) => setEndDatetime(value ? new Date(value) : null)}
             withSeconds={false}
@@ -607,14 +607,14 @@ function EditEventModal({ opened, onClose, event, onSuccess }: EditEventModalPro
 
           <Group justify="flex-end">
             <Button variant="light" onClick={onClose}>
-              Cancel
+              Annuller
             </Button>
             <Button
               type="submit"
               loading={updateMutation.isPending}
               disabled={!title.trim() || !startDatetime || !endDatetime}
             >
-              Save Changes
+              Gem ændringer
             </Button>
           </Group>
         </Stack>

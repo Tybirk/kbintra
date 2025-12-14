@@ -23,15 +23,15 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { icon: IconHome, label: 'Dashboard', path: '/' },
-  { icon: IconBell, label: 'Notifications', path: '/notifications', color: 'red' },
-  { icon: IconSpeakerphone, label: 'Announcements', path: '/announcements', color: 'orange' },
+  { icon: IconHome, label: 'Forside', path: '/' },
+  { icon: IconBell, label: 'Notifikationer', path: '/notifications', color: 'red' },
+  { icon: IconSpeakerphone, label: 'Opslag', path: '/announcements', color: 'orange' },
   { icon: IconMessageCircle, label: 'Forum', path: '/forum', color: 'blue' },
-  { icon: IconSoup, label: 'Food', path: '/food', color: 'green' },
-  { icon: IconUsersGroup, label: 'Food Teams', path: '/food/teams', color: 'teal' },
-  { icon: IconCalendar, label: 'Calendar', path: '/calendar', color: 'violet' },
-  { icon: IconBuildingCommunity, label: 'Directory', path: '/directory', color: 'yellow' },
-  { icon: IconUsers, label: 'Messages', path: '/messages', color: 'cyan' },
+  { icon: IconSoup, label: 'Mad', path: '/food', color: 'green' },
+  { icon: IconUsersGroup, label: 'Madhold', path: '/food/teams', color: 'teal' },
+  { icon: IconCalendar, label: 'Kalender', path: '/calendar', color: 'violet' },
+  { icon: IconBuildingCommunity, label: 'Beboeroversigt', path: '/directory', color: 'yellow' },
+  { icon: IconUsers, label: 'Beskeder', path: '/messages', color: 'cyan' },
 ];
 
 interface AppNavbarProps {

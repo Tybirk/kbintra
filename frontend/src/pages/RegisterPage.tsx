@@ -41,7 +41,7 @@ export default function RegisterPage() {
     const validateToken = async () => {
       if (!token) {
         setIsValidating(false);
-        setError('No invitation token provided. Please use the link from your invitation email.');
+        setError('Ingen invitationskode angivet. Brug venligst linket fra din invitationsmail.');
         return;
       }
 
@@ -51,7 +51,7 @@ export default function RegisterPage() {
         setInvitationEmail(result.email);
         setFormData((prev) => ({ ...prev, email: result.email }));
       } catch {
-        setError('Invalid or expired invitation token.');
+        setError('Ugyldig eller udløbet invitationskode.');
       } finally {
         setIsValidating(false);
       }
@@ -65,12 +65,12 @@ export default function RegisterPage() {
     setError(null);
 
     if (formData.password !== formData.passwordConfirm) {
-      setError('Passwords do not match.');
+      setError('Adgangskoderne matcher ikke.');
       return;
     }
 
     if (formData.password.length < 8) {
-      setError('Password must be at least 8 characters.');
+      setError('Adgangskoden skal være mindst 8 tegn.');
       return;
     }
 
@@ -87,8 +87,8 @@ export default function RegisterPage() {
       });
 
       notifications.show({
-        title: 'Registration successful!',
-        message: 'You can now log in with your credentials.',
+        title: 'Registrering gennemført!',
+        message: 'Du kan nu logge ind med dine oplysninger.',
         color: 'green',
       });
 
@@ -101,10 +101,10 @@ export default function RegisterPage() {
           const messages = Object.values(data).flat().join(' ');
           setError(messages);
         } else {
-          setError('Registration failed. Please try again.');
+          setError('Registrering mislykkedes. Prøv venligst igen.');
         }
       } else {
-        setError('Registration failed. Please try again.');
+        setError('Registrering mislykkedes. Prøv venligst igen.');
       }
     } finally {
       setIsLoading(false);
@@ -118,7 +118,7 @@ export default function RegisterPage() {
           <Loader size="lg" />
         </Center>
         <Text ta="center" mt="md">
-          Validating invitation...
+          Validerer invitation...
         </Text>
       </Container>
     );
@@ -132,13 +132,13 @@ export default function RegisterPage() {
         </Title>
 
         <Paper withBorder shadow="md" p={30} mt={30} radius="md">
-          <Alert color="red" title="Invalid Invitation">
-            {error || 'This invitation is invalid or has expired.'}
+          <Alert color="red" title="Ugyldig invitation">
+            {error || 'Denne invitation er ugyldig eller udløbet.'}
           </Alert>
 
           <Text ta="center" mt="md">
             <Anchor href="/login" size="sm">
-              Return to login
+              Tilbage til login
             </Anchor>
           </Text>
         </Paper>
@@ -149,10 +149,10 @@ export default function RegisterPage() {
   return (
     <Container size={420} my={40}>
       <Title ta="center" fw={900}>
-        Join KB Intra
+        Bliv en del af KB Intra
       </Title>
       <Text c="dimmed" size="sm" ta="center" mt={5}>
-        Complete your registration
+        Færdiggør din registrering
       </Text>
 
       <Paper withBorder shadow="md" p={30} mt={30} radius="md">
@@ -161,15 +161,15 @@ export default function RegisterPage() {
             {error && <Alert color="red">{error}</Alert>}
 
             <TextInput
-              label="Email"
+              label="E-mail"
               value={invitationEmail}
               disabled
-              description="Email from your invitation"
+              description="E-mail fra din invitation"
             />
 
             <TextInput
-              label="First Name"
-              placeholder="Your first name"
+              label="Fornavn"
+              placeholder="Dit fornavn"
               required
               value={formData.firstName}
               onChange={(e) =>
@@ -178,8 +178,8 @@ export default function RegisterPage() {
             />
 
             <TextInput
-              label="Last Name"
-              placeholder="Your last name"
+              label="Efternavn"
+              placeholder="Dit efternavn"
               required
               value={formData.lastName}
               onChange={(e) =>
@@ -188,19 +188,19 @@ export default function RegisterPage() {
             />
 
             <PasswordInput
-              label="Password"
-              placeholder="Create a password"
+              label="Adgangskode"
+              placeholder="Opret en adgangskode"
               required
               value={formData.password}
               onChange={(e) =>
                 setFormData((prev) => ({ ...prev, password: e.currentTarget.value }))
               }
-              description="At least 8 characters"
+              description="Mindst 8 tegn"
             />
 
             <PasswordInput
-              label="Confirm Password"
-              placeholder="Confirm your password"
+              label="Bekræft adgangskode"
+              placeholder="Bekræft din adgangskode"
               required
               value={formData.passwordConfirm}
               onChange={(e) =>
@@ -212,15 +212,15 @@ export default function RegisterPage() {
             />
 
             <Button type="submit" fullWidth loading={isLoading}>
-              Create Account
+              Opret konto
             </Button>
           </Stack>
         </form>
 
         <Text c="dimmed" size="sm" ta="center" mt={15}>
-          Already have an account?{' '}
+          Har du allerede en konto?{' '}
           <Anchor href="/login" size="sm">
-            Sign in
+            Log ind
           </Anchor>
         </Text>
       </Paper>

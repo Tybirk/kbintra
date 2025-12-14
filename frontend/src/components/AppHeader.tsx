@@ -126,7 +126,7 @@ export default function AppHeader({ navbarOpened, toggleNavbar }: AppHeaderProps
             variant="subtle"
             size="lg"
             onClick={() => navigate('/messages')}
-            aria-label="Messages"
+            aria-label="Beskeder"
           >
             <IconMail size={22} />
           </ActionIcon>
@@ -143,7 +143,7 @@ export default function AppHeader({ navbarOpened, toggleNavbar }: AppHeaderProps
             variant="subtle"
             size="lg"
             onClick={() => navigate('/notifications')}
-            aria-label="Notifications"
+            aria-label="Notifikationer"
           >
             <IconBell size={22} />
           </ActionIcon>
@@ -177,13 +177,13 @@ export default function AppHeader({ navbarOpened, toggleNavbar }: AppHeaderProps
             leftSection={<IconUser style={{ width: rem(14), height: rem(14) }} />}
             onClick={() => navigate('/profile')}
           >
-            My Profile
+            Min profil
           </Menu.Item>
           <Menu.Item
             leftSection={<IconSettings style={{ width: rem(14), height: rem(14) }} />}
             onClick={() => navigate('/settings')}
           >
-            Settings
+            Indstillinger
           </Menu.Item>
 
           <Menu.Divider />
@@ -193,7 +193,7 @@ export default function AppHeader({ navbarOpened, toggleNavbar }: AppHeaderProps
             leftSection={<IconLogout style={{ width: rem(14), height: rem(14) }} />}
             onClick={handleLogout}
           >
-            Logout
+            Log ud
           </Menu.Item>
         </Menu.Dropdown>
         </Menu>

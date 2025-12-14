@@ -135,9 +135,9 @@ export default function MessagesPage() {
     <>
       <Group justify="space-between" mb="md">
         <div>
-          <Title order={1}>Messages</Title>
+          <Title order={1}>Beskeder</Title>
           <Group gap="xs">
-            <Text c="dimmed">Direct messages</Text>
+            <Text c="dimmed">Direkte beskeder</Text>
             {isWsConnected && (
               <Badge size="xs" color="green" variant="dot">
                 Live
@@ -146,7 +146,7 @@ export default function MessagesPage() {
           </Group>
         </div>
         <Button leftSection={<IconPlus size={16} />} onClick={openNewMessageModal}>
-          New Message
+          Ny besked
         </Button>
       </Group>
 
@@ -162,7 +162,7 @@ export default function MessagesPage() {
         >
           <Box p="md" style={{ borderBottom: '1px solid var(--mantine-color-gray-3)' }}>
             <TextInput
-              placeholder="Search conversations..."
+              placeholder="Søg i samtaler..."
               leftSection={<IconSearch size={16} />}
               size="sm"
             />
@@ -177,7 +177,7 @@ export default function MessagesPage() {
                 <Stack align="center" gap="xs">
                   <IconMessage size={48} color="gray" />
                   <Text c="dimmed" size="sm">
-                    No conversations yet
+                    Ingen samtaler endnu
                   </Text>
                 </Stack>
               </Center>
@@ -214,7 +214,7 @@ export default function MessagesPage() {
             <Center style={{ flex: 1 }}>
               <Stack align="center" gap="xs">
                 <IconMessage size={64} color="gray" />
-                <Text c="dimmed">Select a conversation to start messaging</Text>
+                <Text c="dimmed">Vælg en samtale for at sende beskeder</Text>
               </Stack>
             </Center>
           )}
@@ -285,7 +285,7 @@ function ConversationItem({
           </Group>
           {conversation.last_message && (
             <Text size="sm" c="dimmed" truncate>
-              {conversation.last_message.sender_id === currentUserId ? 'You: ' : ''}
+              {conversation.last_message.sender_id === currentUserId ? 'Dig: ' : ''}
               {conversation.last_message.content}
             </Text>
           )}
@@ -351,7 +351,7 @@ function ChatArea({ conversation, onSendMessage }: ChatAreaProps) {
           <div>
             <Text fw={500}>{displayName}</Text>
             <Text size="xs" c="dimmed">
-              {conversation.participants.length} participants
+              {conversation.participants.length} deltagere
             </Text>
           </div>
         </Group>
@@ -386,7 +386,7 @@ function ChatArea({ conversation, onSendMessage }: ChatAreaProps) {
           content={message}
           onChange={setMessage}
           onSend={handleSend}
-          placeholder="Type a message..."
+          placeholder="Skriv en besked..."
         />
       </Box>
     </>
@@ -488,8 +488,8 @@ function NewMessageModal({ opened, onClose, onSuccess }: NewMessageModalProps) {
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to start conversation',
+        title: 'Fejl',
+        message: 'Kunne ikke starte samtale',
         color: 'red',
       });
     },
@@ -517,12 +517,12 @@ function NewMessageModal({ opened, onClose, onSuccess }: NewMessageModalProps) {
   };
 
   return (
-    <Modal opened={opened} onClose={handleClose} title="New Message" size="md">
+    <Modal opened={opened} onClose={handleClose} title="Ny besked" size="md">
       <Stack gap="md">
         {!selectedUser ? (
           <>
             <TextInput
-              placeholder="Search users..."
+              placeholder="Søg brugere..."
               leftSection={<IconSearch size={16} />}
               value={search}
               onChange={(e) => setSearch(e.currentTarget.value)}
@@ -576,7 +576,7 @@ function NewMessageModal({ opened, onClose, onSuccess }: NewMessageModalProps) {
                   size="xs"
                   onClick={() => setSelectedUser(null)}
                 >
-                  Change
+                  Skift
                 </Button>
               </Group>
             </Paper>
@@ -584,16 +584,16 @@ function NewMessageModal({ opened, onClose, onSuccess }: NewMessageModalProps) {
             <RichTextEditor
               content={message}
               onChange={setMessage}
-              placeholder="Write a message (optional)..."
+              placeholder="Skriv en besked (valgfrit)..."
               minHeight={100}
             />
 
             <Group justify="flex-end">
               <Button variant="light" onClick={handleClose}>
-                Cancel
+                Annuller
               </Button>
               <Button onClick={handleStart} loading={createMutation.isPending}>
-                Start Conversation
+                Start samtale
               </Button>
             </Group>
           </>

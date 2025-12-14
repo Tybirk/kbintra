@@ -2,6 +2,8 @@
 Views for House models.
 """
 
+from django.db.models import Count
+
 from rest_framework import generics, permissions
 
 from .models import House
@@ -15,7 +17,15 @@ class HouseListView(generics.ListAPIView):
 
     serializer_class = HouseListSerializer
     permission_classes = [permissions.IsAuthenticated]
-    queryset = House.objects.all()
+    pagination_class = None  # Houses are few, no pagination needed
+
+    def get_queryset(self):
+        """Return houses ordered by inhabitant count (populated first), then name."""
+        return (
+            House.objects.prefetch_related("inhabitants")
+            .annotate(inhabitant_count_annotated=Count("inhabitants"))
+            .order_by("-inhabitant_count_annotated", "name")
+        )
 
 
 class HouseDetailView(generics.RetrieveAPIView):

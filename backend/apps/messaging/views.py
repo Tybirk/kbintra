@@ -78,7 +78,7 @@ class ConversationListCreateView(generics.ListCreateAPIView):
                 notify_new_message(
                     recipient=participant,
                     sender=request.user,
-                    message_preview=initial_message,
+                    message_content=initial_message,
                     conversation_id=conversation.id,
                 )
 

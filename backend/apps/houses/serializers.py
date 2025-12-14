@@ -48,8 +48,9 @@ class HouseSerializer(serializers.ModelSerializer):
 
 
 class HouseListSerializer(serializers.ModelSerializer):
-    """Serializer for House list (without full inhabitant details)."""
+    """Serializer for House list with inhabitant preview."""
 
+    inhabitants = HouseInhabitantSerializer(many=True, read_only=True)
     inhabitant_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -60,9 +61,13 @@ class HouseListSerializer(serializers.ModelSerializer):
             "description",
             "address",
             "profile_picture",
+            "inhabitants",
             "inhabitant_count",
         ]
 
     def get_inhabitant_count(self, obj: House) -> int:
         """Get the number of inhabitants in the house."""
+        # Use annotated count if available (from view queryset), otherwise count
+        if hasattr(obj, "inhabitant_count_annotated"):
+            return obj.inhabitant_count_annotated
         return obj.inhabitants.count()
