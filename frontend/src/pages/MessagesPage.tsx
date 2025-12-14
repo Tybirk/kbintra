@@ -90,6 +90,10 @@ export default function MessagesPage() {
             ['conversation', selectedConversation],
             (old) => {
               if (!old) return old;
+              // Check if message already exists to prevent duplicates
+              if (old.messages.some((m) => m.id === wsData.message.id)) {
+                return old;
+              }
               return {
                 ...old,
                 messages: [...old.messages, wsData.message],

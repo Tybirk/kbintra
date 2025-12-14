@@ -52,8 +52,8 @@ export default function DirectoryPage() {
     <>
       <Group justify="space-between" mb="md">
         <div>
-          <Title order={1}>Directory</Title>
-          <Text c="dimmed">Houses and their inhabitants</Text>
+          <Title order={1}>Beboeroversigt</Title>
+          <Text c="dimmed">Huse og beboere</Text>
         </div>
       </Group>
 
@@ -109,7 +109,7 @@ function HouseCard({ house, onClick }: HouseCardProps) {
           </Avatar>
           <Text fw={500}>House {house.name}</Text>
         </Group>
-        <Badge variant="light">{house.inhabitant_count} residents</Badge>
+        <Badge variant="light">{house.inhabitant_count} beboere</Badge>
       </Group>
 
       {house.description && (
@@ -121,7 +121,7 @@ function HouseCard({ house, onClick }: HouseCardProps) {
       {house.inhabitants && house.inhabitants.length > 0 && (
         <Stack gap="xs">
           <Text size="sm" fw={500}>
-            Residents:
+            Beboere:
           </Text>
           <Avatar.Group spacing="sm">
             {house.inhabitants.slice(0, 5).map((inhabitant) => (
