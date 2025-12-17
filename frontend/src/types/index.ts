@@ -18,6 +18,13 @@ export interface User {
   date_joined: string;
 }
 
+export interface Child {
+  id: number;
+  name: string;
+  birthdate: string | null;
+  created_at: string;
+}
+
 export interface House {
   id: number;
   name: string;
@@ -26,6 +33,7 @@ export interface House {
   profile_picture: string | null;
   inhabitant_count: number;
   inhabitants?: UserSummary[];
+  children?: Child[];
   created_at: string;
 }
 

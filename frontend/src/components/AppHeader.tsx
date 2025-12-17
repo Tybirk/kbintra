@@ -17,6 +17,7 @@ import {
   IconChevronDown,
   IconBell,
   IconMail,
+  IconHome,
 } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -179,6 +180,14 @@ export default function AppHeader({ navbarOpened, toggleNavbar }: AppHeaderProps
           >
             Min profil
           </Menu.Item>
+          {user?.house && (
+            <Menu.Item
+              leftSection={<IconHome style={{ width: rem(14), height: rem(14) }} />}
+              onClick={() => navigate('/house/edit')}
+            >
+              Mit hus
+            </Menu.Item>
+          )}
           <Menu.Item
             leftSection={<IconSettings style={{ width: rem(14), height: rem(14) }} />}
             onClick={() => navigate('/settings')}

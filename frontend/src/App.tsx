@@ -11,6 +11,7 @@ import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
 import DirectoryPage from './pages/DirectoryPage';
 import HouseDetailPage from './pages/HouseDetailPage';
+import HouseEditPage from './pages/HouseEditPage';
 import ProfilePage from './pages/ProfilePage';
 import ProfileEditPage from './pages/ProfileEditPage';
 import ForumPage from './pages/ForumPage';
@@ -149,6 +150,16 @@ function App() {
             element={
               <ProtectedRoute>
                 <ProfilePage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* House Edit */}
+          <Route
+            path="/house/edit"
+            element={
+              <ProtectedRoute>
+                <HouseEditPage />
               </ProtectedRoute>
             }
           />

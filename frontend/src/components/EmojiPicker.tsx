@@ -9,6 +9,7 @@ import {
   Tabs,
   UnstyledButton,
   Tooltip,
+  Divider,
 } from '@mantine/core';
 import { IconMoodSmile, IconSearch } from '@tabler/icons-react';
 import { gitHubEmojis } from '@tiptap/extension-emoji';
@@ -20,7 +21,7 @@ interface EmojiPickerProps {
 
 // Only include emojis that have an actual emoji character (not just fallback images)
 const unicodeEmojis = gitHubEmojis.filter((e) => e.emoji);
-
+console.log(unicodeEmojis)
 // Group emojis by their group property
 const emojiGroups = unicodeEmojis.reduce(
   (acc, emoji) => {
@@ -28,23 +29,26 @@ const emojiGroups = unicodeEmojis.reduce(
     if (!acc[group]) {
       acc[group] = [];
     }
-    acc[group].push(emoji);
+    if(!emoji.name.includes("regional")){
+    acc[group].push(emoji)
+    }
     return acc;
   },
   {} as Record<string, EmojiItem[]>
 );
 
-// Define tab order and icons
+// Define tab order and icons (keys must match the actual group names from gitHubEmojis)
 const groupOrder = [
-  { key: 'Smileys & Emotion', icon: '😀' },
-  { key: 'People & Body', icon: '👋' },
-  { key: 'Animals & Nature', icon: '🐱' },
-  { key: 'Food & Drink', icon: '🍕' },
-  { key: 'Travel & Places', icon: '✈️' },
-  { key: 'Activities', icon: '⚽' },
-  { key: 'Objects', icon: '💡' },
-  { key: 'Symbols', icon: '❤️' },
-  { key: 'Flags', icon: '🏁' },
+    { key: 'Other', icon: '🙂', label: 'Other' },
+  { key: 'people & body', icon: '👋', label: 'People' },
+  { key: 'animals & nature', icon: '🐱', label: 'Animals' },
+  { key: 'food & drink', icon: '🍕', label: 'Food' },
+  { key: 'travel & places', icon: '✈️', label: 'Travel' },
+  { key: 'activities', icon: '⚽', label: 'Activities' },
+  { key: 'objects', icon: '💡', label: 'Objects' },
+  //{ key: 'symbols', icon: '❤️', label: 'Symbols' },
+  { key: 'flags', icon: '🏁', label: 'Flags' },
+
 ];
 
 // Get available groups (ones that actually have emojis)
@@ -54,8 +58,9 @@ export default function EmojiPicker({ onSelect }: EmojiPickerProps) {
   const [opened, setOpened] = useState(false);
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<string>(
-    availableGroups[0]?.key || 'Smileys & Emotion'
+    availableGroups[0]?.key || 'Other'
   );
+
 
   const filteredEmojis = useMemo(() => {
     if (search.trim()) {
@@ -111,7 +116,6 @@ export default function EmojiPicker({ onSelect }: EmojiPickerProps) {
 
         {!search && (
           <Tabs value={activeTab} onChange={(v) => v && setActiveTab(v)} variant="pills">
-            <ScrollArea scrollbarSize={4}>
               <Tabs.List style={{ flexWrap: 'nowrap' }}>
                 {availableGroups.map((group) => (
                   <Tabs.Tab
@@ -124,10 +128,9 @@ export default function EmojiPicker({ onSelect }: EmojiPickerProps) {
                   </Tabs.Tab>
                 ))}
               </Tabs.List>
-            </ScrollArea>
           </Tabs>
         )}
-
+        <Divider mt={4}/>
         <ScrollArea h={200} mt="xs">
           {filteredEmojis.length === 0 ? (
             <Text size="sm" c="dimmed" ta="center" py="md">

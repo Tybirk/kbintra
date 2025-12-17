@@ -13,11 +13,13 @@ import {
   SimpleGrid,
   Breadcrumbs,
   Anchor,
+  Badge,
 } from '@mantine/core';
 import { IconArrowLeft, IconHome } from '@tabler/icons-react';
+import dayjs from 'dayjs';
 
 import { housesApi } from '../api/houses';
-import type { UserSummary } from '../types';
+import type { Child, UserSummary } from '../types';
 
 export default function HouseDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -92,7 +94,7 @@ export default function HouseDetailPage() {
       </Paper>
 
       <Title order={3} mb="md">
-        Residents ({house.inhabitants?.length || 0})
+        Beboere ({house.inhabitants?.length || 0})
       </Title>
 
       {house.inhabitants && house.inhabitants.length > 0 ? (
@@ -106,7 +108,21 @@ export default function HouseDetailPage() {
           ))}
         </SimpleGrid>
       ) : (
-        <Text c="dimmed">No residents registered for this house.</Text>
+        <Text c="dimmed">Ingen beboere registreret for dette hus.</Text>
+      )}
+
+      {house.children && house.children.length > 0 && (
+        <>
+          <Title order={3} mt="xl" mb="md">
+            Børn ({house.children.length})
+          </Title>
+
+          <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
+            {house.children.map((child) => (
+              <ChildCard key={child.id} child={child} />
+            ))}
+          </SimpleGrid>
+        </>
       )}
     </>
   );
@@ -142,6 +158,43 @@ function InhabitantCard({ inhabitant, onClick }: InhabitantCardProps) {
           {inhabitant.bio && (
             <Text size="sm" c="dimmed" lineClamp={2}>
               {inhabitant.bio}
+            </Text>
+          )}
+        </div>
+      </Group>
+    </Paper>
+  );
+}
+
+interface ChildCardProps {
+  child: Child;
+}
+
+function ChildCard({ child }: ChildCardProps) {
+  const getAge = (birthdate: string | null) => {
+    if (!birthdate) return null;
+    const years = dayjs().diff(dayjs(birthdate), 'year');
+    return years;
+  };
+
+  const age = getAge(child.birthdate);
+
+  return (
+    <Paper withBorder p="lg" radius="md">
+      <Group>
+        <Avatar size="lg" radius="xl" color="grape">
+          {child.name?.[0]}
+        </Avatar>
+        <div style={{ flex: 1 }}>
+          <Group gap="xs">
+            <Text fw={500}>{child.name}</Text>
+            <Badge size="sm" variant="light" color="grape">
+              Barn
+            </Badge>
+          </Group>
+          {age !== null && (
+            <Text size="sm" c="dimmed">
+              {age} {age === 1 ? 'år' : 'år'}
             </Text>
           )}
         </div>

@@ -6,7 +6,34 @@ from rest_framework import serializers
 
 from apps.users.models import User
 
-from .models import House
+from .models import Child, House
+
+
+class ChildSerializer(serializers.ModelSerializer):
+    """Serializer for Child model."""
+
+    class Meta:
+        model = Child
+        fields = [
+            "id",
+            "name",
+            "birthdate",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
+
+
+class ChildCreateUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for creating/updating children."""
+
+    class Meta:
+        model = Child
+        fields = [
+            "id",
+            "name",
+            "birthdate",
+        ]
+        read_only_fields = ["id"]
 
 
 class HouseInhabitantSerializer(serializers.ModelSerializer):
@@ -27,6 +54,7 @@ class HouseSerializer(serializers.ModelSerializer):
     """Serializer for House model."""
 
     inhabitants = HouseInhabitantSerializer(many=True, read_only=True)
+    children = ChildSerializer(many=True, read_only=True)
     inhabitant_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -38,6 +66,7 @@ class HouseSerializer(serializers.ModelSerializer):
             "address",
             "profile_picture",
             "inhabitants",
+            "children",
             "inhabitant_count",
             "created_at",
         ]
@@ -51,6 +80,7 @@ class HouseListSerializer(serializers.ModelSerializer):
     """Serializer for House list with inhabitant preview."""
 
     inhabitants = HouseInhabitantSerializer(many=True, read_only=True)
+    children = ChildSerializer(many=True, read_only=True)
     inhabitant_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -62,6 +92,7 @@ class HouseListSerializer(serializers.ModelSerializer):
             "address",
             "profile_picture",
             "inhabitants",
+            "children",
             "inhabitant_count",
         ]
 
@@ -71,3 +102,18 @@ class HouseListSerializer(serializers.ModelSerializer):
         if hasattr(obj, "inhabitant_count_annotated"):
             return obj.inhabitant_count_annotated
         return obj.inhabitants.count()
+
+
+class HouseUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating a house's description and profile picture."""
+
+    class Meta:
+        model = House
+        fields = [
+            "id",
+            "name",
+            "description",
+            "address",
+            "profile_picture",
+        ]
+        read_only_fields = ["id", "name", "address"]
