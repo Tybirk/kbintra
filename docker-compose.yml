@@ -29,9 +29,19 @@ services:
     build: ./backend
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.backend.rule=PathPrefix(`/api`) || PathPrefix(`/admin`) || PathPrefix(`/media`)"
-      - "traefik.http.routers.backend.entrypoints=web"
-      - "traefik.http.routers.backend.priority=100"
+      # API routes
+      - "traefik.http.routers.backend-api.rule=PathPrefix(`/api`)"
+      - "traefik.http.routers.backend-api.entrypoints=web"
+      - "traefik.http.routers.backend-api.service=backend"
+      # Admin routes
+      - "traefik.http.routers.backend-admin.rule=PathPrefix(`/admin`)"
+      - "traefik.http.routers.backend-admin.entrypoints=web"
+      - "traefik.http.routers.backend-admin.service=backend"
+      # Media routes
+      - "traefik.http.routers.backend-media.rule=PathPrefix(`/media`)"
+      - "traefik.http.routers.backend-media.entrypoints=web"
+      - "traefik.http.routers.backend-media.service=backend"
+      # Service
       - "traefik.http.services.backend.loadbalancer.server.port=8000"
     volumes:
       - ./data/db.sqlite3:/app/db.sqlite3
