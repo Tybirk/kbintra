@@ -41,6 +41,10 @@ services:
       - "traefik.http.routers.backend-media.rule=PathPrefix(`/media`)"
       - "traefik.http.routers.backend-media.entrypoints=web"
       - "traefik.http.routers.backend-media.service=backend"
+      # Static files (Django admin CSS/JS)
+      - "traefik.http.routers.backend-static.rule=PathPrefix(`/static`)"
+      - "traefik.http.routers.backend-static.entrypoints=web"
+      - "traefik.http.routers.backend-static.service=backend"
       # Service
       - "traefik.http.services.backend.loadbalancer.server.port=8000"
     volumes:
