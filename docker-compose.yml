@@ -31,6 +31,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.backend.rule=PathPrefix(`/api`) || PathPrefix(`/admin`) || PathPrefix(`/media`)"
       - "traefik.http.routers.backend.entrypoints=web"
+      - "traefik.http.routers.backend.priority=100"
       - "traefik.http.services.backend.loadbalancer.server.port=8000"
     volumes:
       - ./data/db.sqlite3:/app/db.sqlite3
