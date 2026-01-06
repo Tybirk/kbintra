@@ -738,6 +738,7 @@ dependencies = [
     { name = "pillow" },
     { name = "python-dotenv" },
     { name = "pywebpush" },
+    { name = "whitenoise" },
 ]
 
 [package.dev-dependencies]
@@ -758,6 +759,7 @@ requires-dist = [
     { name = "pillow", specifier = ">=12.0.0" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "pywebpush", specifier = ">=2.1.2" },
+    { name = "whitenoise", specifier = ">=6.7.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -1269,6 +1271,7 @@ dependencies = [
     { name = "requests" },
     { name = "six" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/ab/fa/98d345de95b88581e40092062374c5248ffd28423cdc5e4b2a026d0cba24/pywebpush-2.1.2.tar.gz", hash = "sha256:797c7cc80cd807f3748500f992b26bae076881d069192824f122d227b8389b8b", size = 27289 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7d/98/80a2aa60c65ff84fbb8b3f2bb4f6e15c78ed64b2024a9ee868f4d2891e2d/pywebpush-2.1.2-py3-none-any.whl", hash = "sha256:53b79ec6e85e4c582ed865f088ecf354d81096857e012a7bcaf138359ff3cef9", size = 22656 },
 ]
@@ -1484,6 +1487,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/5e/1d/0f3a93cca1ac5e8287842ed4eebbd0f7a991315089b1a0b01c7788aa7b63/urllib3-2.6.1.tar.gz", hash = "sha256:5379eb6e1aba4088bae84f8242960017ec8d8e3decf30480b3a1abdaa9671a3f", size = 432678 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/bc/56/190ceb8cb10511b730b564fb1e0293fa468363dbad26145c34928a60cb0c/urllib3-2.6.1-py3-none-any.whl", hash = "sha256:e67d06fe947c36a7ca39f4994b08d73922d40e6cca949907be05efa6fd75110b", size = 131138 },
+]
+
+[[package]]
+name = "whitenoise"
+version = "6.11.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/15/95/8c81ec6b6ebcbf8aca2de7603070ccf37dbb873b03f20708e0f7c1664bc6/whitenoise-6.11.0.tar.gz", hash = "sha256:0f5bfce6061ae6611cd9396a8231e088722e4fc67bc13a111be74c738d99375f", size = 26432 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6c/e9/4366332f9295fe0647d7d3251ce18f5615fbcb12d02c79a26f8dba9221b3/whitenoise-6.11.0-py3-none-any.whl", hash = "sha256:b2aeb45950597236f53b5342b3121c5de69c8da0109362aee506ce88e022d258", size = 20197 },
 ]
 
 [[package]]

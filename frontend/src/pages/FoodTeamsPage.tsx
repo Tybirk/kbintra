@@ -936,12 +936,12 @@ function CreateCycleModal({ opened, onClose, onCreate, isLoading }: CreateCycleM
           required
         />
 
-        <DatePickerInput
+        <DatePickerInput<"multiple">
           type="multiple"
           label="Cooking Dates"
           placeholder="Click to select dates"
           value={cookingDates}
-          onChange={setCookingDates}
+          onChange={(dates) => setCookingDates(dates as unknown as Date[])}
           required
           description={`${cookingDates.length} date${cookingDates.length !== 1 ? 's' : ''} selected. Click dates to add/remove them.`}
           valueFormat="ddd, MMM D"
@@ -966,7 +966,7 @@ function CreateCycleModal({ opened, onClose, onCreate, isLoading }: CreateCycleM
           label="Wish Deadline"
           placeholder="Select deadline for wish submission"
           value={wishDeadline}
-          onChange={setWishDeadline}
+          onChange={(date) => setWishDeadline(date as unknown as Date | null)}
           required
           description="Users must submit their date preferences before this deadline"
         />

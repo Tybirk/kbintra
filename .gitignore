@@ -209,3 +209,4 @@ docs/_build/
 
 # Docker
 docker-compose.override.yml
+data/

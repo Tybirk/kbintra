@@ -51,6 +51,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -153,6 +154,14 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 # Media files (uploads)
 MEDIA_URL = "media/"
@@ -171,3 +180,15 @@ WEBPUSH_SETTINGS = {
     "VAPID_PRIVATE_KEY": os.getenv("VAPID_PRIVATE_KEY", ""),
     "VAPID_ADMIN_EMAIL": os.getenv("VAPID_ADMIN_EMAIL", "admin@kbintra.local"),
 }
+
+# CSRF trusted origins (needed for POST requests through proxy)
+CSRF_TRUSTED_ORIGINS: list[str] = os.getenv(
+    "CSRF_TRUSTED_ORIGINS",
+    "http://localhost,http://127.0.0.1",
+).split(",")
+
+# Production security settings
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True

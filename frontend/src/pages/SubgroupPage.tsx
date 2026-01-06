@@ -19,7 +19,6 @@ import {
   Breadcrumbs,
   Anchor,
   FileInput,
-  Menu,
   Select,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
@@ -35,7 +34,6 @@ import {
   IconFolderPlus,
   IconTrash,
   IconDownload,
-  IconDots,
   IconChevronRight,
   IconFolderSymlink,
 } from '@tabler/icons-react';
