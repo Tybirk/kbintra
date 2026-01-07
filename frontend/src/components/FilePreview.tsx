@@ -8,7 +8,6 @@ import {
   Button,
   Loader,
   Center,
-  Paper,
   Code,
   ScrollArea,
   Box,
