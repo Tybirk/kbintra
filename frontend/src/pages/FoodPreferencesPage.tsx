@@ -56,7 +56,7 @@ export default function FoodPreferencesPage() {
       <Button
         variant="subtle"
         leftSection={<IconArrowLeft size={16} />}
-        onClick={() => navigate('/food')}
+        onClick={() => navigate('/mad')}
         mb="md"
       >
         Back to Food

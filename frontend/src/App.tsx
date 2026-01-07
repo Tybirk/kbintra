@@ -100,7 +100,7 @@ function App() {
 
       <AppShell.Main>
         <Routes>
-          {/* Dashboard */}
+          {/* Forside */}
           <Route
             path="/"
             element={
@@ -110,9 +110,9 @@ function App() {
             }
           />
 
-          {/* Directory */}
+          {/* Beboere */}
           <Route
-            path="/directory"
+            path="/beboere"
             element={
               <ProtectedRoute>
                 <DirectoryPage />
@@ -120,7 +120,7 @@ function App() {
             }
           />
           <Route
-            path="/directory/house/:id"
+            path="/beboere/hus/:id"
             element={
               <ProtectedRoute>
                 <HouseDetailPage />
@@ -128,9 +128,9 @@ function App() {
             }
           />
 
-          {/* Profile */}
+          {/* Profil */}
           <Route
-            path="/profile"
+            path="/profil"
             element={
               <ProtectedRoute>
                 <ProfilePage />
@@ -138,7 +138,7 @@ function App() {
             }
           />
           <Route
-            path="/profile/edit"
+            path="/profil/rediger"
             element={
               <ProtectedRoute>
                 <ProfileEditPage />
@@ -146,7 +146,7 @@ function App() {
             }
           />
           <Route
-            path="/profile/:userId"
+            path="/profil/:userId"
             element={
               <ProtectedRoute>
                 <ProfilePage />
@@ -154,9 +154,9 @@ function App() {
             }
           />
 
-          {/* House Edit */}
+          {/* Hus */}
           <Route
-            path="/house/edit"
+            path="/hus/rediger"
             element={
               <ProtectedRoute>
                 <HouseEditPage />
@@ -182,7 +182,7 @@ function App() {
             }
           />
           <Route
-            path="/forum/thread/:id"
+            path="/forum/traad/:id"
             element={
               <ProtectedRoute>
                 <ThreadPage />
@@ -190,9 +190,9 @@ function App() {
             }
           />
 
-          {/* Announcements */}
+          {/* Opslag */}
           <Route
-            path="/announcements"
+            path="/opslag"
             element={
               <ProtectedRoute>
                 <AnnouncementsPage />
@@ -200,9 +200,9 @@ function App() {
             }
           />
 
-          {/* Food */}
+          {/* Mad */}
           <Route
-            path="/food"
+            path="/mad"
             element={
               <ProtectedRoute>
                 <FoodPage />
@@ -210,7 +210,7 @@ function App() {
             }
           />
           <Route
-            path="/food/preferences"
+            path="/mad/praeferencer"
             element={
               <ProtectedRoute>
                 <FoodPreferencesPage />
@@ -218,7 +218,7 @@ function App() {
             }
           />
           <Route
-            path="/food/tickets"
+            path="/mad/billetter"
             element={
               <ProtectedRoute>
                 <FoodTicketsPage />
@@ -226,15 +226,17 @@ function App() {
             }
           />
           <Route
-            path="/food/manage"
+            path="/mad/admin"
             element={
               <ProtectedRoute>
                 <MenuManagementPage />
               </ProtectedRoute>
             }
           />
+
+          {/* Madhold */}
           <Route
-            path="/food/teams"
+            path="/madhold"
             element={
               <ProtectedRoute>
                 <FoodTeamsPage />
@@ -242,18 +244,19 @@ function App() {
             }
           />
 
-          {/* Calendar */}
+          {/* Kalender */}
           <Route
-            path="/calendar"
+            path="/kalender"
             element={
               <ProtectedRoute>
                 <CalendarPage />
               </ProtectedRoute>
             }
           />
-          {/* Messages */}
+
+          {/* Beskeder */}
           <Route
-            path="/messages"
+            path="/beskeder"
             element={
               <ProtectedRoute>
                 <MessagesPage />
@@ -261,16 +264,16 @@ function App() {
             }
           />
 
-          {/* Notifications */}
+          {/* Notifikationer */}
           <Route
-            path="/notifications"
+            path="/notifikationer"
             element={
               <ProtectedRoute>
                 <NotificationsPage />
               </ProtectedRoute>
             }
           />
-          <Route path="/settings" element={<ComingSoon title="Settings" />} />
+          <Route path="/indstillinger" element={<ComingSoon title="Indstillinger" />} />
 
           {/* Catch all */}
           <Route path="*" element={<Navigate to="/" replace />} />

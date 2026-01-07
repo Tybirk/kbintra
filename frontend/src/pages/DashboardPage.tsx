@@ -37,7 +37,7 @@ dayjs.extend(relativeTime);
 const features = [
   {
     icon: IconSpeakerphone,
-    title: 'Opslag',
+    title: 'Vigtige opslag',
     description: 'Vigtige fællesskabsopdateringer',
     color: 'red',
     path: '/announcements',
@@ -156,7 +156,7 @@ export default function DashboardPage() {
               variant="subtle"
               size="xs"
               rightSection={<IconArrowRight size={14} />}
-              onClick={() => navigate('/notifications')}
+              onClick={() => navigate('/notifikationer')}
             >
               Se alle
             </Button>
@@ -180,7 +180,7 @@ export default function DashboardPage() {
               variant="subtle"
               size="xs"
               rightSection={<IconArrowRight size={14} />}
-              onClick={() => navigate('/announcements')}
+              onClick={() => navigate('/opslag')}
             >
               Se alle
             </Button>
@@ -209,7 +209,7 @@ export default function DashboardPage() {
               variant="subtle"
               size="xs"
               rightSection={<IconArrowRight size={14} />}
-              onClick={() => navigate('/calendar')}
+              onClick={() => navigate('/kalender')}
             >
               Se alle
             </Button>
@@ -249,7 +249,7 @@ function AnnouncementPreview({ announcement }: AnnouncementPreviewProps) {
       radius="sm"
       bg="gray.0"
       style={{ cursor: 'pointer' }}
-      onClick={() => navigate('/announcements')}
+      onClick={() => navigate('/opslag')}
     >
       <Group gap="sm" mb={4}>
         <Avatar
@@ -293,7 +293,7 @@ function EventPreview({ event }: EventPreviewProps) {
       radius="sm"
       bg="gray.0"
       style={{ cursor: 'pointer' }}
-      onClick={() => navigate('/calendar')}
+      onClick={() => navigate('/kalender')}
     >
       <Group gap="sm" mb={4}>
         <ThemeIcon size="sm" radius="xl" color={isToday ? 'blue' : 'gray'}>
@@ -333,7 +333,7 @@ function NotificationPreview({ notification }: NotificationPreviewProps) {
         if (notification.link) {
           navigate(notification.link);
         } else {
-          navigate('/notifications');
+          navigate('/notifikationer');
         }
       }}
     >

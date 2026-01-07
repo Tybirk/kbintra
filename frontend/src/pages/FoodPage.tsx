@@ -153,21 +153,21 @@ export default function FoodPage() {
           <Button
             variant="light"
             leftSection={<IconChefHat size={16} />}
-            onClick={() => navigate('/food/manage')}
+            onClick={() => navigate('/mad/admin')}
           >
             Administrer menuer
           </Button>
           <Button
             variant="light"
             leftSection={<IconSettings size={16} />}
-            onClick={() => navigate('/food/preferences')}
+            onClick={() => navigate('/mad/praeferencer')}
           >
             Præferencer
           </Button>
           <Button
             variant="light"
             leftSection={<IconTicket size={16} />}
-            onClick={() => navigate('/food/tickets')}
+            onClick={() => navigate('/mad/billetter')}
           >
             Billetter
           </Button>

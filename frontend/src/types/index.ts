@@ -114,12 +114,22 @@ export interface SubgroupSubscription {
   created_at: string;
 }
 
+export interface PostAttachment {
+  id: number;
+  name: string;
+  file: string;
+  file_url: string;
+  uploaded_by: Author;
+  uploaded_at: string;
+}
+
 export interface Post {
   id: number;
   thread: number;
   author: Author;
   content: string;
   is_own: boolean;
+  attachments: PostAttachment[];
   created_at: string;
   updated_at: string;
 }

@@ -101,7 +101,7 @@ export default function AnnouncementsPage() {
     <>
       <Group justify="space-between" mb="md">
         <div>
-          <Title order={1}>Opslag</Title>
+          <Title order={1}>Vigtig post</Title>
           <Text c="dimmed">Vigtige opdateringer for fællesskabet</Text>
         </div>
         <Button leftSection={<IconPlus size={16} />} onClick={openCreateModal}>

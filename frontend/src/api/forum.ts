@@ -53,7 +53,25 @@ export const forumApi = {
     return response.data;
   },
 
-  createThread: async (subgroupSlug: string, data: CreateThreadData): Promise<Thread> => {
+  createThread: async (
+    subgroupSlug: string,
+    data: CreateThreadData,
+    attachments?: File[]
+  ): Promise<Thread> => {
+    if (attachments && attachments.length > 0) {
+      const formData = new FormData();
+      formData.append('title', data.title);
+      formData.append('content', data.content);
+      attachments.forEach((file) => {
+        formData.append('attachments', file);
+      });
+      const response = await apiClient.post(`/forum/subgroups/${subgroupSlug}/threads/`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    }
     const response = await apiClient.post(`/forum/subgroups/${subgroupSlug}/threads/`, data);
     return response.data;
   },
@@ -68,7 +86,20 @@ export const forumApi = {
     return response.data.results ?? response.data;
   },
 
-  createPost: async (threadId: number, data: CreatePostData): Promise<Post> => {
+  createPost: async (threadId: number, data: CreatePostData, attachments?: File[]): Promise<Post> => {
+    if (attachments && attachments.length > 0) {
+      const formData = new FormData();
+      formData.append('content', data.content);
+      attachments.forEach((file) => {
+        formData.append('attachments', file);
+      });
+      const response = await apiClient.post(`/forum/threads/${threadId}/posts/`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    }
     const response = await apiClient.post(`/forum/threads/${threadId}/posts/`, data);
     return response.data;
   },

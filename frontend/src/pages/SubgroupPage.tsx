@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -19,7 +19,9 @@ import {
   Breadcrumbs,
   Anchor,
   FileInput,
+  FileButton,
   Select,
+  Image,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
@@ -29,19 +31,22 @@ import {
   IconPin,
   IconMessage,
   IconFolder,
-  IconFile,
   IconUpload,
   IconFolderPlus,
   IconTrash,
   IconDownload,
   IconChevronRight,
   IconFolderSymlink,
+  IconEye,
+  IconPaperclip,
+  IconX,
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 
 import { forumApi } from '../api/forum';
 import RichTextEditor from '../components/RichTextEditor';
+import { FilePreviewModal, ImageThumbnail, getFileIcon, getFileType, getFileTypeColor } from '../components/FilePreview';
 import { useAuthStore } from '../store/authStore';
 import type { Thread, CreateThreadData, Folder, ForumFile } from '../types';
 
@@ -151,7 +156,7 @@ export default function SubgroupPage() {
                 <ThreadRow
                   key={thread.id}
                   thread={thread}
-                  onClick={() => navigate(`/forum/thread/${thread.id}`)}
+                  onClick={() => navigate(`/forum/traad/${thread.id}`)}
                 />
               ))
             )}
@@ -245,10 +250,12 @@ function CreateThreadModal({
 }: CreateThreadModalProps) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const resetRef = useRef<() => void>(null);
 
   const createMutation = useMutation({
-    mutationFn: (data: CreateThreadData) =>
-      forumApi.createThread(subgroupSlug, data),
+    mutationFn: ({ data, files }: { data: CreateThreadData; files: File[] }) =>
+      forumApi.createThread(subgroupSlug, data, files.length > 0 ? files : undefined),
     onSuccess: () => {
       notifications.show({
         title: 'Thread created',
@@ -257,6 +264,8 @@ function CreateThreadModal({
       });
       setTitle('');
       setContent('');
+      setAttachments([]);
+      resetRef.current?.();
       onSuccess();
     },
     onError: () => {
@@ -271,7 +280,18 @@ function CreateThreadModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !content.trim()) return;
-    createMutation.mutate({ title: title.trim(), content: content.trim() });
+    createMutation.mutate({
+      data: { title: title.trim(), content: content.trim() },
+      files: attachments,
+    });
+  };
+
+  const handleAddFiles = (files: File[]) => {
+    setAttachments((prev) => [...prev, ...files]);
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
   return (
@@ -294,17 +314,80 @@ function CreateThreadModal({
               minHeight={200}
             />
           </div>
-          <Group justify="flex-end">
-            <Button variant="light" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              loading={createMutation.isPending}
-              disabled={!title.trim() || !content.trim()}
+
+          {attachments.length > 0 && (
+            <Group gap="xs">
+              {attachments.map((file, index) => {
+                const FileIcon = getFileIcon(file.name);
+                const fileColor = getFileTypeColor(file.name);
+                const isImage = getFileType(file.name) === 'image';
+                return (
+                  <Badge
+                    key={index}
+                    variant="light"
+                    color={fileColor}
+                    size="lg"
+                    leftSection={
+                      isImage ? (
+                        <Image
+                          src={URL.createObjectURL(file)}
+                          alt={file.name}
+                          w={16}
+                          h={16}
+                          fit="cover"
+                          radius={2}
+                        />
+                      ) : (
+                        <FileIcon size={14} />
+                      )
+                    }
+                    rightSection={
+                      <ActionIcon
+                        size="xs"
+                        variant="transparent"
+                        color={fileColor}
+                        onClick={() => handleRemoveFile(index)}
+                      >
+                        <IconX size={12} />
+                      </ActionIcon>
+                    }
+                    style={{ paddingRight: 4 }}
+                  >
+                    {file.name.length > 20 ? `${file.name.slice(0, 17)}...` : file.name}
+                  </Badge>
+                );
+              })}
+            </Group>
+          )}
+
+          <Group justify="space-between">
+            <FileButton
+              resetRef={resetRef}
+              onChange={handleAddFiles}
+              multiple
             >
-              Create Thread
-            </Button>
+              {(props) => (
+                <Button
+                  variant="light"
+                  leftSection={<IconPaperclip size={16} />}
+                  {...props}
+                >
+                  Attach Files
+                </Button>
+              )}
+            </FileButton>
+            <Group>
+              <Button variant="light" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                loading={createMutation.isPending}
+                disabled={!title.trim() || !content.trim()}
+              >
+                Create Thread
+              </Button>
+            </Group>
           </Group>
         </Stack>
       </form>
@@ -533,6 +616,12 @@ interface FileRowProps {
 
 function FileRow({ file, subgroupSlug, canModify, onDelete, onMove }: FileRowProps) {
   const [moveModalOpened, { open: openMoveModal, close: closeMoveModal }] = useDisclosure(false);
+  const [previewOpened, { open: openPreview, close: closePreview }] = useDisclosure(false);
+
+  const fileType = getFileType(file.name);
+  const FileIcon = getFileIcon(file.name);
+  const fileColor = getFileTypeColor(file.name);
+  const isImage = fileType === 'image';
 
   const deleteMutation = useMutation({
     mutationFn: () => forumApi.deleteFile(file.id),
@@ -570,14 +659,30 @@ function FileRow({ file, subgroupSlug, canModify, onDelete, onMove }: FileRowPro
     openMoveModal();
   };
 
+  const handleOpenPreview = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    openPreview();
+  };
+
   return (
     <>
       <Paper withBorder p="md" radius="md">
         <Group justify="space-between">
           <Group gap="md">
-            <IconFile size={24} color="var(--mantine-color-gray-6)" />
+            {isImage ? (
+              <ImageThumbnail file={file} size={48} onClick={openPreview} />
+            ) : (
+              <FileIcon size={24} color={`var(--mantine-color-${fileColor}-6)`} />
+            )}
             <div>
-              <Text fw={500}>{file.name}</Text>
+              <Text
+                fw={500}
+                style={{ cursor: 'pointer' }}
+                onClick={openPreview}
+                c="blue"
+              >
+                {file.name}
+              </Text>
               <Text size="xs" c="dimmed">
                 Uploadet af {file.uploaded_by.first_name} {file.uploaded_by.last_name} •{' '}
                 {dayjs(file.uploaded_at).fromNow()}
@@ -585,6 +690,13 @@ function FileRow({ file, subgroupSlug, canModify, onDelete, onMove }: FileRowPro
             </div>
           </Group>
           <Group gap="xs">
+            <ActionIcon
+              variant="light"
+              onClick={handleOpenPreview}
+              title="Forhåndsvis"
+            >
+              <IconEye size={16} />
+            </ActionIcon>
             <ActionIcon variant="light" onClick={handleDownload} title="Download">
               <IconDownload size={16} />
             </ActionIcon>
@@ -612,6 +724,12 @@ function FileRow({ file, subgroupSlug, canModify, onDelete, onMove }: FileRowPro
           </Group>
         </Group>
       </Paper>
+
+      <FilePreviewModal
+        file={file}
+        opened={previewOpened}
+        onClose={closePreview}
+      />
 
       <MoveFileModal
         opened={moveModalOpened}

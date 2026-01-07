@@ -141,7 +141,9 @@ class ThreadDetailView(generics.RetrieveAPIView):
 
     serializer_class = ThreadDetailSerializer
     permission_classes = [permissions.IsAuthenticated]
-    queryset = Thread.objects.prefetch_related("posts__author").select_related("author", "subgroup")
+    queryset = Thread.objects.prefetch_related(
+        "posts__author", "posts__attachments__uploaded_by"
+    ).select_related("author", "subgroup")
 
 
 class ThreadDeleteView(generics.DestroyAPIView):
@@ -164,7 +166,9 @@ class PostListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self) -> Any:
         thread = get_object_or_404(Thread, pk=self.kwargs["thread_id"])
-        return Post.objects.filter(thread=thread).select_related("author")
+        return Post.objects.filter(thread=thread).select_related("author").prefetch_related(
+            "attachments__uploaded_by"
+        )
 
     def get_serializer_context(self) -> dict:
         context = super().get_serializer_context()
@@ -184,7 +188,7 @@ class PostUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
 
     serializer_class = PostSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
-    queryset = Post.objects.all()
+    queryset = Post.objects.prefetch_related("attachments__uploaded_by").all()
 
     def get_serializer_class(self) -> type:
         if self.request.method in ["PUT", "PATCH"]:

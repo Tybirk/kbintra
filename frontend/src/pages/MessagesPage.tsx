@@ -120,6 +120,21 @@ export default function MessagesPage() {
   useEffect(() => {
     if (selectedConversation && activeConversation?.unread_count) {
       chatWs.markRead(selectedConversation);
+      // Optimistically update the conversation detail to mark messages as read
+      queryClient.setQueryData<ConversationDetail>(
+        ['conversation', selectedConversation],
+        (old) => {
+          if (!old) return old;
+          return {
+            ...old,
+            unread_count: 0,
+            messages: old.messages.map((msg) => ({
+              ...msg,
+              is_read: msg.is_own ? msg.is_read : true,
+            })),
+          };
+        }
+      );
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
     }
   }, [selectedConversation, activeConversation?.unread_count, queryClient]);

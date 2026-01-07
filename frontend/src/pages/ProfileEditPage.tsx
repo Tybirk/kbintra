@@ -67,7 +67,7 @@ export default function ProfileEditPage() {
         message: 'Your profile has been successfully updated.',
         color: 'green',
       });
-      navigate('/profile');
+      navigate('/profil');
     },
     onError: () => {
       notifications.show({
@@ -131,7 +131,7 @@ export default function ProfileEditPage() {
       <Button
         variant="subtle"
         leftSection={<IconArrowLeft size={16} />}
-        onClick={() => navigate('/profile')}
+        onClick={() => navigate('/profil')}
         mb="md"
       >
         Back to Profile

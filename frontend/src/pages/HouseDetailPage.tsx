@@ -44,8 +44,8 @@ export default function HouseDetailPage() {
       <Center h={200}>
         <Stack align="center">
           <Text c="red">Failed to load house details.</Text>
-          <Button variant="light" onClick={() => navigate('/directory')}>
-            Back to Directory
+          <Button variant="light" onClick={() => navigate('/beboere')}>
+            Tilbage til beboeroversigt
           </Button>
         </Stack>
       </Center>
@@ -55,17 +55,17 @@ export default function HouseDetailPage() {
   return (
     <>
       <Breadcrumbs mb="md">
-        <Anchor onClick={() => navigate('/directory')}>Directory</Anchor>
+        <Anchor onClick={() => navigate('/beboere')}>Beboeroversigt</Anchor>
         <Text>{house.name}</Text>
       </Breadcrumbs>
 
       <Button
         variant="subtle"
         leftSection={<IconArrowLeft size={16} />}
-        onClick={() => navigate('/directory')}
+        onClick={() => navigate('/beboere')}
         mb="md"
       >
-        Back to Directory
+        Tilbage til beboeroversigt
       </Button>
 
       <Paper withBorder p="xl" radius="md" mb="xl">
@@ -103,7 +103,7 @@ export default function HouseDetailPage() {
             <InhabitantCard
               key={inhabitant.id}
               inhabitant={inhabitant}
-              onClick={() => navigate(`/profile/${inhabitant.id}`)}
+              onClick={() => navigate(`/profil/${inhabitant.id}`)}
             />
           ))}
         </SimpleGrid>

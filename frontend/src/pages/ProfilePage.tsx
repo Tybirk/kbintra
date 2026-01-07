@@ -81,7 +81,7 @@ export default function ProfilePage() {
                   variant="light"
                   leftSection={<IconHome size={12} />}
                   style={{ cursor: 'pointer' }}
-                  onClick={() => user.house && navigate(`/directory/house/${user.house}`)}
+                  onClick={() => user.house && navigate(`/beboere/hus/${user.house}`)}
                 >
                   {user.house_name}
                 </Badge>
@@ -93,7 +93,7 @@ export default function ProfilePage() {
             <Button
               variant="light"
               leftSection={<IconEdit size={16} />}
-              onClick={() => navigate('/profile/edit')}
+              onClick={() => navigate('/profil/rediger')}
             >
               Edit Profile
             </Button>

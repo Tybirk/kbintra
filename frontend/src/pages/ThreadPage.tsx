@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -16,6 +16,10 @@ import {
   Modal,
   Divider,
   TypographyStylesProvider,
+  FileButton,
+  Badge,
+  Image,
+  SimpleGrid,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
@@ -25,13 +29,16 @@ import {
   IconEdit,
   IconTrash,
   IconSend,
+  IconPaperclip,
+  IconX,
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 
 import { forumApi } from '../api/forum';
 import RichTextEditor from '../components/RichTextEditor';
-import type { Post, CreatePostData } from '../types';
+import { FilePreviewModal, getFileIcon, getFileType, getFileTypeColor } from '../components/FilePreview';
+import type { Post, CreatePostData, PostAttachment } from '../types';
 
 dayjs.extend(relativeTime);
 
@@ -42,6 +49,8 @@ export default function ThreadPage() {
   const threadId = parseInt(id!, 10);
 
   const [newPostContent, setNewPostContent] = useState('');
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const resetRef = useRef<() => void>(null);
   const [editingPost, setEditingPost] = useState<Post | null>(null);
   const [editContent, setEditContent] = useState('');
   const [deleteModalOpened, { open: openDeleteModal, close: closeDeleteModal }] =
@@ -55,10 +64,13 @@ export default function ThreadPage() {
   });
 
   const createPostMutation = useMutation({
-    mutationFn: (data: CreatePostData) => forumApi.createPost(threadId, data),
+    mutationFn: ({ data, files }: { data: CreatePostData; files: File[] }) =>
+      forumApi.createPost(threadId, data, files.length > 0 ? files : undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['thread', threadId] });
       setNewPostContent('');
+      setAttachments([]);
+      resetRef.current?.();
       notifications.show({
         title: 'Reply posted',
         message: 'Your reply has been added.',
@@ -139,7 +151,18 @@ export default function ThreadPage() {
   const handleSubmitPost = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPostContent.trim()) return;
-    createPostMutation.mutate({ content: newPostContent.trim() });
+    createPostMutation.mutate({
+      data: { content: newPostContent.trim() },
+      files: attachments,
+    });
+  };
+
+  const handleAddFiles = (files: File[]) => {
+    setAttachments((prev) => [...prev, ...files]);
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleStartEdit = (post: Post) => {
@@ -276,7 +299,68 @@ export default function ThreadPage() {
               placeholder="Write your reply..."
               minHeight={150}
             />
-            <Group justify="flex-end">
+
+            {attachments.length > 0 && (
+              <Group gap="xs">
+                {attachments.map((file, index) => {
+                  const FileIcon = getFileIcon(file.name);
+                  const fileColor = getFileTypeColor(file.name);
+                  const isImage = getFileType(file.name) === 'image';
+                  return (
+                    <Badge
+                      key={index}
+                      variant="light"
+                      color={fileColor}
+                      size="lg"
+                      leftSection={
+                        isImage ? (
+                          <Image
+                            src={URL.createObjectURL(file)}
+                            alt={file.name}
+                            w={16}
+                            h={16}
+                            fit="cover"
+                            radius={2}
+                          />
+                        ) : (
+                          <FileIcon size={14} />
+                        )
+                      }
+                      rightSection={
+                        <ActionIcon
+                          size="xs"
+                          variant="transparent"
+                          color={fileColor}
+                          onClick={() => handleRemoveFile(index)}
+                        >
+                          <IconX size={12} />
+                        </ActionIcon>
+                      }
+                      style={{ paddingRight: 4 }}
+                    >
+                      {file.name.length > 20 ? `${file.name.slice(0, 17)}...` : file.name}
+                    </Badge>
+                  );
+                })}
+              </Group>
+            )}
+
+            <Group justify="space-between">
+              <FileButton
+                resetRef={resetRef}
+                onChange={handleAddFiles}
+                multiple
+              >
+                {(props) => (
+                  <Button
+                    variant="light"
+                    leftSection={<IconPaperclip size={16} />}
+                    {...props}
+                  >
+                    Attach Files
+                  </Button>
+                )}
+              </FileButton>
               <Button
                 type="submit"
                 leftSection={<IconSend size={16} />}
@@ -339,79 +423,145 @@ function PostCard({
   onDelete,
   isSaving,
 }: PostCardProps) {
+  const [previewAttachment, setPreviewAttachment] = useState<PostAttachment | null>(null);
+
+  const imageAttachments = post.attachments?.filter(
+    (att) => getFileType(att.name) === 'image'
+  ) || [];
+  const otherAttachments = post.attachments?.filter(
+    (att) => getFileType(att.name) !== 'image'
+  ) || [];
+
   return (
-    <Paper withBorder p="md" radius="md" bg={isFirst ? 'blue.0' : undefined}>
-      <Group justify="space-between" mb="sm">
-        <Group gap="sm">
-          <Avatar
-            src={post.author.profile_picture}
-            radius="xl"
-            size="md"
-          >
-            {post.author.first_name?.[0]}
-            {post.author.last_name?.[0]}
-          </Avatar>
-          <div>
-            <Text size="sm" fw={500}>
-              {post.author.first_name} {post.author.last_name}
-              {isFirst && (
-                <Text span c="blue" size="xs" ml="xs">
-                  (Original Post)
-                </Text>
-              )}
-            </Text>
-            <Text size="xs" c="dimmed">
-              {dayjs(post.created_at).format('MMM D, YYYY [at] h:mm A')}
-              {post.updated_at !== post.created_at && ' (edited)'}
-            </Text>
-          </div>
+    <>
+      <Paper withBorder p="md" radius="md" bg={isFirst ? 'blue.0' : undefined}>
+        <Group justify="space-between" mb="sm">
+          <Group gap="sm">
+            <Avatar
+              src={post.author.profile_picture}
+              radius="xl"
+              size="md"
+            >
+              {post.author.first_name?.[0]}
+              {post.author.last_name?.[0]}
+            </Avatar>
+            <div>
+              <Text size="sm" fw={500}>
+                {post.author.first_name} {post.author.last_name}
+                {isFirst && (
+                  <Text span c="blue" size="xs" ml="xs">
+                    (Original Post)
+                  </Text>
+                )}
+              </Text>
+              <Text size="xs" c="dimmed">
+                {dayjs(post.created_at).format('MMM D, YYYY [at] h:mm A')}
+                {post.updated_at !== post.created_at && ' (edited)'}
+              </Text>
+            </div>
+          </Group>
+
+          {post.is_own && !isEditing && (
+            <Menu shadow="md" width={200}>
+              <Menu.Target>
+                <ActionIcon variant="subtle">
+                  <IconDotsVertical size={16} />
+                </ActionIcon>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item leftSection={<IconEdit size={14} />} onClick={onStartEdit}>
+                  Edit
+                </Menu.Item>
+                <Menu.Item
+                  color="red"
+                  leftSection={<IconTrash size={14} />}
+                  onClick={onDelete}
+                >
+                  Delete
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          )}
         </Group>
 
-        {post.is_own && !isEditing && (
-          <Menu shadow="md" width={200}>
-            <Menu.Target>
-              <ActionIcon variant="subtle">
-                <IconDotsVertical size={16} />
-              </ActionIcon>
-            </Menu.Target>
-            <Menu.Dropdown>
-              <Menu.Item leftSection={<IconEdit size={14} />} onClick={onStartEdit}>
-                Edit
-              </Menu.Item>
-              <Menu.Item
-                color="red"
-                leftSection={<IconTrash size={14} />}
-                onClick={onDelete}
-              >
-                Delete
-              </Menu.Item>
-            </Menu.Dropdown>
-          </Menu>
-        )}
-      </Group>
+        {isEditing ? (
+          <Stack gap="sm">
+            <RichTextEditor
+              content={editContent}
+              onChange={onEditContentChange}
+              placeholder="Edit your post..."
+              minHeight={150}
+            />
+            <Group justify="flex-end">
+              <Button variant="light" size="sm" onClick={onCancelEdit}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={onSaveEdit} loading={isSaving}>
+                Save
+              </Button>
+            </Group>
+          </Stack>
+        ) : (
+          <>
+            <TypographyStylesProvider>
+              <div dangerouslySetInnerHTML={{ __html: post.content }} />
+            </TypographyStylesProvider>
 
-      {isEditing ? (
-        <Stack gap="sm">
-          <RichTextEditor
-            content={editContent}
-            onChange={onEditContentChange}
-            placeholder="Edit your post..."
-            minHeight={150}
-          />
-          <Group justify="flex-end">
-            <Button variant="light" size="sm" onClick={onCancelEdit}>
-              Cancel
-            </Button>
-            <Button size="sm" onClick={onSaveEdit} loading={isSaving}>
-              Save
-            </Button>
-          </Group>
-        </Stack>
-      ) : (
-        <TypographyStylesProvider>
-          <div dangerouslySetInnerHTML={{ __html: post.content }} />
-        </TypographyStylesProvider>
-      )}
-    </Paper>
+            {imageAttachments.length > 0 && (
+              <SimpleGrid cols={{ base: 2, sm: 3, md: 4 }} mt="md" spacing="sm">
+                {imageAttachments.map((att) => (
+                  <Image
+                    key={att.id}
+                    src={att.file_url}
+                    alt={att.name}
+                    radius="md"
+                    fit="cover"
+                    h={120}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => setPreviewAttachment(att)}
+                  />
+                ))}
+              </SimpleGrid>
+            )}
+
+            {otherAttachments.length > 0 && (
+              <Group gap="xs" mt="md">
+                {otherAttachments.map((att) => {
+                  const FileIcon = getFileIcon(att.name);
+                  const fileColor = getFileTypeColor(att.name);
+                  return (
+                    <Badge
+                      key={att.id}
+                      variant="light"
+                      color={fileColor}
+                      size="lg"
+                      leftSection={<FileIcon size={14} />}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => setPreviewAttachment(att)}
+                    >
+                      {att.name.length > 25 ? `${att.name.slice(0, 22)}...` : att.name}
+                    </Badge>
+                  );
+                })}
+              </Group>
+            )}
+          </>
+        )}
+      </Paper>
+
+      <FilePreviewModal
+        file={previewAttachment ? {
+          id: previewAttachment.id,
+          name: previewAttachment.name,
+          file: previewAttachment.file,
+          file_url: previewAttachment.file_url,
+          uploaded_by: previewAttachment.uploaded_by,
+          is_own: false,
+          uploaded_at: previewAttachment.uploaded_at,
+        } : null}
+        opened={previewAttachment !== null}
+        onClose={() => setPreviewAttachment(null)}
+      />
+    </>
   );
 }

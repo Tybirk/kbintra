@@ -6,7 +6,7 @@ from rest_framework import serializers
 
 from apps.users.models import User
 
-from .models import File, Folder, Post, Subgroup, SubgroupSubscription, Thread
+from .models import File, Folder, Post, PostAttachment, Subgroup, SubgroupSubscription, Thread
 
 
 class AuthorSerializer(serializers.ModelSerializer):
@@ -15,6 +15,30 @@ class AuthorSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["id", "first_name", "last_name", "profile_picture"]
+
+
+class PostAttachmentSerializer(serializers.ModelSerializer):
+    """Serializer for PostAttachment model."""
+
+    uploaded_by = AuthorSerializer(read_only=True)
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PostAttachment
+        fields = [
+            "id",
+            "name",
+            "file",
+            "file_url",
+            "uploaded_by",
+            "uploaded_at",
+        ]
+
+    def get_file_url(self, obj: PostAttachment) -> str:
+        request = self.context.get("request")
+        if request and obj.file:
+            return request.build_absolute_uri(obj.file.url)
+        return ""
 
 
 class SubgroupSerializer(serializers.ModelSerializer):
@@ -69,6 +93,7 @@ class PostSerializer(serializers.ModelSerializer):
 
     author = AuthorSerializer(read_only=True)
     is_own = serializers.SerializerMethodField()
+    attachments = PostAttachmentSerializer(many=True, read_only=True)
 
     class Meta:
         model = Post
@@ -78,6 +103,7 @@ class PostSerializer(serializers.ModelSerializer):
             "author",
             "content",
             "is_own",
+            "attachments",
             "created_at",
             "updated_at",
         ]
@@ -91,20 +117,39 @@ class PostSerializer(serializers.ModelSerializer):
 
 
 class PostCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating posts."""
+    """Serializer for creating posts with optional file attachments."""
+
+    attachments = serializers.ListField(
+        child=serializers.FileField(),
+        write_only=True,
+        required=False,
+        allow_empty=True,
+    )
 
     class Meta:
         model = Post
-        fields = ["content"]
+        fields = ["content", "attachments"]
 
     def create(self, validated_data: dict) -> Post:
         from django.utils import timezone
 
         from apps.notifications.services import notify_post_reply, notify_thread_reply
 
+        # Extract attachments before creating post
+        attachments = validated_data.pop("attachments", [])
+
         validated_data["author"] = self.context["request"].user
         validated_data["thread"] = self.context["thread"]
         post = super().create(validated_data)
+
+        # Create attachments
+        for attachment_file in attachments:
+            PostAttachment.objects.create(
+                post=post,
+                uploaded_by=post.author,
+                file=attachment_file,
+                name=attachment_file.name,
+            )
 
         thread = post.thread
         author = post.author
@@ -213,10 +258,16 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating threads with initial post."""
 
     content = serializers.CharField(write_only=True)
+    attachments = serializers.ListField(
+        child=serializers.FileField(),
+        write_only=True,
+        required=False,
+        allow_empty=True,
+    )
 
     class Meta:
         model = Thread
-        fields = ["title", "content"]
+        fields = ["title", "content", "attachments"]
 
     def create(self, validated_data: dict) -> Thread:
         from django.utils import timezone
@@ -224,17 +275,27 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
         from apps.notifications.services import notify_new_thread
 
         content = validated_data.pop("content")
+        attachments = validated_data.pop("attachments", [])
         validated_data["author"] = self.context["request"].user
         validated_data["subgroup"] = self.context["subgroup"]
 
         thread = super().create(validated_data)
 
         # Create the initial post
-        Post.objects.create(
+        post = Post.objects.create(
             thread=thread,
             author=self.context["request"].user,
             content=content,
         )
+
+        # Create attachments for the initial post
+        for attachment_file in attachments:
+            PostAttachment.objects.create(
+                post=post,
+                uploaded_by=post.author,
+                file=attachment_file,
+                name=attachment_file.name,
+            )
 
         # Update subgroup's last activity timestamp
         thread.subgroup.last_activity_at = timezone.now()

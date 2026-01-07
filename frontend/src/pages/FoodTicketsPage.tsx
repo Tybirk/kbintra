@@ -59,7 +59,7 @@ export default function FoodTicketsPage() {
       <Button
         variant="subtle"
         leftSection={<IconArrowLeft size={16} />}
-        onClick={() => navigate('/food')}
+        onClick={() => navigate('/mad')}
         mb="md"
       >
         Tilbage til mad

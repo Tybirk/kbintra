@@ -152,7 +152,7 @@ def notify_new_message(
         notification_type=NotificationType.NEW_MESSAGE,
         title=f"New message from {sender.first_name}",
         message=preview,
-        link=f"/messages",
+        link="/beskeder",
         related_user=sender,
         html_content=f"<p>{message_content}</p>",  # Full message in email
     )
@@ -183,7 +183,7 @@ def notify_new_announcement(
             notification_type=NotificationType.NEW_ANNOUNCEMENT,
             title="New Announcement",
             message=announcement_title,
-            link=f"/announcements",
+            link="/opslag",
             related_user=author,
             html_content=f"<h3>{announcement_title}</h3>{announcement_content}" if announcement_content else None,
         )
@@ -219,7 +219,7 @@ def notify_new_thread(
             notification_type=NotificationType.NEW_THREAD,
             title=f"New thread in {subgroup_name}",
             message=thread_title,
-            link=f"/forum/thread/{thread_id}",
+            link=f"/forum/traad/{thread_id}",
             related_user=author,
             html_content=f"<h3>{thread_title}</h3>{initial_post_content}" if initial_post_content else None,
         )
@@ -257,7 +257,7 @@ def notify_thread_reply(
         notification_type=NotificationType.THREAD_REPLY,
         title=f"{replier.first_name} replied to your thread",
         message=f'"{thread_title}": {preview}',
-        link=f"/forum/thread/{thread_id}",
+        link=f"/forum/traad/{thread_id}",
         related_user=replier,
         html_content=f"<p><strong>In thread: {thread_title}</strong></p>{reply_content}",
     )
@@ -292,7 +292,7 @@ def notify_post_reply(
         notification_type=NotificationType.POST_REPLY,
         title=f"{replier.first_name} replied in a thread you're in",
         message=f'"{thread_title}": {preview}',
-        link=f"/forum/thread/{thread_id}",
+        link=f"/forum/traad/{thread_id}",
         related_user=replier,
         html_content=f"<p><strong>In thread: {thread_title}</strong></p>{reply_content}",
     )
@@ -316,7 +316,7 @@ def notify_food_ticket_available(
             notification_type=NotificationType.FOOD_TICKET,
             title="Food ticket available",
             message=f"{owner.first_name} is offering {portions} portion(s) for {ticket_date}",
-            link="/food/tickets",
+            link="/mad/billetter",
             related_user=owner,
         )
         if notification:
@@ -335,7 +335,7 @@ def notify_ticket_claimed(
         notification_type=NotificationType.FOOD_TICKET,
         title="Your food ticket was claimed",
         message=f"{claimer.first_name} claimed your ticket for {ticket_date}",
-        link="/food/tickets",
+        link="/mad/billetter",
         related_user=claimer,
         check_preferences=False,  # Always notify owner
     )

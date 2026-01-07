@@ -79,7 +79,7 @@ export default function AppHeader({ navbarOpened, toggleNavbar }: AppHeaderProps
             if (wsData.notification.link) {
               navigate(wsData.notification.link);
             } else {
-              navigate('/notifications');
+              navigate('/notifikationer');
             }
           },
         });
@@ -126,7 +126,7 @@ export default function AppHeader({ navbarOpened, toggleNavbar }: AppHeaderProps
           <ActionIcon
             variant="subtle"
             size="lg"
-            onClick={() => navigate('/messages')}
+            onClick={() => navigate('/beskeder')}
             aria-label="Beskeder"
           >
             <IconMail size={22} />
@@ -143,7 +143,7 @@ export default function AppHeader({ navbarOpened, toggleNavbar }: AppHeaderProps
           <ActionIcon
             variant="subtle"
             size="lg"
-            onClick={() => navigate('/notifications')}
+            onClick={() => navigate('/notifikationer')}
             aria-label="Notifikationer"
           >
             <IconBell size={22} />
@@ -176,21 +176,21 @@ export default function AppHeader({ navbarOpened, toggleNavbar }: AppHeaderProps
         <Menu.Dropdown>
           <Menu.Item
             leftSection={<IconUser style={{ width: rem(14), height: rem(14) }} />}
-            onClick={() => navigate('/profile')}
+            onClick={() => navigate('/profil')}
           >
             Min profil
           </Menu.Item>
           {user?.house && (
             <Menu.Item
               leftSection={<IconHome style={{ width: rem(14), height: rem(14) }} />}
-              onClick={() => navigate('/house/edit')}
+              onClick={() => navigate('/hus/rediger')}
             >
               Mit hus
             </Menu.Item>
           )}
           <Menu.Item
             leftSection={<IconSettings style={{ width: rem(14), height: rem(14) }} />}
-            onClick={() => navigate('/settings')}
+            onClick={() => navigate('/indstillinger')}
           >
             Indstillinger
           </Menu.Item>

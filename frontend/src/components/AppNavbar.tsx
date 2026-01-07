@@ -24,14 +24,14 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { icon: IconHome, label: 'Forside', path: '/' },
-  { icon: IconBell, label: 'Notifikationer', path: '/notifications', color: 'red' },
-  { icon: IconSpeakerphone, label: 'Opslag', path: '/announcements', color: 'orange' },
+  { icon: IconBell, label: 'Notifikationer', path: '/notifikationer', color: 'red' },
+  { icon: IconSpeakerphone, label: 'Vigtig post', path: '/opslag', color: 'orange' },
   { icon: IconMessageCircle, label: 'Forum', path: '/forum', color: 'blue' },
-  { icon: IconSoup, label: 'Mad', path: '/food', color: 'green' },
-  { icon: IconUsersGroup, label: 'Madhold', path: '/food/teams', color: 'teal' },
-  { icon: IconCalendar, label: 'Kalender', path: '/calendar', color: 'violet' },
-  { icon: IconBuildingCommunity, label: 'Beboeroversigt', path: '/directory', color: 'yellow' },
-  { icon: IconUsers, label: 'Beskeder', path: '/messages', color: 'cyan' },
+  { icon: IconSoup, label: 'Mad', path: '/mad', color: 'green' },
+  { icon: IconUsersGroup, label: 'Madhold', path: '/madhold', color: 'teal' },
+  { icon: IconCalendar, label: 'Kalender', path: '/kalender', color: 'violet' },
+  { icon: IconBuildingCommunity, label: 'Beboeroversigt', path: '/beboere', color: 'yellow' },
+  { icon: IconUsers, label: 'Beskeder', path: '/beskeder', color: 'cyan' },
 ];
 
 interface AppNavbarProps {
@@ -66,8 +66,8 @@ export default function AppNavbar({ onNavigate }: AppNavbarProps) {
 
   const getLabel = (item: NavItem) => {
     let badgeCount = 0;
-    if (item.path === '/messages') badgeCount = unreadMessages;
-    if (item.path === '/notifications') badgeCount = unreadNotifications;
+    if (item.path === '/beskeder') badgeCount = unreadMessages;
+    if (item.path === '/notifikationer') badgeCount = unreadNotifications;
 
     if (badgeCount > 0) {
       return (
@@ -93,9 +93,11 @@ export default function AppNavbar({ onNavigate }: AppNavbarProps) {
             active={
               item.path === '/'
                 ? location.pathname === '/'
-                : item.path === '/food/teams'
-                  ? location.pathname === '/food/teams'
-                  : location.pathname.startsWith(item.path)
+                : item.path === '/madhold'
+                  ? location.pathname === '/madhold'
+                  : item.path === '/mad'
+                    ? location.pathname === '/mad' || location.pathname.startsWith('/mad/')
+                    : location.pathname.startsWith(item.path)
             }
             onClick={() => handleNavigate(item.path)}
             color={item.color}

@@ -243,7 +243,7 @@ export default function HouseEditPage() {
           <Alert icon={<IconAlertCircle size={16} />} title="Ingen husstand" color="yellow">
             Du er ikke tilknyttet et hus. Kontakt en administrator for at blive tilknyttet.
           </Alert>
-          <Button variant="light" onClick={() => navigate('/profile')}>
+          <Button variant="light" onClick={() => navigate('/profil')}>
             Tilbage til profil
           </Button>
         </Stack>
@@ -256,7 +256,7 @@ export default function HouseEditPage() {
       <Button
         variant="subtle"
         leftSection={<IconArrowLeft size={16} />}
-        onClick={() => navigate('/profile')}
+        onClick={() => navigate('/profil')}
         mb="md"
       >
         Tilbage til profil

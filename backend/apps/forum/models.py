@@ -127,6 +127,38 @@ class Post(models.Model):
         return f"Post by {self.author} in {self.thread}"
 
 
+class PostAttachment(models.Model):
+    """
+    A file attachment for a forum post.
+    """
+
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE,
+        related_name="attachments",
+    )
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="post_attachments",
+    )
+    file = models.FileField(upload_to="post_attachments/")
+    name = models.CharField(max_length=255)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["uploaded_at"]
+
+    def __str__(self) -> str:
+        return f"{self.name} on {self.post}"
+
+    def delete(self, *args: object, **kwargs: object) -> tuple:
+        """Delete the file from storage when the attachment is deleted."""
+        self.file.delete(save=False)
+        return super().delete(*args, **kwargs)
+
+
 class Folder(models.Model):
     """
     A folder for organizing files within a subgroup.
