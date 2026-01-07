@@ -16,6 +16,9 @@ import {
   Menu,
   Badge,
   TypographyStylesProvider,
+  FileButton,
+  CloseButton,
+  Box,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
@@ -25,13 +28,22 @@ import {
   IconDotsVertical,
   IconEdit,
   IconTrash,
+  IconPaperclip,
+  IconFile,
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 
 import { announcementsApi } from '../api/announcements';
 import RichTextEditor from '../components/RichTextEditor';
-import type { Announcement, CreateAnnouncementData } from '../types';
+import {
+  getFileIcon,
+  getFileTypeColor,
+  FilePreviewModal,
+  ImageThumbnail,
+  getFileType,
+} from '../components/FilePreview';
+import type { Announcement, CreateAnnouncementData, AnnouncementAttachment } from '../types';
 
 dayjs.extend(relativeTime);
 
@@ -188,6 +200,19 @@ interface AnnouncementCardProps {
 }
 
 function AnnouncementCard({ announcement, onEdit, onDelete }: AnnouncementCardProps) {
+  const [previewFile, setPreviewFile] = useState<AnnouncementAttachment | null>(null);
+
+  // Convert attachment to ForumFile format for FilePreviewModal
+  const toForumFile = (attachment: AnnouncementAttachment) => ({
+    id: attachment.id,
+    name: attachment.name,
+    file: attachment.file,
+    file_url: attachment.file_url,
+    uploaded_by: attachment.uploaded_by,
+    is_own: false,
+    uploaded_at: attachment.uploaded_at,
+  });
+
   return (
     <Paper withBorder p="lg" radius="md">
       <Group justify="space-between" mb="md">
@@ -242,6 +267,59 @@ function AnnouncementCard({ announcement, onEdit, onDelete }: AnnouncementCardPr
       <TypographyStylesProvider>
         <div dangerouslySetInnerHTML={{ __html: announcement.content }} />
       </TypographyStylesProvider>
+
+      {/* Attachments */}
+      {announcement.attachments && announcement.attachments.length > 0 && (
+        <Box mt="md" pt="md" style={{ borderTop: '1px solid var(--mantine-color-gray-3)' }}>
+          <Text size="sm" fw={500} mb="xs">
+            Vedhæftede filer ({announcement.attachments.length})
+          </Text>
+          <Group gap="xs">
+            {announcement.attachments.map((attachment) => {
+              const fileType = getFileType(attachment.name);
+              const FileIcon = getFileIcon(attachment.name);
+              const fileColor = getFileTypeColor(attachment.name);
+
+              if (fileType === 'image') {
+                return (
+                  <ImageThumbnail
+                    key={attachment.id}
+                    file={toForumFile(attachment)}
+                    onClick={() => setPreviewFile(attachment)}
+                  />
+                );
+              }
+
+              return (
+                <Paper
+                  key={attachment.id}
+                  withBorder
+                  p="xs"
+                  radius="sm"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => setPreviewFile(attachment)}
+                >
+                  <Group gap="xs">
+                    <FileIcon size={20} color={fileColor} />
+                    <Text size="sm" lineClamp={1} style={{ maxWidth: 150 }}>
+                      {attachment.name}
+                    </Text>
+                  </Group>
+                </Paper>
+              );
+            })}
+          </Group>
+        </Box>
+      )}
+
+      {/* File Preview Modal */}
+      {previewFile && (
+        <FilePreviewModal
+          file={toForumFile(previewFile)}
+          opened={!!previewFile}
+          onClose={() => setPreviewFile(null)}
+        />
+      )}
     </Paper>
   );
 }
@@ -259,10 +337,11 @@ function CreateAnnouncementModal({
 }: CreateAnnouncementModalProps) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [attachments, setAttachments] = useState<File[]>([]);
 
   const createMutation = useMutation({
-    mutationFn: (data: CreateAnnouncementData) =>
-      announcementsApi.createAnnouncement(data),
+    mutationFn: ({ data, files }: { data: CreateAnnouncementData; files: File[] }) =>
+      announcementsApi.createAnnouncement(data, files.length > 0 ? files : undefined),
     onSuccess: () => {
       notifications.show({
         title: 'Opslag oprettet',
@@ -271,6 +350,7 @@ function CreateAnnouncementModal({
       });
       setTitle('');
       setContent('');
+      setAttachments([]);
       onSuccess();
     },
     onError: () => {
@@ -285,7 +365,18 @@ function CreateAnnouncementModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !content.trim()) return;
-    createMutation.mutate({ title: title.trim(), content: content.trim() });
+    createMutation.mutate({
+      data: { title: title.trim(), content: content.trim() },
+      files: attachments,
+    });
+  };
+
+  const handleAddFiles = (files: File[]) => {
+    setAttachments((prev) => [...prev, ...files]);
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
   return (
@@ -310,6 +401,48 @@ function CreateAnnouncementModal({
               minHeight={200}
             />
           </div>
+
+          {/* File attachments */}
+          <div>
+            <Group gap="xs" mb="xs">
+              <Text size="sm" fw={500}>
+                Vedhæftede filer
+              </Text>
+              <FileButton onChange={handleAddFiles} multiple>
+                {(props) => (
+                  <Button
+                    variant="light"
+                    size="xs"
+                    leftSection={<IconPaperclip size={14} />}
+                    {...props}
+                  >
+                    Tilføj filer
+                  </Button>
+                )}
+              </FileButton>
+            </Group>
+            {attachments.length > 0 && (
+              <Stack gap="xs">
+                {attachments.map((file, index) => (
+                  <Paper key={index} withBorder p="xs" radius="sm">
+                    <Group justify="space-between">
+                      <Group gap="xs">
+                        <IconFile size={16} />
+                        <Text size="sm" lineClamp={1}>
+                          {file.name}
+                        </Text>
+                        <Text size="xs" c="dimmed">
+                          ({(file.size / 1024).toFixed(1)} KB)
+                        </Text>
+                      </Group>
+                      <CloseButton size="sm" onClick={() => handleRemoveFile(index)} />
+                    </Group>
+                  </Paper>
+                ))}
+              </Stack>
+            )}
+          </div>
+
           <Group justify="flex-end">
             <Button variant="light" onClick={onClose}>
               Annuller

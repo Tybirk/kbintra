@@ -6,7 +6,7 @@ from rest_framework import serializers
 
 from apps.users.models import User
 
-from .models import Announcement
+from .models import Announcement, AnnouncementAttachment
 
 
 class AuthorSerializer(serializers.ModelSerializer):
@@ -17,11 +17,36 @@ class AuthorSerializer(serializers.ModelSerializer):
         fields = ["id", "first_name", "last_name", "profile_picture"]
 
 
+class AnnouncementAttachmentSerializer(serializers.ModelSerializer):
+    """Serializer for AnnouncementAttachment model."""
+
+    uploaded_by = AuthorSerializer(read_only=True)
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AnnouncementAttachment
+        fields = [
+            "id",
+            "name",
+            "file",
+            "file_url",
+            "uploaded_by",
+            "uploaded_at",
+        ]
+
+    def get_file_url(self, obj: AnnouncementAttachment) -> str:
+        request = self.context.get("request")
+        if request and obj.file:
+            return request.build_absolute_uri(obj.file.url)
+        return ""
+
+
 class AnnouncementSerializer(serializers.ModelSerializer):
     """Serializer for Announcement model."""
 
     author = AuthorSerializer(read_only=True)
     is_own = serializers.SerializerMethodField()
+    attachments = AnnouncementAttachmentSerializer(many=True, read_only=True)
 
     class Meta:
         model = Announcement
@@ -33,6 +58,7 @@ class AnnouncementSerializer(serializers.ModelSerializer):
             "is_active",
             "priority",
             "is_own",
+            "attachments",
             "created_at",
             "updated_at",
         ]
@@ -48,15 +74,32 @@ class AnnouncementSerializer(serializers.ModelSerializer):
 class AnnouncementCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating/updating announcements."""
 
+    attachments = serializers.ListField(
+        child=serializers.FileField(),
+        write_only=True,
+        required=False,
+        allow_empty=True,
+    )
+
     class Meta:
         model = Announcement
-        fields = ["title", "content", "is_active", "priority"]
+        fields = ["title", "content", "is_active", "priority", "attachments"]
 
     def create(self, validated_data: dict) -> Announcement:
         from apps.notifications.services import notify_new_announcement
 
+        attachments = validated_data.pop("attachments", [])
         validated_data["author"] = self.context["request"].user
         announcement = super().create(validated_data)
+
+        # Create attachments
+        for attachment_file in attachments:
+            AnnouncementAttachment.objects.create(
+                announcement=announcement,
+                uploaded_by=announcement.author,
+                file=attachment_file,
+                name=attachment_file.name,
+            )
 
         # Send notifications to all users if announcement is active
         if announcement.is_active:

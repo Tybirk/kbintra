@@ -29,3 +29,33 @@ class Announcement(models.Model):
 
     def __str__(self) -> str:
         return self.title
+
+
+class AnnouncementAttachment(models.Model):
+    """A file attachment for an announcement."""
+
+    announcement = models.ForeignKey(
+        Announcement,
+        on_delete=models.CASCADE,
+        related_name="attachments",
+    )
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="announcement_attachments",
+    )
+    file = models.FileField(upload_to="announcement_attachments/")
+    name = models.CharField(max_length=255)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["uploaded_at"]
+
+    def __str__(self) -> str:
+        return f"{self.name} on {self.announcement}"
+
+    def delete(self, *args: object, **kwargs: object) -> tuple:
+        """Delete the file from storage when the attachment is deleted."""
+        self.file.delete(save=False)
+        return super().delete(*args, **kwargs)

@@ -65,9 +65,10 @@ export const forumApi = {
       attachments.forEach((file) => {
         formData.append('attachments', file);
       });
+      // Don't set Content-Type header - let browser set it with boundary
       const response = await apiClient.post(`/forum/subgroups/${subgroupSlug}/threads/`, formData, {
         headers: {
-          'Content-Type': 'multipart/form-data',
+          'Content-Type': undefined,
         },
       });
       return response.data;
@@ -93,9 +94,10 @@ export const forumApi = {
       attachments.forEach((file) => {
         formData.append('attachments', file);
       });
+      // Don't set Content-Type header - let browser set it with boundary
       const response = await apiClient.post(`/forum/threads/${threadId}/posts/`, formData, {
         headers: {
-          'Content-Type': 'multipart/form-data',
+          'Content-Type': undefined,
         },
       });
       return response.data;
@@ -150,9 +152,10 @@ export const forumApi = {
     if (name) {
       formData.append('name', name);
     }
+    // Don't set Content-Type header - let browser set it with boundary
     const response = await apiClient.post(`/forum/folders/${folderId}/files/`, formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
+        'Content-Type': undefined,
       },
     });
     return response.data;
@@ -164,9 +167,10 @@ export const forumApi = {
     if (name) {
       formData.append('name', name);
     }
+    // Don't set Content-Type header - let browser set it with boundary
     const response = await apiClient.post(`/forum/subgroups/${subgroupSlug}/files/`, formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
+        'Content-Type': undefined,
       },
     });
     return response.data;

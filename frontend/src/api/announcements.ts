@@ -18,7 +18,31 @@ export const announcementsApi = {
     return response.data;
   },
 
-  createAnnouncement: async (data: CreateAnnouncementData): Promise<Announcement> => {
+  createAnnouncement: async (
+    data: CreateAnnouncementData,
+    attachments?: File[]
+  ): Promise<Announcement> => {
+    if (attachments && attachments.length > 0) {
+      const formData = new FormData();
+      formData.append('title', data.title);
+      formData.append('content', data.content);
+      if (data.is_active !== undefined) {
+        formData.append('is_active', String(data.is_active));
+      }
+      if (data.priority !== undefined) {
+        formData.append('priority', String(data.priority));
+      }
+      attachments.forEach((file) => {
+        formData.append('attachments', file);
+      });
+      // Don't set Content-Type header - let browser set it with boundary
+      const response = await apiClient.post('/announcements/', formData, {
+        headers: {
+          'Content-Type': undefined,
+        },
+      });
+      return response.data;
+    }
     const response = await apiClient.post('/announcements/', data);
     return response.data;
   },

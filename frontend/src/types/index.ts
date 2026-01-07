@@ -181,6 +181,15 @@ export interface ForumFile {
 }
 
 // Announcement Types
+export interface AnnouncementAttachment {
+  id: number;
+  name: string;
+  file: string;
+  file_url: string;
+  uploaded_by: Author;
+  uploaded_at: string;
+}
+
 export interface Announcement {
   id: number;
   title: string;
@@ -189,6 +198,7 @@ export interface Announcement {
   is_active: boolean;
   priority: number;
   is_own: boolean;
+  attachments: AnnouncementAttachment[];
   created_at: string;
   updated_at: string;
 }
