@@ -26,6 +26,5 @@ urlpatterns = [
     path("api/notifications/", include("apps.notifications.urls")),
 ]
 
-# Serve media files in development
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# Serve media files (for small-scale deployment, Django serving is fine)
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
