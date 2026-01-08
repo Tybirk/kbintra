@@ -3,9 +3,9 @@ URL configuration for KB Intra project.
 """
 
 from django.conf import settings
-from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import include, path
+from django.urls import include, path, re_path
+from django.views.static import serve
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 urlpatterns = [
@@ -26,5 +26,7 @@ urlpatterns = [
     path("api/notifications/", include("apps.notifications.urls")),
 ]
 
-# Serve media files (for small-scale deployment, Django serving is fine)
-urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# Serve media files (static() helper doesn't work when DEBUG=False, so use re_path directly)
+urlpatterns += [
+    re_path(r"^media/(?P<path>.*)$", serve, {"document_root": settings.MEDIA_ROOT}),
+]
