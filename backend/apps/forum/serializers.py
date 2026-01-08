@@ -35,9 +35,8 @@ class PostAttachmentSerializer(serializers.ModelSerializer):
         ]
 
     def get_file_url(self, obj: PostAttachment) -> str:
-        request = self.context.get("request")
-        if request and obj.file:
-            return request.build_absolute_uri(obj.file.url)
+        if obj.file:
+            return obj.file.url
         return ""
 
 
@@ -380,9 +379,8 @@ class FileSerializer(serializers.ModelSerializer):
         return False
 
     def get_file_url(self, obj: File) -> str:
-        request = self.context.get("request")
-        if request and obj.file:
-            return request.build_absolute_uri(obj.file.url)
+        if obj.file:
+            return obj.file.url
         return ""
 
 
