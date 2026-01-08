@@ -39,8 +39,7 @@ const features = [
     icon: IconSpeakerphone,
     title: 'Vigtige opslag',
     description: 'Vigtige fællesskabsopdateringer',
-    color: 'red',
-    path: '/announcements',
+    path: '/opslag',
   },
   {
     icon: IconMessageCircle,
@@ -54,28 +53,28 @@ const features = [
     title: 'Mad',
     description: 'Ugemenu & måltidstilmelding',
     color: 'green',
-    path: '/food',
+    path: '/mad',
   },
   {
     icon: IconCalendar,
     title: 'Kalender',
     description: 'Fællesskabsarrangementer',
     color: 'violet',
-    path: '/calendar',
+    path: '/kalender',
   },
   {
     icon: IconHome,
     title: 'Beboeroversigt',
     description: 'Huse & beboere',
     color: 'orange',
-    path: '/directory',
+    path: '/beboere',
   },
   {
     icon: IconUsers,
     title: 'Beskeder',
     description: 'Direkte beskeder',
     color: 'cyan',
-    path: '/messages',
+    path: '/beskeder',
   },
 ];
 

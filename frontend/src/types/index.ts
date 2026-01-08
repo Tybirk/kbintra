@@ -78,6 +78,22 @@ export interface RegisterData {
   last_name: string;
 }
 
+export interface ChangePasswordData {
+  current_password: string;
+  new_password: string;
+  new_password_confirm: string;
+}
+
+export interface ForgotPasswordData {
+  email: string;
+}
+
+export interface ResetPasswordData {
+  token: string;
+  new_password: string;
+  new_password_confirm: string;
+}
+
 export interface PaginatedResponse<T> {
   count: number;
   next: string | null;

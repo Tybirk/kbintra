@@ -82,6 +82,10 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.currentTarget.value)}
             />
 
+            <Anchor href="/forgot-password" size="sm" ta="right">
+              Glemt adgangskode?
+            </Anchor>
+
             <Button type="submit" fullWidth loading={isLoading}>
               Log ind
             </Button>
@@ -89,10 +93,7 @@ export default function LoginPage() {
         </form>
 
         <Text c="dimmed" size="sm" ta="center" mt={15}>
-          Har du en invitation?{' '}
-          <Anchor href="/register" size="sm">
-            Registrer dig her
-          </Anchor>
+          Ny bruger? Brug registreringslinket fra din invitationsmail.
         </Text>
       </Paper>
     </Container>

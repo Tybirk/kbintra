@@ -3,7 +3,15 @@
  */
 
 import { apiClient, setTokens, clearTokens } from './client';
-import type { AuthTokens, LoginCredentials, RegisterData, User } from '../types';
+import type {
+  AuthTokens,
+  ChangePasswordData,
+  ForgotPasswordData,
+  LoginCredentials,
+  RegisterData,
+  ResetPasswordData,
+  User,
+} from '../types';
 
 export const authApi = {
   async login(credentials: LoginCredentials): Promise<AuthTokens> {
@@ -54,5 +62,20 @@ export const authApi = {
 
   logout(): void {
     clearTokens();
+  },
+
+  async changePassword(data: ChangePasswordData): Promise<{ message: string }> {
+    const response = await apiClient.post<{ message: string }>('/auth/change-password/', data);
+    return response.data;
+  },
+
+  async forgotPassword(data: ForgotPasswordData): Promise<{ message: string }> {
+    const response = await apiClient.post<{ message: string }>('/auth/forgot-password/', data);
+    return response.data;
+  },
+
+  async resetPassword(data: ResetPasswordData): Promise<{ message: string }> {
+    const response = await apiClient.post<{ message: string }>('/auth/reset-password/', data);
+    return response.data;
   },
 };

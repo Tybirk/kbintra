@@ -5,11 +5,10 @@ Serializers for User models.
 from typing import Any
 
 from django.contrib.auth.password_validation import validate_password
+from django.utils import timezone
 from rest_framework import serializers
 
-from apps.houses.models import House
-
-from .models import Invitation, User
+from .models import Invitation, PasswordResetToken, User
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -208,3 +207,96 @@ class InvitationValidateSerializer(serializers.Serializer):
             )
 
         return value
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    """Serializer for authenticated password change."""
+
+    current_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True, validators=[validate_password])
+    new_password_confirm = serializers.CharField(write_only=True)
+
+    def validate_current_password(self, value: str) -> str:
+        """Validate that the current password is correct."""
+        user = self.context["request"].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("Current password is incorrect.")
+        return value
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        """Validate that new passwords match."""
+        if attrs["new_password"] != attrs["new_password_confirm"]:
+            raise serializers.ValidationError(
+                {"new_password_confirm": "New passwords do not match."}
+            )
+        return attrs
+
+    def save(self) -> User:
+        """Update the user's password."""
+        user = self.context["request"].user
+        user.set_password(self.validated_data["new_password"])
+        user.save(update_fields=["password"])
+        return user
+
+
+class ForgotPasswordSerializer(serializers.Serializer):
+    """Serializer for requesting a password reset."""
+
+    email = serializers.EmailField()
+
+    def validate_email(self, value: str) -> str:
+        """Normalize email (don't reveal if user exists)."""
+        return value.lower()
+
+    def save(self) -> PasswordResetToken | None:
+        """Create a password reset token if user exists."""
+        email = self.validated_data["email"]
+        try:
+            user = User.objects.get(email__iexact=email)
+            # Invalidate any existing tokens for this user
+            PasswordResetToken.objects.filter(user=user, used_at__isnull=True).update(
+                used_at=timezone.now()
+            )
+            # Create new token
+            token = PasswordResetToken.objects.create(user=user)
+            return token
+        except User.DoesNotExist:
+            # Don't reveal that the user doesn't exist
+            return None
+
+
+class ResetPasswordSerializer(serializers.Serializer):
+    """Serializer for resetting password with a token."""
+
+    token = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True, validators=[validate_password])
+    new_password_confirm = serializers.CharField(write_only=True)
+
+    def validate_token(self, value: str) -> str:
+        """Validate that the token exists and is valid."""
+        try:
+            reset_token = PasswordResetToken.objects.get(token=value)
+        except PasswordResetToken.DoesNotExist as err:
+            raise serializers.ValidationError("Invalid or expired reset token.") from err
+
+        if not reset_token.is_valid:
+            raise serializers.ValidationError("This reset token has expired or already been used.")
+
+        return value
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        """Validate that passwords match."""
+        if attrs["new_password"] != attrs["new_password_confirm"]:
+            raise serializers.ValidationError(
+                {"new_password_confirm": "Passwords do not match."}
+            )
+        return attrs
+
+    def save(self) -> User:
+        """Reset the user's password and mark token as used."""
+        reset_token = PasswordResetToken.objects.get(token=self.validated_data["token"])
+        user = reset_token.user
+        user.set_password(self.validated_data["new_password"])
+        user.save(update_fields=["password"])
+        reset_token.mark_used()
+        return user

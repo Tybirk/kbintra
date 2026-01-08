@@ -200,22 +200,145 @@ SECRET_KEY=your-secret-key-here
 DEBUG=True
 ALLOWED_HOSTS=localhost,127.0.0.1
 CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
-
-# Email Settings
-EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
-DEFAULT_FROM_EMAIL=KB Intra <noreply@kbintra.local>
 SITE_URL=http://localhost:5173
 ```
 
-For production email:
+## Email Setup
+
+The application uses email for:
+- Password reset flows
+- Notification emails (new messages, announcements, forum replies, etc.)
+
+### Email Configuration Overview
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `EMAIL_BACKEND` | Django email backend class | `django.core.mail.backends.console.EmailBackend` |
+| `EMAIL_HOST` | SMTP server hostname | (empty) |
+| `EMAIL_PORT` | SMTP server port | `587` |
+| `EMAIL_USE_TLS` | Use TLS encryption | `True` |
+| `EMAIL_USE_SSL` | Use SSL encryption | `False` |
+| `EMAIL_HOST_USER` | SMTP username/email | (empty) |
+| `EMAIL_HOST_PASSWORD` | SMTP password/app password | (empty) |
+| `DEFAULT_FROM_EMAIL` | Sender email address | `KB Intra <noreply@kbintra.local>` |
+| `SITE_URL` | Base URL for links in emails | `http://localhost:5173` |
+
+### Development Setup
+
+In development, emails are printed to the console by default. No configuration needed.
+
+```bash
+# backend/.env (development - default)
+EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
+SITE_URL=http://localhost:5173
 ```
+
+To test the email flow in development, trigger a password reset or enable email notifications in user preferences. Emails will appear in the terminal running the Django server.
+
+### Production Setup
+
+For production, configure an SMTP provider. Add these to your `.env` or docker environment:
+
+```bash
+# backend/.env (production)
 EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
 EMAIL_HOST=smtp.example.com
 EMAIL_PORT=587
 EMAIL_USE_TLS=True
 EMAIL_HOST_USER=your-email@example.com
-EMAIL_HOST_PASSWORD=your-password
+EMAIL_HOST_PASSWORD=your-app-password
+DEFAULT_FROM_EMAIL=KB Intra <noreply@yourdomain.com>
+SITE_URL=https://yourdomain.com
 ```
+
+### Provider-Specific Examples
+
+**Gmail (with App Password):**
+```bash
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USE_TLS=True
+EMAIL_HOST_USER=your-gmail@gmail.com
+EMAIL_HOST_PASSWORD=your-16-char-app-password
+```
+Note: Create an App Password at https://myaccount.google.com/apppasswords (requires 2FA enabled)
+
+**AWS SES:**
+```bash
+EMAIL_HOST=email-smtp.eu-west-1.amazonaws.com
+EMAIL_PORT=587
+EMAIL_USE_TLS=True
+EMAIL_HOST_USER=YOUR_SES_SMTP_USERNAME
+EMAIL_HOST_PASSWORD=YOUR_SES_SMTP_PASSWORD
+```
+
+**SendGrid:**
+```bash
+EMAIL_HOST=smtp.sendgrid.net
+EMAIL_PORT=587
+EMAIL_USE_TLS=True
+EMAIL_HOST_USER=apikey
+EMAIL_HOST_PASSWORD=your-sendgrid-api-key
+```
+
+**Mailgun:**
+```bash
+EMAIL_HOST=smtp.mailgun.org
+EMAIL_PORT=587
+EMAIL_USE_TLS=True
+EMAIL_HOST_USER=postmaster@your-domain.mailgun.org
+EMAIL_HOST_PASSWORD=your-mailgun-password
+```
+
+### Docker Production Configuration
+
+Add email variables to `docker-compose.yml`:
+
+```yaml
+services:
+  backend:
+    environment:
+      - EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+      - EMAIL_HOST=smtp.example.com
+      - EMAIL_PORT=587
+      - EMAIL_USE_TLS=True
+      - EMAIL_HOST_USER=your-email@example.com
+      - EMAIL_HOST_PASSWORD=your-password
+      - DEFAULT_FROM_EMAIL=KB Intra <noreply@yourdomain.com>
+      - SITE_URL=https://yourdomain.com
+```
+
+### Testing Email Configuration
+
+Test your email setup using Django's shell:
+
+```bash
+cd backend
+uv run python manage.py shell
+```
+
+```python
+from django.core.mail import send_mail
+send_mail(
+    'Test Email',
+    'This is a test email from KB Intra.',
+    None,  # Uses DEFAULT_FROM_EMAIL
+    ['your-email@example.com'],
+    fail_silently=False,
+)
+```
+
+### User Email Preferences
+
+Users can manage their email notification preferences at `/notifications` in the app. Available toggles:
+- Direct messages
+- Announcements
+- Forum subscriptions (new threads)
+- Thread replies
+- Event reminders
+- Food tickets
+
+All email notifications are **opt-in** by default (disabled until user enables them)
 
 ## Development Notes
 

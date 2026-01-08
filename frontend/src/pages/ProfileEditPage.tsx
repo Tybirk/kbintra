@@ -18,7 +18,7 @@ import {
 import { DateInput } from '@mantine/dates';
 import { Dropzone, IMAGE_MIME_TYPE } from '@mantine/dropzone';
 import { notifications } from '@mantine/notifications';
-import { IconUpload, IconPhoto, IconX, IconArrowLeft } from '@tabler/icons-react';
+import { IconUpload, IconPhoto, IconX, IconArrowLeft, IconLock } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 
 import { usersApi } from '../api/users';
@@ -280,7 +280,7 @@ export default function ProfileEditPage() {
             />
 
             <Group justify="flex-end" mt="md">
-              <Button variant="light" onClick={() => navigate('/profile')}>
+              <Button variant="light" onClick={() => navigate('/profil')}>
                 Cancel
               </Button>
               <Button
@@ -292,6 +292,19 @@ export default function ProfileEditPage() {
             </Group>
           </Stack>
         </form>
+      </Paper>
+
+      <Paper withBorder p="xl" radius="md" mt="xl">
+        <Title order={4} mb="md">
+          Sikkerhed
+        </Title>
+        <Button
+          variant="light"
+          leftSection={<IconLock size={16} />}
+          onClick={() => navigate('/profil/skift-adgangskode')}
+        >
+          Skift adgangskode
+        </Button>
       </Paper>
     </>
   );

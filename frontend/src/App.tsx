@@ -8,6 +8,9 @@ import { getAccessToken } from './api/client';
 // Pages
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
+import ChangePasswordPage from './pages/ChangePasswordPage';
 import DashboardPage from './pages/DashboardPage';
 import DirectoryPage from './pages/DirectoryPage';
 import HouseDetailPage from './pages/HouseDetailPage';
@@ -65,12 +68,14 @@ function App() {
     return <LoadingOverlay visible />;
   }
 
-  // Public routes (login, register)
+  // Public routes (login, register, password reset)
   if (!isAuthenticated) {
     return (
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
@@ -142,6 +147,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <ProfileEditPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/profil/skift-adgangskode"
+            element={
+              <ProtectedRoute>
+                <ChangePasswordPage />
               </ProtectedRoute>
             }
           />
