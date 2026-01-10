@@ -193,10 +193,18 @@ DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "KB Intra <noreply@kbintra.
 SITE_URL = os.getenv("SITE_URL", "http://localhost:5173")
 
 # Web Push settings
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
+VAPID_ADMIN_EMAIL = os.getenv("VAPID_ADMIN_EMAIL", "admin@kbintra.local")
+
+# VAPID claims for pywebpush
+VAPID_CLAIMS = {"sub": f"mailto:{VAPID_ADMIN_EMAIL}"} if VAPID_PRIVATE_KEY else None
+
+# Legacy format (for backwards compatibility)
 WEBPUSH_SETTINGS = {
-    "VAPID_PUBLIC_KEY": os.getenv("VAPID_PUBLIC_KEY", ""),
-    "VAPID_PRIVATE_KEY": os.getenv("VAPID_PRIVATE_KEY", ""),
-    "VAPID_ADMIN_EMAIL": os.getenv("VAPID_ADMIN_EMAIL", "admin@kbintra.local"),
+    "VAPID_PUBLIC_KEY": VAPID_PUBLIC_KEY,
+    "VAPID_PRIVATE_KEY": VAPID_PRIVATE_KEY,
+    "VAPID_ADMIN_EMAIL": VAPID_ADMIN_EMAIL,
 }
 
 # CSRF trusted origins (needed for POST requests through proxy)

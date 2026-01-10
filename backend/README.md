@@ -10,6 +10,7 @@ Django REST API backend for the KB Intra community platform.
 - djangorestframework-simplejwt (JWT auth)
 - SQLite (dev) / PostgreSQL (prod)
 - pytest + pytest-django (testing)
+- Ruff (linting/formatting) + ty (type checking)
 
 ## Project Structure
 
@@ -200,6 +201,14 @@ uv run daphne -b 0.0.0.0 -p 7000 config.asgi:application
 - `user` (OneToOne)
 - `notify_*` - In-app toggles
 - `email_*` - Email toggles
+- `push_*` - Push notification toggles
+
+**PushSubscription** - Web Push subscriptions
+- `user` (FK) - User who subscribed
+- `endpoint` - Push service endpoint URL
+- `p256dh_key` - Public encryption key
+- `auth_key` - Authentication secret
+- `user_agent` - Browser/device identifier
 
 ## API Endpoints
 
@@ -364,6 +373,9 @@ uv run daphne -b 0.0.0.0 -p 7000 config.asgi:application
 | DELETE | `/clear-all/` | Delete all |
 | GET | `/preferences/` | Get preferences |
 | PATCH | `/preferences/` | Update preferences |
+| GET | `/push/vapid-key/` | Get VAPID public key |
+| POST | `/push/subscribe/` | Subscribe to push notifications |
+| DELETE | `/push/subscribe/` | Unsubscribe from push |
 
 ### WebSocket
 
@@ -372,6 +384,19 @@ Connect to `ws://localhost:7000/ws/chat/?token=<jwt>` for real-time:
 - Typing indicators
 - Read receipts
 - New notifications
+
+## Code Quality
+
+```bash
+# Linting
+uv run ruff check .
+
+# Formatting
+uv run ruff format .
+
+# Type checking
+uvx ty check
+```
 
 ## Testing
 
@@ -390,6 +415,17 @@ uv run pytest apps/food/tests.py
 uv run pytest --cov=apps --cov-report=html
 ```
 
+## Required Checks
+
+Before committing, ensure all checks pass:
+
+```bash
+uv run ruff check .   # Linting
+uv run ruff format .  # Formatting
+uvx ty check          # Type checking
+uv run pytest         # Tests
+```
+
 ### Test Fixtures (conftest.py)
 
 Common fixtures available:
@@ -403,6 +439,82 @@ Common fixtures available:
 - `weekly_menu`, `meal_registration` - Food data
 - `food_team_cycle`, `food_team` - Team data
 
+## Push Notifications
+
+The application supports Web Push notifications, allowing users to receive notifications even when the browser is closed.
+
+### How It Works
+
+1. **Frontend subscribes**: When a user enables push notifications, the browser generates a push subscription with a unique endpoint and encryption keys.
+
+2. **Subscription stored**: The subscription is sent to the backend and stored in the `PushSubscription` model.
+
+3. **Notification triggered**: When a notification event occurs (new message, announcement, etc.), the backend:
+   - Creates an in-app notification
+   - Sends an email (if enabled)
+   - Sends a push notification using `pywebpush` (if enabled)
+
+4. **Push delivered**: The push service (FCM, Mozilla, Apple) delivers the notification to the user's device.
+
+5. **Service worker handles**: The frontend service worker receives the push event and displays a system notification.
+
+### Configuration
+
+Push notifications require VAPID (Voluntary Application Server Identification) keys. Generate them once and add to your environment:
+
+```bash
+# Generate VAPID keys (run once)
+python -c "from py_vapid import Vapid; v = Vapid(); v.generate_keys(); print(f'VAPID_PUBLIC_KEY={v.public_key.urlsafe_b64encode().decode()}\nVAPID_PRIVATE_KEY={v.private_key.urlsafe_b64encode().decode()}')"
+```
+
+Add to your `.env` file:
+
+```bash
+# Web Push (VAPID) Configuration
+VAPID_PUBLIC_KEY=your_public_key_here
+VAPID_PRIVATE_KEY=your_private_key_here
+VAPID_ADMIN_EMAIL=admin@yourdomain.com
+```
+
+### Settings Reference
+
+In `config/settings.py`:
+
+```python
+# Web Push settings
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
+VAPID_ADMIN_EMAIL = os.getenv("VAPID_ADMIN_EMAIL", "admin@example.com")
+
+# VAPID claims for pywebpush
+VAPID_CLAIMS = {"sub": f"mailto:{VAPID_ADMIN_EMAIL}"} if VAPID_PRIVATE_KEY else None
+```
+
+### User Preferences
+
+Users can control push notifications per notification type:
+
+- `push_messages` - Direct messages
+- `push_announcements` - Community announcements
+- `push_forum_subscriptions` - New threads in subscribed groups
+- `push_thread_replies` - Replies to user's threads
+- `push_event_reminders` - Calendar event reminders
+- `push_food_tickets` - Food ticket availability
+
+### Testing Push Notifications
+
+1. Start the backend with VAPID keys configured
+2. Open the frontend and go to Notifications > Settings > Push
+3. Click "Enable push notifications" and allow the browser permission
+4. Trigger a notification (e.g., send yourself a message from another account)
+5. You should receive a system notification
+
+### Troubleshooting
+
+- **No VAPID keys**: Push notifications are silently disabled if keys aren't configured
+- **Permission denied**: User must allow notifications in browser settings
+- **Expired subscriptions**: Automatically cleaned up when push delivery fails with 404/410
+
 ## Key Files
 
 - `config/settings.py` - Django settings with JWT, CORS, Channels config
@@ -413,6 +525,6 @@ Common fixtures available:
 - `apps/*/views.py` - API views
 - `apps/*/urls.py` - App URL patterns
 - `apps/*/admin.py` - Admin configuration
-- `apps/notifications/services.py` - Notification creation
+- `apps/notifications/services.py` - Notification creation + push sending
 - `apps/notifications/email_service.py` - Email sending
 - `apps/messaging/consumers.py` - WebSocket consumer

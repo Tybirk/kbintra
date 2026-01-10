@@ -28,6 +28,7 @@ uv run pytest apps/forum/tests.py -v       # Run specific app tests
 uv run pytest -k "test_name"               # Run single test by name
 uv run ruff check .                        # Lint
 uv run ruff format .                       # Format
+uvx ty check                               # Type check
 ```
 
 ### Frontend (run from `/frontend`)
@@ -99,6 +100,17 @@ Key config files:
 
 ## Code Style
 
-- Python: Ruff (line-length 100, py311)
+- Python: Ruff (line-length 100, py311), ty (type checking)
 - TypeScript: ESLint with React hooks rules
 - Tests: pytest-django (backend), Vitest + Testing Library (frontend)
+
+## Required Checks (Backend)
+
+Before committing, ensure all checks pass:
+
+```bash
+uv run ruff check .   # Linting
+uv run ruff format .  # Formatting
+uvx ty check          # Type checking
+uv run pytest         # Tests
+```

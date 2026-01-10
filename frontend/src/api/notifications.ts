@@ -60,4 +60,26 @@ export const notificationsApi = {
     const response = await apiClient.patch('/notifications/preferences/', data);
     return response.data;
   },
+
+  // Get VAPID public key for push notifications
+  getVapidPublicKey: async (): Promise<{ public_key: string }> => {
+    const response = await apiClient.get('/notifications/push/vapid-key/');
+    return response.data;
+  },
+
+  // Subscribe to push notifications
+  subscribePush: async (subscription: PushSubscription): Promise<void> => {
+    const subscriptionJson = subscription.toJSON();
+    await apiClient.post('/notifications/push/subscribe/', {
+      endpoint: subscriptionJson.endpoint,
+      keys: subscriptionJson.keys,
+    });
+  },
+
+  // Unsubscribe from push notifications
+  unsubscribePush: async (endpoint: string): Promise<void> => {
+    await apiClient.delete('/notifications/push/subscribe/', {
+      data: { endpoint },
+    });
+  },
 };

@@ -6,7 +6,7 @@ from rest_framework import serializers
 
 from apps.users.models import User
 
-from .models import Notification, NotificationPreference, NotificationType
+from .models import Notification, NotificationPreference, PushSubscription
 
 
 class RelatedUserSerializer(serializers.ModelSerializer):
@@ -62,6 +62,13 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
             "email_thread_replies",
             "email_event_reminders",
             "email_food_tickets",
+            # Push preferences
+            "push_messages",
+            "push_announcements",
+            "push_forum_subscriptions",
+            "push_thread_replies",
+            "push_event_reminders",
+            "push_food_tickets",
             "created_at",
             "updated_at",
         ]
@@ -76,3 +83,68 @@ class MarkNotificationsReadSerializer(serializers.Serializer):
         required=False,
         help_text="List of notification IDs to mark as read. If empty, marks all as read.",
     )
+
+
+class PushSubscriptionSerializer(serializers.ModelSerializer):
+    """Serializer for PushSubscription model."""
+
+    class Meta:
+        model = PushSubscription
+        fields = ["id", "endpoint", "p256dh_key", "auth_key", "user_agent", "created_at"]
+        read_only_fields = ["id", "created_at"]
+
+    def create(self, validated_data: dict) -> PushSubscription:
+        """Create or update push subscription."""
+        user = self.context["request"].user
+        endpoint = validated_data["endpoint"]
+
+        # Update existing subscription or create new one
+        subscription, created = PushSubscription.objects.update_or_create(
+            endpoint=endpoint,
+            defaults={
+                "user": user,
+                "p256dh_key": validated_data["p256dh_key"],
+                "auth_key": validated_data["auth_key"],
+                "user_agent": validated_data.get("user_agent", ""),
+            },
+        )
+        return subscription
+
+
+class PushSubscriptionInputSerializer(serializers.Serializer):
+    """Serializer for push subscription input from frontend."""
+
+    endpoint = serializers.URLField()
+    keys = serializers.DictField(child=serializers.CharField())
+
+    def validate_keys(self, value: dict) -> dict:
+        """Validate that required keys are present."""
+        if "p256dh" not in value:
+            raise serializers.ValidationError("Missing 'p256dh' key")
+        if "auth" not in value:
+            raise serializers.ValidationError("Missing 'auth' key")
+        return value
+
+    def create(self, validated_data: dict) -> PushSubscription:
+        """Create push subscription from browser format."""
+        user = self.context["request"].user
+        endpoint = validated_data["endpoint"]
+        keys = validated_data["keys"]
+
+        # Get user agent from request
+        request = self.context.get("request")
+        user_agent = ""
+        if request:
+            user_agent = request.META.get("HTTP_USER_AGENT", "")[:500]
+
+        # Update existing subscription or create new one
+        subscription, created = PushSubscription.objects.update_or_create(
+            endpoint=endpoint,
+            defaults={
+                "user": user,
+                "p256dh_key": keys["p256dh"],
+                "auth_key": keys["auth"],
+                "user_agent": user_agent,
+            },
+        )
+        return subscription

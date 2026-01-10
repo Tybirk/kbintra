@@ -58,7 +58,7 @@ class User(AbstractUser):
     Uses email as the unique identifier instead of username.
     """
 
-    username = None  # type: ignore[assignment]
+    username = None
     email = models.EmailField("email address", unique=True)
 
     # Profile fields

@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -17,6 +18,7 @@ import {
   Switch,
   Tabs,
   Box,
+  Alert,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
@@ -33,11 +35,20 @@ import {
   IconCalendar,
   IconToolsKitchen2,
   IconBellOff,
+  IconDeviceMobile,
+  IconInfoCircle,
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 
 import { notificationsApi } from '../api/notifications';
+import {
+  isPushSupported,
+  getNotificationPermission,
+  isPushSubscribed,
+  subscribeToPushNotifications,
+  unsubscribeFromPushNotifications,
+} from '../utils/pushNotifications';
 import type { Notification, NotificationPreference, NotificationType } from '../types';
 
 dayjs.extend(relativeTime);
@@ -354,6 +365,18 @@ interface NotificationPreferencesModalProps {
 
 function NotificationPreferencesModal({ opened, onClose }: NotificationPreferencesModalProps) {
   const queryClient = useQueryClient();
+  const [pushSupported] = useState(isPushSupported());
+  const [pushPermission, setPushPermission] = useState(getNotificationPermission());
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
+
+  // Check push subscription status when modal opens
+  useEffect(() => {
+    if (opened && pushSupported) {
+      isPushSubscribed().then(setPushSubscribed);
+      setPushPermission(getNotificationPermission());
+    }
+  }, [opened, pushSupported]);
 
   const { data: preferences, isLoading } = useQuery({
     queryKey: ['notification-preferences'],
@@ -384,6 +407,45 @@ function NotificationPreferencesModal({ opened, onClose }: NotificationPreferenc
     updateMutation.mutate({ [key]: value });
   };
 
+  const handlePushToggle = async () => {
+    setPushLoading(true);
+    try {
+      if (pushSubscribed) {
+        const success = await unsubscribeFromPushNotifications();
+        if (success) {
+          setPushSubscribed(false);
+          notifications.show({
+            title: 'Push-notifikationer deaktiveret',
+            message: 'Du modtager ikke længere push-notifikationer.',
+            color: 'blue',
+          });
+        }
+      } else {
+        const success = await subscribeToPushNotifications();
+        if (success) {
+          setPushSubscribed(true);
+          setPushPermission('granted');
+          notifications.show({
+            title: 'Push-notifikationer aktiveret',
+            message: 'Du modtager nu push-notifikationer på denne enhed.',
+            color: 'green',
+          });
+        } else {
+          setPushPermission(getNotificationPermission());
+          if (getNotificationPermission() === 'denied') {
+            notifications.show({
+              title: 'Tilladelse nægtet',
+              message: 'Du har blokeret notifikationer. Tillad dem i browserindstillinger.',
+              color: 'red',
+            });
+          }
+        }
+      }
+    } finally {
+      setPushLoading(false);
+    }
+  };
+
   return (
     <Modal
       opened={opened}
@@ -403,6 +465,9 @@ function NotificationPreferencesModal({ opened, onClose }: NotificationPreferenc
             </Tabs.Tab>
             <Tabs.Tab value="email" leftSection={<IconMessage size={16} />}>
               E-mail
+            </Tabs.Tab>
+            <Tabs.Tab value="push" leftSection={<IconDeviceMobile size={16} />}>
+              Push
             </Tabs.Tab>
           </Tabs.List>
 
@@ -491,6 +556,77 @@ function NotificationPreferencesModal({ opened, onClose }: NotificationPreferenc
                 checked={preferences.email_food_tickets}
                 onChange={(e) => handleToggle('email_food_tickets', e.currentTarget.checked)}
               />
+            </Stack>
+          </Tabs.Panel>
+
+          <Tabs.Panel value="push">
+            <Stack gap="md">
+              {!pushSupported ? (
+                <Alert icon={<IconInfoCircle size={16} />} color="yellow">
+                  Push-notifikationer understøttes ikke i denne browser.
+                </Alert>
+              ) : pushPermission === 'denied' ? (
+                <Alert icon={<IconInfoCircle size={16} />} color="red">
+                  Du har blokeret notifikationer. Aktivér dem i browserindstillinger for at modtage push-notifikationer.
+                </Alert>
+              ) : (
+                <>
+                  <Text size="sm" c="dimmed" mb="xs">
+                    Modtag push-notifikationer direkte på denne enhed, selv når browseren er lukket.
+                  </Text>
+                  <Button
+                    onClick={handlePushToggle}
+                    loading={pushLoading}
+                    color={pushSubscribed ? 'red' : 'blue'}
+                    variant={pushSubscribed ? 'light' : 'filled'}
+                  >
+                    {pushSubscribed ? 'Deaktivér push-notifikationer' : 'Aktivér push-notifikationer'}
+                  </Button>
+                  {pushSubscribed && (
+                    <>
+                      <Text size="sm" c="dimmed" mt="md" mb="xs">
+                        Vælg hvilke push-notifikationer du vil modtage.
+                      </Text>
+                      <Switch
+                        label="Nye beskeder"
+                        description="Push-notifikation når nogen sender dig en direkte besked"
+                        checked={preferences.push_messages}
+                        onChange={(e) => handleToggle('push_messages', e.currentTarget.checked)}
+                      />
+                      <Switch
+                        label="Opslag"
+                        description="Push-notifikation når nye fællesskabsopslag bliver oprettet"
+                        checked={preferences.push_announcements}
+                        onChange={(e) => handleToggle('push_announcements', e.currentTarget.checked)}
+                      />
+                      <Switch
+                        label="Forum-abonnementer"
+                        description="Push-notifikation for nye tråde i grupper du abonnerer på"
+                        checked={preferences.push_forum_subscriptions}
+                        onChange={(e) => handleToggle('push_forum_subscriptions', e.currentTarget.checked)}
+                      />
+                      <Switch
+                        label="Trådsvar"
+                        description="Push-notifikation når nogen svarer på din tråd"
+                        checked={preferences.push_thread_replies}
+                        onChange={(e) => handleToggle('push_thread_replies', e.currentTarget.checked)}
+                      />
+                      <Switch
+                        label="Begivenhedspåmindelser"
+                        description="Push-påmindelser om kommende kalenderbegivenheder"
+                        checked={preferences.push_event_reminders}
+                        onChange={(e) => handleToggle('push_event_reminders', e.currentTarget.checked)}
+                      />
+                      <Switch
+                        label="Madbilletter"
+                        description="Push-notifikation når nye madbilletter bliver tilgængelige"
+                        checked={preferences.push_food_tickets}
+                        onChange={(e) => handleToggle('push_food_tickets', e.currentTarget.checked)}
+                      />
+                    </>
+                  )}
+                </>
+              )}
             </Stack>
           </Tabs.Panel>
         </Tabs>

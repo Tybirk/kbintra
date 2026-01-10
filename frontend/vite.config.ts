@@ -39,6 +39,13 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         navigateFallbackDenylist: [/^\/admin/, /^\/api/, /^\/media/, /^\/static/],
       },
+      // Use custom service worker to handle push notifications
+      srcDir: 'src',
+      filename: 'sw.ts',
+      strategies: 'injectManifest',
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+      },
     }),
   ],
   server: {

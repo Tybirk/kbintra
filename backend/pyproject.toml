@@ -40,3 +40,24 @@ ignore = ["E501"]
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+
+[tool.ty.rules]
+# Ignore Django/DRF false positives - ty doesn't have Django support yet (planned for 2026)
+# See: https://astral.sh/blog/ty
+#
+# Model.objects, FK _id, QuerySet methods not recognized
+unresolved-attribute = "ignore"
+# Django field attribute access (.url, .date(), .delete() on FileField, etc.)
+possibly-missing-attribute = "ignore"
+# Django fields (CharField, TextField, etc.) are str at runtime
+invalid-return-type = "ignore"
+# Django numeric fields (PositiveIntegerField) support arithmetic
+unsupported-operator = "ignore"
+# Django TextField supports slicing, JSONField is subscriptable
+not-subscriptable = "ignore"
+# Django JSONField is iterable at runtime
+not-iterable = "ignore"
+# Django field types passed where Python types expected (JSONField -> Sized, etc.)
+invalid-argument-type = "ignore"
+# DRF serializers commonly override methods with different signatures
+invalid-method-override = "ignore"

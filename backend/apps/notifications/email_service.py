@@ -3,7 +3,6 @@ Email service for sending notification emails.
 """
 
 import logging
-from typing import Optional
 
 from django.conf import settings
 from django.core.mail import send_mail
@@ -43,8 +42,8 @@ def send_notification_email(
     title: str,
     message: str,
     link: str = "",
-    related_user: Optional[User] = None,
-    html_content: Optional[str] = None,
+    related_user: User | None = None,
+    html_content: str | None = None,
 ) -> bool:
     """Send a notification email to a user.
 

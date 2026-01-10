@@ -181,7 +181,7 @@ class CreateMessageSerializer(serializers.ModelSerializer):
             notify_new_message(
                 recipient=participant,
                 sender=sender,
-                message_preview=message.content,
+                message_content=message.content,
                 conversation_id=message.conversation.id,
             )
 

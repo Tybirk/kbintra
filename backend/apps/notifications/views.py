@@ -2,17 +2,20 @@
 Views for Notifications app.
 """
 
+from django.conf import settings
 from django.db.models import QuerySet
 from rest_framework import generics, permissions, status
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Notification, NotificationPreference
+from .models import Notification, NotificationPreference, PushSubscription
 from .serializers import (
     MarkNotificationsReadSerializer,
     NotificationPreferenceSerializer,
     NotificationSerializer,
+    PushSubscriptionInputSerializer,
+    PushSubscriptionSerializer,
 )
 
 
@@ -67,9 +70,7 @@ class UnreadNotificationCountView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request: Request) -> Response:
-        unread_count = Notification.objects.filter(
-            user=request.user, is_read=False
-        ).count()
+        unread_count = Notification.objects.filter(user=request.user, is_read=False).count()
         return Response({"unread_count": unread_count})
 
 
@@ -81,9 +82,7 @@ class NotificationPreferenceView(generics.RetrieveUpdateAPIView):
 
     def get_object(self) -> NotificationPreference:
         # Get or create preferences for the user
-        preferences, _ = NotificationPreference.objects.get_or_create(
-            user=self.request.user
-        )
+        preferences, _ = NotificationPreference.objects.get_or_create(user=self.request.user)
         return preferences
 
 
@@ -95,3 +94,64 @@ class ClearAllNotificationsView(APIView):
     def delete(self, request: Request) -> Response:
         deleted_count, _ = Notification.objects.filter(user=request.user).delete()
         return Response({"deleted": deleted_count})
+
+
+class VapidPublicKeyView(APIView):
+    """Get VAPID public key for Web Push subscription."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        public_key = getattr(settings, "VAPID_PUBLIC_KEY", None)
+        if not public_key:
+            return Response(
+                {"error": "Web Push not configured"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response({"public_key": public_key})
+
+
+class PushSubscriptionView(APIView):
+    """Manage Web Push subscriptions."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        """List user's push subscriptions."""
+        subscriptions = PushSubscription.objects.filter(user=request.user)
+        serializer = PushSubscriptionSerializer(subscriptions, many=True)
+        return Response(serializer.data)
+
+    def post(self, request: Request) -> Response:
+        """Subscribe to push notifications."""
+        serializer = PushSubscriptionInputSerializer(
+            data=request.data, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        subscription = serializer.save()
+
+        return Response(
+            PushSubscriptionSerializer(subscription).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    def delete(self, request: Request) -> Response:
+        """Unsubscribe from push notifications."""
+        endpoint = request.data.get("endpoint")
+        if not endpoint:
+            return Response(
+                {"error": "Endpoint is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        deleted_count, _ = PushSubscription.objects.filter(
+            user=request.user, endpoint=endpoint
+        ).delete()
+
+        if deleted_count == 0:
+            return Response(
+                {"error": "Subscription not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return Response(status=status.HTTP_204_NO_CONTENT)

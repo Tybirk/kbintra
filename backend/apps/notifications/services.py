@@ -2,15 +2,20 @@
 Notification services for creating notifications.
 """
 
-from typing import Optional
+import contextlib
+import json
+import logging
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from django.conf import settings
 from django.db.models import QuerySet
 
 from apps.users.models import User
 
-from .models import Notification, NotificationPreference, NotificationType
+from .models import Notification, NotificationPreference, NotificationType, PushSubscription
+
+logger = logging.getLogger(__name__)
 
 
 def send_notification_to_websocket(notification: Notification) -> None:
@@ -53,7 +58,7 @@ def send_notification_to_websocket(notification: Notification) -> None:
 
 
 def get_user_preference(user: User, notification_type: NotificationType) -> bool:
-    """Check if user wants to receive a specific notification type."""
+    """Check if user wants to receive a specific notification type (in-app)."""
     try:
         prefs = user.notification_preferences
     except NotificationPreference.DoesNotExist:
@@ -73,16 +78,127 @@ def get_user_preference(user: User, notification_type: NotificationType) -> bool
     return preference_map.get(notification_type, True)
 
 
+def get_user_push_preference(user: User, notification_type: NotificationType) -> bool:
+    """Check if user wants to receive push notifications for a specific type."""
+    try:
+        prefs = user.notification_preferences
+    except NotificationPreference.DoesNotExist:
+        # Default to True if no preferences set
+        return True
+
+    preference_map = {
+        NotificationType.NEW_MESSAGE: prefs.push_messages,
+        NotificationType.NEW_ANNOUNCEMENT: prefs.push_announcements,
+        NotificationType.NEW_THREAD: prefs.push_forum_subscriptions,
+        NotificationType.THREAD_REPLY: prefs.push_thread_replies,
+        NotificationType.POST_REPLY: prefs.push_thread_replies,
+        NotificationType.EVENT_REMINDER: prefs.push_event_reminders,
+        NotificationType.FOOD_TICKET: prefs.push_food_tickets,
+    }
+
+    return preference_map.get(notification_type, True)
+
+
+def send_push_notification(
+    user: User,
+    notification_type: NotificationType,
+    title: str,
+    message: str,
+    link: str = "",
+) -> int:
+    """Send push notification to all user's subscribed devices.
+
+    Args:
+        user: The user to notify
+        notification_type: Type of notification (for preference checking)
+        title: Notification title
+        message: Notification body
+        link: URL to open when notification is clicked
+
+    Returns:
+        Number of successful push notifications sent
+    """
+    # Check if push notifications are configured
+    vapid_private_key = getattr(settings, "VAPID_PRIVATE_KEY", None)
+    vapid_claims = getattr(settings, "VAPID_CLAIMS", None)
+
+    if not vapid_private_key or not vapid_claims:
+        logger.debug("Push notifications not configured, skipping")
+        return 0
+
+    # Check user push preference
+    if not get_user_push_preference(user, notification_type):
+        logger.debug(f"User {user.id} has push disabled for {notification_type}")
+        return 0
+
+    # Get user's push subscriptions
+    subscriptions = PushSubscription.objects.filter(user=user)
+    if not subscriptions.exists():
+        logger.debug(f"User {user.id} has no push subscriptions")
+        return 0
+
+    # Import pywebpush here to avoid import errors if not installed
+    try:
+        from pywebpush import WebPushException, webpush
+    except ImportError:
+        logger.warning("pywebpush not installed, skipping push notifications")
+        return 0
+
+    # Prepare notification payload
+    payload = json.dumps(
+        {
+            "title": title,
+            "body": message,
+            "icon": "/pwa-192x192.png",
+            "badge": "/pwa-192x192.png",
+            "data": {
+                "url": link,
+                "notification_type": notification_type,
+            },
+        }
+    )
+
+    success_count = 0
+    expired_subscriptions = []
+
+    for subscription in subscriptions:
+        try:
+            webpush(
+                subscription_info=subscription.get_subscription_info(),
+                data=payload,
+                vapid_private_key=vapid_private_key,
+                vapid_claims=vapid_claims,
+            )
+            success_count += 1
+            logger.debug(f"Push notification sent to subscription {subscription.id}")
+        except WebPushException as e:
+            # Handle expired/invalid subscriptions
+            if e.response and e.response.status_code in (404, 410):
+                logger.info(f"Push subscription {subscription.id} is expired, marking for deletion")
+                expired_subscriptions.append(subscription.id)
+            else:
+                logger.error(f"Push notification failed for subscription {subscription.id}: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error sending push notification: {e}")
+
+    # Clean up expired subscriptions
+    if expired_subscriptions:
+        PushSubscription.objects.filter(id__in=expired_subscriptions).delete()
+        logger.info(f"Deleted {len(expired_subscriptions)} expired push subscriptions")
+
+    return success_count
+
+
 def create_notification(
     user: User,
     notification_type: NotificationType,
     title: str,
     message: str,
     link: str = "",
-    related_user: Optional[User] = None,
+    related_user: User | None = None,
     check_preferences: bool = True,
-    html_content: Optional[str] = None,
-) -> Optional[Notification]:
+    html_content: str | None = None,
+) -> Notification | None:
     """Create a notification for a user.
 
     Args:
@@ -112,14 +228,11 @@ def create_notification(
     )
 
     # Send real-time notification via WebSocket
-    try:
+    with contextlib.suppress(Exception):
         send_notification_to_websocket(notification)
-    except Exception:
-        # Don't fail if WebSocket notification fails
-        pass
 
     # Send email notification if user has email enabled for this type
-    try:
+    with contextlib.suppress(Exception):
         from .email_service import send_notification_email
 
         send_notification_email(
@@ -131,9 +244,16 @@ def create_notification(
             related_user=related_user,
             html_content=html_content,
         )
-    except Exception:
-        # Don't fail if email notification fails
-        pass
+
+    # Send push notification if user has push enabled for this type
+    with contextlib.suppress(Exception):
+        send_push_notification(
+            user=user,
+            notification_type=notification_type,
+            title=title,
+            message=message,
+            link=link,
+        )
 
     return notification
 
@@ -143,7 +263,7 @@ def notify_new_message(
     sender: User,
     message_content: str,
     conversation_id: int,
-) -> Optional[Notification]:
+) -> Notification | None:
     """Create notification for a new message."""
     # Preview for in-app notification
     preview = message_content[:100] + ("..." if len(message_content) > 100 else "")
@@ -185,7 +305,9 @@ def notify_new_announcement(
             message=announcement_title,
             link="/opslag",
             related_user=author,
-            html_content=f"<h3>{announcement_title}</h3>{announcement_content}" if announcement_content else None,
+            html_content=f"<h3>{announcement_title}</h3>{announcement_content}"
+            if announcement_content
+            else None,
         )
         if notification:
             count += 1
@@ -221,7 +343,9 @@ def notify_new_thread(
             message=thread_title,
             link=f"/forum/traad/{thread_id}",
             related_user=author,
-            html_content=f"<h3>{thread_title}</h3>{initial_post_content}" if initial_post_content else None,
+            html_content=f"<h3>{thread_title}</h3>{initial_post_content}"
+            if initial_post_content
+            else None,
         )
         if notification:
             count += 1
@@ -234,7 +358,7 @@ def notify_thread_reply(
     thread_title: str,
     thread_id: int,
     reply_content: str,
-) -> Optional[Notification]:
+) -> Notification | None:
     """Create notification for a reply to user's thread.
 
     Args:
@@ -249,6 +373,7 @@ def notify_thread_reply(
 
     # Create preview for in-app notification (strip HTML for preview)
     from django.utils.html import strip_tags
+
     plain_text = strip_tags(reply_content)
     preview = plain_text[:80] + "..." if len(plain_text) > 80 else plain_text
 
@@ -269,7 +394,7 @@ def notify_post_reply(
     thread_title: str,
     thread_id: int,
     reply_content: str,
-) -> Optional[Notification]:
+) -> Notification | None:
     """Create notification for a reply after user's post.
 
     Args:
@@ -284,6 +409,7 @@ def notify_post_reply(
 
     # Create preview for in-app notification (strip HTML for preview)
     from django.utils.html import strip_tags
+
     plain_text = strip_tags(reply_content)
     preview = plain_text[:80] + "..." if len(plain_text) > 80 else plain_text
 
@@ -328,7 +454,7 @@ def notify_ticket_claimed(
     owner: User,
     claimer: User,
     ticket_date: str,
-) -> Optional[Notification]:
+) -> Notification | None:
     """Notify ticket owner that their ticket was claimed."""
     return create_notification(
         user=owner,
