@@ -1,21 +1,21 @@
-import { useEditor } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Link from '@tiptap/extension-link';
-import Placeholder from '@tiptap/extension-placeholder';
-import { RichTextEditor as MantineRTE } from '@mantine/tiptap';
-import EmojiPicker from './EmojiPicker';
+import { useEditor } from "@tiptap/react"
+import StarterKit from "@tiptap/starter-kit"
+import Link from "@tiptap/extension-link"
+import Placeholder from "@tiptap/extension-placeholder"
+import { RichTextEditor as MantineRTE } from "@mantine/tiptap"
+import EmojiPicker from "./EmojiPicker"
 
 interface RichTextEditorProps {
-  content: string;
-  onChange: (content: string) => void;
-  placeholder?: string;
-  minHeight?: number;
+  content: string
+  onChange: (content: string) => void
+  placeholder?: string
+  minHeight?: number
 }
 
 export default function RichTextEditor({
   content,
   onChange,
-  placeholder = 'Write something...',
+  placeholder = "Write something...",
   minHeight = 150,
 }: RichTextEditorProps) {
   const editor = useEditor({
@@ -30,13 +30,13 @@ export default function RichTextEditor({
     ],
     content,
     onUpdate: ({ editor }) => {
-      onChange(editor.getHTML());
+      onChange(editor.getHTML())
     },
-  });
+  })
 
   const handleEmojiSelect = (emoji: string) => {
-    editor?.chain().focus().insertContent(emoji).run();
-  };
+    editor?.chain().focus().insertContent(emoji).run()
+  }
 
   return (
     <MantineRTE editor={editor} style={{ minHeight }}>
@@ -77,5 +77,5 @@ export default function RichTextEditor({
 
       <MantineRTE.Content />
     </MantineRTE>
-  );
+  )
 }

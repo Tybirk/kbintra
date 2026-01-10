@@ -54,6 +54,20 @@ Fill in:
 - `CSRF_TRUSTED_ORIGINS`: `https://app.yourdomain.com`
 - `CLOUDFLARE_TUNNEL_TOKEN`: Token from Cloudflare dashboard
 
+### Push Notifications (Optional)
+
+To enable Web Push notifications:
+
+```bash
+# Generate VAPID keys (run once)
+docker compose exec backend python -c "from py_vapid import Vapid; v = Vapid(); v.generate_keys(); print(f'VAPID_PUBLIC_KEY={v.public_key.urlsafe_b64encode().decode()}\nVAPID_PRIVATE_KEY={v.private_key.urlsafe_b64encode().decode()}')"
+```
+
+Add the generated keys to your `.env` file:
+- `VAPID_PUBLIC_KEY`: The public key
+- `VAPID_PRIVATE_KEY`: The private key
+- `VAPID_ADMIN_EMAIL`: Contact email for push service
+
 ## Deploy
 
 ```bash
@@ -111,3 +125,41 @@ docker compose exec backend bash
 # Django shell
 docker compose exec backend uv run python manage.py shell
 ```
+
+## Pre-Deployment Checks
+
+Before deploying, run these checks locally:
+
+```bash
+# Backend checks (from /backend directory)
+uv run ruff check .          # Linting
+uv run ruff format --check . # Formatting
+uvx ty check                 # Type checking
+uv run pytest                # Tests
+
+# Frontend checks (from /frontend directory)
+npm run lint                 # ESLint
+npm run build               # Build check
+npm test -- --run           # Tests
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**WebSocket connection fails:**
+- Ensure Daphne is running (check `docker compose logs backend`)
+- Verify Traefik is forwarding WebSocket connections
+
+**Push notifications not working:**
+- Check VAPID keys are set in `.env`
+- Verify browser supports push (HTTPS required)
+- Check browser notification permissions
+
+**Media files not loading:**
+- Ensure `/opt/kbintra/data/media` directory exists and has correct permissions
+- Check MEDIA_URL in Django settings
+
+**Database locked errors:**
+- SQLite concurrent write issue - restart backend container
+- Consider increasing busy_timeout in settings if frequent

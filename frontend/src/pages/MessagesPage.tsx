@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect, useRef } from "react"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
   Text,
@@ -17,114 +17,123 @@ import {
   Box,
   Indicator,
   TypographyStylesProvider,
-} from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
-import { notifications } from '@mantine/notifications';
+} from "@mantine/core"
+import { useDisclosure } from "@mantine/hooks"
+import { notifications } from "@mantine/notifications"
 import {
   IconPlus,
   IconMessage,
   IconSearch,
   IconCheck,
   IconChecks,
-} from '@tabler/icons-react';
-import dayjs from 'dayjs';
-import relativeTime from 'dayjs/plugin/relativeTime';
+} from "@tabler/icons-react"
+import dayjs from "dayjs"
+import relativeTime from "dayjs/plugin/relativeTime"
 
-import { messagingApi, ChatWebSocket } from '../api/messaging';
-import { apiClient, getAccessToken } from '../api/client';
-import { useAuthStore } from '../store/authStore';
+import { messagingApi, ChatWebSocket } from "../api/messaging"
+import { apiClient, getAccessToken } from "../api/client"
+import { useAuthStore } from "../store/authStore"
 import type {
   Conversation,
   ConversationDetail,
   Message,
   WsMessage,
   User,
-} from '../types';
-import ChatRichTextEditor from '../components/ChatRichTextEditor';
-import RichTextEditor from '../components/RichTextEditor';
+} from "../types"
+import ChatRichTextEditor from "../components/ChatRichTextEditor"
+import RichTextEditor from "../components/RichTextEditor"
 
-dayjs.extend(relativeTime);
+dayjs.extend(relativeTime)
 
 // Create WebSocket instance
-const chatWs = new ChatWebSocket(getAccessToken);
+const chatWs = new ChatWebSocket(getAccessToken)
 
 export default function MessagesPage() {
-  const { user } = useAuthStore();
-  const queryClient = useQueryClient();
-  const [selectedConversation, setSelectedConversation] = useState<number | null>(null);
-  const [newMessageModalOpened, { open: openNewMessageModal, close: closeNewMessageModal }] =
-    useDisclosure(false);
-  const [isWsConnected, setIsWsConnected] = useState(false);
+  const { user } = useAuthStore()
+  const queryClient = useQueryClient()
+  const [selectedConversation, setSelectedConversation] =
+    useState<number | null>(null)
+  const [
+    newMessageModalOpened,
+    { open: openNewMessageModal, close: closeNewMessageModal },
+  ] = useDisclosure(false)
+  const [isWsConnected, setIsWsConnected] = useState(false)
 
   // Fetch conversations
   const { data: conversations, isLoading: conversationsLoading } = useQuery({
-    queryKey: ['conversations'],
+    queryKey: ["conversations"],
     queryFn: messagingApi.getConversations,
-  });
+  })
 
   // Fetch selected conversation detail
-  const { data: activeConversation, isLoading: conversationLoading } = useQuery({
-    queryKey: ['conversation', selectedConversation],
-    queryFn: () =>
-      selectedConversation ? messagingApi.getConversation(selectedConversation) : null,
-    enabled: !!selectedConversation,
-  });
+  const { data: activeConversation, isLoading: conversationLoading } = useQuery(
+    {
+      queryKey: ["conversation", selectedConversation],
+      queryFn: () =>
+        selectedConversation
+          ? messagingApi.getConversation(selectedConversation)
+          : null,
+      enabled: !!selectedConversation,
+    },
+  )
 
   // Connect WebSocket on mount
   useEffect(() => {
-    chatWs.connect();
+    chatWs.connect()
 
     const unsubConnection = chatWs.onConnectionChange((connected) => {
-      setIsWsConnected(connected);
-    });
+      setIsWsConnected(connected)
+    })
 
     const unsubMessage = chatWs.onMessage((data) => {
-      const wsData = data as WsMessage;
+      const wsData = data as WsMessage
 
-      if (wsData.type === 'new_message') {
+      if (wsData.type === "new_message") {
         // Update conversation list
-        queryClient.invalidateQueries({ queryKey: ['conversations'] });
+        queryClient.invalidateQueries({ queryKey: ["conversations"] })
         // Update active conversation if it matches
         if (wsData.message.conversation === selectedConversation) {
           queryClient.setQueryData<ConversationDetail>(
-            ['conversation', selectedConversation],
+            ["conversation", selectedConversation],
             (old) => {
-              if (!old) return old;
+              if (!old) return old
               // Check if message already exists to prevent duplicates
               if (old.messages.some((m) => m.id === wsData.message.id)) {
-                return old;
+                return old
               }
               return {
                 ...old,
                 messages: [...old.messages, wsData.message],
-              };
-            }
-          );
+              }
+            },
+          )
         }
-      } else if (wsData.type === 'messages_read') {
+      } else if (wsData.type === "messages_read") {
         // Update read status in active conversation
-        queryClient.invalidateQueries({ queryKey: ['conversation', wsData.conversation_id] });
-      } else if (wsData.type === 'new_conversation') {
-        queryClient.invalidateQueries({ queryKey: ['conversations'] });
+        queryClient.invalidateQueries({
+          queryKey: ["conversation", wsData.conversation_id],
+        })
+      } else if (wsData.type === "new_conversation") {
+        queryClient.invalidateQueries({ queryKey: ["conversations"] })
       }
-    });
+    })
 
     return () => {
-      unsubConnection();
-      unsubMessage();
-      chatWs.disconnect();
-    };
-  }, [queryClient, selectedConversation]);
+      unsubConnection()
+      unsubMessage()
+      chatWs.disconnect()
+    }
+  }, [queryClient, selectedConversation])
 
   // Mark messages as read when viewing conversation
   useEffect(() => {
     if (selectedConversation && activeConversation?.unread_count) {
-      chatWs.markRead(selectedConversation);
+      chatWs.markRead(selectedConversation)
       // Optimistically update the conversation detail to mark messages as read
       queryClient.setQueryData<ConversationDetail>(
-        ['conversation', selectedConversation],
+        ["conversation", selectedConversation],
         (old) => {
-          if (!old) return old;
+          if (!old) return old
           return {
             ...old,
             unread_count: 0,
@@ -132,23 +141,23 @@ export default function MessagesPage() {
               ...msg,
               is_read: msg.is_own ? msg.is_read : true,
             })),
-          };
-        }
-      );
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+          }
+        },
+      )
+      queryClient.invalidateQueries({ queryKey: ["conversations"] })
     }
-  }, [selectedConversation, activeConversation?.unread_count, queryClient]);
+  }, [selectedConversation, activeConversation?.unread_count, queryClient])
 
   const handleSelectConversation = (id: number) => {
-    setSelectedConversation(id);
-  };
+    setSelectedConversation(id)
+  }
 
   const handleNewConversationCreated = (conversationId: number) => {
-    closeNewMessageModal();
-    chatWs.joinConversation(conversationId);
-    setSelectedConversation(conversationId);
-    queryClient.invalidateQueries({ queryKey: ['conversations'] });
-  };
+    closeNewMessageModal()
+    chatWs.joinConversation(conversationId)
+    setSelectedConversation(conversationId)
+    queryClient.invalidateQueries({ queryKey: ["conversations"] })
+  }
 
   return (
     <>
@@ -164,22 +173,32 @@ export default function MessagesPage() {
             )}
           </Group>
         </div>
-        <Button leftSection={<IconPlus size={16} />} onClick={openNewMessageModal}>
+        <Button
+          leftSection={<IconPlus size={16} />}
+          onClick={openNewMessageModal}
+        >
           Ny besked
         </Button>
       </Group>
 
-      <Paper withBorder radius="md" style={{ height: 'calc(100vh - 200px)', display: 'flex' }}>
+      <Paper
+        withBorder
+        radius="md"
+        style={{ height: "calc(100vh - 200px)", display: "flex" }}
+      >
         {/* Conversation List */}
         <Box
           style={{
             width: 320,
-            borderRight: '1px solid var(--mantine-color-gray-3)',
-            display: 'flex',
-            flexDirection: 'column',
+            borderRight: "1px solid var(--mantine-color-gray-3)",
+            display: "flex",
+            flexDirection: "column",
           }}
         >
-          <Box p="md" style={{ borderBottom: '1px solid var(--mantine-color-gray-3)' }}>
+          <Box
+            p="md"
+            style={{ borderBottom: "1px solid var(--mantine-color-gray-3)" }}
+          >
             <TextInput
               placeholder="Søg i samtaler..."
               leftSection={<IconSearch size={16} />}
@@ -215,7 +234,7 @@ export default function MessagesPage() {
         </Box>
 
         {/* Chat Area */}
-        <Box style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <Box style={{ flex: 1, display: "flex", flexDirection: "column" }}>
           {selectedConversation ? (
             conversationLoading ? (
               <Center style={{ flex: 1 }}>
@@ -225,7 +244,7 @@ export default function MessagesPage() {
               <ChatArea
                 conversation={activeConversation}
                 onSendMessage={(content) => {
-                  chatWs.sendMessage(selectedConversation, content);
+                  chatWs.sendMessage(selectedConversation, content)
                 }}
               />
             ) : null
@@ -246,14 +265,14 @@ export default function MessagesPage() {
         onSuccess={handleNewConversationCreated}
       />
     </>
-  );
+  )
 }
 
 interface ConversationItemProps {
-  conversation: Conversation;
-  isSelected: boolean;
-  currentUserId?: number;
-  onClick: () => void;
+  conversation: Conversation
+  isSelected: boolean
+  currentUserId?: number
+  onClick: () => void
 }
 
 function ConversationItem({
@@ -262,20 +281,21 @@ function ConversationItem({
   currentUserId,
   onClick,
 }: ConversationItemProps) {
-  const otherParticipants = conversation.other_participants;
+  const otherParticipants = conversation.other_participants
+  const isGroupChat = otherParticipants.length > 1
   const displayName =
     otherParticipants.length > 0
-      ? otherParticipants.map((p) => p.first_name).join(', ')
-      : 'Unknown';
-  const avatar = otherParticipants[0];
+      ? otherParticipants.map((p) => p.first_name).join(", ")
+      : "Unknown"
+  const avatar = otherParticipants[0]
 
   return (
     <Box
       p="sm"
       style={{
-        cursor: 'pointer',
-        backgroundColor: isSelected ? 'var(--mantine-color-blue-0)' : undefined,
-        borderBottom: '1px solid var(--mantine-color-gray-2)',
+        cursor: "pointer",
+        backgroundColor: isSelected ? "var(--mantine-color-blue-0)" : undefined,
+        borderBottom: "1px solid var(--mantine-color-gray-2)",
       }}
       onClick={onClick}
     >
@@ -286,10 +306,23 @@ function ConversationItem({
           size={10}
           offset={4}
         >
-          <Avatar src={avatar?.profile_picture} radius="xl" size="md">
-            {avatar?.first_name?.[0]}
-            {avatar?.last_name?.[0]}
-          </Avatar>
+          {isGroupChat ? (
+            <Avatar.Group spacing="sm">
+              <Avatar src={otherParticipants[0]?.profile_picture} radius="xl" size="md">
+                {otherParticipants[0]?.first_name?.[0]}
+              </Avatar>
+              <Avatar src={otherParticipants[1]?.profile_picture} radius="xl" size="md">
+                {otherParticipants.length > 2
+                  ? `+${otherParticipants.length - 1}`
+                  : otherParticipants[1]?.first_name?.[0]}
+              </Avatar>
+            </Avatar.Group>
+          ) : (
+            <Avatar src={avatar?.profile_picture} radius="xl" size="md">
+              {avatar?.first_name?.[0]}
+              {avatar?.last_name?.[0]}
+            </Avatar>
+          )}
         </Indicator>
         <div style={{ flex: 1, minWidth: 0 }}>
           <Group justify="space-between" gap="xs" wrap="nowrap">
@@ -304,8 +337,12 @@ function ConversationItem({
           </Group>
           {conversation.last_message && (
             <Text size="sm" c="dimmed" truncate>
-              {conversation.last_message.sender_id === currentUserId ? 'Dig: ' : ''}
-              {conversation.last_message.content}
+              {conversation.last_message.sender_id === currentUserId
+                ? "Dig: "
+                : isGroupChat
+                  ? `${otherParticipants.find((p) => p.id === conversation.last_message?.sender_id)?.first_name || ""}: `
+                  : ""}
+              {conversation.last_message.content.replace(/<[^>]*>/g, "")}
             </Text>
           )}
         </div>
@@ -316,48 +353,50 @@ function ConversationItem({
         )}
       </Group>
     </Box>
-  );
+  )
 }
 
 interface ChatAreaProps {
-  conversation: ConversationDetail;
-  onSendMessage: (content: string) => void;
+  conversation: ConversationDetail
+  onSendMessage: (content: string) => void
 }
 
 function ChatArea({ conversation, onSendMessage }: ChatAreaProps) {
-  const [message, setMessage] = useState('');
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [message, setMessage] = useState("")
+  const scrollRef = useRef<HTMLDivElement>(null)
 
-  const otherParticipants = conversation.other_participants;
+  const otherParticipants = conversation.other_participants
   const displayName =
     otherParticipants.length > 0
-      ? otherParticipants.map((p) => `${p.first_name} ${p.last_name}`).join(', ')
-      : 'Unknown';
+      ? otherParticipants
+          .map((p) => `${p.first_name} ${p.last_name}`)
+          .join(", ")
+      : "Unknown"
 
   // Scroll to bottom when messages change
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTo({
         top: scrollRef.current.scrollHeight,
-        behavior: 'smooth',
-      });
+        behavior: "smooth",
+      })
     }
-  }, [conversation.messages]);
+  }, [conversation.messages])
 
   const handleSend = () => {
     // Strip HTML tags to check if there's actual content
-    const textContent = message.replace(/<[^>]*>/g, '').trim();
-    if (!textContent) return;
-    onSendMessage(message);
-    setMessage('');
-  };
+    const textContent = message.replace(/<[^>]*>/g, "").trim()
+    if (!textContent) return
+    onSendMessage(message)
+    setMessage("")
+  }
 
   return (
     <>
       {/* Header */}
       <Box
         p="md"
-        style={{ borderBottom: '1px solid var(--mantine-color-gray-3)' }}
+        style={{ borderBottom: "1px solid var(--mantine-color-gray-3)" }}
       >
         <Group gap="sm">
           <Avatar
@@ -382,10 +421,10 @@ function ChatArea({ conversation, onSendMessage }: ChatAreaProps) {
           {conversation.messages.map((msg, idx) => {
             const showAvatar =
               idx === 0 ||
-              conversation.messages[idx - 1].sender.id !== msg.sender.id;
+              conversation.messages[idx - 1].sender.id !== msg.sender.id
             const showTime =
               idx === conversation.messages.length - 1 ||
-              conversation.messages[idx + 1].sender.id !== msg.sender.id;
+              conversation.messages[idx + 1].sender.id !== msg.sender.id
 
             return (
               <MessageBubble
@@ -394,13 +433,16 @@ function ChatArea({ conversation, onSendMessage }: ChatAreaProps) {
                 showAvatar={showAvatar}
                 showTime={showTime}
               />
-            );
+            )
           })}
         </Stack>
       </ScrollArea>
 
       {/* Input */}
-      <Box p="md" style={{ borderTop: '1px solid var(--mantine-color-gray-3)' }}>
+      <Box
+        p="md"
+        style={{ borderTop: "1px solid var(--mantine-color-gray-3)" }}
+      >
         <ChatRichTextEditor
           content={message}
           onChange={setMessage}
@@ -409,21 +451,21 @@ function ChatArea({ conversation, onSendMessage }: ChatAreaProps) {
         />
       </Box>
     </>
-  );
+  )
 }
 
 interface MessageBubbleProps {
-  message: Message;
-  showAvatar: boolean;
-  showTime: boolean;
+  message: Message
+  showAvatar: boolean
+  showTime: boolean
 }
 
 function MessageBubble({ message, showAvatar, showTime }: MessageBubbleProps) {
-  const isOwn = message.is_own;
+  const isOwn = message.is_own
 
   return (
     <Group
-      justify={isOwn ? 'flex-end' : 'flex-start'}
+      justify={isOwn ? "flex-end" : "flex-start"}
       gap="xs"
       align="flex-end"
       wrap="nowrap"
@@ -433,173 +475,206 @@ function MessageBubble({ message, showAvatar, showTime }: MessageBubbleProps) {
           src={message.sender.profile_picture}
           radius="xl"
           size="sm"
-          style={{ visibility: showAvatar ? 'visible' : 'hidden' }}
+          style={{ visibility: showAvatar ? "visible" : "hidden" }}
         >
           {message.sender.first_name?.[0]}
         </Avatar>
       )}
-      <Box style={{ maxWidth: '70%' }}>
+      <Box style={{ maxWidth: "70%" }}>
         <Paper
           p="xs"
           radius="lg"
           style={{
             backgroundColor: isOwn
-              ? 'var(--mantine-color-blue-6)'
-              : 'var(--mantine-color-gray-1)',
+              ? "var(--mantine-color-blue-6)"
+              : "var(--mantine-color-gray-1)",
           }}
         >
           <TypographyStylesProvider
             style={{
-              color: isOwn ? 'white' : 'inherit',
-              fontSize: 'var(--mantine-font-size-sm)',
+              color: isOwn ? "white" : "inherit",
+              fontSize: "var(--mantine-font-size-sm)",
             }}
           >
             <div dangerouslySetInnerHTML={{ __html: message.content }} />
           </TypographyStylesProvider>
         </Paper>
         {showTime && (
-          <Group gap={4} justify={isOwn ? 'flex-end' : 'flex-start'} mt={2}>
+          <Group gap={4} justify={isOwn ? "flex-end" : "flex-start"} mt={2}>
             <Text size="xs" c="dimmed">
-              {dayjs(message.created_at).format('HH:mm')}
+              {dayjs(message.created_at).format("HH:mm")}
             </Text>
-            {isOwn && (
-              message.is_read ? (
+            {isOwn &&
+              (message.is_read ? (
                 <IconChecks size={14} color="var(--mantine-color-blue-6)" />
               ) : (
                 <IconCheck size={14} color="gray" />
-              )
-            )}
+              ))}
           </Group>
         )}
       </Box>
     </Group>
-  );
+  )
 }
 
 interface NewMessageModalProps {
-  opened: boolean;
-  onClose: () => void;
-  onSuccess: (conversationId: number) => void;
+  opened: boolean
+  onClose: () => void
+  onSuccess: (conversationId: number) => void
 }
 
 function NewMessageModal({ opened, onClose, onSuccess }: NewMessageModalProps) {
-  const [search, setSearch] = useState('');
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [message, setMessage] = useState('');
+  const [search, setSearch] = useState("")
+  const [selectedUsers, setSelectedUsers] = useState<User[]>([])
+  const [message, setMessage] = useState("")
 
   // Fetch users for search
   const { data: users } = useQuery({
-    queryKey: ['users'],
+    queryKey: ["users"],
     queryFn: async () => {
-      const response = await apiClient.get('/users/');
-      return (response.data.results ?? response.data) as User[];
+      const response = await apiClient.get("/users/")
+      return (response.data.results ?? response.data) as User[]
     },
     enabled: opened,
-  });
+  })
 
   const createMutation = useMutation({
     mutationFn: messagingApi.createConversation,
     onSuccess: (data) => {
-      onSuccess(data.id);
-      setSearch('');
-      setSelectedUser(null);
-      setMessage('');
+      onSuccess(data.id)
+      setSearch("")
+      setSelectedUsers([])
+      setMessage("")
     },
     onError: () => {
       notifications.show({
-        title: 'Fejl',
-        message: 'Kunne ikke starte samtale',
-        color: 'red',
-      });
+        title: "Fejl",
+        message: "Kunne ikke starte samtale",
+        color: "red",
+      })
     },
-  });
+  })
 
   const filteredUsers = users?.filter(
     (u) =>
-      u.first_name.toLowerCase().includes(search.toLowerCase()) ||
-      u.last_name.toLowerCase().includes(search.toLowerCase())
-  );
+      !selectedUsers.some((s) => s.id === u.id) &&
+      (u.first_name.toLowerCase().includes(search.toLowerCase()) ||
+        u.last_name.toLowerCase().includes(search.toLowerCase())),
+  )
+
+  const handleSelectUser = (user: User) => {
+    setSelectedUsers((prev) => [...prev, user])
+    setSearch("")
+  }
+
+  const handleRemoveUser = (userId: number) => {
+    setSelectedUsers((prev) => prev.filter((u) => u.id !== userId))
+  }
 
   const handleStart = () => {
-    if (!selectedUser) return;
+    if (selectedUsers.length === 0) return
     createMutation.mutate({
-      participant_ids: [selectedUser.id],
+      participant_ids: selectedUsers.map((u) => u.id),
       initial_message: message.trim() || undefined,
-    });
-  };
+    })
+  }
 
   const handleClose = () => {
-    setSearch('');
-    setSelectedUser(null);
-    setMessage('');
-    onClose();
-  };
+    setSearch("")
+    setSelectedUsers([])
+    setMessage("")
+    onClose()
+  }
 
   return (
     <Modal opened={opened} onClose={handleClose} title="Ny besked" size="md">
       <Stack gap="md">
-        {!selectedUser ? (
-          <>
-            <TextInput
-              placeholder="Søg brugere..."
-              leftSection={<IconSearch size={16} />}
-              value={search}
-              onChange={(e) => setSearch(e.currentTarget.value)}
-            />
-            <ScrollArea h={300}>
-              <Stack gap="xs">
-                {filteredUsers?.map((u) => (
-                  <Paper
-                    key={u.id}
-                    p="sm"
-                    withBorder
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => setSelectedUser(u)}
-                  >
-                    <Group gap="sm">
-                      <Avatar src={u.profile_picture} radius="xl" size="md">
-                        {u.first_name?.[0]}
-                        {u.last_name?.[0]}
-                      </Avatar>
-                      <div>
-                        <Text fw={500}>
-                          {u.first_name} {u.last_name}
-                        </Text>
-                        {u.house_name && (
-                          <Text size="xs" c="dimmed">
-                            {u.house_name}
-                          </Text>
-                        )}
-                      </div>
-                    </Group>
-                  </Paper>
-                ))}
-              </Stack>
-            </ScrollArea>
-          </>
-        ) : (
-          <>
-            <Paper p="sm" withBorder>
-              <Group justify="space-between">
-                <Group gap="sm">
-                  <Avatar src={selectedUser.profile_picture} radius="xl" size="md">
-                    {selectedUser.first_name?.[0]}
-                    {selectedUser.last_name?.[0]}
+        {/* Selected users as badges */}
+        {selectedUsers.length > 0 && (
+          <Group gap="xs">
+            {selectedUsers.map((u) => (
+              <Badge
+                key={u.id}
+                size="lg"
+                variant="light"
+                leftSection={
+                  <Avatar src={u.profile_picture} size={20} radius="xl">
+                    {u.first_name?.[0]}
                   </Avatar>
-                  <Text fw={500}>
-                    {selectedUser.first_name} {selectedUser.last_name}
-                  </Text>
-                </Group>
-                <Button
-                  variant="subtle"
-                  size="xs"
-                  onClick={() => setSelectedUser(null)}
-                >
-                  Skift
-                </Button>
-              </Group>
-            </Paper>
+                }
+                rightSection={
+                  <Box
+                    component="span"
+                    style={{ cursor: "pointer", marginLeft: 4 }}
+                    onClick={() => handleRemoveUser(u.id)}
+                  >
+                    ×
+                  </Box>
+                }
+                styles={{
+                  root: { paddingLeft: 4, paddingRight: 8 },
+                  section: { marginRight: 4 },
+                }}
+              >
+                {u.first_name}
+              </Badge>
+            ))}
+          </Group>
+        )}
 
+        {/* Search and user list */}
+        <TextInput
+          placeholder={
+            selectedUsers.length > 0
+              ? "Tilføj flere deltagere..."
+              : "Søg brugere..."
+          }
+          leftSection={<IconSearch size={16} />}
+          value={search}
+          onChange={(e) => setSearch(e.currentTarget.value)}
+        />
+
+        {selectedUsers.length === 0 || search ? (
+          <ScrollArea h={200}>
+            <Stack gap="xs">
+              {filteredUsers?.map((u) => (
+                <Paper
+                  key={u.id}
+                  p="sm"
+                  withBorder
+                  style={{ cursor: "pointer" }}
+                  onClick={() => handleSelectUser(u)}
+                >
+                  <Group gap="sm">
+                    <Avatar src={u.profile_picture} radius="xl" size="md">
+                      {u.first_name?.[0]}
+                      {u.last_name?.[0]}
+                    </Avatar>
+                    <div>
+                      <Text fw={500}>
+                        {u.first_name} {u.last_name}
+                      </Text>
+                      {u.house_name && (
+                        <Text size="xs" c="dimmed">
+                          {u.house_name}
+                        </Text>
+                      )}
+                    </div>
+                  </Group>
+                </Paper>
+              ))}
+              {filteredUsers?.length === 0 && (
+                <Text c="dimmed" ta="center" py="md">
+                  Ingen brugere fundet
+                </Text>
+              )}
+            </Stack>
+          </ScrollArea>
+        ) : null}
+
+        {/* Message input - show when users are selected */}
+        {selectedUsers.length > 0 && !search && (
+          <>
             <RichTextEditor
               content={message}
               onChange={setMessage}
@@ -612,12 +687,14 @@ function NewMessageModal({ opened, onClose, onSuccess }: NewMessageModalProps) {
                 Annuller
               </Button>
               <Button onClick={handleStart} loading={createMutation.isPending}>
-                Start samtale
+                {selectedUsers.length === 1
+                  ? "Start samtale"
+                  : `Start gruppesamtale (${selectedUsers.length})`}
               </Button>
             </Group>
           </>
         )}
       </Stack>
     </Modal>
-  );
+  )
 }

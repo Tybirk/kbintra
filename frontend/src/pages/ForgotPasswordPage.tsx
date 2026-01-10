@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { useMutation } from '@tanstack/react-query';
+import { useState } from "react"
+import { Link } from "react-router-dom"
+import { useMutation } from "@tanstack/react-query"
 import {
   Container,
   Paper,
@@ -11,32 +11,32 @@ import {
   Text,
   Anchor,
   Alert,
-} from '@mantine/core';
-import { IconArrowLeft, IconCheck } from '@tabler/icons-react';
+} from "@mantine/core"
+import { IconArrowLeft, IconCheck } from "@tabler/icons-react"
 
-import { authApi } from '../api/auth';
+import { authApi } from "../api/auth"
 
 export default function ForgotPasswordPage() {
-  const [email, setEmail] = useState('');
-  const [submitted, setSubmitted] = useState(false);
+  const [email, setEmail] = useState("")
+  const [submitted, setSubmitted] = useState(false)
 
   const forgotPasswordMutation = useMutation({
     mutationFn: () => authApi.forgotPassword({ email }),
     onSuccess: () => {
-      setSubmitted(true);
+      setSubmitted(true)
     },
-  });
+  })
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+    e.preventDefault()
     if (email.trim()) {
-      forgotPasswordMutation.mutate();
+      forgotPasswordMutation.mutate()
     }
-  };
+  }
 
   if (submitted) {
     return (
-      <Container size={420} my={40}>
+      <Container size="xs" px="md" my={40}>
         <Title ta="center" fw={900}>
           KB Intra
         </Title>
@@ -46,11 +46,13 @@ export default function ForgotPasswordPage() {
 
         <Paper withBorder shadow="md" p={30} mt={30} radius="md">
           <Alert icon={<IconCheck size={16} />} color="green" mb="md">
-            Hvis der findes en konto med denne e-mail, har vi sendt et link til at nulstille din adgangskode.
+            Hvis der findes en konto med denne e-mail, har vi sendt et link til
+            at nulstille din adgangskode.
           </Alert>
 
           <Text size="sm" c="dimmed" mb="lg">
-            Tjek din indbakke (og evt. spam-mappe) for en e-mail med et link til at nulstille din adgangskode. Linket udløber om 1 time.
+            Tjek din indbakke (og evt. spam-mappe) for en e-mail med et link til
+            at nulstille din adgangskode. Linket udløber om 1 time.
           </Text>
 
           <Button
@@ -64,11 +66,11 @@ export default function ForgotPasswordPage() {
           </Button>
         </Paper>
       </Container>
-    );
+    )
   }
 
   return (
-    <Container size={420} my={40}>
+    <Container size="xs" px="md" my={40}>
       <Title ta="center" fw={900}>
         KB Intra
       </Title>
@@ -80,7 +82,8 @@ export default function ForgotPasswordPage() {
         <form onSubmit={handleSubmit}>
           <Stack>
             <Text size="sm">
-              Indtast din e-mailadresse, og vi sender dig et link til at nulstille din adgangskode.
+              Indtast din e-mailadresse, og vi sender dig et link til at
+              nulstille din adgangskode.
             </Text>
 
             <TextInput
@@ -103,12 +106,12 @@ export default function ForgotPasswordPage() {
         </form>
 
         <Text c="dimmed" size="sm" ta="center" mt={15}>
-          Huskede du din adgangskode?{' '}
+          Huskede du din adgangskode?{" "}
           <Anchor component={Link} to="/login" size="sm">
             Log ind her
           </Anchor>
         </Text>
       </Paper>
     </Container>
-  );
+  )
 }

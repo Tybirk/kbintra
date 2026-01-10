@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from "react"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useNavigate } from "react-router-dom"
 import {
   Title,
   Text,
@@ -19,9 +19,9 @@ import {
   Tabs,
   Box,
   Alert,
-} from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
-import { notifications } from '@mantine/notifications';
+} from "@mantine/core"
+import { useDisclosure } from "@mantine/hooks"
+import { notifications } from "@mantine/notifications"
 import {
   IconBell,
   IconCheck,
@@ -37,21 +37,25 @@ import {
   IconBellOff,
   IconDeviceMobile,
   IconInfoCircle,
-} from '@tabler/icons-react';
-import dayjs from 'dayjs';
-import relativeTime from 'dayjs/plugin/relativeTime';
+} from "@tabler/icons-react"
+import dayjs from "dayjs"
+import relativeTime from "dayjs/plugin/relativeTime"
 
-import { notificationsApi } from '../api/notifications';
+import { notificationsApi } from "../api/notifications"
 import {
   isPushSupported,
   getNotificationPermission,
   isPushSubscribed,
   subscribeToPushNotifications,
   unsubscribeFromPushNotifications,
-} from '../utils/pushNotifications';
-import type { Notification, NotificationPreference, NotificationType } from '../types';
+} from "../utils/pushNotifications"
+import type {
+  Notification,
+  NotificationPreference,
+  NotificationType,
+} from "../types"
 
-dayjs.extend(relativeTime);
+dayjs.extend(relativeTime)
 
 const notificationIcons: Record<NotificationType, React.ReactNode> = {
   new_message: <IconMessage size={20} />,
@@ -61,96 +65,110 @@ const notificationIcons: Record<NotificationType, React.ReactNode> = {
   post_reply: <IconMessageCircle size={20} />,
   event_reminder: <IconCalendar size={20} />,
   food_ticket: <IconToolsKitchen2 size={20} />,
-};
+}
 
 const notificationColors: Record<NotificationType, string> = {
-  new_message: 'blue',
-  new_announcement: 'orange',
-  new_thread: 'green',
-  thread_reply: 'green',
-  post_reply: 'green',
-  event_reminder: 'violet',
-  food_ticket: 'teal',
-};
+  new_message: "blue",
+  new_announcement: "orange",
+  new_thread: "green",
+  thread_reply: "green",
+  post_reply: "green",
+  event_reminder: "violet",
+  food_ticket: "teal",
+}
 
 export default function NotificationsPage() {
-  const queryClient = useQueryClient();
-  const navigate = useNavigate();
-  const [preferencesOpened, { open: openPreferences, close: closePreferences }] =
-    useDisclosure(false);
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const [
+    preferencesOpened,
+    { open: openPreferences, close: closePreferences },
+  ] = useDisclosure(false)
   const [clearAllOpened, { open: openClearAll, close: closeClearAll }] =
-    useDisclosure(false);
+    useDisclosure(false)
 
-  const { data: notificationsList, isLoading, error } = useQuery({
-    queryKey: ['notifications'],
+  const {
+    data: notificationsList,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["notifications"],
     queryFn: notificationsApi.getNotifications,
-  });
+  })
 
   const markAllReadMutation = useMutation({
     mutationFn: () => notificationsApi.markAsRead(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] })
+      queryClient.invalidateQueries({
+        queryKey: ["notifications", "unread-count"],
+      })
       notifications.show({
-        title: 'Alle markeret som læst',
-        message: 'Alle notifikationer er nu markeret som læst.',
-        color: 'blue',
-      });
+        title: "Alle markeret som læst",
+        message: "Alle notifikationer er nu markeret som læst.",
+        color: "blue",
+      })
     },
-  });
+  })
 
   const markOneReadMutation = useMutation({
     mutationFn: (id: number) => notificationsApi.markAsRead([id]),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] })
+      queryClient.invalidateQueries({
+        queryKey: ["notifications", "unread-count"],
+      })
     },
-  });
+  })
 
   const deleteOneMutation = useMutation({
     mutationFn: notificationsApi.deleteNotification,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] })
+      queryClient.invalidateQueries({
+        queryKey: ["notifications", "unread-count"],
+      })
       notifications.show({
-        title: 'Notifikation slettet',
-        message: 'Notifikationen er blevet slettet.',
-        color: 'blue',
-      });
+        title: "Notifikation slettet",
+        message: "Notifikationen er blevet slettet.",
+        color: "blue",
+      })
     },
-  });
+  })
 
   const clearAllMutation = useMutation({
     mutationFn: notificationsApi.clearAll,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
-      closeClearAll();
+      queryClient.invalidateQueries({ queryKey: ["notifications"] })
+      queryClient.invalidateQueries({
+        queryKey: ["notifications", "unread-count"],
+      })
+      closeClearAll()
       notifications.show({
-        title: 'Alle notifikationer ryddet',
-        message: 'Alle notifikationer er blevet slettet.',
-        color: 'blue',
-      });
+        title: "Alle notifikationer ryddet",
+        message: "Alle notifikationer er blevet slettet.",
+        color: "blue",
+      })
     },
-  });
+  })
 
   const handleNotificationClick = (notification: Notification) => {
     if (!notification.is_read) {
-      markOneReadMutation.mutate(notification.id);
+      markOneReadMutation.mutate(notification.id)
     }
     if (notification.link) {
-      navigate(notification.link);
+      navigate(notification.link)
     }
-  };
+  }
 
-  const unreadCount = notificationsList?.filter((n) => !n.is_read).length ?? 0;
+  const unreadCount = notificationsList?.filter((n) => !n.is_read).length ?? 0
 
   if (isLoading) {
     return (
       <Center h={200}>
         <Loader size="lg" />
       </Center>
-    );
+    )
   }
 
   if (error) {
@@ -158,7 +176,7 @@ export default function NotificationsPage() {
       <Center h={200}>
         <Text c="red">Kunne ikke indlæse notifikationer. Prøv igen.</Text>
       </Center>
-    );
+    )
   }
 
   return (
@@ -167,7 +185,9 @@ export default function NotificationsPage() {
         <div>
           <Title order={1}>Notifikationer</Title>
           <Text c="dimmed">
-            {unreadCount > 0 ? `${unreadCount} ulæste notifikationer` : 'Ingen ulæste notifikationer'}
+            {unreadCount > 0
+              ? `${unreadCount} ulæste notifikationer`
+              : "Ingen ulæste notifikationer"}
           </Text>
         </div>
         <Group>
@@ -240,7 +260,8 @@ export default function NotificationsPage() {
         centered
       >
         <Text mb="lg">
-          Er du sikker på, at du vil slette alle notifikationer? Denne handling kan ikke fortrydes.
+          Er du sikker på, at du vil slette alle notifikationer? Denne handling
+          kan ikke fortrydes.
         </Text>
         <Group justify="flex-end">
           <Button variant="light" onClick={closeClearAll}>
@@ -256,19 +277,24 @@ export default function NotificationsPage() {
         </Group>
       </Modal>
     </>
-  );
+  )
 }
 
 interface NotificationCardProps {
-  notification: Notification;
-  onClick: () => void;
-  onMarkRead: () => void;
-  onDelete: () => void;
+  notification: Notification
+  onClick: () => void
+  onMarkRead: () => void
+  onDelete: () => void
 }
 
-function NotificationCard({ notification, onClick, onMarkRead, onDelete }: NotificationCardProps) {
-  const icon = notificationIcons[notification.notification_type];
-  const color = notificationColors[notification.notification_type];
+function NotificationCard({
+  notification,
+  onClick,
+  onMarkRead,
+  onDelete,
+}: NotificationCardProps) {
+  const icon = notificationIcons[notification.notification_type]
+  const color = notificationColors[notification.notification_type]
 
   return (
     <Paper
@@ -276,14 +302,16 @@ function NotificationCard({ notification, onClick, onMarkRead, onDelete }: Notif
       p="md"
       radius="md"
       style={{
-        cursor: notification.link ? 'pointer' : 'default',
+        cursor: notification.link ? "pointer" : "default",
         opacity: notification.is_read ? 0.7 : 1,
-        backgroundColor: notification.is_read ? undefined : 'var(--mantine-color-blue-light)',
+        backgroundColor: notification.is_read
+          ? undefined
+          : "var(--mantine-color-blue-light)",
       }}
       onClick={(e) => {
         // Don't trigger click if menu is clicked
-        if ((e.target as HTMLElement).closest('[data-menu-trigger]')) return;
-        onClick();
+        if ((e.target as HTMLElement).closest("[data-menu-trigger]")) return
+        onClick()
       }}
     >
       <Group justify="space-between" wrap="nowrap">
@@ -334,8 +362,8 @@ function NotificationCard({ notification, onClick, onMarkRead, onDelete }: Notif
               <Menu.Item
                 leftSection={<IconCheck size={14} />}
                 onClick={(e) => {
-                  e.stopPropagation();
-                  onMarkRead();
+                  e.stopPropagation()
+                  onMarkRead()
                 }}
               >
                 Markér som læst
@@ -345,8 +373,8 @@ function NotificationCard({ notification, onClick, onMarkRead, onDelete }: Notif
               color="red"
               leftSection={<IconTrash size={14} />}
               onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
+                e.stopPropagation()
+                onDelete()
               }}
             >
               Slet
@@ -355,96 +383,102 @@ function NotificationCard({ notification, onClick, onMarkRead, onDelete }: Notif
         </Menu>
       </Group>
     </Paper>
-  );
+  )
 }
 
 interface NotificationPreferencesModalProps {
-  opened: boolean;
-  onClose: () => void;
+  opened: boolean
+  onClose: () => void
 }
 
-function NotificationPreferencesModal({ opened, onClose }: NotificationPreferencesModalProps) {
-  const queryClient = useQueryClient();
-  const [pushSupported] = useState(isPushSupported());
-  const [pushPermission, setPushPermission] = useState(getNotificationPermission());
-  const [pushSubscribed, setPushSubscribed] = useState(false);
-  const [pushLoading, setPushLoading] = useState(false);
+function NotificationPreferencesModal({
+  opened,
+  onClose,
+}: NotificationPreferencesModalProps) {
+  const queryClient = useQueryClient()
+  const [pushSupported] = useState(isPushSupported())
+  const [pushPermission, setPushPermission] = useState(
+    getNotificationPermission(),
+  )
+  const [pushSubscribed, setPushSubscribed] = useState(false)
+  const [pushLoading, setPushLoading] = useState(false)
 
   // Check push subscription status when modal opens
   useEffect(() => {
     if (opened && pushSupported) {
-      isPushSubscribed().then(setPushSubscribed);
-      setPushPermission(getNotificationPermission());
+      isPushSubscribed().then(setPushSubscribed)
+      setPushPermission(getNotificationPermission())
     }
-  }, [opened, pushSupported]);
+  }, [opened, pushSupported])
 
   const { data: preferences, isLoading } = useQuery({
-    queryKey: ['notification-preferences'],
+    queryKey: ["notification-preferences"],
     queryFn: notificationsApi.getPreferences,
     enabled: opened,
-  });
+  })
 
   const updateMutation = useMutation({
     mutationFn: notificationsApi.updatePreferences,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notification-preferences'] });
+      queryClient.invalidateQueries({ queryKey: ["notification-preferences"] })
       notifications.show({
-        title: 'Indstillinger opdateret',
-        message: 'Dine notifikationsindstillinger er blevet gemt.',
-        color: 'green',
-      });
+        title: "Indstillinger opdateret",
+        message: "Dine notifikationsindstillinger er blevet gemt.",
+        color: "green",
+      })
     },
     onError: () => {
       notifications.show({
-        title: 'Fejl',
-        message: 'Kunne ikke opdatere indstillinger. Prøv igen.',
-        color: 'red',
-      });
+        title: "Fejl",
+        message: "Kunne ikke opdatere indstillinger. Prøv igen.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const handleToggle = (key: keyof NotificationPreference, value: boolean) => {
-    updateMutation.mutate({ [key]: value });
-  };
+    updateMutation.mutate({ [key]: value })
+  }
 
   const handlePushToggle = async () => {
-    setPushLoading(true);
+    setPushLoading(true)
     try {
       if (pushSubscribed) {
-        const success = await unsubscribeFromPushNotifications();
+        const success = await unsubscribeFromPushNotifications()
         if (success) {
-          setPushSubscribed(false);
+          setPushSubscribed(false)
           notifications.show({
-            title: 'Push-notifikationer deaktiveret',
-            message: 'Du modtager ikke længere push-notifikationer.',
-            color: 'blue',
-          });
+            title: "Push-notifikationer deaktiveret",
+            message: "Du modtager ikke længere push-notifikationer.",
+            color: "blue",
+          })
         }
       } else {
-        const success = await subscribeToPushNotifications();
+        const success = await subscribeToPushNotifications()
         if (success) {
-          setPushSubscribed(true);
-          setPushPermission('granted');
+          setPushSubscribed(true)
+          setPushPermission("granted")
           notifications.show({
-            title: 'Push-notifikationer aktiveret',
-            message: 'Du modtager nu push-notifikationer på denne enhed.',
-            color: 'green',
-          });
+            title: "Push-notifikationer aktiveret",
+            message: "Du modtager nu push-notifikationer på denne enhed.",
+            color: "green",
+          })
         } else {
-          setPushPermission(getNotificationPermission());
-          if (getNotificationPermission() === 'denied') {
+          setPushPermission(getNotificationPermission())
+          if (getNotificationPermission() === "denied") {
             notifications.show({
-              title: 'Tilladelse nægtet',
-              message: 'Du har blokeret notifikationer. Tillad dem i browserindstillinger.',
-              color: 'red',
-            });
+              title: "Tilladelse nægtet",
+              message:
+                "Du har blokeret notifikationer. Tillad dem i browserindstillinger.",
+              color: "red",
+            })
           }
         }
       }
     } finally {
-      setPushLoading(false);
+      setPushLoading(false)
     }
-  };
+  }
 
   return (
     <Modal
@@ -480,37 +514,55 @@ function NotificationPreferencesModal({ opened, onClose }: NotificationPreferenc
                 label="Nye beskeder"
                 description="Når nogen sender dig en direkte besked"
                 checked={preferences.notify_messages}
-                onChange={(e) => handleToggle('notify_messages', e.currentTarget.checked)}
+                onChange={(e) =>
+                  handleToggle("notify_messages", e.currentTarget.checked)
+                }
               />
               <Switch
                 label="Opslag"
                 description="Når nye fællesskabsopslag bliver oprettet"
                 checked={preferences.notify_announcements}
-                onChange={(e) => handleToggle('notify_announcements', e.currentTarget.checked)}
+                onChange={(e) =>
+                  handleToggle("notify_announcements", e.currentTarget.checked)
+                }
               />
               <Switch
                 label="Forum-abonnementer"
                 description="Nye tråde i grupper du abonnerer på"
                 checked={preferences.notify_forum_subscriptions}
-                onChange={(e) => handleToggle('notify_forum_subscriptions', e.currentTarget.checked)}
+                onChange={(e) =>
+                  handleToggle(
+                    "notify_forum_subscriptions",
+                    e.currentTarget.checked,
+                  )
+                }
               />
               <Switch
                 label="Trådsvar"
                 description="Når nogen svarer på din tråd"
                 checked={preferences.notify_thread_replies}
-                onChange={(e) => handleToggle('notify_thread_replies', e.currentTarget.checked)}
+                onChange={(e) =>
+                  handleToggle("notify_thread_replies", e.currentTarget.checked)
+                }
               />
               <Switch
                 label="Begivenhedspåmindelser"
                 description="Påmindelser om kommende kalenderbegivenheder"
                 checked={preferences.notify_event_reminders}
-                onChange={(e) => handleToggle('notify_event_reminders', e.currentTarget.checked)}
+                onChange={(e) =>
+                  handleToggle(
+                    "notify_event_reminders",
+                    e.currentTarget.checked,
+                  )
+                }
               />
               <Switch
                 label="Madbilletter"
                 description="Når nye madbilletter bliver tilgængelige"
                 checked={preferences.notify_food_tickets}
-                onChange={(e) => handleToggle('notify_food_tickets', e.currentTarget.checked)}
+                onChange={(e) =>
+                  handleToggle("notify_food_tickets", e.currentTarget.checked)
+                }
               />
             </Stack>
           </Tabs.Panel>
@@ -518,43 +570,59 @@ function NotificationPreferencesModal({ opened, onClose }: NotificationPreferenc
           <Tabs.Panel value="email">
             <Stack gap="md">
               <Text size="sm" c="dimmed" mb="xs">
-                Få en e-mail når du modtager en notifikation. Aktivér e-mail for de notifikationstyper du ønsker.
+                Få en e-mail når du modtager en notifikation. Aktivér e-mail for
+                de notifikationstyper du ønsker.
               </Text>
               <Switch
                 label="Nye beskeder"
                 description="E-mail når nogen sender dig en direkte besked"
                 checked={preferences.email_messages}
-                onChange={(e) => handleToggle('email_messages', e.currentTarget.checked)}
+                onChange={(e) =>
+                  handleToggle("email_messages", e.currentTarget.checked)
+                }
               />
               <Switch
                 label="Opslag"
                 description="E-mail når nye fællesskabsopslag bliver oprettet"
                 checked={preferences.email_announcements}
-                onChange={(e) => handleToggle('email_announcements', e.currentTarget.checked)}
+                onChange={(e) =>
+                  handleToggle("email_announcements", e.currentTarget.checked)
+                }
               />
               <Switch
                 label="Forum-abonnementer"
                 description="E-mail for nye tråde i grupper du abonnerer på"
                 checked={preferences.email_forum_subscriptions}
-                onChange={(e) => handleToggle('email_forum_subscriptions', e.currentTarget.checked)}
+                onChange={(e) =>
+                  handleToggle(
+                    "email_forum_subscriptions",
+                    e.currentTarget.checked,
+                  )
+                }
               />
               <Switch
                 label="Trådsvar"
                 description="E-mail når nogen svarer på din tråd"
                 checked={preferences.email_thread_replies}
-                onChange={(e) => handleToggle('email_thread_replies', e.currentTarget.checked)}
+                onChange={(e) =>
+                  handleToggle("email_thread_replies", e.currentTarget.checked)
+                }
               />
               <Switch
                 label="Begivenhedspåmindelser"
                 description="E-mail-påmindelser om kommende kalenderbegivenheder"
                 checked={preferences.email_event_reminders}
-                onChange={(e) => handleToggle('email_event_reminders', e.currentTarget.checked)}
+                onChange={(e) =>
+                  handleToggle("email_event_reminders", e.currentTarget.checked)
+                }
               />
               <Switch
                 label="Madbilletter"
                 description="E-mail når nye madbilletter bliver tilgængelige"
                 checked={preferences.email_food_tickets}
-                onChange={(e) => handleToggle('email_food_tickets', e.currentTarget.checked)}
+                onChange={(e) =>
+                  handleToggle("email_food_tickets", e.currentTarget.checked)
+                }
               />
             </Stack>
           </Tabs.Panel>
@@ -565,22 +633,26 @@ function NotificationPreferencesModal({ opened, onClose }: NotificationPreferenc
                 <Alert icon={<IconInfoCircle size={16} />} color="yellow">
                   Push-notifikationer understøttes ikke i denne browser.
                 </Alert>
-              ) : pushPermission === 'denied' ? (
+              ) : pushPermission === "denied" ? (
                 <Alert icon={<IconInfoCircle size={16} />} color="red">
-                  Du har blokeret notifikationer. Aktivér dem i browserindstillinger for at modtage push-notifikationer.
+                  Du har blokeret notifikationer. Aktivér dem i
+                  browserindstillinger for at modtage push-notifikationer.
                 </Alert>
               ) : (
                 <>
                   <Text size="sm" c="dimmed" mb="xs">
-                    Modtag push-notifikationer direkte på denne enhed, selv når browseren er lukket.
+                    Modtag push-notifikationer direkte på denne enhed, selv når
+                    browseren er lukket.
                   </Text>
                   <Button
                     onClick={handlePushToggle}
                     loading={pushLoading}
-                    color={pushSubscribed ? 'red' : 'blue'}
-                    variant={pushSubscribed ? 'light' : 'filled'}
+                    color={pushSubscribed ? "red" : "blue"}
+                    variant={pushSubscribed ? "light" : "filled"}
                   >
-                    {pushSubscribed ? 'Deaktivér push-notifikationer' : 'Aktivér push-notifikationer'}
+                    {pushSubscribed
+                      ? "Deaktivér push-notifikationer"
+                      : "Aktivér push-notifikationer"}
                   </Button>
                   {pushSubscribed && (
                     <>
@@ -591,37 +663,64 @@ function NotificationPreferencesModal({ opened, onClose }: NotificationPreferenc
                         label="Nye beskeder"
                         description="Push-notifikation når nogen sender dig en direkte besked"
                         checked={preferences.push_messages}
-                        onChange={(e) => handleToggle('push_messages', e.currentTarget.checked)}
+                        onChange={(e) =>
+                          handleToggle("push_messages", e.currentTarget.checked)
+                        }
                       />
                       <Switch
                         label="Opslag"
                         description="Push-notifikation når nye fællesskabsopslag bliver oprettet"
                         checked={preferences.push_announcements}
-                        onChange={(e) => handleToggle('push_announcements', e.currentTarget.checked)}
+                        onChange={(e) =>
+                          handleToggle(
+                            "push_announcements",
+                            e.currentTarget.checked,
+                          )
+                        }
                       />
                       <Switch
                         label="Forum-abonnementer"
                         description="Push-notifikation for nye tråde i grupper du abonnerer på"
                         checked={preferences.push_forum_subscriptions}
-                        onChange={(e) => handleToggle('push_forum_subscriptions', e.currentTarget.checked)}
+                        onChange={(e) =>
+                          handleToggle(
+                            "push_forum_subscriptions",
+                            e.currentTarget.checked,
+                          )
+                        }
                       />
                       <Switch
                         label="Trådsvar"
                         description="Push-notifikation når nogen svarer på din tråd"
                         checked={preferences.push_thread_replies}
-                        onChange={(e) => handleToggle('push_thread_replies', e.currentTarget.checked)}
+                        onChange={(e) =>
+                          handleToggle(
+                            "push_thread_replies",
+                            e.currentTarget.checked,
+                          )
+                        }
                       />
                       <Switch
                         label="Begivenhedspåmindelser"
                         description="Push-påmindelser om kommende kalenderbegivenheder"
                         checked={preferences.push_event_reminders}
-                        onChange={(e) => handleToggle('push_event_reminders', e.currentTarget.checked)}
+                        onChange={(e) =>
+                          handleToggle(
+                            "push_event_reminders",
+                            e.currentTarget.checked,
+                          )
+                        }
                       />
                       <Switch
                         label="Madbilletter"
                         description="Push-notifikation når nye madbilletter bliver tilgængelige"
                         checked={preferences.push_food_tickets}
-                        onChange={(e) => handleToggle('push_food_tickets', e.currentTarget.checked)}
+                        onChange={(e) =>
+                          handleToggle(
+                            "push_food_tickets",
+                            e.currentTarget.checked,
+                          )
+                        }
                       />
                     </>
                   )}
@@ -632,5 +731,5 @@ function NotificationPreferencesModal({ opened, onClose }: NotificationPreferenc
         </Tabs>
       ) : null}
     </Modal>
-  );
+  )
 }

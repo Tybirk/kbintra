@@ -1,6 +1,6 @@
-import { NavLink, Stack, ScrollArea, Badge, Group } from '@mantine/core';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { NavLink, Stack, ScrollArea, Badge, Group } from "@mantine/core"
+import { useLocation, useNavigate } from "react-router-dom"
+import { useQuery } from "@tanstack/react-query"
 import {
   IconHome,
   IconMessageCircle,
@@ -11,76 +11,91 @@ import {
   IconBuildingCommunity,
   IconBell,
   IconUsersGroup,
-} from '@tabler/icons-react';
-import { messagingApi } from '../api/messaging';
-import { notificationsApi } from '../api/notifications';
+} from "@tabler/icons-react"
+import { messagingApi } from "../api/messaging"
+import { notificationsApi } from "../api/notifications"
 
 interface NavItem {
-  icon: typeof IconHome;
-  label: string;
-  path: string;
-  color?: string;
+  icon: typeof IconHome
+  label: string
+  path: string
+  color?: string
 }
 
 const navItems: NavItem[] = [
-  { icon: IconHome, label: 'Forside', path: '/' },
-  { icon: IconBell, label: 'Notifikationer', path: '/notifikationer', color: 'red' },
-  { icon: IconSpeakerphone, label: 'Vigtig post', path: '/opslag', color: 'orange' },
-  { icon: IconMessageCircle, label: 'Forum', path: '/forum', color: 'blue' },
-  { icon: IconSoup, label: 'Mad', path: '/mad', color: 'green' },
-  { icon: IconUsersGroup, label: 'Madhold', path: '/madhold', color: 'teal' },
-  { icon: IconCalendar, label: 'Kalender', path: '/kalender', color: 'violet' },
-  { icon: IconBuildingCommunity, label: 'Beboeroversigt', path: '/beboere', color: 'yellow' },
-  { icon: IconUsers, label: 'Beskeder', path: '/beskeder', color: 'cyan' },
-];
+  { icon: IconHome, label: "Forside", path: "/" },
+  {
+    icon: IconBell,
+    label: "Notifikationer",
+    path: "/notifikationer",
+    color: "red",
+  },
+  {
+    icon: IconSpeakerphone,
+    label: "Vigtig post",
+    path: "/opslag",
+    color: "orange",
+  },
+  { icon: IconMessageCircle, label: "Forum", path: "/forum", color: "blue" },
+  { icon: IconSoup, label: "Mad", path: "/mad", color: "green" },
+  { icon: IconUsersGroup, label: "Madhold", path: "/madhold", color: "teal" },
+  { icon: IconCalendar, label: "Kalender", path: "/kalender", color: "violet" },
+  {
+    icon: IconBuildingCommunity,
+    label: "Beboeroversigt",
+    path: "/beboere",
+    color: "yellow",
+  },
+  { icon: IconUsers, label: "Beskeder", path: "/beskeder", color: "cyan" },
+]
 
 interface AppNavbarProps {
-  onNavigate?: () => void;
+  onNavigate?: () => void
 }
 
 export default function AppNavbar({ onNavigate }: AppNavbarProps) {
-  const location = useLocation();
-  const navigate = useNavigate();
+  const location = useLocation()
+  const navigate = useNavigate()
 
   // Fetch unread message count
   const { data: unreadMessagesData } = useQuery({
-    queryKey: ['messages', 'unread-count'],
+    queryKey: ["messages", "unread-count"],
     queryFn: messagingApi.getUnreadCount,
     refetchInterval: 30000,
-  });
+  })
 
   // Fetch unread notification count
   const { data: unreadNotificationsData } = useQuery({
-    queryKey: ['notifications', 'unread-count'],
+    queryKey: ["notifications", "unread-count"],
     queryFn: notificationsApi.getUnreadCount,
     refetchInterval: 30000,
-  });
+  })
 
-  const unreadMessages = unreadMessagesData?.unread_count ?? 0;
-  const unreadNotifications = unreadNotificationsData?.unread_count ?? 0;
+  const unreadMessages = unreadMessagesData?.unread_count ?? 0
+  const unreadNotifications = unreadNotificationsData?.unread_count ?? 0
 
   const handleNavigate = (path: string) => {
-    navigate(path);
-    onNavigate?.();
-  };
+    navigate(path)
+    onNavigate?.()
+  }
 
   const getLabel = (item: NavItem) => {
-    let badgeCount = 0;
-    if (item.path === '/beskeder') badgeCount = unreadMessages;
-    if (item.path === '/notifikationer') badgeCount = unreadNotifications;
+    let badgeCount = 0
+    if (item.path === "/beskeder") badgeCount = unreadMessages
+    if (item.path === "/notifikationer") badgeCount = unreadNotifications
 
     if (badgeCount > 0) {
       return (
         <Group gap="xs">
           {item.label}
           <Badge size="xs" circle color="red">
-            {badgeCount > 9 ? '9+' : badgeCount}
+            {badgeCount > 9 ? "9+" : badgeCount}
           </Badge>
         </Group>
-      );
+      )
     }
-    return item.label;
-  };
+    return item.label
+  }
 
   return (
     <ScrollArea>
@@ -91,12 +106,13 @@ export default function AppNavbar({ onNavigate }: AppNavbarProps) {
             label={getLabel(item)}
             leftSection={<item.icon size={20} />}
             active={
-              item.path === '/'
-                ? location.pathname === '/'
-                : item.path === '/madhold'
-                  ? location.pathname === '/madhold'
-                  : item.path === '/mad'
-                    ? location.pathname === '/mad' || location.pathname.startsWith('/mad/')
+              item.path === "/"
+                ? location.pathname === "/"
+                : item.path === "/madhold"
+                  ? location.pathname === "/madhold"
+                  : item.path === "/mad"
+                    ? location.pathname === "/mad" ||
+                      location.pathname.startsWith("/mad/")
                     : location.pathname.startsWith(item.path)
             }
             onClick={() => handleNavigate(item.path)}
@@ -105,5 +121,5 @@ export default function AppNavbar({ onNavigate }: AppNavbarProps) {
         ))}
       </Stack>
     </ScrollArea>
-  );
+  )
 }

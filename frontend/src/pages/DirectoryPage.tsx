@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import {
   Title,
   Text,
@@ -12,43 +12,45 @@ import {
   Loader,
   Center,
   Stack,
-} from '@mantine/core';
-import { IconSearch, IconHome } from '@tabler/icons-react';
-import { useNavigate } from 'react-router-dom';
+} from "@mantine/core"
+import { IconSearch, IconHome } from "@tabler/icons-react"
+import { useNavigate } from "react-router-dom"
 
-import { housesApi } from '../api/houses';
-import type { Child, House, UserSummary } from '../types';
+import { housesApi } from "../api/houses"
+import type { Child, House, UserSummary } from "../types"
 
 export default function DirectoryPage() {
-  const navigate = useNavigate();
-  const [search, setSearch] = useState('');
+  const navigate = useNavigate()
+  const [search, setSearch] = useState("")
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['houses'],
+    queryKey: ["houses"],
     queryFn: housesApi.getHouses,
-  });
+  })
 
   const filteredHouses = data?.filter((house) => {
-    const searchLower = search.toLowerCase();
+    const searchLower = search.toLowerCase()
     // Search by house name
-    if (house.name.toLowerCase().includes(searchLower)) return true;
+    if (house.name.toLowerCase().includes(searchLower)) return true
     // Search by inhabitant names
-    if (house.inhabitants?.some((i) =>
-      `${i.first_name} ${i.last_name}`.toLowerCase().includes(searchLower)
-    )) return true;
+    if (
+      house.inhabitants?.some((i) =>
+        `${i.first_name} ${i.last_name}`.toLowerCase().includes(searchLower),
+      )
+    )
+      return true
     // Search by children names
-    if (house.children?.some((c) =>
-      c.name.toLowerCase().includes(searchLower)
-    )) return true;
-    return false;
-  });
+    if (house.children?.some((c) => c.name.toLowerCase().includes(searchLower)))
+      return true
+    return false
+  })
 
   if (isLoading) {
     return (
       <Center h={200}>
         <Loader size="lg" />
       </Center>
-    );
+    )
   }
 
   if (error) {
@@ -56,7 +58,7 @@ export default function DirectoryPage() {
       <Center h={200}>
         <Text c="red">Failed to load houses. Please try again.</Text>
       </Center>
-    );
+    )
   }
 
   return (
@@ -68,7 +70,9 @@ export default function DirectoryPage() {
         </div>
         {data && (
           <Text size="sm" c="dimmed">
-            {data.reduce((sum, h) => sum + (h.inhabitants?.length || 0), 0)} voksne, {data.reduce((sum, h) => sum + (h.children?.length || 0), 0)} børn
+            {data.reduce((sum, h) => sum + (h.inhabitants?.length || 0), 0)}{" "}
+            voksne,{" "}
+            {data.reduce((sum, h) => sum + (h.children?.length || 0), 0)} børn
           </Text>
         )}
       </Group>
@@ -96,23 +100,24 @@ export default function DirectoryPage() {
         </SimpleGrid>
       )}
     </>
-  );
+  )
 }
 
 interface HouseCardProps {
-  house: House;
-  onClick: () => void;
+  house: House
+  onClick: () => void
 }
 
 function HouseCard({ house, onClick }: HouseCardProps) {
-  const totalResidents = (house.inhabitants?.length || 0) + (house.children?.length || 0);
+  const totalResidents =
+    (house.inhabitants?.length || 0) + (house.children?.length || 0)
 
   return (
     <Paper
       withBorder
       p="lg"
       radius="md"
-      style={{ cursor: 'pointer' }}
+      style={{ cursor: "pointer" }}
       onClick={onClick}
     >
       <Group justify="space-between" mb="xs">
@@ -150,21 +155,17 @@ function HouseCard({ house, onClick }: HouseCardProps) {
         )}
       </Stack>
     </Paper>
-  );
+  )
 }
 
 interface ResidentRowProps {
-  inhabitant: UserSummary;
+  inhabitant: UserSummary
 }
 
 function ResidentRow({ inhabitant }: ResidentRowProps) {
   return (
     <Group gap="xs">
-      <Avatar
-        src={inhabitant.profile_picture}
-        radius="xl"
-        size="sm"
-      >
+      <Avatar src={inhabitant.profile_picture} radius="xl" size="sm">
         {inhabitant.first_name?.[0]}
         {inhabitant.last_name?.[0]}
       </Avatar>
@@ -172,11 +173,11 @@ function ResidentRow({ inhabitant }: ResidentRowProps) {
         {inhabitant.first_name} {inhabitant.last_name}
       </Text>
     </Group>
-  );
+  )
 }
 
 interface ChildRowProps {
-  child: Child;
+  child: Child
 }
 
 function ChildRow({ child }: ChildRowProps) {
@@ -192,5 +193,5 @@ function ChildRow({ child }: ChildRowProps) {
         </Badge>
       </Group>
     </Group>
-  );
+  )
 }

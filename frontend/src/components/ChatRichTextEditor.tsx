@@ -1,26 +1,26 @@
-import { useEditor } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Link from '@tiptap/extension-link';
-import Placeholder from '@tiptap/extension-placeholder';
-import { RichTextEditor as MantineRTE } from '@mantine/tiptap';
-import { ActionIcon, Group, Box } from '@mantine/core';
-import { IconSend } from '@tabler/icons-react';
-import { useEffect } from 'react';
-import EmojiPicker from './EmojiPicker';
+import { useEditor } from "@tiptap/react"
+import StarterKit from "@tiptap/starter-kit"
+import Link from "@tiptap/extension-link"
+import Placeholder from "@tiptap/extension-placeholder"
+import { RichTextEditor as MantineRTE } from "@mantine/tiptap"
+import { ActionIcon, Group, Box } from "@mantine/core"
+import { IconSend } from "@tabler/icons-react"
+import { useEffect } from "react"
+import EmojiPicker from "./EmojiPicker"
 
 interface ChatRichTextEditorProps {
-  content: string;
-  onChange: (content: string) => void;
-  onSend: () => void;
-  placeholder?: string;
-  disabled?: boolean;
+  content: string
+  onChange: (content: string) => void
+  onSend: () => void
+  placeholder?: string
+  disabled?: boolean
 }
 
 export default function ChatRichTextEditor({
   content,
   onChange,
   onSend,
-  placeholder = 'Type a message...',
+  placeholder = "Type a message...",
   disabled = false,
 }: ChatRichTextEditorProps) {
   const editor = useEditor({
@@ -35,35 +35,35 @@ export default function ChatRichTextEditor({
     ],
     content,
     onUpdate: ({ editor }) => {
-      onChange(editor.getHTML());
+      onChange(editor.getHTML())
     },
     editorProps: {
       handleKeyDown: (_view, event) => {
-        if (event.key === 'Enter' && !event.shiftKey) {
-          event.preventDefault();
-          onSend();
-          return true;
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault()
+          onSend()
+          return true
         }
-        return false;
+        return false
       },
     },
-  });
+  })
 
   // Clear editor when content is cleared externally
   useEffect(() => {
-    if (content === '' && editor && editor.getHTML() !== '<p></p>') {
-      editor.commands.clearContent();
+    if (content === "" && editor && editor.getHTML() !== "<p></p>") {
+      editor.commands.clearContent()
     }
-  }, [content, editor]);
+  }, [content, editor])
 
-  const isEmpty = !editor?.getText().trim();
+  const isEmpty = !editor?.getText().trim()
 
   const handleEmojiSelect = (emoji: string) => {
-    editor?.chain().focus().insertContent(emoji).run();
-  };
+    editor?.chain().focus().insertContent(emoji).run()
+  }
 
   return (
-    <Group gap="sm" align="flex-end" style={{ width: '100%' }}>
+    <Group gap="sm" align="flex-end" style={{ width: "100%" }}>
       <Box style={{ flex: 1 }}>
         <MantineRTE editor={editor} style={{ minHeight: 42 }}>
           <MantineRTE.Toolbar>
@@ -99,5 +99,5 @@ export default function ChatRichTextEditor({
         <IconSend size={18} />
       </ActionIcon>
     </Group>
-  );
+  )
 }

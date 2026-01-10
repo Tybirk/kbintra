@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery } from "@tanstack/react-query"
+import { useParams, useNavigate } from "react-router-dom"
 import {
   Title,
   Text,
@@ -14,29 +14,33 @@ import {
   Breadcrumbs,
   Anchor,
   Badge,
-} from '@mantine/core';
-import { IconArrowLeft, IconHome } from '@tabler/icons-react';
-import dayjs from 'dayjs';
+} from "@mantine/core"
+import { IconArrowLeft, IconHome } from "@tabler/icons-react"
+import dayjs from "dayjs"
 
-import { housesApi } from '../api/houses';
-import type { Child, UserSummary } from '../types';
+import { housesApi } from "../api/houses"
+import type { Child, UserSummary } from "../types"
 
 export default function HouseDetailPage() {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
 
-  const { data: house, isLoading, error } = useQuery({
-    queryKey: ['house', id],
+  const {
+    data: house,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["house", id],
     queryFn: () => housesApi.getHouse(Number(id)),
     enabled: !!id,
-  });
+  })
 
   if (isLoading) {
     return (
       <Center h={200}>
         <Loader size="lg" />
       </Center>
-    );
+    )
   }
 
   if (error || !house) {
@@ -44,25 +48,25 @@ export default function HouseDetailPage() {
       <Center h={200}>
         <Stack align="center">
           <Text c="red">Failed to load house details.</Text>
-          <Button variant="light" onClick={() => navigate('/beboere')}>
+          <Button variant="light" onClick={() => navigate("/beboere")}>
             Tilbage til beboeroversigt
           </Button>
         </Stack>
       </Center>
-    );
+    )
   }
 
   return (
     <>
       <Breadcrumbs mb="md">
-        <Anchor onClick={() => navigate('/beboere')}>Beboeroversigt</Anchor>
+        <Anchor onClick={() => navigate("/beboere")}>Beboeroversigt</Anchor>
         <Text>{house.name}</Text>
       </Breadcrumbs>
 
       <Button
         variant="subtle"
         leftSection={<IconArrowLeft size={16} />}
-        onClick={() => navigate('/beboere')}
+        onClick={() => navigate("/beboere")}
         mb="md"
       >
         Tilbage til beboeroversigt
@@ -88,9 +92,7 @@ export default function HouseDetailPage() {
           </div>
         </Group>
 
-        {house.description && (
-          <Text mb="md">{house.description}</Text>
-        )}
+        {house.description && <Text mb="md">{house.description}</Text>}
       </Paper>
 
       <Title order={3} mb="md">
@@ -125,12 +127,12 @@ export default function HouseDetailPage() {
         </>
       )}
     </>
-  );
+  )
 }
 
 interface InhabitantCardProps {
-  inhabitant: UserSummary;
-  onClick: () => void;
+  inhabitant: UserSummary
+  onClick: () => void
 }
 
 function InhabitantCard({ inhabitant, onClick }: InhabitantCardProps) {
@@ -139,15 +141,11 @@ function InhabitantCard({ inhabitant, onClick }: InhabitantCardProps) {
       withBorder
       p="lg"
       radius="md"
-      style={{ cursor: 'pointer' }}
+      style={{ cursor: "pointer" }}
       onClick={onClick}
     >
       <Group>
-        <Avatar
-          src={inhabitant.profile_picture}
-          size="lg"
-          radius="xl"
-        >
+        <Avatar src={inhabitant.profile_picture} size="lg" radius="xl">
           {inhabitant.first_name?.[0]}
           {inhabitant.last_name?.[0]}
         </Avatar>
@@ -163,21 +161,21 @@ function InhabitantCard({ inhabitant, onClick }: InhabitantCardProps) {
         </div>
       </Group>
     </Paper>
-  );
+  )
 }
 
 interface ChildCardProps {
-  child: Child;
+  child: Child
 }
 
 function ChildCard({ child }: ChildCardProps) {
   const getAge = (birthdate: string | null) => {
-    if (!birthdate) return null;
-    const years = dayjs().diff(dayjs(birthdate), 'year');
-    return years;
-  };
+    if (!birthdate) return null
+    const years = dayjs().diff(dayjs(birthdate), "year")
+    return years
+  }
 
-  const age = getAge(child.birthdate);
+  const age = getAge(child.birthdate)
 
   return (
     <Paper withBorder p="lg" radius="md">
@@ -194,11 +192,11 @@ function ChildCard({ child }: ChildCardProps) {
           </Group>
           {age !== null && (
             <Text size="sm" c="dimmed">
-              {age} {age === 1 ? 'år' : 'år'}
+              {age} {age === 1 ? "år" : "år"}
             </Text>
           )}
         </div>
       </Group>
     </Paper>
-  );
+  )
 }

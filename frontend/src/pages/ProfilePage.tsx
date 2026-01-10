@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery } from "@tanstack/react-query"
+import { useParams, useNavigate } from "react-router-dom"
 import {
   Title,
   Text,
@@ -11,39 +11,43 @@ import {
   Center,
   Stack,
   Badge,
-} from '@mantine/core';
+} from "@mantine/core"
 import {
   IconPhone,
   IconMail,
   IconCake,
   IconHome,
   IconEdit,
-} from '@tabler/icons-react';
-import dayjs from 'dayjs';
+} from "@tabler/icons-react"
+import dayjs from "dayjs"
 
-import { usersApi } from '../api/users';
-import { useAuthStore } from '../store/authStore';
+import { usersApi } from "../api/users"
+import { useAuthStore } from "../store/authStore"
 
 export default function ProfilePage() {
-  const { userId } = useParams<{ userId: string }>();
-  const navigate = useNavigate();
-  const { user: currentUser } = useAuthStore();
+  const { userId } = useParams<{ userId: string }>()
+  const navigate = useNavigate()
+  const { user: currentUser } = useAuthStore()
 
   // If no userId, show current user's profile
-  const isOwnProfile = !userId || Number(userId) === currentUser?.id;
+  const isOwnProfile = !userId || Number(userId) === currentUser?.id
 
-  const { data: user, isLoading, error } = useQuery({
-    queryKey: ['user', userId || 'me'],
+  const {
+    data: user,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["user", userId || "me"],
     queryFn: () =>
       userId ? usersApi.getUser(Number(userId)) : usersApi.getCurrentUser(),
-  });
+  })
 
   if (isLoading) {
     return (
       <Center h={200}>
         <Loader size="lg" />
       </Center>
-    );
+    )
   }
 
   if (error || !user) {
@@ -51,12 +55,12 @@ export default function ProfilePage() {
       <Center h={200}>
         <Stack align="center">
           <Text c="red">Failed to load profile.</Text>
-          <Button variant="light" onClick={() => navigate('/')}>
+          <Button variant="light" onClick={() => navigate("/")}>
             Go to Dashboard
           </Button>
         </Stack>
       </Center>
-    );
+    )
   }
 
   return (
@@ -64,11 +68,7 @@ export default function ProfilePage() {
       <Paper withBorder p="xl" radius="md" mb="xl">
         <Group justify="space-between" align="flex-start">
           <Group>
-            <Avatar
-              src={user.profile_picture}
-              size={120}
-              radius={120}
-            >
+            <Avatar src={user.profile_picture} size={120} radius={120}>
               {user.first_name?.[0]}
               {user.last_name?.[0]}
             </Avatar>
@@ -80,8 +80,10 @@ export default function ProfilePage() {
                 <Badge
                   variant="light"
                   leftSection={<IconHome size={12} />}
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => user.house && navigate(`/beboere/hus/${user.house}`)}
+                  style={{ cursor: "pointer" }}
+                  onClick={() =>
+                    user.house && navigate(`/beboere/hus/${user.house}`)
+                  }
                 >
                   {user.house_name}
                 </Badge>
@@ -93,7 +95,7 @@ export default function ProfilePage() {
             <Button
               variant="light"
               leftSection={<IconEdit size={16} />}
-              onClick={() => navigate('/profil/rediger')}
+              onClick={() => navigate("/profil/rediger")}
             >
               Edit Profile
             </Button>
@@ -135,11 +137,11 @@ export default function ProfilePage() {
           {user.birthdate && (
             <Group gap="xs">
               <IconCake size={18} />
-              <Text>{dayjs(user.birthdate).format('MMMM D')}</Text>
+              <Text>{dayjs(user.birthdate).format("MMMM D")}</Text>
             </Group>
           )}
         </Stack>
       </Paper>
     </>
-  );
+  )
 }

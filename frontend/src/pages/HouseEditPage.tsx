@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect } from "react"
+import { useNavigate } from "react-router-dom"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
   Text,
@@ -18,11 +18,11 @@ import {
   Table,
   Modal,
   Alert,
-} from '@mantine/core';
-import { DateInput } from '@mantine/dates';
-import { Dropzone, IMAGE_MIME_TYPE } from '@mantine/dropzone';
-import { useDisclosure } from '@mantine/hooks';
-import { notifications } from '@mantine/notifications';
+} from "@mantine/core"
+import { DateInput } from "@mantine/dates"
+import { Dropzone, IMAGE_MIME_TYPE } from "@mantine/dropzone"
+import { useDisclosure } from "@mantine/hooks"
+import { notifications } from "@mantine/notifications"
 import {
   IconUpload,
   IconPhoto,
@@ -33,222 +33,245 @@ import {
   IconPencil,
   IconTrash,
   IconAlertCircle,
-} from '@tabler/icons-react';
-import dayjs from 'dayjs';
+} from "@tabler/icons-react"
+import dayjs from "dayjs"
 
-import { housesApi, type CreateChildData, type UpdateChildData } from '../api/houses';
-import type { Child } from '../types';
+import {
+  housesApi,
+  type CreateChildData,
+  type UpdateChildData,
+} from "../api/houses"
+import type { Child } from "../types"
+
+interface UpdateChildParams {
+  id: number
+  data: UpdateChildData
+}
 
 export default function HouseEditPage() {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
-  const [description, setDescription] = useState('');
-  const [editingChild, setEditingChild] = useState<Child | null>(null);
-  const [childModalOpened, { open: openChildModal, close: closeChildModal }] = useDisclosure(false);
-  const [deleteModalOpened, { open: openDeleteModal, close: closeDeleteModal }] = useDisclosure(false);
-  const [childToDelete, setChildToDelete] = useState<Child | null>(null);
+  const [description, setDescription] = useState("")
+  const [editingChild, setEditingChild] = useState<Child | null>(null)
+  const [childModalOpened, { open: openChildModal, close: closeChildModal }] =
+    useDisclosure(false)
+  const [
+    deleteModalOpened,
+    { open: openDeleteModal, close: closeDeleteModal },
+  ] = useDisclosure(false)
+  const [childToDelete, setChildToDelete] = useState<Child | null>(null)
 
   const [childForm, setChildForm] = useState({
-    name: '',
+    name: "",
     birthdate: null as Date | null,
-  });
+  })
 
-  const { data: house, isLoading, error } = useQuery({
-    queryKey: ['house', 'my'],
+  const {
+    data: house,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["house", "my"],
     queryFn: housesApi.getMyHouse,
-  });
+  })
 
   useEffect(() => {
     if (house) {
-      setDescription(house.description || '');
+      setDescription(house.description || "")
     }
-  }, [house]);
+  }, [house])
 
   const updateHouseMutation = useMutation({
-    mutationFn: (data: { description: string }) => housesApi.updateMyHouse(data),
+    mutationFn: (data: { description: string }) =>
+      housesApi.updateMyHouse(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['house'] });
-      queryClient.invalidateQueries({ queryKey: ['houses'] });
+      queryClient.invalidateQueries({ queryKey: ["house"] })
+      queryClient.invalidateQueries({ queryKey: ["houses"] })
       notifications.show({
-        title: 'Hus opdateret',
-        message: 'Dit hus er blevet opdateret.',
-        color: 'green',
-      });
+        title: "Hus opdateret",
+        message: "Dit hus er blevet opdateret.",
+        color: "green",
+      })
     },
     onError: () => {
       notifications.show({
-        title: 'Fejl',
-        message: 'Kunne ikke opdatere huset. Prøv igen.',
-        color: 'red',
-      });
+        title: "Fejl",
+        message: "Kunne ikke opdatere huset. Prøv igen.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const uploadPictureMutation = useMutation({
     mutationFn: (file: File) => housesApi.updateMyHousePicture(file),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['house'] });
-      queryClient.invalidateQueries({ queryKey: ['houses'] });
+      queryClient.invalidateQueries({ queryKey: ["house"] })
+      queryClient.invalidateQueries({ queryKey: ["houses"] })
       notifications.show({
-        title: 'Billede opdateret',
-        message: 'Husets billede er blevet opdateret.',
-        color: 'green',
-      });
+        title: "Billede opdateret",
+        message: "Husets billede er blevet opdateret.",
+        color: "green",
+      })
     },
     onError: () => {
       notifications.show({
-        title: 'Fejl',
-        message: 'Kunne ikke uploade billedet. Prøv igen.',
-        color: 'red',
-      });
+        title: "Fejl",
+        message: "Kunne ikke uploade billedet. Prøv igen.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const createChildMutation = useMutation({
     mutationFn: (data: CreateChildData) => housesApi.createChild(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['house'] });
-      queryClient.invalidateQueries({ queryKey: ['houses'] });
+      queryClient.invalidateQueries({ queryKey: ["house"] })
+      queryClient.invalidateQueries({ queryKey: ["houses"] })
       notifications.show({
-        title: 'Barn tilføjet',
-        message: 'Barnet er blevet tilføjet til husstanden.',
-        color: 'green',
-      });
-      closeChildModal();
-      resetChildForm();
+        title: "Barn tilføjet",
+        message: "Barnet er blevet tilføjet til husstanden.",
+        color: "green",
+      })
+      closeChildModal()
+      resetChildForm()
     },
     onError: () => {
       notifications.show({
-        title: 'Fejl',
-        message: 'Kunne ikke tilføje barnet. Prøv igen.',
-        color: 'red',
-      });
+        title: "Fejl",
+        message: "Kunne ikke tilføje barnet. Prøv igen.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const updateChildMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: UpdateChildData }) =>
+    mutationFn: ({ id, data }: UpdateChildParams) =>
       housesApi.updateChild(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['house'] });
-      queryClient.invalidateQueries({ queryKey: ['houses'] });
+      queryClient.invalidateQueries({ queryKey: ["house"] })
+      queryClient.invalidateQueries({ queryKey: ["houses"] })
       notifications.show({
-        title: 'Barn opdateret',
-        message: 'Barnets oplysninger er blevet opdateret.',
-        color: 'green',
-      });
-      closeChildModal();
-      resetChildForm();
+        title: "Barn opdateret",
+        message: "Barnets oplysninger er blevet opdateret.",
+        color: "green",
+      })
+      closeChildModal()
+      resetChildForm()
     },
     onError: () => {
       notifications.show({
-        title: 'Fejl',
-        message: 'Kunne ikke opdatere barnet. Prøv igen.',
-        color: 'red',
-      });
+        title: "Fejl",
+        message: "Kunne ikke opdatere barnet. Prøv igen.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const deleteChildMutation = useMutation({
     mutationFn: (id: number) => housesApi.deleteChild(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['house'] });
-      queryClient.invalidateQueries({ queryKey: ['houses'] });
+      queryClient.invalidateQueries({ queryKey: ["house"] })
+      queryClient.invalidateQueries({ queryKey: ["houses"] })
       notifications.show({
-        title: 'Barn fjernet',
-        message: 'Barnet er blevet fjernet fra husstanden.',
-        color: 'green',
-      });
-      closeDeleteModal();
-      setChildToDelete(null);
+        title: "Barn fjernet",
+        message: "Barnet er blevet fjernet fra husstanden.",
+        color: "green",
+      })
+      closeDeleteModal()
+      setChildToDelete(null)
     },
     onError: () => {
       notifications.show({
-        title: 'Fejl',
-        message: 'Kunne ikke fjerne barnet. Prøv igen.',
-        color: 'red',
-      });
+        title: "Fejl",
+        message: "Kunne ikke fjerne barnet. Prøv igen.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const resetChildForm = () => {
-    setChildForm({ name: '', birthdate: null });
-    setEditingChild(null);
-  };
+    setChildForm({ name: "", birthdate: null })
+    setEditingChild(null)
+  }
 
   const handleOpenAddChild = () => {
-    resetChildForm();
-    openChildModal();
-  };
+    resetChildForm()
+    openChildModal()
+  }
 
   const handleOpenEditChild = (child: Child) => {
-    setEditingChild(child);
+    setEditingChild(child)
     setChildForm({
       name: child.name,
       birthdate: child.birthdate ? new Date(child.birthdate) : null,
-    });
-    openChildModal();
-  };
+    })
+    openChildModal()
+  }
 
   const handleOpenDeleteChild = (child: Child) => {
-    setChildToDelete(child);
-    openDeleteModal();
-  };
+    setChildToDelete(child)
+    openDeleteModal()
+  }
 
   const handleSaveChild = () => {
     const data = {
       name: childForm.name,
       birthdate: childForm.birthdate
-        ? dayjs(childForm.birthdate).format('YYYY-MM-DD')
+        ? dayjs(childForm.birthdate).format("YYYY-MM-DD")
         : null,
-    };
+    }
 
     if (editingChild) {
-      updateChildMutation.mutate({ id: editingChild.id, data });
+      updateChildMutation.mutate({ id: editingChild.id, data })
     } else {
-      createChildMutation.mutate(data);
+      createChildMutation.mutate(data)
     }
-  };
+  }
 
   const handleConfirmDelete = () => {
     if (childToDelete) {
-      deleteChildMutation.mutate(childToDelete.id);
+      deleteChildMutation.mutate(childToDelete.id)
     }
-  };
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateHouseMutation.mutate({ description });
-  };
+    e.preventDefault()
+    updateHouseMutation.mutate({ description })
+  }
 
   const handleDrop = (files: File[]) => {
     if (files.length > 0) {
-      uploadPictureMutation.mutate(files[0]);
+      uploadPictureMutation.mutate(files[0])
     }
-  };
+  }
 
   if (isLoading) {
     return (
       <Center h={200}>
         <Loader size="lg" />
       </Center>
-    );
+    )
   }
 
   if (error || !house) {
     return (
       <Center h={200}>
         <Stack align="center">
-          <Alert icon={<IconAlertCircle size={16} />} title="Ingen husstand" color="yellow">
-            Du er ikke tilknyttet et hus. Kontakt en administrator for at blive tilknyttet.
+          <Alert
+            icon={<IconAlertCircle size={16} />}
+            title="Ingen husstand"
+            color="yellow"
+          >
+            Du er ikke tilknyttet et hus. Kontakt en administrator for at blive
+            tilknyttet.
           </Alert>
-          <Button variant="light" onClick={() => navigate('/profil')}>
+          <Button variant="light" onClick={() => navigate("/profil")}>
             Tilbage til profil
           </Button>
         </Stack>
       </Center>
-    );
+    )
   }
 
   return (
@@ -256,7 +279,7 @@ export default function HouseEditPage() {
       <Button
         variant="subtle"
         leftSection={<IconArrowLeft size={16} />}
-        onClick={() => navigate('/profil')}
+        onClick={() => navigate("/profil")}
         mb="md"
       >
         Tilbage til profil
@@ -313,14 +336,14 @@ export default function HouseEditPage() {
               justify="center"
               gap="xl"
               mih={100}
-              style={{ pointerEvents: 'none' }}
+              style={{ pointerEvents: "none" }}
             >
               <Dropzone.Accept>
                 <IconUpload
                   style={{
                     width: rem(52),
                     height: rem(52),
-                    color: 'var(--mantine-color-blue-6)',
+                    color: "var(--mantine-color-blue-6)",
                   }}
                   stroke={1.5}
                 />
@@ -330,7 +353,7 @@ export default function HouseEditPage() {
                   style={{
                     width: rem(52),
                     height: rem(52),
-                    color: 'var(--mantine-color-red-6)',
+                    color: "var(--mantine-color-red-6)",
                   }}
                   stroke={1.5}
                 />
@@ -340,7 +363,7 @@ export default function HouseEditPage() {
                   style={{
                     width: rem(52),
                     height: rem(52),
-                    color: 'var(--mantine-color-dimmed)',
+                    color: "var(--mantine-color-dimmed)",
                   }}
                   stroke={1.5}
                 />
@@ -375,10 +398,7 @@ export default function HouseEditPage() {
             />
 
             <Group justify="flex-end" mt="md">
-              <Button
-                type="submit"
-                loading={updateHouseMutation.isPending}
-              >
+              <Button type="submit" loading={updateHouseMutation.isPending}>
                 Gem ændringer
               </Button>
             </Group>
@@ -398,7 +418,8 @@ export default function HouseEditPage() {
         </Group>
 
         <Text size="sm" c="dimmed" mb="md">
-          Børn er ikke brugere med login, men vises i beboeroversigten som en del af husstanden.
+          Børn er ikke brugere med login, men vises i beboeroversigten som en
+          del af husstanden.
         </Text>
 
         {house.children && house.children.length > 0 ? (
@@ -416,8 +437,8 @@ export default function HouseEditPage() {
                   <Table.Td>{child.name}</Table.Td>
                   <Table.Td>
                     {child.birthdate
-                      ? dayjs(child.birthdate).format('D. MMMM YYYY')
-                      : '-'}
+                      ? dayjs(child.birthdate).format("D. MMMM YYYY")
+                      : "-"}
                   </Table.Td>
                   <Table.Td>
                     <Group gap="xs">
@@ -452,10 +473,10 @@ export default function HouseEditPage() {
       <Modal
         opened={childModalOpened}
         onClose={() => {
-          closeChildModal();
-          resetChildForm();
+          closeChildModal()
+          resetChildForm()
         }}
-        title={editingChild ? 'Rediger barn' : 'Tilføj barn'}
+        title={editingChild ? "Rediger barn" : "Tilføj barn"}
       >
         <Stack>
           <TextInput
@@ -473,8 +494,8 @@ export default function HouseEditPage() {
             placeholder="Vælg fødselsdag"
             value={childForm.birthdate}
             onChange={(value) => {
-              const date = value ? new Date(value) : null;
-              setChildForm((prev) => ({ ...prev, birthdate: date }));
+              const date = value ? new Date(value) : null
+              setChildForm((prev) => ({ ...prev, birthdate: date }))
             }}
             maxDate={new Date()}
             clearable
@@ -484,18 +505,20 @@ export default function HouseEditPage() {
             <Button
               variant="light"
               onClick={() => {
-                closeChildModal();
-                resetChildForm();
+                closeChildModal()
+                resetChildForm()
               }}
             >
               Annuller
             </Button>
             <Button
               onClick={handleSaveChild}
-              loading={createChildMutation.isPending || updateChildMutation.isPending}
+              loading={
+                createChildMutation.isPending || updateChildMutation.isPending
+              }
               disabled={!childForm.name.trim()}
             >
-              {editingChild ? 'Gem ændringer' : 'Tilføj'}
+              {editingChild ? "Gem ændringer" : "Tilføj"}
             </Button>
           </Group>
         </Stack>
@@ -505,20 +528,21 @@ export default function HouseEditPage() {
       <Modal
         opened={deleteModalOpened}
         onClose={() => {
-          closeDeleteModal();
-          setChildToDelete(null);
+          closeDeleteModal()
+          setChildToDelete(null)
         }}
         title="Fjern barn"
       >
         <Text mb="lg">
-          Er du sikker på, at du vil fjerne <strong>{childToDelete?.name}</strong> fra husstanden?
+          Er du sikker på, at du vil fjerne{" "}
+          <strong>{childToDelete?.name}</strong> fra husstanden?
         </Text>
         <Group justify="flex-end">
           <Button
             variant="light"
             onClick={() => {
-              closeDeleteModal();
-              setChildToDelete(null);
+              closeDeleteModal()
+              setChildToDelete(null)
             }}
           >
             Annuller
@@ -533,5 +557,5 @@ export default function HouseEditPage() {
         </Group>
       </Modal>
     </>
-  );
+  )
 }

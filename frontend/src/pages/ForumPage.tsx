@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useMemo } from "react"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
   Text,
@@ -14,86 +14,91 @@ import {
   Stack,
   Box,
   ThemeIcon,
-} from '@mantine/core';
-import { notifications } from '@mantine/notifications';
+} from "@mantine/core"
+import { notifications } from "@mantine/notifications"
 import {
   IconSearch,
   IconMessageCircle,
   IconBell,
   IconBellOff,
   IconUsers,
-} from '@tabler/icons-react';
-import { useNavigate } from 'react-router-dom';
+} from "@tabler/icons-react"
+import { useNavigate } from "react-router-dom"
 
-import { forumApi } from '../api/forum';
-import type { Subgroup } from '../types';
+import { forumApi } from "../api/forum"
+import type { Subgroup } from "../types"
 
 export default function ForumPage() {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [search, setSearch] = useState('');
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [search, setSearch] = useState("")
 
-  const { data: subgroups, isLoading, error } = useQuery({
-    queryKey: ['subgroups'],
+  const {
+    data: subgroups,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["subgroups"],
     queryFn: forumApi.getSubgroups,
-  });
+  })
 
   const subscribeMutation = useMutation({
     mutationFn: forumApi.subscribe,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['subgroups'] });
+      queryClient.invalidateQueries({ queryKey: ["subgroups"] })
       notifications.show({
-        title: 'Tilmeldt',
-        message: 'Du modtager nu opdateringer fra denne gruppe.',
-        color: 'green',
-      });
+        title: "Tilmeldt",
+        message: "Du modtager nu opdateringer fra denne gruppe.",
+        color: "green",
+      })
     },
     onError: () => {
       notifications.show({
-        title: 'Fejl',
-        message: 'Kunne ikke tilmelde. Prøv venligst igen.',
-        color: 'red',
-      });
+        title: "Fejl",
+        message: "Kunne ikke tilmelde. Prøv venligst igen.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const unsubscribeMutation = useMutation({
     mutationFn: forumApi.unsubscribe,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['subgroups'] });
+      queryClient.invalidateQueries({ queryKey: ["subgroups"] })
       notifications.show({
-        title: 'Afmeldt',
-        message: 'Du modtager ikke længere opdateringer fra denne gruppe.',
-        color: 'blue',
-      });
+        title: "Afmeldt",
+        message: "Du modtager ikke længere opdateringer fra denne gruppe.",
+        color: "blue",
+      })
     },
     onError: () => {
       notifications.show({
-        title: 'Fejl',
-        message: 'Kunne ikke afmelde. Prøv venligst igen.',
-        color: 'red',
-      });
+        title: "Fejl",
+        message: "Kunne ikke afmelde. Prøv venligst igen.",
+        color: "red",
+      })
     },
-  });
+  })
 
   // Split subgroups into committees and regular groups
   const { committees, regularGroups } = useMemo(() => {
-    const filtered = subgroups?.filter((subgroup) =>
-      subgroup.name.toLowerCase().includes(search.toLowerCase())
-    ) || [];
+    const filtered =
+      subgroups?.filter((subgroup) =>
+        subgroup.name.toLowerCase().includes(search.toLowerCase()),
+      ) || []
 
     return {
       committees: filtered.filter((s) => s.is_committee),
       regularGroups: filtered.filter((s) => !s.is_committee),
-    };
-  }, [subgroups, search]);
+    }
+  }, [subgroups, search])
 
   if (isLoading) {
     return (
       <Center h={200}>
         <Loader size="lg" />
       </Center>
-    );
+    )
   }
 
   if (error) {
@@ -101,7 +106,7 @@ export default function ForumPage() {
       <Center h={200}>
         <Text c="red">Kunne ikke indlæse forum. Prøv venligst igen.</Text>
       </Center>
-    );
+    )
   }
 
   const renderSubgroupCard = (subgroup: Subgroup) => (
@@ -114,7 +119,7 @@ export default function ForumPage() {
       isSubscribing={subscribeMutation.isPending}
       isUnsubscribing={unsubscribeMutation.isPending}
     />
-  );
+  )
 
   return (
     <>
@@ -154,7 +159,9 @@ export default function ForumPage() {
                 </ThemeIcon>
                 <div>
                   <Title order={3}>Udvalg</Title>
-                  <Text size="sm" c="dimmed">Fællesskabets udvalg og arbejdsgrupper</Text>
+                  <Text size="sm" c="dimmed">
+                    Fællesskabets udvalg og arbejdsgrupper
+                  </Text>
                 </div>
               </Group>
               <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
@@ -172,7 +179,9 @@ export default function ForumPage() {
                 </ThemeIcon>
                 <div>
                   <Title order={3}>Grupper</Title>
-                  <Text size="sm" c="dimmed">Øvrige fora og diskussionsgrupper</Text>
+                  <Text size="sm" c="dimmed">
+                    Øvrige fora og diskussionsgrupper
+                  </Text>
                 </div>
               </Group>
               <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
@@ -183,16 +192,16 @@ export default function ForumPage() {
         </Stack>
       )}
     </>
-  );
+  )
 }
 
 interface SubgroupCardProps {
-  subgroup: Subgroup;
-  onClick: () => void;
-  onSubscribe: () => void;
-  onUnsubscribe: () => void;
-  isSubscribing: boolean;
-  isUnsubscribing: boolean;
+  subgroup: Subgroup
+  onClick: () => void
+  onSubscribe: () => void
+  onUnsubscribe: () => void
+  isSubscribing: boolean
+  isUnsubscribing: boolean
 }
 
 function SubgroupCard({
@@ -204,20 +213,20 @@ function SubgroupCard({
   isUnsubscribing,
 }: SubgroupCardProps) {
   const handleSubscriptionClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
+    e.stopPropagation()
     if (subgroup.is_subscribed) {
-      onUnsubscribe();
+      onUnsubscribe()
     } else {
-      onSubscribe();
+      onSubscribe()
     }
-  };
+  }
 
   return (
     <Paper
       withBorder
       p="lg"
       radius="md"
-      style={{ cursor: 'pointer' }}
+      style={{ cursor: "pointer" }}
       onClick={onClick}
     >
       <Stack gap="sm">
@@ -238,11 +247,11 @@ function SubgroupCard({
               </Badge>
             )}
             <ActionIcon
-              variant={subgroup.is_subscribed ? 'filled' : 'light'}
-              color={subgroup.is_subscribed ? 'blue' : 'gray'}
+              variant={subgroup.is_subscribed ? "filled" : "light"}
+              color={subgroup.is_subscribed ? "blue" : "gray"}
               onClick={handleSubscriptionClick}
               loading={isSubscribing || isUnsubscribing}
-              title={subgroup.is_subscribed ? 'Afmeld' : 'Tilmeld'}
+              title={subgroup.is_subscribed ? "Afmeld" : "Tilmeld"}
             >
               {subgroup.is_subscribed ? (
                 <IconBell size={16} />
@@ -271,5 +280,5 @@ function SubgroupCard({
         </Group>
       </Stack>
     </Paper>
-  );
+  )
 }

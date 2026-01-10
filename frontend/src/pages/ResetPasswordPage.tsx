@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { useMutation } from '@tanstack/react-query';
+import { useState, useEffect } from "react"
+import { Link, useSearchParams } from "react-router-dom"
+import { useMutation } from "@tanstack/react-query"
 import {
   Container,
   Paper,
@@ -11,83 +11,85 @@ import {
   Text,
   Anchor,
   Alert,
-} from '@mantine/core';
-import { notifications } from '@mantine/notifications';
-import { IconArrowLeft, IconCheck, IconAlertCircle } from '@tabler/icons-react';
+} from "@mantine/core"
+import { notifications } from "@mantine/notifications"
+import { IconArrowLeft, IconCheck, IconAlertCircle } from "@tabler/icons-react"
 
-import { authApi } from '../api/auth';
-import type { ResetPasswordData } from '../types';
+import { authApi } from "../api/auth"
+import type { ResetPasswordData } from "../types"
 
 export default function ResetPasswordPage() {
-  const [searchParams] = useSearchParams();
-  const token = searchParams.get('token');
+  const [searchParams] = useSearchParams()
+  const token = searchParams.get("token")
 
   const [formData, setFormData] = useState({
-    new_password: '',
-    new_password_confirm: '',
-  });
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+    new_password: "",
+    new_password_confirm: "",
+  })
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
 
   useEffect(() => {
     if (!token) {
-      setError('Ugyldigt eller manglende nulstillingstoken.');
+      setError("Ugyldigt eller manglende nulstillingstoken.")
     }
-  }, [token]);
+  }, [token])
 
   const resetPasswordMutation = useMutation({
     mutationFn: (data: ResetPasswordData) => authApi.resetPassword(data),
     onSuccess: () => {
-      setSuccess(true);
+      setSuccess(true)
       notifications.show({
-        title: 'Adgangskode nulstillet',
-        message: 'Din adgangskode er blevet nulstillet. Du kan nu logge ind.',
-        color: 'green',
-      });
+        title: "Adgangskode nulstillet",
+        message: "Din adgangskode er blevet nulstillet. Du kan nu logge ind.",
+        color: "green",
+      })
     },
     onError: (err: { response?: { data?: Record<string, string[]> } }) => {
-      const data = err.response?.data;
+      const data = err.response?.data
       if (data?.token) {
-        setError('Nulstillingslinket er ugyldigt eller udløbet. Anmod venligst om et nyt link.');
+        setError(
+          "Nulstillingslinket er ugyldigt eller udløbet. Anmod venligst om et nyt link.",
+        )
       } else if (data?.new_password) {
-        setError(data.new_password.join(' '));
+        setError(data.new_password.join(" "))
       } else if (data?.new_password_confirm) {
-        setError('Adgangskoderne matcher ikke.');
+        setError("Adgangskoderne matcher ikke.")
       } else {
-        setError('Der opstod en fejl. Prøv venligst igen.');
+        setError("Der opstod en fejl. Prøv venligst igen.")
       }
     },
-  });
+  })
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
+    e.preventDefault()
+    setError(null)
 
     if (!token) {
-      setError('Ugyldigt eller manglende nulstillingstoken.');
-      return;
+      setError("Ugyldigt eller manglende nulstillingstoken.")
+      return
     }
 
     if (formData.new_password !== formData.new_password_confirm) {
-      setError('Adgangskoderne matcher ikke.');
-      return;
+      setError("Adgangskoderne matcher ikke.")
+      return
     }
 
     if (formData.new_password.length < 8) {
-      setError('Adgangskoden skal være mindst 8 tegn.');
-      return;
+      setError("Adgangskoden skal være mindst 8 tegn.")
+      return
     }
 
     resetPasswordMutation.mutate({
       token,
       new_password: formData.new_password,
       new_password_confirm: formData.new_password_confirm,
-    });
-  };
+    })
+  }
 
   if (success) {
     return (
-      <Container size={420} my={40}>
+      <Container size="xs" px="md" my={40}>
         <Title ta="center" fw={900}>
           KB Intra
         </Title>
@@ -104,21 +106,17 @@ export default function ResetPasswordPage() {
             Du kan nu logge ind med din nye adgangskode.
           </Text>
 
-          <Button
-            component={Link}
-            to="/login"
-            fullWidth
-          >
+          <Button component={Link} to="/login" fullWidth>
             Gå til login
           </Button>
         </Paper>
       </Container>
-    );
+    )
   }
 
   if (!token) {
     return (
-      <Container size={420} my={40}>
+      <Container size="xs" px="md" my={40}>
         <Title ta="center" fw={900}>
           KB Intra
         </Title>
@@ -132,15 +130,12 @@ export default function ResetPasswordPage() {
           </Alert>
 
           <Text size="sm" c="dimmed" mb="lg">
-            Linket du fulgte er ugyldigt. Anmod venligst om et nyt nulstillingslink.
+            Linket du fulgte er ugyldigt. Anmod venligst om et nyt
+            nulstillingslink.
           </Text>
 
           <Stack gap="sm">
-            <Button
-              component={Link}
-              to="/forgot-password"
-              fullWidth
-            >
+            <Button component={Link} to="/forgot-password" fullWidth>
               Anmod om nyt link
             </Button>
             <Button
@@ -155,11 +150,11 @@ export default function ResetPasswordPage() {
           </Stack>
         </Paper>
       </Container>
-    );
+    )
   }
 
   return (
-    <Container size={420} my={40}>
+    <Container size="xs" px="md" my={40}>
       <Title ta="center" fw={900}>
         KB Intra
       </Title>
@@ -214,12 +209,12 @@ export default function ResetPasswordPage() {
         </form>
 
         <Text c="dimmed" size="sm" ta="center" mt={15}>
-          Huskede du din adgangskode?{' '}
+          Huskede du din adgangskode?{" "}
           <Anchor component={Link} to="/login" size="sm">
             Log ind her
           </Anchor>
         </Text>
       </Paper>
     </Container>
-  );
+  )
 }

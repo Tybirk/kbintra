@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useMemo } from "react"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
   Text,
@@ -20,10 +20,10 @@ import {
   SimpleGrid,
   Box,
   Indicator,
-} from '@mantine/core';
-import { Calendar, DateTimePicker } from '@mantine/dates';
-import { useDisclosure } from '@mantine/hooks';
-import { notifications } from '@mantine/notifications';
+} from "@mantine/core"
+import { Calendar, DateTimePicker } from "@mantine/dates"
+import { useDisclosure } from "@mantine/hooks"
+import { notifications } from "@mantine/notifications"
 import {
   IconPlus,
   IconCalendarEvent,
@@ -33,103 +33,123 @@ import {
   IconMapPin,
   IconChevronLeft,
   IconChevronRight,
-} from '@tabler/icons-react';
-import dayjs from 'dayjs';
+} from "@tabler/icons-react"
+import dayjs from "dayjs"
 
-import { calendarApi } from '../api/calendar';
-import type { CalendarEvent, CreateEventData } from '../types';
+import { calendarApi } from "../api/calendar"
+import type { CalendarEvent, CreateEventData } from "../types"
 
 export default function CalendarPage() {
-  const queryClient = useQueryClient();
-  const [selectedMonth, setSelectedMonth] = useState(new Date());
-  const [createModalOpened, { open: openCreateModal, close: closeCreateModal }] =
-    useDisclosure(false);
-  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
-  const [deleteModalOpened, { open: openDeleteModal, close: closeDeleteModal }] =
-    useDisclosure(false);
-  const [eventToDelete, setEventToDelete] = useState<number | null>(null);
+  const queryClient = useQueryClient()
+  const [selectedMonth, setSelectedMonth] = useState(new Date())
+  const [
+    createModalOpened,
+    { open: openCreateModal, close: closeCreateModal },
+  ] = useDisclosure(false)
+  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
+  const [
+    deleteModalOpened,
+    { open: openDeleteModal, close: closeDeleteModal },
+  ] = useDisclosure(false)
+  const [eventToDelete, setEventToDelete] = useState<number | null>(null)
 
   // Fetch events for current month (with buffer)
-  const startDate = dayjs(selectedMonth).startOf('month').subtract(7, 'day').toISOString();
-  const endDate = dayjs(selectedMonth).endOf('month').add(7, 'day').toISOString();
+  const startDate = dayjs(selectedMonth)
+    .startOf("month")
+    .subtract(7, "day")
+    .toISOString()
+  const endDate = dayjs(selectedMonth)
+    .endOf("month")
+    .add(7, "day")
+    .toISOString()
 
-  const { data: events, isLoading, error } = useQuery({
-    queryKey: ['calendar', 'events', startDate, endDate],
+  const {
+    data: events,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["calendar", "events", startDate, endDate],
     queryFn: () => calendarApi.getEvents(startDate, endDate),
-  });
+  })
 
   const deleteMutation = useMutation({
     mutationFn: calendarApi.deleteEvent,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['calendar'] });
-      closeDeleteModal();
-      setEventToDelete(null);
+      queryClient.invalidateQueries({ queryKey: ["calendar"] })
+      closeDeleteModal()
+      setEventToDelete(null)
       notifications.show({
-        title: 'Begivenhed slettet',
-        message: 'Begivenheden er blevet slettet.',
-        color: 'blue',
-      });
+        title: "Begivenhed slettet",
+        message: "Begivenheden er blevet slettet.",
+        color: "blue",
+      })
     },
     onError: () => {
       notifications.show({
-        title: 'Fejl',
-        message: 'Kunne ikke slette begivenhed. Prøv igen.',
-        color: 'red',
-      });
+        title: "Fejl",
+        message: "Kunne ikke slette begivenhed. Prøv igen.",
+        color: "red",
+      })
     },
-  });
+  })
 
   // Group events by date for the calendar indicator
   const eventsByDate = useMemo(() => {
-    const map: Record<string, CalendarEvent[]> = {};
+    const map: Record<string, CalendarEvent[]> = {}
     events?.forEach((event) => {
-      const dateKey = dayjs(event.start_datetime).format('YYYY-MM-DD');
-      if (!map[dateKey]) map[dateKey] = [];
-      map[dateKey].push(event);
-    });
-    return map;
-  }, [events]);
+      const dateKey = dayjs(event.start_datetime).format("YYYY-MM-DD")
+      if (!map[dateKey]) map[dateKey] = []
+      map[dateKey].push(event)
+    })
+    return map
+  }, [events])
 
   // Events for the current month (displayed in list)
   const monthEvents = useMemo(() => {
     return events
       ?.filter((event) => {
-        const eventDate = dayjs(event.start_datetime);
-        return eventDate.month() === dayjs(selectedMonth).month() &&
-               eventDate.year() === dayjs(selectedMonth).year();
+        const eventDate = dayjs(event.start_datetime)
+        return (
+          eventDate.month() === dayjs(selectedMonth).month() &&
+          eventDate.year() === dayjs(selectedMonth).year()
+        )
       })
-      .sort((a, b) => new Date(a.start_datetime).getTime() - new Date(b.start_datetime).getTime());
-  }, [events, selectedMonth]);
+      .sort(
+        (a, b) =>
+          new Date(a.start_datetime).getTime() -
+          new Date(b.start_datetime).getTime(),
+      )
+  }, [events, selectedMonth])
 
   const handleDeleteClick = (id: number) => {
-    setEventToDelete(id);
-    openDeleteModal();
-  };
+    setEventToDelete(id)
+    openDeleteModal()
+  }
 
   const handleConfirmDelete = () => {
     if (eventToDelete) {
-      deleteMutation.mutate(eventToDelete);
+      deleteMutation.mutate(eventToDelete)
     }
-  };
+  }
 
   const goToPrevMonth = () => {
-    setSelectedMonth(dayjs(selectedMonth).subtract(1, 'month').toDate());
-  };
+    setSelectedMonth(dayjs(selectedMonth).subtract(1, "month").toDate())
+  }
 
   const goToNextMonth = () => {
-    setSelectedMonth(dayjs(selectedMonth).add(1, 'month').toDate());
-  };
+    setSelectedMonth(dayjs(selectedMonth).add(1, "month").toDate())
+  }
 
   const goToToday = () => {
-    setSelectedMonth(new Date());
-  };
+    setSelectedMonth(new Date())
+  }
 
   if (error) {
     return (
       <Center h={200}>
         <Text c="red">Kunne ikke indlæse begivenheder. Prøv igen.</Text>
       </Center>
-    );
+    )
   }
 
   return (
@@ -152,9 +172,7 @@ export default function CalendarPage() {
               <ActionIcon variant="subtle" onClick={goToPrevMonth}>
                 <IconChevronLeft size={16} />
               </ActionIcon>
-              <Text fw={500}>
-                {dayjs(selectedMonth).format('MMMM YYYY')}
-              </Text>
+              <Text fw={500}>{dayjs(selectedMonth).format("MMMM YYYY")}</Text>
               <ActionIcon variant="subtle" onClick={goToNextMonth}>
                 <IconChevronRight size={16} />
               </ActionIcon>
@@ -174,10 +192,10 @@ export default function CalendarPage() {
               onDateChange={(date) => setSelectedMonth(new Date(date))}
               size="md"
               renderDay={(date) => {
-                const dateValue = new Date(date);
-                const dateKey = dayjs(dateValue).format('YYYY-MM-DD');
-                const dayEvents = eventsByDate[dateKey];
-                const day = dateValue.getDate();
+                const dateValue = new Date(date)
+                const dateKey = dayjs(dateValue).format("YYYY-MM-DD")
+                const dayEvents = eventsByDate[dateKey]
+                const day = dateValue.getDate()
                 return (
                   <Indicator
                     size={6}
@@ -187,7 +205,7 @@ export default function CalendarPage() {
                   >
                     <div>{day}</div>
                   </Indicator>
-                );
+                )
               }}
             />
           )}
@@ -196,7 +214,7 @@ export default function CalendarPage() {
         {/* Events List */}
         <Paper withBorder p="md" radius="md">
           <Text fw={500} mb="md">
-            Begivenheder i {dayjs(selectedMonth).format('MMMM YYYY')}
+            Begivenheder i {dayjs(selectedMonth).format("MMMM YYYY")}
           </Text>
 
           {isLoading ? (
@@ -232,8 +250,8 @@ export default function CalendarPage() {
         opened={createModalOpened}
         onClose={closeCreateModal}
         onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ['calendar'] });
-          closeCreateModal();
+          queryClient.invalidateQueries({ queryKey: ["calendar"] })
+          closeCreateModal()
         }}
       />
 
@@ -243,8 +261,8 @@ export default function CalendarPage() {
           onClose={() => setEditingEvent(null)}
           event={editingEvent}
           onSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: ['calendar'] });
-            setEditingEvent(null);
+            queryClient.invalidateQueries({ queryKey: ["calendar"] })
+            setEditingEvent(null)
           }}
         />
       )}
@@ -256,7 +274,8 @@ export default function CalendarPage() {
         centered
       >
         <Text mb="lg">
-          Er du sikker på, at du vil slette denne begivenhed? Denne handling kan ikke fortrydes.
+          Er du sikker på, at du vil slette denne begivenhed? Denne handling kan
+          ikke fortrydes.
         </Text>
         <Group justify="flex-end">
           <Button variant="light" onClick={closeDeleteModal}>
@@ -272,18 +291,18 @@ export default function CalendarPage() {
         </Group>
       </Modal>
     </>
-  );
+  )
 }
 
 interface EventCardProps {
-  event: CalendarEvent;
-  onEdit: () => void;
-  onDelete: () => void;
+  event: CalendarEvent
+  onEdit: () => void
+  onDelete: () => void
 }
 
 function EventCard({ event, onEdit, onDelete }: EventCardProps) {
-  const isToday = dayjs(event.start_datetime).isSame(dayjs(), 'day');
-  const isPast = dayjs(event.end_datetime).isBefore(dayjs());
+  const isToday = dayjs(event.start_datetime).isSame(dayjs(), "day")
+  const isPast = dayjs(event.end_datetime).isBefore(dayjs())
 
   return (
     <Paper withBorder p="sm" radius="md" style={{ opacity: isPast ? 0.6 : 1 }}>
@@ -292,9 +311,11 @@ function EventCard({ event, onEdit, onDelete }: EventCardProps) {
           <Box
             style={{
               width: 4,
-              alignSelf: 'stretch',
+              alignSelf: "stretch",
               borderRadius: 2,
-              backgroundColor: isToday ? 'var(--mantine-color-blue-6)' : 'var(--mantine-color-gray-4)',
+              backgroundColor: isToday
+                ? "var(--mantine-color-blue-6)"
+                : "var(--mantine-color-gray-4)",
             }}
           />
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -315,8 +336,8 @@ function EventCard({ event, onEdit, onDelete }: EventCardProps) {
             </Group>
             <Text size="sm" c="dimmed">
               {event.is_all_day
-                ? dayjs(event.start_datetime).format('ddd, MMM D')
-                : `${dayjs(event.start_datetime).format('ddd, MMM D')} at ${dayjs(event.start_datetime).format('HH:mm')} - ${dayjs(event.end_datetime).format('HH:mm')}`}
+                ? dayjs(event.start_datetime).format("ddd, MMM D")
+                : `${dayjs(event.start_datetime).format("ddd, MMM D")} at ${dayjs(event.start_datetime).format("HH:mm")} - ${dayjs(event.end_datetime).format("HH:mm")}`}
             </Text>
             {event.location && (
               <Group gap={4} mt={4}>
@@ -364,55 +385,59 @@ function EventCard({ event, onEdit, onDelete }: EventCardProps) {
         )}
       </Group>
     </Paper>
-  );
+  )
 }
 
 interface CreateEventModalProps {
-  opened: boolean;
-  onClose: () => void;
-  onSuccess: () => void;
+  opened: boolean
+  onClose: () => void
+  onSuccess: () => void
 }
 
-function CreateEventModal({ opened, onClose, onSuccess }: CreateEventModalProps) {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [location, setLocation] = useState('');
-  const [isAllDay, setIsAllDay] = useState(false);
-  const [startDatetime, setStartDatetime] = useState<Date | null>(null);
-  const [endDatetime, setEndDatetime] = useState<Date | null>(null);
+function CreateEventModal({
+  opened,
+  onClose,
+  onSuccess,
+}: CreateEventModalProps) {
+  const [title, setTitle] = useState("")
+  const [description, setDescription] = useState("")
+  const [location, setLocation] = useState("")
+  const [isAllDay, setIsAllDay] = useState(false)
+  const [startDatetime, setStartDatetime] = useState<Date | null>(null)
+  const [endDatetime, setEndDatetime] = useState<Date | null>(null)
 
   const createMutation = useMutation({
     mutationFn: (data: CreateEventData) => calendarApi.createEvent(data),
     onSuccess: () => {
       notifications.show({
-        title: 'Begivenhed oprettet',
-        message: 'Din begivenhed er blevet tilføjet til kalenderen.',
-        color: 'green',
-      });
-      resetForm();
-      onSuccess();
+        title: "Begivenhed oprettet",
+        message: "Din begivenhed er blevet tilføjet til kalenderen.",
+        color: "green",
+      })
+      resetForm()
+      onSuccess()
     },
     onError: () => {
       notifications.show({
-        title: 'Fejl',
-        message: 'Kunne ikke oprette begivenhed. Prøv igen.',
-        color: 'red',
-      });
+        title: "Fejl",
+        message: "Kunne ikke oprette begivenhed. Prøv igen.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const resetForm = () => {
-    setTitle('');
-    setDescription('');
-    setLocation('');
-    setIsAllDay(false);
-    setStartDatetime(null);
-    setEndDatetime(null);
-  };
+    setTitle("")
+    setDescription("")
+    setLocation("")
+    setIsAllDay(false)
+    setStartDatetime(null)
+    setEndDatetime(null)
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim() || !startDatetime || !endDatetime) return;
+    e.preventDefault()
+    if (!title.trim() || !startDatetime || !endDatetime) return
 
     createMutation.mutate({
       title: title.trim(),
@@ -421,16 +446,21 @@ function CreateEventModal({ opened, onClose, onSuccess }: CreateEventModalProps)
       is_all_day: isAllDay,
       start_datetime: startDatetime.toISOString(),
       end_datetime: endDatetime.toISOString(),
-    });
-  };
+    })
+  }
 
   const handleClose = () => {
-    resetForm();
-    onClose();
-  };
+    resetForm()
+    onClose()
+  }
 
   return (
-    <Modal opened={opened} onClose={handleClose} title="Opret begivenhed" size="md">
+    <Modal
+      opened={opened}
+      onClose={handleClose}
+      title="Opret begivenhed"
+      size="md"
+    >
       <form onSubmit={handleSubmit}>
         <Stack gap="md">
           <TextInput
@@ -467,7 +497,9 @@ function CreateEventModal({ opened, onClose, onSuccess }: CreateEventModalProps)
             label="Start"
             placeholder="Vælg startdato og -tid"
             value={startDatetime}
-            onChange={(value) => setStartDatetime(value ? new Date(value) : null)}
+            onChange={(value) =>
+              setStartDatetime(value ? new Date(value) : null)
+            }
             withSeconds={false}
             required
           />
@@ -497,50 +529,56 @@ function CreateEventModal({ opened, onClose, onSuccess }: CreateEventModalProps)
         </Stack>
       </form>
     </Modal>
-  );
+  )
 }
 
 interface EditEventModalProps {
-  opened: boolean;
-  onClose: () => void;
-  event: CalendarEvent;
-  onSuccess: () => void;
+  opened: boolean
+  onClose: () => void
+  event: CalendarEvent
+  onSuccess: () => void
 }
 
-function EditEventModal({ opened, onClose, event, onSuccess }: EditEventModalProps) {
-  const [title, setTitle] = useState(event.title);
-  const [description, setDescription] = useState(event.description);
-  const [location, setLocation] = useState(event.location);
-  const [isAllDay, setIsAllDay] = useState(event.is_all_day);
+function EditEventModal({
+  opened,
+  onClose,
+  event,
+  onSuccess,
+}: EditEventModalProps) {
+  const [title, setTitle] = useState(event.title)
+  const [description, setDescription] = useState(event.description)
+  const [location, setLocation] = useState(event.location)
+  const [isAllDay, setIsAllDay] = useState(event.is_all_day)
   const [startDatetime, setStartDatetime] = useState<Date | null>(
-    new Date(event.start_datetime)
-  );
+    new Date(event.start_datetime),
+  )
   const [endDatetime, setEndDatetime] = useState<Date | null>(
-    new Date(event.end_datetime)
-  );
+    new Date(event.end_datetime),
+  )
 
   const updateMutation = useMutation({
-    mutationFn: (data: CreateEventData) => calendarApi.updateEvent(event.id, data),
+    mutationFn: (data: CreateEventData) =>
+      calendarApi.updateEvent(event.id, data),
     onSuccess: () => {
       notifications.show({
-        title: 'Begivenhed opdateret',
-        message: 'Din begivenhed er blevet opdateret.',
-        color: 'green',
-      });
-      onSuccess();
+        title: "Begivenhed opdateret",
+        message: "Din begivenhed er blevet opdateret.",
+        color: "green",
+      })
+      onSuccess()
     },
     onError: () => {
       notifications.show({
-        title: 'Fejl',
-        message: 'Kunne ikke opdatere begivenhed. Prøv igen.',
-        color: 'red',
-      });
+        title: "Fejl",
+        message: "Kunne ikke opdatere begivenhed. Prøv igen.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim() || !startDatetime || !endDatetime) return;
+    e.preventDefault()
+    if (!title.trim() || !startDatetime || !endDatetime) return
 
     updateMutation.mutate({
       title: title.trim(),
@@ -549,11 +587,16 @@ function EditEventModal({ opened, onClose, event, onSuccess }: EditEventModalPro
       is_all_day: isAllDay,
       start_datetime: startDatetime.toISOString(),
       end_datetime: endDatetime.toISOString(),
-    });
-  };
+    })
+  }
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Rediger begivenhed" size="md">
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title="Rediger begivenhed"
+      size="md"
+    >
       <form onSubmit={handleSubmit}>
         <Stack gap="md">
           <TextInput
@@ -590,7 +633,9 @@ function EditEventModal({ opened, onClose, event, onSuccess }: EditEventModalPro
             label="Start"
             placeholder="Vælg startdato og -tid"
             value={startDatetime}
-            onChange={(value) => setStartDatetime(value ? new Date(value) : null)}
+            onChange={(value) =>
+              setStartDatetime(value ? new Date(value) : null)
+            }
             withSeconds={false}
             required
           />
@@ -620,5 +665,5 @@ function EditEventModal({ opened, onClose, event, onSuccess }: EditEventModalPro
         </Stack>
       </form>
     </Modal>
-  );
+  )
 }

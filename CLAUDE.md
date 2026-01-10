@@ -36,8 +36,11 @@ uvx ty check                               # Type check
 ```bash
 npm install                                # Install dependencies
 npm run dev                                # Dev server (port 5173)
-npm run build                              # Production build (tsc + vite)
-npm run lint                               # ESLint
+npm run build                              # Production build (tsgo + vite)
+npm run typecheck                          # Type check (tsgo)
+npm run lint                               # Lint (oxlint)
+npm run format                             # Format (oxfmt)
+npm run format:check                       # Check formatting
 npm test                                   # Vitest (watch mode)
 npm run test:run                           # Single test run
 npm run test:coverage                      # With coverage
@@ -101,7 +104,7 @@ Key config files:
 ## Code Style
 
 - Python: Ruff (line-length 100, py311), ty (type checking)
-- TypeScript: ESLint with React hooks rules
+- TypeScript: oxlint (linting), oxfmt (formatting), tsgo (type checking)
 - Tests: pytest-django (backend), Vitest + Testing Library (frontend)
 
 ## Required Checks (Backend)
@@ -113,4 +116,15 @@ uv run ruff check .   # Linting
 uv run ruff format .  # Formatting
 uvx ty check          # Type checking
 uv run pytest         # Tests
+```
+
+## Required Checks (Frontend)
+
+Before committing, ensure all checks pass:
+
+```bash
+npm run typecheck     # Type checking (tsgo)
+npm run lint          # Linting (oxlint)
+npm run format:check  # Formatting check (oxfmt)
+npm run test:run      # Tests
 ```

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useState } from "react"
+import { useNavigate, useLocation } from "react-router-dom"
 import {
   Container,
   Paper,
@@ -11,44 +11,44 @@ import {
   Text,
   Anchor,
   Alert,
-} from '@mantine/core';
-import { notifications } from '@mantine/notifications';
+} from "@mantine/core"
+import { notifications } from "@mantine/notifications"
 
-import { useAuthStore } from '../store/authStore';
+import { useAuthStore } from "../store/authStore"
 
 interface LocationState {
-  from?: { pathname: string };
+  from?: { pathname: string }
 }
 
 export default function LoginPage() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const { login, isLoading, error, clearError } = useAuthStore();
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { login, isLoading, error, clearError } = useAuthStore()
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
 
-  const from = (location.state as LocationState)?.from?.pathname || '/';
+  const from = (location.state as LocationState)?.from?.pathname || "/"
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    clearError();
+    e.preventDefault()
+    clearError()
 
     try {
-      await login(email, password);
+      await login(email, password)
       notifications.show({
-        title: 'Velkommen tilbage!',
-        message: 'Du er nu logget ind.',
-        color: 'green',
-      });
-      navigate(from, { replace: true });
+        title: "Velkommen tilbage!",
+        message: "Du er nu logget ind.",
+        color: "green",
+      })
+      navigate(from, { replace: true })
     } catch {
       // Error is handled by the store
     }
-  };
+  }
 
   return (
-    <Container size={420} my={40}>
+    <Container size="xs" px="md" my={40}>
       <Title ta="center" fw={900}>
         KB Intra
       </Title>
@@ -97,5 +97,5 @@ export default function LoginPage() {
         </Text>
       </Paper>
     </Container>
-  );
+  )
 }

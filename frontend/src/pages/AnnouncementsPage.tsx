@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState } from "react"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
   Text,
@@ -19,9 +19,9 @@ import {
   FileButton,
   CloseButton,
   Box,
-} from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
-import { notifications } from '@mantine/notifications';
+} from "@mantine/core"
+import { useDisclosure } from "@mantine/hooks"
+import { notifications } from "@mantine/notifications"
 import {
   IconPlus,
   IconSpeakerphone,
@@ -30,75 +30,89 @@ import {
   IconTrash,
   IconPaperclip,
   IconFile,
-} from '@tabler/icons-react';
-import dayjs from 'dayjs';
-import relativeTime from 'dayjs/plugin/relativeTime';
+} from "@tabler/icons-react"
+import dayjs from "dayjs"
+import relativeTime from "dayjs/plugin/relativeTime"
 
-import { announcementsApi } from '../api/announcements';
-import RichTextEditor from '../components/RichTextEditor';
+import { announcementsApi } from "../api/announcements"
+import RichTextEditor from "../components/RichTextEditor"
 import {
   getFileIcon,
   getFileTypeColor,
   FilePreviewModal,
   ImageThumbnail,
   getFileType,
-} from '../components/FilePreview';
-import type { Announcement, CreateAnnouncementData, AnnouncementAttachment } from '../types';
+} from "../components/FilePreview"
+import type {
+  Announcement,
+  CreateAnnouncementData,
+  AnnouncementAttachment,
+} from "../types"
 
-dayjs.extend(relativeTime);
+dayjs.extend(relativeTime)
 
 export default function AnnouncementsPage() {
-  const queryClient = useQueryClient();
-  const [createModalOpened, { open: openCreateModal, close: closeCreateModal }] =
-    useDisclosure(false);
-  const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
-  const [deleteModalOpened, { open: openDeleteModal, close: closeDeleteModal }] =
-    useDisclosure(false);
-  const [announcementToDelete, setAnnouncementToDelete] = useState<number | null>(null);
+  const queryClient = useQueryClient()
+  const [
+    createModalOpened,
+    { open: openCreateModal, close: closeCreateModal },
+  ] = useDisclosure(false)
+  const [editingAnnouncement, setEditingAnnouncement] =
+    useState<Announcement | null>(null)
+  const [
+    deleteModalOpened,
+    { open: openDeleteModal, close: closeDeleteModal },
+  ] = useDisclosure(false)
+  const [announcementToDelete, setAnnouncementToDelete] =
+    useState<number | null>(null)
 
-  const { data: announcements, isLoading, error } = useQuery({
-    queryKey: ['announcements'],
+  const {
+    data: announcements,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["announcements"],
     queryFn: () => announcementsApi.getAnnouncements(),
-  });
+  })
 
   const deleteMutation = useMutation({
     mutationFn: announcementsApi.deleteAnnouncement,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['announcements'] });
-      closeDeleteModal();
-      setAnnouncementToDelete(null);
+      queryClient.invalidateQueries({ queryKey: ["announcements"] })
+      closeDeleteModal()
+      setAnnouncementToDelete(null)
       notifications.show({
-        title: 'Opslag slettet',
-        message: 'Opslaget er blevet slettet.',
-        color: 'blue',
-      });
+        title: "Opslag slettet",
+        message: "Opslaget er blevet slettet.",
+        color: "blue",
+      })
     },
     onError: () => {
       notifications.show({
-        title: 'Fejl',
-        message: 'Kunne ikke slette opslag. Prøv igen.',
-        color: 'red',
-      });
+        title: "Fejl",
+        message: "Kunne ikke slette opslag. Prøv igen.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const handleDeleteClick = (id: number) => {
-    setAnnouncementToDelete(id);
-    openDeleteModal();
-  };
+    setAnnouncementToDelete(id)
+    openDeleteModal()
+  }
 
   const handleConfirmDelete = () => {
     if (announcementToDelete) {
-      deleteMutation.mutate(announcementToDelete);
+      deleteMutation.mutate(announcementToDelete)
     }
-  };
+  }
 
   if (isLoading) {
     return (
       <Center h={200}>
         <Loader size="lg" />
       </Center>
-    );
+    )
   }
 
   if (error) {
@@ -106,7 +120,7 @@ export default function AnnouncementsPage() {
       <Center h={200}>
         <Text c="red">Kunne ikke indlæse opslag. Prøv igen.</Text>
       </Center>
-    );
+    )
   }
 
   return (
@@ -150,8 +164,8 @@ export default function AnnouncementsPage() {
         opened={createModalOpened}
         onClose={closeCreateModal}
         onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ['announcements'] });
-          closeCreateModal();
+          queryClient.invalidateQueries({ queryKey: ["announcements"] })
+          closeCreateModal()
         }}
       />
 
@@ -161,8 +175,8 @@ export default function AnnouncementsPage() {
           onClose={() => setEditingAnnouncement(null)}
           announcement={editingAnnouncement}
           onSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: ['announcements'] });
-            setEditingAnnouncement(null);
+            queryClient.invalidateQueries({ queryKey: ["announcements"] })
+            setEditingAnnouncement(null)
           }}
         />
       )}
@@ -174,7 +188,8 @@ export default function AnnouncementsPage() {
         centered
       >
         <Text mb="lg">
-          Er du sikker på, at du vil slette dette opslag? Denne handling kan ikke fortrydes.
+          Er du sikker på, at du vil slette dette opslag? Denne handling kan
+          ikke fortrydes.
         </Text>
         <Group justify="flex-end">
           <Button variant="light" onClick={closeDeleteModal}>
@@ -190,17 +205,23 @@ export default function AnnouncementsPage() {
         </Group>
       </Modal>
     </>
-  );
+  )
 }
 
 interface AnnouncementCardProps {
-  announcement: Announcement;
-  onEdit: () => void;
-  onDelete: () => void;
+  announcement: Announcement
+  onEdit: () => void
+  onDelete: () => void
 }
 
-function AnnouncementCard({ announcement, onEdit, onDelete }: AnnouncementCardProps) {
-  const [previewFile, setPreviewFile] = useState<AnnouncementAttachment | null>(null);
+function AnnouncementCard({
+  announcement,
+  onEdit,
+  onDelete,
+}: AnnouncementCardProps) {
+  const [previewFile, setPreviewFile] = useState<AnnouncementAttachment | null>(
+    null,
+  )
 
   // Convert attachment to ForumFile format for FilePreviewModal
   const toForumFile = (attachment: AnnouncementAttachment) => ({
@@ -211,7 +232,7 @@ function AnnouncementCard({ announcement, onEdit, onDelete }: AnnouncementCardPr
     uploaded_by: attachment.uploaded_by,
     is_own: false,
     uploaded_at: attachment.uploaded_at,
-  });
+  })
 
   return (
     <Paper withBorder p="lg" radius="md">
@@ -228,7 +249,7 @@ function AnnouncementCard({ announcement, onEdit, onDelete }: AnnouncementCardPr
           <div>
             <Text fw={500}>{announcement.title}</Text>
             <Text size="sm" c="dimmed">
-              {announcement.author.first_name} {announcement.author.last_name} •{' '}
+              {announcement.author.first_name} {announcement.author.last_name} •{" "}
               {dayjs(announcement.created_at).fromNow()}
             </Text>
           </div>
@@ -248,7 +269,10 @@ function AnnouncementCard({ announcement, onEdit, onDelete }: AnnouncementCardPr
                 </ActionIcon>
               </Menu.Target>
               <Menu.Dropdown>
-                <Menu.Item leftSection={<IconEdit size={14} />} onClick={onEdit}>
+                <Menu.Item
+                  leftSection={<IconEdit size={14} />}
+                  onClick={onEdit}
+                >
                   Rediger
                 </Menu.Item>
                 <Menu.Item
@@ -270,24 +294,28 @@ function AnnouncementCard({ announcement, onEdit, onDelete }: AnnouncementCardPr
 
       {/* Attachments */}
       {announcement.attachments && announcement.attachments.length > 0 && (
-        <Box mt="md" pt="md" style={{ borderTop: '1px solid var(--mantine-color-gray-3)' }}>
+        <Box
+          mt="md"
+          pt="md"
+          style={{ borderTop: "1px solid var(--mantine-color-gray-3)" }}
+        >
           <Text size="sm" fw={500} mb="xs">
             Vedhæftede filer ({announcement.attachments.length})
           </Text>
           <Group gap="xs">
             {announcement.attachments.map((attachment) => {
-              const fileType = getFileType(attachment.name);
-              const FileIcon = getFileIcon(attachment.name);
-              const fileColor = getFileTypeColor(attachment.name);
+              const fileType = getFileType(attachment.name)
+              const FileIcon = getFileIcon(attachment.name)
+              const fileColor = getFileTypeColor(attachment.name)
 
-              if (fileType === 'image') {
+              if (fileType === "image") {
                 return (
                   <ImageThumbnail
                     key={attachment.id}
                     file={toForumFile(attachment)}
                     onClick={() => setPreviewFile(attachment)}
                   />
-                );
+                )
               }
 
               return (
@@ -296,7 +324,7 @@ function AnnouncementCard({ announcement, onEdit, onDelete }: AnnouncementCardPr
                   withBorder
                   p="xs"
                   radius="sm"
-                  style={{ cursor: 'pointer' }}
+                  style={{ cursor: "pointer" }}
                   onClick={() => setPreviewFile(attachment)}
                 >
                   <Group gap="xs">
@@ -306,7 +334,7 @@ function AnnouncementCard({ announcement, onEdit, onDelete }: AnnouncementCardPr
                     </Text>
                   </Group>
                 </Paper>
-              );
+              )
             })}
           </Group>
         </Box>
@@ -321,13 +349,13 @@ function AnnouncementCard({ announcement, onEdit, onDelete }: AnnouncementCardPr
         />
       )}
     </Paper>
-  );
+  )
 }
 
 interface CreateAnnouncementModalProps {
-  opened: boolean;
-  onClose: () => void;
-  onSuccess: () => void;
+  opened: boolean
+  onClose: () => void
+  onSuccess: () => void
 }
 
 function CreateAnnouncementModal({
@@ -335,49 +363,58 @@ function CreateAnnouncementModal({
   onClose,
   onSuccess,
 }: CreateAnnouncementModalProps) {
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [attachments, setAttachments] = useState<File[]>([]);
+  const [title, setTitle] = useState("")
+  const [content, setContent] = useState("")
+  const [attachments, setAttachments] = useState<File[]>([])
 
   const createMutation = useMutation({
-    mutationFn: ({ data, files }: { data: CreateAnnouncementData; files: File[] }) =>
-      announcementsApi.createAnnouncement(data, files.length > 0 ? files : undefined),
+    mutationFn: ({
+      data,
+      files,
+    }: {
+      data: CreateAnnouncementData
+      files: File[]
+    }) =>
+      announcementsApi.createAnnouncement(
+        data,
+        files.length > 0 ? files : undefined,
+      ),
     onSuccess: () => {
       notifications.show({
-        title: 'Opslag oprettet',
-        message: 'Dit opslag er blevet offentliggjort.',
-        color: 'green',
-      });
-      setTitle('');
-      setContent('');
-      setAttachments([]);
-      onSuccess();
+        title: "Opslag oprettet",
+        message: "Dit opslag er blevet offentliggjort.",
+        color: "green",
+      })
+      setTitle("")
+      setContent("")
+      setAttachments([])
+      onSuccess()
     },
     onError: () => {
       notifications.show({
-        title: 'Fejl',
-        message: 'Kunne ikke oprette opslag. Prøv igen.',
-        color: 'red',
-      });
+        title: "Fejl",
+        message: "Kunne ikke oprette opslag. Prøv igen.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim() || !content.trim()) return;
+    e.preventDefault()
+    if (!title.trim() || !content.trim()) return
     createMutation.mutate({
       data: { title: title.trim(), content: content.trim() },
       files: attachments,
-    });
-  };
+    })
+  }
 
   const handleAddFiles = (files: File[]) => {
-    setAttachments((prev) => [...prev, ...files]);
-  };
+    setAttachments((prev) => [...prev, ...files])
+  }
 
   const handleRemoveFile = (index: number) => {
-    setAttachments((prev) => prev.filter((_, i) => i !== index));
-  };
+    setAttachments((prev) => prev.filter((_, i) => i !== index))
+  }
 
   return (
     <Modal opened={opened} onClose={onClose} title="Opret opslag" size="lg">
@@ -435,7 +472,10 @@ function CreateAnnouncementModal({
                           ({(file.size / 1024).toFixed(1)} KB)
                         </Text>
                       </Group>
-                      <CloseButton size="sm" onClick={() => handleRemoveFile(index)} />
+                      <CloseButton
+                        size="sm"
+                        onClick={() => handleRemoveFile(index)}
+                      />
                     </Group>
                   </Paper>
                 ))}
@@ -450,7 +490,9 @@ function CreateAnnouncementModal({
             <Button
               type="submit"
               loading={createMutation.isPending}
-              disabled={!title.trim() || !content.trim() || content === '<p></p>'}
+              disabled={
+                !title.trim() || !content.trim() || content === "<p></p>"
+              }
             >
               Opret opslag
             </Button>
@@ -458,14 +500,14 @@ function CreateAnnouncementModal({
         </Stack>
       </form>
     </Modal>
-  );
+  )
 }
 
 interface EditAnnouncementModalProps {
-  opened: boolean;
-  onClose: () => void;
-  announcement: Announcement;
-  onSuccess: () => void;
+  opened: boolean
+  onClose: () => void
+  announcement: Announcement
+  onSuccess: () => void
 }
 
 function EditAnnouncementModal({
@@ -474,34 +516,34 @@ function EditAnnouncementModal({
   announcement,
   onSuccess,
 }: EditAnnouncementModalProps) {
-  const [title, setTitle] = useState(announcement.title);
-  const [content, setContent] = useState(announcement.content);
+  const [title, setTitle] = useState(announcement.title)
+  const [content, setContent] = useState(announcement.content)
 
   const updateMutation = useMutation({
     mutationFn: (data: Partial<CreateAnnouncementData>) =>
       announcementsApi.updateAnnouncement(announcement.id, data),
     onSuccess: () => {
       notifications.show({
-        title: 'Opslag opdateret',
-        message: 'Dit opslag er blevet opdateret.',
-        color: 'green',
-      });
-      onSuccess();
+        title: "Opslag opdateret",
+        message: "Dit opslag er blevet opdateret.",
+        color: "green",
+      })
+      onSuccess()
     },
     onError: () => {
       notifications.show({
-        title: 'Fejl',
-        message: 'Kunne ikke opdatere opslag. Prøv igen.',
-        color: 'red',
-      });
+        title: "Fejl",
+        message: "Kunne ikke opdatere opslag. Prøv igen.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim() || !content.trim()) return;
-    updateMutation.mutate({ title: title.trim(), content: content.trim() });
-  };
+    e.preventDefault()
+    if (!title.trim() || !content.trim()) return
+    updateMutation.mutate({ title: title.trim(), content: content.trim() })
+  }
 
   return (
     <Modal opened={opened} onClose={onClose} title="Rediger opslag" size="lg">
@@ -532,7 +574,9 @@ function EditAnnouncementModal({
             <Button
               type="submit"
               loading={updateMutation.isPending}
-              disabled={!title.trim() || !content.trim() || content === '<p></p>'}
+              disabled={
+                !title.trim() || !content.trim() || content === "<p></p>"
+              }
             >
               Gem ændringer
             </Button>
@@ -540,5 +584,5 @@ function EditAnnouncementModal({
         </Stack>
       </form>
     </Modal>
-  );
+  )
 }

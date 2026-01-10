@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect } from "react"
+import { useNavigate } from "react-router-dom"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
   Text,
@@ -14,116 +14,122 @@ import {
   Loader,
   Center,
   rem,
-} from '@mantine/core';
-import { DateInput } from '@mantine/dates';
-import { Dropzone, IMAGE_MIME_TYPE } from '@mantine/dropzone';
-import { notifications } from '@mantine/notifications';
-import { IconUpload, IconPhoto, IconX, IconArrowLeft, IconLock } from '@tabler/icons-react';
-import dayjs from 'dayjs';
+} from "@mantine/core"
+import { DateInput } from "@mantine/dates"
+import { Dropzone, IMAGE_MIME_TYPE } from "@mantine/dropzone"
+import { notifications } from "@mantine/notifications"
+import {
+  IconUpload,
+  IconPhoto,
+  IconX,
+  IconArrowLeft,
+  IconLock,
+} from "@tabler/icons-react"
+import dayjs from "dayjs"
 
-import { usersApi } from '../api/users';
-import { useAuthStore } from '../store/authStore';
-import type { User } from '../types';
+import { usersApi } from "../api/users"
+import { useAuthStore } from "../store/authStore"
+import type { User } from "../types"
 
 export default function ProfileEditPage() {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { updateUser } = useAuthStore();
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const { updateUser } = useAuthStore()
 
   const [formData, setFormData] = useState({
-    first_name: '',
-    last_name: '',
-    phone_number: '',
-    bio: '',
+    first_name: "",
+    last_name: "",
+    phone_number: "",
+    bio: "",
     birthdate: null as Date | null,
     house: null as number | null,
-  });
+  })
 
   const { data: user, isLoading } = useQuery({
-    queryKey: ['user', 'me'],
+    queryKey: ["user", "me"],
     queryFn: usersApi.getCurrentUser,
-  });
+  })
 
   useEffect(() => {
     if (user) {
       setFormData({
-        first_name: user.first_name || '',
-        last_name: user.last_name || '',
-        phone_number: user.phone_number || '',
-        bio: user.bio || '',
+        first_name: user.first_name || "",
+        last_name: user.last_name || "",
+        phone_number: user.phone_number || "",
+        bio: user.bio || "",
         birthdate: user.birthdate ? new Date(user.birthdate) : null,
         house: user.house,
-      });
+      })
     }
-  }, [user]);
+  }, [user])
 
   const updateProfileMutation = useMutation({
     mutationFn: (data: Partial<User>) => usersApi.updateProfile(data),
     onSuccess: (updatedUser) => {
-      updateUser(updatedUser);
-      queryClient.invalidateQueries({ queryKey: ['user'] });
+      updateUser(updatedUser)
+      queryClient.invalidateQueries({ queryKey: ["user"] })
       notifications.show({
-        title: 'Profile updated',
-        message: 'Your profile has been successfully updated.',
-        color: 'green',
-      });
-      navigate('/profil');
+        title: "Profile updated",
+        message: "Your profile has been successfully updated.",
+        color: "green",
+      })
+      navigate("/profil")
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to update profile. Please try again.',
-        color: 'red',
-      });
+        title: "Error",
+        message: "Failed to update profile. Please try again.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const uploadPictureMutation = useMutation({
     mutationFn: (file: File) => usersApi.updateProfilePicture(file),
     onSuccess: (updatedUser) => {
-      updateUser(updatedUser);
-      queryClient.invalidateQueries({ queryKey: ['user'] });
+      updateUser(updatedUser)
+      queryClient.invalidateQueries({ queryKey: ["user"] })
       notifications.show({
-        title: 'Picture updated',
-        message: 'Your profile picture has been updated.',
-        color: 'green',
-      });
+        title: "Picture updated",
+        message: "Your profile picture has been updated.",
+        color: "green",
+      })
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to upload picture. Please try again.',
-        color: 'red',
-      });
+        title: "Error",
+        message: "Failed to upload picture. Please try again.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+    e.preventDefault()
     updateProfileMutation.mutate({
       first_name: formData.first_name,
       last_name: formData.last_name,
       phone_number: formData.phone_number,
       bio: formData.bio,
       birthdate: formData.birthdate
-        ? dayjs(formData.birthdate).format('YYYY-MM-DD')
+        ? dayjs(formData.birthdate).format("YYYY-MM-DD")
         : null,
       house: formData.house,
-    });
-  };
+    })
+  }
 
   const handleDrop = (files: File[]) => {
     if (files.length > 0) {
-      uploadPictureMutation.mutate(files[0]);
+      uploadPictureMutation.mutate(files[0])
     }
-  };
+  }
 
   if (isLoading) {
     return (
       <Center h={200}>
         <Loader size="lg" />
       </Center>
-    );
+    )
   }
 
   return (
@@ -131,7 +137,7 @@ export default function ProfileEditPage() {
       <Button
         variant="subtle"
         leftSection={<IconArrowLeft size={16} />}
-        onClick={() => navigate('/profil')}
+        onClick={() => navigate("/profil")}
         mb="md"
       >
         Back to Profile
@@ -147,11 +153,7 @@ export default function ProfileEditPage() {
         </Title>
 
         <Group>
-          <Avatar
-            src={user?.profile_picture}
-            size={100}
-            radius={100}
-          >
+          <Avatar src={user?.profile_picture} size={100} radius={100}>
             {user?.first_name?.[0]}
             {user?.last_name?.[0]}
           </Avatar>
@@ -167,14 +169,14 @@ export default function ProfileEditPage() {
               justify="center"
               gap="xl"
               mih={100}
-              style={{ pointerEvents: 'none' }}
+              style={{ pointerEvents: "none" }}
             >
               <Dropzone.Accept>
                 <IconUpload
                   style={{
                     width: rem(52),
                     height: rem(52),
-                    color: 'var(--mantine-color-blue-6)',
+                    color: "var(--mantine-color-blue-6)",
                   }}
                   stroke={1.5}
                 />
@@ -184,7 +186,7 @@ export default function ProfileEditPage() {
                   style={{
                     width: rem(52),
                     height: rem(52),
-                    color: 'var(--mantine-color-red-6)',
+                    color: "var(--mantine-color-red-6)",
                   }}
                   stroke={1.5}
                 />
@@ -194,7 +196,7 @@ export default function ProfileEditPage() {
                   style={{
                     width: rem(52),
                     height: rem(52),
-                    color: 'var(--mantine-color-dimmed)',
+                    color: "var(--mantine-color-dimmed)",
                   }}
                   stroke={1.5}
                 />
@@ -260,8 +262,8 @@ export default function ProfileEditPage() {
               placeholder="Select your birthday"
               value={formData.birthdate}
               onChange={(value) => {
-                const date = value ? new Date(value) : null;
-                setFormData((prev) => ({ ...prev, birthdate: date }));
+                const date = value ? new Date(value) : null
+                setFormData((prev) => ({ ...prev, birthdate: date }))
               }}
               maxDate={new Date()}
               clearable
@@ -280,13 +282,10 @@ export default function ProfileEditPage() {
             />
 
             <Group justify="flex-end" mt="md">
-              <Button variant="light" onClick={() => navigate('/profil')}>
+              <Button variant="light" onClick={() => navigate("/profil")}>
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                loading={updateProfileMutation.isPending}
-              >
+              <Button type="submit" loading={updateProfileMutation.isPending}>
                 Save Changes
               </Button>
             </Group>
@@ -301,11 +300,11 @@ export default function ProfileEditPage() {
         <Button
           variant="light"
           leftSection={<IconLock size={16} />}
-          onClick={() => navigate('/profil/skift-adgangskode')}
+          onClick={() => navigate("/profil/skift-adgangskode")}
         >
           Skift adgangskode
         </Button>
       </Paper>
     </>
-  );
+  )
 }

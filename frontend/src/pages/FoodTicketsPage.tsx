@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState } from "react"
+import { useNavigate } from "react-router-dom"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
   Text,
@@ -19,10 +19,10 @@ import {
   Tabs,
   ActionIcon,
   Menu,
-} from '@mantine/core';
-import { DateInput } from '@mantine/dates';
-import { useDisclosure } from '@mantine/hooks';
-import { notifications } from '@mantine/notifications';
+} from "@mantine/core"
+import { DateInput } from "@mantine/dates"
+import { useDisclosure } from "@mantine/hooks"
+import { notifications } from "@mantine/notifications"
 import {
   IconArrowLeft,
   IconPlus,
@@ -30,36 +30,38 @@ import {
   IconPhone,
   IconDotsVertical,
   IconTrash,
-} from '@tabler/icons-react';
-import dayjs from 'dayjs';
+} from "@tabler/icons-react"
+import dayjs from "dayjs"
 
-import { foodApi } from '../api/food';
-import type { FoodTicket, CreateFoodTicketData } from '../types';
+import { foodApi } from "../api/food"
+import type { FoodTicket, CreateFoodTicketData } from "../types"
 
 export default function FoodTicketsPage() {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [createModalOpened, { open: openCreateModal, close: closeCreateModal }] =
-    useDisclosure(false);
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [
+    createModalOpened,
+    { open: openCreateModal, close: closeCreateModal },
+  ] = useDisclosure(false)
 
   const { data: availableTickets, isLoading: ticketsLoading } = useQuery({
-    queryKey: ['food', 'tickets', 'available'],
+    queryKey: ["food", "tickets", "available"],
     queryFn: () => foodApi.getTickets(),
-  });
+  })
 
   const { data: myTickets, isLoading: myTicketsLoading } = useQuery({
-    queryKey: ['food', 'tickets', 'my'],
+    queryKey: ["food", "tickets", "my"],
     queryFn: foodApi.getMyTickets,
-  });
+  })
 
-  const isLoading = ticketsLoading || myTicketsLoading;
+  const isLoading = ticketsLoading || myTicketsLoading
 
   return (
     <>
       <Button
         variant="subtle"
         leftSection={<IconArrowLeft size={16} />}
-        onClick={() => navigate('/mad')}
+        onClick={() => navigate("/mad")}
         mb="md"
       >
         Tilbage til mad
@@ -80,7 +82,9 @@ export default function FoodTicketsPage() {
           <Tabs.Tab value="available" leftSection={<IconTicket size={16} />}>
             Tilgængelige ({availableTickets?.length || 0})
           </Tabs.Tab>
-          <Tabs.Tab value="my">Mine billetter ({myTickets?.length || 0})</Tabs.Tab>
+          <Tabs.Tab value="my">
+            Mine billetter ({myTickets?.length || 0})
+          </Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="available">
@@ -93,7 +97,9 @@ export default function FoodTicketsPage() {
               <Center>
                 <Stack align="center" gap="xs">
                   <IconTicket size={48} color="gray" />
-                  <Text c="dimmed">Ingen billetter tilgængelige i øjeblikket.</Text>
+                  <Text c="dimmed">
+                    Ingen billetter tilgængelige i øjeblikket.
+                  </Text>
                 </Stack>
               </Center>
             </Paper>
@@ -137,93 +143,89 @@ export default function FoodTicketsPage() {
         opened={createModalOpened}
         onClose={closeCreateModal}
         onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ['food', 'tickets'] });
-          closeCreateModal();
+          queryClient.invalidateQueries({ queryKey: ["food", "tickets"] })
+          closeCreateModal()
         }}
       />
     </>
-  );
+  )
 }
 
 interface TicketCardProps {
-  ticket: FoodTicket;
-  showClaim?: boolean;
-  showActions?: boolean;
+  ticket: FoodTicket
+  showClaim?: boolean
+  showActions?: boolean
 }
 
 function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
-  const queryClient = useQueryClient();
+  const queryClient = useQueryClient()
 
   const claimMutation = useMutation({
     mutationFn: () => foodApi.claimTicket(ticket.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['food', 'tickets'] });
+      queryClient.invalidateQueries({ queryKey: ["food", "tickets"] })
       notifications.show({
-        title: 'Billet reserveret',
-        message: 'Kontakt ejeren for at aftale betaling hvis nødvendigt.',
-        color: 'green',
-      });
+        title: "Billet reserveret",
+        message: "Kontakt ejeren for at aftale betaling hvis nødvendigt.",
+        color: "green",
+      })
     },
     onError: () => {
       notifications.show({
-        title: 'Fejl',
-        message: 'Kunne ikke reservere billet.',
-        color: 'red',
-      });
+        title: "Fejl",
+        message: "Kunne ikke reservere billet.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const releaseMutation = useMutation({
     mutationFn: () => foodApi.releaseTicket(ticket.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['food', 'tickets'] });
+      queryClient.invalidateQueries({ queryKey: ["food", "tickets"] })
       notifications.show({
-        title: 'Billet frigivet',
-        message: 'Billetten er nu tilgængelig igen.',
-        color: 'blue',
-      });
+        title: "Billet frigivet",
+        message: "Billetten er nu tilgængelig igen.",
+        color: "blue",
+      })
     },
     onError: () => {
       notifications.show({
-        title: 'Fejl',
-        message: 'Kunne ikke frigive billet.',
-        color: 'red',
-      });
+        title: "Fejl",
+        message: "Kunne ikke frigive billet.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const deleteMutation = useMutation({
     mutationFn: () => foodApi.deleteTicket(ticket.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['food', 'tickets'] });
+      queryClient.invalidateQueries({ queryKey: ["food", "tickets"] })
       notifications.show({
-        title: 'Billet slettet',
-        message: 'Din billet er blevet fjernet.',
-        color: 'blue',
-      });
+        title: "Billet slettet",
+        message: "Din billet er blevet fjernet.",
+        color: "blue",
+      })
     },
     onError: () => {
       notifications.show({
-        title: 'Fejl',
-        message: 'Kunne ikke slette billet.',
-        color: 'red',
-      });
+        title: "Fejl",
+        message: "Kunne ikke slette billet.",
+        color: "red",
+      })
     },
-  });
+  })
 
-  const isClaimed = !ticket.is_available;
-  const isOwner = ticket.is_own;
-  const isClaimedByMe = ticket.claimed_by && !isOwner;
+  const isClaimed = !ticket.is_available
+  const isOwner = ticket.is_own
+  const isClaimedByMe = ticket.claimed_by && !isOwner
 
   return (
     <Paper withBorder p="md" radius="md">
       <Group justify="space-between" wrap="nowrap">
         <Group gap="md" wrap="nowrap" style={{ flex: 1 }}>
-          <Avatar
-            src={ticket.owner.profile_picture}
-            radius="xl"
-            size="lg"
-          >
+          <Avatar src={ticket.owner.profile_picture} radius="xl" size="lg">
             {ticket.owner.first_name?.[0]}
             {ticket.owner.last_name?.[0]}
           </Avatar>
@@ -248,9 +250,11 @@ function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
               )}
             </Group>
             <Text size="sm" c="dimmed">
-              {ticket.day_name}, {dayjs(ticket.date).format('D. MMM')} •{' '}
-              {ticket.total_portions} {ticket.total_portions === 1 ? 'portion' : 'portioner'}
-              {ticket.day_of_week === 2 && ` • ${ticket.meal_type === 'meat' ? 'Kød' : 'Vegetar'}`}
+              {ticket.day_name}, {dayjs(ticket.date).format("D. MMM")} •{" "}
+              {ticket.total_portions}{" "}
+              {ticket.total_portions === 1 ? "portion" : "portioner"}
+              {ticket.day_of_week === 2 &&
+                ` • ${ticket.meal_type === "meat" ? "Kød" : "Vegetar"}`}
             </Text>
             {ticket.description && (
               <Text size="sm" mt={4}>
@@ -259,7 +263,8 @@ function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
             )}
             {isClaimed && ticket.claimed_by && (
               <Text size="sm" c="dimmed" mt={4}>
-                Reserveret af {ticket.claimed_by.first_name} {ticket.claimed_by.last_name}
+                Reserveret af {ticket.claimed_by.first_name}{" "}
+                {ticket.claimed_by.last_name}
               </Text>
             )}
           </div>
@@ -267,7 +272,7 @@ function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
 
         <Group gap="xs">
           {/* Show phone number for claimed tickets */}
-          {(isClaimed && isClaimedByMe) && ticket.owner.phone_number && (
+          {isClaimed && isClaimedByMe && ticket.owner.phone_number && (
             <Button
               variant="light"
               size="sm"
@@ -332,73 +337,82 @@ function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
         </Group>
       </Group>
     </Paper>
-  );
+  )
 }
 
 interface CreateTicketModalProps {
-  opened: boolean;
-  onClose: () => void;
-  onSuccess: () => void;
+  opened: boolean
+  onClose: () => void
+  onSuccess: () => void
 }
 
-function CreateTicketModal({ opened, onClose, onSuccess }: CreateTicketModalProps) {
-  const [date, setDate] = useState<Date | null>(null);
-  const [adults, setAdults] = useState(1);
-  const [children, setChildren] = useState(0);
-  const [mealType, setMealType] = useState<'meat' | 'vegetarian'>('meat');
-  const [price, setPrice] = useState<number | ''>('');
-  const [description, setDescription] = useState('');
+function CreateTicketModal({
+  opened,
+  onClose,
+  onSuccess,
+}: CreateTicketModalProps) {
+  const [date, setDate] = useState<Date | null>(null)
+  const [adults, setAdults] = useState(1)
+  const [children, setChildren] = useState(0)
+  const [mealType, setMealType] = useState<"meat" | "vegetarian">("meat")
+  const [price, setPrice] = useState<number | "">("")
+  const [description, setDescription] = useState("")
 
   const createMutation = useMutation({
     mutationFn: (data: CreateFoodTicketData) => foodApi.createTicket(data),
     onSuccess: () => {
       notifications.show({
-        title: 'Billet oprettet',
-        message: 'Din billet er nu tilgængelig for andre.',
-        color: 'green',
-      });
+        title: "Billet oprettet",
+        message: "Din billet er nu tilgængelig for andre.",
+        color: "green",
+      })
       // Reset form
-      setDate(null);
-      setAdults(1);
-      setChildren(0);
-      setMealType('meat');
-      setPrice('');
-      setDescription('');
-      onSuccess();
+      setDate(null)
+      setAdults(1)
+      setChildren(0)
+      setMealType("meat")
+      setPrice("")
+      setDescription("")
+      onSuccess()
     },
     onError: () => {
       notifications.show({
-        title: 'Fejl',
-        message: 'Kunne ikke oprette billet.',
-        color: 'red',
-      });
+        title: "Fejl",
+        message: "Kunne ikke oprette billet.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!date) return;
+    e.preventDefault()
+    if (!date) return
 
     createMutation.mutate({
-      date: dayjs(date).format('YYYY-MM-DD'),
+      date: dayjs(date).format("YYYY-MM-DD"),
       adults_count: adults,
       children_count: children,
       meal_type: mealType,
-      price: price === '' ? null : price,
+      price: price === "" ? null : price,
       description,
-    });
-  };
+    })
+  }
 
-  const isWednesday = date ? date.getDay() === 3 : false;
+  const isWednesday = date ? date.getDay() === 3 : false
 
   // Filter to only allow Mon-Thu
   const excludeDate = (d: Date) => {
-    const day = d.getDay();
-    return day === 0 || day === 5 || day === 6; // Exclude Sun, Fri, Sat
-  };
+    const day = d.getDay()
+    return day === 0 || day === 5 || day === 6 // Exclude Sun, Fri, Sat
+  }
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Tilbyd en madbillet" size="md">
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title="Tilbyd en madbillet"
+      size="md"
+    >
       <form onSubmit={handleSubmit}>
         <Stack gap="md">
           <DateInput
@@ -406,8 +420,8 @@ function CreateTicketModal({ opened, onClose, onSuccess }: CreateTicketModalProp
             placeholder="Vælg dato"
             value={date}
             onChange={(value) => {
-              const dateValue = value ? new Date(value) : null;
-              setDate(dateValue);
+              const dateValue = value ? new Date(value) : null
+              setDate(dateValue)
             }}
             excludeDate={(dateStr) => excludeDate(new Date(dateStr))}
             minDate={new Date()}
@@ -438,10 +452,10 @@ function CreateTicketModal({ opened, onClose, onSuccess }: CreateTicketModalProp
               </Text>
               <SegmentedControl
                 value={mealType}
-                onChange={(val) => setMealType(val as 'meat' | 'vegetarian')}
+                onChange={(val) => setMealType(val as "meat" | "vegetarian")}
                 data={[
-                  { label: 'Kød', value: 'meat' },
-                  { label: 'Vegetar', value: 'vegetarian' },
+                  { label: "Kød", value: "meat" },
+                  { label: "Vegetar", value: "vegetarian" },
                 ]}
                 fullWidth
               />
@@ -453,7 +467,7 @@ function CreateTicketModal({ opened, onClose, onSuccess }: CreateTicketModalProp
             description="Lad være tom for gratis"
             placeholder="0"
             value={price}
-            onChange={(val) => setPrice(val === '' ? '' : Number(val))}
+            onChange={(val) => setPrice(val === "" ? "" : Number(val))}
             min={0}
             max={999}
           />
@@ -480,5 +494,5 @@ function CreateTicketModal({ opened, onClose, onSuccess }: CreateTicketModalProp
         </Stack>
       </form>
     </Modal>
-  );
+  )
 }

@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useRef } from "react"
+import { useParams, useNavigate } from "react-router-dom"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
   Text,
@@ -20,9 +20,9 @@ import {
   Badge,
   Image,
   SimpleGrid,
-} from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
-import { notifications } from '@mantine/notifications';
+} from "@mantine/core"
+import { useDisclosure } from "@mantine/hooks"
+import { notifications } from "@mantine/notifications"
 import {
   IconArrowLeft,
   IconDotsVertical,
@@ -31,170 +31,191 @@ import {
   IconSend,
   IconPaperclip,
   IconX,
-} from '@tabler/icons-react';
-import dayjs from 'dayjs';
-import relativeTime from 'dayjs/plugin/relativeTime';
+} from "@tabler/icons-react"
+import dayjs from "dayjs"
+import relativeTime from "dayjs/plugin/relativeTime"
 
-import { forumApi } from '../api/forum';
-import RichTextEditor from '../components/RichTextEditor';
-import { FilePreviewModal, getFileIcon, getFileType, getFileTypeColor } from '../components/FilePreview';
-import type { Post, CreatePostData, PostAttachment } from '../types';
+import { forumApi } from "../api/forum"
+import RichTextEditor from "../components/RichTextEditor"
+import {
+  FilePreviewModal,
+  getFileIcon,
+  getFileType,
+  getFileTypeColor,
+} from "../components/FilePreview"
+import type { Post, CreatePostData, PostAttachment } from "../types"
 
-dayjs.extend(relativeTime);
+interface CreatePostParams {
+  data: CreatePostData
+  files: File[]
+}
+
+interface UpdatePostParams {
+  postId: number
+  data: CreatePostData
+}
+
+dayjs.extend(relativeTime)
 
 export default function ThreadPage() {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const threadId = parseInt(id!, 10);
+  const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const threadId = parseInt(id!, 10)
 
-  const [newPostContent, setNewPostContent] = useState('');
-  const [attachments, setAttachments] = useState<File[]>([]);
-  const resetRef = useRef<() => void>(null);
-  const [editingPost, setEditingPost] = useState<Post | null>(null);
-  const [editContent, setEditContent] = useState('');
-  const [deleteModalOpened, { open: openDeleteModal, close: closeDeleteModal }] =
-    useDisclosure(false);
-  const [postToDelete, setPostToDelete] = useState<number | null>(null);
+  const [newPostContent, setNewPostContent] = useState("")
+  const [attachments, setAttachments] = useState<File[]>([])
+  const resetRef = useRef<() => void>(null)
+  const [editingPost, setEditingPost] = useState<Post | null>(null)
+  const [editContent, setEditContent] = useState("")
+  const [
+    deleteModalOpened,
+    { open: openDeleteModal, close: closeDeleteModal },
+  ] = useDisclosure(false)
+  const [postToDelete, setPostToDelete] = useState<number | null>(null)
 
-  const { data: thread, isLoading, error } = useQuery({
-    queryKey: ['thread', threadId],
+  const {
+    data: thread,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["thread", threadId],
     queryFn: () => forumApi.getThread(threadId),
     enabled: !isNaN(threadId),
-  });
+  })
 
   const createPostMutation = useMutation({
-    mutationFn: ({ data, files }: { data: CreatePostData; files: File[] }) =>
+    mutationFn: ({ data, files }: CreatePostParams) =>
       forumApi.createPost(threadId, data, files.length > 0 ? files : undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['thread', threadId] });
-      setNewPostContent('');
-      setAttachments([]);
-      resetRef.current?.();
+      queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
+      setNewPostContent("")
+      setAttachments([])
+      resetRef.current?.()
       notifications.show({
-        title: 'Reply posted',
-        message: 'Your reply has been added.',
-        color: 'green',
-      });
+        title: "Reply posted",
+        message: "Your reply has been added.",
+        color: "green",
+      })
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to post reply. Please try again.',
-        color: 'red',
-      });
+        title: "Error",
+        message: "Failed to post reply. Please try again.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const updatePostMutation = useMutation({
-    mutationFn: ({ postId, data }: { postId: number; data: CreatePostData }) =>
+    mutationFn: ({ postId, data }: UpdatePostParams) =>
       forumApi.updatePost(postId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['thread', threadId] });
-      setEditingPost(null);
-      setEditContent('');
+      queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
+      setEditingPost(null)
+      setEditContent("")
       notifications.show({
-        title: 'Post updated',
-        message: 'Your post has been updated.',
-        color: 'green',
-      });
+        title: "Post updated",
+        message: "Your post has been updated.",
+        color: "green",
+      })
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to update post. Please try again.',
-        color: 'red',
-      });
+        title: "Error",
+        message: "Failed to update post. Please try again.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const deletePostMutation = useMutation({
     mutationFn: forumApi.deletePost,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['thread', threadId] });
-      closeDeleteModal();
-      setPostToDelete(null);
+      queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
+      closeDeleteModal()
+      setPostToDelete(null)
       notifications.show({
-        title: 'Post deleted',
-        message: 'Your post has been deleted.',
-        color: 'blue',
-      });
+        title: "Post deleted",
+        message: "Your post has been deleted.",
+        color: "blue",
+      })
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to delete post. Please try again.',
-        color: 'red',
-      });
+        title: "Error",
+        message: "Failed to delete post. Please try again.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const deleteThreadMutation = useMutation({
     mutationFn: forumApi.deleteThread,
     onSuccess: () => {
       notifications.show({
-        title: 'Thread deleted',
-        message: 'The thread has been deleted.',
-        color: 'blue',
-      });
-      navigate('/forum');
+        title: "Thread deleted",
+        message: "The thread has been deleted.",
+        color: "blue",
+      })
+      navigate("/forum")
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to delete thread. Please try again.',
-        color: 'red',
-      });
+        title: "Error",
+        message: "Failed to delete thread. Please try again.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const handleSubmitPost = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPostContent.trim()) return;
+    e.preventDefault()
+    if (!newPostContent.trim()) return
     createPostMutation.mutate({
       data: { content: newPostContent.trim() },
       files: attachments,
-    });
-  };
+    })
+  }
 
   const handleAddFiles = (files: File[]) => {
-    setAttachments((prev) => [...prev, ...files]);
-  };
+    setAttachments((prev) => [...prev, ...files])
+  }
 
   const handleRemoveFile = (index: number) => {
-    setAttachments((prev) => prev.filter((_, i) => i !== index));
-  };
+    setAttachments((prev) => prev.filter((_, i) => i !== index))
+  }
 
   const handleStartEdit = (post: Post) => {
-    setEditingPost(post);
-    setEditContent(post.content);
-  };
+    setEditingPost(post)
+    setEditContent(post.content)
+  }
 
   const handleSaveEdit = () => {
-    if (!editingPost || !editContent.trim()) return;
+    if (!editingPost || !editContent.trim()) return
     updatePostMutation.mutate({
       postId: editingPost.id,
       data: { content: editContent.trim() },
-    });
-  };
+    })
+  }
 
   const handleDeleteClick = (postId: number) => {
-    setPostToDelete(postId);
-    openDeleteModal();
-  };
+    setPostToDelete(postId)
+    openDeleteModal()
+  }
 
   const handleConfirmDelete = () => {
     if (postToDelete) {
-      deletePostMutation.mutate(postToDelete);
+      deletePostMutation.mutate(postToDelete)
     }
-  };
+  }
 
   if (isLoading) {
     return (
       <Center h={200}>
         <Loader size="lg" />
       </Center>
-    );
+    )
   }
 
   if (error || !thread) {
@@ -202,7 +223,7 @@ export default function ThreadPage() {
       <Center h={200}>
         <Text c="red">Thread not found.</Text>
       </Center>
-    );
+    )
   }
 
   return (
@@ -245,11 +266,7 @@ export default function ThreadPage() {
         </Group>
 
         <Group gap="sm">
-          <Avatar
-            src={thread.author.profile_picture}
-            radius="xl"
-            size="sm"
-          >
+          <Avatar src={thread.author.profile_picture} radius="xl" size="sm">
             {thread.author.first_name?.[0]}
             {thread.author.last_name?.[0]}
           </Avatar>
@@ -257,13 +274,13 @@ export default function ThreadPage() {
             {thread.author.first_name} {thread.author.last_name}
           </Text>
           <Text size="sm" c="dimmed">
-            {dayjs(thread.created_at).format('MMM D, YYYY [at] h:mm A')}
+            {dayjs(thread.created_at).format("MMM D, YYYY [at] h:mm A")}
           </Text>
         </Group>
       </Paper>
 
       <Title order={4} mb="md">
-        {thread.posts.length} {thread.posts.length === 1 ? 'Reply' : 'Replies'}
+        {thread.posts.length} {thread.posts.length === 1 ? "Reply" : "Replies"}
       </Title>
 
       <Stack gap="md" mb="xl">
@@ -278,8 +295,8 @@ export default function ThreadPage() {
             onStartEdit={() => handleStartEdit(post)}
             onSaveEdit={handleSaveEdit}
             onCancelEdit={() => {
-              setEditingPost(null);
-              setEditContent('');
+              setEditingPost(null)
+              setEditContent("")
             }}
             onDelete={() => handleDeleteClick(post.id)}
             isSaving={updatePostMutation.isPending}
@@ -303,9 +320,9 @@ export default function ThreadPage() {
             {attachments.length > 0 && (
               <Group gap="xs">
                 {attachments.map((file, index) => {
-                  const FileIcon = getFileIcon(file.name);
-                  const fileColor = getFileTypeColor(file.name);
-                  const isImage = getFileType(file.name) === 'image';
+                  const FileIcon = getFileIcon(file.name)
+                  const fileColor = getFileTypeColor(file.name)
+                  const isImage = getFileType(file.name) === "image"
                   return (
                     <Badge
                       key={index}
@@ -338,9 +355,11 @@ export default function ThreadPage() {
                       }
                       style={{ paddingRight: 4 }}
                     >
-                      {file.name.length > 20 ? `${file.name.slice(0, 17)}...` : file.name}
+                      {file.name.length > 20
+                        ? `${file.name.slice(0, 17)}...`
+                        : file.name}
                     </Badge>
-                  );
+                  )
                 })}
               </Group>
             )}
@@ -365,7 +384,9 @@ export default function ThreadPage() {
                 type="submit"
                 leftSection={<IconSend size={16} />}
                 loading={createPostMutation.isPending}
-                disabled={!newPostContent.trim() || newPostContent === '<p></p>'}
+                disabled={
+                  !newPostContent.trim() || newPostContent === "<p></p>"
+                }
               >
                 Post Reply
               </Button>
@@ -380,7 +401,10 @@ export default function ThreadPage() {
         title="Delete Post"
         centered
       >
-        <Text mb="lg">Are you sure you want to delete this post? This action cannot be undone.</Text>
+        <Text mb="lg">
+          Are you sure you want to delete this post? This action cannot be
+          undone.
+        </Text>
         <Group justify="flex-end">
           <Button variant="light" onClick={closeDeleteModal}>
             Cancel
@@ -395,20 +419,20 @@ export default function ThreadPage() {
         </Group>
       </Modal>
     </>
-  );
+  )
 }
 
 interface PostCardProps {
-  post: Post;
-  isFirst: boolean;
-  isEditing: boolean;
-  editContent: string;
-  onEditContentChange: (content: string) => void;
-  onStartEdit: () => void;
-  onSaveEdit: () => void;
-  onCancelEdit: () => void;
-  onDelete: () => void;
-  isSaving: boolean;
+  post: Post
+  isFirst: boolean
+  isEditing: boolean
+  editContent: string
+  onEditContentChange: (content: string) => void
+  onStartEdit: () => void
+  onSaveEdit: () => void
+  onCancelEdit: () => void
+  onDelete: () => void
+  isSaving: boolean
 }
 
 function PostCard({
@@ -423,25 +447,20 @@ function PostCard({
   onDelete,
   isSaving,
 }: PostCardProps) {
-  const [previewAttachment, setPreviewAttachment] = useState<PostAttachment | null>(null);
+  const [previewAttachment, setPreviewAttachment] =
+    useState<PostAttachment | null>(null)
 
-  const imageAttachments = post.attachments?.filter(
-    (att) => getFileType(att.name) === 'image'
-  ) || [];
-  const otherAttachments = post.attachments?.filter(
-    (att) => getFileType(att.name) !== 'image'
-  ) || [];
+  const imageAttachments =
+    post.attachments?.filter((att) => getFileType(att.name) === "image") || []
+  const otherAttachments =
+    post.attachments?.filter((att) => getFileType(att.name) !== "image") || []
 
   return (
     <>
-      <Paper withBorder p="md" radius="md" bg={isFirst ? 'blue.0' : undefined}>
+      <Paper withBorder p="md" radius="md" bg={isFirst ? "blue.0" : undefined}>
         <Group justify="space-between" mb="sm">
           <Group gap="sm">
-            <Avatar
-              src={post.author.profile_picture}
-              radius="xl"
-              size="md"
-            >
+            <Avatar src={post.author.profile_picture} radius="xl" size="md">
               {post.author.first_name?.[0]}
               {post.author.last_name?.[0]}
             </Avatar>
@@ -455,8 +474,8 @@ function PostCard({
                 )}
               </Text>
               <Text size="xs" c="dimmed">
-                {dayjs(post.created_at).format('MMM D, YYYY [at] h:mm A')}
-                {post.updated_at !== post.created_at && ' (edited)'}
+                {dayjs(post.created_at).format("MMM D, YYYY [at] h:mm A")}
+                {post.updated_at !== post.created_at && " (edited)"}
               </Text>
             </div>
           </Group>
@@ -469,7 +488,10 @@ function PostCard({
                 </ActionIcon>
               </Menu.Target>
               <Menu.Dropdown>
-                <Menu.Item leftSection={<IconEdit size={14} />} onClick={onStartEdit}>
+                <Menu.Item
+                  leftSection={<IconEdit size={14} />}
+                  onClick={onStartEdit}
+                >
                   Edit
                 </Menu.Item>
                 <Menu.Item
@@ -517,7 +539,7 @@ function PostCard({
                     radius="md"
                     fit="cover"
                     h={120}
-                    style={{ cursor: 'pointer' }}
+                    style={{ cursor: "pointer" }}
                     onClick={() => setPreviewAttachment(att)}
                   />
                 ))}
@@ -527,8 +549,8 @@ function PostCard({
             {otherAttachments.length > 0 && (
               <Group gap="xs" mt="md">
                 {otherAttachments.map((att) => {
-                  const FileIcon = getFileIcon(att.name);
-                  const fileColor = getFileTypeColor(att.name);
+                  const FileIcon = getFileIcon(att.name)
+                  const fileColor = getFileTypeColor(att.name)
                   return (
                     <Badge
                       key={att.id}
@@ -536,12 +558,14 @@ function PostCard({
                       color={fileColor}
                       size="lg"
                       leftSection={<FileIcon size={14} />}
-                      style={{ cursor: 'pointer' }}
+                      style={{ cursor: "pointer" }}
                       onClick={() => setPreviewAttachment(att)}
                     >
-                      {att.name.length > 25 ? `${att.name.slice(0, 22)}...` : att.name}
+                      {att.name.length > 25
+                        ? `${att.name.slice(0, 22)}...`
+                        : att.name}
                     </Badge>
-                  );
+                  )
                 })}
               </Group>
             )}
@@ -550,18 +574,22 @@ function PostCard({
       </Paper>
 
       <FilePreviewModal
-        file={previewAttachment ? {
-          id: previewAttachment.id,
-          name: previewAttachment.name,
-          file: previewAttachment.file,
-          file_url: previewAttachment.file_url,
-          uploaded_by: previewAttachment.uploaded_by,
-          is_own: false,
-          uploaded_at: previewAttachment.uploaded_at,
-        } : null}
+        file={
+          previewAttachment
+            ? {
+                id: previewAttachment.id,
+                name: previewAttachment.name,
+                file: previewAttachment.file,
+                file_url: previewAttachment.file_url,
+                uploaded_by: previewAttachment.uploaded_by,
+                is_own: false,
+                uploaded_at: previewAttachment.uploaded_at,
+              }
+            : null
+        }
         opened={previewAttachment !== null}
         onClose={() => setPreviewAttachment(null)}
       />
     </>
-  );
+  )
 }

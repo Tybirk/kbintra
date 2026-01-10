@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState } from "react"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
   Text,
@@ -24,10 +24,10 @@ import {
   TextInput,
   Select,
   Table,
-} from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
-import { notifications } from '@mantine/notifications';
-import { DatePickerInput, DateTimePicker } from '@mantine/dates';
+} from "@mantine/core"
+import { useDisclosure } from "@mantine/hooks"
+import { notifications } from "@mantine/notifications"
+import { DatePickerInput, DateTimePicker } from "@mantine/dates"
 import {
   IconUsers,
   IconCalendar,
@@ -43,46 +43,64 @@ import {
   IconPlayerPlay,
   IconPlus,
   IconReceipt,
-} from '@tabler/icons-react';
-import dayjs from 'dayjs';
+} from "@tabler/icons-react"
+import dayjs from "dayjs"
 
-import { foodApi } from '../api/food';
-import { useAuthStore } from '../store/authStore';
-import type { FoodTeam, FoodTeamListItem, TeamSwapRequest, FoodTeamMember, FoodTeamCycle, TeamGenerationResult } from '../types';
+import { foodApi } from "../api/food"
+import { useAuthStore } from "../store/authStore"
+import type {
+  FoodTeam,
+  FoodTeamListItem,
+  TeamSwapRequest,
+  FoodTeamMember,
+  FoodTeamCycle,
+  TeamGenerationResult,
+} from "../types"
+
+interface WishSubmitData {
+  available_dates: string[]
+  comment: string
+}
+
+interface GenerateTeamsParams {
+  cycleId: number
+  dryRun: boolean
+}
 
 export default function FoodTeamsPage() {
-  const { user } = useAuthStore();
+  const { user } = useAuthStore()
 
   // Fetch my teams
   const { data: myTeams, isLoading: myTeamsLoading } = useQuery({
-    queryKey: ['food', 'teams', 'my'],
+    queryKey: ["food", "teams", "my"],
     queryFn: foodApi.getMyTeams,
-  });
+  })
 
   // Fetch all upcoming teams
   const { data: allTeams, isLoading: allTeamsLoading } = useQuery({
-    queryKey: ['food', 'teams', 'all'],
+    queryKey: ["food", "teams", "all"],
     queryFn: () => foodApi.getTeams(),
-  });
+  })
 
   // Fetch swap requests
   const { data: swapRequests, isLoading: swapRequestsLoading } = useQuery({
-    queryKey: ['food', 'swap-requests'],
+    queryKey: ["food", "swap-requests"],
     queryFn: foodApi.getSwapRequests,
-  });
+  })
 
   // Fetch active cycle for wish submission
   const { data: activeCycle, isLoading: cycleLoading } = useQuery({
-    queryKey: ['food', 'cycles', 'active'],
+    queryKey: ["food", "cycles", "active"],
     queryFn: foodApi.getActiveCycle,
     retry: false,
-  });
+  })
 
-  const pendingRequests = swapRequests?.filter((r) => r.status === 'pending') ?? [];
-  const incomingRequests = pendingRequests.filter((r) => r.is_incoming);
-  const outgoingRequests = pendingRequests.filter((r) => r.is_outgoing);
+  const pendingRequests =
+    swapRequests?.filter((r) => r.status === "pending") ?? []
+  const incomingRequests = pendingRequests.filter((r) => r.is_incoming)
+  const outgoingRequests = pendingRequests.filter((r) => r.is_outgoing)
 
-  const isLoading = myTeamsLoading || allTeamsLoading || swapRequestsLoading;
+  const isLoading = myTeamsLoading || allTeamsLoading || swapRequestsLoading
 
   return (
     <>
@@ -118,7 +136,8 @@ export default function FoodTeamsPage() {
             value="wishes"
             leftSection={<IconClipboardList size={16} />}
             rightSection={
-              activeCycle?.is_accepting_wishes && !activeCycle?.my_wish_submitted ? (
+              activeCycle?.is_accepting_wishes &&
+              !activeCycle?.my_wish_submitted ? (
                 <Badge size="xs" color="orange" variant="filled">
                   !
                 </Badge>
@@ -231,7 +250,8 @@ export default function FoodTeamsPage() {
             </Center>
           ) : !activeCycle ? (
             <Alert icon={<IconAlertCircle size={16} />} color="blue">
-              There is no active cooking cycle at the moment. Please check back later when a new cycle is announced.
+              There is no active cooking cycle at the moment. Please check back
+              later when a new cycle is announced.
             </Alert>
           ) : (
             <WishSubmissionPanel cycle={activeCycle} />
@@ -245,126 +265,133 @@ export default function FoodTeamsPage() {
         )}
       </Tabs>
     </>
-  );
+  )
 }
 
 // Wish Submission Panel
 interface WishSubmissionPanelProps {
-  cycle: FoodTeamCycle;
+  cycle: FoodTeamCycle
 }
 
 function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
-  const queryClient = useQueryClient();
-  const [selectedDates, setSelectedDates] = useState<string[]>([]);
-  const [comment, setComment] = useState('');
-  const [defaultsApplied, setDefaultsApplied] = useState(false);
+  const queryClient = useQueryClient()
+  const [selectedDates, setSelectedDates] = useState<string[]>([])
+  const [comment, setComment] = useState("")
+  const [defaultsApplied, setDefaultsApplied] = useState(false)
 
   // Fetch existing wish
   const { data: existingWish, isLoading: wishLoading } = useQuery({
-    queryKey: ['food', 'wishes', 'my', cycle.id],
+    queryKey: ["food", "wishes", "my", cycle.id],
     queryFn: () => foodApi.getMyWish(cycle.id),
     retry: false,
     refetchOnMount: true,
-  });
+  })
 
   // Fetch default cooking days
   const { data: defaultCookingDaysData } = useQuery({
-    queryKey: ['food', 'default-cooking-days'],
+    queryKey: ["food", "default-cooking-days"],
     queryFn: foodApi.getDefaultCookingDays,
-  });
+  })
 
   // Update default cooking days mutation
   const updateDefaultsMutation = useMutation({
     mutationFn: foodApi.updateDefaultCookingDays,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['food', 'default-cooking-days'] });
+      queryClient.invalidateQueries({
+        queryKey: ["food", "default-cooking-days"],
+      })
       notifications.show({
-        title: 'Defaults saved',
-        message: 'Your default cooking days have been saved.',
-        color: 'green',
-      });
+        title: "Defaults saved",
+        message: "Your default cooking days have been saved.",
+        color: "green",
+      })
     },
-  });
+  })
 
-  const defaultDays = defaultCookingDaysData?.default_cooking_days ?? [];
+  const defaultDays = defaultCookingDaysData?.default_cooking_days ?? []
 
   const handleDefaultDayToggle = (day: number) => {
     const newDefaults = defaultDays.includes(day)
       ? defaultDays.filter((d) => d !== day)
-      : [...defaultDays, day].sort();
-    updateDefaultsMutation.mutate(newDefaults);
-  };
+      : [...defaultDays, day].sort()
+    updateDefaultsMutation.mutate(newDefaults)
+  }
 
   // Apply defaults to selected dates when first loading (if no existing wish)
   const applyDefaultsToSelection = () => {
-    if (defaultDays.length === 0) return;
+    if (defaultDays.length === 0) return
 
     // Find cooking dates that match the default weekdays
     const matchingDates = cycle.cooking_dates.filter((date) => {
-      const weekday = dayjs(date).day(); // 0=Sunday, 1=Monday, etc.
+      const weekday = dayjs(date).day() // 0=Sunday, 1=Monday, etc.
       // Convert to our format: 0=Monday, 1=Tuesday, 2=Wednesday, 3=Thursday
-      const adjustedDay = weekday === 0 ? 6 : weekday - 1;
-      return defaultDays.includes(adjustedDay);
-    });
+      const adjustedDay = weekday === 0 ? 6 : weekday - 1
+      return defaultDays.includes(adjustedDay)
+    })
 
-    setSelectedDates(matchingDates);
-    setDefaultsApplied(true);
-  };
+    setSelectedDates(matchingDates)
+    setDefaultsApplied(true)
+  }
 
   // Initialize selected dates from existing wish
   useState(() => {
     if (existingWish) {
-      setSelectedDates(existingWish.available_dates);
-      setComment(existingWish.comment);
+      setSelectedDates(existingWish.available_dates)
+      setComment(existingWish.comment)
     }
-  });
+  })
 
   const submitWishMutation = useMutation({
-    mutationFn: (data: { available_dates: string[]; comment: string }) =>
-      foodApi.submitWish(cycle.id, data),
+    mutationFn: (data: WishSubmitData) => foodApi.submitWish(cycle.id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['food', 'wishes', 'my', cycle.id] });
-      queryClient.invalidateQueries({ queryKey: ['food', 'cycles', 'active'] });
+      queryClient.invalidateQueries({
+        queryKey: ["food", "wishes", "my", cycle.id],
+      })
+      queryClient.invalidateQueries({ queryKey: ["food", "cycles", "active"] })
       notifications.show({
-        title: 'Wish submitted',
-        message: 'Your date preferences have been saved.',
-        color: 'green',
-      });
+        title: "Wish submitted",
+        message: "Your date preferences have been saved.",
+        color: "green",
+      })
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to submit wish. Please try again.',
-        color: 'red',
-      });
+        title: "Error",
+        message: "Failed to submit wish. Please try again.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const handleDateToggle = (date: string) => {
     setSelectedDates((prev) =>
-      prev.includes(date) ? prev.filter((d) => d !== date) : [...prev, date]
-    );
-  };
+      prev.includes(date) ? prev.filter((d) => d !== date) : [...prev, date],
+    )
+  }
 
   const handleSelectAll = () => {
-    setSelectedDates(cycle.cooking_dates);
-  };
+    setSelectedDates(cycle.cooking_dates)
+  }
 
   const handleClearAll = () => {
-    setSelectedDates([]);
-  };
+    setSelectedDates([])
+  }
 
   const handleSubmit = () => {
     submitWishMutation.mutate({
       available_dates: selectedDates,
       comment,
-    });
-  };
+    })
+  }
 
   // Update selected dates when existing wish loads
-  if (existingWish && selectedDates.length === 0 && existingWish.available_dates.length > 0) {
-    setSelectedDates(existingWish.available_dates);
-    setComment(existingWish.comment);
+  if (
+    existingWish &&
+    selectedDates.length === 0 &&
+    existingWish.available_dates.length > 0
+  ) {
+    setSelectedDates(existingWish.available_dates)
+    setComment(existingWish.comment)
   }
 
   if (wishLoading) {
@@ -372,10 +399,10 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
       <Center h={200}>
         <Loader size="lg" />
       </Center>
-    );
+    )
   }
 
-  const deadlinePassed = dayjs(cycle.wish_deadline).isBefore(dayjs());
+  const deadlinePassed = dayjs(cycle.wish_deadline).isBefore(dayjs())
 
   return (
     <Stack gap="lg">
@@ -385,27 +412,40 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
             <Group justify="space-between" mb="xs">
               <Title order={3}>{cycle.name}</Title>
               <Badge
-                color={cycle.is_accepting_wishes ? 'green' : deadlinePassed ? 'red' : 'gray'}
+                color={
+                  cycle.is_accepting_wishes
+                    ? "green"
+                    : deadlinePassed
+                      ? "red"
+                      : "gray"
+                }
                 size="lg"
               >
-                {cycle.is_accepting_wishes ? 'Accepting Wishes' : deadlinePassed ? 'Closed' : cycle.status}
+                {cycle.is_accepting_wishes
+                  ? "Accepting Wishes"
+                  : deadlinePassed
+                    ? "Closed"
+                    : cycle.status}
               </Badge>
             </Group>
             <Text c="dimmed" size="sm">
-              Cooking period: {cycle.cooking_dates.length > 0
-                ? `${dayjs(cycle.cooking_dates[0]).format('MMMM D')} - ${dayjs(cycle.cooking_dates[cycle.cooking_dates.length - 1]).format('MMMM D, YYYY')} (${cycle.cooking_dates.length} days)`
-                : 'No dates selected'}
+              Cooking period:{" "}
+              {cycle.cooking_dates.length > 0
+                ? `${dayjs(cycle.cooking_dates[0]).format("MMMM D")} - ${dayjs(cycle.cooking_dates[cycle.cooking_dates.length - 1]).format("MMMM D, YYYY")} (${cycle.cooking_dates.length} days)`
+                : "No dates selected"}
             </Text>
             <Text c="dimmed" size="sm">
-              Deadline: {dayjs(cycle.wish_deadline).format('MMMM D, YYYY [at] HH:mm')}
+              Deadline:{" "}
+              {dayjs(cycle.wish_deadline).format("MMMM D, YYYY [at] HH:mm")}
             </Text>
           </div>
 
           {existingWish && (
             <Alert color="blue" variant="light">
               <Text size="sm">
-                You have already submitted your wishes ({existingWish.available_date_count} dates selected).
-                You can update them below until the deadline.
+                You have already submitted your wishes (
+                {existingWish.available_date_count} dates selected). You can
+                update them below until the deadline.
               </Text>
             </Alert>
           )}
@@ -422,17 +462,20 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
                   Your default cooking days
                 </Text>
                 <Text size="sm" c="dimmed" mb="md">
-                  Set your typical availability. These will be saved and can be applied to future cycles.
+                  Set your typical availability. These will be saved and can be
+                  applied to future cycles.
                 </Text>
                 <Group gap="md" mb="md">
-                  {['Monday', 'Tuesday', 'Wednesday', 'Thursday'].map((day, index) => (
-                    <Checkbox
-                      key={day}
-                      label={day}
-                      checked={defaultDays.includes(index)}
-                      onChange={() => handleDefaultDayToggle(index)}
-                    />
-                  ))}
+                  {["Monday", "Tuesday", "Wednesday", "Thursday"].map(
+                    (day, index) => (
+                      <Checkbox
+                        key={day}
+                        label={day}
+                        checked={defaultDays.includes(index)}
+                        onChange={() => handleDefaultDayToggle(index)}
+                      />
+                    ),
+                  )}
                 </Group>
                 {defaultDays.length > 0 && !existingWish && (
                   <Button
@@ -441,7 +484,9 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
                     onClick={applyDefaultsToSelection}
                     disabled={defaultsApplied}
                   >
-                    {defaultsApplied ? 'Defaults applied' : 'Apply defaults to selection below'}
+                    {defaultsApplied
+                      ? "Defaults applied"
+                      : "Apply defaults to selection below"}
                   </Button>
                 )}
               </Paper>
@@ -452,29 +497,39 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
                 <Group justify="space-between" mb="sm">
                   <Text fw={500}>Select dates you are available to cook:</Text>
                   <Group gap="xs">
-                    <Button variant="subtle" size="xs" onClick={handleSelectAll}>
+                    <Button
+                      variant="subtle"
+                      size="xs"
+                      onClick={handleSelectAll}
+                    >
                       Select all
                     </Button>
-                    <Button variant="subtle" size="xs" color="gray" onClick={handleClearAll}>
+                    <Button
+                      variant="subtle"
+                      size="xs"
+                      color="gray"
+                      onClick={handleClearAll}
+                    >
                       Clear all
                     </Button>
                   </Group>
                 </Group>
                 <Text size="sm" c="dimmed" mb="md">
-                  Select all dates when you CAN cook. The more dates you select, the better chance you have of being assigned.
+                  Select all dates when you CAN cook. The more dates you select,
+                  the better chance you have of being assigned.
                 </Text>
                 <SimpleGrid cols={{ base: 2, sm: 3, md: 4 }} spacing="sm">
                   {cycle.cooking_dates.map((date) => {
-                    const isSelected = selectedDates.includes(date);
-                    const dayName = dayjs(date).format('ddd');
+                    const isSelected = selectedDates.includes(date)
+                    const dayName = dayjs(date).format("ddd")
                     return (
                       <Paper
                         key={date}
                         withBorder
                         p="sm"
                         radius="md"
-                        style={{ cursor: 'pointer' }}
-                        bg={isSelected ? 'green.0' : undefined}
+                        style={{ cursor: "pointer" }}
+                        bg={isSelected ? "green.0" : undefined}
                         onClick={() => handleDateToggle(date)}
                       >
                         <Group gap="sm">
@@ -485,12 +540,12 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
                           />
                           <div>
                             <Text size="sm" fw={500}>
-                              {dayName}, {dayjs(date).format('MMM D')}
+                              {dayName}, {dayjs(date).format("MMM D")}
                             </Text>
                           </div>
                         </Group>
                       </Paper>
-                    );
+                    )
                   })}
                 </SimpleGrid>
               </div>
@@ -506,7 +561,8 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
 
               <Group justify="space-between">
                 <Text size="sm" c="dimmed">
-                  {selectedDates.length} of {cycle.cooking_dates.length} dates selected
+                  {selectedDates.length} of {cycle.cooking_dates.length} dates
+                  selected
                 </Text>
                 <Button
                   leftSection={<IconSend size={16} />}
@@ -514,7 +570,7 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
                   loading={submitWishMutation.isPending}
                   disabled={selectedDates.length === 0}
                 >
-                  {existingWish ? 'Update Wishes' : 'Submit Wishes'}
+                  {existingWish ? "Update Wishes" : "Submit Wishes"}
                 </Button>
               </Group>
             </>
@@ -522,73 +578,77 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
         </Stack>
       </Card>
     </Stack>
-  );
+  )
 }
 
 // Admin Panel for managing cycles and generating teams
 function AdminPanel() {
-  const queryClient = useQueryClient();
-  const [createModalOpened, { open: openCreateModal, close: closeCreateModal }] = useDisclosure(false);
-  const [generationResult, setGenerationResult] = useState<TeamGenerationResult | null>(null);
+  const queryClient = useQueryClient()
+  const [
+    createModalOpened,
+    { open: openCreateModal, close: closeCreateModal },
+  ] = useDisclosure(false)
+  const [generationResult, setGenerationResult] =
+    useState<TeamGenerationResult | null>(null)
 
   // Fetch all cycles
   const { data: cycles, isLoading: cyclesLoading } = useQuery({
-    queryKey: ['food', 'cycles'],
+    queryKey: ["food", "cycles"],
     queryFn: foodApi.getCycles,
-  });
+  })
 
   // Create cycle mutation
   const createCycleMutation = useMutation({
     mutationFn: foodApi.createCycle,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['food', 'cycles'] });
+      queryClient.invalidateQueries({ queryKey: ["food", "cycles"] })
       notifications.show({
-        title: 'Cycle created',
-        message: 'The new food team cycle has been created.',
-        color: 'green',
-      });
-      closeCreateModal();
+        title: "Cycle created",
+        message: "The new food team cycle has been created.",
+        color: "green",
+      })
+      closeCreateModal()
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to create cycle.',
-        color: 'red',
-      });
+        title: "Error",
+        message: "Failed to create cycle.",
+        color: "red",
+      })
     },
-  });
+  })
 
   // Generate teams mutation
   const generateTeamsMutation = useMutation({
-    mutationFn: ({ cycleId, dryRun }: { cycleId: number; dryRun: boolean }) =>
+    mutationFn: ({ cycleId, dryRun }: GenerateTeamsParams) =>
       foodApi.generateTeams(cycleId, dryRun),
     onSuccess: (result) => {
-      setGenerationResult(result);
+      setGenerationResult(result)
       if (result.success) {
-        queryClient.invalidateQueries({ queryKey: ['food', 'cycles'] });
-        queryClient.invalidateQueries({ queryKey: ['food', 'teams'] });
+        queryClient.invalidateQueries({ queryKey: ["food", "cycles"] })
+        queryClient.invalidateQueries({ queryKey: ["food", "teams"] })
         notifications.show({
-          title: 'Teams generated',
+          title: "Teams generated",
           message: `Successfully created ${result.teams_created} teams.`,
-          color: 'green',
-        });
+          color: "green",
+        })
       }
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to generate teams.',
-        color: 'red',
-      });
+        title: "Error",
+        message: "Failed to generate teams.",
+        color: "red",
+      })
     },
-  });
+  })
 
   if (cyclesLoading) {
     return (
       <Center h={200}>
         <Loader size="lg" />
       </Center>
-    );
+    )
   }
 
   return (
@@ -602,7 +662,8 @@ function AdminPanel() {
 
       {!cycles || cycles.length === 0 ? (
         <Alert icon={<IconAlertCircle size={16} />} color="blue">
-          No cycles have been created yet. Create a cycle to start collecting wishes.
+          No cycles have been created yet. Create a cycle to start collecting
+          wishes.
         </Alert>
       ) : (
         <Stack gap="md">
@@ -628,8 +689,14 @@ function AdminPanel() {
         >
           <Stack gap="md">
             <Alert
-              color={generationResult.success ? 'green' : 'red'}
-              icon={generationResult.success ? <IconCheck size={16} /> : <IconAlertCircle size={16} />}
+              color={generationResult.success ? "green" : "red"}
+              icon={
+                generationResult.success ? (
+                  <IconCheck size={16} />
+                ) : (
+                  <IconAlertCircle size={16} />
+                )
+              }
             >
               {generationResult.message}
             </Alert>
@@ -639,10 +706,13 @@ function AdminPanel() {
             {generationResult.unassigned_persons.length > 0 && (
               <div>
                 <Text fw={500} mb="xs">
-                  Unassigned persons ({generationResult.unassigned_persons.length}):
+                  Unassigned persons (
+                  {generationResult.unassigned_persons.length}):
                 </Text>
                 <Paper withBorder p="sm" bg="yellow.0">
-                  <Text size="sm">{generationResult.unassigned_persons.join(', ')}</Text>
+                  <Text size="sm">
+                    {generationResult.unassigned_persons.join(", ")}
+                  </Text>
                 </Paper>
               </div>
             )}
@@ -679,40 +749,48 @@ function AdminPanel() {
       {/* Monthly Food Cost Report */}
       <MonthlyCostReport />
     </Stack>
-  );
+  )
 }
 
 // Monthly Cost Report Component
 function MonthlyCostReport() {
-  const currentDate = dayjs();
-  const [selectedYear, setSelectedYear] = useState(currentDate.year().toString());
-  const [selectedMonth, setSelectedMonth] = useState((currentDate.month() + 1).toString());
+  const currentDate = dayjs()
+  const [selectedYear, setSelectedYear] = useState(
+    currentDate.year().toString(),
+  )
+  const [selectedMonth, setSelectedMonth] = useState(
+    (currentDate.month() + 1).toString(),
+  )
 
   const { data: costReport, isLoading } = useQuery({
-    queryKey: ['food', 'monthly-cost', selectedYear, selectedMonth],
-    queryFn: () => foodApi.getMonthlyFoodCost(parseInt(selectedYear), parseInt(selectedMonth)),
+    queryKey: ["food", "monthly-cost", selectedYear, selectedMonth],
+    queryFn: () =>
+      foodApi.getMonthlyFoodCost(
+        parseInt(selectedYear),
+        parseInt(selectedMonth),
+      ),
     enabled: !!selectedYear && !!selectedMonth,
-  });
+  })
 
   const years = Array.from({ length: 5 }, (_, i) => {
-    const year = currentDate.year() - 2 + i;
-    return { value: year.toString(), label: year.toString() };
-  });
+    const year = currentDate.year() - 2 + i
+    return { value: year.toString(), label: year.toString() }
+  })
 
   const months = [
-    { value: '1', label: 'January' },
-    { value: '2', label: 'February' },
-    { value: '3', label: 'March' },
-    { value: '4', label: 'April' },
-    { value: '5', label: 'May' },
-    { value: '6', label: 'June' },
-    { value: '7', label: 'July' },
-    { value: '8', label: 'August' },
-    { value: '9', label: 'September' },
-    { value: '10', label: 'October' },
-    { value: '11', label: 'November' },
-    { value: '12', label: 'December' },
-  ];
+    { value: "1", label: "January" },
+    { value: "2", label: "February" },
+    { value: "3", label: "March" },
+    { value: "4", label: "April" },
+    { value: "5", label: "May" },
+    { value: "6", label: "June" },
+    { value: "7", label: "July" },
+    { value: "8", label: "August" },
+    { value: "9", label: "September" },
+    { value: "10", label: "October" },
+    { value: "11", label: "November" },
+    { value: "12", label: "December" },
+  ]
 
   return (
     <>
@@ -785,13 +863,22 @@ function MonthlyCostReport() {
                   <Table.Tr>
                     <Table.Td fw={600}>Total</Table.Td>
                     <Table.Td ta="right" fw={600}>
-                      {costReport.houses.reduce((sum, h) => sum + h.ticket_count, 0)}
+                      {costReport.houses.reduce(
+                        (sum, h) => sum + h.ticket_count,
+                        0,
+                      )}
                     </Table.Td>
                     <Table.Td ta="right" fw={600}>
-                      {costReport.houses.reduce((sum, h) => sum + h.adult_portions, 0)}
+                      {costReport.houses.reduce(
+                        (sum, h) => sum + h.adult_portions,
+                        0,
+                      )}
                     </Table.Td>
                     <Table.Td ta="right" fw={600}>
-                      {costReport.houses.reduce((sum, h) => sum + h.child_portions, 0)}
+                      {costReport.houses.reduce(
+                        (sum, h) => sum + h.child_portions,
+                        0,
+                      )}
                     </Table.Td>
                     <Table.Td ta="right" fw={600}>
                       {parseFloat(costReport.total_cost).toFixed(2)} kr
@@ -804,23 +891,27 @@ function MonthlyCostReport() {
         </Card>
       ) : null}
     </>
-  );
+  )
 }
 
 // Cycle Admin Card
 interface CycleAdminCardProps {
-  cycle: FoodTeamCycle;
-  onGenerate: (dryRun: boolean) => void;
-  isGenerating: boolean;
+  cycle: FoodTeamCycle
+  onGenerate: (dryRun: boolean) => void
+  isGenerating: boolean
 }
 
-function CycleAdminCard({ cycle, onGenerate, isGenerating }: CycleAdminCardProps) {
+function CycleAdminCard({
+  cycle,
+  onGenerate,
+  isGenerating,
+}: CycleAdminCardProps) {
   const statusColors: Record<string, string> = {
-    draft: 'gray',
-    collecting_wishes: 'blue',
-    generating: 'yellow',
-    finalized: 'green',
-  };
+    draft: "gray",
+    collecting_wishes: "blue",
+    generating: "yellow",
+    finalized: "green",
+  }
 
   return (
     <Card withBorder p="md" radius="md">
@@ -831,12 +922,12 @@ function CycleAdminCard({ cycle, onGenerate, isGenerating }: CycleAdminCardProps
           </Text>
           <Text size="sm" c="dimmed">
             {cycle.cooking_dates.length > 0
-              ? `${dayjs(cycle.cooking_dates[0]).format('MMM D')} - ${dayjs(cycle.cooking_dates[cycle.cooking_dates.length - 1]).format('MMM D, YYYY')}`
-              : 'No dates'}
+              ? `${dayjs(cycle.cooking_dates[0]).format("MMM D")} - ${dayjs(cycle.cooking_dates[cycle.cooking_dates.length - 1]).format("MMM D, YYYY")}`
+              : "No dates"}
           </Text>
         </div>
-        <Badge color={statusColors[cycle.status] || 'gray'} size="lg">
-          {cycle.status.replace('_', ' ')}
+        <Badge color={statusColors[cycle.status] || "gray"} size="lg">
+          {cycle.status.replace("_", " ")}
         </Badge>
       </Group>
 
@@ -863,11 +954,13 @@ function CycleAdminCard({ cycle, onGenerate, isGenerating }: CycleAdminCardProps
           <Text size="xs" c="dimmed">
             Deadline
           </Text>
-          <Text fw={500}>{dayjs(cycle.wish_deadline).format('MMM D, HH:mm')}</Text>
+          <Text fw={500}>
+            {dayjs(cycle.wish_deadline).format("MMM D, HH:mm")}
+          </Text>
         </div>
       </SimpleGrid>
 
-      {cycle.status !== 'finalized' && (
+      {cycle.status !== "finalized" && (
         <Group>
           <Button
             variant="light"
@@ -887,46 +980,57 @@ function CycleAdminCard({ cycle, onGenerate, isGenerating }: CycleAdminCardProps
         </Group>
       )}
     </Card>
-  );
+  )
 }
 
 // Create Cycle Modal
 interface CreateCycleModalProps {
-  opened: boolean;
-  onClose: () => void;
+  opened: boolean
+  onClose: () => void
   onCreate: (data: {
-    name: string;
-    cooking_dates: string[];
-    wish_deadline: string;
-  }) => void;
-  isLoading: boolean;
+    name: string
+    cooking_dates: string[]
+    wish_deadline: string
+  }) => void
+  isLoading: boolean
 }
 
-function CreateCycleModal({ opened, onClose, onCreate, isLoading }: CreateCycleModalProps) {
-  const [name, setName] = useState('');
-  const [cookingDates, setCookingDates] = useState<Date[]>([]);
-  const [wishDeadline, setWishDeadline] = useState<Date | null>(null);
+function CreateCycleModal({
+  opened,
+  onClose,
+  onCreate,
+  isLoading,
+}: CreateCycleModalProps) {
+  const [name, setName] = useState("")
+  const [cookingDates, setCookingDates] = useState<Date[]>([])
+  const [wishDeadline, setWishDeadline] = useState<Date | null>(null)
 
   const handleSubmit = () => {
     onCreate({
       name,
-      cooking_dates: cookingDates.map((d) => dayjs(d).format('YYYY-MM-DD')),
-      wish_deadline: wishDeadline ? dayjs(wishDeadline).toISOString() : '',
-    });
-  };
+      cooking_dates: cookingDates.map((d) => dayjs(d).format("YYYY-MM-DD")),
+      wish_deadline: wishDeadline ? dayjs(wishDeadline).toISOString() : "",
+    })
+  }
 
   const handleClose = () => {
     // Reset form on close
-    setName('');
-    setCookingDates([]);
-    setWishDeadline(null);
-    onClose();
-  };
+    setName("")
+    setCookingDates([])
+    setWishDeadline(null)
+    onClose()
+  }
 
-  const isValid = name && cookingDates.length > 0 && wishDeadline;
+  const isValid = name && cookingDates.length > 0 && wishDeadline
 
   return (
-    <Modal opened={opened} onClose={handleClose} title="Create Food Team Cycle" centered size="lg">
+    <Modal
+      opened={opened}
+      onClose={handleClose}
+      title="Create Food Team Cycle"
+      centered
+      size="lg"
+    >
       <Stack gap="md">
         <TextInput
           label="Cycle Name"
@@ -943,7 +1047,9 @@ function CreateCycleModal({ opened, onClose, onCreate, isLoading }: CreateCycleM
           value={cookingDates}
           onChange={(dates) => setCookingDates(dates as unknown as Date[])}
           required
-          description={`${cookingDates.length} date${cookingDates.length !== 1 ? 's' : ''} selected. Click dates to add/remove them.`}
+          description={`${cookingDates.length} date${
+            cookingDates.length !== 1 ? "s" : ""
+          } selected. Click dates to add/remove them.`}
           valueFormat="ddd, MMM D"
           clearable
         />
@@ -956,8 +1062,8 @@ function CreateCycleModal({ opened, onClose, onCreate, isLoading }: CreateCycleM
             <Text size="sm" c="dimmed">
               {[...cookingDates]
                 .sort((a, b) => dayjs(a).valueOf() - dayjs(b).valueOf())
-                .map((d) => dayjs(d).format('ddd, MMM D'))
-                .join(' - ')}
+                .map((d) => dayjs(d).format("ddd, MMM D"))
+                .join(" - ")}
             </Text>
           </Paper>
         )}
@@ -975,87 +1081,99 @@ function CreateCycleModal({ opened, onClose, onCreate, isLoading }: CreateCycleM
           <Button variant="light" onClick={handleClose}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} loading={isLoading} disabled={!isValid}>
+          <Button
+            onClick={handleSubmit}
+            loading={isLoading}
+            disabled={!isValid}
+          >
             Create Cycle
           </Button>
         </Group>
       </Stack>
     </Modal>
-  );
+  )
 }
 
 // My Team Card with swap request capability
 interface MyTeamCardProps {
-  team: FoodTeam;
-  allTeams: FoodTeamListItem[];
-  myTeams: FoodTeam[];
-  currentUserId?: number;
+  team: FoodTeam
+  allTeams: FoodTeamListItem[]
+  myTeams: FoodTeam[]
+  currentUserId?: number
 }
 
-function MyTeamCard({ team, allTeams, myTeams, currentUserId }: MyTeamCardProps) {
-  const [expanded, setExpanded] = useState(false);
-  const [swapModalOpened, { open: openSwapModal, close: closeSwapModal }] = useDisclosure(false);
-  const [selectedTargetTeamId, setSelectedTargetTeamId] = useState<number | null>(null);
-  const [selectedTargetMemberId, setSelectedTargetMemberId] = useState<number | null>(null);
-  const [swapMessage, setSwapMessage] = useState('');
-  const queryClient = useQueryClient();
+function MyTeamCard({
+  team,
+  allTeams,
+  myTeams,
+  currentUserId,
+}: MyTeamCardProps) {
+  const [expanded, setExpanded] = useState(false)
+  const [swapModalOpened, { open: openSwapModal, close: closeSwapModal }] =
+    useDisclosure(false)
+  const [selectedTargetTeamId, setSelectedTargetTeamId] =
+    useState<number | null>(null)
+  const [selectedTargetMemberId, setSelectedTargetMemberId] =
+    useState<number | null>(null)
+  const [swapMessage, setSwapMessage] = useState("")
+  const queryClient = useQueryClient()
 
   // Find my membership in this team
-  const myMembership = team.members.find((m) => m.user.id === currentUserId);
+  const myMembership = team.members.find((m) => m.user.id === currentUserId)
 
   // Get teams I'm not already on (for swap targets)
-  const myTeamDates = new Set(myTeams.map((t) => t.date));
-  const availableSwapTeams = allTeams.filter((t) => !myTeamDates.has(t.date));
+  const myTeamDates = new Set(myTeams.map((t) => t.date))
+  const availableSwapTeams = allTeams.filter((t) => !myTeamDates.has(t.date))
 
   // Fetch selected team details for swap
   const { data: selectedTeamDetails } = useQuery({
-    queryKey: ['food', 'teams', selectedTargetTeamId],
+    queryKey: ["food", "teams", selectedTargetTeamId],
     queryFn: () => foodApi.getTeam(selectedTargetTeamId!),
     enabled: !!selectedTargetTeamId,
-  });
+  })
 
   const createSwapMutation = useMutation({
     mutationFn: foodApi.createSwapRequest,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['food', 'swap-requests'] });
+      queryClient.invalidateQueries({ queryKey: ["food", "swap-requests"] })
       notifications.show({
-        title: 'Swap requested',
-        message: 'Your swap request has been sent.',
-        color: 'green',
-      });
-      closeSwapModal();
-      setSelectedTargetTeamId(null);
-      setSelectedTargetMemberId(null);
-      setSwapMessage('');
+        title: "Swap requested",
+        message: "Your swap request has been sent.",
+        color: "green",
+      })
+      closeSwapModal()
+      setSelectedTargetTeamId(null)
+      setSelectedTargetMemberId(null)
+      setSwapMessage("")
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to create swap request.',
-        color: 'red',
-      });
+        title: "Error",
+        message: "Failed to create swap request.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const handleRequestSwap = () => {
-    if (!myMembership || !selectedTargetMemberId) return;
+    if (!myMembership || !selectedTargetMemberId) return
     createSwapMutation.mutate({
       requester_membership_id: myMembership.id,
       target_membership_id: selectedTargetMemberId,
       message: swapMessage,
-    });
-  };
+    })
+  }
 
-  const isPast = dayjs(team.date).isBefore(dayjs(), 'day');
+  const isPast = dayjs(team.date).isBefore(dayjs(), "day")
 
   return (
     <>
-      <Card withBorder p="md" radius="md" bg={isPast ? 'gray.0' : undefined}>
+      <Card withBorder p="md" radius="md" bg={isPast ? "gray.0" : undefined}>
         <Group justify="space-between" mb="xs">
           <Group>
             <div>
               <Text fw={600} size="lg">
-                {team.day_name}, {dayjs(team.date).format('MMMM D, YYYY')}
+                {team.day_name}, {dayjs(team.date).format("MMMM D, YYYY")}
               </Text>
               <Text size="sm" c="dimmed">
                 {team.member_count} team members
@@ -1080,15 +1198,19 @@ function MyTeamCard({ team, allTeams, myTeams, currentUserId }: MyTeamCardProps)
 
         <Group
           gap="xs"
-          style={{ cursor: 'pointer' }}
+          style={{ cursor: "pointer" }}
           onClick={() => setExpanded(!expanded)}
-          mb={expanded ? 'sm' : 0}
+          mb={expanded ? "sm" : 0}
         >
           <Text size="sm" fw={500}>
             Team members
           </Text>
           <ActionIcon variant="subtle" size="xs">
-            {expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
+            {expanded ? (
+              <IconChevronUp size={14} />
+            ) : (
+              <IconChevronDown size={14} />
+            )}
           </ActionIcon>
         </Group>
 
@@ -1111,13 +1233,13 @@ function MyTeamCard({ team, allTeams, myTeams, currentUserId }: MyTeamCardProps)
       >
         <Stack gap="md">
           <Text size="sm">
-            Select another team date to swap with. The person you select will need to accept your
-            request.
+            Select another team date to swap with. The person you select will
+            need to accept your request.
           </Text>
 
           <div>
             <Text fw={500} mb="xs">
-              Your date: {dayjs(team.date).format('dddd, MMMM D, YYYY')}
+              Your date: {dayjs(team.date).format("dddd, MMMM D, YYYY")}
             </Text>
           </div>
 
@@ -1137,17 +1259,17 @@ function MyTeamCard({ team, allTeams, myTeams, currentUserId }: MyTeamCardProps)
                     withBorder
                     p="sm"
                     radius="sm"
-                    style={{ cursor: 'pointer' }}
-                    bg={selectedTargetTeamId === t.id ? 'blue.0' : undefined}
+                    style={{ cursor: "pointer" }}
+                    bg={selectedTargetTeamId === t.id ? "blue.0" : undefined}
                     onClick={() => {
-                      setSelectedTargetTeamId(t.id);
-                      setSelectedTargetMemberId(null);
+                      setSelectedTargetTeamId(t.id)
+                      setSelectedTargetMemberId(null)
                     }}
                   >
                     <Group justify="space-between">
                       <div>
                         <Text fw={500}>
-                          {t.day_name}, {dayjs(t.date).format('MMMM D')}
+                          {t.day_name}, {dayjs(t.date).format("MMMM D")}
                         </Text>
                         <Text size="xs" c="dimmed">
                           {t.members_display}
@@ -1177,8 +1299,12 @@ function MyTeamCard({ team, allTeams, myTeams, currentUserId }: MyTeamCardProps)
                     withBorder
                     p="sm"
                     radius="sm"
-                    style={{ cursor: 'pointer' }}
-                    bg={selectedTargetMemberId === member.id ? 'green.0' : undefined}
+                    style={{ cursor: "pointer" }}
+                    bg={
+                      selectedTargetMemberId === member.id
+                        ? "green.0"
+                        : undefined
+                    }
                     onClick={() => setSelectedTargetMemberId(member.id)}
                   >
                     <Group>
@@ -1233,24 +1359,29 @@ function MyTeamCard({ team, allTeams, myTeams, currentUserId }: MyTeamCardProps)
         </Stack>
       </Modal>
     </>
-  );
+  )
 }
 
 // All Teams Card (compact view)
 interface AllTeamCardProps {
-  team: FoodTeamListItem;
+  team: FoodTeamListItem
 }
 
 function AllTeamCard({ team }: AllTeamCardProps) {
-  const isPast = dayjs(team.date).isBefore(dayjs(), 'day');
+  const isPast = dayjs(team.date).isBefore(dayjs(), "day")
 
   return (
-    <Paper withBorder p="sm" radius="md" bg={team.is_my_team ? 'blue.0' : isPast ? 'gray.0' : undefined}>
+    <Paper
+      withBorder
+      p="sm"
+      radius="md"
+      bg={team.is_my_team ? "blue.0" : isPast ? "gray.0" : undefined}
+    >
       <Group justify="space-between">
         <div>
           <Group gap="xs">
             <Text fw={500}>
-              {team.day_name}, {dayjs(team.date).format('MMM D')}
+              {team.day_name}, {dayjs(team.date).format("MMM D")}
             </Text>
             {team.is_my_team && (
               <Badge size="sm" color="blue" variant="filled">
@@ -1265,12 +1396,12 @@ function AllTeamCard({ team }: AllTeamCardProps) {
         <Badge variant="light">{team.member_count} members</Badge>
       </Group>
     </Paper>
-  );
+  )
 }
 
 // Team Member Row
 interface TeamMemberRowProps {
-  member: FoodTeamMember;
+  member: FoodTeamMember
 }
 
 function TeamMemberRow({ member }: TeamMemberRowProps) {
@@ -1282,7 +1413,7 @@ function TeamMemberRow({ member }: TeamMemberRowProps) {
       <div>
         <Text size="sm" fw={member.is_own ? 600 : 400}>
           {member.user.first_name} {member.user.last_name}
-          {member.is_own && ' (You)'}
+          {member.is_own && " (You)"}
         </Text>
         {member.house_number && (
           <Text size="xs" c="dimmed">
@@ -1291,69 +1422,79 @@ function TeamMemberRow({ member }: TeamMemberRowProps) {
         )}
       </div>
     </Group>
-  );
+  )
 }
 
 // Swap Request Card
 interface SwapRequestCardProps {
-  request: TeamSwapRequest;
+  request: TeamSwapRequest
 }
 
 function SwapRequestCard({ request }: SwapRequestCardProps) {
-  const [responseMessage, setResponseMessage] = useState('');
-  const [showResponseInput, setShowResponseInput] = useState(false);
-  const queryClient = useQueryClient();
+  const [responseMessage, setResponseMessage] = useState("")
+  const [showResponseInput, setShowResponseInput] = useState(false)
+  const queryClient = useQueryClient()
 
   const respondMutation = useMutation({
-    mutationFn: ({ action, message }: { action: 'accept' | 'decline'; message: string }) =>
-      foodApi.respondSwapRequest(request.id, { action, response_message: message }),
+    mutationFn: ({
+      action,
+      message,
+    }: {
+      action: "accept" | "decline"
+      message: string
+    }) =>
+      foodApi.respondSwapRequest(request.id, {
+        action,
+        response_message: message,
+      }),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['food', 'swap-requests'] });
-      queryClient.invalidateQueries({ queryKey: ['food', 'teams'] });
+      queryClient.invalidateQueries({ queryKey: ["food", "swap-requests"] })
+      queryClient.invalidateQueries({ queryKey: ["food", "teams"] })
       notifications.show({
-        title: variables.action === 'accept' ? 'Swap accepted' : 'Swap declined',
+        title:
+          variables.action === "accept" ? "Swap accepted" : "Swap declined",
         message:
-          variables.action === 'accept'
-            ? 'The team swap has been completed.'
-            : 'The swap request has been declined.',
-        color: variables.action === 'accept' ? 'green' : 'orange',
-      });
+          variables.action === "accept"
+            ? "The team swap has been completed."
+            : "The swap request has been declined.",
+        color: variables.action === "accept" ? "green" : "orange",
+      })
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to respond to swap request.',
-        color: 'red',
-      });
+        title: "Error",
+        message: "Failed to respond to swap request.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const cancelMutation = useMutation({
     mutationFn: () => foodApi.cancelSwapRequest(request.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['food', 'swap-requests'] });
+      queryClient.invalidateQueries({ queryKey: ["food", "swap-requests"] })
       notifications.show({
-        title: 'Request cancelled',
-        message: 'Your swap request has been cancelled.',
-        color: 'blue',
-      });
+        title: "Request cancelled",
+        message: "Your swap request has been cancelled.",
+        color: "blue",
+      })
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to cancel swap request.',
-        color: 'red',
-      });
+        title: "Error",
+        message: "Failed to cancel swap request.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const handleAccept = () => {
-    respondMutation.mutate({ action: 'accept', message: responseMessage });
-  };
+    respondMutation.mutate({ action: "accept", message: responseMessage })
+  }
 
   const handleDecline = () => {
-    respondMutation.mutate({ action: 'decline', message: responseMessage });
-  };
+    respondMutation.mutate({ action: "decline", message: responseMessage })
+  }
 
   return (
     <Card withBorder p="md" radius="md">
@@ -1372,14 +1513,14 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
                 <Text size="sm">
                   <Text span fw={600}>
                     {request.requester.first_name} {request.requester.last_name}
-                  </Text>{' '}
+                  </Text>{" "}
                   wants to swap with you
                 </Text>
               ) : (
                 <Text size="sm">
-                  You requested to swap with{' '}
+                  You requested to swap with{" "}
                   <Text span fw={600}>
-                    {request.target_membership.user.first_name}{' '}
+                    {request.target_membership.user.first_name}{" "}
                     {request.target_membership.user.last_name}
                   </Text>
                 </Text>
@@ -1388,11 +1529,11 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
           </Group>
           <Badge
             color={
-              request.status === 'pending'
-                ? 'yellow'
-                : request.status === 'accepted'
-                ? 'green'
-                : 'red'
+              request.status === "pending"
+                ? "yellow"
+                : request.status === "accepted"
+                  ? "green"
+                  : "red"
             }
           >
             {request.status}
@@ -1405,8 +1546,8 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
               Their date
             </Text>
             <Text size="sm" fw={500}>
-              {request.requester_membership.team_day_name},{' '}
-              {dayjs(request.requester_membership.team_date).format('MMM D')}
+              {request.requester_membership.team_day_name},{" "}
+              {dayjs(request.requester_membership.team_date).format("MMM D")}
             </Text>
           </div>
           <IconArrowsExchange size={16} />
@@ -1415,8 +1556,8 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
               Your date
             </Text>
             <Text size="sm" fw={500}>
-              {request.target_membership.team_day_name},{' '}
-              {dayjs(request.target_membership.team_date).format('MMM D')}
+              {request.target_membership.team_day_name},{" "}
+              {dayjs(request.target_membership.team_date).format("MMM D")}
             </Text>
           </div>
         </Group>
@@ -1429,7 +1570,7 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
           </Paper>
         )}
 
-        {request.status === 'pending' && (
+        {request.status === "pending" && (
           <>
             {request.is_incoming ? (
               <>
@@ -1489,5 +1630,5 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
         )}
       </Stack>
     </Card>
-  );
+  )
 }

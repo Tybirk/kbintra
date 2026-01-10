@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useState, useEffect } from "react"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import {
   Container,
   Paper,
@@ -13,68 +13,70 @@ import {
   Alert,
   Loader,
   Center,
-} from '@mantine/core';
-import { notifications } from '@mantine/notifications';
+} from "@mantine/core"
+import { notifications } from "@mantine/notifications"
 
-import { authApi } from '../api/auth';
+import { authApi } from "../api/auth"
 
 export default function RegisterPage() {
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const token = searchParams.get('token') || '';
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const token = searchParams.get("token") || ""
 
-  const [isValidating, setIsValidating] = useState(true);
-  const [isValid, setIsValid] = useState(false);
-  const [invitationEmail, setInvitationEmail] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isValidating, setIsValidating] = useState(true)
+  const [isValid, setIsValid] = useState(false)
+  const [invitationEmail, setInvitationEmail] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
 
   const [formData, setFormData] = useState({
-    email: '',
-    firstName: '',
-    lastName: '',
-    password: '',
-    passwordConfirm: '',
-  });
+    email: "",
+    firstName: "",
+    lastName: "",
+    password: "",
+    passwordConfirm: "",
+  })
 
   useEffect(() => {
     const validateToken = async () => {
       if (!token) {
-        setIsValidating(false);
-        setError('Ingen invitationskode angivet. Brug venligst linket fra din invitationsmail.');
-        return;
+        setIsValidating(false)
+        setError(
+          "Ingen invitationskode angivet. Brug venligst linket fra din invitationsmail.",
+        )
+        return
       }
 
       try {
-        const result = await authApi.validateInvitation(token);
-        setIsValid(result.valid);
-        setInvitationEmail(result.email);
-        setFormData((prev) => ({ ...prev, email: result.email }));
+        const result = await authApi.validateInvitation(token)
+        setIsValid(result.valid)
+        setInvitationEmail(result.email)
+        setFormData((prev) => ({ ...prev, email: result.email }))
       } catch {
-        setError('Ugyldig eller udløbet invitationskode.');
+        setError("Ugyldig eller udløbet invitationskode.")
       } finally {
-        setIsValidating(false);
+        setIsValidating(false)
       }
-    };
+    }
 
-    validateToken();
-  }, [token]);
+    validateToken()
+  }, [token])
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
+    e.preventDefault()
+    setError(null)
 
     if (formData.password !== formData.passwordConfirm) {
-      setError('Adgangskoderne matcher ikke.');
-      return;
+      setError("Adgangskoderne matcher ikke.")
+      return
     }
 
     if (formData.password.length < 8) {
-      setError('Adgangskoden skal være mindst 8 tegn.');
-      return;
+      setError("Adgangskoden skal være mindst 8 tegn.")
+      return
     }
 
-    setIsLoading(true);
+    setIsLoading(true)
 
     try {
       await authApi.register({
@@ -84,36 +86,38 @@ export default function RegisterPage() {
         password_confirm: formData.passwordConfirm,
         first_name: formData.firstName,
         last_name: formData.lastName,
-      });
+      })
 
       notifications.show({
-        title: 'Registrering gennemført!',
-        message: 'Du kan nu logge ind med dine oplysninger.',
-        color: 'green',
-      });
+        title: "Registrering gennemført!",
+        message: "Du kan nu logge ind med dine oplysninger.",
+        color: "green",
+      })
 
-      navigate('/login');
+      navigate("/login")
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosError = err as { response?: { data?: Record<string, string[]> } };
-        const data = axiosError.response?.data;
+      if (err && typeof err === "object" && "response" in err) {
+        const axiosError = err as {
+          response?: { data?: Record<string, string[]> }
+        }
+        const data = axiosError.response?.data
         if (data) {
-          const messages = Object.values(data).flat().join(' ');
-          setError(messages);
+          const messages = Object.values(data).flat().join(" ")
+          setError(messages)
         } else {
-          setError('Registrering mislykkedes. Prøv venligst igen.');
+          setError("Registrering mislykkedes. Prøv venligst igen.")
         }
       } else {
-        setError('Registrering mislykkedes. Prøv venligst igen.');
+        setError("Registrering mislykkedes. Prøv venligst igen.")
       }
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  };
+  }
 
   if (isValidating) {
     return (
-      <Container size={420} my={40}>
+      <Container size="xs" px="md" my={40}>
         <Center>
           <Loader size="lg" />
         </Center>
@@ -121,19 +125,19 @@ export default function RegisterPage() {
           Validerer invitation...
         </Text>
       </Container>
-    );
+    )
   }
 
   if (!isValid) {
     return (
-      <Container size={420} my={40}>
+      <Container size="xs" px="md" my={40}>
         <Title ta="center" fw={900}>
           KB Intra
         </Title>
 
         <Paper withBorder shadow="md" p={30} mt={30} radius="md">
           <Alert color="red" title="Ugyldig invitation">
-            {error || 'Denne invitation er ugyldig eller udløbet.'}
+            {error || "Denne invitation er ugyldig eller udløbet."}
           </Alert>
 
           <Text ta="center" mt="md">
@@ -143,11 +147,11 @@ export default function RegisterPage() {
           </Text>
         </Paper>
       </Container>
-    );
+    )
   }
 
   return (
-    <Container size={420} my={40}>
+    <Container size="xs" px="md" my={40}>
       <Title ta="center" fw={900}>
         Bliv en del af KB Intra
       </Title>
@@ -173,7 +177,10 @@ export default function RegisterPage() {
               required
               value={formData.firstName}
               onChange={(e) =>
-                setFormData((prev) => ({ ...prev, firstName: e.currentTarget.value }))
+                setFormData((prev) => ({
+                  ...prev,
+                  firstName: e.currentTarget.value,
+                }))
               }
             />
 
@@ -183,7 +190,10 @@ export default function RegisterPage() {
               required
               value={formData.lastName}
               onChange={(e) =>
-                setFormData((prev) => ({ ...prev, lastName: e.currentTarget.value }))
+                setFormData((prev) => ({
+                  ...prev,
+                  lastName: e.currentTarget.value,
+                }))
               }
             />
 
@@ -193,7 +203,10 @@ export default function RegisterPage() {
               required
               value={formData.password}
               onChange={(e) =>
-                setFormData((prev) => ({ ...prev, password: e.currentTarget.value }))
+                setFormData((prev) => ({
+                  ...prev,
+                  password: e.currentTarget.value,
+                }))
               }
               description="Mindst 8 tegn"
             />
@@ -218,12 +231,12 @@ export default function RegisterPage() {
         </form>
 
         <Text c="dimmed" size="sm" ta="center" mt={15}>
-          Har du allerede en konto?{' '}
+          Har du allerede en konto?{" "}
           <Anchor href="/login" size="sm">
             Log ind
           </Anchor>
         </Text>
       </Paper>
     </Container>
-  );
+  )
 }

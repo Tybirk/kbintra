@@ -2,25 +2,25 @@
  * Auth state management using Zustand
  */
 
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import type { User } from '../types';
-import { authApi } from '../api/auth';
-import { getAccessToken } from '../api/client';
+import { create } from "zustand"
+import { persist } from "zustand/middleware"
+import type { User } from "../types"
+import { authApi } from "../api/auth"
+import { getAccessToken } from "../api/client"
 
 interface AuthState {
-  user: User | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  error: string | null;
+  user: User | null
+  isAuthenticated: boolean
+  isLoading: boolean
+  error: string | null
 
   // Actions
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
-  fetchCurrentUser: () => Promise<void>;
-  updateUser: (user: Partial<User>) => void;
-  clearError: () => void;
-  checkAuth: () => Promise<boolean>;
+  login: (email: string, password: string) => Promise<void>
+  logout: () => void
+  fetchCurrentUser: () => Promise<void>
+  updateUser: (user: Partial<User>) => void
+  clearError: () => void
+  checkAuth: () => Promise<boolean>
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -32,66 +32,66 @@ export const useAuthStore = create<AuthState>()(
       error: null,
 
       login: async (email: string, password: string) => {
-        set({ isLoading: true, error: null });
+        set({ isLoading: true, error: null })
         try {
-          await authApi.login({ email, password });
-          const user = await authApi.getCurrentUser();
-          set({ user, isAuthenticated: true, isLoading: false });
+          await authApi.login({ email, password })
+          const user = await authApi.getCurrentUser()
+          set({ user, isAuthenticated: true, isLoading: false })
         } catch (error: unknown) {
           const message =
-            error instanceof Error ? error.message : 'Login failed';
-          set({ error: message, isLoading: false });
-          throw error;
+            error instanceof Error ? error.message : "Login failed"
+          set({ error: message, isLoading: false })
+          throw error
         }
       },
 
       logout: () => {
-        authApi.logout();
-        set({ user: null, isAuthenticated: false, error: null });
+        authApi.logout()
+        set({ user: null, isAuthenticated: false, error: null })
       },
 
       fetchCurrentUser: async () => {
-        set({ isLoading: true });
+        set({ isLoading: true })
         try {
-          const user = await authApi.getCurrentUser();
-          set({ user, isAuthenticated: true, isLoading: false });
+          const user = await authApi.getCurrentUser()
+          set({ user, isAuthenticated: true, isLoading: false })
         } catch {
-          set({ user: null, isAuthenticated: false, isLoading: false });
+          set({ user: null, isAuthenticated: false, isLoading: false })
         }
       },
 
       updateUser: (userData: Partial<User>) => {
-        const currentUser = get().user;
+        const currentUser = get().user
         if (currentUser) {
-          set({ user: { ...currentUser, ...userData } });
+          set({ user: { ...currentUser, ...userData } })
         }
       },
 
       clearError: () => set({ error: null }),
 
       checkAuth: async () => {
-        const token = getAccessToken();
+        const token = getAccessToken()
         if (!token) {
-          set({ isAuthenticated: false, user: null });
-          return false;
+          set({ isAuthenticated: false, user: null })
+          return false
         }
 
         try {
-          const user = await authApi.getCurrentUser();
-          set({ user, isAuthenticated: true });
-          return true;
+          const user = await authApi.getCurrentUser()
+          set({ user, isAuthenticated: true })
+          return true
         } catch {
-          set({ isAuthenticated: false, user: null });
-          return false;
+          set({ isAuthenticated: false, user: null })
+          return false
         }
       },
     }),
     {
-      name: 'auth-storage',
+      name: "auth-storage",
       partialize: (state) => ({
         user: state.user,
         isAuthenticated: state.isAuthenticated,
       }),
-    }
-  )
-);
+    },
+  ),
+)

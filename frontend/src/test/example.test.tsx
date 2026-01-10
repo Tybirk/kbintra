@@ -1,24 +1,24 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { MantineProvider } from '@mantine/core';
+import { describe, it, expect } from "vitest"
+import { render, screen } from "@testing-library/react"
+import { MantineProvider } from "@mantine/core"
 
 // A simple component to test
 function HelloWorld({ name }: { name: string }) {
-  return <div>Hello, {name}!</div>;
+  return <div>Hello, {name}!</div>
 }
 
-describe('Example Test', () => {
-  it('should render correctly', () => {
+describe("Example Test", () => {
+  it("should render correctly", () => {
     render(
       <MantineProvider>
         <HelloWorld name="World" />
-      </MantineProvider>
-    );
+      </MantineProvider>,
+    )
 
-    expect(screen.getByText('Hello, World!')).toBeInTheDocument();
-  });
+    expect(screen.getByText("Hello, World!")).toBeInTheDocument()
+  })
 
-  it('should perform basic math', () => {
-    expect(1 + 1).toBe(2);
-  });
-});
+  it("should perform basic math", () => {
+    expect(1 + 1).toBe(2)
+  })
+})

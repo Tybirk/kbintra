@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useRef } from "react"
+import { useParams, useNavigate } from "react-router-dom"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
   Text,
@@ -22,9 +22,9 @@ import {
   FileButton,
   Select,
   Image,
-} from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
-import { notifications } from '@mantine/notifications';
+} from "@mantine/core"
+import { useDisclosure } from "@mantine/hooks"
+import { notifications } from "@mantine/notifications"
 import {
   IconArrowLeft,
   IconPlus,
@@ -40,46 +40,59 @@ import {
   IconEye,
   IconPaperclip,
   IconX,
-} from '@tabler/icons-react';
-import dayjs from 'dayjs';
-import relativeTime from 'dayjs/plugin/relativeTime';
+} from "@tabler/icons-react"
+import dayjs from "dayjs"
+import relativeTime from "dayjs/plugin/relativeTime"
 
-import { forumApi } from '../api/forum';
-import RichTextEditor from '../components/RichTextEditor';
-import { FilePreviewModal, ImageThumbnail, getFileIcon, getFileType, getFileTypeColor } from '../components/FilePreview';
-import { useAuthStore } from '../store/authStore';
-import type { Thread, CreateThreadData, Folder, ForumFile } from '../types';
+import { forumApi } from "../api/forum"
+import RichTextEditor from "../components/RichTextEditor"
+import {
+  FilePreviewModal,
+  ImageThumbnail,
+  getFileIcon,
+  getFileType,
+  getFileTypeColor,
+} from "../components/FilePreview"
+import { useAuthStore } from "../store/authStore"
+import type { Thread, CreateThreadData, Folder, ForumFile } from "../types"
 
-dayjs.extend(relativeTime);
+interface CreateThreadParams {
+  data: CreateThreadData
+  files: File[]
+}
+
+dayjs.extend(relativeTime)
 
 export default function SubgroupPage() {
-  const { slug } = useParams<{ slug: string }>();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<string | null>('threads');
-  const [createThreadModalOpened, { open: openCreateThreadModal, close: closeCreateThreadModal }] =
-    useDisclosure(false);
+  const { slug } = useParams<{ slug: string }>()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [activeTab, setActiveTab] = useState<string | null>("threads")
+  const [
+    createThreadModalOpened,
+    { open: openCreateThreadModal, close: closeCreateThreadModal },
+  ] = useDisclosure(false)
 
   const { data: subgroup, isLoading: subgroupLoading } = useQuery({
-    queryKey: ['subgroup', slug],
+    queryKey: ["subgroup", slug],
     queryFn: () => forumApi.getSubgroup(slug!),
     enabled: !!slug,
-  });
+  })
 
   const { data: threads, isLoading: threadsLoading } = useQuery({
-    queryKey: ['threads', slug],
+    queryKey: ["threads", slug],
     queryFn: () => forumApi.getThreads(slug!),
     enabled: !!slug,
-  });
+  })
 
-  const isLoading = subgroupLoading || threadsLoading;
+  const isLoading = subgroupLoading || threadsLoading
 
   if (isLoading) {
     return (
       <Center h={200}>
         <Loader size="lg" />
       </Center>
-    );
+    )
   }
 
   if (!subgroup) {
@@ -87,22 +100,22 @@ export default function SubgroupPage() {
       <Center h={200}>
         <Text c="red">Subgroup not found.</Text>
       </Center>
-    );
+    )
   }
 
   // Sort threads: pinned first, then by updated_at
   const sortedThreads = [...(threads || [])].sort((a, b) => {
-    if (a.is_pinned && !b.is_pinned) return -1;
-    if (!a.is_pinned && b.is_pinned) return 1;
-    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-  });
+    if (a.is_pinned && !b.is_pinned) return -1
+    if (!a.is_pinned && b.is_pinned) return 1
+    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+  })
 
   return (
     <>
       <Button
         variant="subtle"
         leftSection={<IconArrowLeft size={16} />}
-        onClick={() => navigate('/forum')}
+        onClick={() => navigate("/forum")}
         mb="md"
       >
         Back to Forum
@@ -113,7 +126,9 @@ export default function SubgroupPage() {
           <Group gap="xs">
             <Title order={1}>{subgroup.name}</Title>
             {subgroup.is_committee && (
-              <Badge variant="filled" color="teal">Udvalg</Badge>
+              <Badge variant="filled" color="teal">
+                Udvalg
+              </Badge>
             )}
           </Group>
           {subgroup.description && (
@@ -134,7 +149,10 @@ export default function SubgroupPage() {
 
         <Tabs.Panel value="threads" pt="md">
           <Group justify="flex-end" mb="md">
-            <Button leftSection={<IconPlus size={16} />} onClick={openCreateThreadModal}>
+            <Button
+              leftSection={<IconPlus size={16} />}
+              onClick={openCreateThreadModal}
+            >
               Ny diskussion
             </Button>
           </Group>
@@ -144,7 +162,9 @@ export default function SubgroupPage() {
                 <Center>
                   <Stack align="center" gap="xs">
                     <IconMessage size={48} color="gray" />
-                    <Text c="dimmed">Ingen diskussioner endnu. Start samtalen!</Text>
+                    <Text c="dimmed">
+                      Ingen diskussioner endnu. Start samtalen!
+                    </Text>
                     <Button onClick={openCreateThreadModal} mt="sm">
                       Opret første diskussion
                     </Button>
@@ -173,17 +193,17 @@ export default function SubgroupPage() {
         onClose={closeCreateThreadModal}
         subgroupSlug={slug!}
         onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ['threads', slug] });
-          closeCreateThreadModal();
+          queryClient.invalidateQueries({ queryKey: ["threads", slug] })
+          closeCreateThreadModal()
         }}
       />
     </>
-  );
+  )
 }
 
 interface ThreadRowProps {
-  thread: Thread;
-  onClick: () => void;
+  thread: Thread
+  onClick: () => void
 }
 
 function ThreadRow({ thread, onClick }: ThreadRowProps) {
@@ -192,16 +212,12 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
       withBorder
       p="md"
       radius="md"
-      style={{ cursor: 'pointer' }}
+      style={{ cursor: "pointer" }}
       onClick={onClick}
     >
       <Group justify="space-between" wrap="nowrap">
         <Group gap="md" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
-          <Avatar
-            src={thread.author.profile_picture}
-            radius="xl"
-            size="md"
-          >
+          <Avatar src={thread.author.profile_picture} radius="xl" size="md">
             {thread.author.first_name?.[0]}
             {thread.author.last_name?.[0]}
           </Avatar>
@@ -215,14 +231,14 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
               </Text>
             </Group>
             <Text size="sm" c="dimmed">
-              {thread.author.first_name} {thread.author.last_name} •{' '}
+              {thread.author.first_name} {thread.author.last_name} •{" "}
               {dayjs(thread.created_at).fromNow()}
             </Text>
           </div>
         </Group>
         <Group gap="xs">
           <Badge variant="light" color="gray">
-            {thread.post_count} {thread.post_count === 1 ? 'reply' : 'replies'}
+            {thread.post_count} {thread.post_count === 1 ? "reply" : "replies"}
           </Badge>
           {thread.last_post_at && (
             <Text size="xs" c="dimmed">
@@ -232,14 +248,14 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
         </Group>
       </Group>
     </Paper>
-  );
+  )
 }
 
 interface CreateThreadModalProps {
-  opened: boolean;
-  onClose: () => void;
-  subgroupSlug: string;
-  onSuccess: () => void;
+  opened: boolean
+  onClose: () => void
+  subgroupSlug: string
+  onSuccess: () => void
 }
 
 function CreateThreadModal({
@@ -248,54 +264,63 @@ function CreateThreadModal({
   subgroupSlug,
   onSuccess,
 }: CreateThreadModalProps) {
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [attachments, setAttachments] = useState<File[]>([]);
-  const resetRef = useRef<() => void>(null);
+  const [title, setTitle] = useState("")
+  const [content, setContent] = useState("")
+  const [attachments, setAttachments] = useState<File[]>([])
+  const resetRef = useRef<() => void>(null)
 
   const createMutation = useMutation({
-    mutationFn: ({ data, files }: { data: CreateThreadData; files: File[] }) =>
-      forumApi.createThread(subgroupSlug, data, files.length > 0 ? files : undefined),
+    mutationFn: ({ data, files }: CreateThreadParams) =>
+      forumApi.createThread(
+        subgroupSlug,
+        data,
+        files.length > 0 ? files : undefined,
+      ),
     onSuccess: () => {
       notifications.show({
-        title: 'Thread created',
-        message: 'Your thread has been posted.',
-        color: 'green',
-      });
-      setTitle('');
-      setContent('');
-      setAttachments([]);
-      resetRef.current?.();
-      onSuccess();
+        title: "Thread created",
+        message: "Your thread has been posted.",
+        color: "green",
+      })
+      setTitle("")
+      setContent("")
+      setAttachments([])
+      resetRef.current?.()
+      onSuccess()
     },
     onError: () => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to create thread. Please try again.',
-        color: 'red',
-      });
+        title: "Error",
+        message: "Failed to create thread. Please try again.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim() || !content.trim()) return;
+    e.preventDefault()
+    if (!title.trim() || !content.trim()) return
     createMutation.mutate({
       data: { title: title.trim(), content: content.trim() },
       files: attachments,
-    });
-  };
+    })
+  }
 
   const handleAddFiles = (files: File[]) => {
-    setAttachments((prev) => [...prev, ...files]);
-  };
+    setAttachments((prev) => [...prev, ...files])
+  }
 
   const handleRemoveFile = (index: number) => {
-    setAttachments((prev) => prev.filter((_, i) => i !== index));
-  };
+    setAttachments((prev) => prev.filter((_, i) => i !== index))
+  }
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Create New Thread" size="lg">
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title="Create New Thread"
+      size="lg"
+    >
       <form onSubmit={handleSubmit}>
         <Stack gap="md">
           <TextInput
@@ -306,7 +331,9 @@ function CreateThreadModal({
             required
           />
           <div>
-            <Text size="sm" fw={500} mb={4}>Content</Text>
+            <Text size="sm" fw={500} mb={4}>
+              Content
+            </Text>
             <RichTextEditor
               content={content}
               onChange={setContent}
@@ -318,9 +345,9 @@ function CreateThreadModal({
           {attachments.length > 0 && (
             <Group gap="xs">
               {attachments.map((file, index) => {
-                const FileIcon = getFileIcon(file.name);
-                const fileColor = getFileTypeColor(file.name);
-                const isImage = getFileType(file.name) === 'image';
+                const FileIcon = getFileIcon(file.name)
+                const fileColor = getFileTypeColor(file.name)
+                const isImage = getFileType(file.name) === "image"
                 return (
                   <Badge
                     key={index}
@@ -353,19 +380,17 @@ function CreateThreadModal({
                     }
                     style={{ paddingRight: 4 }}
                   >
-                    {file.name.length > 20 ? `${file.name.slice(0, 17)}...` : file.name}
+                    {file.name.length > 20
+                      ? `${file.name.slice(0, 17)}...`
+                      : file.name}
                   </Badge>
-                );
+                )
               })}
             </Group>
           )}
 
           <Group justify="space-between">
-            <FileButton
-              resetRef={resetRef}
-              onChange={handleAddFiles}
-              multiple
-            >
+            <FileButton resetRef={resetRef} onChange={handleAddFiles} multiple>
               {(props) => (
                 <Button
                   variant="light"
@@ -392,7 +417,7 @@ function CreateThreadModal({
         </Stack>
       </form>
     </Modal>
-  );
+  )
 }
 
 // =============================================================================
@@ -400,54 +425,63 @@ function CreateThreadModal({
 // =============================================================================
 
 interface DocumentsTabProps {
-  subgroupSlug: string;
+  subgroupSlug: string
 }
 
 function DocumentsTab({ subgroupSlug }: DocumentsTabProps) {
-  const queryClient = useQueryClient();
-  const { user } = useAuthStore();
-  const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
-  const [folderPath, setFolderPath] = useState<Array<{ id: number | null; name: string }>>([
-    { id: null, name: 'Dokumenter' },
-  ]);
-  const [createFolderModalOpened, { open: openCreateFolderModal, close: closeCreateFolderModal }] =
-    useDisclosure(false);
-  const [uploadModalOpened, { open: openUploadModal, close: closeUploadModal }] =
-    useDisclosure(false);
+  const queryClient = useQueryClient()
+  const { user } = useAuthStore()
+  const [currentFolderId, setCurrentFolderId] = useState<number | null>(null)
+  const [folderPath, setFolderPath] = useState<Array<{
+    id: number | null
+    name: string
+  }>>([{ id: null, name: "Dokumenter" }])
+  const [
+    createFolderModalOpened,
+    { open: openCreateFolderModal, close: closeCreateFolderModal },
+  ] = useDisclosure(false)
+  const [
+    uploadModalOpened,
+    { open: openUploadModal, close: closeUploadModal },
+  ] = useDisclosure(false)
 
   // Fetch folders for current location
   const { data: folders, isLoading: foldersLoading } = useQuery({
-    queryKey: ['folders', subgroupSlug, currentFolderId],
-    queryFn: () => forumApi.getFolders(subgroupSlug, currentFolderId ?? undefined),
-  });
+    queryKey: ["folders", subgroupSlug, currentFolderId],
+    queryFn: () =>
+      forumApi.getFolders(subgroupSlug, currentFolderId ?? undefined),
+  })
 
   // Fetch files - either root level or inside a folder
   const { data: files, isLoading: filesLoading } = useQuery({
-    queryKey: currentFolderId !== null ? ['files', currentFolderId] : ['rootFiles', subgroupSlug],
+    queryKey:
+      currentFolderId !== null
+        ? ["files", currentFolderId]
+        : ["rootFiles", subgroupSlug],
     queryFn: () =>
       currentFolderId !== null
         ? forumApi.getFiles(currentFolderId)
         : forumApi.getRootFiles(subgroupSlug),
-  });
+  })
 
   const navigateToFolder = (folderId: number | null, folderName: string) => {
     if (folderId === null) {
       // Going back to root
-      setCurrentFolderId(null);
-      setFolderPath([{ id: null, name: 'Dokumenter' }]);
+      setCurrentFolderId(null)
+      setFolderPath([{ id: null, name: "Dokumenter" }])
     } else {
-      setCurrentFolderId(folderId);
+      setCurrentFolderId(folderId)
       // Check if we're going back in the path
-      const existingIndex = folderPath.findIndex((f) => f.id === folderId);
+      const existingIndex = folderPath.findIndex((f) => f.id === folderId)
       if (existingIndex >= 0) {
-        setFolderPath(folderPath.slice(0, existingIndex + 1));
+        setFolderPath(folderPath.slice(0, existingIndex + 1))
       } else {
-        setFolderPath([...folderPath, { id: folderId, name: folderName }]);
+        setFolderPath([...folderPath, { id: folderId, name: folderName }])
       }
     }
-  };
+  }
 
-  const isLoading = foldersLoading || filesLoading;
+  const isLoading = foldersLoading || filesLoading
 
   return (
     <>
@@ -456,9 +490,9 @@ function DocumentsTab({ subgroupSlug }: DocumentsTabProps) {
         <Breadcrumbs>
           {folderPath.map((item, index) => (
             <Anchor
-              key={item.id ?? 'root'}
+              key={item.id ?? "root"}
               onClick={() => navigateToFolder(item.id, item.name)}
-              style={{ cursor: 'pointer' }}
+              style={{ cursor: "pointer" }}
               fw={index === folderPath.length - 1 ? 500 : undefined}
             >
               {item.name}
@@ -501,14 +535,18 @@ function DocumentsTab({ subgroupSlug }: DocumentsTabProps) {
 
           {/* Files */}
           {files?.map((file: ForumFile) => {
-            const canModify = file.is_own || user?.is_staff === true;
+            const canModify = file.is_own || user?.is_staff === true
             const invalidateFiles = () => {
               if (currentFolderId !== null) {
-                queryClient.invalidateQueries({ queryKey: ['files', currentFolderId] });
+                queryClient.invalidateQueries({
+                  queryKey: ["files", currentFolderId],
+                })
               } else {
-                queryClient.invalidateQueries({ queryKey: ['rootFiles', subgroupSlug] });
+                queryClient.invalidateQueries({
+                  queryKey: ["rootFiles", subgroupSlug],
+                })
               }
-            };
+            }
             return (
               <FileRow
                 key={file.id}
@@ -518,32 +556,31 @@ function DocumentsTab({ subgroupSlug }: DocumentsTabProps) {
                 onDelete={invalidateFiles}
                 onMove={invalidateFiles}
               />
-            );
+            )
           })}
 
           {/* Empty state */}
-          {(!folders || folders.length === 0) && (!files || files.length === 0) && (
-            <Paper withBorder p="xl" radius="md">
-              <Center>
-                <Stack align="center" gap="xs">
-                  <IconFolder size={48} color="gray" />
-                  <Text c="dimmed">
-                    {currentFolderId === null
-                      ? 'Ingen dokumenter endnu.'
-                      : 'Denne mappe er tom.'}
-                  </Text>
-                  <Group gap="xs" mt="sm">
-                    <Button variant="light" onClick={openCreateFolderModal}>
-                      Opret mappe
-                    </Button>
-                    <Button onClick={openUploadModal}>
-                      Upload fil
-                    </Button>
-                  </Group>
-                </Stack>
-              </Center>
-            </Paper>
-          )}
+          {(!folders || folders.length === 0) &&
+            (!files || files.length === 0) && (
+              <Paper withBorder p="xl" radius="md">
+                <Center>
+                  <Stack align="center" gap="xs">
+                    <IconFolder size={48} color="gray" />
+                    <Text c="dimmed">
+                      {currentFolderId === null
+                        ? "Ingen dokumenter endnu."
+                        : "Denne mappe er tom."}
+                    </Text>
+                    <Group gap="xs" mt="sm">
+                      <Button variant="light" onClick={openCreateFolderModal}>
+                        Opret mappe
+                      </Button>
+                      <Button onClick={openUploadModal}>Upload fil</Button>
+                    </Group>
+                  </Stack>
+                </Center>
+              </Paper>
+            )}
         </Stack>
       )}
 
@@ -553,8 +590,10 @@ function DocumentsTab({ subgroupSlug }: DocumentsTabProps) {
         subgroupSlug={subgroupSlug}
         parentId={currentFolderId}
         onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ['folders', subgroupSlug, currentFolderId] });
-          closeCreateFolderModal();
+          queryClient.invalidateQueries({
+            queryKey: ["folders", subgroupSlug, currentFolderId],
+          })
+          closeCreateFolderModal()
         }}
       />
 
@@ -565,20 +604,24 @@ function DocumentsTab({ subgroupSlug }: DocumentsTabProps) {
         folderId={currentFolderId}
         onSuccess={() => {
           if (currentFolderId !== null) {
-            queryClient.invalidateQueries({ queryKey: ['files', currentFolderId] });
+            queryClient.invalidateQueries({
+              queryKey: ["files", currentFolderId],
+            })
           } else {
-            queryClient.invalidateQueries({ queryKey: ['rootFiles', subgroupSlug] });
+            queryClient.invalidateQueries({
+              queryKey: ["rootFiles", subgroupSlug],
+            })
           }
-          closeUploadModal();
+          closeUploadModal()
         }}
       />
     </>
-  );
+  )
 }
 
 interface FolderRowProps {
-  folder: Folder;
-  onClick: () => void;
+  folder: Folder
+  onClick: () => void
 }
 
 function FolderRow({ folder, onClick }: FolderRowProps) {
@@ -587,7 +630,7 @@ function FolderRow({ folder, onClick }: FolderRowProps) {
       withBorder
       p="md"
       radius="md"
-      style={{ cursor: 'pointer' }}
+      style={{ cursor: "pointer" }}
       onClick={onClick}
     >
       <Group justify="space-between">
@@ -603,66 +646,74 @@ function FolderRow({ folder, onClick }: FolderRowProps) {
         <IconChevronRight size={20} color="gray" />
       </Group>
     </Paper>
-  );
+  )
 }
 
 interface FileRowProps {
-  file: ForumFile;
-  subgroupSlug: string;
-  canModify: boolean;
-  onDelete: () => void;
-  onMove: () => void;
+  file: ForumFile
+  subgroupSlug: string
+  canModify: boolean
+  onDelete: () => void
+  onMove: () => void
 }
 
-function FileRow({ file, subgroupSlug, canModify, onDelete, onMove }: FileRowProps) {
-  const [moveModalOpened, { open: openMoveModal, close: closeMoveModal }] = useDisclosure(false);
-  const [previewOpened, { open: openPreview, close: closePreview }] = useDisclosure(false);
+function FileRow({
+  file,
+  subgroupSlug,
+  canModify,
+  onDelete,
+  onMove,
+}: FileRowProps) {
+  const [moveModalOpened, { open: openMoveModal, close: closeMoveModal }] =
+    useDisclosure(false)
+  const [previewOpened, { open: openPreview, close: closePreview }] =
+    useDisclosure(false)
 
-  const fileType = getFileType(file.name);
-  const FileIcon = getFileIcon(file.name);
-  const fileColor = getFileTypeColor(file.name);
-  const isImage = fileType === 'image';
+  const fileType = getFileType(file.name)
+  const FileIcon = getFileIcon(file.name)
+  const fileColor = getFileTypeColor(file.name)
+  const isImage = fileType === "image"
 
   const deleteMutation = useMutation({
     mutationFn: () => forumApi.deleteFile(file.id),
     onSuccess: () => {
       notifications.show({
-        title: 'Fil slettet',
-        message: 'Filen er blevet slettet.',
-        color: 'green',
-      });
-      onDelete();
+        title: "Fil slettet",
+        message: "Filen er blevet slettet.",
+        color: "green",
+      })
+      onDelete()
     },
     onError: () => {
       notifications.show({
-        title: 'Fejl',
-        message: 'Kunne ikke slette filen. Prøv igen.',
-        color: 'red',
-      });
+        title: "Fejl",
+        message: "Kunne ikke slette filen. Prøv igen.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const handleDownload = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    window.open(file.file_url, '_blank');
-  };
+    e.stopPropagation()
+    window.open(file.file_url, "_blank")
+  }
 
   const handleDelete = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (window.confirm('Er du sikker på, at du vil slette denne fil?')) {
-      deleteMutation.mutate();
+    e.stopPropagation()
+    if (window.confirm("Er du sikker på, at du vil slette denne fil?")) {
+      deleteMutation.mutate()
     }
-  };
+  }
 
   const handleOpenMoveModal = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    openMoveModal();
-  };
+    e.stopPropagation()
+    openMoveModal()
+  }
 
   const handleOpenPreview = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    openPreview();
-  };
+    e.stopPropagation()
+    openPreview()
+  }
 
   return (
     <>
@@ -672,19 +723,23 @@ function FileRow({ file, subgroupSlug, canModify, onDelete, onMove }: FileRowPro
             {isImage ? (
               <ImageThumbnail file={file} size={48} onClick={openPreview} />
             ) : (
-              <FileIcon size={24} color={`var(--mantine-color-${fileColor}-6)`} />
+              <FileIcon
+                size={24}
+                color={`var(--mantine-color-${fileColor}-6)`}
+              />
             )}
             <div>
               <Text
                 fw={500}
-                style={{ cursor: 'pointer' }}
+                style={{ cursor: "pointer" }}
                 onClick={openPreview}
                 c="blue"
               >
                 {file.name}
               </Text>
               <Text size="xs" c="dimmed">
-                Uploadet af {file.uploaded_by.first_name} {file.uploaded_by.last_name} •{' '}
+                Uploadet af {file.uploaded_by.first_name}{" "}
+                {file.uploaded_by.last_name} •{" "}
                 {dayjs(file.uploaded_at).fromNow()}
               </Text>
             </div>
@@ -697,7 +752,11 @@ function FileRow({ file, subgroupSlug, canModify, onDelete, onMove }: FileRowPro
             >
               <IconEye size={16} />
             </ActionIcon>
-            <ActionIcon variant="light" onClick={handleDownload} title="Download">
+            <ActionIcon
+              variant="light"
+              onClick={handleDownload}
+              title="Download"
+            >
               <IconDownload size={16} />
             </ActionIcon>
             {canModify && (
@@ -737,20 +796,20 @@ function FileRow({ file, subgroupSlug, canModify, onDelete, onMove }: FileRowPro
         file={file}
         subgroupSlug={subgroupSlug}
         onSuccess={() => {
-          closeMoveModal();
-          onMove();
+          closeMoveModal()
+          onMove()
         }}
       />
     </>
-  );
+  )
 }
 
 interface CreateFolderModalProps {
-  opened: boolean;
-  onClose: () => void;
-  subgroupSlug: string;
-  parentId: number | null;
-  onSuccess: () => void;
+  opened: boolean
+  onClose: () => void
+  subgroupSlug: string
+  parentId: number | null
+  onSuccess: () => void
 }
 
 function CreateFolderModal({
@@ -760,33 +819,34 @@ function CreateFolderModal({
   parentId,
   onSuccess,
 }: CreateFolderModalProps) {
-  const [name, setName] = useState('');
+  const [name, setName] = useState("")
 
   const createMutation = useMutation({
-    mutationFn: () => forumApi.createFolder(subgroupSlug, name, parentId ?? undefined),
+    mutationFn: () =>
+      forumApi.createFolder(subgroupSlug, name, parentId ?? undefined),
     onSuccess: () => {
       notifications.show({
-        title: 'Mappe oprettet',
-        message: 'Den nye mappe er blevet oprettet.',
-        color: 'green',
-      });
-      setName('');
-      onSuccess();
+        title: "Mappe oprettet",
+        message: "Den nye mappe er blevet oprettet.",
+        color: "green",
+      })
+      setName("")
+      onSuccess()
     },
     onError: () => {
       notifications.show({
-        title: 'Fejl',
-        message: 'Kunne ikke oprette mappen. Prøv igen.',
-        color: 'red',
-      });
+        title: "Fejl",
+        message: "Kunne ikke oprette mappen. Prøv igen.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-    createMutation.mutate();
-  };
+    e.preventDefault()
+    if (!name.trim()) return
+    createMutation.mutate()
+  }
 
   return (
     <Modal opened={opened} onClose={onClose} title="Opret ny mappe">
@@ -814,15 +874,15 @@ function CreateFolderModal({
         </Stack>
       </form>
     </Modal>
-  );
+  )
 }
 
 interface UploadFileModalProps {
-  opened: boolean;
-  onClose: () => void;
-  subgroupSlug: string;
-  folderId: number | null;
-  onSuccess: () => void;
+  opened: boolean
+  onClose: () => void
+  subgroupSlug: string
+  folderId: number | null
+  onSuccess: () => void
 }
 
 function UploadFileModal({
@@ -832,40 +892,40 @@ function UploadFileModal({
   folderId,
   onSuccess,
 }: UploadFileModalProps) {
-  const [file, setFile] = useState<File | null>(null);
-  const [name, setName] = useState('');
+  const [file, setFile] = useState<File | null>(null)
+  const [name, setName] = useState("")
 
   const uploadMutation = useMutation({
     mutationFn: () => {
       if (folderId !== null) {
-        return forumApi.uploadFile(folderId, file!, name || undefined);
+        return forumApi.uploadFile(folderId, file!, name || undefined)
       }
-      return forumApi.uploadRootFile(subgroupSlug, file!, name || undefined);
+      return forumApi.uploadRootFile(subgroupSlug, file!, name || undefined)
     },
     onSuccess: () => {
       notifications.show({
-        title: 'Fil uploadet',
-        message: 'Filen er blevet uploadet.',
-        color: 'green',
-      });
-      setFile(null);
-      setName('');
-      onSuccess();
+        title: "Fil uploadet",
+        message: "Filen er blevet uploadet.",
+        color: "green",
+      })
+      setFile(null)
+      setName("")
+      onSuccess()
     },
     onError: () => {
       notifications.show({
-        title: 'Fejl',
-        message: 'Kunne ikke uploade filen. Prøv igen.',
-        color: 'red',
-      });
+        title: "Fejl",
+        message: "Kunne ikke uploade filen. Prøv igen.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!file) return;
-    uploadMutation.mutate();
-  };
+    e.preventDefault()
+    if (!file) return
+    uploadMutation.mutate()
+  }
 
   return (
     <Modal opened={opened} onClose={onClose} title="Upload fil">
@@ -899,15 +959,15 @@ function UploadFileModal({
         </Stack>
       </form>
     </Modal>
-  );
+  )
 }
 
 interface MoveFileModalProps {
-  opened: boolean;
-  onClose: () => void;
-  file: ForumFile;
-  subgroupSlug: string;
-  onSuccess: () => void;
+  opened: boolean
+  onClose: () => void
+  file: ForumFile
+  subgroupSlug: string
+  onSuccess: () => void
 }
 
 function MoveFileModal({
@@ -917,52 +977,53 @@ function MoveFileModal({
   subgroupSlug,
   onSuccess,
 }: MoveFileModalProps) {
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
 
   // Fetch all folders for the subgroup
   const { data: folders, isLoading: foldersLoading } = useQuery({
-    queryKey: ['allFolders', subgroupSlug],
+    queryKey: ["allFolders", subgroupSlug],
     queryFn: () => forumApi.getAllFolders(subgroupSlug),
     enabled: opened,
-  });
+  })
 
   const moveMutation = useMutation({
     mutationFn: () => {
-      const folderId = selectedFolderId === 'root' ? null : parseInt(selectedFolderId!, 10);
-      return forumApi.moveFile(file.id, folderId);
+      const folderId =
+        selectedFolderId === "root" ? null : parseInt(selectedFolderId!, 10)
+      return forumApi.moveFile(file.id, folderId)
     },
     onSuccess: () => {
       notifications.show({
-        title: 'Fil flyttet',
-        message: 'Filen er blevet flyttet til den valgte mappe.',
-        color: 'green',
-      });
-      setSelectedFolderId(null);
-      onSuccess();
+        title: "Fil flyttet",
+        message: "Filen er blevet flyttet til den valgte mappe.",
+        color: "green",
+      })
+      setSelectedFolderId(null)
+      onSuccess()
     },
     onError: () => {
       notifications.show({
-        title: 'Fejl',
-        message: 'Kunne ikke flytte filen. Prøv igen.',
-        color: 'red',
-      });
+        title: "Fejl",
+        message: "Kunne ikke flytte filen. Prøv igen.",
+        color: "red",
+      })
     },
-  });
+  })
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (selectedFolderId === null) return;
-    moveMutation.mutate();
-  };
+    e.preventDefault()
+    if (selectedFolderId === null) return
+    moveMutation.mutate()
+  }
 
   // Build folder options with hierarchy indication
   const folderOptions = [
-    { value: 'root', label: '📁 Rodmappe (ingen mappe)' },
+    { value: "root", label: "📁 Rodmappe (ingen mappe)" },
     ...(folders?.map((folder) => ({
       value: folder.id.toString(),
       label: `📂 ${folder.name}`,
     })) ?? []),
-  ];
+  ]
 
   return (
     <Modal opened={opened} onClose={onClose} title={`Flyt "${file.name}"`}>
@@ -993,5 +1054,5 @@ function MoveFileModal({
         </Stack>
       </form>
     </Modal>
-  );
+  )
 }

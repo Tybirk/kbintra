@@ -6,6 +6,7 @@ from django.db.models import Count
 from django.shortcuts import get_object_or_404
 
 from rest_framework import generics, permissions, status
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -110,9 +111,7 @@ class ChildListCreateView(generics.ListCreateAPIView):
         """Create a child in the current user's house."""
         user = self.request.user
         if not user.house:
-            raise permissions.PermissionDenied(
-                "Du skal være tilknyttet et hus for at tilføje børn."
-            )
+            raise PermissionDenied("Du skal være tilknyttet et hus for at tilføje børn.")
         serializer.save(house=user.house)
 
     def create(self, request, *args, **kwargs):

@@ -2,53 +2,52 @@
  * Users API functions
  */
 
-import { apiClient } from './client';
-import type { User, PaginatedResponse, Invitation } from '../types';
+import { apiClient } from "./client"
+import type { User, PaginatedResponse, Invitation } from "../types"
 
 export const usersApi = {
   async getUsers(): Promise<PaginatedResponse<User>> {
-    const response = await apiClient.get<PaginatedResponse<User>>('/users/');
-    return response.data;
+    const response = await apiClient.get<PaginatedResponse<User>>("/users/")
+    return response.data
   },
 
   async getUser(id: number): Promise<User> {
-    const response = await apiClient.get<User>(`/users/${id}/`);
-    return response.data;
+    const response = await apiClient.get<User>(`/users/${id}/`)
+    return response.data
   },
 
   async getCurrentUser(): Promise<User> {
-    const response = await apiClient.get<User>('/users/me/');
-    return response.data;
+    const response = await apiClient.get<User>("/users/me/")
+    return response.data
   },
 
   async updateProfile(data: Partial<User>): Promise<User> {
-    const response = await apiClient.patch<User>('/users/me/', data);
-    return response.data;
+    const response = await apiClient.patch<User>("/users/me/", data)
+    return response.data
   },
 
   async updateProfilePicture(file: File): Promise<User> {
-    const formData = new FormData();
-    formData.append('profile_picture', file);
-    const response = await apiClient.patch<User>('/users/me/', formData, {
+    const formData = new FormData()
+    formData.append("profile_picture", file)
+    const response = await apiClient.patch<User>("/users/me/", formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
+        "Content-Type": "multipart/form-data",
       },
-    });
-    return response.data;
+    })
+    return response.data
   },
 
   async getInvitations(): Promise<PaginatedResponse<Invitation>> {
-    const response = await apiClient.get<PaginatedResponse<Invitation>>(
-      '/auth/invitations/'
-    );
-    return response.data;
+    const response =
+      await apiClient.get<PaginatedResponse<Invitation>>("/auth/invitations/")
+    return response.data
   },
 
   async createInvitation(email: string, house: number): Promise<Invitation> {
-    const response = await apiClient.post<Invitation>('/auth/invitations/', {
+    const response = await apiClient.post<Invitation>("/auth/invitations/", {
       email,
       house,
-    });
-    return response.data;
+    })
+    return response.data
   },
-};
+}
