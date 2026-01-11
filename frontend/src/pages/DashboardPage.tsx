@@ -31,6 +31,7 @@ import {
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
+import isoWeek from "dayjs/plugin/isoWeek"
 
 import { useAuthStore } from "../store/authStore"
 import { announcementsApi } from "../api/announcements"
@@ -53,6 +54,7 @@ import type {
 } from "../types"
 
 dayjs.extend(relativeTime)
+dayjs.extend(isoWeek)
 
 const features = [
   {
@@ -129,7 +131,7 @@ export default function DashboardPage() {
 
   // Food queries
   const today = dayjs()
-  const currentWeekStart = today.startOf("week").add(1, "day") // Monday
+  const currentWeekStart = today.startOf("isoWeek") // Monday
 
   const { data: allMenus } = useQuery({
     queryKey: ["food", "menus"],
@@ -268,18 +270,21 @@ export default function DashboardPage() {
         </Paper>
       )}
 
-      {/* Birthdays Widget */}
-      {!birthdaysLoading && upcomingBirthdays && upcomingBirthdays.length > 0 && (
-        <Paper withBorder p="lg" radius="md" mt="xl" bg="pink.0">
+      {/* Birthdays and Food Widgets - Side by Side */}
+      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg" mt="xl">
+        {/* Birthdays Widget */}
+        <Paper withBorder p="lg" radius="md">
           <Group justify="space-between" mb="md">
             <Group gap="xs">
               <ThemeIcon size="sm" color="pink" radius="xl">
                 <IconCake size={14} />
               </ThemeIcon>
               <Title order={3}>Fødselsdage</Title>
-              <Badge color="pink" size="sm">
-                {upcomingBirthdays.length}
-              </Badge>
+              {upcomingBirthdays && upcomingBirthdays.length > 0 && (
+                <Badge color="pink" size="sm">
+                  {upcomingBirthdays.length}
+                </Badge>
+              )}
             </Group>
             <Button
               variant="subtle"
@@ -290,17 +295,28 @@ export default function DashboardPage() {
               Se beboere
             </Button>
           </Group>
-          <Stack gap="sm">
-            {upcomingBirthdays.map((birthday) => (
-              <BirthdayPreview key={birthday.user.id} birthday={birthday} />
-            ))}
-          </Stack>
+          {birthdaysLoading ? (
+            <Loader size="sm" />
+          ) : upcomingBirthdays && upcomingBirthdays.length > 0 ? (
+            <Stack gap="sm">
+              {upcomingBirthdays.map((birthday) => (
+                <BirthdayPreview key={birthday.user.id} birthday={birthday} />
+              ))}
+            </Stack>
+          ) : (
+            <Stack align="center" py="md" gap="xs">
+              <ThemeIcon size="xl" color="gray" variant="light" radius="xl">
+                <IconCake size={24} />
+              </ThemeIcon>
+              <Text c="dimmed" size="sm" ta="center">
+                Ingen fødselsdage de næste 7 dage
+              </Text>
+            </Stack>
+          )}
         </Paper>
-      )}
 
-      {/* Food Widget */}
-      {(todayMenu || nextFoodDayMenu) && (
-        <Paper withBorder p="lg" radius="md" mt="xl" bg="green.0">
+        {/* Food Widget */}
+        <Paper withBorder p="lg" radius="md">
           <Group justify="space-between" mb="md">
             <Group gap="xs">
               <ThemeIcon size="sm" color="green" radius="xl">
@@ -317,30 +333,48 @@ export default function DashboardPage() {
               Se mere
             </Button>
           </Group>
-          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-            {todayMenu && (
-              <FoodDayWidget
-                menu={todayMenu}
-                registration={todayRegistration}
-                label="I dag"
-                isToday
-              />
-            )}
-            {nextFoodDayMenu && (
-              <FoodDayWidget
-                menu={nextFoodDayMenu}
-                registration={nextFoodDayRegistration}
-                label={
-                  dayjs(nextFoodDayMenu.date).isSame(dayjs().add(1, "day"), "day")
-                    ? "I morgen"
-                    : dayjs(nextFoodDayMenu.date).format("dddd")
-                }
-                isToday={false}
-              />
-            )}
-          </SimpleGrid>
+          {todayMenu || nextFoodDayMenu ? (
+            <Stack gap="md">
+              {todayMenu && (
+                <FoodDayWidget
+                  menu={todayMenu}
+                  registration={todayRegistration}
+                  label="I dag"
+                  isToday
+                />
+              )}
+              {nextFoodDayMenu && (
+                <FoodDayWidget
+                  menu={nextFoodDayMenu}
+                  registration={nextFoodDayRegistration}
+                  label={
+                    dayjs(nextFoodDayMenu.date).isSame(dayjs().add(1, "day"), "day")
+                      ? "I morgen"
+                      : dayjs(nextFoodDayMenu.date).format("dddd")
+                  }
+                  isToday={false}
+                />
+              )}
+            </Stack>
+          ) : (
+            <Stack align="center" py="md" gap="xs">
+              <ThemeIcon size="xl" color="gray" variant="light" radius="xl">
+                <IconSoup size={24} />
+              </ThemeIcon>
+              <Text c="dimmed" size="sm" ta="center">
+                Ingen menu tilgængelig
+              </Text>
+              <Button
+                variant="light"
+                size="xs"
+                onClick={() => navigate("/mad")}
+              >
+                Se madplan
+              </Button>
+            </Stack>
+          )}
         </Paper>
-      )}
+      </SimpleGrid>
 
       {/* Recent Forum Activity Widget */}
       <Paper withBorder p="lg" radius="md" mt="xl">
@@ -376,7 +410,7 @@ export default function DashboardPage() {
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg" mt="xl">
         <Paper withBorder p="lg" radius="md">
           <Group justify="space-between" mb="md">
-            <Title order={3}>Seneste opslag</Title>
+            <Title order={3}>Seneste vigtig post</Title>
             <Button
               variant="subtle"
               size="xs"

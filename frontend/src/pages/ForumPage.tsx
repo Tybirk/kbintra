@@ -161,11 +161,6 @@ export default function ForumPage() {
           {committees.length > 0 && (
             <Box
               p="lg"
-              style={(theme) => ({
-                backgroundColor: theme.colors.teal[0],
-                borderRadius: theme.radius.md,
-                border: `1px solid ${theme.colors.teal[2]}`,
-              })}
             >
               <Group gap="sm" mb="lg">
                 <ThemeIcon size="lg" radius="md" variant="filled" color="teal">

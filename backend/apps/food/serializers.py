@@ -120,6 +120,11 @@ class WeeklyMenuCreateSerializer(serializers.ModelSerializer):
         # Ensure it's a Monday
         if value.weekday() != 0:
             raise serializers.ValidationError("Week start date must be a Monday.")
+        # Check if menu already exists for this week
+        if WeeklyMenu.objects.filter(week_start_date=value).exists():
+            raise serializers.ValidationError(
+                f"A menu already exists for the week of {value.strftime('%B %d, %Y')}."
+            )
         return value
 
     def create(self, validated_data: dict) -> WeeklyMenu:

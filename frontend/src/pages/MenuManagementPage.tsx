@@ -24,6 +24,9 @@ import {
   IconAlertCircle,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
+import isoWeek from "dayjs/plugin/isoWeek"
+
+dayjs.extend(isoWeek)
 
 import { foodApi } from "../api/food"
 import type { MenuTemplate, DailyMenu } from "../types"
@@ -35,8 +38,7 @@ export default function MenuManagementPage() {
   const today = dayjs()
   const [weekOffset, setWeekOffset] = useState(0)
   const selectedWeekStart = today
-    .startOf("week")
-    .add(1, "day")
+    .startOf("isoWeek")
     .add(weekOffset, "week")
   const weekStartStr = selectedWeekStart.format("YYYY-MM-DD")
 
@@ -62,10 +64,19 @@ export default function MenuManagementPage() {
         color: "green",
       })
     },
-    onError: () => {
+    onError: (error: unknown) => {
+      let message = "Failed to create menu."
+      if (error && typeof error === "object" && "response" in error) {
+        const axiosError = error as { response?: { data?: { week_start_date?: string[]; detail?: string } } }
+        if (axiosError.response?.data?.week_start_date) {
+          message = axiosError.response.data.week_start_date[0]
+        } else if (axiosError.response?.data?.detail) {
+          message = axiosError.response.data.detail
+        }
+      }
       notifications.show({
         title: "Error",
-        message: "Failed to create menu. It may already exist.",
+        message,
         color: "red",
       })
     },
@@ -215,8 +226,7 @@ export default function MenuManagementPage() {
       <Stack gap="sm">
         {[1, 2, 3, 4].map((offset) => {
           const weekStart = today
-            .startOf("week")
-            .add(1, "day")
+            .startOf("isoWeek")
             .add(offset, "week")
           const weekStartStrLocal = weekStart.format("YYYY-MM-DD")
           const hasMenu = menus?.some(

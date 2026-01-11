@@ -39,6 +39,9 @@ import {
   IconChevronUp,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
+import isoWeek from "dayjs/plugin/isoWeek"
+
+dayjs.extend(isoWeek)
 
 import { foodApi } from "../api/food"
 import { useAuthStore } from "../store/authStore"
@@ -59,7 +62,7 @@ export default function FoodPage() {
 
   // Get current week's Monday
   const today = dayjs()
-  const currentWeekStart = today.startOf("week").add(1, "day") // Monday
+  const currentWeekStart = today.startOf("isoWeek") // Monday
 
   // Week offset state for menu view (0 = current, 1 = next, etc.)
   const [menuWeekOffset, setMenuWeekOffset] = useState(0)

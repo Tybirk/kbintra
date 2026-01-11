@@ -4,6 +4,9 @@ import { render, mockUser } from "../test/testUtils"
 import DashboardPage from "./DashboardPage"
 import { useAuthStore } from "../store/authStore"
 import dayjs from "dayjs"
+import isoWeek from "dayjs/plugin/isoWeek"
+
+dayjs.extend(isoWeek)
 
 // Mock the navigation
 const mockNavigate = vi.fn()
@@ -360,7 +363,7 @@ describe("DashboardPage", () => {
 
   it("should show food widget when menus available", async () => {
     const today = dayjs()
-    const weekStart = today.startOf("week").add(1, "day")
+    const weekStart = today.startOf("isoWeek")
 
     const menus = [
       {
@@ -401,7 +404,7 @@ describe("DashboardPage", () => {
 
   it("should show registration controls in food widget", async () => {
     const today = dayjs()
-    const weekStart = today.startOf("week").add(1, "day")
+    const weekStart = today.startOf("isoWeek")
 
     const menus = [
       {
@@ -442,7 +445,7 @@ describe("DashboardPage", () => {
 
   it("should show meat/vegetarian options when menu has both", async () => {
     const today = dayjs()
-    const weekStart = today.startOf("week").add(1, "day")
+    const weekStart = today.startOf("isoWeek")
 
     const menus = [
       {
