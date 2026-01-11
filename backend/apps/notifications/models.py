@@ -14,6 +14,7 @@ class NotificationType(models.TextChoices):
     NEW_THREAD = "new_thread", "New Thread in Subscribed Subgroup"
     THREAD_REPLY = "thread_reply", "Reply to Your Thread"
     POST_REPLY = "post_reply", "Reply to Your Post"
+    POST_REACTION = "post_reaction", "Reaction to Your Post"
     EVENT_REMINDER = "event_reminder", "Event Reminder"
     FOOD_TICKET = "food_ticket", "Food Ticket Available"
 
@@ -66,6 +67,7 @@ class NotificationPreference(models.Model):
     notify_announcements = models.BooleanField(default=True)
     notify_forum_subscriptions = models.BooleanField(default=True)
     notify_thread_replies = models.BooleanField(default=True)
+    notify_post_reactions = models.BooleanField(default=True)
     notify_event_reminders = models.BooleanField(default=True)
     notify_food_tickets = models.BooleanField(default=True)
 
@@ -74,6 +76,7 @@ class NotificationPreference(models.Model):
     email_announcements = models.BooleanField(default=False)
     email_forum_subscriptions = models.BooleanField(default=False)
     email_thread_replies = models.BooleanField(default=False)
+    email_post_reactions = models.BooleanField(default=False)
     email_event_reminders = models.BooleanField(default=False)
     email_food_tickets = models.BooleanField(default=False)
 
@@ -82,6 +85,7 @@ class NotificationPreference(models.Model):
     push_announcements = models.BooleanField(default=True)
     push_forum_subscriptions = models.BooleanField(default=True)
     push_thread_replies = models.BooleanField(default=True)
+    push_post_reactions = models.BooleanField(default=True)
     push_event_reminders = models.BooleanField(default=True)
     push_food_tickets = models.BooleanField(default=True)
 

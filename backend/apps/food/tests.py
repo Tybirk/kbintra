@@ -12,8 +12,6 @@ import pytest
 from django.urls import reverse
 from django.utils import timezone
 
-from conftest import generate_cooking_dates
-
 from apps.food.models import (
     CycleStatus,
     DailyMenu,
@@ -43,6 +41,7 @@ from apps.food.serializers import (
 )
 from apps.food.services.team_generator import TeamGenerationResult, TeamGenerator
 from apps.users.models import User
+from conftest import generate_cooking_dates
 
 # =============================================================================
 # Model Tests

@@ -4,6 +4,8 @@ Views for User models.
 
 from typing import Any
 
+from django.db.models import QuerySet
+from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -99,6 +101,55 @@ class UserDetailView(generics.RetrieveAPIView):
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
     queryset = User.objects.filter(is_active=True).select_related("house")
+
+
+class UpcomingBirthdaysView(generics.ListAPIView):
+    """
+    List users with upcoming birthdays in the next N days.
+    Returns users sorted by how soon their birthday is.
+    """
+
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None  # No pagination for this endpoint
+
+    def get_queryset(self) -> QuerySet[User]:
+        days = int(self.request.query_params.get("days", 7))
+        days = min(days, 30)  # Cap at 30 days
+
+        today = timezone.now().date()
+        users_with_birthdays = []
+
+        # Get all active users with birthdates
+        users = User.objects.filter(is_active=True, birthdate__isnull=False).select_related(
+            "house"
+        )
+
+        for user in users:
+            # Calculate this year's birthday
+            try:
+                birthday_this_year = user.birthdate.replace(year=today.year)
+            except ValueError:
+                # Handle Feb 29 birthdays in non-leap years
+                birthday_this_year = user.birthdate.replace(year=today.year, day=28)
+
+            # If birthday has passed this year, check next year
+            if birthday_this_year < today:
+                try:
+                    birthday_this_year = user.birthdate.replace(year=today.year + 1)
+                except ValueError:
+                    birthday_this_year = user.birthdate.replace(year=today.year + 1, day=28)
+
+            days_until = (birthday_this_year - today).days
+
+            if 0 <= days_until <= days:
+                users_with_birthdays.append((user, days_until))
+
+        # Sort by days until birthday
+        users_with_birthdays.sort(key=lambda x: x[1])
+
+        # Return just the users (sorted)
+        return [u[0] for u in users_with_birthdays]
 
 
 class InvitationListCreateView(generics.ListCreateAPIView):

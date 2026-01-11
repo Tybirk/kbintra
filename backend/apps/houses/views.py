@@ -3,8 +3,6 @@ Views for House models.
 """
 
 from django.db.models import Count
-from django.shortcuts import get_object_or_404
-
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import FormParser, MultiPartParser

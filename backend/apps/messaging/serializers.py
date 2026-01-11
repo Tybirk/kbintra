@@ -2,12 +2,11 @@
 Serializers for Messaging models.
 """
 
-from django.db.models import Max, Q
 from rest_framework import serializers
 
 from apps.users.models import User
 
-from .models import Conversation, Message, MessageReadStatus
+from .models import Conversation, Message
 
 
 class ParticipantSerializer(serializers.ModelSerializer):

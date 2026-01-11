@@ -10,7 +10,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import File, Folder, Post, Subgroup, SubgroupSubscription, Thread
+from .models import File, Folder, Post, Reaction, Subgroup, SubgroupSubscription, Thread
 from .serializers import (
     FileSerializer,
     FileUploadSerializer,
@@ -18,6 +18,7 @@ from .serializers import (
     FolderSerializer,
     PostCreateSerializer,
     PostSerializer,
+    RecentActivitySerializer,
     SubgroupSerializer,
     SubgroupSubscriptionSerializer,
     ThreadCreateSerializer,
@@ -142,7 +143,7 @@ class ThreadDetailView(generics.RetrieveAPIView):
     serializer_class = ThreadDetailSerializer
     permission_classes = [permissions.IsAuthenticated]
     queryset = Thread.objects.prefetch_related(
-        "posts__author", "posts__attachments__uploaded_by"
+        "posts__author", "posts__attachments__uploaded_by", "posts__reactions"
     ).select_related("author", "subgroup")
 
 
@@ -167,7 +168,7 @@ class PostListCreateView(generics.ListCreateAPIView):
     def get_queryset(self) -> Any:
         thread = get_object_or_404(Thread, pk=self.kwargs["thread_id"])
         return Post.objects.filter(thread=thread).select_related("author").prefetch_related(
-            "attachments__uploaded_by"
+            "attachments__uploaded_by", "reactions"
         )
 
     def get_serializer_context(self) -> dict:
@@ -336,3 +337,88 @@ class FileMoveView(APIView):
 
         file.save(update_fields=["folder"])
         return Response({"detail": "File moved successfully."}, status=status.HTTP_200_OK)
+
+
+class RecentActivityView(generics.ListAPIView):
+    """
+    List recent forum posts across all subgroups.
+    Returns the most recent posts with thread and subgroup context.
+    """
+
+    serializer_class = RecentActivitySerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self) -> Any:
+        limit = int(self.request.query_params.get("limit", 10))
+        limit = min(limit, 50)  # Cap at 50
+
+        return (
+            Post.objects.select_related("author", "thread", "thread__subgroup")
+            .order_by("-created_at")[:limit]
+        )
+
+
+class ReactionToggleView(APIView):
+    """Toggle a reaction on a post."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request, post_id: int) -> Response:
+        """Add or remove a reaction from a post."""
+        from apps.notifications.services import notify_post_reaction
+
+        post = get_object_or_404(Post, pk=post_id)
+        reaction_type = request.data.get("reaction_type")
+
+        # Validate reaction type
+        valid_types = [choice[0] for choice in Reaction.REACTION_CHOICES]
+        if reaction_type not in valid_types:
+            return Response(
+                {"detail": f"Invalid reaction type. Must be one of: {valid_types}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Toggle the reaction
+        existing = Reaction.objects.filter(
+            post=post, user=request.user, reaction_type=reaction_type
+        ).first()
+
+        if existing:
+            existing.delete()
+            return Response(
+                {"detail": "Reaction removed.", "action": "removed"},
+                status=status.HTTP_200_OK,
+            )
+        else:
+            Reaction.objects.create(
+                post=post, user=request.user, reaction_type=reaction_type
+            )
+            # Notify the post author
+            if post.author:
+                emoji_map = dict(Reaction.REACTION_CHOICES)
+                notify_post_reaction(
+                    post_author=post.author,
+                    reactor=request.user,
+                    thread_title=post.thread.title,
+                    thread_id=post.thread.id,
+                    reaction_emoji=emoji_map.get(reaction_type, ""),
+                )
+            return Response(
+                {"detail": "Reaction added.", "action": "added"},
+                status=status.HTTP_201_CREATED,
+            )
+
+
+class ReactionTypesView(APIView):
+    """Get available reaction types."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        """Return list of available reaction types with their emojis."""
+        reaction_types = [
+            {"type": choice[0], "emoji": choice[1]}
+            for choice in Reaction.REACTION_CHOICES
+        ]
+        return Response(reaction_types)

@@ -112,9 +112,9 @@ Key config files:
 Before committing, ensure all checks pass:
 
 ```bash
-uv run ruff check .   # Linting
+uv run ruff check --fix .   # Linting
 uv run ruff format .  # Formatting
-uvx ty check          # Type checking
+uvx ty check         # Type checking
 uv run pytest         # Tests
 ```
 

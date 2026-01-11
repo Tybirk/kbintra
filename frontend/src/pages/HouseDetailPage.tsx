@@ -83,7 +83,7 @@ export default function HouseDetailPage() {
             <IconHome size={40} />
           </Avatar>
           <div>
-            <Title order={2}>House {house.name}</Title>
+            <Title order={2}>{house.name}</Title>
             {house.address && (
               <Text c="dimmed" size="sm">
                 {house.address}

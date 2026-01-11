@@ -9,6 +9,8 @@ import {
   ActionIcon,
   Indicator,
   rem,
+  Kbd,
+  Box,
 } from "@mantine/core"
 import {
   IconSettings,
@@ -18,12 +20,14 @@ import {
   IconBell,
   IconMail,
   IconHome,
+  IconSearch,
 } from "@tabler/icons-react"
 import { useNavigate } from "react-router-dom"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { notifications } from "@mantine/notifications"
 
 import { useAuthStore } from "../store/authStore"
+import { spotlight } from "./GlobalSearch"
 import { notificationsApi } from "../api/notifications"
 import { ChatWebSocket, messagingApi } from "../api/messaging"
 import { getAccessToken } from "../api/client"
@@ -131,20 +135,47 @@ export default function AppHeader({
   }
 
   return (
-    <Group h="100%" px="md" justify="space-between">
-      <Group>
+    <Group h="100%" px="md" gap="md" wrap="nowrap">
+      {/* Left section: burger + logo */}
+      <Group gap="xs" wrap="nowrap">
         <Burger
           opened={navbarOpened}
           onClick={toggleNavbar}
           hiddenFrom="sm"
           size="sm"
         />
-        <Text fw={700} size="lg">
+        <Text fw={700} size="lg" visibleFrom="xs">
           KB Intra
         </Text>
       </Group>
 
-      <Group gap="md">
+      {/* Center section: search bar (grows to fill space) */}
+      <Box style={{ flex: 1, maxWidth: rem(500) }} mx="auto">
+        <UnstyledButton
+          onClick={() => spotlight.open()}
+          w="100%"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: rem(8),
+            padding: `${rem(8)} ${rem(14)}`,
+            borderRadius: rem(8),
+            backgroundColor: "var(--mantine-color-gray-1)",
+            border: "1px solid var(--mantine-color-gray-3)",
+          }}
+        >
+          <IconSearch size={18} style={{ color: "var(--mantine-color-gray-6)" }} />
+          <Text size="sm" c="dimmed" style={{ flex: 1 }}>
+            Søg...
+          </Text>
+          <Kbd size="xs" visibleFrom="sm">
+            ⌘K
+          </Kbd>
+        </UnstyledButton>
+      </Box>
+
+      {/* Right section: icons + user menu */}
+      <Group gap="sm" wrap="nowrap">
         <Indicator
           color="red"
           size={18}
@@ -184,7 +215,7 @@ export default function AppHeader({
         <Menu shadow="md" width={200} position="bottom-end">
           <Menu.Target>
             <UnstyledButton>
-              <Group gap="xs">
+              <Group gap="xs" wrap="nowrap">
                 <Avatar
                   src={user?.profile_picture}
                   alt={user?.first_name}
@@ -194,11 +225,11 @@ export default function AppHeader({
                   {user?.first_name?.[0]}
                   {user?.last_name?.[0]}
                 </Avatar>
-                <div style={{ flex: 1 }}>
+                <Box visibleFrom="sm">
                   <Text size="sm" fw={500}>
                     {user?.first_name} {user?.last_name}
                   </Text>
-                </div>
+                </Box>
                 <IconChevronDown size={14} />
               </Group>
             </UnstyledButton>

@@ -102,6 +102,102 @@ class TestUserAPI:
         assert response.json()["email"] == second_user.email
 
 
+class TestUpcomingBirthdaysAPI:
+    """Tests for the Upcoming Birthdays API endpoint."""
+
+    def test_birthdays_unauthenticated(self, api_client):
+        """Test that unauthenticated users cannot access birthdays."""
+        response = api_client.get("/api/users/birthdays/")
+        assert response.status_code == 401
+
+    def test_birthdays_no_birthdays(self, authenticated_client):
+        """Test birthdays endpoint when no users have birthdays set."""
+        response = authenticated_client.get("/api/users/birthdays/")
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_birthdays_upcoming(self, authenticated_client, user):
+        """Test birthdays endpoint returns users with upcoming birthdays."""
+        # Set user's birthday to 3 days from now (same month/day in the year)
+        today = timezone.now().date()
+        birthday = today.replace(year=1990) + timedelta(days=3)
+        user.birthdate = birthday
+        user.save()
+
+        response = authenticated_client.get("/api/users/birthdays/")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["id"] == user.id
+
+    def test_birthdays_today(self, authenticated_client, user):
+        """Test birthdays endpoint includes today's birthdays."""
+        today = timezone.now().date()
+        user.birthdate = today.replace(year=1990)
+        user.save()
+
+        response = authenticated_client.get("/api/users/birthdays/")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["id"] == user.id
+
+    def test_birthdays_past_this_year(self, authenticated_client, user):
+        """Test birthdays endpoint excludes birthdays that passed this year."""
+        today = timezone.now().date()
+        # Set birthday to 10 days ago (should not appear in 7-day window)
+        birthday = today.replace(year=1990) - timedelta(days=10)
+        user.birthdate = birthday
+        user.save()
+
+        response = authenticated_client.get("/api/users/birthdays/")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert len(data) == 0
+
+    def test_birthdays_custom_days(self, authenticated_client, user):
+        """Test birthdays endpoint with custom days parameter."""
+        today = timezone.now().date()
+        # Set birthday to 15 days from now
+        birthday = today.replace(year=1990) + timedelta(days=15)
+        user.birthdate = birthday
+        user.save()
+
+        # Default 7 days should not include this
+        response = authenticated_client.get("/api/users/birthdays/")
+        assert response.status_code == 200
+        assert len(response.json()) == 0
+
+        # 20 days should include this
+        response = authenticated_client.get("/api/users/birthdays/?days=20")
+        assert response.status_code == 200
+        assert len(response.json()) == 1
+
+    def test_birthdays_sorted_by_date(self, authenticated_client, user, second_user):
+        """Test birthdays are sorted by proximity."""
+        today = timezone.now().date()
+
+        # User has birthday in 5 days
+        user.birthdate = (today + timedelta(days=5)).replace(year=1990)
+        user.save()
+
+        # Second user has birthday in 2 days
+        second_user.birthdate = (today + timedelta(days=2)).replace(year=1985)
+        second_user.save()
+
+        response = authenticated_client.get("/api/users/birthdays/")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert len(data) == 2
+        # Second user should come first (closer birthday)
+        assert data[0]["id"] == second_user.id
+        assert data[1]["id"] == user.id
+
+
 class TestCurrentUserAPI:
     """Tests for the Current User API endpoint."""
 

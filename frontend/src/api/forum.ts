@@ -13,9 +13,18 @@ import type {
   CreatePostData,
   Folder,
   ForumFile,
+  RecentActivity,
+  ReactionType,
+  ReactionTypeInfo,
 } from "../types"
 
 export const forumApi = {
+  // Recent activity
+  getRecentActivity: async (limit = 10): Promise<RecentActivity[]> => {
+    const response = await apiClient.get(`/forum/recent/?limit=${limit}`)
+    return response.data
+  },
+
   // Subgroups
   getSubgroups: async (): Promise<Subgroup[]> => {
     const response = await apiClient.get("/forum/subgroups/")
@@ -266,5 +275,21 @@ export const forumApi = {
     }
 
     return allFolders
+  },
+
+  // Reactions
+  toggleReaction: async (
+    postId: number,
+    reactionType: ReactionType,
+  ): Promise<{ detail: string; action: "added" | "removed" }> => {
+    const response = await apiClient.post(`/forum/posts/${postId}/react/`, {
+      reaction_type: reactionType,
+    })
+    return response.data
+  },
+
+  getReactionTypes: async (): Promise<ReactionTypeInfo[]> => {
+    const response = await apiClient.get("/forum/reactions/types/")
+    return response.data
   },
 }

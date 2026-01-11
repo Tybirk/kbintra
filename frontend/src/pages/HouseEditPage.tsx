@@ -300,7 +300,7 @@ export default function HouseEditPage() {
             <IconHome size={40} />
           </Avatar>
           <div>
-            <Title order={2}>Hus {house.name}</Title>
+            <Title order={2}>{house.name}</Title>
             {house.address && (
               <Text c="dimmed" size="sm">
                 {house.address}

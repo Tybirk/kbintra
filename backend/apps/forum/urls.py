@@ -13,6 +13,9 @@ from .views import (
     MySubscriptionsView,
     PostListCreateView,
     PostUpdateDeleteView,
+    ReactionToggleView,
+    ReactionTypesView,
+    RecentActivityView,
     SubgroupDetailView,
     SubgroupFileListCreateView,
     SubgroupListView,
@@ -24,6 +27,8 @@ from .views import (
 )
 
 urlpatterns = [
+    # Recent activity
+    path("recent/", RecentActivityView.as_view(), name="recent-activity"),
     # Subgroups
     path("subgroups/", SubgroupListView.as_view(), name="subgroup-list"),
     path("subgroups/<slug:slug>/", SubgroupDetailView.as_view(), name="subgroup-detail"),
@@ -37,6 +42,9 @@ urlpatterns = [
     # Posts
     path("threads/<int:thread_id>/posts/", PostListCreateView.as_view(), name="post-list"),
     path("posts/<int:pk>/", PostUpdateDeleteView.as_view(), name="post-detail"),
+    # Reactions
+    path("posts/<int:post_id>/react/", ReactionToggleView.as_view(), name="reaction-toggle"),
+    path("reactions/types/", ReactionTypesView.as_view(), name="reaction-types"),
     # Folders
     path("subgroups/<slug:slug>/folders/", FolderListCreateView.as_view(), name="folder-list"),
     path("folders/<int:pk>/", FolderDetailView.as_view(), name="folder-detail"),

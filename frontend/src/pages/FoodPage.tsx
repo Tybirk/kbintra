@@ -789,7 +789,7 @@ function DayRegistrationCard({
 
               {user?.house && (
                 <Text size="xs" c="blue" ta="center">
-                  Tilmeldes for {user.house_name || `Hus ${user.house}`}
+                  Tilmeldes for {user.house_name || `Kløverbakkevej ${user.house}`}
                 </Text>
               )}
             </>

@@ -6,9 +6,11 @@ from django.core.management.base import BaseCommand
 
 from apps.houses.models import House
 
+STREET_NAME = "Kløverbakkevej"
+
 
 class Command(BaseCommand):
-    help = "Create default houses numbered 1-62"
+    help = "Create default houses numbered 1-62 with Kløverbakkevej addresses"
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -24,10 +26,12 @@ class Command(BaseCommand):
 
         created_count = 0
         for i in range(1, 63):
+            house_name = f"{STREET_NAME} {i}"
             house, created = House.objects.get_or_create(
-                name=str(i),
+                name=house_name,
                 defaults={
-                    "description": f"House number {i}",
+                    "description": f"Hus nummer {i} på {STREET_NAME}",
+                    "address": house_name,
                 },
             )
             if created:

@@ -2,9 +2,9 @@
 Django settings for KB Intra community platform.
 """
 
+import os
 from datetime import timedelta
 from pathlib import Path
-import os
 
 from dotenv import load_dotenv
 
@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     "apps.calendar_app",
     "apps.messaging",
     "apps.notifications",
+    "apps.search",
 ]
 
 MIDDLEWARE = [

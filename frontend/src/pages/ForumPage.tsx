@@ -24,9 +24,15 @@ import {
   IconUsers,
 } from "@tabler/icons-react"
 import { useNavigate } from "react-router-dom"
+import dayjs from "dayjs"
+import relativeTime from "dayjs/plugin/relativeTime"
+import "dayjs/locale/da"
 
 import { forumApi } from "../api/forum"
 import type { Subgroup } from "../types"
+
+dayjs.extend(relativeTime)
+dayjs.locale("da")
 
 export default function ForumPage() {
   const navigate = useNavigate()
@@ -80,16 +86,17 @@ export default function ForumPage() {
     },
   })
 
-  // Split subgroups into committees and regular groups
-  const { committees, regularGroups } = useMemo(() => {
+  // Split subgroups into main, committees and regular groups
+  const { mainGroups, committees, regularGroups } = useMemo(() => {
     const filtered =
       subgroups?.filter((subgroup) =>
         subgroup.name.toLowerCase().includes(search.toLowerCase()),
       ) || []
 
     return {
-      committees: filtered.filter((s) => s.is_committee),
-      regularGroups: filtered.filter((s) => !s.is_committee),
+      mainGroups: filtered.filter((s) => s.is_main),
+      committees: filtered.filter((s) => s.is_committee && !s.is_main),
+      regularGroups: filtered.filter((s) => !s.is_committee && !s.is_main),
     }
   }, [subgroups, search])
 
@@ -139,10 +146,17 @@ export default function ForumPage() {
         style={{ maxWidth: 300 }}
       />
 
-      {committees.length === 0 && regularGroups.length === 0 ? (
+      {mainGroups.length === 0 && committees.length === 0 && regularGroups.length === 0 ? (
         <Text c="dimmed">Ingen grupper fundet.</Text>
       ) : (
         <Stack gap="xl">
+          {/* Main Groups Section (e.g., Fælles) */}
+          {mainGroups.length > 0 && (
+            <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
+              {mainGroups.map(renderSubgroupCard)}
+            </SimpleGrid>
+          )}
+
           {/* Committees Section */}
           {committees.length > 0 && (
             <Box
@@ -268,14 +282,21 @@ function SubgroupCard({
           </Text>
         )}
 
-        <Group gap="xs">
-          <Badge variant="light" color="blue">
-            {subgroup.thread_count} tråde
-          </Badge>
-          {subgroup.is_subscribed && (
-            <Badge variant="outline" color="green">
-              Tilmeldt
+        <Group gap="xs" justify="space-between">
+          <Group gap="xs">
+            <Badge variant="light" color="blue">
+              {subgroup.thread_count} tråde
             </Badge>
+            {subgroup.is_subscribed && (
+              <Badge variant="outline" color="green">
+                Tilmeldt
+              </Badge>
+            )}
+          </Group>
+          {subgroup.last_activity_at && (
+            <Text size="xs" c="dimmed">
+              {dayjs(subgroup.last_activity_at).fromNow()}
+            </Text>
           )}
         </Group>
       </Stack>

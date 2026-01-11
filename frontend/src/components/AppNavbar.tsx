@@ -28,25 +28,22 @@ const navItems: NavItem[] = [
     icon: IconBell,
     label: "Notifikationer",
     path: "/notifikationer",
-    color: "red",
   },
   {
     icon: IconSpeakerphone,
     label: "Vigtig post",
     path: "/opslag",
-    color: "orange",
   },
-  { icon: IconMessageCircle, label: "Forum", path: "/forum", color: "blue" },
-  { icon: IconSoup, label: "Mad", path: "/mad", color: "green" },
-  { icon: IconUsersGroup, label: "Madhold", path: "/madhold", color: "teal" },
-  { icon: IconCalendar, label: "Kalender", path: "/kalender", color: "violet" },
+  { icon: IconMessageCircle, label: "Forum", path: "/forum"},
+  { icon: IconSoup, label: "Mad", path: "/mad"},
+  { icon: IconUsersGroup, label: "Madhold", path: "/madhold"},
+  { icon: IconCalendar, label: "Kalender", path: "/kalender"},
   {
     icon: IconBuildingCommunity,
     label: "Beboeroversigt",
     path: "/beboere",
-    color: "yellow",
   },
-  { icon: IconUsers, label: "Beskeder", path: "/beskeder", color: "cyan" },
+  { icon: IconUsers, label: "Beskeder", path: "/beskeder" },
 ]
 
 interface AppNavbarProps {
@@ -116,7 +113,6 @@ export default function AppNavbar({ onNavigate }: AppNavbarProps) {
                     : location.pathname.startsWith(item.path)
             }
             onClick={() => handleNavigate(item.path)}
-            color={item.color}
           />
         ))}
       </Stack>

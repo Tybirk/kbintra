@@ -6,7 +6,16 @@ from rest_framework import serializers
 
 from apps.users.models import User
 
-from .models import File, Folder, Post, PostAttachment, Subgroup, SubgroupSubscription, Thread
+from .models import (
+    File,
+    Folder,
+    Post,
+    PostAttachment,
+    Reaction,
+    Subgroup,
+    SubgroupSubscription,
+    Thread,
+)
 
 
 class AuthorSerializer(serializers.ModelSerializer):
@@ -55,6 +64,7 @@ class SubgroupSerializer(serializers.ModelSerializer):
             "slug",
             "is_default",
             "is_committee",
+            "is_main",
             "thread_count",
             "is_subscribed",
             "created_at",
@@ -87,12 +97,22 @@ class SubgroupSubscriptionSerializer(serializers.ModelSerializer):
         ]
 
 
+class ReactionSummarySerializer(serializers.Serializer):
+    """Serializer for reaction summary (count per type)."""
+
+    reaction_type = serializers.CharField()
+    emoji = serializers.CharField()
+    count = serializers.IntegerField()
+    has_reacted = serializers.BooleanField()
+
+
 class PostSerializer(serializers.ModelSerializer):
     """Serializer for Post model."""
 
     author = AuthorSerializer(read_only=True)
     is_own = serializers.SerializerMethodField()
     attachments = PostAttachmentSerializer(many=True, read_only=True)
+    reactions = serializers.SerializerMethodField()
 
     class Meta:
         model = Post
@@ -103,6 +123,7 @@ class PostSerializer(serializers.ModelSerializer):
             "content",
             "is_own",
             "attachments",
+            "reactions",
             "created_at",
             "updated_at",
         ]
@@ -113,6 +134,30 @@ class PostSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             return obj.author_id == request.user.id
         return False
+
+    def get_reactions(self, obj: Post) -> list[dict]:
+        """Get reaction summary with counts and user's own reactions."""
+        request = self.context.get("request")
+        user_id = request.user.id if request and request.user.is_authenticated else None
+
+        # Get all reactions for this post grouped by type
+        reaction_counts: dict[str, dict] = {}
+        emoji_map = dict(Reaction.REACTION_CHOICES)
+
+        for reaction in obj.reactions.all():
+            r_type = reaction.reaction_type
+            if r_type not in reaction_counts:
+                reaction_counts[r_type] = {
+                    "reaction_type": r_type,
+                    "emoji": emoji_map.get(r_type, ""),
+                    "count": 0,
+                    "has_reacted": False,
+                }
+            reaction_counts[r_type]["count"] += 1
+            if user_id and reaction.user_id == user_id:
+                reaction_counts[r_type]["has_reacted"] = True
+
+        return list(reaction_counts.values())
 
 
 class PostCreateSerializer(serializers.ModelSerializer):
@@ -402,3 +447,26 @@ class FileUploadSerializer(serializers.ModelSerializer):
         if not name:
             validated_data["name"] = validated_data["file"].name
         return super().create(validated_data)
+
+
+class RecentActivitySerializer(serializers.ModelSerializer):
+    """Serializer for recent forum activity (posts with thread/subgroup context)."""
+
+    author = AuthorSerializer(read_only=True)
+    thread_id = serializers.IntegerField(source="thread.id", read_only=True)
+    thread_title = serializers.CharField(source="thread.title", read_only=True)
+    subgroup_slug = serializers.CharField(source="thread.subgroup.slug", read_only=True)
+    subgroup_name = serializers.CharField(source="thread.subgroup.name", read_only=True)
+
+    class Meta:
+        model = Post
+        fields = [
+            "id",
+            "author",
+            "content",
+            "thread_id",
+            "thread_title",
+            "subgroup_slug",
+            "subgroup_name",
+            "created_at",
+        ]

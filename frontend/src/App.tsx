@@ -32,6 +32,7 @@ import MessagesPage from "./pages/MessagesPage"
 import NotificationsPage from "./pages/NotificationsPage"
 import AppHeader from "./components/AppHeader"
 import AppNavbar from "./components/AppNavbar"
+import { GlobalSearch } from "./components/GlobalSearch"
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -87,6 +88,7 @@ function App() {
   // Authenticated routes with app shell
   return (
     <ErrorBoundary>
+      <GlobalSearch />
       <AppShell
         header={{ height: 60 }}
         navbar={{

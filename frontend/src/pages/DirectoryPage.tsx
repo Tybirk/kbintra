@@ -130,7 +130,7 @@ function HouseCard({ house, onClick }: HouseCardProps) {
           >
             <IconHome size={20} />
           </Avatar>
-          <Text fw={500}>Hus {house.name}</Text>
+          <Text fw={500}>{house.name}</Text>
         </Group>
         <Badge variant="light">{totalResidents} beboere</Badge>
       </Group>

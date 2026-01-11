@@ -22,7 +22,11 @@ class Subgroup(models.Model):
     )
     is_committee = models.BooleanField(
         default=False,
-        help_text="If true, this subgroup is a committee (Udvalg) and appears at the top.",
+        help_text="If true, this subgroup is a committee (Udvalg).",
+    )
+    is_main = models.BooleanField(
+        default=False,
+        help_text="If true, this subgroup appears at the very top (e.g., Fælles).",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     last_activity_at = models.DateTimeField(
@@ -32,7 +36,7 @@ class Subgroup(models.Model):
     )
 
     class Meta:
-        ordering = ["-is_committee", "-last_activity_at"]
+        ordering = ["-is_main", "-is_committee", "-last_activity_at"]
 
     def __str__(self) -> str:
         return self.name
@@ -185,6 +189,41 @@ class Folder(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+
+class Reaction(models.Model):
+    """
+    A reaction (emoji) on a forum post.
+    """
+
+    REACTION_CHOICES = [
+        ("like", "👍"),
+        ("heart", "❤️"),
+        ("laugh", "😂"),
+        ("surprised", "😮"),
+        ("sad", "😢"),
+        ("celebrate", "🎉"),
+    ]
+
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE,
+        related_name="reactions",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="post_reactions",
+    )
+    reaction_type = models.CharField(max_length=20, choices=REACTION_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ["post", "user", "reaction_type"]
+        ordering = ["created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.user} reacted {self.reaction_type} to {self.post}"
 
 
 class File(models.Model):

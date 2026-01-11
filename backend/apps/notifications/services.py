@@ -71,6 +71,7 @@ def get_user_preference(user: User, notification_type: NotificationType) -> bool
         NotificationType.NEW_THREAD: prefs.notify_forum_subscriptions,
         NotificationType.THREAD_REPLY: prefs.notify_thread_replies,
         NotificationType.POST_REPLY: prefs.notify_thread_replies,
+        NotificationType.POST_REACTION: prefs.notify_post_reactions,
         NotificationType.EVENT_REMINDER: prefs.notify_event_reminders,
         NotificationType.FOOD_TICKET: prefs.notify_food_tickets,
     }
@@ -92,6 +93,7 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
         NotificationType.NEW_THREAD: prefs.push_forum_subscriptions,
         NotificationType.THREAD_REPLY: prefs.push_thread_replies,
         NotificationType.POST_REPLY: prefs.push_thread_replies,
+        NotificationType.POST_REACTION: prefs.push_post_reactions,
         NotificationType.EVENT_REMINDER: prefs.push_event_reminders,
         NotificationType.FOOD_TICKET: prefs.push_food_tickets,
     }
@@ -464,4 +466,33 @@ def notify_ticket_claimed(
         link="/mad/billetter",
         related_user=claimer,
         check_preferences=False,  # Always notify owner
+    )
+
+
+def notify_post_reaction(
+    post_author: User,
+    reactor: User,
+    thread_title: str,
+    thread_id: int,
+    reaction_emoji: str,
+) -> Notification | None:
+    """Create notification when someone reacts to a user's post.
+
+    Args:
+        post_author: The author of the post being reacted to
+        reactor: User who added the reaction
+        thread_title: Title of the thread containing the post
+        thread_id: ID of the thread
+        reaction_emoji: The emoji used for the reaction
+    """
+    if post_author.id == reactor.id:
+        return None
+
+    return create_notification(
+        user=post_author,
+        notification_type=NotificationType.POST_REACTION,
+        title=f"{reactor.first_name} reagerede på dit indlæg",
+        message=f'{reaction_emoji} i "{thread_title}"',
+        link=f"/forum/traad/{thread_id}",
+        related_user=reactor,
     )

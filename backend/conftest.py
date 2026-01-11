@@ -2,7 +2,7 @@
 Pytest configuration and fixtures for kbintra backend tests.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
@@ -26,7 +26,7 @@ from apps.food.models import (
     SeatingTime,
     WeeklyMenu,
 )
-from apps.forum.models import File, Folder, Post, Subgroup, SubgroupSubscription, Thread
+from apps.forum.models import Folder, Post, Subgroup, SubgroupSubscription, Thread
 from apps.houses.models import House
 from apps.users.models import User
 

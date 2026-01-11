@@ -37,6 +37,7 @@ import relativeTime from "dayjs/plugin/relativeTime"
 
 import { forumApi } from "../api/forum"
 import RichTextEditor from "../components/RichTextEditor"
+import Reactions from "../components/Reactions"
 import {
   FilePreviewModal,
   getFileIcon,
@@ -288,6 +289,7 @@ export default function ThreadPage() {
           <PostCard
             key={post.id}
             post={post}
+            threadId={threadId}
             isFirst={index === 0}
             isEditing={editingPost?.id === post.id}
             editContent={editContent}
@@ -424,6 +426,7 @@ export default function ThreadPage() {
 
 interface PostCardProps {
   post: Post
+  threadId: number
   isFirst: boolean
   isEditing: boolean
   editContent: string
@@ -437,6 +440,7 @@ interface PostCardProps {
 
 function PostCard({
   post,
+  threadId,
   isFirst,
   isEditing,
   editContent,
@@ -569,6 +573,13 @@ function PostCard({
                 })}
               </Group>
             )}
+
+            <Divider my="sm" />
+            <Reactions
+              postId={post.id}
+              threadId={threadId}
+              reactions={post.reactions || []}
+            />
           </>
         )}
       </Paper>

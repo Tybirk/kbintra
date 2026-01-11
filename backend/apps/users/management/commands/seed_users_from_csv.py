@@ -17,6 +17,9 @@ from apps.users.models import User
 # Fixed birthdate for all seeded users (can be updated later)
 DEFAULT_BIRTHDATE = date(1990, 1, 1)
 
+# Street name for house addresses
+STREET_NAME = "Kløverbakkevej"
+
 
 class Command(BaseCommand):
     help = "Seed users and houses from all_persons.csv"
@@ -76,7 +79,7 @@ class Command(BaseCommand):
 
         for house_num, members in houses_data.items():
             # Create or get house
-            house_name = f"House {house_num}"
+            house_name = f"{STREET_NAME} {house_num}"
 
             if dry_run:
                 self.stdout.write(f"Would create/get house: {house_name}")
@@ -85,8 +88,8 @@ class Command(BaseCommand):
                 house, created = House.objects.get_or_create(
                     name=house_name,
                     defaults={
-                        "description": f"House number {house_num}",
-                        "address": f"House {house_num}",
+                        "description": f"Hus nummer {house_num} på {STREET_NAME}",
+                        "address": house_name,
                     },
                 )
                 if created:

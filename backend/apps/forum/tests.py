@@ -4,7 +4,6 @@ Tests for the Forum app.
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.db import IntegrityError
 
 from apps.forum.models import File, Folder, Post, Subgroup, SubgroupSubscription, Thread
 
@@ -598,6 +597,130 @@ class TestFileMoveViews:
         )
         assert response.status_code == 400
         assert "different subgroup" in response.data["detail"].lower()
+
+
+# =============================================================================
+# Recent Activity Tests
+# =============================================================================
+
+
+class TestRecentActivityView:
+    """Tests for the Recent Activity API endpoint."""
+
+    def test_recent_activity_unauthenticated(self, api_client):
+        """Test that unauthenticated users cannot access recent activity."""
+        response = api_client.get("/api/forum/recent/")
+        assert response.status_code == 401
+
+    def test_recent_activity_empty(self, authenticated_client):
+        """Test recent activity when no posts exist."""
+        response = authenticated_client.get("/api/forum/recent/")
+        assert response.status_code == 200
+        assert response.data == []
+
+    def test_recent_activity_returns_posts(self, authenticated_client, subgroup):
+        """Test recent activity returns posts with thread/subgroup context."""
+        # Create a thread with initial post
+        response = authenticated_client.post(
+            f"/api/forum/subgroups/{subgroup.slug}/threads/",
+            {"title": "Test Thread", "content": "Test post content"},
+        )
+        assert response.status_code == 201
+
+        # Get recent activity
+        response = authenticated_client.get("/api/forum/recent/")
+        assert response.status_code == 200
+        assert len(response.data) == 1
+
+        activity = response.data[0]
+        assert "author" in activity
+        assert activity["thread_title"] == "Test Thread"
+        assert activity["subgroup_slug"] == subgroup.slug
+        assert activity["subgroup_name"] == subgroup.name
+        assert "content" in activity
+        assert "created_at" in activity
+
+    def test_recent_activity_ordered_by_newest_first(self, authenticated_client, subgroup):
+        """Test that recent activity is ordered by newest first."""
+        # Create first thread
+        response = authenticated_client.post(
+            f"/api/forum/subgroups/{subgroup.slug}/threads/",
+            {"title": "First Thread", "content": "First content"},
+        )
+        assert response.status_code == 201
+        thread = Thread.objects.get(title="First Thread")
+
+        # Add a reply
+        response = authenticated_client.post(
+            f"/api/forum/threads/{thread.id}/posts/",
+            {"content": "Second post - reply"},
+        )
+        assert response.status_code == 201
+
+        # Get recent activity
+        response = authenticated_client.get("/api/forum/recent/")
+        assert response.status_code == 200
+        assert len(response.data) == 2
+
+        # Newest should be first
+        assert "Second post" in response.data[0]["content"]
+        assert "First content" in response.data[1]["content"]
+
+    def test_recent_activity_limit_parameter(self, authenticated_client, subgroup):
+        """Test that limit parameter works."""
+        # Create a thread
+        response = authenticated_client.post(
+            f"/api/forum/subgroups/{subgroup.slug}/threads/",
+            {"title": "Thread", "content": "Initial post"},
+        )
+        assert response.status_code == 201
+        thread = Thread.objects.get(title="Thread")
+
+        # Add more replies
+        for i in range(5):
+            authenticated_client.post(
+                f"/api/forum/threads/{thread.id}/posts/",
+                {"content": f"Reply {i}"},
+            )
+
+        # Test default limit
+        response = authenticated_client.get("/api/forum/recent/")
+        assert response.status_code == 200
+        assert len(response.data) == 6  # 1 initial + 5 replies
+
+        # Test custom limit
+        response = authenticated_client.get("/api/forum/recent/?limit=3")
+        assert response.status_code == 200
+        assert len(response.data) == 3
+
+    def test_recent_activity_across_subgroups(self, authenticated_client, subgroup, db):
+        """Test that recent activity includes posts from all subgroups."""
+        # Create another subgroup
+        other_subgroup = Subgroup.objects.create(name="Other Subgroup")
+
+        # Create thread in first subgroup
+        response = authenticated_client.post(
+            f"/api/forum/subgroups/{subgroup.slug}/threads/",
+            {"title": "Thread in first", "content": "Content in first"},
+        )
+        assert response.status_code == 201
+
+        # Create thread in second subgroup
+        response = authenticated_client.post(
+            f"/api/forum/subgroups/{other_subgroup.slug}/threads/",
+            {"title": "Thread in second", "content": "Content in second"},
+        )
+        assert response.status_code == 201
+
+        # Get recent activity
+        response = authenticated_client.get("/api/forum/recent/")
+        assert response.status_code == 200
+        assert len(response.data) == 2
+
+        # Both subgroups should be represented
+        subgroup_names = {item["subgroup_name"] for item in response.data}
+        assert subgroup.name in subgroup_names
+        assert other_subgroup.name in subgroup_names
 
 
 # =============================================================================

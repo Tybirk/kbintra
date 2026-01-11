@@ -106,6 +106,55 @@ class TestConversationAPI:
         assert response.status_code == 404
 
 
+class TestGroupConversationAPI:
+    """Tests for group conversations."""
+
+    def test_create_group_conversation(self, authenticated_client, second_user, admin_user):
+        """Test creating a group conversation with multiple participants."""
+        response = authenticated_client.post(
+            "/api/messages/conversations/",
+            {
+                "participant_ids": [second_user.id, admin_user.id],
+                "initial_message": "Hello group!",
+            },
+            format="json",
+        )
+        assert response.status_code == 201
+        conv = Conversation.objects.get(id=response.json()["id"])
+        assert conv.participants.count() == 3  # User + second_user + admin_user
+        assert Message.objects.filter(content="Hello group!").exists()
+
+    def test_group_conversation_shows_all_participants(
+        self, authenticated_client, user, second_user, admin_user
+    ):
+        """Test that group conversation shows all participants."""
+        # Create group conversation
+        conv = Conversation.objects.create()
+        conv.participants.add(user, second_user, admin_user)
+
+        response = authenticated_client.get(f"/api/messages/conversations/{conv.id}/")
+        assert response.status_code == 200
+
+        data = response.json()
+        # other_participants should not include the requesting user
+        assert len(data["other_participants"]) == 2
+
+    def test_group_conversation_listed_in_conversations(
+        self, authenticated_client, user, second_user, admin_user
+    ):
+        """Test that group conversations appear in conversation list."""
+        conv = Conversation.objects.create()
+        conv.participants.add(user, second_user, admin_user)
+
+        response = authenticated_client.get("/api/messages/conversations/")
+        assert response.status_code == 200
+
+        data = response.json()
+        results = data.get("results", data)
+        assert len(results) == 1
+        assert len(results[0]["other_participants"]) == 2
+
+
 class TestMessageAPI:
     """Tests for the Message API endpoints."""
 

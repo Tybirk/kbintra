@@ -116,6 +116,7 @@ export interface Subgroup {
   slug: string
   is_default: boolean
   is_committee: boolean
+  is_main: boolean
   thread_count: number
   is_subscribed: boolean
   created_at: string
@@ -139,6 +140,20 @@ export interface PostAttachment {
   uploaded_at: string
 }
 
+export type ReactionType = "like" | "heart" | "laugh" | "surprised" | "sad" | "celebrate"
+
+export interface ReactionSummary {
+  reaction_type: ReactionType
+  emoji: string
+  count: number
+  has_reacted: boolean
+}
+
+export interface ReactionTypeInfo {
+  type: ReactionType
+  emoji: string
+}
+
 export interface Post {
   id: number
   thread: number
@@ -146,6 +161,7 @@ export interface Post {
   content: string
   is_own: boolean
   attachments: PostAttachment[]
+  reactions: ReactionSummary[]
   created_at: string
   updated_at: string
 }
@@ -175,6 +191,17 @@ export interface CreateThreadData {
 
 export interface CreatePostData {
   content: string
+}
+
+export interface RecentActivity {
+  id: number
+  author: Author
+  content: string
+  thread_id: number
+  thread_title: string
+  subgroup_slug: string
+  subgroup_name: string
+  created_at: string
 }
 
 export interface Folder {

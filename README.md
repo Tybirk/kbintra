@@ -76,6 +76,12 @@ Subgroup.objects.get_or_create(name='Important', defaults={'is_default': True, '
 
 # Run development server
 uv run python manage.py runserver
+
+
+uv run ruff check --fix .   # Linting
+uv run ruff format .  # Formatting
+uvx ty check         # Type checking
+uv run pytest         # Tests
 ```
 
 ### Frontend Setup
