@@ -148,7 +148,7 @@ export class ChatWebSocket {
     this.connectionHandlers = []
   }
 
-  sendMessage(conversationId: number, content: string): void {
+  async sendMessage(conversationId: number, content: string): Promise<boolean> {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(
         JSON.stringify({
@@ -157,6 +157,17 @@ export class ChatWebSocket {
           content,
         }),
       )
+      return true
+    } else {
+      // Fallback to REST API if WebSocket is not connected
+      console.warn("WebSocket not connected, falling back to REST API")
+      try {
+        await messagingApi.sendMessage(conversationId, content)
+        return true
+      } catch (error) {
+        console.error("Failed to send message via REST API:", error)
+        return false
+      }
     }
   }
 
