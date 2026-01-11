@@ -272,49 +272,35 @@ export default function DashboardPage() {
 
       {/* Birthdays and Food Widgets - Side by Side */}
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg" mt="xl">
-        {/* Birthdays Widget */}
-        <Paper withBorder p="lg" radius="md">
+         <Paper withBorder p="lg" radius="md">
           <Group justify="space-between" mb="md">
-            <Group gap="xs">
-              <ThemeIcon size="sm" color="pink" radius="xl">
-                <IconCake size={14} />
-              </ThemeIcon>
-              <Title order={3}>Fødselsdage</Title>
-              {upcomingBirthdays && upcomingBirthdays.length > 0 && (
-                <Badge color="pink" size="sm">
-                  {upcomingBirthdays.length}
-                </Badge>
-              )}
-            </Group>
+            <Title order={3}>Seneste vigtig post</Title>
             <Button
               variant="subtle"
               size="xs"
               rightSection={<IconArrowRight size={14} />}
-              onClick={() => navigate("/beboere")}
+              onClick={() => navigate("/opslag")}
             >
-              Se beboere
+              Se alle
             </Button>
           </Group>
-          {birthdaysLoading ? (
+
+          {announcementsLoading ? (
             <Loader size="sm" />
-          ) : upcomingBirthdays && upcomingBirthdays.length > 0 ? (
-            <Stack gap="sm">
-              {upcomingBirthdays.map((birthday) => (
-                <BirthdayPreview key={birthday.user.id} birthday={birthday} />
+          ) : recentAnnouncements && recentAnnouncements.length > 0 ? (
+            <Stack gap="md">
+              {recentAnnouncements.map((announcement) => (
+                <AnnouncementPreview
+                  key={announcement.id}
+                  announcement={announcement}
+                />
               ))}
             </Stack>
           ) : (
-            <Stack align="center" py="md" gap="xs">
-              <ThemeIcon size="xl" color="gray" variant="light" radius="xl">
-                <IconCake size={24} />
-              </ThemeIcon>
-              <Text c="dimmed" size="sm" ta="center">
-                Ingen fødselsdage de næste 7 dage
-              </Text>
-            </Stack>
+            <Text c="dimmed">Ingen opslag endnu.</Text>
           )}
         </Paper>
-
+       
         {/* Food Widget */}
         <Paper withBorder p="lg" radius="md">
           <Group justify="space-between" mb="md">
@@ -408,34 +394,49 @@ export default function DashboardPage() {
       </Paper>
 
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg" mt="xl">
+        {/* Birthdays Widget */}
         <Paper withBorder p="lg" radius="md">
           <Group justify="space-between" mb="md">
-            <Title order={3}>Seneste vigtig post</Title>
+            <Group gap="xs">
+              <ThemeIcon size="sm" color="pink" radius="xl">
+                <IconCake size={14} />
+              </ThemeIcon>
+              <Title order={3}>Fødselsdage</Title>
+              {upcomingBirthdays && upcomingBirthdays.length > 0 && (
+                <Badge color="pink" size="sm">
+                  {upcomingBirthdays.length}
+                </Badge>
+              )}
+            </Group>
             <Button
               variant="subtle"
               size="xs"
               rightSection={<IconArrowRight size={14} />}
-              onClick={() => navigate("/opslag")}
+              onClick={() => navigate("/beboere")}
             >
-              Se alle
+              Se beboere
             </Button>
           </Group>
-
-          {announcementsLoading ? (
+          {birthdaysLoading ? (
             <Loader size="sm" />
-          ) : recentAnnouncements && recentAnnouncements.length > 0 ? (
-            <Stack gap="md">
-              {recentAnnouncements.map((announcement) => (
-                <AnnouncementPreview
-                  key={announcement.id}
-                  announcement={announcement}
-                />
+          ) : upcomingBirthdays && upcomingBirthdays.length > 0 ? (
+            <Stack gap="sm">
+              {upcomingBirthdays.map((birthday) => (
+                <BirthdayPreview key={birthday.user.id} birthday={birthday} />
               ))}
             </Stack>
           ) : (
-            <Text c="dimmed">Ingen opslag endnu.</Text>
+            <Stack align="center" py="md" gap="xs">
+              <ThemeIcon size="xl" color="gray" variant="light" radius="xl">
+                <IconCake size={24} />
+              </ThemeIcon>
+              <Text c="dimmed" size="sm" ta="center">
+                Ingen fødselsdage de næste 7 dage
+              </Text>
+            </Stack>
           )}
         </Paper>
+
 
         <Paper withBorder p="lg" radius="md">
           <Group justify="space-between" mb="md">
