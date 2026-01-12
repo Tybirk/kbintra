@@ -33,6 +33,10 @@ services:
       - "traefik.http.routers.backend-api.rule=PathPrefix(`/api`)"
       - "traefik.http.routers.backend-api.entrypoints=web"
       - "traefik.http.routers.backend-api.service=backend"
+      # WebSocket routes
+      - "traefik.http.routers.backend-ws.rule=PathPrefix(`/ws`)"
+      - "traefik.http.routers.backend-ws.entrypoints=web"
+      - "traefik.http.routers.backend-ws.service=backend"
       # Admin routes
       - "traefik.http.routers.backend-admin.rule=PathPrefix(`/admin`)"
       - "traefik.http.routers.backend-admin.entrypoints=web"

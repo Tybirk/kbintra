@@ -243,8 +243,19 @@ export default function MessagesPage() {
             ) : activeConversation ? (
               <ChatArea
                 conversation={activeConversation}
-                onSendMessage={(content) => {
-                  chatWs.sendMessage(selectedConversation, content)
+                onSendMessage={async (content) => {
+                  const success = await chatWs.sendMessage(selectedConversation, content)
+                  if (!success) {
+                    notifications.show({
+                      title: "Fejl",
+                      message: "Kunne ikke sende besked. Prøv igen.",
+                      color: "red",
+                    })
+                  } else if (!chatWs.isConnected) {
+                    // If we used REST fallback, refresh to get the new message
+                    queryClient.invalidateQueries({ queryKey: ["conversation", selectedConversation] })
+                    queryClient.invalidateQueries({ queryKey: ["conversations"] })
+                  }
                 }}
               />
             ) : null
@@ -358,11 +369,12 @@ function ConversationItem({
 
 interface ChatAreaProps {
   conversation: ConversationDetail
-  onSendMessage: (content: string) => void
+  onSendMessage: (content: string) => Promise<void> | void
 }
 
 function ChatArea({ conversation, onSendMessage }: ChatAreaProps) {
   const [message, setMessage] = useState("")
+  const [isSending, setIsSending] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const otherParticipants = conversation.other_participants
@@ -383,12 +395,24 @@ function ChatArea({ conversation, onSendMessage }: ChatAreaProps) {
     }
   }, [conversation.messages])
 
-  const handleSend = () => {
+  const handleSend = async () => {
     // Strip HTML tags to check if there's actual content
     const textContent = message.replace(/<[^>]*>/g, "").trim()
-    if (!textContent) return
-    onSendMessage(message)
-    setMessage("")
+    if (!textContent || isSending) return
+
+    setIsSending(true)
+    const messageContent = message
+    setMessage("") // Clear immediately for better UX
+
+    try {
+      await onSendMessage(messageContent)
+    } catch (error) {
+      // Restore message if send failed
+      setMessage(messageContent)
+      console.error("Failed to send message:", error)
+    } finally {
+      setIsSending(false)
+    }
   }
 
   return (
