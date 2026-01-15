@@ -28,6 +28,22 @@ export const messagingApi = {
   createConversation: async (
     data: CreateConversationData,
   ): Promise<ConversationDetail> => {
+    if (data.attachments && data.attachments.length > 0) {
+      const formData = new FormData()
+      data.participant_ids.forEach((id) => {
+        formData.append("participant_ids", id.toString())
+      })
+      if (data.initial_message) {
+        formData.append("initial_message", data.initial_message)
+      }
+      data.attachments.forEach((file) => {
+        formData.append("attachments", file)
+      })
+      const response = await apiClient.post("/messages/conversations/", formData, {
+        headers: { "Content-Type": undefined },
+      })
+      return response.data
+    }
     const response = await apiClient.post("/messages/conversations/", data)
     return response.data
   },
@@ -45,7 +61,21 @@ export const messagingApi = {
   sendMessage: async (
     conversationId: number,
     content: string,
+    attachments?: File[],
   ): Promise<Message> => {
+    if (attachments && attachments.length > 0) {
+      const formData = new FormData()
+      formData.append("content", content)
+      attachments.forEach((file) => {
+        formData.append("attachments", file)
+      })
+      const response = await apiClient.post(
+        `/messages/conversations/${conversationId}/messages/`,
+        formData,
+        { headers: { "Content-Type": undefined } },
+      )
+      return response.data
+    }
     const response = await apiClient.post(
       `/messages/conversations/${conversationId}/messages/`,
       { content },
@@ -148,7 +178,22 @@ export class ChatWebSocket {
     this.connectionHandlers = []
   }
 
-  async sendMessage(conversationId: number, content: string): Promise<boolean> {
+  async sendMessage(
+    conversationId: number,
+    content: string,
+    attachments?: File[],
+  ): Promise<boolean> {
+    // Always use REST API when attachments are present (WebSocket is text-only)
+    if (attachments && attachments.length > 0) {
+      try {
+        await messagingApi.sendMessage(conversationId, content, attachments)
+        return true
+      } catch (error) {
+        console.error("Failed to send message with attachments:", error)
+        return false
+      }
+    }
+
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(
         JSON.stringify({

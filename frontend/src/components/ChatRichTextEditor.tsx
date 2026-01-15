@@ -1,11 +1,17 @@
-import { useEditor } from "@tiptap/react"
-import StarterKit from "@tiptap/starter-kit"
-import Link from "@tiptap/extension-link"
-import Placeholder from "@tiptap/extension-placeholder"
-import { RichTextEditor as MantineRTE } from "@mantine/tiptap"
-import { ActionIcon, Group, Box } from "@mantine/core"
-import { IconSend } from "@tabler/icons-react"
-import { useEffect } from "react"
+import {
+  Textarea,
+  ActionIcon,
+  Group,
+  Box,
+  FileButton,
+  Image,
+  CloseButton,
+  Text,
+  Stack,
+  ScrollArea,
+} from "@mantine/core"
+import { IconSend, IconPaperclip, IconFile, IconPhoto } from "@tabler/icons-react"
+import { useRef, type KeyboardEvent } from "react"
 import EmojiPicker from "./EmojiPicker"
 
 interface ChatRichTextEditorProps {
@@ -14,90 +20,195 @@ interface ChatRichTextEditorProps {
   onSend: () => void
   placeholder?: string
   disabled?: boolean
+  attachments: File[]
+  onAttachmentsChange: (files: File[]) => void
+}
+
+function isImageFile(file: File): boolean {
+  return file.type.startsWith("image/")
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 export default function ChatRichTextEditor({
   content,
   onChange,
   onSend,
-  placeholder = "Type a message...",
+  placeholder = "Skriv en besked...",
   disabled = false,
+  attachments,
+  onAttachmentsChange,
 }: ChatRichTextEditorProps) {
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Link.configure({
-        openOnClick: false,
-      }),
-      Placeholder.configure({
-        placeholder,
-      }),
-    ],
-    content,
-    onUpdate: ({ editor }) => {
-      onChange(editor.getHTML())
-    },
-    editorProps: {
-      handleKeyDown: (_view, event) => {
-        if (event.key === "Enter" && !event.shiftKey) {
-          event.preventDefault()
-          onSend()
-          return true
-        }
-        return false
-      },
-    },
-  })
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Clear editor when content is cleared externally
-  useEffect(() => {
-    if (content === "" && editor && editor.getHTML() !== "<p></p>") {
-      editor.commands.clearContent()
+  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault()
+      if (content.trim() || attachments.length > 0) {
+        onSend()
+      }
     }
-  }, [content, editor])
-
-  const isEmpty = !editor?.getText().trim()
-
-  const handleEmojiSelect = (emoji: string) => {
-    editor?.chain().focus().insertContent(emoji).run()
   }
 
+  const handleEmojiSelect = (emoji: string) => {
+    const textarea = textareaRef.current
+    if (!textarea) {
+      onChange(content + emoji)
+      return
+    }
+
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const newContent = content.slice(0, start) + emoji + content.slice(end)
+    onChange(newContent)
+
+    requestAnimationFrame(() => {
+      textarea.focus()
+      const newPosition = start + emoji.length
+      textarea.setSelectionRange(newPosition, newPosition)
+    })
+  }
+
+  const handleFilesSelected = (files: File[]) => {
+    onAttachmentsChange([...attachments, ...files])
+  }
+
+  const handleRemoveFile = (index: number) => {
+    onAttachmentsChange(attachments.filter((_, i) => i !== index))
+  }
+
+  const isEmpty = !content.trim() && attachments.length === 0
+
   return (
-    <Group gap="sm" align="flex-end" style={{ width: "100%" }}>
-      <Box style={{ flex: 1 }}>
-        <MantineRTE editor={editor} style={{ minHeight: 42 }}>
-          <MantineRTE.Toolbar>
-            <MantineRTE.ControlsGroup>
-              <MantineRTE.Bold />
-              <MantineRTE.Italic />
-            </MantineRTE.ControlsGroup>
-
-            <MantineRTE.ControlsGroup>
-              <MantineRTE.BulletList />
-              <MantineRTE.OrderedList />
-            </MantineRTE.ControlsGroup>
-
-            <MantineRTE.ControlsGroup>
-              <MantineRTE.Link />
-            </MantineRTE.ControlsGroup>
-
-            <MantineRTE.ControlsGroup>
-              <EmojiPicker onSelect={handleEmojiSelect} />
-            </MantineRTE.ControlsGroup>
-          </MantineRTE.Toolbar>
-
-          <MantineRTE.Content />
-        </MantineRTE>
-      </Box>
-      <ActionIcon
-        size="lg"
-        variant="filled"
-        onClick={onSend}
-        disabled={disabled || isEmpty}
-        mb={4}
-      >
-        <IconSend size={18} />
-      </ActionIcon>
-    </Group>
+    <Stack gap="xs">
+      {attachments.length > 0 && (
+        <ScrollArea type="auto" offsetScrollbars scrollbarSize={6}>
+          <Group gap="xs" wrap="nowrap" pb={4}>
+            {attachments.map((file, index) => (
+              <Box
+                key={`${file.name}-${index}`}
+                pos="relative"
+                style={{
+                  border: "1px solid var(--mantine-color-gray-3)",
+                  borderRadius: "var(--mantine-radius-sm)",
+                  padding: 4,
+                  flexShrink: 0,
+                }}
+              >
+                {isImageFile(file) ? (
+                  <Image
+                    src={URL.createObjectURL(file)}
+                    alt={file.name}
+                    w={80}
+                    h={80}
+                    fit="cover"
+                    radius="sm"
+                  />
+                ) : (
+                  <Box
+                    w={80}
+                    h={80}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: "var(--mantine-color-gray-1)",
+                      borderRadius: "var(--mantine-radius-sm)",
+                    }}
+                  >
+                    <IconFile size={24} color="gray" />
+                    <Text size="xs" c="dimmed" truncate w={70} ta="center">
+                      {file.name}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      {formatFileSize(file.size)}
+                    </Text>
+                  </Box>
+                )}
+                <CloseButton
+                  size="xs"
+                  pos="absolute"
+                  top={-8}
+                  right={-8}
+                  onClick={() => handleRemoveFile(index)}
+                  style={{
+                    backgroundColor: "var(--mantine-color-gray-0)",
+                    borderRadius: "50%",
+                  }}
+                />
+              </Box>
+            ))}
+          </Group>
+        </ScrollArea>
+      )}
+      <Group gap={4} align="flex-end" style={{ width: "100%" }}>
+        {/* Image picker - opens photo gallery on mobile */}
+        <FileButton onChange={handleFilesSelected} multiple accept="image/*">
+          {(props) => (
+            <ActionIcon
+              {...props}
+              variant="subtle"
+              color="gray"
+              size="lg"
+              disabled={disabled}
+              mb={4}
+              title="Vælg billeder"
+            >
+              <IconPhoto size={20} />
+            </ActionIcon>
+          )}
+        </FileButton>
+        {/* General file picker */}
+        <FileButton onChange={handleFilesSelected} multiple>
+          {(props) => (
+            <ActionIcon
+              {...props}
+              variant="subtle"
+              color="gray"
+              size="lg"
+              disabled={disabled}
+              mb={4}
+              title="Vedhæft fil"
+            >
+              <IconPaperclip size={20} />
+            </ActionIcon>
+          )}
+        </FileButton>
+        <Box style={{ flex: 1 }}>
+          <Textarea
+            ref={textareaRef}
+            value={content}
+            onChange={(e) => onChange(e.currentTarget.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder}
+            disabled={disabled}
+            autosize
+            minRows={1}
+            maxRows={6}
+            styles={{
+              input: {
+                paddingRight: 40,
+              },
+            }}
+            rightSection={<EmojiPicker onSelect={handleEmojiSelect} />}
+            rightSectionPointerEvents="auto"
+          />
+        </Box>
+        <ActionIcon
+          size="lg"
+          variant="filled"
+          onClick={onSend}
+          disabled={disabled || isEmpty}
+          mb={4}
+        >
+          <IconSend size={18} />
+        </ActionIcon>
+      </Group>
+    </Stack>
   )
 }

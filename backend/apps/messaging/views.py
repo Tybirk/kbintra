@@ -9,7 +9,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Conversation, Message, MessageReadStatus
+from .models import Conversation, Message, MessageAttachment, MessageReadStatus
 from .serializers import (
     ConversationDetailSerializer,
     ConversationSerializer,
@@ -43,6 +43,7 @@ class ConversationListCreateView(generics.ListCreateAPIView):
 
         participant_ids = serializer.validated_data["participant_ids"]
         initial_message = serializer.validated_data.get("initial_message", "")
+        attachments = serializer.validated_data.get("attachments", [])
 
         # For 1-on-1 conversations, check if one already exists
         if len(participant_ids) == 1:
@@ -64,8 +65,8 @@ class ConversationListCreateView(generics.ListCreateAPIView):
         conversation = Conversation.objects.create()
         conversation.participants.add(request.user, *participant_ids)
 
-        # Create initial message if provided
-        if initial_message:
+        # Create initial message if provided (with text or attachments)
+        if initial_message or attachments:
             from apps.notifications.services import notify_new_message
 
             message = Message.objects.create(
@@ -73,12 +74,22 @@ class ConversationListCreateView(generics.ListCreateAPIView):
                 sender=request.user,
                 content=initial_message,
             )
+
+            # Create attachments
+            for attachment_file in attachments:
+                MessageAttachment.objects.create(
+                    message=message,
+                    file=attachment_file,
+                    name=attachment_file.name,
+                    uploaded_by=request.user,
+                )
+
             # Send notifications to other participants
             for participant in conversation.participants.exclude(id=request.user.id):
                 notify_new_message(
                     recipient=participant,
                     sender=request.user,
-                    message_content=initial_message,
+                    message_content=initial_message or "(Vedhæftet fil)",
                     conversation_id=conversation.id,
                 )
 

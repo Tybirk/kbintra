@@ -73,3 +73,30 @@ class MessageReadStatus(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user.first_name} read message {self.message.id}"
+
+
+class MessageAttachment(models.Model):
+    """A file attachment on a message."""
+
+    message = models.ForeignKey(
+        Message,
+        on_delete=models.CASCADE,
+        related_name="attachments",
+    )
+    file = models.FileField(upload_to="message_attachments/")
+    name = models.CharField(max_length=255)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="message_attachments",
+    )
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f"Attachment: {self.name}"
+
+    def delete(self, *args, **kwargs):
+        """Delete the file from storage when the model is deleted."""
+        if self.file:
+            self.file.delete(save=False)
+        super().delete(*args, **kwargs)

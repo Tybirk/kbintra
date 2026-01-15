@@ -282,6 +282,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 "is_own": True,
                 "is_read": False,
                 "created_at": message.created_at.isoformat(),
+                "attachments": [],  # WebSocket messages are text-only
             }
         except Exception:
             return None

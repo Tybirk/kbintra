@@ -6,7 +6,7 @@ from rest_framework import serializers
 
 from apps.users.models import User
 
-from .models import Conversation, Message
+from .models import Conversation, Message, MessageAttachment
 
 
 class ParticipantSerializer(serializers.ModelSerializer):
@@ -17,12 +17,27 @@ class ParticipantSerializer(serializers.ModelSerializer):
         fields = ["id", "first_name", "last_name", "profile_picture"]
 
 
+class MessageAttachmentSerializer(serializers.ModelSerializer):
+    """Serializer for MessageAttachment model."""
+
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MessageAttachment
+        fields = ["id", "name", "file", "file_url", "uploaded_at"]
+        read_only_fields = ["id", "uploaded_at"]
+
+    def get_file_url(self, obj: MessageAttachment) -> str:
+        return obj.file.url if obj.file else ""
+
+
 class MessageSerializer(serializers.ModelSerializer):
     """Serializer for Message model."""
 
     sender = ParticipantSerializer(read_only=True)
     is_own = serializers.SerializerMethodField()
     is_read = serializers.SerializerMethodField()
+    attachments = MessageAttachmentSerializer(many=True, read_only=True)
 
     class Meta:
         model = Message
@@ -34,6 +49,7 @@ class MessageSerializer(serializers.ModelSerializer):
             "is_own",
             "is_read",
             "created_at",
+            "attachments",
         ]
         read_only_fields = ["id", "sender", "created_at"]
 
@@ -139,6 +155,10 @@ class CreateConversationSerializer(serializers.Serializer):
         max_length=10,
     )
     initial_message = serializers.CharField(required=False, allow_blank=True)
+    attachments = serializers.ListField(
+        child=serializers.FileField(),
+        required=False,
+    )
 
     def validate_participant_ids(self, value: list) -> list:
         request = self.context.get("request")
@@ -161,16 +181,44 @@ class CreateConversationSerializer(serializers.Serializer):
 class CreateMessageSerializer(serializers.ModelSerializer):
     """Serializer for creating a new message."""
 
+    content = serializers.CharField(required=False, allow_blank=True, default="")
+    attachments = serializers.ListField(
+        child=serializers.FileField(),
+        required=False,
+        write_only=True,
+    )
+
     class Meta:
         model = Message
-        fields = ["content"]
+        fields = ["content", "attachments"]
+
+    def validate(self, attrs: dict) -> dict:
+        content = attrs.get("content", "").strip()
+        attachments = attrs.get("attachments", [])
+        if not content and not attachments:
+            raise serializers.ValidationError(
+                "Message must have content or attachments."
+            )
+        return attrs
 
     def create(self, validated_data: dict) -> Message:
         from apps.notifications.services import notify_new_message
 
+        attachments = validated_data.pop("attachments", [])
         validated_data["sender"] = self.context["request"].user
         validated_data["conversation"] = self.context["conversation"]
         message = super().create(validated_data)
+
+        # Create attachments
+        user = self.context["request"].user
+        for attachment_file in attachments:
+            MessageAttachment.objects.create(
+                message=message,
+                file=attachment_file,
+                name=attachment_file.name,
+                uploaded_by=user,
+            )
+
         # Update conversation's updated_at
         message.conversation.save()
 

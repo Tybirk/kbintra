@@ -11,12 +11,18 @@ import {
   Stack,
   Avatar,
   TextInput,
+  Textarea,
   Modal,
   ScrollArea,
   Badge,
   Box,
   Indicator,
   TypographyStylesProvider,
+  Image,
+  Anchor,
+  FileButton,
+  CloseButton,
+  ActionIcon,
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -26,6 +32,9 @@ import {
   IconSearch,
   IconCheck,
   IconChecks,
+  IconPhoto,
+  IconPaperclip,
+  IconFile,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -41,7 +50,8 @@ import type {
   User,
 } from "../types"
 import ChatRichTextEditor from "../components/ChatRichTextEditor"
-import RichTextEditor from "../components/RichTextEditor"
+import EmojiPicker from "../components/EmojiPicker"
+import { getFileIcon, getFileTypeColor } from "../components/FilePreview"
 
 dayjs.extend(relativeTime)
 
@@ -243,16 +253,16 @@ export default function MessagesPage() {
             ) : activeConversation ? (
               <ChatArea
                 conversation={activeConversation}
-                onSendMessage={async (content) => {
-                  const success = await chatWs.sendMessage(selectedConversation, content)
+                onSendMessage={async (content, attachments) => {
+                  const success = await chatWs.sendMessage(selectedConversation, content, attachments)
                   if (!success) {
                     notifications.show({
                       title: "Fejl",
                       message: "Kunne ikke sende besked. Prøv igen.",
                       color: "red",
                     })
-                  } else if (!chatWs.isConnected) {
-                    // If we used REST fallback, refresh to get the new message
+                  } else if (!chatWs.isConnected || attachments.length > 0) {
+                    // If we used REST fallback or sent attachments, refresh to get the new message
                     queryClient.invalidateQueries({ queryKey: ["conversation", selectedConversation] })
                     queryClient.invalidateQueries({ queryKey: ["conversations"] })
                   }
@@ -369,11 +379,12 @@ function ConversationItem({
 
 interface ChatAreaProps {
   conversation: ConversationDetail
-  onSendMessage: (content: string) => Promise<void> | void
+  onSendMessage: (content: string, attachments: File[]) => Promise<void> | void
 }
 
 function ChatArea({ conversation, onSendMessage }: ChatAreaProps) {
   const [message, setMessage] = useState("")
+  const [attachments, setAttachments] = useState<File[]>([])
   const [isSending, setIsSending] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -396,19 +407,21 @@ function ChatArea({ conversation, onSendMessage }: ChatAreaProps) {
   }, [conversation.messages])
 
   const handleSend = async () => {
-    // Strip HTML tags to check if there's actual content
-    const textContent = message.replace(/<[^>]*>/g, "").trim()
-    if (!textContent || isSending) return
+    const textContent = message.trim()
+    if ((!textContent && attachments.length === 0) || isSending) return
 
     setIsSending(true)
     const messageContent = message
+    const messageAttachments = [...attachments]
     setMessage("") // Clear immediately for better UX
+    setAttachments([])
 
     try {
-      await onSendMessage(messageContent)
+      await onSendMessage(messageContent, messageAttachments)
     } catch (error) {
-      // Restore message if send failed
+      // Restore message and attachments if send failed
       setMessage(messageContent)
+      setAttachments(messageAttachments)
       console.error("Failed to send message:", error)
     } finally {
       setIsSending(false)
@@ -472,6 +485,8 @@ function ChatArea({ conversation, onSendMessage }: ChatAreaProps) {
           onChange={setMessage}
           onSend={handleSend}
           placeholder="Skriv en besked..."
+          attachments={attachments}
+          onAttachmentsChange={setAttachments}
         />
       </Box>
     </>
@@ -484,8 +499,14 @@ interface MessageBubbleProps {
   showTime: boolean
 }
 
+function isImageFile(filename: string): boolean {
+  return /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(filename)
+}
+
 function MessageBubble({ message, showAvatar, showTime }: MessageBubbleProps) {
   const isOwn = message.is_own
+  const hasContent = message.content.trim().length > 0
+  const hasAttachments = message.attachments && message.attachments.length > 0
 
   return (
     <Group
@@ -505,24 +526,77 @@ function MessageBubble({ message, showAvatar, showTime }: MessageBubbleProps) {
         </Avatar>
       )}
       <Box style={{ maxWidth: "70%" }}>
-        <Paper
-          p="xs"
-          radius="lg"
-          style={{
-            backgroundColor: isOwn
-              ? "var(--mantine-color-blue-6)"
-              : "var(--mantine-color-gray-1)",
-          }}
-        >
-          <TypographyStylesProvider
-            style={{
-              color: isOwn ? "white" : "inherit",
-              fontSize: "var(--mantine-font-size-sm)",
-            }}
-          >
-            <div dangerouslySetInnerHTML={{ __html: message.content }} />
-          </TypographyStylesProvider>
-        </Paper>
+        {hasAttachments && (
+          <Stack gap="xs" mb={hasContent ? "xs" : 0} align={isOwn ? "flex-end" : "flex-start"}>
+            {message.attachments.map((attachment) => {
+              const FileIcon = getFileIcon(attachment.name)
+              const iconColor = getFileTypeColor(attachment.name)
+              return (
+                <Box key={attachment.id}>
+                  {isImageFile(attachment.name) ? (
+                    <Anchor href={attachment.file_url} target="_blank">
+                      <Image
+                        src={attachment.file_url}
+                        alt={attachment.name}
+                        radius="md"
+                        maw={200}
+                        mah={200}
+                        fit="contain"
+                        style={{ display: "block" }}
+                      />
+                    </Anchor>
+                  ) : (
+                    <Anchor
+                      href={attachment.file_url}
+                      target="_blank"
+                      underline="hover"
+                    >
+                      <Paper
+                        p="xs"
+                        radius="md"
+                        withBorder
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        <FileIcon size={20} color={`var(--mantine-color-${iconColor}-6)`} />
+                        <Text size="sm" truncate maw={180}>
+                          {attachment.name}
+                        </Text>
+                      </Paper>
+                    </Anchor>
+                  )}
+                </Box>
+              )
+            })}
+          </Stack>
+        )}
+        {hasContent && (
+          <Box style={{ display: "flex", justifyContent: isOwn ? "flex-end" : "flex-start" }}>
+            <Paper
+              p="xs"
+              radius="lg"
+              style={{
+                backgroundColor: isOwn
+                  ? "var(--mantine-color-blue-6)"
+                  : "var(--mantine-color-gray-1)",
+                maxWidth: "100%",
+              }}
+            >
+              <TypographyStylesProvider
+                style={{
+                  color: isOwn ? "white" : "inherit",
+                  fontSize: "var(--mantine-font-size-sm)",
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                <div dangerouslySetInnerHTML={{ __html: message.content }} />
+              </TypographyStylesProvider>
+            </Paper>
+          </Box>
+        )}
         {showTime && (
           <Group gap={4} justify={isOwn ? "flex-end" : "flex-start"} mt={2}>
             <Text size="xs" c="dimmed">
@@ -548,9 +622,11 @@ interface NewMessageModalProps {
 }
 
 function NewMessageModal({ opened, onClose, onSuccess }: NewMessageModalProps) {
+  const { user: currentUser } = useAuthStore()
   const [search, setSearch] = useState("")
   const [selectedUsers, setSelectedUsers] = useState<User[]>([])
   const [message, setMessage] = useState("")
+  const [attachments, setAttachments] = useState<File[]>([])
 
   // Fetch users for search
   const { data: users } = useQuery({
@@ -569,6 +645,7 @@ function NewMessageModal({ opened, onClose, onSuccess }: NewMessageModalProps) {
       setSearch("")
       setSelectedUsers([])
       setMessage("")
+      setAttachments([])
     },
     onError: () => {
       notifications.show({
@@ -579,12 +656,24 @@ function NewMessageModal({ opened, onClose, onSuccess }: NewMessageModalProps) {
     },
   })
 
-  const filteredUsers = users?.filter(
-    (u) =>
-      !selectedUsers.some((s) => s.id === u.id) &&
-      (u.first_name.toLowerCase().includes(search.toLowerCase()) ||
-        u.last_name.toLowerCase().includes(search.toLowerCase())),
-  )
+  const searchTerm = search.trim().toLowerCase()
+  const filteredUsers = users?.filter((u) => {
+    // Exclude current user (can't message yourself)
+    if (u.id === currentUser?.id) return false
+    // Exclude already selected users
+    if (selectedUsers.some((s) => s.id === u.id)) return false
+    // If no search term, show all
+    if (!searchTerm) return true
+    // Search in first name, last name, and full name
+    const firstName = (u.first_name || "").toLowerCase()
+    const lastName = (u.last_name || "").toLowerCase()
+    const fullName = `${firstName} ${lastName}`
+    return (
+      firstName.includes(searchTerm) ||
+      lastName.includes(searchTerm) ||
+      fullName.includes(searchTerm)
+    )
+  })
 
   const handleSelectUser = (user: User) => {
     setSelectedUsers((prev) => [...prev, user])
@@ -600,13 +689,23 @@ function NewMessageModal({ opened, onClose, onSuccess }: NewMessageModalProps) {
     createMutation.mutate({
       participant_ids: selectedUsers.map((u) => u.id),
       initial_message: message.trim() || undefined,
+      attachments: attachments.length > 0 ? attachments : undefined,
     })
+  }
+
+  const handleFilesSelected = (files: File[]) => {
+    setAttachments((prev) => [...prev, ...files])
+  }
+
+  const handleRemoveFile = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index))
   }
 
   const handleClose = () => {
     setSearch("")
     setSelectedUsers([])
     setMessage("")
+    setAttachments([])
     onClose()
   }
 
@@ -640,7 +739,7 @@ function NewMessageModal({ opened, onClose, onSuccess }: NewMessageModalProps) {
                   section: { marginRight: 4 },
                 }}
               >
-                {u.first_name}
+                {u.first_name} {u.last_name}
               </Badge>
             ))}
           </Group>
@@ -699,12 +798,112 @@ function NewMessageModal({ opened, onClose, onSuccess }: NewMessageModalProps) {
         {/* Message input - show when users are selected */}
         {selectedUsers.length > 0 && !search && (
           <>
-            <RichTextEditor
-              content={message}
-              onChange={setMessage}
-              placeholder="Skriv en besked (valgfrit)..."
-              minHeight={100}
-            />
+            {/* Attachment preview */}
+            {attachments.length > 0 && (
+              <ScrollArea type="auto" offsetScrollbars scrollbarSize={6}>
+                <Group gap="xs" wrap="nowrap" pb={4}>
+                  {attachments.map((file, index) => (
+                    <Box
+                      key={`${file.name}-${index}`}
+                      pos="relative"
+                      style={{
+                        border: "1px solid var(--mantine-color-gray-3)",
+                        borderRadius: "var(--mantine-radius-sm)",
+                        padding: 4,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {file.type.startsWith("image/") ? (
+                        <Image
+                          src={URL.createObjectURL(file)}
+                          alt={file.name}
+                          w={60}
+                          h={60}
+                          fit="cover"
+                          radius="sm"
+                        />
+                      ) : (
+                        <Box
+                          w={60}
+                          h={60}
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: "var(--mantine-color-gray-1)",
+                            borderRadius: "var(--mantine-radius-sm)",
+                          }}
+                        >
+                          <IconFile size={20} color="gray" />
+                          <Text size="xs" c="dimmed" truncate w={55} ta="center">
+                            {file.name}
+                          </Text>
+                        </Box>
+                      )}
+                      <CloseButton
+                        size="xs"
+                        pos="absolute"
+                        top={-8}
+                        right={-8}
+                        onClick={() => handleRemoveFile(index)}
+                        style={{
+                          backgroundColor: "var(--mantine-color-gray-0)",
+                          borderRadius: "50%",
+                        }}
+                      />
+                    </Box>
+                  ))}
+                </Group>
+              </ScrollArea>
+            )}
+
+            {/* Message input with attachment buttons */}
+            <Group gap="xs" align="flex-start">
+              <FileButton onChange={handleFilesSelected} multiple accept="image/*">
+                {(props) => (
+                  <ActionIcon
+                    {...props}
+                    variant="subtle"
+                    color="gray"
+                    size="lg"
+                    mt={6}
+                    title="Vælg billeder"
+                  >
+                    <IconPhoto size={20} />
+                  </ActionIcon>
+                )}
+              </FileButton>
+              <FileButton onChange={handleFilesSelected} multiple>
+                {(props) => (
+                  <ActionIcon
+                    {...props}
+                    variant="subtle"
+                    color="gray"
+                    size="lg"
+                    mt={6}
+                    title="Vedhæft fil"
+                  >
+                    <IconPaperclip size={20} />
+                  </ActionIcon>
+                )}
+              </FileButton>
+              <Textarea
+                value={message}
+                onChange={(e) => setMessage(e.currentTarget.value)}
+                placeholder="Skriv en besked (valgfrit)..."
+                minRows={2}
+                maxRows={6}
+                autosize
+                style={{ flex: 1 }}
+                rightSection={
+                  <EmojiPicker
+                    onSelect={(emoji) => setMessage((prev) => prev + emoji)}
+                  />
+                }
+                rightSectionPointerEvents="auto"
+              />
+            </Group>
 
             <Group justify="flex-end">
               <Button variant="light" onClick={handleClose}>

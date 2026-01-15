@@ -90,6 +90,7 @@ class UserListView(generics.ListAPIView):
 
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None  # Small community (~90 users), no need for pagination
     queryset = User.objects.filter(is_active=True).select_related("house")
 
 

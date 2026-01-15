@@ -451,6 +451,14 @@ export interface Participant {
   profile_picture: string | null
 }
 
+export interface MessageAttachment {
+  id: number
+  name: string
+  file: string
+  file_url: string
+  uploaded_at: string
+}
+
 export interface Message {
   id: number
   conversation: number
@@ -459,6 +467,7 @@ export interface Message {
   is_own: boolean
   is_read: boolean
   created_at: string
+  attachments: MessageAttachment[]
 }
 
 export interface LastMessage {
@@ -485,6 +494,7 @@ export interface ConversationDetail extends Conversation {
 export interface CreateConversationData {
   participant_ids: number[]
   initial_message?: string
+  attachments?: File[]
 }
 
 // WebSocket message types
