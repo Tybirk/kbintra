@@ -30,7 +30,6 @@ import {
   IconTrash,
   IconSend,
   IconPaperclip,
-  IconX,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -44,6 +43,7 @@ import {
   getFileTypeColor,
 } from "../components/FilePreview"
 import { AttachmentCarousel } from "../components/AttachmentCarousel"
+import { AttachmentBadge } from "../components/AttachmentBadge"
 import type { Post, CreatePostData, PostAttachment } from "../types"
 
 interface CreatePostParams {
@@ -321,48 +321,13 @@ export default function ThreadPage() {
 
             {attachments.length > 0 && (
               <Group gap="xs">
-                {attachments.map((file, index) => {
-                  const FileIcon = getFileIcon(file.name)
-                  const fileColor = getFileTypeColor(file.name)
-                  const isImage = getFileType(file.name) === "image"
-                  return (
-                    <Badge
-                      key={index}
-                      variant="light"
-                      color={fileColor}
-                      size="lg"
-                      leftSection={
-                        isImage ? (
-                          <Image
-                            src={URL.createObjectURL(file)}
-                            alt={file.name}
-                            w={16}
-                            h={16}
-                            fit="cover"
-                            radius={2}
-                          />
-                        ) : (
-                          <FileIcon size={14} />
-                        )
-                      }
-                      rightSection={
-                        <ActionIcon
-                          size="xs"
-                          variant="transparent"
-                          color={fileColor}
-                          onClick={() => handleRemoveFile(index)}
-                        >
-                          <IconX size={12} />
-                        </ActionIcon>
-                      }
-                      style={{ paddingRight: 4 }}
-                    >
-                      {file.name.length > 20
-                        ? `${file.name.slice(0, 17)}...`
-                        : file.name}
-                    </Badge>
-                  )
-                })}
+                {attachments.map((file, index) => (
+                  <AttachmentBadge
+                    key={`${file.name}-${file.size}-${index}`}
+                    file={file}
+                    onRemove={() => handleRemoveFile(index)}
+                  />
+                ))}
               </Group>
             )}
 

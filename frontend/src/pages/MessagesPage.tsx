@@ -23,7 +23,7 @@ import {
   CloseButton,
   ActionIcon,
 } from "@mantine/core"
-import { useDisclosure } from "@mantine/hooks"
+import { useDisclosure, useMediaQuery } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
 import {
   IconPlus,
@@ -34,6 +34,7 @@ import {
   IconPhoto,
   IconPaperclip,
   IconFile,
+  IconArrowLeft,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -69,6 +70,7 @@ export default function MessagesPage() {
     { open: openNewMessageModal, close: closeNewMessageModal },
   ] = useDisclosure(false)
   const [isWsConnected, setIsWsConnected] = useState(false)
+  const isMobile = useMediaQuery("(max-width: 768px)")
 
   // Fetch conversations
   const { data: conversations, isLoading: conversationsLoading } = useQuery({
@@ -197,12 +199,14 @@ export default function MessagesPage() {
         radius="md"
         style={{ height: "calc(100vh - 200px)", display: "flex" }}
       >
-        {/* Conversation List */}
+        {/* Conversation List - hide on mobile when conversation is selected */}
         <Box
           style={{
-            width: 320,
-            borderRight: "1px solid var(--mantine-color-gray-3)",
-            display: "flex",
+            width: isMobile ? "100%" : 320,
+            borderRight: isMobile
+              ? "none"
+              : "1px solid var(--mantine-color-gray-3)",
+            display: isMobile && selectedConversation ? "none" : "flex",
             flexDirection: "column",
           }}
         >
@@ -244,8 +248,14 @@ export default function MessagesPage() {
           </ScrollArea>
         </Box>
 
-        {/* Chat Area */}
-        <Box style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+        {/* Chat Area - hide on mobile when no conversation is selected */}
+        <Box
+          style={{
+            flex: 1,
+            display: isMobile && !selectedConversation ? "none" : "flex",
+            flexDirection: "column",
+          }}
+        >
           {selectedConversation ? (
             conversationLoading ? (
               <Center style={{ flex: 1 }}>
@@ -254,6 +264,9 @@ export default function MessagesPage() {
             ) : activeConversation ? (
               <ChatArea
                 conversation={activeConversation}
+                onBack={
+                  isMobile ? () => setSelectedConversation(null) : undefined
+                }
                 onSendMessage={async (content, attachments) => {
                   const success = await chatWs.sendMessage(
                     selectedConversation,
@@ -397,9 +410,10 @@ function ConversationItem({
 interface ChatAreaProps {
   conversation: ConversationDetail
   onSendMessage: (content: string, attachments: File[]) => Promise<void> | void
+  onBack?: () => void
 }
 
-function ChatArea({ conversation, onSendMessage }: ChatAreaProps) {
+function ChatArea({ conversation, onSendMessage, onBack }: ChatAreaProps) {
   const [message, setMessage] = useState("")
   const [attachments, setAttachments] = useState<File[]>([])
   const [isSending, setIsSending] = useState(false)
@@ -453,6 +467,11 @@ function ChatArea({ conversation, onSendMessage }: ChatAreaProps) {
         style={{ borderBottom: "1px solid var(--mantine-color-gray-3)" }}
       >
         <Group gap="sm">
+          {onBack && (
+            <ActionIcon variant="subtle" onClick={onBack} size="lg">
+              <IconArrowLeft size={20} />
+            </ActionIcon>
+          )}
           <Avatar
             src={otherParticipants[0]?.profile_picture}
             radius="xl"
