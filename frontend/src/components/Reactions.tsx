@@ -154,12 +154,15 @@ export default function Reactions({
               return (
                 <Tooltip key={type} label={REACTION_LABELS[type]}>
                   <ActionIcon
-                    variant={existingReaction?.has_reacted ? "filled" : "subtle"}
+                    variant={
+                      existingReaction?.has_reacted ? "filled" : "subtle"
+                    }
                     color={existingReaction?.has_reacted ? "blue" : "gray"}
                     size="xl"
                     onClick={() => handleReaction(type)}
                     loading={
-                      toggleMutation.isPending && toggleMutation.variables === type
+                      toggleMutation.isPending &&
+                      toggleMutation.variables === type
                     }
                   >
                     <Text size="xl">{REACTION_EMOJIS[type]}</Text>

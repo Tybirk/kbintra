@@ -146,7 +146,9 @@ export default function ForumPage() {
         style={{ maxWidth: 300 }}
       />
 
-      {mainGroups.length === 0 && committees.length === 0 && regularGroups.length === 0 ? (
+      {mainGroups.length === 0 &&
+      committees.length === 0 &&
+      regularGroups.length === 0 ? (
         <Text c="dimmed">Ingen grupper fundet.</Text>
       ) : (
         <Stack gap="xl">
@@ -159,9 +161,7 @@ export default function ForumPage() {
 
           {/* Committees Section */}
           {committees.length > 0 && (
-            <Box
-              p="lg"
-            >
+            <Box p="lg">
               <Group gap="sm" mb="lg">
                 <ThemeIcon size="lg" radius="md" variant="filled" color="teal">
                   <IconUsers size={20} />

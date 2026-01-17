@@ -12,7 +12,9 @@ export const usersApi = {
   },
 
   async getUpcomingBirthdays(days = 7): Promise<User[]> {
-    const response = await apiClient.get<User[]>(`/users/birthdays/?days=${days}`)
+    const response = await apiClient.get<User[]>(
+      `/users/birthdays/?days=${days}`,
+    )
     return response.data
   },
 

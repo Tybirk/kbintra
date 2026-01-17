@@ -24,15 +24,16 @@ import type { SearchItem, SearchResultType } from "../api/search"
 import { FilePreviewModal, getFileIcon } from "./FilePreview"
 import type { ForumFile } from "../types"
 
-const TYPE_ICONS: Record<Exclude<SearchResultType, "file">, typeof IconSearch> = {
-  user: IconUser,
-  thread: IconMessages,
-  post: IconMessage,
-  subgroup: IconFolder,
-  announcement: IconBell,
-  event: IconCalendar,
-  house: IconHome,
-}
+const TYPE_ICONS: Record<Exclude<SearchResultType, "file">, typeof IconSearch> =
+  {
+    user: IconUser,
+    thread: IconMessages,
+    post: IconMessage,
+    subgroup: IconFolder,
+    announcement: IconBell,
+    event: IconCalendar,
+    house: IconHome,
+  }
 
 const TYPE_LABELS: Record<SearchResultType, string> = {
   user: "Bruger",
@@ -67,7 +68,12 @@ export function GlobalSearch() {
           name: item.title,
           file: item.extra.file_url as string,
           file_url: item.extra.file_url as string,
-          uploaded_by: { id: 0, first_name: "", last_name: "", profile_picture: null },
+          uploaded_by: {
+            id: 0,
+            first_name: "",
+            last_name: "",
+            profile_picture: null,
+          },
           is_own: false,
           uploaded_at: "",
         })
@@ -87,13 +93,20 @@ export function GlobalSearch() {
           (items as SearchItem[]).map((item) => {
             // Use getFileIcon for files to show proper file type icons
             const Icon =
-              item.type === "file" ? getFileIcon(item.title) : TYPE_ICONS[item.type]
+              item.type === "file"
+                ? getFileIcon(item.title)
+                : TYPE_ICONS[item.type]
             return {
               id: `${item.type}-${item.id}`,
               label: item.title,
               description: item.subtitle,
               onClick: () => handleAction(item),
-              leftSection: <Icon size={18} style={{ color: "var(--mantine-color-dimmed)" }} />,
+              leftSection: (
+                <Icon
+                  size={18}
+                  style={{ color: "var(--mantine-color-dimmed)" }}
+                />
+              ),
               group: TYPE_LABELS[item.type],
             }
           }),

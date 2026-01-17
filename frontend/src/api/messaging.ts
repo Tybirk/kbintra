@@ -39,9 +39,13 @@ export const messagingApi = {
       data.attachments.forEach((file) => {
         formData.append("attachments", file)
       })
-      const response = await apiClient.post("/messages/conversations/", formData, {
-        headers: { "Content-Type": undefined },
-      })
+      const response = await apiClient.post(
+        "/messages/conversations/",
+        formData,
+        {
+          headers: { "Content-Type": undefined },
+        },
+      )
       return response.data
     }
     const response = await apiClient.post("/messages/conversations/", data)

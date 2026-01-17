@@ -278,10 +278,10 @@ export const forumApi = {
   },
 
   // Reactions
-  toggleReaction: async (
-    postId: number,
-    reactionType: ReactionType,
-  ): Promise<{ detail: string; action: "added" | "removed" }> => {
+  toggleReaction: async (postId: number, reactionType: ReactionType): Promise<{
+    detail: string
+    action: "added" | "removed"
+  }> => {
     const response = await apiClient.post(`/forum/posts/${postId}/react/`, {
       reaction_type: reactionType,
     })

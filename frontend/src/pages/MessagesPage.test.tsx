@@ -151,7 +151,9 @@ describe("MessagesPage", () => {
     render(<MessagesPage />)
 
     expect(screen.getByText("Beskeder")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /ny besked/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: /ny besked/i }),
+    ).toBeInTheDocument()
   })
 
   it("should show empty state when no conversations", async () => {
@@ -163,7 +165,9 @@ describe("MessagesPage", () => {
   })
 
   it("should display conversations list", async () => {
-    vi.mocked(messagingApi.getConversations).mockResolvedValue([mockConversation])
+    vi.mocked(messagingApi.getConversations).mockResolvedValue([
+      mockConversation,
+    ])
 
     render(<MessagesPage />)
 
@@ -174,7 +178,9 @@ describe("MessagesPage", () => {
 
   describe("Group conversations display", () => {
     it("should display group conversation with multiple names", async () => {
-      vi.mocked(messagingApi.getConversations).mockResolvedValue([mockGroupConversation])
+      vi.mocked(messagingApi.getConversations).mockResolvedValue([
+        mockGroupConversation,
+      ])
 
       render(<MessagesPage />)
 
@@ -184,7 +190,9 @@ describe("MessagesPage", () => {
     })
 
     it("should show sender name prefix in group chat message preview", async () => {
-      vi.mocked(messagingApi.getConversations).mockResolvedValue([mockGroupConversation])
+      vi.mocked(messagingApi.getConversations).mockResolvedValue([
+        mockGroupConversation,
+      ])
 
       render(<MessagesPage />)
 
@@ -194,7 +202,9 @@ describe("MessagesPage", () => {
     })
 
     it("should show unread badge for group conversations", async () => {
-      vi.mocked(messagingApi.getConversations).mockResolvedValue([mockGroupConversation])
+      vi.mocked(messagingApi.getConversations).mockResolvedValue([
+        mockGroupConversation,
+      ])
 
       render(<MessagesPage />)
 
@@ -311,7 +321,9 @@ describe("MessagesPage", () => {
       await user.click(screen.getByText("Alice Smith"))
 
       // Should show regular start button
-      expect(screen.getByRole("button", { name: /start samtale/i })).toBeInTheDocument()
+      expect(
+        screen.getByRole("button", { name: /start samtale/i }),
+      ).toBeInTheDocument()
 
       // Search for and select Bob
       const searchInput = screen.getByPlaceholderText(/tilføj flere/i)
@@ -319,7 +331,9 @@ describe("MessagesPage", () => {
       await user.click(screen.getByText("Bob Johnson"))
 
       // Should now show group conversation button
-      expect(screen.getByRole("button", { name: /start gruppesamtale \(2\)/i })).toBeInTheDocument()
+      expect(
+        screen.getByRole("button", { name: /start gruppesamtale \(2\)/i }),
+      ).toBeInTheDocument()
     })
 
     it("should show × on badges for removing users", async () => {

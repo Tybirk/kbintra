@@ -178,7 +178,10 @@ export default function AppHeader({
             border: "1px solid var(--mantine-color-gray-3)",
           }}
         >
-          <IconSearch size={18} style={{ color: "var(--mantine-color-gray-6)" }} />
+          <IconSearch
+            size={18}
+            style={{ color: "var(--mantine-color-gray-6)" }}
+          />
           <Text size="sm" c="dimmed" style={{ flex: 1 }}>
             Søg...
           </Text>

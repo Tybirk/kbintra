@@ -10,7 +10,12 @@ import {
   Stack,
   ScrollArea,
 } from "@mantine/core"
-import { IconSend, IconPaperclip, IconFile, IconPhoto } from "@tabler/icons-react"
+import {
+  IconSend,
+  IconPaperclip,
+  IconFile,
+  IconPhoto,
+} from "@tabler/icons-react"
 import { useRef, type KeyboardEvent } from "react"
 import EmojiPicker from "./EmojiPicker"
 

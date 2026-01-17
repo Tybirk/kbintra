@@ -39,11 +39,11 @@ import { forumApi } from "../api/forum"
 import RichTextEditor from "../components/RichTextEditor"
 import Reactions from "../components/Reactions"
 import {
-  FilePreviewModal,
   getFileIcon,
   getFileType,
   getFileTypeColor,
 } from "../components/FilePreview"
+import { AttachmentCarousel } from "../components/AttachmentCarousel"
 import type { Post, CreatePostData, PostAttachment } from "../types"
 
 interface CreatePostParams {
@@ -451,13 +451,21 @@ function PostCard({
   onDelete,
   isSaving,
 }: PostCardProps) {
-  const [previewAttachment, setPreviewAttachment] =
-    useState<PostAttachment | null>(null)
+  const [carouselOpened, setCarouselOpened] = useState(false)
+  const [carouselInitialIndex, setCarouselInitialIndex] = useState(0)
 
+  // Sort attachments: images first, then other files
   const imageAttachments =
     post.attachments?.filter((att) => getFileType(att.name) === "image") || []
   const otherAttachments =
     post.attachments?.filter((att) => getFileType(att.name) !== "image") || []
+  const allAttachments = [...imageAttachments, ...otherAttachments]
+
+  const handleAttachmentClick = (attachment: PostAttachment) => {
+    const index = allAttachments.findIndex((att) => att.id === attachment.id)
+    setCarouselInitialIndex(index >= 0 ? index : 0)
+    setCarouselOpened(true)
+  }
 
   return (
     <>
@@ -544,7 +552,7 @@ function PostCard({
                     fit="cover"
                     h={120}
                     style={{ cursor: "pointer" }}
-                    onClick={() => setPreviewAttachment(att)}
+                    onClick={() => handleAttachmentClick(att)}
                   />
                 ))}
               </SimpleGrid>
@@ -563,7 +571,7 @@ function PostCard({
                       size="lg"
                       leftSection={<FileIcon size={14} />}
                       style={{ cursor: "pointer" }}
-                      onClick={() => setPreviewAttachment(att)}
+                      onClick={() => handleAttachmentClick(att)}
                     >
                       {att.name.length > 25
                         ? `${att.name.slice(0, 22)}...`
@@ -584,22 +592,11 @@ function PostCard({
         )}
       </Paper>
 
-      <FilePreviewModal
-        file={
-          previewAttachment
-            ? {
-                id: previewAttachment.id,
-                name: previewAttachment.name,
-                file: previewAttachment.file,
-                file_url: previewAttachment.file_url,
-                uploaded_by: previewAttachment.uploaded_by,
-                is_own: false,
-                uploaded_at: previewAttachment.uploaded_at,
-              }
-            : null
-        }
-        opened={previewAttachment !== null}
-        onClose={() => setPreviewAttachment(null)}
+      <AttachmentCarousel
+        attachments={allAttachments}
+        opened={carouselOpened}
+        onClose={() => setCarouselOpened(false)}
+        initialIndex={carouselInitialIndex}
       />
     </>
   )

@@ -141,7 +141,8 @@ export default function DashboardPage() {
   // Get registrations for current and next week
   const { data: currentWeekRegistrations } = useQuery({
     queryKey: ["food", "registrations", currentWeekStart.format("YYYY-MM-DD")],
-    queryFn: () => foodApi.getRegistrations(currentWeekStart.format("YYYY-MM-DD")),
+    queryFn: () =>
+      foodApi.getRegistrations(currentWeekStart.format("YYYY-MM-DD")),
   })
 
   const nextWeekStart = currentWeekStart.add(1, "week")
@@ -165,8 +166,8 @@ export default function DashboardPage() {
     ...(nextWeekMenu?.daily_menus || []),
   ]
   const todayMenu = allDailyMenus.find((m) => m.date === todayStr)
-  const nextFoodDayMenu = allDailyMenus.find(
-    (m) => dayjs(m.date).isAfter(today, "day"),
+  const nextFoodDayMenu = allDailyMenus.find((m) =>
+    dayjs(m.date).isAfter(today, "day"),
   )
 
   // Find registrations for today and next food day
@@ -272,7 +273,7 @@ export default function DashboardPage() {
 
       {/* Birthdays and Food Widgets - Side by Side */}
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg" mt="xl">
-         <Paper withBorder p="lg" radius="md">
+        <Paper withBorder p="lg" radius="md">
           <Group justify="space-between" mb="md">
             <Title order={3}>Seneste vigtig post</Title>
             <Button
@@ -300,7 +301,7 @@ export default function DashboardPage() {
             <Text c="dimmed">Ingen opslag endnu.</Text>
           )}
         </Paper>
-       
+
         {/* Food Widget */}
         <Paper withBorder p="lg" radius="md">
           <Group justify="space-between" mb="md">
@@ -334,7 +335,10 @@ export default function DashboardPage() {
                   menu={nextFoodDayMenu}
                   registration={nextFoodDayRegistration}
                   label={
-                    dayjs(nextFoodDayMenu.date).isSame(dayjs().add(1, "day"), "day")
+                    dayjs(nextFoodDayMenu.date).isSame(
+                      dayjs().add(1, "day"),
+                      "day",
+                    )
                       ? "I morgen"
                       : dayjs(nextFoodDayMenu.date).format("dddd")
                   }
@@ -436,7 +440,6 @@ export default function DashboardPage() {
             </Stack>
           )}
         </Paper>
-
 
         <Paper withBorder p="lg" radius="md">
           <Group justify="space-between" mb="md">
@@ -676,7 +679,9 @@ function ActivityPreview({ activity }: ActivityPreviewProps) {
       radius="sm"
       bg="gray.0"
       style={{ cursor: "pointer" }}
-      onClick={() => navigate(`/forum/${activity.subgroup_slug}/${activity.thread_id}`)}
+      onClick={() =>
+        navigate(`/forum/${activity.subgroup_slug}/${activity.thread_id}`)
+      }
     >
       <Group gap="sm" wrap="nowrap" mb={4}>
         <Avatar src={activity.author.profile_picture} radius="xl" size="sm">

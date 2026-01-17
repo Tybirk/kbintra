@@ -19,7 +19,6 @@ import {
   Indicator,
   TypographyStylesProvider,
   Image,
-  Anchor,
   FileButton,
   CloseButton,
   ActionIcon,
@@ -48,10 +47,12 @@ import type {
   Message,
   WsMessage,
   User,
+  MessageAttachment,
 } from "../types"
 import ChatRichTextEditor from "../components/ChatRichTextEditor"
 import EmojiPicker from "../components/EmojiPicker"
 import { getFileIcon, getFileTypeColor } from "../components/FilePreview"
+import { AttachmentCarousel } from "../components/AttachmentCarousel"
 
 dayjs.extend(relativeTime)
 
@@ -254,7 +255,11 @@ export default function MessagesPage() {
               <ChatArea
                 conversation={activeConversation}
                 onSendMessage={async (content, attachments) => {
-                  const success = await chatWs.sendMessage(selectedConversation, content, attachments)
+                  const success = await chatWs.sendMessage(
+                    selectedConversation,
+                    content,
+                    attachments,
+                  )
                   if (!success) {
                     notifications.show({
                       title: "Fejl",
@@ -263,8 +268,12 @@ export default function MessagesPage() {
                     })
                   } else if (!chatWs.isConnected || attachments.length > 0) {
                     // If we used REST fallback or sent attachments, refresh to get the new message
-                    queryClient.invalidateQueries({ queryKey: ["conversation", selectedConversation] })
-                    queryClient.invalidateQueries({ queryKey: ["conversations"] })
+                    queryClient.invalidateQueries({
+                      queryKey: ["conversation", selectedConversation],
+                    })
+                    queryClient.invalidateQueries({
+                      queryKey: ["conversations"],
+                    })
                   }
                 }}
               />
@@ -329,10 +338,18 @@ function ConversationItem({
         >
           {isGroupChat ? (
             <Avatar.Group spacing="sm">
-              <Avatar src={otherParticipants[0]?.profile_picture} radius="xl" size="md">
+              <Avatar
+                src={otherParticipants[0]?.profile_picture}
+                radius="xl"
+                size="md"
+              >
                 {otherParticipants[0]?.first_name?.[0]}
               </Avatar>
-              <Avatar src={otherParticipants[1]?.profile_picture} radius="xl" size="md">
+              <Avatar
+                src={otherParticipants[1]?.profile_picture}
+                radius="xl"
+                size="md"
+              >
                 {otherParticipants.length > 2
                   ? `+${otherParticipants.length - 1}`
                   : otherParticipants[1]?.first_name?.[0]}
@@ -504,114 +521,151 @@ function isImageFile(filename: string): boolean {
 }
 
 function MessageBubble({ message, showAvatar, showTime }: MessageBubbleProps) {
+  const [carouselOpened, setCarouselOpened] = useState(false)
+  const [carouselInitialIndex, setCarouselInitialIndex] = useState(0)
+
   const isOwn = message.is_own
   const hasContent = message.content.trim().length > 0
   const hasAttachments = message.attachments && message.attachments.length > 0
 
+  // Sort attachments: images first, then other files
+  const imageAttachments =
+    message.attachments?.filter((att) => isImageFile(att.name)) || []
+  const otherAttachments =
+    message.attachments?.filter((att) => !isImageFile(att.name)) || []
+  const allAttachments = [...imageAttachments, ...otherAttachments]
+
+  const handleAttachmentClick = (attachment: MessageAttachment) => {
+    const index = allAttachments.findIndex((att) => att.id === attachment.id)
+    setCarouselInitialIndex(index >= 0 ? index : 0)
+    setCarouselOpened(true)
+  }
+
   return (
-    <Group
-      justify={isOwn ? "flex-end" : "flex-start"}
-      gap="xs"
-      align="flex-end"
-      wrap="nowrap"
-    >
-      {!isOwn && (
-        <Avatar
-          src={message.sender.profile_picture}
-          radius="xl"
-          size="sm"
-          style={{ visibility: showAvatar ? "visible" : "hidden" }}
-        >
-          {message.sender.first_name?.[0]}
-        </Avatar>
-      )}
-      <Box style={{ maxWidth: "70%" }}>
-        {hasAttachments && (
-          <Stack gap="xs" mb={hasContent ? "xs" : 0} align={isOwn ? "flex-end" : "flex-start"}>
-            {message.attachments.map((attachment) => {
-              const FileIcon = getFileIcon(attachment.name)
-              const iconColor = getFileTypeColor(attachment.name)
-              return (
-                <Box key={attachment.id}>
-                  {isImageFile(attachment.name) ? (
-                    <Anchor href={attachment.file_url} target="_blank">
-                      <Image
-                        src={attachment.file_url}
-                        alt={attachment.name}
-                        radius="md"
-                        maw={200}
-                        mah={200}
-                        fit="contain"
-                        style={{ display: "block" }}
-                      />
-                    </Anchor>
-                  ) : (
-                    <Anchor
-                      href={attachment.file_url}
-                      target="_blank"
-                      underline="hover"
-                    >
-                      <Paper
-                        p="xs"
-                        radius="md"
-                        withBorder
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 8,
-                        }}
-                      >
-                        <FileIcon size={20} color={`var(--mantine-color-${iconColor}-6)`} />
-                        <Text size="sm" truncate maw={180}>
-                          {attachment.name}
-                        </Text>
-                      </Paper>
-                    </Anchor>
-                  )}
-                </Box>
-              )
-            })}
-          </Stack>
+    <>
+      <Group
+        justify={isOwn ? "flex-end" : "flex-start"}
+        gap="xs"
+        align="flex-end"
+        wrap="nowrap"
+      >
+        {!isOwn && (
+          <Avatar
+            src={message.sender.profile_picture}
+            radius="xl"
+            size="sm"
+            style={{ visibility: showAvatar ? "visible" : "hidden" }}
+          >
+            {message.sender.first_name?.[0]}
+          </Avatar>
         )}
-        {hasContent && (
-          <Box style={{ display: "flex", justifyContent: isOwn ? "flex-end" : "flex-start" }}>
-            <Paper
-              p="xs"
-              radius="lg"
+        <Box style={{ maxWidth: "70%" }}>
+          {hasAttachments && (
+            <Stack
+              gap="xs"
+              mb={hasContent ? "xs" : 0}
+              align={isOwn ? "flex-end" : "flex-start"}
+            >
+              {imageAttachments.map((attachment) => (
+                <Box
+                  key={attachment.id}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => handleAttachmentClick(attachment)}
+                >
+                  <Image
+                    src={attachment.file_url}
+                    alt={attachment.name}
+                    radius="md"
+                    maw={200}
+                    mah={200}
+                    fit="contain"
+                    style={{ display: "block" }}
+                  />
+                </Box>
+              ))}
+              {otherAttachments.map((attachment) => {
+                const FileIcon = getFileIcon(attachment.name)
+                const iconColor = getFileTypeColor(attachment.name)
+                return (
+                  <Paper
+                    key={attachment.id}
+                    p="xs"
+                    radius="md"
+                    withBorder
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      cursor: "pointer",
+                    }}
+                    onClick={() => handleAttachmentClick(attachment)}
+                  >
+                    <FileIcon
+                      size={20}
+                      color={`var(--mantine-color-${iconColor}-6)`}
+                    />
+                    <Text size="sm" truncate maw={180}>
+                      {attachment.name}
+                    </Text>
+                  </Paper>
+                )
+              })}
+            </Stack>
+          )}
+          {hasContent && (
+            <Box
               style={{
-                backgroundColor: isOwn
-                  ? "var(--mantine-color-blue-6)"
-                  : "var(--mantine-color-gray-1)",
-                maxWidth: "100%",
+                display: "flex",
+                justifyContent: isOwn ? "flex-end" : "flex-start",
               }}
             >
-              <TypographyStylesProvider
+              <Paper
+                p="xs"
+                radius="lg"
                 style={{
-                  color: isOwn ? "white" : "inherit",
-                  fontSize: "var(--mantine-font-size-sm)",
-                  whiteSpace: "pre-wrap",
+                  backgroundColor: isOwn
+                    ? "var(--mantine-color-blue-6)"
+                    : "var(--mantine-color-gray-1)",
+                  maxWidth: "100%",
                 }}
               >
-                <div dangerouslySetInnerHTML={{ __html: message.content }} />
-              </TypographyStylesProvider>
-            </Paper>
-          </Box>
-        )}
-        {showTime && (
-          <Group gap={4} justify={isOwn ? "flex-end" : "flex-start"} mt={2}>
-            <Text size="xs" c="dimmed">
-              {dayjs(message.created_at).format("HH:mm")}
-            </Text>
-            {isOwn &&
-              (message.is_read ? (
-                <IconChecks size={14} color="var(--mantine-color-blue-6)" />
-              ) : (
-                <IconCheck size={14} color="gray" />
-              ))}
-          </Group>
-        )}
-      </Box>
-    </Group>
+                <TypographyStylesProvider
+                  style={{
+                    color: isOwn ? "white" : "inherit",
+                    fontSize: "var(--mantine-font-size-sm)",
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  <div dangerouslySetInnerHTML={{ __html: message.content }} />
+                </TypographyStylesProvider>
+              </Paper>
+            </Box>
+          )}
+          {showTime && (
+            <Group gap={4} justify={isOwn ? "flex-end" : "flex-start"} mt={2}>
+              <Text size="xs" c="dimmed">
+                {dayjs(message.created_at).format("HH:mm")}
+              </Text>
+              {isOwn &&
+                (message.is_read ? (
+                  <IconChecks size={14} color="var(--mantine-color-blue-6)" />
+                ) : (
+                  <IconCheck size={14} color="gray" />
+                ))}
+            </Group>
+          )}
+        </Box>
+      </Group>
+
+      {hasAttachments && (
+        <AttachmentCarousel
+          attachments={allAttachments}
+          opened={carouselOpened}
+          onClose={() => setCarouselOpened(false)}
+          initialIndex={carouselInitialIndex}
+        />
+      )}
+    </>
   )
 }
 
@@ -836,7 +890,13 @@ function NewMessageModal({ opened, onClose, onSuccess }: NewMessageModalProps) {
                           }}
                         >
                           <IconFile size={20} color="gray" />
-                          <Text size="xs" c="dimmed" truncate w={55} ta="center">
+                          <Text
+                            size="xs"
+                            c="dimmed"
+                            truncate
+                            w={55}
+                            ta="center"
+                          >
                             {file.name}
                           </Text>
                         </Box>
@@ -860,7 +920,11 @@ function NewMessageModal({ opened, onClose, onSuccess }: NewMessageModalProps) {
 
             {/* Message input with attachment buttons */}
             <Group gap="xs" align="flex-start">
-              <FileButton onChange={handleFilesSelected} multiple accept="image/*">
+              <FileButton
+                onChange={handleFilesSelected}
+                multiple
+                accept="image/*"
+              >
                 {(props) => (
                   <ActionIcon
                     {...props}

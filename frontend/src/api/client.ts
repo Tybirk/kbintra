@@ -72,7 +72,11 @@ apiClient.interceptors.response.use(
     // If 401 and we haven't tried to refresh yet
     // Skip token refresh for login endpoint - it's expected to fail with 401 for bad credentials
     const isLoginRequest = originalRequest.url === "/auth/token/"
-    if (error.response?.status === 401 && !originalRequest._retry && !isLoginRequest) {
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      !isLoginRequest
+    ) {
       if (isRefreshing) {
         // Wait for the token to be refreshed
         return new Promise((resolve) => {
