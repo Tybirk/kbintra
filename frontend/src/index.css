@@ -4,11 +4,63 @@
   box-sizing: border-box;
 }
 
+html {
+  /* Prevent overscroll/bounce on iOS */
+  overflow: hidden;
+  height: 100%;
+  /* Use dynamic viewport height for mobile browser address bar */
+  height: 100dvh;
+}
+
 body {
   margin: 0;
-  min-height: 100vh;
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  /* Prevent pull-to-refresh and other unwanted gestures */
+  overscroll-behavior: none;
+  /* Disable double-tap zoom and other touch delays */
+  touch-action: manipulation;
+  /* Prevent text size adjustment on orientation change */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* Safe area insets for notched devices */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
 #root {
-  min-height: 100vh;
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* Prevent iOS callout menu on long press for interactive elements */
+a, button, input, select, textarea {
+  -webkit-touch-callout: none;
+}
+
+/* Ensure scrollable areas have smooth momentum scrolling */
+.mantine-ScrollArea-viewport,
+[data-scrollable="true"] {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* AppShell layout - ensure proper mobile scrolling */
+.mantine-AppShell-root {
+  height: 100%;
+  height: 100dvh;
+}
+
+.mantine-AppShell-main {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* Prevent navbar from causing scroll issues when open on mobile */
+.mantine-AppShell-navbar {
+  overscroll-behavior: contain;
 }
