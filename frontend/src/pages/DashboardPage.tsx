@@ -56,50 +56,6 @@ import type {
 dayjs.extend(relativeTime)
 dayjs.extend(isoWeek)
 
-const features = [
-  {
-    icon: IconSpeakerphone,
-    title: "Vigtige opslag",
-    description: "Vigtige fællesskabsopdateringer",
-    path: "/opslag",
-  },
-  {
-    icon: IconMessageCircle,
-    title: "Forum",
-    description: "Fællesskabsdiskussioner",
-    color: "blue",
-    path: "/forum",
-  },
-  {
-    icon: IconSoup,
-    title: "Mad",
-    description: "Ugemenu & måltidstilmelding",
-    color: "green",
-    path: "/mad",
-  },
-  {
-    icon: IconCalendar,
-    title: "Kalender",
-    description: "Fællesskabsarrangementer",
-    color: "violet",
-    path: "/kalender",
-  },
-  {
-    icon: IconHome,
-    title: "Beboeroversigt",
-    description: "Huse & beboere",
-    color: "orange",
-    path: "/beboere",
-  },
-  {
-    icon: IconUsers,
-    title: "Beskeder",
-    description: "Direkte beskeder",
-    color: "cyan",
-    path: "/beskeder",
-  },
-]
-
 export default function DashboardPage() {
   const { user } = useAuthStore()
   const navigate = useNavigate()
@@ -212,31 +168,6 @@ export default function DashboardPage() {
         Hvad vil du lave i dag?
       </Text>
 
-      <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
-        {features.map((feature) => (
-          <Paper
-            key={feature.title}
-            withBorder
-            p="lg"
-            radius="md"
-            component="a"
-            href={feature.path}
-            style={{ textDecoration: "none", color: "inherit" }}
-          >
-            <Group>
-              <ThemeIcon size="xl" radius="md" color={feature.color}>
-                <feature.icon size={24} />
-              </ThemeIcon>
-              <div>
-                <Text fw={500}>{feature.title}</Text>
-                <Text size="sm" c="dimmed">
-                  {feature.description}
-                </Text>
-              </div>
-            </Group>
-          </Paper>
-        ))}
-      </SimpleGrid>
 
       {/* Notifications Widget */}
       {recentNotifications && recentNotifications.length > 0 && (
