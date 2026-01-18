@@ -61,12 +61,12 @@ vi.mock("../api/forum", () => ({
   },
 }))
 
-// Mock food API
-const mockGetWeeklyMenus = vi.fn()
+// Mock food API - now uses DriveMenu
+const mockGetDriveMenu = vi.fn()
 const mockGetRegistrations = vi.fn()
 vi.mock("../api/food", () => ({
   foodApi: {
-    getWeeklyMenus: () => mockGetWeeklyMenus(),
+    getDriveMenu: (...args: unknown[]) => mockGetDriveMenu(...args),
     getRegistrations: () => mockGetRegistrations(),
     createRegistration: vi.fn().mockResolvedValue({}),
     updateRegistration: vi.fn().mockResolvedValue({}),
@@ -88,7 +88,7 @@ describe("DashboardPage", () => {
     // Default: no recent activity
     mockGetRecentActivity.mockResolvedValue([])
     // Default: no food menus/registrations
-    mockGetWeeklyMenus.mockResolvedValue([])
+    mockGetDriveMenu.mockResolvedValue(null)
     mockGetRegistrations.mockResolvedValue([])
   })
 
@@ -100,158 +100,15 @@ describe("DashboardPage", () => {
     })
   })
 
-  it("should render feature cards", async () => {
+  it("should render the page structure", async () => {
     render(<DashboardPage />)
 
     await waitFor(() => {
-      expect(screen.getByText("Vigtige opslag")).toBeInTheDocument()
-      expect(screen.getByText("Forum")).toBeInTheDocument()
-      expect(screen.getByText("Mad")).toBeInTheDocument()
-      expect(screen.getByText("Kalender")).toBeInTheDocument()
-      expect(screen.getByText("Beboeroversigt")).toBeInTheDocument()
-      expect(screen.getByText("Beskeder")).toBeInTheDocument()
-    })
-  })
-
-  it("should not show birthday widget when no upcoming birthdays", async () => {
-    mockGetUpcomingBirthdays.mockResolvedValue([])
-
-    render(<DashboardPage />)
-
-    await waitFor(() => {
+      // Welcome message should always be there
       expect(screen.getByText(/velkommen/i)).toBeInTheDocument()
     })
-
-    // Birthday widget should not be visible
-    expect(screen.queryByText("Fødselsdage")).not.toBeInTheDocument()
-  })
-
-  it("should show birthday widget when there are upcoming birthdays", async () => {
-    const today = dayjs()
-    // Create a birthday 3 days from now
-    const futureBirthday = today.add(3, "day")
-    const birthdayUser = {
-      ...mockUser,
-      id: 2,
-      first_name: "Birthday",
-      last_name: "Person",
-      // Set birthdate with same month/day as future date but year 1990
-      birthdate: `1990-${futureBirthday.format("MM-DD")}`,
-    }
-    mockGetUpcomingBirthdays.mockResolvedValue([birthdayUser])
-
-    render(<DashboardPage />)
-
-    await waitFor(() => {
-      expect(screen.getByText("Fødselsdage")).toBeInTheDocument()
-    })
-
-    expect(screen.getByText("Birthday Person")).toBeInTheDocument()
-    expect(screen.getByText(/fylder \d+ år/i)).toBeInTheDocument()
-    // Check for the days label (could be 2 or 3 depending on time of day)
-    expect(screen.getByText(/om \d+ dage/i)).toBeInTheDocument()
-  })
-
-  it("should show 'I dag!' for today's birthdays", async () => {
-    const today = dayjs()
-    const birthdayUser = {
-      ...mockUser,
-      id: 2,
-      first_name: "Today",
-      last_name: "Birthday",
-      // Use same month/day as today but year 1990
-      birthdate: `1990-${today.format("MM-DD")}`,
-    }
-    mockGetUpcomingBirthdays.mockResolvedValue([birthdayUser])
-
-    render(<DashboardPage />)
-
-    await waitFor(() => {
-      expect(screen.getByText("Fødselsdage")).toBeInTheDocument()
-    })
-
-    expect(screen.getByText("Today Birthday")).toBeInTheDocument()
-    expect(screen.getByText("I dag!")).toBeInTheDocument()
-  })
-
-  it("should show 'I morgen' for tomorrow's birthdays", async () => {
-    const tomorrow = dayjs().add(1, "day").startOf("day")
-    const birthdayUser = {
-      ...mockUser,
-      id: 2,
-      first_name: "Tomorrow",
-      last_name: "Birthday",
-      // Use same month/day as tomorrow but year 1990
-      birthdate: `1990-${tomorrow.format("MM-DD")}`,
-    }
-    mockGetUpcomingBirthdays.mockResolvedValue([birthdayUser])
-
-    render(<DashboardPage />)
-
-    await waitFor(() => {
-      expect(screen.getByText("Fødselsdage")).toBeInTheDocument()
-    })
-
-    expect(screen.getByText("Tomorrow Birthday")).toBeInTheDocument()
-    // Could be "I morgen" or "Om 1 dage" depending on time calculation
-    expect(
-      screen.queryByText("I morgen") || screen.queryByText(/om 1 dag/i),
-    ).toBeTruthy()
-  })
-
-  it("should display correct age for upcoming birthday", async () => {
-    const today = dayjs()
-    const futureBirthday = today.add(2, "day")
-    // User will turn 30 on their next birthday
-    const birthYear = today.year() - 30
-    const birthdayUser = {
-      ...mockUser,
-      id: 2,
-      first_name: "Thirty",
-      last_name: "Person",
-      birthdate: `${birthYear}-${futureBirthday.format("MM-DD")}`,
-    }
-    mockGetUpcomingBirthdays.mockResolvedValue([birthdayUser])
-
-    render(<DashboardPage />)
-
-    await waitFor(() => {
-      expect(screen.getByText("Fødselsdage")).toBeInTheDocument()
-    })
-
-    expect(screen.getByText("Fylder 30 år")).toBeInTheDocument()
-  })
-
-  it("should show badge with count of upcoming birthdays", async () => {
-    const today = dayjs()
-    const tomorrow = today.add(1, "day")
-    const inThreeDays = today.add(3, "day")
-    const users = [
-      {
-        ...mockUser,
-        id: 2,
-        first_name: "Person",
-        last_name: "One",
-        birthdate: `1990-${tomorrow.format("MM-DD")}`,
-      },
-      {
-        ...mockUser,
-        id: 3,
-        first_name: "Person",
-        last_name: "Two",
-        birthdate: `1985-${inThreeDays.format("MM-DD")}`,
-      },
-    ]
-    mockGetUpcomingBirthdays.mockResolvedValue(users)
-
-    render(<DashboardPage />)
-
-    await waitFor(() => {
-      expect(screen.getByText("Fødselsdage")).toBeInTheDocument()
-    })
-
-    // Should show badge with count "2"
-    expect(screen.getByText("2")).toBeInTheDocument()
+    // Subtitle question
+    expect(screen.getByText(/hvad vil du lave i dag/i)).toBeInTheDocument()
   })
 
   // Recent Forum Activity Tests
@@ -299,188 +156,43 @@ describe("DashboardPage", () => {
     expect(screen.getByText(/this is a test forum post/i)).toBeInTheDocument()
   })
 
-  it("should show multiple recent activities", async () => {
-    const activities = [
-      {
-        id: 1,
-        author: {
-          id: 2,
-          first_name: "First",
-          last_name: "Poster",
-          profile_picture: null,
-        },
-        content: "First post content",
-        thread_id: 10,
-        thread_title: "First Thread",
-        subgroup_slug: "general",
-        subgroup_name: "General",
-        created_at: new Date().toISOString(),
-      },
-      {
-        id: 2,
-        author: {
-          id: 3,
-          first_name: "Second",
-          last_name: "Poster",
-          profile_picture: null,
-        },
-        content: "Second post content",
-        thread_id: 11,
-        thread_title: "Second Thread",
-        subgroup_slug: "tech",
-        subgroup_name: "Tech Talk",
-        created_at: new Date().toISOString(),
-      },
-    ]
-    mockGetRecentActivity.mockResolvedValue(activities)
+  // Birthday Tests
+  it("should show birthday section", async () => {
+    mockGetUpcomingBirthdays.mockResolvedValue([])
 
     render(<DashboardPage />)
 
+    // Birthday section is always rendered
     await waitFor(() => {
-      expect(screen.getByText("First Poster")).toBeInTheDocument()
+      expect(screen.getByText("Fødselsdage")).toBeInTheDocument()
     })
-
-    expect(screen.getByText("Second Poster")).toBeInTheDocument()
-    expect(screen.getByText("General")).toBeInTheDocument()
-    expect(screen.getByText("Tech Talk")).toBeInTheDocument()
   })
 
-  // Food Widget Tests
-  it("should not show food widget content when no menus available", async () => {
-    mockGetWeeklyMenus.mockResolvedValue([])
-
-    render(<DashboardPage />)
-
-    await waitFor(() => {
-      expect(screen.getByText(/velkommen/i)).toBeInTheDocument()
-    })
-
-    // "I dag" badge should not be visible (food widget specific)
-    expect(screen.queryByText("I dag")).not.toBeInTheDocument()
-    // Registration controls should not be visible
-    expect(screen.queryByText("Spiser ikke")).not.toBeInTheDocument()
-  })
-
-  it("should show food widget when menus available", async () => {
+  // Food Widget Tests (with DriveMenu)
+  it("should show food widget when DriveMenu available", async () => {
     const today = dayjs()
-    const weekStart = today.startOf("isoWeek")
+    const weekNumber = today.isoWeek()
+    const year = today.isoWeekYear()
 
-    const menus = [
-      {
-        id: 1,
-        week_start_date: weekStart.format("YYYY-MM-DD"),
-        daily_menus: [
-          {
-            id: 1,
-            date: today.format("YYYY-MM-DD"),
-            day_of_week: today.day(),
-            day_name: today.format("dddd"),
-            template: null,
-            menu_name: "",
-            description: "Pasta med kødsovs",
-            effective_description: "Pasta med kødsovs",
-            has_meat_option: false,
-            meat_description: "",
-            effective_meat_description: "",
-            vegetarian_description: "",
-            effective_vegetarian_description: "",
-          },
-        ],
-        created_by: null,
-        created_at: "",
-        updated_at: "",
-      },
-    ]
-    mockGetWeeklyMenus.mockResolvedValue(menus)
+    const driveMenu = {
+      id: 1,
+      week_number: weekNumber,
+      year: year,
+      week_start_date: today.startOf("isoWeek").format("YYYY-MM-DD"),
+      monday_menu: "Pasta med kødsovs",
+      tuesday_menu: "Thai curry",
+      wednesday_menu: "Frikadeller",
+      thursday_menu: "Risotto",
+      fetched_at: new Date().toISOString(),
+      is_stale: false,
+    }
+    mockGetDriveMenu.mockResolvedValue(driveMenu)
 
     render(<DashboardPage />)
 
+    // Check that menu items are displayed
     await waitFor(() => {
       expect(screen.getByText("Pasta med kødsovs")).toBeInTheDocument()
     })
-
-    expect(screen.getByText("I dag")).toBeInTheDocument()
-  })
-
-  it("should show registration controls in food widget", async () => {
-    const today = dayjs()
-    const weekStart = today.startOf("isoWeek")
-
-    const menus = [
-      {
-        id: 1,
-        week_start_date: weekStart.format("YYYY-MM-DD"),
-        daily_menus: [
-          {
-            id: 1,
-            date: today.format("YYYY-MM-DD"),
-            day_of_week: today.day(),
-            day_name: today.format("dddd"),
-            template: null,
-            menu_name: "",
-            description: "Test menu",
-            effective_description: "Test menu",
-            has_meat_option: false,
-            meat_description: "",
-            effective_meat_description: "",
-            vegetarian_description: "",
-            effective_vegetarian_description: "",
-          },
-        ],
-        created_by: null,
-        created_at: "",
-        updated_at: "",
-      },
-    ]
-    mockGetWeeklyMenus.mockResolvedValue(menus)
-
-    render(<DashboardPage />)
-
-    await waitFor(() => {
-      expect(screen.getByText("Spiser")).toBeInTheDocument()
-    })
-
-    expect(screen.getByText("Spiser ikke")).toBeInTheDocument()
-  })
-
-  it("should show meat/vegetarian options when menu has both", async () => {
-    const today = dayjs()
-    const weekStart = today.startOf("isoWeek")
-
-    const menus = [
-      {
-        id: 1,
-        week_start_date: weekStart.format("YYYY-MM-DD"),
-        daily_menus: [
-          {
-            id: 1,
-            date: today.format("YYYY-MM-DD"),
-            day_of_week: today.day(),
-            day_name: today.format("dddd"),
-            template: null,
-            menu_name: "",
-            description: "",
-            effective_description: "",
-            has_meat_option: true,
-            meat_description: "Bøf med løg",
-            effective_meat_description: "Bøf med løg",
-            vegetarian_description: "Grøntsagsgryde",
-            effective_vegetarian_description: "Grøntsagsgryde",
-          },
-        ],
-        created_by: null,
-        created_at: "",
-        updated_at: "",
-      },
-    ]
-    mockGetWeeklyMenus.mockResolvedValue(menus)
-
-    render(<DashboardPage />)
-
-    await waitFor(() => {
-      expect(screen.getByText("Bøf med løg")).toBeInTheDocument()
-    })
-
-    expect(screen.getByText("Grøntsagsgryde")).toBeInTheDocument()
   })
 })

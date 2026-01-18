@@ -96,26 +96,28 @@ describe("FoodTicketsPage", () => {
   it("should render page title and tabs", async () => {
     render(<FoodTicketsPage />)
 
-    expect(screen.getByText("Food Tickets")).toBeInTheDocument()
-    expect(screen.getByText(/available/i)).toBeInTheDocument()
-    expect(screen.getByText(/my tickets/i)).toBeInTheDocument()
+    expect(screen.getByText("Madbilletter")).toBeInTheDocument()
+    expect(screen.getByText(/tilgængelige/i)).toBeInTheDocument()
+    expect(screen.getByText(/mine billetter/i)).toBeInTheDocument()
   })
 
   it("should show back button that navigates to food page", async () => {
     const user = userEvent.setup()
     render(<FoodTicketsPage />)
 
-    const backButton = screen.getByRole("button", { name: /back to food/i })
+    const backButton = screen.getByRole("button", { name: /tilbage til mad/i })
     await user.click(backButton)
 
-    expect(mockNavigate).toHaveBeenCalledWith("/food")
+    expect(mockNavigate).toHaveBeenCalledWith("/mad")
   })
 
   it("should show empty state when no available tickets", async () => {
     render(<FoodTicketsPage />)
 
     await waitFor(() => {
-      expect(screen.getByText(/no tickets available/i)).toBeInTheDocument()
+      expect(
+        screen.getByText(/ingen billetter tilgængelige/i),
+      ).toBeInTheDocument()
     })
   })
 
@@ -128,8 +130,10 @@ describe("FoodTicketsPage", () => {
       expect(screen.getByText("John Doe")).toBeInTheDocument()
     })
     expect(screen.getByText("50.00 DKK")).toBeInTheDocument()
-    expect(screen.getByText(/2 portions/i)).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /claim/i })).toBeInTheDocument()
+    expect(screen.getByText(/2 portioner/i)).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: /reserver/i }),
+    ).toBeInTheDocument()
   })
 
   it("should show free badge for free tickets", async () => {
@@ -139,7 +143,7 @@ describe("FoodTicketsPage", () => {
     render(<FoodTicketsPage />)
 
     await waitFor(() => {
-      expect(screen.getByText("Free")).toBeInTheDocument()
+      expect(screen.getByText("Gratis")).toBeInTheDocument()
     })
   })
 
@@ -154,10 +158,12 @@ describe("FoodTicketsPage", () => {
     render(<FoodTicketsPage />)
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /claim/i })).toBeInTheDocument()
+      expect(
+        screen.getByRole("button", { name: /reserver/i }),
+      ).toBeInTheDocument()
     })
 
-    await user.click(screen.getByRole("button", { name: /claim/i }))
+    await user.click(screen.getByRole("button", { name: /reserver/i }))
 
     await waitFor(() => {
       expect(foodApi.claimTicket).toHaveBeenCalledWith(mockAvailableTicket.id)
@@ -171,7 +177,7 @@ describe("FoodTicketsPage", () => {
     render(<FoodTicketsPage />)
 
     // Click on My Tickets tab
-    const myTicketsTab = screen.getByRole("tab", { name: /my tickets/i })
+    const myTicketsTab = screen.getByRole("tab", { name: /mine billetter/i })
     await user.click(myTicketsTab)
 
     await waitFor(() => {
@@ -185,9 +191,9 @@ describe("FoodTicketsPage", () => {
     render(<FoodTicketsPage />)
 
     await waitFor(() => {
-      expect(screen.getByText("Claimed")).toBeInTheDocument()
+      expect(screen.getByText("Reserveret")).toBeInTheDocument()
     })
-    expect(screen.getByText(/claimed by jane smith/i)).toBeInTheDocument()
+    expect(screen.getByText(/reserveret af jane/i)).toBeInTheDocument()
   })
 
   it("should not show claim button for own tickets", async () => {
@@ -204,7 +210,7 @@ describe("FoodTicketsPage", () => {
       expect(screen.getByText("John Doe")).toBeInTheDocument()
     })
     expect(
-      screen.queryByRole("button", { name: /claim/i }),
+      screen.queryByRole("button", { name: /reserver/i }),
     ).not.toBeInTheDocument()
   })
 
@@ -212,7 +218,7 @@ describe("FoodTicketsPage", () => {
     render(<FoodTicketsPage />)
 
     expect(
-      screen.getByRole("button", { name: /offer ticket/i }),
+      screen.getByRole("button", { name: /tilbyd billet/i }),
     ).toBeInTheDocument()
   })
 
@@ -226,8 +232,8 @@ describe("FoodTicketsPage", () => {
     render(<FoodTicketsPage />)
 
     await waitFor(() => {
-      expect(screen.getByText(/available \(2\)/i)).toBeInTheDocument()
-      expect(screen.getByText(/my tickets \(1\)/i)).toBeInTheDocument()
+      expect(screen.getByText(/tilgængelige \(2\)/i)).toBeInTheDocument()
+      expect(screen.getByText(/mine billetter \(1\)/i)).toBeInTheDocument()
     })
   })
 })

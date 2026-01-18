@@ -44,15 +44,15 @@ describe("AppNavbar", () => {
   it("should render all navigation items", async () => {
     render(<AppNavbar />)
 
-    expect(screen.getByText("Dashboard")).toBeInTheDocument()
-    expect(screen.getByText("Notifications")).toBeInTheDocument()
-    expect(screen.getByText("Announcements")).toBeInTheDocument()
+    expect(screen.getByText("Forside")).toBeInTheDocument()
+    expect(screen.getByText("Notifikationer")).toBeInTheDocument()
+    expect(screen.getByText("Vigtig post")).toBeInTheDocument()
     expect(screen.getByText("Forum")).toBeInTheDocument()
-    expect(screen.getByText("Food")).toBeInTheDocument()
-    expect(screen.getByText("Food Teams")).toBeInTheDocument()
-    expect(screen.getByText("Calendar")).toBeInTheDocument()
-    expect(screen.getByText("Directory")).toBeInTheDocument()
-    expect(screen.getByText("Messages")).toBeInTheDocument()
+    expect(screen.getByText("Mad")).toBeInTheDocument()
+    expect(screen.getByText("Madhold")).toBeInTheDocument()
+    expect(screen.getByText("Kalender")).toBeInTheDocument()
+    expect(screen.getByText("Beboeroversigt")).toBeInTheDocument()
+    expect(screen.getByText("Beskeder")).toBeInTheDocument()
   })
 
   it("should navigate when clicking on nav item", async () => {
@@ -69,10 +69,10 @@ describe("AppNavbar", () => {
     const onNavigate = vi.fn()
     render(<AppNavbar onNavigate={onNavigate} />)
 
-    await user.click(screen.getByText("Calendar"))
+    await user.click(screen.getByText("Kalender"))
 
     expect(onNavigate).toHaveBeenCalled()
-    expect(mockNavigate).toHaveBeenCalledWith("/calendar")
+    expect(mockNavigate).toHaveBeenCalledWith("/kalender")
   })
 
   it("should show unread messages badge", async () => {
@@ -83,8 +83,8 @@ describe("AppNavbar", () => {
     render(<AppNavbar />)
 
     await waitFor(() => {
-      // Find the Messages nav item and check for badge
-      const messagesLink = screen.getByText("Messages").closest("a, button")
+      // Find the Beskeder nav item and check for badge
+      const messagesLink = screen.getByText("Beskeder").closest("a, button")
       expect(messagesLink).toBeInTheDocument()
     })
 
@@ -129,8 +129,8 @@ describe("AppNavbar", () => {
     render(<AppNavbar />)
 
     await waitFor(() => {
-      // Dashboard should be rendered, meaning API calls completed
-      expect(screen.getByText("Dashboard")).toBeInTheDocument()
+      // Forside should be rendered, meaning API calls completed
+      expect(screen.getByText("Forside")).toBeInTheDocument()
     })
 
     // No badge elements should be present

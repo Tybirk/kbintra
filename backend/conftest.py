@@ -103,28 +103,6 @@ def admin_client(api_client, admin_user):
 
 
 @pytest.fixture
-def menu_template(db):
-    """Create a test menu template."""
-    return MenuTemplate.objects.create(
-        name="Test Lasagne",
-        description="Delicious homemade lasagne",
-        has_meat_option=True,
-        meat_description="Classic beef lasagne",
-        vegetarian_description="Vegetable lasagne",
-    )
-
-
-@pytest.fixture
-def menu_template_simple(db):
-    """Create a simple test menu template without meat option."""
-    return MenuTemplate.objects.create(
-        name="Vegetable Stir Fry",
-        description="Fresh vegetable stir fry with rice",
-        has_meat_option=False,
-    )
-
-
-@pytest.fixture
 def monday_date(request):
     """Return a unique Monday date for each test."""
     import hashlib
@@ -136,31 +114,6 @@ def monday_date(request):
     base_date = timezone.now().date() + timedelta(weeks=100)
     days_until_monday = (7 - base_date.weekday()) % 7
     return base_date + timedelta(days=days_until_monday) + timedelta(weeks=hash_int)
-
-
-@pytest.fixture
-def weekly_menu(db, user, monday_date):
-    """Create a test weekly menu."""
-    # Use get_or_create to handle any existing data
-    menu, created = WeeklyMenu.objects.get_or_create(
-        week_start_date=monday_date,
-        defaults={"created_by": user},
-    )
-    if not created:
-        # Update the created_by if menu already exists
-        menu.created_by = user
-        menu.save()
-    # Create daily menus for Mon-Thu if they don't exist
-    for day in range(4):
-        DailyMenu.objects.get_or_create(
-            weekly_menu=menu,
-            date=monday_date + timedelta(days=day),
-            defaults={
-                "day_of_week": day,
-                "has_meat_option": (day == DayOfWeek.WEDNESDAY),
-            },
-        )
-    return menu
 
 
 @pytest.fixture

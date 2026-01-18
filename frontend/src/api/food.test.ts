@@ -18,83 +18,50 @@ describe("foodApi", () => {
     vi.clearAllMocks()
   })
 
-  describe("Menu Templates", () => {
-    it("should fetch templates", async () => {
-      const mockTemplates = [{ id: 1, name: "Test Template" }]
-      vi.mocked(apiClient.get).mockResolvedValue({
-        data: { results: mockTemplates },
-      })
-
-      const result = await foodApi.getTemplates()
-
-      expect(apiClient.get).toHaveBeenCalledWith("/food/templates/")
-      expect(result).toEqual(mockTemplates)
-    })
-
-    it("should create template", async () => {
-      const mockTemplate = { id: 1, name: "New Template" }
-      vi.mocked(apiClient.post).mockResolvedValue({ data: mockTemplate })
-
-      const result = await foodApi.createTemplate({ name: "New Template" })
-
-      expect(apiClient.post).toHaveBeenCalledWith("/food/templates/", {
-        name: "New Template",
-      })
-      expect(result).toEqual(mockTemplate)
-    })
-
-    it("should update template", async () => {
-      const mockTemplate = { id: 1, name: "Updated" }
-      vi.mocked(apiClient.patch).mockResolvedValue({ data: mockTemplate })
-
-      const result = await foodApi.updateTemplate(1, { name: "Updated" })
-
-      expect(apiClient.patch).toHaveBeenCalledWith("/food/templates/1/", {
-        name: "Updated",
-      })
-      expect(result).toEqual(mockTemplate)
-    })
-
-    it("should delete template", async () => {
-      vi.mocked(apiClient.delete).mockResolvedValue({})
-
-      await foodApi.deleteTemplate(1)
-
-      expect(apiClient.delete).toHaveBeenCalledWith("/food/templates/1/")
-    })
-  })
-
-  describe("Weekly Menus", () => {
-    it("should fetch weekly menus", async () => {
-      const mockMenus = [{ id: 1, week_start_date: "2025-01-13" }]
-      vi.mocked(apiClient.get).mockResolvedValue({ data: mockMenus })
-
-      const result = await foodApi.getWeeklyMenus()
-
-      expect(apiClient.get).toHaveBeenCalledWith("/food/menus/")
-      expect(result).toEqual(mockMenus)
-    })
-
-    it("should fetch current week menu", async () => {
-      const mockMenu = { id: 1, week_start_date: "2025-01-13" }
+  describe("Drive Menu", () => {
+    it("should fetch drive menu for current week", async () => {
+      const mockMenu = {
+        id: 1,
+        week_number: 3,
+        year: 2026,
+        monday_menu: "Lasagne",
+        tuesday_menu: "Thai curry",
+      }
       vi.mocked(apiClient.get).mockResolvedValue({ data: mockMenu })
 
-      const result = await foodApi.getCurrentWeekMenu()
+      const result = await foodApi.getDriveMenu()
 
-      expect(apiClient.get).toHaveBeenCalledWith("/food/menus/current/")
+      expect(apiClient.get).toHaveBeenCalledWith("/food/drive-menu/", {
+        params: {},
+      })
       expect(result).toEqual(mockMenu)
     })
 
-    it("should create weekly menu", async () => {
-      const mockMenu = { id: 1, week_start_date: "2025-01-20" }
-      vi.mocked(apiClient.post).mockResolvedValue({ data: mockMenu })
+    it("should fetch drive menu for specific week", async () => {
+      const mockMenu = {
+        id: 1,
+        week_number: 5,
+        year: 2026,
+        monday_menu: "Frikadeller",
+      }
+      vi.mocked(apiClient.get).mockResolvedValue({ data: mockMenu })
 
-      const result = await foodApi.createWeeklyMenu("2025-01-20")
+      const result = await foodApi.getDriveMenu(5, 2026)
 
-      expect(apiClient.post).toHaveBeenCalledWith("/food/menus/", {
-        week_start_date: "2025-01-20",
+      expect(apiClient.get).toHaveBeenCalledWith("/food/drive-menu/", {
+        params: { week: 5, year: 2026 },
       })
       expect(result).toEqual(mockMenu)
+    })
+
+    it("should refresh all drive menus", async () => {
+      const mockResult = { updated: 5, failed: 0 }
+      vi.mocked(apiClient.post).mockResolvedValue({ data: mockResult })
+
+      const result = await foodApi.refreshAllDriveMenus()
+
+      expect(apiClient.post).toHaveBeenCalledWith("/food/drive-menu/refresh-all/")
+      expect(result).toEqual(mockResult)
     })
   })
 

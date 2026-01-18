@@ -92,7 +92,8 @@ class TestUserAPI:
         assert response.status_code == 200
 
         data = response.json()
-        results = data.get("results", data)
+        # Handle both paginated (dict with results) and non-paginated (list) responses
+        results = data.get("results", data) if isinstance(data, dict) else data
         assert len(results) >= 2
 
     def test_get_user_detail(self, authenticated_client, second_user):

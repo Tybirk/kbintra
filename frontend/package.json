@@ -28,6 +28,7 @@
     "@mantine/tiptap": "^8.3.12",
     "@tabler/icons-react": "^3.35.0",
     "@tanstack/react-query": "^5.90.12",
+    "@testing-library/dom": "^10.4.1",
     "@tiptap/extension-link": "^3.13.0",
     "@tiptap/extension-placeholder": "^3.13.0",
     "@tiptap/react": "^3.13.0",

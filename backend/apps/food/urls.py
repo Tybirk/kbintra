@@ -4,8 +4,6 @@ URL configuration for food endpoints.
 
 from django.urls import path
 
-app_name = "food"
-
 from .views import (
     ActiveCycleView,
     ApplyDefaultsView,
@@ -35,6 +33,8 @@ from .views import (
     SwapRequestDetailView,
     SwapRequestListCreateView,
 )
+
+app_name = "food"
 
 urlpatterns = [
     # Preferences

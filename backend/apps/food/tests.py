@@ -4,7 +4,7 @@ Tests for the Food app.
 Uses pytest and pytest-django for testing.
 """
 
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -14,9 +14,9 @@ from django.utils import timezone
 
 from apps.food.models import (
     CycleStatus,
-    DailyMenu,
     DayOfWeek,
     DiningOption,
+    DriveMenuCache,
     FoodTeam,
     FoodTeamCycle,
     FoodTeamMember,
@@ -25,19 +25,15 @@ from apps.food.models import (
     MealPreference,
     MealRegistration,
     MealType,
-    MenuTemplate,
     SeatingTime,
     SwapRequestStatus,
     TeamSwapRequest,
-    WeeklyMenu,
 )
 from apps.food.serializers import (
     FoodTeamCycleCreateSerializer,
     FoodTeamWishCreateUpdateSerializer,
     FoodTicketCreateSerializer,
     MealRegistrationCreateUpdateSerializer,
-    MenuTemplateSerializer,
-    WeeklyMenuCreateSerializer,
 )
 from apps.food.services.team_generator import TeamGenerationResult, TeamGenerator
 from apps.users.models import User
@@ -46,89 +42,6 @@ from conftest import generate_cooking_dates
 # =============================================================================
 # Model Tests
 # =============================================================================
-
-
-class TestMenuTemplateModel:
-    """Tests for MenuTemplate model."""
-
-    def test_create_menu_template(self, db):
-        """Test creating a menu template."""
-        template = MenuTemplate.objects.create(
-            name="Thai Curry",
-            description="Spicy Thai curry with rice",
-            has_meat_option=True,
-            meat_description="Chicken curry",
-            vegetarian_description="Tofu curry",
-        )
-        assert template.name == "Thai Curry"
-        assert template.has_meat_option is True
-        assert str(template) == "Thai Curry"
-
-    def test_menu_template_ordering(self, db):
-        """Test menu templates are ordered by name."""
-        t1 = MenuTemplate.objects.create(name="Zebra Steak Test")
-        t2 = MenuTemplate.objects.create(name="Apple Pie Test")
-        t3 = MenuTemplate.objects.create(name="Mango Salad Test")
-
-        # Filter for only the templates we created
-        templates = list(MenuTemplate.objects.filter(id__in=[t1.id, t2.id, t3.id]).order_by("name"))
-        assert templates[0].name == "Apple Pie Test"
-        assert templates[1].name == "Mango Salad Test"
-        assert templates[2].name == "Zebra Steak Test"
-
-
-class TestWeeklyMenuModel:
-    """Tests for WeeklyMenu model."""
-
-    def test_create_weekly_menu(self, db, user, monday_date):
-        """Test creating a weekly menu."""
-        menu = WeeklyMenu.objects.create(
-            week_start_date=monday_date,
-            created_by=user,
-        )
-        assert menu.week_start_date == monday_date
-        assert menu.created_by == user
-        assert "Menu for week of" in str(menu)
-
-    def test_weekly_menu_ordering(self, db, user, monday_date):
-        """Test weekly menus are ordered by date descending."""
-        WeeklyMenu.objects.create(week_start_date=monday_date, created_by=user)
-        WeeklyMenu.objects.create(week_start_date=monday_date + timedelta(weeks=1), created_by=user)
-        WeeklyMenu.objects.create(week_start_date=monday_date - timedelta(weeks=1), created_by=user)
-
-        menus = list(WeeklyMenu.objects.all())
-        # Descending order
-        assert menus[0].week_start_date == monday_date + timedelta(weeks=1)
-        assert menus[1].week_start_date == monday_date
-        assert menus[2].week_start_date == monday_date - timedelta(weeks=1)
-
-
-class TestDailyMenuModel:
-    """Tests for DailyMenu model."""
-
-    def test_daily_menu_properties(self, weekly_menu, menu_template):
-        """Test daily menu property methods."""
-        daily_menu = weekly_menu.daily_menus.first()
-        daily_menu.template = menu_template
-        daily_menu.save()
-
-        assert daily_menu.menu_name == "Test Lasagne"
-        assert daily_menu.effective_description == "Delicious homemade lasagne"
-        assert daily_menu.effective_meat_description == "Classic beef lasagne"
-        assert daily_menu.effective_vegetarian_description == "Vegetable lasagne"
-
-    def test_daily_menu_local_override(self, weekly_menu, menu_template):
-        """Test that local descriptions override template."""
-        daily_menu = weekly_menu.daily_menus.first()
-        daily_menu.template = menu_template
-        daily_menu.description = "Local description"
-        daily_menu.meat_description = "Local meat"
-        daily_menu.vegetarian_description = "Local veg"
-        daily_menu.save()
-
-        assert daily_menu.effective_description == "Local description"
-        assert daily_menu.effective_meat_description == "Local meat"
-        assert daily_menu.effective_vegetarian_description == "Local veg"
 
 
 class TestMealPreferenceModel:
@@ -282,34 +195,45 @@ class TestTeamSwapRequest:
         assert swap.target_user == admin_user
 
 
+class TestDriveMenuCacheModel:
+    """Tests for DriveMenuCache model."""
+
+    def test_create_drive_menu_cache(self, db):
+        """Test creating a drive menu cache entry."""
+        cache = DriveMenuCache.objects.create(
+            week_number=3,
+            year=2026,
+            monday_menu="Lasagne",
+            tuesday_menu="Thai curry",
+            wednesday_menu="Frikadeller",
+            thursday_menu="Pasta",
+        )
+        assert cache.week_number == 3
+        assert cache.year == 2026
+        assert str(cache) == "Week 3, 2026"
+
+    def test_is_stale(self, db):
+        """Test is_stale method."""
+        cache = DriveMenuCache.objects.create(
+            week_number=4,
+            year=2026,
+            monday_menu="Test",
+        )
+        # Just created, should not be stale
+        assert cache.is_stale(max_age_hours=1) is False
+
+    def test_unique_constraint(self, db):
+        """Test unique constraint on week_number + year."""
+        from django.db import IntegrityError
+
+        DriveMenuCache.objects.create(week_number=5, year=2026)
+        with pytest.raises(IntegrityError):
+            DriveMenuCache.objects.create(week_number=5, year=2026)
+
+
 # =============================================================================
 # Serializer Tests
 # =============================================================================
-
-
-class TestMenuTemplateSerializer:
-    """Tests for MenuTemplateSerializer."""
-
-    def test_serialize(self, menu_template):
-        """Test serializing a menu template."""
-        serializer = MenuTemplateSerializer(menu_template)
-        data = serializer.data
-
-        assert data["name"] == "Test Lasagne"
-        assert data["has_meat_option"] is True
-        assert "created_at" in data
-
-    def test_deserialize(self, db):
-        """Test deserializing menu template data."""
-        data = {
-            "name": "New Menu",
-            "description": "A new menu",
-            "has_meat_option": False,
-        }
-        serializer = MenuTemplateSerializer(data=data)
-        assert serializer.is_valid()
-        template = serializer.save()
-        assert template.name == "New Menu"
 
 
 class MockRequest:
@@ -317,28 +241,6 @@ class MockRequest:
 
     def __init__(self, user):
         self.user = user
-
-
-class TestWeeklyMenuCreateSerializer:
-    """Tests for WeeklyMenuCreateSerializer."""
-
-    def test_validate_monday(self, db, user, monday_date):
-        """Test that week_start_date must be a Monday."""
-        serializer = WeeklyMenuCreateSerializer(
-            data={"week_start_date": monday_date.isoformat()},
-            context={"request": MockRequest(user)},
-        )
-        assert serializer.is_valid()
-
-    def test_reject_non_monday(self, db, user, monday_date):
-        """Test that non-Monday dates are rejected."""
-        tuesday = monday_date + timedelta(days=1)
-        serializer = WeeklyMenuCreateSerializer(
-            data={"week_start_date": tuesday.isoformat()},
-            context={"request": MockRequest(user)},
-        )
-        assert not serializer.is_valid()
-        assert "week_start_date" in serializer.errors
 
 
 class TestMealRegistrationSerializer:
@@ -490,97 +392,6 @@ class TestFoodTeamWishSerializer:
 
 
 @pytest.mark.django_db
-class TestMenuTemplateViews:
-    """Tests for menu template API endpoints."""
-
-    def test_list_templates(self, authenticated_client, menu_template):
-        """Test listing menu templates."""
-        url = reverse("food:template-list")
-        response = authenticated_client.get(url)
-        assert response.status_code == 200
-        data = response.json()
-        # Handle pagination
-        if isinstance(data, dict) and "results" in data:
-            data = data["results"]
-        assert len(data) >= 1
-
-    def test_create_template(self, authenticated_client):
-        """Test creating a menu template."""
-        url = reverse("food:template-list")
-        data = {
-            "name": "New Template",
-            "description": "A new template",
-            "has_meat_option": False,
-        }
-        response = authenticated_client.post(url, data, format="json")
-        assert response.status_code == 201
-        assert response.json()["name"] == "New Template"
-
-    def test_update_template(self, authenticated_client, menu_template):
-        """Test updating a menu template."""
-        url = reverse("food:template-detail", kwargs={"pk": menu_template.pk})
-        response = authenticated_client.patch(url, {"name": "Updated Name"}, format="json")
-        assert response.status_code == 200
-        assert response.json()["name"] == "Updated Name"
-
-    def test_delete_template(self, authenticated_client, menu_template):
-        """Test deleting a menu template."""
-        url = reverse("food:template-detail", kwargs={"pk": menu_template.pk})
-        response = authenticated_client.delete(url)
-        assert response.status_code == 204
-
-
-@pytest.mark.django_db
-class TestWeeklyMenuViews:
-    """Tests for weekly menu API endpoints."""
-
-    def test_list_menus(self, authenticated_client, weekly_menu):
-        """Test listing weekly menus."""
-        url = reverse("food:menu-list")
-        response = authenticated_client.get(url)
-        assert response.status_code == 200
-
-    def test_create_menu(self, authenticated_client, monday_date):
-        """Test creating a weekly menu."""
-        # Use a different Monday to avoid conflicts
-        new_monday = monday_date + timedelta(weeks=50)
-        url = reverse("food:menu-list")
-        response = authenticated_client.post(
-            url, {"week_start_date": new_monday.isoformat()}, format="json"
-        )
-        assert response.status_code == 201
-        # The create serializer returns the full menu data
-        data = response.json()
-        # Verify menu was created with daily menus
-        menu = WeeklyMenu.objects.get(week_start_date=new_monday)
-        assert menu.daily_menus.count() == 4
-
-    def test_get_current_week_menu(self, authenticated_client, user, db):
-        """Test getting current week menu."""
-        # Create a menu for current week
-        today = timezone.now().date()
-        current_monday = today - timedelta(days=today.weekday())
-        # Clean up any existing menu for this week
-        WeeklyMenu.objects.filter(week_start_date=current_monday).delete()
-        # Create fresh menu
-        menu = WeeklyMenu.objects.create(
-            week_start_date=current_monday,
-            created_by=user,
-        )
-        # Create daily menus
-        for i in range(4):
-            DailyMenu.objects.create(
-                weekly_menu=menu,
-                date=current_monday + timedelta(days=i),
-                day_of_week=i,
-            )
-
-        url = reverse("food:menu-current")
-        response = authenticated_client.get(url)
-        assert response.status_code == 200
-
-
-@pytest.mark.django_db
 class TestMealPreferenceViews:
     """Tests for meal preference API endpoints."""
 
@@ -646,15 +457,22 @@ class TestFoodTicketViews:
         """Test creating a food ticket."""
         url = reverse("food:ticket-list")
         future_date = monday_date + timedelta(weeks=5)
-        data = {
-            "date": future_date.isoformat(),
-            "adults_count": 1,
-            "children_count": 0,
-            "meal_type": MealType.VEGETARIAN,
-            "price": "25.00",
-        }
-        with patch("apps.notifications.services.notify_food_ticket_available"):
-            response = authenticated_client.post(url, data, format="json")
+        # Mock time to be after deadline (Thursday of the previous week)
+        # Deadline is Wednesday 18:00 of the week before the meal
+        mock_now_date = future_date - timedelta(days=4)  # Thursday before Monday
+        with patch("apps.food.serializers.timezone") as mock_tz:
+            mock_now = timezone.make_aware(datetime.combine(mock_now_date, time(10, 0)))
+            mock_tz.now.return_value = mock_now
+            mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
+            data = {
+                "date": future_date.isoformat(),
+                "adults_count": 1,
+                "children_count": 0,
+                "meal_type": MealType.VEGETARIAN,
+                "price": "25.00",
+            }
+            with patch("apps.notifications.services.notify_food_ticket_available"):
+                response = authenticated_client.post(url, data, format="json")
         assert response.status_code == 201
 
     def test_claim_ticket(self, api_client, admin_user, food_ticket):
@@ -794,6 +612,62 @@ class TestRegistrationStatsView:
         assert response.status_code == 200
 
 
+@pytest.mark.django_db
+class TestDriveMenuViews:
+    """Tests for drive menu API endpoints."""
+
+    def test_get_drive_menu(self, authenticated_client, db):
+        """Test getting drive menu (returns 404 if not cached)."""
+        url = reverse("food:drive-menu")
+        response = authenticated_client.get(url)
+        # Will be 404 if no cache exists, 200 if it does
+        assert response.status_code in [200, 404]
+
+    def test_get_drive_menu_with_cache(self, authenticated_client, db):
+        """Test getting drive menu when cache exists."""
+        # Create cache entry for current week
+        today = timezone.now().date()
+        week_number = today.isocalendar()[1]
+        year = today.isocalendar()[0]
+
+        DriveMenuCache.objects.create(
+            week_number=week_number,
+            year=year,
+            monday_menu="Lasagne",
+            tuesday_menu="Thai curry",
+            wednesday_menu="Frikadeller",
+            thursday_menu="Pasta",
+        )
+
+        url = reverse("food:drive-menu")
+        response = authenticated_client.get(url)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["monday_menu"] == "Lasagne"
+        assert data["tuesday_menu"] == "Thai curry"
+
+    def test_get_drive_menu_by_week(self, authenticated_client, db):
+        """Test getting drive menu for specific week."""
+        DriveMenuCache.objects.create(
+            week_number=10,
+            year=2026,
+            monday_menu="Test menu",
+        )
+
+        url = reverse("food:drive-menu")
+        response = authenticated_client.get(url, {"week": 10, "year": 2026})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["week_number"] == 10
+        assert data["year"] == 2026
+
+    def test_refresh_drive_menu_requires_admin(self, authenticated_client):
+        """Test that refreshing drive menu requires admin."""
+        url = reverse("food:drive-menu")
+        response = authenticated_client.post(url)
+        assert response.status_code == 403
+
+
 # =============================================================================
 # Team Generator Service Tests
 # =============================================================================
@@ -827,10 +701,8 @@ class TestTeamGenerator:
 
         # First assignment should be valid
         user_id = multiple_users[0].id
-        if user_id in generator.persons:
-            # Ensure date is in cooking dates
-            if monday_date in generator.cooking_dates:
-                assert generator.is_valid_assignment(user_id, monday_date) is True
+        if user_id in generator.persons and monday_date in generator.cooking_dates:
+            assert generator.is_valid_assignment(user_id, monday_date) is True
 
     def test_generate_dry_run(self, food_team_cycle, multiple_users, monday_date):
         """Test dry run generation."""
@@ -1009,12 +881,6 @@ class TestApplyDefaultsView:
 class TestUnauthenticatedAccess:
     """Tests to ensure endpoints require authentication."""
 
-    def test_menu_list_requires_auth(self, api_client):
-        """Test that menu list requires authentication."""
-        url = reverse("food:menu-list")
-        response = api_client.get(url)
-        assert response.status_code == 401
-
     def test_ticket_list_requires_auth(self, api_client):
         """Test that ticket list requires authentication."""
         url = reverse("food:ticket-list")
@@ -1024,6 +890,12 @@ class TestUnauthenticatedAccess:
     def test_team_list_requires_auth(self, api_client):
         """Test that team list requires authentication."""
         url = reverse("food:team-list")
+        response = api_client.get(url)
+        assert response.status_code == 401
+
+    def test_drive_menu_requires_auth(self, api_client):
+        """Test that drive menu requires authentication."""
+        url = reverse("food:drive-menu")
         response = api_client.get(url)
         assert response.status_code == 401
 
@@ -1039,8 +911,6 @@ class TestFoodTicketDefaultPricing:
 
     def test_default_price_meat(self, db, user):
         """Test default price calculation for meat meal."""
-        from apps.food.serializers import FoodTicketCreateSerializer
-
         serializer = FoodTicketCreateSerializer(context={"request": MockRequest(user)})
         price = serializer.calculate_default_price(MealType.MEAT, 2, 1)
         # 2 adults @ 37 + 1 child @ 18 = 92
@@ -1048,8 +918,6 @@ class TestFoodTicketDefaultPricing:
 
     def test_default_price_vegetarian(self, db, user):
         """Test default price calculation for vegetarian meal."""
-        from apps.food.serializers import FoodTicketCreateSerializer
-
         serializer = FoodTicketCreateSerializer(context={"request": MockRequest(user)})
         price = serializer.calculate_default_price(MealType.VEGETARIAN, 2, 1)
         # 2 adults @ 26 + 1 child @ 18 = 70
@@ -1058,15 +926,6 @@ class TestFoodTicketDefaultPricing:
     def test_ticket_created_with_default_price(self, api_client, user_with_house, monday_date):
         """Test that ticket is created with default price if not specified."""
         api_client.force_authenticate(user=user_with_house)
-
-        # Use a date after the registration deadline (current week)
-        # The deadline for this week's meals passed last Wednesday
-        today = timezone.now().date()
-        # Find a future Monday in a week where the deadline has passed
-        future_monday = today + timedelta(days=(7 - today.weekday()))
-        if today.weekday() < 2:  # Before Wednesday
-            # Need to go to next week
-            future_monday += timedelta(weeks=1)
 
         # Actually, let's mock the time to be after the deadline
         with patch("apps.food.serializers.timezone") as mock_tz:
@@ -1295,8 +1154,6 @@ class TestTicketCreationDeadline:
 
     def test_deadline_calculation(self, db, user):
         """Test deadline calculation for different meal dates."""
-        from apps.food.serializers import FoodTicketCreateSerializer
-
         serializer = FoodTicketCreateSerializer(context={"request": MockRequest(user)})
 
         # Monday Dec 22, 2025 - deadline should be Wed Dec 17 at 18:00
@@ -1362,19 +1219,11 @@ class TestMonthlyFoodCostReport:
 
         # Find the house costs
         owner_house_cost = next((h for h in data["houses"] if h["house_id"] == house.id), None)
-        claimer_house_cost = next((h for h in data["houses"] if h["house_id"] == house2.id), None)
 
         # The OWNER's house (house) should have the cost
         assert owner_house_cost is not None
         assert Decimal(owner_house_cost["total_cost"]) == Decimal("74.00")
         assert owner_house_cost["ticket_count"] == 1
-
-        # The CLAIMER's house (house2) should have zero cost from this ticket
-        # (they might have other tickets, but not this one)
-        if claimer_house_cost:
-            # This ticket should not count toward claimer's house
-            # Check that any cost is not from our test ticket
-            pass  # The cost should be 0 or from other tickets
 
     def test_only_admin_can_access_report(self, api_client, user_with_house):
         """Test that non-admin users cannot access the cost report."""

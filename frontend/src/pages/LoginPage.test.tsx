@@ -40,17 +40,19 @@ describe("LoginPage", () => {
     render(<LoginPage />)
 
     expect(screen.getByText("KB Intra")).toBeInTheDocument()
-    expect(screen.getByLabelText(/email/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/password/i)).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument()
+    expect(screen.getByLabelText(/e-mail/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/adgangskode/i)).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: /log ind/i }),
+    ).toBeInTheDocument()
   })
 
   it("should allow user to enter email and password", async () => {
     const user = userEvent.setup()
     render(<LoginPage />)
 
-    const emailInput = screen.getByLabelText(/email/i)
-    const passwordInput = screen.getByLabelText(/password/i)
+    const emailInput = screen.getByLabelText(/e-mail/i)
+    const passwordInput = screen.getByLabelText(/adgangskode/i)
 
     await user.type(emailInput, "test@example.com")
     await user.type(passwordInput, "password123")
@@ -65,7 +67,7 @@ describe("LoginPage", () => {
 
     render(<LoginPage />)
 
-    const submitButton = screen.getByRole("button", { name: /sign in/i })
+    const submitButton = screen.getByRole("button", { name: /log ind/i })
     // Mantine Button with loading prop adds data-loading attribute
     expect(submitButton).toHaveAttribute("data-loading", "true")
   })
@@ -76,15 +78,17 @@ describe("LoginPage", () => {
 
     render(<LoginPage />)
 
-    expect(screen.getByText(/invalid email or password/i)).toBeInTheDocument()
+    expect(
+      screen.getByText(/forkert e-mail eller adgangskode/i),
+    ).toBeInTheDocument()
   })
 
-  it("should have link to registration page", () => {
+  it("should have link to forgot password page", () => {
     render(<LoginPage />)
 
-    const registerLink = screen.getByRole("link", { name: /register here/i })
-    expect(registerLink).toBeInTheDocument()
-    expect(registerLink).toHaveAttribute("href", "/register")
+    const forgotLink = screen.getByRole("link", { name: /glemt adgangskode/i })
+    expect(forgotLink).toBeInTheDocument()
+    expect(forgotLink).toHaveAttribute("href", "/forgot-password")
   })
 
   it("should call login with email and password on submit", async () => {
@@ -94,9 +98,9 @@ describe("LoginPage", () => {
 
     render(<LoginPage />)
 
-    await user.type(screen.getByLabelText(/email/i), "test@example.com")
-    await user.type(screen.getByLabelText(/password/i), "password123")
-    await user.click(screen.getByRole("button", { name: /sign in/i }))
+    await user.type(screen.getByLabelText(/e-mail/i), "test@example.com")
+    await user.type(screen.getByLabelText(/adgangskode/i), "password123")
+    await user.click(screen.getByRole("button", { name: /log ind/i }))
 
     await waitFor(() => {
       expect(loginMock).toHaveBeenCalledWith("test@example.com", "password123")
@@ -110,9 +114,9 @@ describe("LoginPage", () => {
 
     render(<LoginPage />)
 
-    await user.type(screen.getByLabelText(/email/i), "test@example.com")
-    await user.type(screen.getByLabelText(/password/i), "password123")
-    await user.click(screen.getByRole("button", { name: /sign in/i }))
+    await user.type(screen.getByLabelText(/e-mail/i), "test@example.com")
+    await user.type(screen.getByLabelText(/adgangskode/i), "password123")
+    await user.click(screen.getByRole("button", { name: /log ind/i }))
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith("/", { replace: true })

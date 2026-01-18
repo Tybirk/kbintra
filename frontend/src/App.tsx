@@ -26,7 +26,6 @@ import FoodPage from "./pages/FoodPage"
 import FoodPreferencesPage from "./pages/FoodPreferencesPage"
 import FoodTicketsPage from "./pages/FoodTicketsPage"
 import FoodTeamsPage from "./pages/FoodTeamsPage"
-import MenuManagementPage from "./pages/MenuManagementPage"
 import CalendarPage from "./pages/CalendarPage"
 import MessagesPage from "./pages/MessagesPage"
 import NotificationsPage from "./pages/NotificationsPage"
@@ -241,14 +240,6 @@ function App() {
               element={
                 <ProtectedRoute>
                   <FoodTicketsPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/mad/admin"
-              element={
-                <ProtectedRoute>
-                  <MenuManagementPage />
                 </ProtectedRoute>
               }
             />
