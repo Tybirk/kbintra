@@ -116,9 +116,7 @@ class TestMarkNotificationsReadAPI:
         # Verify all are read
         assert Notification.objects.filter(is_read=False).count() == 0
 
-    def test_mark_specific_notifications_read(
-        self, authenticated_client, multiple_notifications
-    ):
+    def test_mark_specific_notifications_read(self, authenticated_client, multiple_notifications):
         """Test marking specific notifications as read."""
         ids_to_mark = [n.id for n in multiple_notifications[2:4]]
         response = authenticated_client.post(

@@ -15,6 +15,8 @@ from .views import (
     DailyMenuUpdateView,
     DailyRegistrationStatsView,
     DefaultCookingDaysView,
+    DriveMenuRefreshAllView,
+    DriveMenuView,
     FoodTeamCycleDetailView,
     FoodTeamCycleListCreateView,
     FoodTeamDetailView,
@@ -96,5 +98,10 @@ urlpatterns = [
         "admin/monthly-cost/",
         MonthlyFoodCostView.as_view(),
         name="monthly-food-cost",
+    ),
+    # Drive Menu (from Google Drive)
+    path("drive-menu/", DriveMenuView.as_view(), name="drive-menu"),
+    path(
+        "drive-menu/refresh-all/", DriveMenuRefreshAllView.as_view(), name="drive-menu-refresh-all"
     ),
 ]

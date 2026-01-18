@@ -96,9 +96,7 @@ class TestEventAPI:
     def test_list_events_with_date_filter(self, authenticated_client, event, past_event):
         """Test listing events with date filter."""
         now = timezone.now()
-        response = authenticated_client.get(
-            f"/api/calendar/events/?start={now.isoformat()}"
-        )
+        response = authenticated_client.get(f"/api/calendar/events/?start={now.isoformat()}")
         assert response.status_code == 200
 
         data = response.json()

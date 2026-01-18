@@ -49,7 +49,12 @@ def seed_food_teams(apps, schema_editor):
             for _ in range(team_size):
                 user = users[user_index % len(users)]
                 house_number = ""
-                if hasattr(user, "house") and user.house or hasattr(user, "house_id") and user.house_id:
+                if (
+                    hasattr(user, "house")
+                    and user.house
+                    or hasattr(user, "house_id")
+                    and user.house_id
+                ):
                     house_number = str(user.house_id)
 
                 FoodTeamMember.objects.create(

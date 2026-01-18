@@ -417,6 +417,20 @@ export interface CreateFoodTicketData {
   description?: string
 }
 
+// Drive Menu Types (from Google Drive)
+export interface DriveMenu {
+  id: number
+  week_number: number
+  year: number
+  week_start_date: string
+  monday_menu: string
+  tuesday_menu: string
+  wednesday_menu: string
+  thursday_menu: string
+  fetched_at: string
+  is_stale: boolean
+}
+
 // Calendar Types
 export interface CalendarEvent {
   id: number

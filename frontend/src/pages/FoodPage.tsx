@@ -37,6 +37,7 @@ import {
   IconUsers,
   IconChevronDown,
   IconChevronUp,
+  IconRefresh,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import isoWeek from "dayjs/plugin/isoWeek"
@@ -59,6 +60,7 @@ import type {
 export default function FoodPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { user } = useAuthStore()
 
   // Get current week's Monday
   const today = dayjs()
@@ -72,16 +74,47 @@ export default function FoodPage() {
   const menuWeekStart = currentWeekStart.add(menuWeekOffset, "week")
   const regWeekStart = currentWeekStart.add(regWeekOffset, "week")
 
+  // Calculate week number and year for drive menu
+  const menuWeekNumber = menuWeekStart.isoWeek()
+  const menuYear = menuWeekStart.isoWeekYear()
+
   // Fetch all menus to enable navigation
   const { data: allMenus, isLoading: menusLoading } = useQuery({
     queryKey: ["food", "menus"],
     queryFn: foodApi.getWeeklyMenus,
   })
 
-  // Find the menu for the selected week
-  const selectedMenu = allMenus?.find(
-    (m) => m.week_start_date === menuWeekStart.format("YYYY-MM-DD"),
-  )
+  // Fetch drive menu for the selected week
+  const {
+    data: driveMenu,
+    isLoading: driveMenuLoading,
+    error: driveMenuError,
+  } = useQuery({
+    queryKey: ["food", "drive-menu", menuWeekNumber, menuYear],
+    queryFn: () => foodApi.getDriveMenu(menuWeekNumber, menuYear),
+  })
+
+  // Mutation to refresh drive menu
+  const refreshDriveMenuMutation = useMutation({
+    mutationFn: () => foodApi.refreshDriveMenu(menuWeekNumber, menuYear),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["food", "drive-menu", menuWeekNumber, menuYear],
+      })
+      notifications.show({
+        title: "Menu opdateret",
+        message: "Menuen er blevet opdateret fra Google Drive.",
+        color: "green",
+      })
+    },
+    onError: () => {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke opdatere menuen fra Google Drive.",
+        color: "red",
+      })
+    },
+  })
 
   // Fetch registrations for the selected registration week
   const { data: registrations, isLoading: regsLoading } = useQuery({
@@ -216,8 +249,8 @@ export default function FoodPage() {
 
                 <Stack gap={0} align="center">
                   <Text fw={500}>
-                    {menuWeekStart.format("MMMM D")} -{" "}
-                    {menuWeekStart.add(3, "day").format("MMMM D, YYYY")}
+                    Uge {menuWeekNumber}: {menuWeekStart.format("D. MMM")} -{" "}
+                    {menuWeekStart.add(3, "day").format("D. MMM YYYY")}
                   </Text>
                   <Badge
                     color={
@@ -244,28 +277,88 @@ export default function FoodPage() {
               </Group>
             </Paper>
 
-            {isLoading ? (
+            {/* Refresh button and stale indicator */}
+            {user?.is_staff && (
+              <Group justify="flex-end" gap="xs">
+                {driveMenu?.is_stale && (
+                  <Badge color="yellow" variant="light" size="sm">
+                    Menu kan være forældet
+                  </Badge>
+                )}
+                <Button
+                  variant="light"
+                  size="xs"
+                  leftSection={<IconRefresh size={14} />}
+                  onClick={() => refreshDriveMenuMutation.mutate()}
+                  loading={refreshDriveMenuMutation.isPending}
+                >
+                  Opdater fra Google Drive
+                </Button>
+              </Group>
+            )}
+
+            {driveMenuLoading ? (
               <Center h={200}>
                 <Loader size="lg" />
               </Center>
-            ) : !selectedMenu ? (
+            ) : driveMenuError ? (
+              <Alert icon={<IconAlertCircle size={16} />} color="red">
+                Kunne ikke hente menu fra Google Drive. Prøv igen senere.
+              </Alert>
+            ) : !driveMenu ? (
               <Alert icon={<IconAlertCircle size={16} />} color="yellow">
-                Ingen menu tilgængelig for denne uge endnu. Kom tilbage senere!
+                Ingen menu tilgængelig for uge {menuWeekNumber} endnu.
               </Alert>
             ) : (
               <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-                {selectedMenu.daily_menus.map((day) => {
-                  const reg = menuRegistrationsByDate.get(day.date)
-                  const stats = menuWeekStats?.[day.date]
-                  return (
-                    <MenuDayCard
-                      key={day.id}
-                      day={day}
-                      myRegistration={reg}
-                      stats={stats}
-                    />
-                  )
-                })}
+                <DriveMenuDayCard
+                  dayName="Mandag"
+                  date={menuWeekStart.format("D. MMM")}
+                  menu={driveMenu.monday_menu}
+                  registration={menuRegistrationsByDate.get(
+                    menuWeekStart.format("YYYY-MM-DD"),
+                  )}
+                  stats={menuWeekStats?.[menuWeekStart.format("YYYY-MM-DD")]}
+                />
+                <DriveMenuDayCard
+                  dayName="Tirsdag"
+                  date={menuWeekStart.add(1, "day").format("D. MMM")}
+                  menu={driveMenu.tuesday_menu}
+                  registration={menuRegistrationsByDate.get(
+                    menuWeekStart.add(1, "day").format("YYYY-MM-DD"),
+                  )}
+                  stats={
+                    menuWeekStats?.[
+                      menuWeekStart.add(1, "day").format("YYYY-MM-DD")
+                    ]
+                  }
+                />
+                <DriveMenuDayCard
+                  dayName="Onsdag"
+                  date={menuWeekStart.add(2, "day").format("D. MMM")}
+                  menu={driveMenu.wednesday_menu}
+                  registration={menuRegistrationsByDate.get(
+                    menuWeekStart.add(2, "day").format("YYYY-MM-DD"),
+                  )}
+                  stats={
+                    menuWeekStats?.[
+                      menuWeekStart.add(2, "day").format("YYYY-MM-DD")
+                    ]
+                  }
+                />
+                <DriveMenuDayCard
+                  dayName="Torsdag"
+                  date={menuWeekStart.add(3, "day").format("D. MMM")}
+                  menu={driveMenu.thursday_menu}
+                  registration={menuRegistrationsByDate.get(
+                    menuWeekStart.add(3, "day").format("YYYY-MM-DD"),
+                  )}
+                  stats={
+                    menuWeekStats?.[
+                      menuWeekStart.add(3, "day").format("YYYY-MM-DD")
+                    ]
+                  }
+                />
               </SimpleGrid>
             )}
           </Stack>
@@ -362,14 +455,22 @@ export default function FoodPage() {
   )
 }
 
-// Menu Day Card with stats
-interface MenuDayCardProps {
-  day: DailyMenu
-  myRegistration?: MealRegistration
+// Drive Menu Day Card - displays menu from Google Drive
+interface DriveMenuDayCardProps {
+  dayName: string
+  date: string
+  menu: string
+  registration?: MealRegistration
   stats?: DailyRegistrationStats
 }
 
-function MenuDayCard({ day, myRegistration, stats }: MenuDayCardProps) {
+function DriveMenuDayCard({
+  dayName,
+  date,
+  menu,
+  registration,
+  stats,
+}: DriveMenuDayCardProps) {
   const [expanded, setExpanded] = useState(false)
 
   const totalAdults = stats?.total.adults ?? 0
@@ -379,48 +480,20 @@ function MenuDayCard({ day, myRegistration, stats }: MenuDayCardProps) {
   return (
     <Paper withBorder p="md" radius="md">
       <Group justify="space-between" mb="sm">
-        <div>
-          <Text fw={500}>{day.day_name}</Text>
-          {day.menu_name && (
-            <Text size="sm" c="blue" fw={500}>
-              {day.menu_name}
-            </Text>
-          )}
-        </div>
+        <Text fw={500}>{dayName}</Text>
         <Stack gap={4} align="flex-end">
-          <Badge variant="light">{dayjs(day.date).format("MMM D")}</Badge>
-          {myRegistration && myRegistration.is_active && (
+          <Badge variant="light">{date}</Badge>
+          {registration && registration.is_active && (
             <Badge color="green" variant="light" size="sm">
-              Dig: {myRegistration.total_portions}
+              Dig: {registration.total_portions}
             </Badge>
           )}
         </Stack>
       </Group>
 
-      {day.has_meat_option ? (
-        <Stack gap="xs" mb="sm">
-          <div>
-            <Badge size="xs" color="red" mb={4}>
-              Kød
-            </Badge>
-            <Text size="sm">
-              {day.effective_meat_description || "Kommer snart"}
-            </Text>
-          </div>
-          <div>
-            <Badge size="xs" color="green" mb={4}>
-              Vegetar
-            </Badge>
-            <Text size="sm">
-              {day.effective_vegetarian_description || "Kommer snart"}
-            </Text>
-          </div>
-        </Stack>
-      ) : (
-        <Text size="sm" mb="sm">
-          {day.effective_description || "Menu kommer snart"}
-        </Text>
-      )}
+      <Text size="sm" mb="sm">
+        {menu || "Menu kommer snart"}
+      </Text>
 
       {/* Total signups */}
       <Divider my="xs" />

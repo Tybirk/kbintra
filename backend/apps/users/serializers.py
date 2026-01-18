@@ -78,31 +78,23 @@ class UserRegistrationSerializer(serializers.Serializer):
             raise serializers.ValidationError("Invalid invitation token.")
 
         if not invitation.is_valid:
-            raise serializers.ValidationError(
-                "This invitation has expired or already been used."
-            )
+            raise serializers.ValidationError("This invitation has expired or already been used.")
 
         return value
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         """Validate that passwords match and email matches invitation."""
         if attrs["password"] != attrs["password_confirm"]:
-            raise serializers.ValidationError(
-                {"password_confirm": "Passwords do not match."}
-            )
+            raise serializers.ValidationError({"password_confirm": "Passwords do not match."})
 
         # Verify email matches the invitation
         invitation = Invitation.objects.get(token=attrs["token"])
         if invitation.email.lower() != attrs["email"].lower():
-            raise serializers.ValidationError(
-                {"email": "Email does not match the invitation."}
-            )
+            raise serializers.ValidationError({"email": "Email does not match the invitation."})
 
         # Check email is not already registered
         if User.objects.filter(email__iexact=attrs["email"]).exists():
-            raise serializers.ValidationError(
-                {"email": "A user with this email already exists."}
-            )
+            raise serializers.ValidationError({"email": "A user with this email already exists."})
 
         return attrs
 
@@ -134,9 +126,7 @@ class UserRegistrationSerializer(serializers.Serializer):
 class InvitationSerializer(serializers.ModelSerializer):
     """Serializer for Invitation model."""
 
-    created_by_name = serializers.CharField(
-        source="created_by.get_full_name", read_only=True
-    )
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True)
     house_name = serializers.CharField(source="house.name", read_only=True)
     is_valid = serializers.BooleanField(read_only=True)
 
@@ -168,18 +158,12 @@ class InvitationCreateSerializer(serializers.ModelSerializer):
     def validate_email(self, value: str) -> str:
         """Check if email is already registered or has pending invitation."""
         if User.objects.filter(email__iexact=value).exists():
-            raise serializers.ValidationError(
-                "A user with this email already exists."
-            )
+            raise serializers.ValidationError("A user with this email already exists.")
 
         # Check for pending valid invitation
-        pending = Invitation.objects.filter(
-            email__iexact=value, used_at__isnull=True
-        ).first()
+        pending = Invitation.objects.filter(email__iexact=value, used_at__isnull=True).first()
         if pending and pending.is_valid:
-            raise serializers.ValidationError(
-                "A valid invitation already exists for this email."
-            )
+            raise serializers.ValidationError("A valid invitation already exists for this email.")
 
         return value
 
@@ -202,9 +186,7 @@ class InvitationValidateSerializer(serializers.Serializer):
             raise serializers.ValidationError("Invalid invitation token.")
 
         if not invitation.is_valid:
-            raise serializers.ValidationError(
-                "This invitation has expired or already been used."
-            )
+            raise serializers.ValidationError("This invitation has expired or already been used.")
 
         return value
 
@@ -287,9 +269,7 @@ class ResetPasswordSerializer(serializers.Serializer):
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         """Validate that passwords match."""
         if attrs["new_password"] != attrs["new_password_confirm"]:
-            raise serializers.ValidationError(
-                {"new_password_confirm": "Passwords do not match."}
-            )
+            raise serializers.ValidationError({"new_password_confirm": "Passwords do not match."})
         return attrs
 
     def save(self) -> User:

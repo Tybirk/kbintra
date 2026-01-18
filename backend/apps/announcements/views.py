@@ -13,9 +13,7 @@ from .serializers import AnnouncementCreateSerializer, AnnouncementSerializer
 class IsOwnerOrReadOnly(permissions.BasePermission):
     """Custom permission to only allow owners to edit/delete."""
 
-    def has_object_permission(
-        self, request: Any, view: Any, obj: Announcement
-    ) -> bool:
+    def has_object_permission(self, request: Any, view: Any, obj: Announcement) -> bool:
         if request.method in permissions.SAFE_METHODS:
             return True
         return obj.author == request.user

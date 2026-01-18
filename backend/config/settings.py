@@ -181,9 +181,7 @@ MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Email settings
-EMAIL_BACKEND = os.getenv(
-    "EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"
-)
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
 EMAIL_HOST = os.getenv("EMAIL_HOST", "")
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
 EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() == "true"
@@ -213,6 +211,13 @@ CSRF_TRUSTED_ORIGINS: list[str] = os.getenv(
     "CSRF_TRUSTED_ORIGINS",
     "http://localhost,http://127.0.0.1",
 ).split(",")
+
+# Google Drive settings for menu fetching
+GOOGLE_DRIVE_API_KEY = os.getenv("GOOGLE_DRIVE_API_KEY", "")
+GOOGLE_DRIVE_MENU_FOLDER_ID = os.getenv(
+    "GOOGLE_DRIVE_MENU_FOLDER_ID", "18AaQw20ZlWIKLeeyW2R0OrXFaSkc2rPm"
+)
+MENU_CACHE_HOURS = int(os.getenv("MENU_CACHE_HOURS", "12"))
 
 # Production security settings
 if not DEBUG:

@@ -190,9 +190,7 @@ class TestMarkMessagesReadAPI:
         assert response.status_code == 200
 
         # Check that message is now read
-        assert MessageReadStatus.objects.filter(
-            message=message, user=second_user
-        ).exists()
+        assert MessageReadStatus.objects.filter(message=message, user=second_user).exists()
 
 
 class TestUnreadCountAPI:

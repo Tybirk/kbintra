@@ -66,12 +66,8 @@ class MessageSerializer(serializers.ModelSerializer):
             return False
         # For own messages, check if others have read it
         if obj.sender_id == request.user.id:
-            other_participants = obj.conversation.participants.exclude(
-                id=request.user.id
-            )
-            read_count = obj.read_statuses.filter(
-                user__in=other_participants
-            ).count()
+            other_participants = obj.conversation.participants.exclude(id=request.user.id)
+            read_count = obj.read_statuses.filter(user__in=other_participants).count()
             return read_count >= other_participants.count()
         # For others' messages, check if current user has read it
         return obj.read_statuses.filter(user=request.user).exists()
@@ -141,9 +137,7 @@ class ConversationDetailSerializer(ConversationSerializer):
         messages = obj.messages.select_related("sender").order_by("-created_at")[:50]
         # Reverse to show oldest first
         messages = list(reversed(messages))
-        return MessageSerializer(
-            messages, many=True, context=self.context
-        ).data
+        return MessageSerializer(messages, many=True, context=self.context).data
 
 
 class CreateConversationSerializer(serializers.Serializer):
@@ -163,18 +157,12 @@ class CreateConversationSerializer(serializers.Serializer):
     def validate_participant_ids(self, value: list) -> list:
         request = self.context.get("request")
         if request and request.user.id in value:
-            raise serializers.ValidationError(
-                "Cannot include yourself in participant_ids"
-            )
+            raise serializers.ValidationError("Cannot include yourself in participant_ids")
         # Verify all users exist
-        existing_ids = set(
-            User.objects.filter(id__in=value).values_list("id", flat=True)
-        )
+        existing_ids = set(User.objects.filter(id__in=value).values_list("id", flat=True))
         invalid_ids = set(value) - existing_ids
         if invalid_ids:
-            raise serializers.ValidationError(
-                f"Users with ids {invalid_ids} do not exist"
-            )
+            raise serializers.ValidationError(f"Users with ids {invalid_ids} do not exist")
         return value
 
 
@@ -196,9 +184,7 @@ class CreateMessageSerializer(serializers.ModelSerializer):
         content = attrs.get("content", "").strip()
         attachments = attrs.get("attachments", [])
         if not content and not attachments:
-            raise serializers.ValidationError(
-                "Message must have content or attachments."
-            )
+            raise serializers.ValidationError("Message must have content or attachments.")
         return attrs
 
     def create(self, validated_data: dict) -> Message:

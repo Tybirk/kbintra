@@ -35,7 +35,6 @@ def reverse_migration(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("food", "0008_food_team_cycles_and_wishes"),
     ]

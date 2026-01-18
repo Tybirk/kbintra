@@ -146,9 +146,7 @@ class Command(BaseCommand):
                 )
                 if created:
                     created_count += 1
-                    self.stdout.write(
-                        self.style.SUCCESS(f"  Created main group: {subgroup.name}")
-                    )
+                    self.stdout.write(self.style.SUCCESS(f"  Created main group: {subgroup.name}"))
                 else:
                     updated_count += 1
                     self.stdout.write(f"  Updated main group: {subgroup.name}")
@@ -171,9 +169,7 @@ class Command(BaseCommand):
                 )
                 if created:
                     created_count += 1
-                    self.stdout.write(
-                        self.style.SUCCESS(f"  Created committee: {subgroup.name}")
-                    )
+                    self.stdout.write(self.style.SUCCESS(f"  Created committee: {subgroup.name}"))
                 else:
                     updated_count += 1
                     self.stdout.write(f"  Updated committee: {subgroup.name}")

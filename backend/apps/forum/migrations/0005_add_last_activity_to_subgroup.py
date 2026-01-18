@@ -31,7 +31,6 @@ def populate_last_activity(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("forum", "0004_add_subgroup_to_file_and_optional_folder"),
     ]

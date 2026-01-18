@@ -76,9 +76,7 @@ class MyHouseView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        serializer = HouseUpdateSerializer(
-            user.house, data=request.data, partial=True
-        )
+        serializer = HouseUpdateSerializer(user.house, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
@@ -121,9 +119,7 @@ class ChildListCreateView(generics.ListCreateAPIView):
         # Return full serializer
         output_serializer = ChildSerializer(serializer.instance)
         headers = self.get_success_headers(output_serializer.data)
-        return Response(
-            output_serializer.data, status=status.HTTP_201_CREATED, headers=headers
-        )
+        return Response(output_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 
 class ChildDetailView(generics.RetrieveUpdateDestroyAPIView):

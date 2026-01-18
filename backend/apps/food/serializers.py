@@ -14,6 +14,7 @@ from .models import (
     CycleStatus,
     DailyMenu,
     DayOfWeek,
+    DriveMenuCache,
     FoodTeam,
     FoodTeamCycle,
     FoodTeamMember,
@@ -408,7 +409,9 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
         days_to_prev_wednesday = meal_date.weekday() + 5  # Mon=5, Tue=6, Wed=7, Thu=8
         deadline_date = meal_date - timedelta(days=days_to_prev_wednesday)
         deadline_time = time(18, 0)  # 18:00
-        return datetime.combine(deadline_date, deadline_time, tzinfo=timezone.get_current_timezone())
+        return datetime.combine(
+            deadline_date, deadline_time, tzinfo=timezone.get_current_timezone()
+        )
 
     def validate_date(self, value: date) -> date:
         # Only allow Mon-Thu
@@ -435,9 +438,7 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
         self, meal_type: str, adults_count: int, children_count: int
     ) -> Decimal:
         """Calculate default price based on meal type and portion counts."""
-        adult_price = (
-            self.PRICE_ADULT_MEAT if meal_type == MealType.MEAT else self.PRICE_ADULT_VEG
-        )
+        adult_price = self.PRICE_ADULT_MEAT if meal_type == MealType.MEAT else self.PRICE_ADULT_VEG
         return (adult_price * adults_count) + (self.PRICE_CHILD * children_count)
 
     def create(self, validated_data: dict) -> FoodTicket:
@@ -902,3 +903,42 @@ class MonthlyFoodCostReportSerializer(serializers.Serializer):
     month_name = serializers.CharField()
     total_cost = serializers.DecimalField(max_digits=10, decimal_places=2)
     houses = HouseFoodCostSerializer(many=True)
+
+
+class DriveMenuCacheSerializer(serializers.ModelSerializer):
+    """Serializer for DriveMenuCache model."""
+
+    is_stale = serializers.SerializerMethodField()
+    week_start_date = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DriveMenuCache
+        fields = [
+            "id",
+            "week_number",
+            "year",
+            "week_start_date",
+            "monday_menu",
+            "tuesday_menu",
+            "wednesday_menu",
+            "thursday_menu",
+            "fetched_at",
+            "is_stale",
+        ]
+
+    def get_is_stale(self, obj: DriveMenuCache) -> bool:
+        from django.conf import settings
+
+        return obj.is_stale(settings.MENU_CACHE_HOURS)
+
+    def get_week_start_date(self, obj: DriveMenuCache) -> str:
+        """Calculate the Monday of this week."""
+        from datetime import date as dt_date
+
+        # Calculate the Monday of week 1
+        # ISO week 1 is the week containing the 4th of January
+        jan4 = dt_date(obj.year, 1, 4)
+        week1_monday = jan4 - timedelta(days=jan4.weekday())
+        # Calculate the Monday of the target week
+        target_monday = week1_monday + timedelta(weeks=obj.week_number - 1)
+        return target_monday.isoformat()

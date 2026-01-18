@@ -50,9 +50,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Join all conversation groups the user is part of
         self.conversations = await self.get_user_conversations()
         for conv_id in self.conversations:
-            await self.channel_layer.group_add(
-                f"conversation_{conv_id}", self.channel_name
-            )
+            await self.channel_layer.group_add(f"conversation_{conv_id}", self.channel_name)
 
     async def disconnect(self, close_code):
         """Handle WebSocket disconnection."""
@@ -61,9 +59,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.channel_layer.group_discard(self.user_group, self.channel_name)
             # Leave all conversation groups
             for conv_id in self.conversations:
-                await self.channel_layer.group_discard(
-                    f"conversation_{conv_id}", self.channel_name
-                )
+                await self.channel_layer.group_discard(f"conversation_{conv_id}", self.channel_name)
 
     async def receive(self, text_data):
         """Handle incoming WebSocket messages."""
@@ -135,9 +131,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         is_participant = await self.is_conversation_participant(conversation_id)
         if is_participant and conversation_id not in self.conversations:
             self.conversations.append(conversation_id)
-            await self.channel_layer.group_add(
-                f"conversation_{conversation_id}", self.channel_name
-            )
+            await self.channel_layer.group_add(f"conversation_{conversation_id}", self.channel_name)
 
     async def handle_typing(self, data: dict):
         """Handle typing indicator."""
@@ -200,9 +194,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         conversation_id = event["conversation_id"]
         if conversation_id not in self.conversations:
             self.conversations.append(conversation_id)
-            await self.channel_layer.group_add(
-                f"conversation_{conversation_id}", self.channel_name
-            )
+            await self.channel_layer.group_add(f"conversation_{conversation_id}", self.channel_name)
         await self.send(
             json.dumps(
                 {
@@ -237,25 +229,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
     def get_user_conversations(self) -> list[int]:
         """Get list of conversation IDs the user is part of."""
         return list(
-            Conversation.objects.filter(participants=self.user).values_list(
-                "id", flat=True
-            )
+            Conversation.objects.filter(participants=self.user).values_list("id", flat=True)
         )
 
     @database_sync_to_async
     def is_conversation_participant(self, conversation_id: int) -> bool:
         """Check if user is a participant in the conversation."""
-        return Conversation.objects.filter(
-            id=conversation_id, participants=self.user
-        ).exists()
+        return Conversation.objects.filter(id=conversation_id, participants=self.user).exists()
 
     @database_sync_to_async
     def create_message(self, conversation_id: int, content: str) -> dict | None:
         """Create a new message in the database."""
         try:
-            conversation = Conversation.objects.get(
-                id=conversation_id, participants=self.user
-            )
+            conversation = Conversation.objects.get(id=conversation_id, participants=self.user)
             message = Message.objects.create(
                 conversation=conversation,
                 sender=self.user,
@@ -273,9 +259,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "first_name": self.user.first_name,
                     "last_name": self.user.last_name,
                     "profile_picture": (
-                        self.user.profile_picture.url
-                        if self.user.profile_picture
-                        else None
+                        self.user.profile_picture.url if self.user.profile_picture else None
                     ),
                 },
                 "content": message.content,
@@ -291,15 +275,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
     def mark_messages_read(self, conversation_id: int):
         """Mark all messages in conversation as read by current user."""
         try:
-            conversation = Conversation.objects.get(
-                id=conversation_id, participants=self.user
+            conversation = Conversation.objects.get(id=conversation_id, participants=self.user)
+            unread_messages = conversation.messages.exclude(sender=self.user).exclude(
+                read_statuses__user=self.user
             )
-            unread_messages = conversation.messages.exclude(
-                sender=self.user
-            ).exclude(read_statuses__user=self.user)
             for message in unread_messages:
-                MessageReadStatus.objects.get_or_create(
-                    message=message, user=self.user
-                )
+                MessageReadStatus.objects.get_or_create(message=message, user=self.user)
         except Exception:
             pass

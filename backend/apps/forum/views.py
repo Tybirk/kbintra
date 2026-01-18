@@ -167,8 +167,10 @@ class PostListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self) -> Any:
         thread = get_object_or_404(Thread, pk=self.kwargs["thread_id"])
-        return Post.objects.filter(thread=thread).select_related("author").prefetch_related(
-            "attachments__uploaded_by", "reactions"
+        return (
+            Post.objects.filter(thread=thread)
+            .select_related("author")
+            .prefetch_related("attachments__uploaded_by", "reactions")
         )
 
     def get_serializer_context(self) -> dict:
@@ -353,10 +355,9 @@ class RecentActivityView(generics.ListAPIView):
         limit = int(self.request.query_params.get("limit", 10))
         limit = min(limit, 50)  # Cap at 50
 
-        return (
-            Post.objects.select_related("author", "thread", "thread__subgroup")
-            .order_by("-created_at")[:limit]
-        )
+        return Post.objects.select_related("author", "thread", "thread__subgroup").order_by(
+            "-created_at"
+        )[:limit]
 
 
 class ReactionToggleView(APIView):
@@ -391,9 +392,7 @@ class ReactionToggleView(APIView):
                 status=status.HTTP_200_OK,
             )
         else:
-            Reaction.objects.create(
-                post=post, user=request.user, reaction_type=reaction_type
-            )
+            Reaction.objects.create(post=post, user=request.user, reaction_type=reaction_type)
             # Notify the post author
             if post.author:
                 emoji_map = dict(Reaction.REACTION_CHOICES)
@@ -418,7 +417,6 @@ class ReactionTypesView(APIView):
     def get(self, request: Request) -> Response:
         """Return list of available reaction types with their emojis."""
         reaction_types = [
-            {"type": choice[0], "emoji": choice[1]}
-            for choice in Reaction.REACTION_CHOICES
+            {"type": choice[0], "emoji": choice[1]} for choice in Reaction.REACTION_CHOICES
         ]
         return Response(reaction_types)

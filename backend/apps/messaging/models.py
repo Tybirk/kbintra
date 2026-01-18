@@ -20,9 +20,7 @@ class Conversation(models.Model):
         ordering = ["-updated_at"]
 
     def __str__(self) -> str:
-        participant_names = ", ".join(
-            [p.first_name for p in self.participants.all()[:3]]
-        )
+        participant_names = ", ".join([p.first_name for p in self.participants.all()[:3]])
         return f"Conversation: {participant_names}"
 
     def get_other_participants(self, user):

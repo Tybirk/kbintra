@@ -24,10 +24,12 @@ class ConversationAdmin(admin.ModelAdmin):
 
     def get_participants(self, obj):
         return ", ".join([p.first_name for p in obj.participants.all()[:4]])
+
     get_participants.short_description = "Participants"
 
     def message_count(self, obj):
         return obj.messages.count()
+
     message_count.short_description = "Messages"
 
 
@@ -40,6 +42,7 @@ class MessageAdmin(admin.ModelAdmin):
 
     def content_preview(self, obj):
         return obj.content[:50] + "..." if len(obj.content) > 50 else obj.content
+
     content_preview.short_description = "Content"
 
 

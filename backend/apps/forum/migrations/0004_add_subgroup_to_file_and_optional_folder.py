@@ -13,7 +13,6 @@ def populate_subgroup_from_folder(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("forum", "0003_add_is_committee_to_subgroup"),
     ]

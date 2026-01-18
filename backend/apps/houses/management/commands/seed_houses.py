@@ -40,6 +40,4 @@ class Command(BaseCommand):
             else:
                 self.stdout.write(f"  House already exists: {house.name}")
 
-        self.stdout.write(
-            self.style.SUCCESS(f"Done! Created {created_count} new houses.")
-        )
+        self.stdout.write(self.style.SUCCESS(f"Done! Created {created_count} new houses."))

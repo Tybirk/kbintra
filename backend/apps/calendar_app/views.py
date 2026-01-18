@@ -16,9 +16,7 @@ from .serializers import EventCreateUpdateSerializer, EventSerializer
 class IsOwnerOrReadOnly(permissions.BasePermission):
     """Custom permission to only allow owners to edit/delete."""
 
-    def has_object_permission(
-        self, request: Any, view: Any, obj: Event
-    ) -> bool:
+    def has_object_permission(self, request: Any, view: Any, obj: Event) -> bool:
         if request.method in permissions.SAFE_METHODS:
             return True
         return obj.created_by == request.user
@@ -79,6 +77,4 @@ class UpcomingEventsView(generics.ListAPIView):
     def get_queryset(self) -> QuerySet[Event]:
         now = timezone.now()
         # Get events starting from now, limit to 5
-        return Event.objects.filter(
-            start_datetime__gte=now
-        ).select_related("created_by")[:5]
+        return Event.objects.filter(start_datetime__gte=now).select_related("created_by")[:5]

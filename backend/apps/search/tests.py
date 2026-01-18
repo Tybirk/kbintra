@@ -2,7 +2,6 @@
 Tests for the Search app.
 """
 
-
 from apps.announcements.models import Announcement
 from apps.calendar_app.models import Event
 from apps.search.services import create_excerpt, fuzzy_match, search_queryset, strip_html

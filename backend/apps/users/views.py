@@ -122,9 +122,7 @@ class UpcomingBirthdaysView(generics.ListAPIView):
         users_with_birthdays = []
 
         # Get all active users with birthdates
-        users = User.objects.filter(is_active=True, birthdate__isnull=False).select_related(
-            "house"
-        )
+        users = User.objects.filter(is_active=True, birthdate__isnull=False).select_related("house")
 
         for user in users:
             # Calculate this year's birthday
@@ -170,9 +168,7 @@ class InvitationListCreateView(generics.ListCreateAPIView):
         # Staff can see all invitations
         if self.request.user.is_staff:
             return Invitation.objects.all().select_related("created_by")
-        return Invitation.objects.filter(created_by=self.request.user).select_related(
-            "created_by"
-        )
+        return Invitation.objects.filter(created_by=self.request.user).select_related("created_by")
 
 
 class ChangePasswordView(APIView):

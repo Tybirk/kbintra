@@ -49,7 +49,11 @@ urlpatterns = [
     path("subgroups/<slug:slug>/folders/", FolderListCreateView.as_view(), name="folder-list"),
     path("folders/<int:pk>/", FolderDetailView.as_view(), name="folder-detail"),
     # Files
-    path("subgroups/<slug:slug>/files/", SubgroupFileListCreateView.as_view(), name="subgroup-file-list"),
+    path(
+        "subgroups/<slug:slug>/files/",
+        SubgroupFileListCreateView.as_view(),
+        name="subgroup-file-list",
+    ),
     path("folders/<int:folder_id>/files/", FileListCreateView.as_view(), name="file-list"),
     path("files/<int:pk>/", FileDeleteView.as_view(), name="file-delete"),
     path("files/<int:pk>/move/", FileMoveView.as_view(), name="file-move"),

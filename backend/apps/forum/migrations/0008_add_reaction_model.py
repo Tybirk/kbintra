@@ -6,7 +6,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("forum", "0007_add_is_main_to_subgroup"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),

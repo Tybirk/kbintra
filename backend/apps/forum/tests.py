@@ -41,9 +41,7 @@ class TestSubgroupModel:
         assert subgroups[0] == committee
         assert subgroups[1] == regular
 
-    def test_subgroup_last_activity_updated_on_thread_create(
-        self, authenticated_client, subgroup
-    ):
+    def test_subgroup_last_activity_updated_on_thread_create(self, authenticated_client, subgroup):
         """Test that last_activity_at is updated when a thread is created."""
         old_activity = subgroup.last_activity_at
 
@@ -83,9 +81,7 @@ class TestThreadModel:
 
     def test_thread_ordering_pinned_first(self, db, user, subgroup):
         """Test that pinned threads appear first."""
-        regular = Thread.objects.create(
-            subgroup=subgroup, title="Regular", author=user
-        )
+        regular = Thread.objects.create(subgroup=subgroup, title="Regular", author=user)
         pinned = Thread.objects.create(
             subgroup=subgroup, title="Pinned", author=user, is_pinned=True
         )
@@ -185,9 +181,7 @@ class TestSubgroupSerializer:
 class TestThreadSerializer:
     """Tests for the ThreadSerializer."""
 
-    def test_thread_serializer_includes_post_count(
-        self, authenticated_client, thread, post
-    ):
+    def test_thread_serializer_includes_post_count(self, authenticated_client, thread, post):
         """Test that post_count is calculated correctly."""
         response = authenticated_client.get(f"/api/forum/threads/{thread.id}/")
         assert response.status_code == 200
@@ -235,9 +229,7 @@ class TestSubscriptionViews:
 
     def test_subscribe_to_subgroup(self, authenticated_client, subgroup):
         """Test subscribing to a subgroup."""
-        response = authenticated_client.post(
-            f"/api/forum/subgroups/{subgroup.slug}/subscribe/"
-        )
+        response = authenticated_client.post(f"/api/forum/subgroups/{subgroup.slug}/subscribe/")
         assert response.status_code == 201
         assert "subscribed" in response.data["detail"].lower()
 
@@ -245,33 +237,23 @@ class TestSubscriptionViews:
         self, authenticated_client, subgroup, subgroup_subscription
     ):
         """Test subscribing when already subscribed."""
-        response = authenticated_client.post(
-            f"/api/forum/subgroups/{subgroup.slug}/subscribe/"
-        )
+        response = authenticated_client.post(f"/api/forum/subgroups/{subgroup.slug}/subscribe/")
         assert response.status_code == 200
         assert "already" in response.data["detail"].lower()
 
-    def test_unsubscribe_from_subgroup(
-        self, authenticated_client, subgroup, subgroup_subscription
-    ):
+    def test_unsubscribe_from_subgroup(self, authenticated_client, subgroup, subgroup_subscription):
         """Test unsubscribing from a subgroup."""
-        response = authenticated_client.post(
-            f"/api/forum/subgroups/{subgroup.slug}/unsubscribe/"
-        )
+        response = authenticated_client.post(f"/api/forum/subgroups/{subgroup.slug}/unsubscribe/")
         assert response.status_code == 200
         assert "unsubscribed" in response.data["detail"].lower()
 
     def test_unsubscribe_not_subscribed(self, authenticated_client, subgroup):
         """Test unsubscribing when not subscribed."""
-        response = authenticated_client.post(
-            f"/api/forum/subgroups/{subgroup.slug}/unsubscribe/"
-        )
+        response = authenticated_client.post(f"/api/forum/subgroups/{subgroup.slug}/unsubscribe/")
         assert response.status_code == 200
         assert "not subscribed" in response.data["detail"].lower()
 
-    def test_get_my_subscriptions(
-        self, authenticated_client, subgroup_subscription
-    ):
+    def test_get_my_subscriptions(self, authenticated_client, subgroup_subscription):
         """Test getting user's subscriptions."""
         response = authenticated_client.get("/api/forum/subscriptions/")
         assert response.status_code == 200
@@ -283,9 +265,7 @@ class TestThreadViews:
 
     def test_list_threads(self, authenticated_client, subgroup, thread):
         """Test listing threads in a subgroup."""
-        response = authenticated_client.get(
-            f"/api/forum/subgroups/{subgroup.slug}/threads/"
-        )
+        response = authenticated_client.get(f"/api/forum/subgroups/{subgroup.slug}/threads/")
         assert response.status_code == 200
         assert len(get_results(response.data)) == 1
 
@@ -310,15 +290,11 @@ class TestThreadViews:
 
     def test_delete_thread_owner(self, authenticated_client, thread):
         """Test that thread owner can delete thread."""
-        response = authenticated_client.delete(
-            f"/api/forum/threads/{thread.id}/delete/"
-        )
+        response = authenticated_client.delete(f"/api/forum/threads/{thread.id}/delete/")
         assert response.status_code == 204
         assert not Thread.objects.filter(id=thread.id).exists()
 
-    def test_delete_thread_not_owner(
-        self, api_client, second_user, thread
-    ):
+    def test_delete_thread_not_owner(self, api_client, second_user, thread):
         """Test that non-owner cannot delete thread."""
         api_client.force_authenticate(user=second_user)
         response = api_client.delete(f"/api/forum/threads/{thread.id}/delete/")
@@ -330,9 +306,7 @@ class TestPostViews:
 
     def test_list_posts(self, authenticated_client, thread, post):
         """Test listing posts in a thread."""
-        response = authenticated_client.get(
-            f"/api/forum/threads/{thread.id}/posts/"
-        )
+        response = authenticated_client.get(f"/api/forum/threads/{thread.id}/posts/")
         assert response.status_code == 200
         assert len(get_results(response.data)) == 1
 
@@ -377,9 +351,7 @@ class TestFolderViews:
 
     def test_list_folders(self, authenticated_client, subgroup, folder):
         """Test listing folders in a subgroup."""
-        response = authenticated_client.get(
-            f"/api/forum/subgroups/{subgroup.slug}/folders/"
-        )
+        response = authenticated_client.get(f"/api/forum/subgroups/{subgroup.slug}/folders/")
         assert response.status_code == 200
         assert len(get_results(response.data)) == 1
 
@@ -438,9 +410,7 @@ class TestFileViews:
             file=SimpleUploadedFile("root.txt", b"content"),
             name="root.txt",
         )
-        response = authenticated_client.get(
-            f"/api/forum/subgroups/{subgroup.slug}/files/"
-        )
+        response = authenticated_client.get(f"/api/forum/subgroups/{subgroup.slug}/files/")
         assert response.status_code == 200
         assert len(get_results(response.data)) == 1
 
@@ -466,9 +436,7 @@ class TestFileViews:
         assert response.status_code == 201
         assert File.objects.filter(subgroup=subgroup, folder=None).exists()
 
-    def test_upload_file_uses_original_name_if_not_provided(
-        self, authenticated_client, subgroup
-    ):
+    def test_upload_file_uses_original_name_if_not_provided(self, authenticated_client, subgroup):
         """Test that original filename is used if name not provided."""
         test_file = SimpleUploadedFile("original_name.txt", b"content")
         response = authenticated_client.post(
@@ -754,9 +722,7 @@ class TestForumIntegration:
         assert len(response.data["posts"]) == 2
 
         # Delete thread
-        response = authenticated_client.delete(
-            f"/api/forum/threads/{thread_id}/delete/"
-        )
+        response = authenticated_client.delete(f"/api/forum/threads/{thread_id}/delete/")
         assert response.status_code == 204
 
     def test_folder_file_management(self, authenticated_client, subgroup):

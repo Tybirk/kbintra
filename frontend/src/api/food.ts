@@ -27,6 +27,7 @@ import type {
   FoodTeamWish,
   CreateWishData,
   TeamGenerationResult,
+  DriveMenu,
 } from "../types"
 
 export const foodApi = {
@@ -352,6 +353,32 @@ export const foodApi = {
     const response = await apiClient.get("/food/admin/monthly-cost/", {
       params: { year, month },
     })
+    return response.data
+  },
+
+  // Drive Menu (from Google Drive)
+  getDriveMenu: async (week?: number, year?: number): Promise<DriveMenu> => {
+    const params: Record<string, number> = {}
+    if (week !== undefined) params.week = week
+    if (year !== undefined) params.year = year
+    const response = await apiClient.get("/food/drive-menu/", { params })
+    return response.data
+  },
+
+  refreshDriveMenu: async (week?: number, year?: number): Promise<DriveMenu> => {
+    const data: Record<string, number> = {}
+    if (week !== undefined) data.week = week
+    if (year !== undefined) data.year = year
+    const response = await apiClient.post("/food/drive-menu/", data)
+    return response.data
+  },
+
+  refreshAllDriveMenus: async (): Promise<{
+    detail: string
+    updated: number
+    failed: number
+  }> => {
+    const response = await apiClient.post("/food/drive-menu/refresh-all/")
     return response.data
   },
 }

@@ -6,7 +6,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("forum", "0005_add_last_activity_to_subgroup"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),

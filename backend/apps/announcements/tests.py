@@ -79,7 +79,9 @@ class TestAnnouncementAPI:
         assert len(results) == 1
         assert results[0]["title"] == "Test Announcement"
 
-    def test_list_all_announcements(self, authenticated_client, announcement, inactive_announcement):
+    def test_list_all_announcements(
+        self, authenticated_client, announcement, inactive_announcement
+    ):
         """Test listing all announcements including inactive."""
         response = authenticated_client.get("/api/announcements/?is_active=false")
         assert response.status_code == 200

@@ -606,3 +606,63 @@ class FoodTeamWish(models.Model):
     def available_date_count(self) -> int:
         """Number of dates the user selected."""
         return len(self.available_dates)
+
+
+class DriveMenuCache(models.Model):
+    """
+    Cache for menus fetched from Google Drive.
+
+    Stores parsed menu data to avoid frequent API calls.
+    Each record represents one week's menu.
+    """
+
+    week_number = models.PositiveIntegerField(
+        help_text="ISO week number (1-53)",
+    )
+    year = models.PositiveIntegerField(
+        help_text="Year for the week",
+    )
+    monday_menu = models.TextField(
+        blank=True,
+        help_text="Monday's menu description",
+    )
+    tuesday_menu = models.TextField(
+        blank=True,
+        help_text="Tuesday's menu description",
+    )
+    wednesday_menu = models.TextField(
+        blank=True,
+        help_text="Wednesday's menu description",
+    )
+    thursday_menu = models.TextField(
+        blank=True,
+        help_text="Thursday's menu description",
+    )
+    raw_content = models.TextField(
+        blank=True,
+        help_text="Raw content from the document (for debugging)",
+    )
+    drive_file_id = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Google Drive file ID for reference",
+    )
+    fetched_at = models.DateTimeField(
+        auto_now=True,
+        help_text="When this menu was last fetched from Drive",
+    )
+
+    class Meta:
+        unique_together = ["week_number", "year"]
+        ordering = ["-year", "-week_number"]
+
+    def __str__(self) -> str:
+        return f"Week {self.week_number}, {self.year}"
+
+    def is_stale(self, max_age_hours: int = 12) -> bool:
+        """Check if the cache entry is older than max_age_hours."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        return timezone.now() - self.fetched_at > timedelta(hours=max_age_hours)

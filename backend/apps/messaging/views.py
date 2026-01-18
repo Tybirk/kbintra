@@ -48,16 +48,14 @@ class ConversationListCreateView(generics.ListCreateAPIView):
         # For 1-on-1 conversations, check if one already exists
         if len(participant_ids) == 1:
             other_user_id = participant_ids[0]
-            existing = Conversation.objects.filter(
-                participants=request.user
-            ).filter(participants=other_user_id)
+            existing = Conversation.objects.filter(participants=request.user).filter(
+                participants=other_user_id
+            )
             # Find conversation with exactly these 2 participants
             for conv in existing:
                 if conv.participants.count() == 2:
                     return Response(
-                        ConversationDetailSerializer(
-                            conv, context={"request": request}
-                        ).data,
+                        ConversationDetailSerializer(conv, context={"request": request}).data,
                         status=status.HTTP_200_OK,
                     )
 
@@ -94,9 +92,7 @@ class ConversationListCreateView(generics.ListCreateAPIView):
                 )
 
         return Response(
-            ConversationDetailSerializer(
-                conversation, context={"request": request}
-            ).data,
+            ConversationDetailSerializer(conversation, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
         )
 
@@ -108,9 +104,9 @@ class ConversationDetailView(generics.RetrieveAPIView):
     serializer_class = ConversationDetailSerializer
 
     def get_queryset(self) -> QuerySet[Conversation]:
-        return Conversation.objects.filter(
-            participants=self.request.user
-        ).prefetch_related("participants", "messages", "messages__sender")
+        return Conversation.objects.filter(participants=self.request.user).prefetch_related(
+            "participants", "messages", "messages__sender"
+        )
 
     def retrieve(self, request: Request, *args, **kwargs) -> Response:
         instance = self.get_object()
@@ -119,9 +115,7 @@ class ConversationDetailView(generics.RetrieveAPIView):
             read_statuses__user=request.user
         )
         for message in unread_messages:
-            MessageReadStatus.objects.get_or_create(
-                message=message, user=request.user
-            )
+            MessageReadStatus.objects.get_or_create(message=message, user=request.user)
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
@@ -155,13 +149,11 @@ class MessageListCreateView(generics.ListCreateAPIView):
     def list(self, request: Request, *args, **kwargs) -> Response:
         # Mark messages as read when listing
         conversation = self.get_conversation()
-        unread_messages = conversation.messages.exclude(
-            sender=request.user
-        ).exclude(read_statuses__user=request.user)
+        unread_messages = conversation.messages.exclude(sender=request.user).exclude(
+            read_statuses__user=request.user
+        )
         for message in unread_messages:
-            MessageReadStatus.objects.get_or_create(
-                message=message, user=request.user
-            )
+            MessageReadStatus.objects.get_or_create(message=message, user=request.user)
         return super().list(request, *args, **kwargs)
 
 
@@ -176,14 +168,13 @@ class MarkMessagesReadView(APIView):
             pk=conversation_id,
         )
         # Get all unread messages from others
-        unread_messages = conversation.messages.exclude(
-            sender=request.user
-        ).exclude(read_statuses__user=request.user)
+        unread_messages = conversation.messages.exclude(sender=request.user).exclude(
+            read_statuses__user=request.user
+        )
 
         # Create read statuses
         read_statuses = [
-            MessageReadStatus(message=msg, user=request.user)
-            for msg in unread_messages
+            MessageReadStatus(message=msg, user=request.user) for msg in unread_messages
         ]
         MessageReadStatus.objects.bulk_create(read_statuses, ignore_conflicts=True)
 

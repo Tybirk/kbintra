@@ -1055,9 +1055,7 @@ class TestFoodTicketDefaultPricing:
         # 2 adults @ 26 + 1 child @ 18 = 70
         assert price == Decimal("70.00")
 
-    def test_ticket_created_with_default_price(
-        self, api_client, user_with_house, monday_date
-    ):
+    def test_ticket_created_with_default_price(self, api_client, user_with_house, monday_date):
         """Test that ticket is created with default price if not specified."""
         api_client.force_authenticate(user=user_with_house)
 
@@ -1102,9 +1100,7 @@ class TestFoodTicketDefaultPricing:
 class TestFoodTicketDeactivatesRegistration:
     """Tests for ticket creation deactivating meal registration."""
 
-    def test_ticket_deactivates_registration(
-        self, api_client, user_with_house, monday_date
-    ):
+    def test_ticket_deactivates_registration(self, api_client, user_with_house, monday_date):
         """Test that creating a ticket deactivates the meal registration."""
         api_client.force_authenticate(user=user_with_house)
 
@@ -1122,9 +1118,7 @@ class TestFoodTicketDeactivatesRegistration:
         # Create a ticket for the same date (mock time to be after deadline)
         with patch("apps.food.serializers.timezone") as mock_tz:
             # Set time to Thursday Dec 18 (after Wednesday Dec 17 18:00 deadline)
-            mock_now = timezone.make_aware(
-                timezone.datetime(2025, 12, 18, 10, 0)
-            )
+            mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))
             mock_tz.now.return_value = mock_now
             mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
 
@@ -1331,7 +1325,9 @@ class TestTicketCreationDeadline:
 class TestMonthlyFoodCostReport:
     """Tests for monthly food cost report."""
 
-    def test_cost_charged_to_owner_house(self, api_client, admin_user, user_with_house, house, house2):
+    def test_cost_charged_to_owner_house(
+        self, api_client, admin_user, user_with_house, house, house2
+    ):
         """Test that food cost is charged to the ticket owner's house, not claimer's."""
         # Create a user in house2 who will claim the ticket
         claimer = User.objects.create_user(
@@ -1365,12 +1361,8 @@ class TestMonthlyFoodCostReport:
         data = response.json()
 
         # Find the house costs
-        owner_house_cost = next(
-            (h for h in data["houses"] if h["house_id"] == house.id), None
-        )
-        claimer_house_cost = next(
-            (h for h in data["houses"] if h["house_id"] == house2.id), None
-        )
+        owner_house_cost = next((h for h in data["houses"] if h["house_id"] == house.id), None)
+        claimer_house_cost = next((h for h in data["houses"] if h["house_id"] == house2.id), None)
 
         # The OWNER's house (house) should have the cost
         assert owner_house_cost is not None
@@ -1438,9 +1430,7 @@ class TestMonthlyFoodCostReport:
         assert response.status_code == 200
         data = response.json()
 
-        owner_house_cost = next(
-            (h for h in data["houses"] if h["house_id"] == house.id), None
-        )
+        owner_house_cost = next((h for h in data["houses"] if h["house_id"] == house.id), None)
 
         assert owner_house_cost is not None
         assert Decimal(owner_house_cost["total_cost"]) == Decimal("111.00")  # 3 * 37

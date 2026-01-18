@@ -109,7 +109,13 @@ class Command(BaseCommand):
                 last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
 
                 # Generate email (sanitized)
-                email_name = first_name.lower().replace(" ", "").replace("æ", "ae").replace("ø", "o").replace("å", "a")
+                email_name = (
+                    first_name.lower()
+                    .replace(" ", "")
+                    .replace("æ", "ae")
+                    .replace("ø", "o")
+                    .replace("å", "a")
+                )
                 email = f"{email_name}.{house_num}@kb.local"
 
                 # Parse food team fields

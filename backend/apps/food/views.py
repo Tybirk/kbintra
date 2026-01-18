@@ -31,6 +31,7 @@ from .serializers import (
     CreateSwapRequestSerializer,
     DailyMenuUpdateSerializer,
     DefaultCookingDaysSerializer,
+    DriveMenuCacheSerializer,
     FoodTeamCycleCreateSerializer,
     FoodTeamCycleSerializer,
     FoodTeamListSerializer,
@@ -1051,3 +1052,153 @@ class MonthlyFoodCostView(APIView):
         }
 
         return Response(MonthlyFoodCostReportSerializer(result).data)
+
+
+# Drive Menu Views
+
+
+class DriveMenuView(APIView):
+    """
+    Get menus from Google Drive.
+
+    GET: Returns the current week's menu (or specified week)
+    POST: Force refresh from Google Drive (admin only)
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        """Get menu for a week."""
+        # Get week_number and year from query params
+        week_number = request.query_params.get("week")
+        year = request.query_params.get("year")
+
+        if week_number:
+            try:
+                week_number = int(week_number)
+            except ValueError:
+                return Response(
+                    {"detail": "Invalid week number."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        if year:
+            try:
+                year = int(year)
+            except ValueError:
+                return Response(
+                    {"detail": "Invalid year."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        from .services.drive_menu import DriveMenuService
+
+        service = DriveMenuService()
+
+        try:
+            if week_number:
+                menu = service.get_menu_for_week(week_number, year)
+            else:
+                menu = service.get_current_week_menu()
+
+            if menu:
+                return Response(DriveMenuCacheSerializer(menu).data)
+            else:
+                return Response(
+                    {"detail": "No menu found for this week."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+        except ValueError as e:
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except Exception as e:
+            return Response(
+                {"detail": f"Error fetching menu: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    def post(self, request: Request) -> Response:
+        """Force refresh menu from Google Drive (admin only)."""
+        if not request.user.is_staff:
+            return Response(
+                {"detail": "Only administrators can force refresh menus."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        week_number = request.data.get("week")
+        year = request.data.get("year")
+
+        from .services.drive_menu import DriveMenuService
+
+        service = DriveMenuService()
+
+        try:
+            if week_number:
+                week_number = int(week_number)
+                menu = service.get_menu_for_week(week_number, year, force_refresh=True)
+                if menu:
+                    return Response(DriveMenuCacheSerializer(menu).data)
+                else:
+                    return Response(
+                        {"detail": "No menu found for this week."},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+            else:
+                # Refresh current week
+                menu = service.get_current_week_menu(force_refresh=True)
+                if menu:
+                    return Response(DriveMenuCacheSerializer(menu).data)
+                else:
+                    return Response(
+                        {"detail": "No menu found for current week."},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+        except ValueError as e:
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except Exception as e:
+            return Response(
+                {"detail": f"Error refreshing menu: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class DriveMenuRefreshAllView(APIView):
+    """Refresh all menus from Google Drive (admin only)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request) -> Response:
+        """Refresh all available menus from Drive."""
+        if not request.user.is_staff:
+            return Response(
+                {"detail": "Only administrators can refresh all menus."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        from .services.drive_menu import DriveMenuService
+
+        service = DriveMenuService()
+
+        try:
+            result = service.refresh_all_menus()
+            return Response(
+                {
+                    "detail": f"Refreshed {result['updated']} menus, {result['failed']} failed.",
+                    **result,
+                }
+            )
+        except ValueError as e:
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except Exception as e:
+            return Response(
+                {"detail": f"Error refreshing menus: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
