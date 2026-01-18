@@ -39,12 +39,19 @@ class ParsedMenu:
 class DriveMenuService:
     """Service for fetching menus from Google Drive."""
 
-    # Day name patterns in Danish
+    # Day name patterns in Danish - match at start of line, allow trailing content
     DAY_PATTERNS = {
         "monday": re.compile(r"^mandag\s*$", re.IGNORECASE),
         "tuesday": re.compile(r"^tirsdag\s*$", re.IGNORECASE),
         "wednesday": re.compile(r"^onsdag\s*$", re.IGNORECASE),
         "thursday": re.compile(r"^torsdag\s*$", re.IGNORECASE),
+    }
+    # More flexible patterns that match day names even with trailing characters
+    DAY_PATTERNS_FLEXIBLE = {
+        "monday": re.compile(r"^mandag\b", re.IGNORECASE),
+        "tuesday": re.compile(r"^tirsdag\b", re.IGNORECASE),
+        "wednesday": re.compile(r"^onsdag\b", re.IGNORECASE),
+        "thursday": re.compile(r"^torsdag\b", re.IGNORECASE),
     }
 
     # Pattern to extract week number from folder name (e.g., "Uge 2", "Uge 12")
@@ -271,12 +278,26 @@ class DriveMenuService:
         menu_lines = []
 
         for para in page1_paragraphs:
-            # Check if this is a day header
+            # Check if this is a day header (try strict pattern first, then flexible)
             day_found = None
+            remaining_content = None
+
             for day, pattern in self.DAY_PATTERNS.items():
                 if pattern.match(para):
                     day_found = day
                     break
+
+            # If strict match failed, try flexible pattern
+            if not day_found:
+                for day, pattern in self.DAY_PATTERNS_FLEXIBLE.items():
+                    match = pattern.match(para)
+                    if match:
+                        day_found = day
+                        # Extract content after the day name (may have newlines)
+                        remaining = para[match.end() :].strip()
+                        if remaining:
+                            remaining_content = remaining.replace("\n", " ")
+                        break
 
             if day_found:
                 # Save previous day's menu
@@ -285,9 +306,14 @@ class DriveMenuService:
 
                 current_day = day_found
                 menu_lines = []
+
+                # If there was content after the day name, add it
+                if remaining_content:
+                    menu_lines.append(remaining_content)
             elif current_day:
                 # This is menu content for the current day
-                menu_lines.append(para)
+                # Replace newlines with spaces for cleaner output
+                menu_lines.append(para.replace("\n", " "))
 
         # Don't forget the last day
         if current_day and menu_lines:
