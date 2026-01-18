@@ -10,9 +10,7 @@ from .views import (
     ActiveCycleView,
     ApplyDefaultsView,
     ClaimTicketView,
-    CurrentWeekMenuView,
     CycleWishesListView,
-    DailyMenuUpdateView,
     DailyRegistrationStatsView,
     DefaultCookingDaysView,
     DriveMenuRefreshAllView,
@@ -28,8 +26,6 @@ from .views import (
     MealPreferenceListCreateView,
     MealRegistrationDetailView,
     MealRegistrationListCreateView,
-    MenuTemplateDetailView,
-    MenuTemplateListCreateView,
     MonthlyFoodCostView,
     MyTeamsView,
     MyTicketsView,
@@ -38,19 +34,9 @@ from .views import (
     RespondSwapRequestView,
     SwapRequestDetailView,
     SwapRequestListCreateView,
-    WeeklyMenuDetailView,
-    WeeklyMenuListCreateView,
 )
 
 urlpatterns = [
-    # Menu Templates
-    path("templates/", MenuTemplateListCreateView.as_view(), name="template-list"),
-    path("templates/<int:pk>/", MenuTemplateDetailView.as_view(), name="template-detail"),
-    # Weekly Menus
-    path("menus/", WeeklyMenuListCreateView.as_view(), name="menu-list"),
-    path("menus/current/", CurrentWeekMenuView.as_view(), name="menu-current"),
-    path("menus/<int:pk>/", WeeklyMenuDetailView.as_view(), name="menu-detail"),
-    path("menus/daily/<int:pk>/", DailyMenuUpdateView.as_view(), name="daily-menu-update"),
     # Preferences
     path("preferences/", MealPreferenceListCreateView.as_view(), name="preference-list"),
     path("preferences/<int:pk>/", MealPreferenceDetailView.as_view(), name="preference-detail"),

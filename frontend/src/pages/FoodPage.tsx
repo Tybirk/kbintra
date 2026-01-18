@@ -53,7 +53,6 @@ import type {
   CreateFoodTicketData,
   DiningOption,
   SeatingTime,
-  DailyMenu,
   DailyRegistrationStats,
 } from "../types"
 
@@ -74,17 +73,13 @@ export default function FoodPage() {
   const menuWeekStart = currentWeekStart.add(menuWeekOffset, "week")
   const regWeekStart = currentWeekStart.add(regWeekOffset, "week")
 
-  // Calculate week number and year for drive menu
+  // Calculate week number and year for drive menus
   const menuWeekNumber = menuWeekStart.isoWeek()
   const menuYear = menuWeekStart.isoWeekYear()
+  const regWeekNumber = regWeekStart.isoWeek()
+  const regYear = regWeekStart.isoWeekYear()
 
-  // Fetch all menus to enable navigation
-  const { data: allMenus, isLoading: menusLoading } = useQuery({
-    queryKey: ["food", "menus"],
-    queryFn: foodApi.getWeeklyMenus,
-  })
-
-  // Fetch drive menu for the selected week
+  // Fetch drive menu for the selected menu week
   const {
     data: driveMenu,
     isLoading: driveMenuLoading,
@@ -136,6 +131,39 @@ export default function FoodPage() {
       foodApi.getRegistrationStats(menuWeekStart.format("YYYY-MM-DD")),
   })
 
+  // Fetch drive menu for the registration week
+  const { data: regDriveMenu } = useQuery({
+    queryKey: ["food", "drive-menu", regWeekNumber, regYear],
+    queryFn: () => foodApi.getDriveMenu(regWeekNumber, regYear),
+    enabled: regWeekNumber !== menuWeekNumber || regYear !== menuYear, // Only fetch if different from menu week
+  })
+
+  // Helper to get menu text for a specific day offset (0=Mon, 1=Tue, 2=Wed, 3=Thu)
+  const getMenuTextForDay = (
+    menu: typeof driveMenu,
+    dayOffset: number,
+  ): string => {
+    if (!menu) return ""
+    switch (dayOffset) {
+      case 0:
+        return menu.monday_menu
+      case 1:
+        return menu.tuesday_menu
+      case 2:
+        return menu.wednesday_menu
+      case 3:
+        return menu.thursday_menu
+      default:
+        return ""
+    }
+  }
+
+  // Get the appropriate drive menu for registration week
+  const regWeekDriveMenu =
+    regWeekNumber === menuWeekNumber && regYear === menuYear
+      ? driveMenu
+      : regDriveMenu
+
   const applyDefaultsMutation = useMutation({
     mutationFn: () => foodApi.applyDefaults(regWeekStart.format("YYYY-MM-DD")),
     onSuccess: (data) => {
@@ -156,7 +184,7 @@ export default function FoodPage() {
     },
   })
 
-  const isLoading = menusLoading || regsLoading
+  const isLoading = regsLoading
 
   // Create a map of registrations by date for registration tab
   const registrationsByDate = new Map<string, MealRegistration>()
@@ -170,15 +198,6 @@ export default function FoodPage() {
     menuWeekOffset === regWeekOffset ? registrations : menuWeekRegistrations
   menuRegs?.forEach((reg) => {
     menuRegistrationsByDate.set(reg.date, reg)
-  })
-
-  // Create a map of daily menus by date for the registration week
-  const regMenusByDate = new Map<string, DailyMenu>()
-  const regWeekMenu = allMenus?.find(
-    (m) => m.week_start_date === regWeekStart.format("YYYY-MM-DD"),
-  )
-  regWeekMenu?.daily_menus.forEach((dailyMenu) => {
-    regMenusByDate.set(dailyMenu.date, dailyMenu)
   })
 
   // Helper to get week label
@@ -429,7 +448,7 @@ export default function FoodPage() {
                   const date = regWeekStart.add(dayOffset, "day")
                   const dateStr = date.format("YYYY-MM-DD")
                   const registration = registrationsByDate.get(dateStr)
-                  const dailyMenu = regMenusByDate.get(dateStr)
+                  const menuText = getMenuTextForDay(regWeekDriveMenu, dayOffset)
                   const isWednesday = dayOffset === 2
                   const isPast = date.isBefore(dayjs(), "day")
 
@@ -439,7 +458,7 @@ export default function FoodPage() {
                       date={dateStr}
                       dayName={date.format("dddd")}
                       registration={registration}
-                      dailyMenu={dailyMenu}
+                      menuText={menuText}
                       isWednesday={isWednesday}
                       isPast={isPast}
                       weekStart={regWeekStart.format("YYYY-MM-DD")}
@@ -562,7 +581,7 @@ interface DayRegistrationCardProps {
   date: string
   dayName: string
   registration?: MealRegistration
-  dailyMenu?: DailyMenu
+  menuText: string
   isWednesday: boolean
   isPast: boolean
   weekStart: string
@@ -572,7 +591,7 @@ function DayRegistrationCard({
   date,
   dayName,
   registration,
-  dailyMenu,
+  menuText,
   isWednesday,
   isPast,
   weekStart,
@@ -755,22 +774,15 @@ function DayRegistrationCard({
         <Group justify="space-between" mb="xs">
           <div>
             <Text fw={500}>{dayName}</Text>
-            {dailyMenu?.menu_name && (
-              <Text size="sm" c="blue" fw={500}>
-                {dailyMenu.menu_name}
-              </Text>
-            )}
           </div>
           <Badge variant="light" color={isPast ? "gray" : "blue"}>
             {dayjs(date).format("MMM D")}
           </Badge>
         </Group>
 
-        {dailyMenu && (
+        {menuText && (
           <Text size="xs" c="dimmed" mb="sm" lineClamp={2}>
-            {dailyMenu.has_meat_option
-              ? `Kød: ${dailyMenu.effective_meat_description || "Kommer snart"} / Veg: ${dailyMenu.effective_vegetarian_description || "Kommer snart"}`
-              : dailyMenu.effective_description || "Menu kommer snart"}
+            {menuText}
           </Text>
         )}
 

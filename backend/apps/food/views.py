@@ -13,7 +13,6 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import (
-    DailyMenu,
     FoodTeam,
     FoodTeamCycle,
     FoodTeamWish,
@@ -21,15 +20,12 @@ from .models import (
     MealPreference,
     MealRegistration,
     MealType,
-    MenuTemplate,
     SwapRequestStatus,
     TeamSwapRequest,
-    WeeklyMenu,
 )
 from .serializers import (
     ApplyDefaultsSerializer,
     CreateSwapRequestSerializer,
-    DailyMenuUpdateSerializer,
     DefaultCookingDaysSerializer,
     DriveMenuCacheSerializer,
     FoodTeamCycleCreateSerializer,
@@ -45,14 +41,11 @@ from .serializers import (
     MealPreferenceSerializer,
     MealRegistrationCreateUpdateSerializer,
     MealRegistrationSerializer,
-    MenuTemplateSerializer,
     MonthlyFoodCostReportSerializer,
     MonthlyFoodCostSerializer,
     RespondSwapRequestSerializer,
     TeamGenerationResultSerializer,
     TeamSwapRequestSerializer,
-    WeeklyMenuCreateSerializer,
-    WeeklyMenuSerializer,
 )
 from .services.team_generator import TeamGenerator
 
@@ -60,80 +53,6 @@ from .services.team_generator import TeamGenerator
 def get_week_start(d: date) -> date:
     """Get the Monday of the week containing the given date."""
     return d - timedelta(days=d.weekday())
-
-
-# Menu Template Views
-class MenuTemplateListCreateView(generics.ListCreateAPIView):
-    """List all menu templates or create a new one."""
-
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = MenuTemplateSerializer
-    queryset = MenuTemplate.objects.all()
-
-
-class MenuTemplateDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """Get, update, or delete a menu template."""
-
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = MenuTemplateSerializer
-    queryset = MenuTemplate.objects.all()
-
-
-# Weekly Menu Views
-class WeeklyMenuListCreateView(generics.ListCreateAPIView):
-    """List weekly menus or create a new one."""
-
-    permission_classes = [permissions.IsAuthenticated]
-    queryset = WeeklyMenu.objects.prefetch_related("daily_menus__template").select_related(
-        "created_by"
-    )
-
-    def get_serializer_class(self) -> type:
-        if self.request.method == "POST":
-            return WeeklyMenuCreateSerializer
-        return WeeklyMenuSerializer
-
-
-class WeeklyMenuDetailView(generics.RetrieveAPIView):
-    """Get a specific weekly menu."""
-
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = WeeklyMenuSerializer
-    queryset = WeeklyMenu.objects.prefetch_related("daily_menus__template").select_related(
-        "created_by"
-    )
-
-
-class CurrentWeekMenuView(APIView):
-    """Get the current week's menu."""
-
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request: Request) -> Response:
-        today = timezone.now().date()
-        week_start = get_week_start(today)
-
-        try:
-            menu = (
-                WeeklyMenu.objects.prefetch_related("daily_menus__template")
-                .select_related("created_by")
-                .get(week_start_date=week_start)
-            )
-            serializer = WeeklyMenuSerializer(menu, context={"request": request})
-            return Response(serializer.data)
-        except WeeklyMenu.DoesNotExist:
-            return Response(
-                {"detail": "No menu available for this week."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-
-class DailyMenuUpdateView(generics.UpdateAPIView):
-    """Update a daily menu."""
-
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = DailyMenuUpdateSerializer
-    queryset = DailyMenu.objects.select_related("template")
 
 
 class DailyRegistrationStatsView(APIView):

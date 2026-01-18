@@ -257,63 +257,6 @@ export interface CreateAnnouncementData {
 export type DiningOption = "eat_in" | "take_away"
 export type SeatingTime = "17:30" | "18:30"
 
-export interface MenuTemplate {
-  id: number
-  name: string
-  description: string
-  has_meat_option: boolean
-  meat_description: string
-  vegetarian_description: string
-  created_at: string
-  updated_at: string
-}
-
-export interface MenuTemplateSimple {
-  id: number
-  name: string
-}
-
-export interface CreateMenuTemplateData {
-  name: string
-  description?: string
-  has_meat_option?: boolean
-  meat_description?: string
-  vegetarian_description?: string
-}
-
-export interface DailyMenu {
-  id: number
-  date: string
-  day_of_week: number
-  day_name: string
-  template: MenuTemplateSimple | null
-  menu_name: string
-  description: string
-  effective_description: string
-  has_meat_option: boolean
-  meat_description: string
-  effective_meat_description: string
-  vegetarian_description: string
-  effective_vegetarian_description: string
-}
-
-export interface UpdateDailyMenuData {
-  template_id?: number | null
-  description?: string
-  has_meat_option?: boolean
-  meat_description?: string
-  vegetarian_description?: string
-}
-
-export interface WeeklyMenu {
-  id: number
-  week_start_date: string
-  daily_menus: DailyMenu[]
-  created_by: Author | null
-  created_at: string
-  updated_at: string
-}
-
 export interface MealPreference {
   id: number
   day_of_week: number

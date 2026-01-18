@@ -21,10 +21,7 @@ import { notifications } from "@mantine/notifications"
 import {
   IconMessageCircle,
   IconCalendar,
-  IconHome,
   IconSoup,
-  IconSpeakerphone,
-  IconUsers,
   IconArrowRight,
   IconBell,
   IconCake,
@@ -46,7 +43,7 @@ import type {
   Notification,
   RecentActivity,
   User,
-  DailyMenu,
+  DriveMenu,
   MealRegistration,
   DiningOption,
   SeatingTime,
@@ -88,10 +85,22 @@ export default function DashboardPage() {
   // Food queries
   const today = dayjs()
   const currentWeekStart = today.startOf("isoWeek") // Monday
+  const currentWeekNumber = today.isoWeek()
+  const currentYear = today.isoWeekYear()
 
-  const { data: allMenus } = useQuery({
-    queryKey: ["food", "menus"],
-    queryFn: foodApi.getWeeklyMenus,
+  // Fetch current week's drive menu
+  const { data: currentDriveMenu } = useQuery({
+    queryKey: ["food", "drive-menu", currentWeekNumber, currentYear],
+    queryFn: () => foodApi.getDriveMenu(currentWeekNumber, currentYear),
+  })
+
+  // Fetch next week's drive menu
+  const nextWeekStart = currentWeekStart.add(1, "week")
+  const nextWeekNumber = nextWeekStart.isoWeek()
+  const nextWeekYear = nextWeekStart.isoWeekYear()
+  const { data: nextDriveMenu } = useQuery({
+    queryKey: ["food", "drive-menu", nextWeekNumber, nextWeekYear],
+    queryFn: () => foodApi.getDriveMenu(nextWeekNumber, nextWeekYear),
   })
 
   // Get registrations for current and next week
@@ -101,39 +110,84 @@ export default function DashboardPage() {
       foodApi.getRegistrations(currentWeekStart.format("YYYY-MM-DD")),
   })
 
-  const nextWeekStart = currentWeekStart.add(1, "week")
   const { data: nextWeekRegistrations } = useQuery({
     queryKey: ["food", "registrations", nextWeekStart.format("YYYY-MM-DD")],
     queryFn: () => foodApi.getRegistrations(nextWeekStart.format("YYYY-MM-DD")),
   })
 
-  // Find today's menu and next food day's menu
+  // Helper to get menu text for a specific day from drive menu
+  const getDayMenu = (
+    driveMenu: DriveMenu | undefined,
+    dayOfWeek: number,
+  ): string => {
+    if (!driveMenu) return ""
+    switch (dayOfWeek) {
+      case 1:
+        return driveMenu.monday_menu
+      case 2:
+        return driveMenu.tuesday_menu
+      case 3:
+        return driveMenu.wednesday_menu
+      case 4:
+        return driveMenu.thursday_menu
+      default:
+        return ""
+    }
+  }
+
+  // Today's day of week (1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat, 7=Sun)
+  const todayDayOfWeek = today.isoWeekday()
   const todayStr = today.format("YYYY-MM-DD")
-  const currentWeekMenu = allMenus?.find(
-    (m) => m.week_start_date === currentWeekStart.format("YYYY-MM-DD"),
-  )
-  const nextWeekMenu = allMenus?.find(
-    (m) => m.week_start_date === nextWeekStart.format("YYYY-MM-DD"),
-  )
 
-  // Combine all daily menus and find today and next food day
-  const allDailyMenus = [
-    ...(currentWeekMenu?.daily_menus || []),
-    ...(nextWeekMenu?.daily_menus || []),
-  ]
-  const todayMenu = allDailyMenus.find((m) => m.date === todayStr)
-  const nextFoodDayMenu = allDailyMenus.find((m) =>
-    dayjs(m.date).isAfter(today, "day"),
-  )
+  // Check if today is a food day (Mon-Thu)
+  const isTodayFoodDay = todayDayOfWeek >= 1 && todayDayOfWeek <= 4
+  const todayMenuText = isTodayFoodDay
+    ? getDayMenu(currentDriveMenu, todayDayOfWeek)
+    : ""
 
-  // Find registrations for today and next food day
+  // Find next food day
+  const getNextFoodDay = (): {
+    date: dayjs.Dayjs
+    menuText: string
+    dayOfWeek: number
+  } | null => {
+    // Check remaining days this week (Mon-Thu only)
+    for (let d = todayDayOfWeek + 1; d <= 4; d++) {
+      const menuText = getDayMenu(currentDriveMenu, d)
+      if (menuText || currentDriveMenu) {
+        return {
+          date: currentWeekStart.add(d - 1, "day"),
+          menuText,
+          dayOfWeek: d,
+        }
+      }
+    }
+    // Check next week (Mon-Thu)
+    for (let d = 1; d <= 4; d++) {
+      const menuText = getDayMenu(nextDriveMenu, d)
+      if (menuText || nextDriveMenu) {
+        return {
+          date: nextWeekStart.add(d - 1, "day"),
+          menuText,
+          dayOfWeek: d,
+        }
+      }
+    }
+    return null
+  }
+
+  const nextFoodDay = !isTodayFoodDay || todayDayOfWeek === 4 ? getNextFoodDay() : getNextFoodDay()
+
+  // Find registrations
   const allRegistrations = [
     ...(currentWeekRegistrations || []),
     ...(nextWeekRegistrations || []),
   ]
   const todayRegistration = allRegistrations.find((r) => r.date === todayStr)
-  const nextFoodDayRegistration = nextFoodDayMenu
-    ? allRegistrations.find((r) => r.date === nextFoodDayMenu.date)
+  const nextFoodDayRegistration = nextFoodDay
+    ? allRegistrations.find(
+        (r) => r.date === nextFoodDay.date.format("YYYY-MM-DD"),
+      )
     : undefined
 
   // Calculate birthday info for each user
@@ -251,27 +305,28 @@ export default function DashboardPage() {
               Se mere
             </Button>
           </Group>
-          {todayMenu || nextFoodDayMenu ? (
+          {(isTodayFoodDay && currentDriveMenu) || nextFoodDay ? (
             <Stack gap="md">
-              {todayMenu && (
+              {isTodayFoodDay && currentDriveMenu && (
                 <FoodDayWidget
-                  menu={todayMenu}
+                  date={todayStr}
+                  dayName={today.format("dddd")}
+                  menuText={todayMenuText}
                   registration={todayRegistration}
                   label="I dag"
                   isToday
                 />
               )}
-              {nextFoodDayMenu && (
+              {nextFoodDay && (
                 <FoodDayWidget
-                  menu={nextFoodDayMenu}
+                  date={nextFoodDay.date.format("YYYY-MM-DD")}
+                  dayName={nextFoodDay.date.format("dddd")}
+                  menuText={nextFoodDay.menuText}
                   registration={nextFoodDayRegistration}
                   label={
-                    dayjs(nextFoodDayMenu.date).isSame(
-                      dayjs().add(1, "day"),
-                      "day",
-                    )
+                    nextFoodDay.date.isSame(dayjs().add(1, "day"), "day")
                       ? "I morgen"
-                      : dayjs(nextFoodDayMenu.date).format("dddd")
+                      : nextFoodDay.date.format("dddd")
                   }
                   isToday={false}
                 />
@@ -642,14 +697,18 @@ function ActivityPreview({ activity }: ActivityPreviewProps) {
 }
 
 interface FoodDayWidgetProps {
-  menu: DailyMenu
+  date: string
+  dayName: string
+  menuText: string
   registration?: MealRegistration
   label: string
   isToday: boolean
 }
 
 function FoodDayWidget({
-  menu,
+  date,
+  dayName,
+  menuText,
   registration,
   label,
   isToday,
@@ -739,7 +798,7 @@ function FoodDayWidget({
 
     const defaultAdults = user?.house_inhabitant_count || 1
     const data: CreateMealRegistrationData = {
-      date: menu.date,
+      date,
       adults_count: registration?.adults_count ?? defaultAdults,
       children_count: registration?.children_count ?? 0,
       meal_type: registration?.meal_type ?? "meat",
@@ -760,35 +819,18 @@ function FoodDayWidget({
             {label}
           </Badge>
           <Text fw={500} size="sm" mt={4}>
-            {menu.day_name}
+            {dayName}
           </Text>
         </div>
         <Text size="xs" c="dimmed">
-          {dayjs(menu.date).format("D. MMM")}
+          {dayjs(date).format("D. MMM")}
         </Text>
       </Group>
 
       {/* Menu description */}
-      {menu.has_meat_option ? (
-        <Stack gap={2} mb="sm">
-          <Text size="xs">
-            <Text span fw={500} c="red.6">
-              Kød:
-            </Text>{" "}
-            {menu.effective_meat_description || "Kommer snart"}
-          </Text>
-          <Text size="xs">
-            <Text span fw={500} c="green.6">
-              Veg:
-            </Text>{" "}
-            {menu.effective_vegetarian_description || "Kommer snart"}
-          </Text>
-        </Stack>
-      ) : (
-        <Text size="xs" mb="sm" lineClamp={2}>
-          {menu.effective_description || "Menu kommer snart"}
-        </Text>
-      )}
+      <Text size="xs" mb="sm" lineClamp={2}>
+        {menuText || "Menu kommer snart"}
+      </Text>
 
       <Divider mb="sm" />
 

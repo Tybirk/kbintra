@@ -4,17 +4,12 @@
 
 import { apiClient } from "./client"
 import type {
-  WeeklyMenu,
-  DailyMenu,
   MealPreference,
   CreateMealPreferenceData,
   MealRegistration,
   CreateMealRegistrationData,
   FoodTicket,
   CreateFoodTicketData,
-  MenuTemplate,
-  CreateMenuTemplateData,
-  UpdateDailyMenuData,
   DailyRegistrationStats,
   WeeklyRegistrationStats,
   FoodTeam,
@@ -31,67 +26,6 @@ import type {
 } from "../types"
 
 export const foodApi = {
-  // Menu Templates
-  getTemplates: async (): Promise<MenuTemplate[]> => {
-    const response = await apiClient.get("/food/templates/")
-    return response.data.results ?? response.data
-  },
-
-  getTemplate: async (id: number): Promise<MenuTemplate> => {
-    const response = await apiClient.get(`/food/templates/${id}/`)
-    return response.data
-  },
-
-  createTemplate: async (
-    data: CreateMenuTemplateData,
-  ): Promise<MenuTemplate> => {
-    const response = await apiClient.post("/food/templates/", data)
-    return response.data
-  },
-
-  updateTemplate: async (
-    id: number,
-    data: Partial<CreateMenuTemplateData>,
-  ): Promise<MenuTemplate> => {
-    const response = await apiClient.patch(`/food/templates/${id}/`, data)
-    return response.data
-  },
-
-  deleteTemplate: async (id: number): Promise<void> => {
-    await apiClient.delete(`/food/templates/${id}/`)
-  },
-
-  // Weekly Menus
-  getWeeklyMenus: async (): Promise<WeeklyMenu[]> => {
-    const response = await apiClient.get("/food/menus/")
-    return response.data.results ?? response.data
-  },
-
-  getCurrentWeekMenu: async (): Promise<WeeklyMenu> => {
-    const response = await apiClient.get("/food/menus/current/")
-    return response.data
-  },
-
-  getWeeklyMenu: async (id: number): Promise<WeeklyMenu> => {
-    const response = await apiClient.get(`/food/menus/${id}/`)
-    return response.data
-  },
-
-  createWeeklyMenu: async (weekStartDate: string): Promise<WeeklyMenu> => {
-    const response = await apiClient.post("/food/menus/", {
-      week_start_date: weekStartDate,
-    })
-    return response.data
-  },
-
-  updateDailyMenu: async (
-    id: number,
-    data: UpdateDailyMenuData,
-  ): Promise<DailyMenu> => {
-    const response = await apiClient.patch(`/food/menus/daily/${id}/`, data)
-    return response.data
-  },
-
   // Meal Preferences
   getPreferences: async (): Promise<MealPreference[]> => {
     const response = await apiClient.get("/food/preferences/")

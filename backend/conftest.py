@@ -11,7 +11,6 @@ from rest_framework.test import APIClient
 
 from apps.food.models import (
     CycleStatus,
-    DailyMenu,
     DayOfWeek,
     DiningOption,
     FoodTeam,
@@ -22,9 +21,7 @@ from apps.food.models import (
     MealPreference,
     MealRegistration,
     MealType,
-    MenuTemplate,
     SeatingTime,
-    WeeklyMenu,
 )
 from apps.forum.models import Folder, Post, Subgroup, SubgroupSubscription, Thread
 from apps.houses.models import House

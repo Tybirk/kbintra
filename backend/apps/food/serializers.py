@@ -12,8 +12,6 @@ from apps.users.models import User
 
 from .models import (
     CycleStatus,
-    DailyMenu,
-    DayOfWeek,
     DriveMenuCache,
     FoodTeam,
     FoodTeamCycle,
@@ -23,10 +21,8 @@ from .models import (
     MealPreference,
     MealRegistration,
     MealType,
-    MenuTemplate,
     SwapRequestStatus,
     TeamSwapRequest,
-    WeeklyMenu,
 )
 
 
@@ -36,142 +32,6 @@ class AuthorSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["id", "first_name", "last_name", "profile_picture", "phone_number"]
-
-
-class MenuTemplateSerializer(serializers.ModelSerializer):
-    """Serializer for MenuTemplate model."""
-
-    class Meta:
-        model = MenuTemplate
-        fields = [
-            "id",
-            "name",
-            "description",
-            "has_meat_option",
-            "meat_description",
-            "vegetarian_description",
-            "created_at",
-            "updated_at",
-        ]
-
-
-class MenuTemplateSimpleSerializer(serializers.ModelSerializer):
-    """Simple serializer for embedding in DailyMenu."""
-
-    class Meta:
-        model = MenuTemplate
-        fields = ["id", "name"]
-
-
-class DailyMenuSerializer(serializers.ModelSerializer):
-    """Serializer for DailyMenu model."""
-
-    day_name = serializers.CharField(source="get_day_of_week_display", read_only=True)
-    template = MenuTemplateSimpleSerializer(read_only=True)
-    menu_name = serializers.CharField(read_only=True)
-    effective_description = serializers.CharField(read_only=True)
-    effective_meat_description = serializers.CharField(read_only=True)
-    effective_vegetarian_description = serializers.CharField(read_only=True)
-
-    class Meta:
-        model = DailyMenu
-        fields = [
-            "id",
-            "date",
-            "day_of_week",
-            "day_name",
-            "template",
-            "menu_name",
-            "description",
-            "effective_description",
-            "has_meat_option",
-            "meat_description",
-            "effective_meat_description",
-            "vegetarian_description",
-            "effective_vegetarian_description",
-        ]
-
-
-class WeeklyMenuSerializer(serializers.ModelSerializer):
-    """Serializer for WeeklyMenu with daily menus."""
-
-    daily_menus = DailyMenuSerializer(many=True, read_only=True)
-    created_by = AuthorSerializer(read_only=True)
-
-    class Meta:
-        model = WeeklyMenu
-        fields = [
-            "id",
-            "week_start_date",
-            "daily_menus",
-            "created_by",
-            "created_at",
-            "updated_at",
-        ]
-
-
-class WeeklyMenuCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating a weekly menu."""
-
-    class Meta:
-        model = WeeklyMenu
-        fields = ["week_start_date"]
-
-    def validate_week_start_date(self, value: date) -> date:
-        # Ensure it's a Monday
-        if value.weekday() != 0:
-            raise serializers.ValidationError("Week start date must be a Monday.")
-        # Check if menu already exists for this week
-        if WeeklyMenu.objects.filter(week_start_date=value).exists():
-            raise serializers.ValidationError(
-                f"A menu already exists for the week of {value.strftime('%B %d, %Y')}."
-            )
-        return value
-
-    def create(self, validated_data: dict) -> WeeklyMenu:
-        validated_data["created_by"] = self.context["request"].user
-        weekly_menu = super().create(validated_data)
-
-        # Create daily menus for Mon-Thu
-        for day in range(4):  # 0=Mon, 1=Tue, 2=Wed, 3=Thu
-            menu_date = weekly_menu.week_start_date + timedelta(days=day)
-            DailyMenu.objects.create(
-                weekly_menu=weekly_menu,
-                date=menu_date,
-                day_of_week=day,
-                has_meat_option=(day == DayOfWeek.WEDNESDAY),  # Wed has meat option
-            )
-
-        return weekly_menu
-
-
-class DailyMenuUpdateSerializer(serializers.ModelSerializer):
-    """Serializer for updating a daily menu."""
-
-    template_id = serializers.IntegerField(required=False, allow_null=True)
-
-    class Meta:
-        model = DailyMenu
-        fields = [
-            "template_id",
-            "description",
-            "has_meat_option",
-            "meat_description",
-            "vegetarian_description",
-        ]
-
-    def validate_template_id(self, value: int | None) -> int | None:
-        if value is not None and not MenuTemplate.objects.filter(id=value).exists():
-            raise serializers.ValidationError("Menu template does not exist.")
-        return value
-
-    def update(self, instance: DailyMenu, validated_data: dict) -> DailyMenu:
-        template_id = validated_data.pop("template_id", None)
-        if template_id is not None:
-            instance.template = MenuTemplate.objects.get(id=template_id) if template_id else None
-        elif "template_id" in self.initial_data and self.initial_data["template_id"] is None:
-            instance.template = None
-        return super().update(instance, validated_data)
 
 
 class MealPreferenceSerializer(serializers.ModelSerializer):
