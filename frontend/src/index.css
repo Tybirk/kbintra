@@ -52,7 +52,14 @@ a, button, input, select, textarea {
   height: 100dvh;
 }
 
+/* PWA safe area - add padding for iOS notch/status bar */
+.mantine-AppShell-header {
+  padding-top: env(safe-area-inset-top);
+}
+
 .mantine-AppShell-main {
+  /* Offset main content to account for taller header with safe area */
+  padding-top: calc(60px + env(safe-area-inset-top) + var(--mantine-spacing-md)) !important;
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
@@ -63,4 +70,6 @@ a, button, input, select, textarea {
 /* Prevent navbar from causing scroll issues when open on mobile */
 .mantine-AppShell-navbar {
   overscroll-behavior: contain;
+  /* Account for safe area at top when navbar is open */
+  padding-top: env(safe-area-inset-top);
 }
