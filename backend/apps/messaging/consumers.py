@@ -250,6 +250,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Update conversation timestamp
             conversation.save()
 
+            # Send notifications to other participants
+            from apps.notifications.services import notify_new_message
+
+            for participant in conversation.participants.exclude(id=self.user.id):
+                notify_new_message(
+                    recipient=participant,
+                    sender=self.user,
+                    message_content=content,
+                    conversation_id=conversation_id,
+                )
+
             # Return serialized message
             return {
                 "id": message.id,

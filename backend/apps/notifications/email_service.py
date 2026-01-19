@@ -3,11 +3,11 @@ Email service for sending notification emails.
 """
 
 import logging
+import os
 
 from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import EmailMessage, get_connection
 from django.template.loader import render_to_string
-from django.utils.html import strip_tags
 
 from apps.users.models import User
 
@@ -86,19 +86,26 @@ def send_notification_email(
     }
 
     try:
-        # Render HTML email
         html_message = render_to_string("notifications/email_notification.html", context)
-        plain_message = strip_tags(html_message)
+        subject = f"[KB Intra] {title}"
 
-        # Send email
-        send_mail(
-            subject=f"[KB Intra] {title}",
-            message=plain_message,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[user.email],
-            html_message=html_message,
-            fail_silently=False,
-        )
+        with get_connection(
+            backend="django.core.mail.backends.smtp.EmailBackend",
+            host=settings.RESEND_SMTP_HOST,
+            port=settings.RESEND_SMTP_PORT,
+            username=settings.RESEND_SMTP_USERNAME,
+            password=os.environ.get("RESEND_API_KEY", ""),
+            use_tls=True,
+        ) as connection:
+            email = EmailMessage(
+                subject=subject,
+                body=html_message,
+                to=[user.email],
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                connection=connection,
+            )
+            email.content_subtype = "html"
+            email.send()
 
         logger.info(f"Sent notification email to {user.email}: {title}")
         return True
