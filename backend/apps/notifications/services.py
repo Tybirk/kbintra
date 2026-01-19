@@ -272,7 +272,7 @@ def notify_new_message(
     return create_notification(
         user=recipient,
         notification_type=NotificationType.NEW_MESSAGE,
-        title=f"New message from {sender.first_name}",
+        title=f"Ny besked fra {sender.first_name}",
         message=preview,
         link="/beskeder",
         related_user=sender,

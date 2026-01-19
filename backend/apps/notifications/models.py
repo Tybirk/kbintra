@@ -9,14 +9,14 @@ from django.db import models
 class NotificationType(models.TextChoices):
     """Types of notifications."""
 
-    NEW_MESSAGE = "new_message", "New Message"
-    NEW_ANNOUNCEMENT = "new_announcement", "New Announcement"
-    NEW_THREAD = "new_thread", "New Thread in Subscribed Subgroup"
-    THREAD_REPLY = "thread_reply", "Reply to Your Thread"
-    POST_REPLY = "post_reply", "Reply to Your Post"
-    POST_REACTION = "post_reaction", "Reaction to Your Post"
-    EVENT_REMINDER = "event_reminder", "Event Reminder"
-    FOOD_TICKET = "food_ticket", "Food Ticket Available"
+    NEW_MESSAGE = "new_message", "Ny besked"
+    NEW_ANNOUNCEMENT = "new_announcement", "Ny vigtig post"
+    NEW_THREAD = "new_thread", "Ny tråd i gruppen"
+    THREAD_REPLY = "thread_reply", "Nyt svar i tråden"
+    POST_REPLY = "post_reply", "Nyt svar på dit opslag"
+    POST_REACTION = "post_reaction", "Reaktion på dit opslag"
+    EVENT_REMINDER = "event_reminder", "Begivenhedsreminder"
+    FOOD_TICKET = "food_ticket", "Madbillet tilgængelig"
 
 
 class Notification(models.Model):
