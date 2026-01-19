@@ -11,28 +11,42 @@ precacheAndRoute(self.__WB_MANIFEST)
 
 // Handle push notifications
 self.addEventListener("push", (event: PushEvent) => {
-  if (!event.data) {
-    console.log("Push event received but no data")
-    return
-  }
-
-  try {
-    const data = event.data.json()
-    const options: NotificationOptions = {
-      body: data.body || "",
-      icon: data.icon || "/pwa-192x192.png",
-      badge: data.badge || "/pwa-192x192.png",
-      data: data.data || {},
-      tag: data.data?.notification_type || "default",
-      requireInteraction: false,
+  // Must call waitUntil synchronously, before any async operations
+  const promiseChain = (async () => {
+    if (!event.data) {
+      console.log("Push event received but no data")
+      // Still show a generic notification on iOS
+      await self.registration.showNotification("KB Intra", {
+        body: "Du har en ny notifikation",
+      })
+      return
     }
 
-    event.waitUntil(
-      self.registration.showNotification(data.title || "KB Intra", options),
-    )
-  } catch (error) {
-    console.error("Error handling push event:", error)
-  }
+    try {
+      const data = event.data.json()
+      // Keep options minimal for iOS Safari compatibility
+      const options: NotificationOptions = {
+        body: data.body || "Du har en ny notifikation",
+        data: data.data || {},
+      }
+
+      // Only add icon if not on iOS (can cause issues)
+      const isIOS = /iPhone|iPad|iPod/.test(self.navigator?.userAgent || "")
+      if (!isIOS && data.icon) {
+        options.icon = data.icon
+      }
+
+      await self.registration.showNotification(data.title || "KB Intra", options)
+    } catch (error) {
+      console.error("Error handling push event:", error)
+      // Fallback: show generic notification
+      await self.registration.showNotification("KB Intra", {
+        body: "Du har en ny notifikation",
+      })
+    }
+  })()
+
+  event.waitUntil(promiseChain)
 })
 
 // Handle notification click
