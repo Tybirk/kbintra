@@ -176,7 +176,10 @@ export default function DashboardPage() {
     return null
   }
 
-  const nextFoodDay = !isTodayFoodDay || todayDayOfWeek === 4 ? getNextFoodDay() : getNextFoodDay()
+  const nextFoodDay =
+    !isTodayFoodDay || todayDayOfWeek === 4
+      ? getNextFoodDay()
+      : getNextFoodDay()
 
   // Find registrations
   const allRegistrations = [
@@ -221,7 +224,6 @@ export default function DashboardPage() {
       <Text c="dimmed" mb="xl">
         Hvad vil du lave i dag?
       </Text>
-
 
       {/* Notifications Widget */}
       {recentNotifications && recentNotifications.length > 0 && (

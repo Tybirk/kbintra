@@ -60,7 +60,9 @@ describe("foodApi", () => {
 
       const result = await foodApi.refreshAllDriveMenus()
 
-      expect(apiClient.post).toHaveBeenCalledWith("/food/drive-menu/refresh-all/")
+      expect(apiClient.post).toHaveBeenCalledWith(
+        "/food/drive-menu/refresh-all/",
+      )
       expect(result).toEqual(mockResult)
     })
   })

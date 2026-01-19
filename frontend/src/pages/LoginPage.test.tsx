@@ -42,9 +42,7 @@ describe("LoginPage", () => {
     expect(screen.getByText("KB Intra")).toBeInTheDocument()
     expect(screen.getByLabelText(/e-mail/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/adgangskode/i)).toBeInTheDocument()
-    expect(
-      screen.getByRole("button", { name: /log ind/i }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /log ind/i })).toBeInTheDocument()
   })
 
   it("should allow user to enter email and password", async () => {

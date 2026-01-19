@@ -299,7 +299,10 @@ export const foodApi = {
     return response.data
   },
 
-  refreshDriveMenu: async (week?: number, year?: number): Promise<DriveMenu> => {
+  refreshDriveMenu: async (
+    week?: number,
+    year?: number,
+  ): Promise<DriveMenu> => {
     const data: Record<string, number> = {}
     if (week !== undefined) data.week = week
     if (year !== undefined) data.year = year

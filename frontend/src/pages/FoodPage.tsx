@@ -448,7 +448,10 @@ export default function FoodPage() {
                   const date = regWeekStart.add(dayOffset, "day")
                   const dateStr = date.format("YYYY-MM-DD")
                   const registration = registrationsByDate.get(dateStr)
-                  const menuText = getMenuTextForDay(regWeekDriveMenu, dayOffset)
+                  const menuText = getMenuTextForDay(
+                    regWeekDriveMenu,
+                    dayOffset,
+                  )
                   const isWednesday = dayOffset === 2
                   const isPast = date.isBefore(dayjs(), "day")
 

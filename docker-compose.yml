@@ -54,9 +54,10 @@ services:
     volumes:
       - ./data/db.sqlite3:/app/db.sqlite3
       - ./data/media:/app/media
+    env_file:
+      - .env
     environment:
       - DEBUG=False
-      - SECRET_KEY=${SECRET_KEY}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost}
       - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS:-http://localhost}

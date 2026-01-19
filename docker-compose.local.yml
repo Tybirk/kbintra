@@ -24,6 +24,8 @@ services:
     volumes:
       - ./data/db.sqlite3:/app/db.sqlite3
       - ./data/media:/app/media
+    env_file:
+      - .env
     environment:
       - DEBUG=True
       - SECRET_KEY=local-dev-secret-key-not-for-production

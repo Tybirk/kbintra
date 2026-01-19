@@ -32,6 +32,7 @@ import NotificationsPage from "./pages/NotificationsPage"
 import AppHeader from "./components/AppHeader"
 import AppNavbar from "./components/AppNavbar"
 import { GlobalSearch } from "./components/GlobalSearch"
+import { InstallPrompt } from "./components/InstallPrompt"
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -88,6 +89,7 @@ function App() {
   return (
     <ErrorBoundary>
       <GlobalSearch />
+      <InstallPrompt />
       <AppShell
         header={{ height: 60 }}
         navbar={{

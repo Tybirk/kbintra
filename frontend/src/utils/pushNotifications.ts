@@ -2,7 +2,14 @@
  * Push notification utilities
  */
 
+import { AxiosError } from "axios"
+
 import { notificationsApi } from "../api/notifications"
+
+export type PushSubscribeResult = { success: true } | {
+  success: false
+  reason: "not_supported" | "permission_denied" | "not_configured" | "error"
+}
 
 /**
  * Convert a base64 string to a Uint8Array (needed for applicationServerKey)
@@ -62,19 +69,32 @@ export async function getCurrentPushSubscription(): Promise<PushSubscription | n
 }
 
 /**
- * Subscribe to push notifications
+ * Check if push notifications are configured on the server
  */
-export async function subscribeToPushNotifications(): Promise<boolean> {
+export async function isPushConfigured(): Promise<boolean> {
+  try {
+    const { public_key } = await notificationsApi.getVapidPublicKey()
+    return !!public_key
+  } catch (error) {
+    return false
+  }
+}
+
+/**
+ * Subscribe to push notifications
+ * Returns detailed result with reason for failure
+ */
+export async function subscribeToPushNotificationsWithReason(): Promise<PushSubscribeResult> {
   if (!isPushSupported()) {
     console.error("Push notifications not supported")
-    return false
+    return { success: false, reason: "not_supported" }
   }
 
   // Request permission first
   const permission = await requestNotificationPermission()
   if (permission !== "granted") {
     console.log("Notification permission denied")
-    return false
+    return { success: false, reason: "permission_denied" }
   }
 
   try {
@@ -82,7 +102,7 @@ export async function subscribeToPushNotifications(): Promise<boolean> {
     const { public_key } = await notificationsApi.getVapidPublicKey()
     if (!public_key) {
       console.error("No VAPID public key configured")
-      return false
+      return { success: false, reason: "not_configured" }
     }
 
     // Get service worker registration
@@ -97,11 +117,24 @@ export async function subscribeToPushNotifications(): Promise<boolean> {
     // Send subscription to server
     await notificationsApi.subscribePush(subscription)
     console.log("Successfully subscribed to push notifications")
-    return true
+    return { success: true }
   } catch (error) {
+    // Check if it's a 503 error (not configured)
+    if (error instanceof AxiosError && error.response?.status === 503) {
+      console.error("Push notifications not configured on server")
+      return { success: false, reason: "not_configured" }
+    }
     console.error("Error subscribing to push notifications:", error)
-    return false
+    return { success: false, reason: "error" }
   }
+}
+
+/**
+ * Subscribe to push notifications (legacy function for backwards compatibility)
+ */
+export async function subscribeToPushNotifications(): Promise<boolean> {
+  const result = await subscribeToPushNotificationsWithReason()
+  return result.success
 }
 
 /**

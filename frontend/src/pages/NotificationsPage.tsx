@@ -46,7 +46,8 @@ import {
   isPushSupported,
   getNotificationPermission,
   isPushSubscribed,
-  subscribeToPushNotifications,
+  isPushConfigured,
+  subscribeToPushNotificationsWithReason,
   unsubscribeFromPushNotifications,
 } from "../utils/pushNotifications"
 import type {
@@ -401,12 +402,14 @@ function NotificationPreferencesModal({
     getNotificationPermission(),
   )
   const [pushSubscribed, setPushSubscribed] = useState(false)
+  const [pushConfigured, setPushConfigured] = useState<boolean | null>(null)
   const [pushLoading, setPushLoading] = useState(false)
 
-  // Check push subscription status when modal opens
+  // Check push subscription status and server configuration when modal opens
   useEffect(() => {
     if (opened && pushSupported) {
       isPushSubscribed().then(setPushSubscribed)
+      isPushConfigured().then(setPushConfigured)
       setPushPermission(getNotificationPermission())
     }
   }, [opened, pushSupported])
@@ -454,8 +457,8 @@ function NotificationPreferencesModal({
           })
         }
       } else {
-        const success = await subscribeToPushNotifications()
-        if (success) {
+        const result = await subscribeToPushNotificationsWithReason()
+        if (result.success) {
           setPushSubscribed(true)
           setPushPermission("granted")
           notifications.show({
@@ -465,11 +468,25 @@ function NotificationPreferencesModal({
           })
         } else {
           setPushPermission(getNotificationPermission())
-          if (getNotificationPermission() === "denied") {
+          if (result.reason === "permission_denied") {
             notifications.show({
               title: "Tilladelse nægtet",
               message:
                 "Du har blokeret notifikationer. Tillad dem i browserindstillinger.",
+              color: "red",
+            })
+          } else if (result.reason === "not_configured") {
+            setPushConfigured(false)
+            notifications.show({
+              title: "Ikke konfigureret",
+              message:
+                "Push-notifikationer er ikke konfigureret på serveren endnu.",
+              color: "yellow",
+            })
+          } else if (result.reason === "error") {
+            notifications.show({
+              title: "Fejl",
+              message: "Der opstod en fejl. Prøv igen senere.",
               color: "red",
             })
           }
@@ -632,6 +649,11 @@ function NotificationPreferencesModal({
               {!pushSupported ? (
                 <Alert icon={<IconInfoCircle size={16} />} color="yellow">
                   Push-notifikationer understøttes ikke i denne browser.
+                </Alert>
+              ) : pushConfigured === false ? (
+                <Alert icon={<IconInfoCircle size={16} />} color="yellow">
+                  Push-notifikationer er ikke konfigureret på serveren endnu.
+                  Kontakt administrator for at aktivere denne funktion.
                 </Alert>
               ) : pushPermission === "denied" ? (
                 <Alert icon={<IconInfoCircle size={16} />} color="red">
