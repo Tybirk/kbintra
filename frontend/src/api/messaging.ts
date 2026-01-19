@@ -124,6 +124,11 @@ export class ChatWebSocket {
   }
 
   connect(): void {
+    // Don't create a new connection if one already exists
+    if (this.ws && (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)) {
+      return
+    }
+
     const token = this.getToken()
     if (!token) {
       console.error("No token available for WebSocket connection")
