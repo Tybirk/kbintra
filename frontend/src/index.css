@@ -24,8 +24,8 @@ body {
   /* Prevent text size adjustment on orientation change */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
-  /* Safe area insets for notched devices */
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  /* Safe area insets - only left/right/bottom, top is handled by AppShell */
+  padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
 #root {
@@ -54,7 +54,10 @@ a, button, input, select, textarea {
 
 /* PWA safe area - add padding for iOS notch/status bar */
 .mantine-AppShell-header {
-  padding-top: env(safe-area-inset-top);
+  padding-top: env(safe-area-inset-top) !important;
+  height: calc(60px + env(safe-area-inset-top)) !important;
+  /* Extend background color into the safe area */
+  background-color: var(--mantine-color-body) !important;
 }
 
 .mantine-AppShell-main {
@@ -71,5 +74,5 @@ a, button, input, select, textarea {
 .mantine-AppShell-navbar {
   overscroll-behavior: contain;
   /* Account for safe area at top when navbar is open */
-  padding-top: env(safe-area-inset-top);
+  top: env(safe-area-inset-top) !important;
 }
