@@ -257,45 +257,6 @@ DEFAULT_FROM_EMAIL=KB Intra <noreply@yourdomain.com>
 SITE_URL=https://yourdomain.com
 ```
 
-### Provider-Specific Examples
-
-**Gmail (with App Password):**
-```bash
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_USE_TLS=True
-EMAIL_HOST_USER=your-gmail@gmail.com
-EMAIL_HOST_PASSWORD=your-16-char-app-password
-```
-Note: Create an App Password at https://myaccount.google.com/apppasswords (requires 2FA enabled)
-
-**AWS SES:**
-```bash
-EMAIL_HOST=email-smtp.eu-west-1.amazonaws.com
-EMAIL_PORT=587
-EMAIL_USE_TLS=True
-EMAIL_HOST_USER=YOUR_SES_SMTP_USERNAME
-EMAIL_HOST_PASSWORD=YOUR_SES_SMTP_PASSWORD
-```
-
-**SendGrid:**
-```bash
-EMAIL_HOST=smtp.sendgrid.net
-EMAIL_PORT=587
-EMAIL_USE_TLS=True
-EMAIL_HOST_USER=apikey
-EMAIL_HOST_PASSWORD=your-sendgrid-api-key
-```
-
-**Mailgun:**
-```bash
-EMAIL_HOST=smtp.mailgun.org
-EMAIL_PORT=587
-EMAIL_USE_TLS=True
-EMAIL_HOST_USER=postmaster@your-domain.mailgun.org
-EMAIL_HOST_PASSWORD=your-mailgun-password
-```
-
 ### Docker Production Configuration
 
 Add email variables to `docker-compose.yml`:
