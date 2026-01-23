@@ -276,6 +276,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 "content": message.content,
                 "is_own": True,
                 "is_read": False,
+                "is_system_message": message.is_system_message,
                 "created_at": message.created_at.isoformat(),
                 "attachments": [],  # WebSocket messages are text-only
             }

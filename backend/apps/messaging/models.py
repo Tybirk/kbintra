@@ -42,6 +42,7 @@ class Message(models.Model):
         related_name="sent_messages",
     )
     content = models.TextField()
+    is_system_message = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

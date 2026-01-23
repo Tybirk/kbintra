@@ -423,6 +423,7 @@ export interface Message {
   content: string
   is_own: boolean
   is_read: boolean
+  is_system_message: boolean
   created_at: string
   attachments: MessageAttachment[]
 }

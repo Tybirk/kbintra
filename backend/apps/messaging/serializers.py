@@ -48,10 +48,11 @@ class MessageSerializer(serializers.ModelSerializer):
             "content",
             "is_own",
             "is_read",
+            "is_system_message",
             "created_at",
             "attachments",
         ]
-        read_only_fields = ["id", "sender", "created_at"]
+        read_only_fields = ["id", "sender", "created_at", "is_system_message"]
 
     def get_is_own(self, obj: Message) -> bool:
         request = self.context.get("request")
@@ -158,6 +159,24 @@ class CreateConversationSerializer(serializers.Serializer):
         request = self.context.get("request")
         if request and request.user.id in value:
             raise serializers.ValidationError("Cannot include yourself in participant_ids")
+        # Verify all users exist
+        existing_ids = set(User.objects.filter(id__in=value).values_list("id", flat=True))
+        invalid_ids = set(value) - existing_ids
+        if invalid_ids:
+            raise serializers.ValidationError(f"Users with ids {invalid_ids} do not exist")
+        return value
+
+
+class AddParticipantsSerializer(serializers.Serializer):
+    """Serializer for adding participants to an existing conversation."""
+
+    user_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        min_length=1,
+        max_length=10,
+    )
+
+    def validate_user_ids(self, value: list) -> list:
         # Verify all users exist
         existing_ids = set(User.objects.filter(id__in=value).values_list("id", flat=True))
         invalid_ids = set(value) - existing_ids

@@ -102,6 +102,18 @@ export const messagingApi = {
     const response = await apiClient.get("/messages/unread-count/")
     return response.data
   },
+
+  // Add participants to an existing conversation
+  addParticipants: async (
+    conversationId: number,
+    userIds: number[],
+  ): Promise<ConversationDetail> => {
+    const response = await apiClient.post(
+      `/messages/conversations/${conversationId}/add-participants/`,
+      { user_ids: userIds },
+    )
+    return response.data
+  },
 }
 
 /**
@@ -125,7 +137,11 @@ export class ChatWebSocket {
 
   connect(): void {
     // Don't create a new connection if one already exists
-    if (this.ws && (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)) {
+    if (
+      this.ws &&
+      (this.ws.readyState === WebSocket.CONNECTING ||
+        this.ws.readyState === WebSocket.OPEN)
+    ) {
       return
     }
 

@@ -11,7 +11,6 @@ import {
   Stack,
   Avatar,
   TextInput,
-  Textarea,
   Modal,
   ScrollArea,
   Badge,
@@ -19,7 +18,6 @@ import {
   Indicator,
   TypographyStylesProvider,
   Image,
-  FileButton,
   CloseButton,
   ActionIcon,
 } from "@mantine/core"
@@ -31,10 +29,8 @@ import {
   IconSearch,
   IconCheck,
   IconChecks,
-  IconPhoto,
-  IconPaperclip,
-  IconFile,
   IconArrowLeft,
+  IconUserPlus,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -51,7 +47,6 @@ import type {
   MessageAttachment,
 } from "../types"
 import ChatRichTextEditor from "../components/ChatRichTextEditor"
-import EmojiPicker from "../components/EmojiPicker"
 import { getFileIcon, getFileTypeColor } from "../components/FilePreview"
 import { AttachmentCarousel } from "../components/AttachmentCarousel"
 
@@ -65,10 +60,7 @@ export default function MessagesPage() {
   const queryClient = useQueryClient()
   const [selectedConversation, setSelectedConversation] =
     useState<number | null>(null)
-  const [
-    newMessageModalOpened,
-    { open: openNewMessageModal, close: closeNewMessageModal },
-  ] = useDisclosure(false)
+  const [isComposingNew, setIsComposingNew] = useState(false)
   const [isWsConnected, setIsWsConnected] = useState(false)
   const isMobile = useMediaQuery("(max-width: 768px)")
 
@@ -163,13 +155,23 @@ export default function MessagesPage() {
 
   const handleSelectConversation = (id: number) => {
     setSelectedConversation(id)
+    setIsComposingNew(false)
+  }
+
+  const handleStartNewMessage = () => {
+    setSelectedConversation(null)
+    setIsComposingNew(true)
   }
 
   const handleNewConversationCreated = (conversationId: number) => {
-    closeNewMessageModal()
+    setIsComposingNew(false)
     chatWs.joinConversation(conversationId)
     setSelectedConversation(conversationId)
     queryClient.invalidateQueries({ queryKey: ["conversations"] })
+  }
+
+  const handleCancelNewMessage = () => {
+    setIsComposingNew(false)
   }
 
   return (
@@ -188,7 +190,7 @@ export default function MessagesPage() {
         </div>
         <Button
           leftSection={<IconPlus size={16} />}
-          onClick={openNewMessageModal}
+          onClick={handleStartNewMessage}
         >
           Ny besked
         </Button>
@@ -252,11 +254,19 @@ export default function MessagesPage() {
         <Box
           style={{
             flex: 1,
-            display: isMobile && !selectedConversation ? "none" : "flex",
+            display:
+              isMobile && !selectedConversation && !isComposingNew
+                ? "none"
+                : "flex",
             flexDirection: "column",
           }}
         >
-          {selectedConversation ? (
+          {isComposingNew ? (
+            <NewConversationArea
+              onBack={isMobile ? handleCancelNewMessage : undefined}
+              onSuccess={handleNewConversationCreated}
+            />
+          ) : selectedConversation ? (
             conversationLoading ? (
               <Center style={{ flex: 1 }}>
                 <Loader size="lg" />
@@ -289,6 +299,14 @@ export default function MessagesPage() {
                     })
                   }
                 }}
+                onParticipantsAdded={() => {
+                  queryClient.invalidateQueries({
+                    queryKey: ["conversation", selectedConversation],
+                  })
+                  queryClient.invalidateQueries({
+                    queryKey: ["conversations"],
+                  })
+                }}
               />
             ) : null
           ) : (
@@ -301,12 +319,6 @@ export default function MessagesPage() {
           )}
         </Box>
       </Paper>
-
-      <NewMessageModal
-        opened={newMessageModalOpened}
-        onClose={closeNewMessageModal}
-        onSuccess={handleNewConversationCreated}
-      />
     </>
   )
 }
@@ -411,12 +423,22 @@ interface ChatAreaProps {
   conversation: ConversationDetail
   onSendMessage: (content: string, attachments: File[]) => Promise<void> | void
   onBack?: () => void
+  onParticipantsAdded?: () => void
 }
 
-function ChatArea({ conversation, onSendMessage, onBack }: ChatAreaProps) {
+function ChatArea({
+  conversation,
+  onSendMessage,
+  onBack,
+  onParticipantsAdded,
+}: ChatAreaProps) {
   const [message, setMessage] = useState("")
   const [attachments, setAttachments] = useState<File[]>([])
   const [isSending, setIsSending] = useState(false)
+  const [
+    addParticipantsOpened,
+    { open: openAddParticipants, close: closeAddParticipants },
+  ] = useDisclosure(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const otherParticipants = conversation.other_participants
@@ -466,27 +488,47 @@ function ChatArea({ conversation, onSendMessage, onBack }: ChatAreaProps) {
         p="md"
         style={{ borderBottom: "1px solid var(--mantine-color-gray-3)" }}
       >
-        <Group gap="sm">
-          {onBack && (
-            <ActionIcon variant="subtle" onClick={onBack} size="lg">
-              <IconArrowLeft size={20} />
-            </ActionIcon>
-          )}
-          <Avatar
-            src={otherParticipants[0]?.profile_picture}
-            radius="xl"
-            size="md"
+        <Group gap="sm" justify="space-between">
+          <Group gap="sm">
+            {onBack && (
+              <ActionIcon variant="subtle" onClick={onBack} size="lg">
+                <IconArrowLeft size={20} />
+              </ActionIcon>
+            )}
+            <Avatar
+              src={otherParticipants[0]?.profile_picture}
+              radius="xl"
+              size="md"
+            >
+              {otherParticipants[0]?.first_name?.[0]}
+            </Avatar>
+            <div>
+              <Text fw={500}>{displayName}</Text>
+              <Text size="xs" c="dimmed">
+                {conversation.participants.length} deltagere
+              </Text>
+            </div>
+          </Group>
+          <ActionIcon
+            variant="subtle"
+            onClick={openAddParticipants}
+            size="lg"
+            title="Tilføj personer"
           >
-            {otherParticipants[0]?.first_name?.[0]}
-          </Avatar>
-          <div>
-            <Text fw={500}>{displayName}</Text>
-            <Text size="xs" c="dimmed">
-              {conversation.participants.length} deltagere
-            </Text>
-          </div>
+            <IconUserPlus size={20} />
+          </ActionIcon>
         </Group>
       </Box>
+
+      <AddParticipantsModal
+        opened={addParticipantsOpened}
+        onClose={closeAddParticipants}
+        conversation={conversation}
+        onSuccess={() => {
+          closeAddParticipants()
+          onParticipantsAdded?.()
+        }}
+      />
 
       {/* Messages */}
       <ScrollArea style={{ flex: 1 }} p="md" viewportRef={scrollRef}>
@@ -542,6 +584,17 @@ function isImageFile(filename: string): boolean {
 function MessageBubble({ message, showAvatar, showTime }: MessageBubbleProps) {
   const [carouselOpened, setCarouselOpened] = useState(false)
   const [carouselInitialIndex, setCarouselInitialIndex] = useState(0)
+
+  // Render system messages differently
+  if (message.is_system_message) {
+    return (
+      <Center py="xs">
+        <Text size="sm" c="dimmed" ta="center">
+          {message.content}
+        </Text>
+      </Center>
+    )
+  }
 
   const isOwn = message.is_own
   const hasContent = message.content.trim().length > 0
@@ -688,18 +741,19 @@ function MessageBubble({ message, showAvatar, showTime }: MessageBubbleProps) {
   )
 }
 
-interface NewMessageModalProps {
-  opened: boolean
-  onClose: () => void
+interface NewConversationAreaProps {
+  onBack?: () => void
   onSuccess: (conversationId: number) => void
 }
 
-function NewMessageModal({ opened, onClose, onSuccess }: NewMessageModalProps) {
+function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
   const { user: currentUser } = useAuthStore()
   const [search, setSearch] = useState("")
   const [selectedUsers, setSelectedUsers] = useState<User[]>([])
   const [message, setMessage] = useState("")
   const [attachments, setAttachments] = useState<File[]>([])
+  const [isSearchFocused, setIsSearchFocused] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   // Fetch users for search
   const { data: users } = useQuery({
@@ -708,17 +762,12 @@ function NewMessageModal({ opened, onClose, onSuccess }: NewMessageModalProps) {
       const response = await apiClient.get("/users/")
       return (response.data.results ?? response.data) as User[]
     },
-    enabled: opened,
   })
 
   const createMutation = useMutation({
     mutationFn: messagingApi.createConversation,
     onSuccess: (data) => {
       onSuccess(data.id)
-      setSearch("")
-      setSelectedUsers([])
-      setMessage("")
-      setAttachments([])
     },
     onError: () => {
       notifications.show({
@@ -731,8 +780,288 @@ function NewMessageModal({ opened, onClose, onSuccess }: NewMessageModalProps) {
 
   const searchTerm = search.trim().toLowerCase()
   const filteredUsers = users?.filter((u) => {
-    // Exclude current user (can't message yourself)
     if (u.id === currentUser?.id) return false
+    if (selectedUsers.some((s) => s.id === u.id)) return false
+    if (!searchTerm) return true
+    const firstName = (u.first_name || "").toLowerCase()
+    const lastName = (u.last_name || "").toLowerCase()
+    const fullName = `${firstName} ${lastName}`
+    return (
+      firstName.includes(searchTerm) ||
+      lastName.includes(searchTerm) ||
+      fullName.includes(searchTerm)
+    )
+  })
+
+  const handleSelectUser = (user: User) => {
+    setSelectedUsers((prev) => [...prev, user])
+    setSearch("")
+    searchInputRef.current?.focus()
+  }
+
+  const handleRemoveUser = (userId: number) => {
+    setSelectedUsers((prev) => prev.filter((u) => u.id !== userId))
+  }
+
+  const handleSend = async () => {
+    if (selectedUsers.length === 0) return
+    createMutation.mutate({
+      participant_ids: selectedUsers.map((u) => u.id),
+      initial_message: message.trim() || undefined,
+      attachments: attachments.length > 0 ? attachments : undefined,
+    })
+  }
+
+  const showDropdown = isSearchFocused && (search || selectedUsers.length === 0)
+
+  return (
+    <>
+      {/* Header with recipient selector */}
+      <Box
+        p="md"
+        style={{ borderBottom: "1px solid var(--mantine-color-gray-3)" }}
+      >
+        <Group gap="sm" mb="xs">
+          {onBack && (
+            <ActionIcon variant="subtle" onClick={onBack} size="lg">
+              <IconArrowLeft size={20} />
+            </ActionIcon>
+          )}
+          <Text fw={500} size="lg">
+            Ny besked
+          </Text>
+        </Group>
+
+        {/* Recipient selector */}
+        <Box pos="relative">
+          <Group gap="xs" align="center" wrap="wrap">
+            <Text size="sm" c="dimmed" style={{ whiteSpace: "nowrap" }}>
+              Til:
+            </Text>
+            {selectedUsers.map((u) => (
+              <Badge
+                key={u.id}
+                size="lg"
+                variant="light"
+                leftSection={
+                  <Avatar src={u.profile_picture} size={18} radius="xl">
+                    {u.first_name?.[0]}
+                  </Avatar>
+                }
+                rightSection={
+                  <CloseButton
+                    size="xs"
+                    variant="transparent"
+                    onClick={() => handleRemoveUser(u.id)}
+                  />
+                }
+                styles={{
+                  root: { paddingLeft: 4, paddingRight: 2 },
+                  section: { marginRight: 2 },
+                }}
+              >
+                {u.first_name}
+              </Badge>
+            ))}
+            <TextInput
+              ref={searchInputRef}
+              placeholder={
+                selectedUsers.length === 0
+                  ? "Søg efter personer..."
+                  : "Tilføj flere..."
+              }
+              value={search}
+              onChange={(e) => setSearch(e.currentTarget.value)}
+              onFocus={() => setIsSearchFocused(true)}
+              onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
+              variant="unstyled"
+              size="sm"
+              style={{ flex: 1, minWidth: 120 }}
+              styles={{
+                input: {
+                  minHeight: 28,
+                },
+              }}
+            />
+          </Group>
+
+          {/* User search dropdown */}
+          {showDropdown && (
+            <Paper
+              shadow="md"
+              withBorder
+              pos="absolute"
+              top="100%"
+              left={0}
+              right={0}
+              mt="xs"
+              style={{ zIndex: 100, maxHeight: 250, overflow: "auto" }}
+            >
+              {filteredUsers && filteredUsers.length > 0 ? (
+                <Stack gap={0}>
+                  {filteredUsers.slice(0, 10).map((u) => (
+                    <Box
+                      key={u.id}
+                      p="sm"
+                      style={{
+                        cursor: "pointer",
+                        borderBottom: "1px solid var(--mantine-color-gray-2)",
+                      }}
+                      onMouseDown={() => handleSelectUser(u)}
+                    >
+                      <Group gap="sm">
+                        <Avatar src={u.profile_picture} radius="xl" size="sm">
+                          {u.first_name?.[0]}
+                          {u.last_name?.[0]}
+                        </Avatar>
+                        <div>
+                          <Text size="sm" fw={500}>
+                            {u.first_name} {u.last_name}
+                          </Text>
+                          {u.house_name && (
+                            <Text size="xs" c="dimmed">
+                              {u.house_name}
+                            </Text>
+                          )}
+                        </div>
+                      </Group>
+                    </Box>
+                  ))}
+                </Stack>
+              ) : (
+                <Text c="dimmed" ta="center" py="md" size="sm">
+                  {search
+                    ? "Ingen brugere fundet"
+                    : "Begynd at skrive for at søge"}
+                </Text>
+              )}
+            </Paper>
+          )}
+        </Box>
+
+        {selectedUsers.length > 0 && (
+          <Text size="xs" c="dimmed" mt="xs">
+            <IconUserPlus
+              size={12}
+              style={{ verticalAlign: "middle", marginRight: 4 }}
+            />
+            Du kan tilføje flere personer for at oprette en gruppesamtale
+          </Text>
+        )}
+      </Box>
+
+      {/* Empty state / instructions */}
+      <ScrollArea style={{ flex: 1 }} p="md">
+        {selectedUsers.length === 0 ? (
+          <Center style={{ height: "100%" }}>
+            <Stack align="center" gap="xs">
+              <IconMessage size={48} color="gray" />
+              <Text c="dimmed" ta="center">
+                Vælg en eller flere modtagere ovenfor
+              </Text>
+              <Text size="sm" c="dimmed" ta="center">
+                Du kan starte en samtale med én person eller oprette en
+                gruppesamtale med flere
+              </Text>
+            </Stack>
+          </Center>
+        ) : (
+          <Center style={{ height: "100%" }}>
+            <Stack align="center" gap="xs">
+              <Avatar.Group>
+                {selectedUsers.slice(0, 3).map((u) => (
+                  <Avatar key={u.id} src={u.profile_picture} radius="xl">
+                    {u.first_name?.[0]}
+                  </Avatar>
+                ))}
+                {selectedUsers.length > 3 && (
+                  <Avatar radius="xl">+{selectedUsers.length - 3}</Avatar>
+                )}
+              </Avatar.Group>
+              <Text fw={500}>
+                {selectedUsers.length === 1
+                  ? `Ny samtale med ${selectedUsers[0].first_name}`
+                  : `Gruppesamtale med ${selectedUsers.length} personer`}
+              </Text>
+              <Text size="sm" c="dimmed">
+                Skriv din første besked nedenfor
+              </Text>
+            </Stack>
+          </Center>
+        )}
+      </ScrollArea>
+
+      {/* Message input */}
+      <Box
+        p="md"
+        style={{ borderTop: "1px solid var(--mantine-color-gray-3)" }}
+      >
+        <ChatRichTextEditor
+          content={message}
+          onChange={setMessage}
+          onSend={handleSend}
+          placeholder="Skriv en besked..."
+          disabled={selectedUsers.length === 0 || createMutation.isPending}
+          attachments={attachments}
+          onAttachmentsChange={setAttachments}
+        />
+      </Box>
+    </>
+  )
+}
+
+interface AddParticipantsModalProps {
+  opened: boolean
+  onClose: () => void
+  conversation: ConversationDetail
+  onSuccess: () => void
+}
+
+function AddParticipantsModal({
+  opened,
+  onClose,
+  conversation,
+  onSuccess,
+}: AddParticipantsModalProps) {
+  const [search, setSearch] = useState("")
+  const [selectedUsers, setSelectedUsers] = useState<User[]>([])
+
+  // Get existing participant IDs
+  const existingParticipantIds = new Set(
+    conversation.participants.map((p) => p.id),
+  )
+
+  // Fetch users for search
+  const { data: users } = useQuery({
+    queryKey: ["users"],
+    queryFn: async () => {
+      const response = await apiClient.get("/users/")
+      return (response.data.results ?? response.data) as User[]
+    },
+    enabled: opened,
+  })
+
+  const addMutation = useMutation({
+    mutationFn: (userIds: number[]) =>
+      messagingApi.addParticipants(conversation.id, userIds),
+    onSuccess: () => {
+      onSuccess()
+      setSearch("")
+      setSelectedUsers([])
+    },
+    onError: () => {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke tilføje deltagere",
+        color: "red",
+      })
+    },
+  })
+
+  const searchTerm = search.trim().toLowerCase()
+  const filteredUsers = users?.filter((u) => {
+    // Exclude users already in the conversation
+    if (existingParticipantIds.has(u.id)) return false
     // Exclude already selected users
     if (selectedUsers.some((s) => s.id === u.id)) return false
     // If no search term, show all
@@ -757,33 +1086,24 @@ function NewMessageModal({ opened, onClose, onSuccess }: NewMessageModalProps) {
     setSelectedUsers((prev) => prev.filter((u) => u.id !== userId))
   }
 
-  const handleStart = () => {
+  const handleAdd = () => {
     if (selectedUsers.length === 0) return
-    createMutation.mutate({
-      participant_ids: selectedUsers.map((u) => u.id),
-      initial_message: message.trim() || undefined,
-      attachments: attachments.length > 0 ? attachments : undefined,
-    })
-  }
-
-  const handleFilesSelected = (files: File[]) => {
-    setAttachments((prev) => [...prev, ...files])
-  }
-
-  const handleRemoveFile = (index: number) => {
-    setAttachments((prev) => prev.filter((_, i) => i !== index))
+    addMutation.mutate(selectedUsers.map((u) => u.id))
   }
 
   const handleClose = () => {
     setSearch("")
     setSelectedUsers([])
-    setMessage("")
-    setAttachments([])
     onClose()
   }
 
   return (
-    <Modal opened={opened} onClose={handleClose} title="Ny besked" size="md">
+    <Modal
+      opened={opened}
+      onClose={handleClose}
+      title="Tilføj deltagere"
+      size="md"
+    >
       <Stack gap="md">
         {/* Selected users as badges */}
         {selectedUsers.length > 0 && (
@@ -804,7 +1124,7 @@ function NewMessageModal({ opened, onClose, onSuccess }: NewMessageModalProps) {
                     style={{ cursor: "pointer", marginLeft: 4 }}
                     onClick={() => handleRemoveUser(u.id)}
                   >
-                    ×
+                    x
                   </Box>
                 }
                 styles={{
@@ -820,186 +1140,60 @@ function NewMessageModal({ opened, onClose, onSuccess }: NewMessageModalProps) {
 
         {/* Search and user list */}
         <TextInput
-          placeholder={
-            selectedUsers.length > 0
-              ? "Tilføj flere deltagere..."
-              : "Søg brugere..."
-          }
+          placeholder="Søg brugere..."
           leftSection={<IconSearch size={16} />}
           value={search}
           onChange={(e) => setSearch(e.currentTarget.value)}
         />
 
-        {selectedUsers.length === 0 || search ? (
-          <ScrollArea h={200}>
-            <Stack gap="xs">
-              {filteredUsers?.map((u) => (
-                <Paper
-                  key={u.id}
-                  p="sm"
-                  withBorder
-                  style={{ cursor: "pointer" }}
-                  onClick={() => handleSelectUser(u)}
-                >
-                  <Group gap="sm">
-                    <Avatar src={u.profile_picture} radius="xl" size="md">
-                      {u.first_name?.[0]}
-                      {u.last_name?.[0]}
-                    </Avatar>
-                    <div>
-                      <Text fw={500}>
-                        {u.first_name} {u.last_name}
-                      </Text>
-                      {u.house_name && (
-                        <Text size="xs" c="dimmed">
-                          {u.house_name}
-                        </Text>
-                      )}
-                    </div>
-                  </Group>
-                </Paper>
-              ))}
-              {filteredUsers?.length === 0 && (
-                <Text c="dimmed" ta="center" py="md">
-                  Ingen brugere fundet
-                </Text>
-              )}
-            </Stack>
-          </ScrollArea>
-        ) : null}
-
-        {/* Message input - show when users are selected */}
-        {selectedUsers.length > 0 && !search && (
-          <>
-            {/* Attachment preview */}
-            {attachments.length > 0 && (
-              <ScrollArea type="auto" offsetScrollbars scrollbarSize={6}>
-                <Group gap="xs" wrap="nowrap" pb={4}>
-                  {attachments.map((file, index) => (
-                    <Box
-                      key={`${file.name}-${index}`}
-                      pos="relative"
-                      style={{
-                        border: "1px solid var(--mantine-color-gray-3)",
-                        borderRadius: "var(--mantine-radius-sm)",
-                        padding: 4,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {file.type.startsWith("image/") ? (
-                        <Image
-                          src={URL.createObjectURL(file)}
-                          alt={file.name}
-                          w={60}
-                          h={60}
-                          fit="cover"
-                          radius="sm"
-                        />
-                      ) : (
-                        <Box
-                          w={60}
-                          h={60}
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            backgroundColor: "var(--mantine-color-gray-1)",
-                            borderRadius: "var(--mantine-radius-sm)",
-                          }}
-                        >
-                          <IconFile size={20} color="gray" />
-                          <Text
-                            size="xs"
-                            c="dimmed"
-                            truncate
-                            w={55}
-                            ta="center"
-                          >
-                            {file.name}
-                          </Text>
-                        </Box>
-                      )}
-                      <CloseButton
-                        size="xs"
-                        pos="absolute"
-                        top={-8}
-                        right={-8}
-                        onClick={() => handleRemoveFile(index)}
-                        style={{
-                          backgroundColor: "var(--mantine-color-gray-0)",
-                          borderRadius: "50%",
-                        }}
-                      />
-                    </Box>
-                  ))}
-                </Group>
-              </ScrollArea>
-            )}
-
-            {/* Message input with attachment buttons */}
-            <Group gap="xs" align="flex-start">
-              <FileButton
-                onChange={handleFilesSelected}
-                multiple
-                accept="image/*"
+        <ScrollArea h={200}>
+          <Stack gap="xs">
+            {filteredUsers?.map((u) => (
+              <Paper
+                key={u.id}
+                p="sm"
+                withBorder
+                style={{ cursor: "pointer" }}
+                onClick={() => handleSelectUser(u)}
               >
-                {(props) => (
-                  <ActionIcon
-                    {...props}
-                    variant="subtle"
-                    color="gray"
-                    size="lg"
-                    mt={6}
-                    title="Vælg billeder"
-                  >
-                    <IconPhoto size={20} />
-                  </ActionIcon>
-                )}
-              </FileButton>
-              <FileButton onChange={handleFilesSelected} multiple>
-                {(props) => (
-                  <ActionIcon
-                    {...props}
-                    variant="subtle"
-                    color="gray"
-                    size="lg"
-                    mt={6}
-                    title="Vedhæft fil"
-                  >
-                    <IconPaperclip size={20} />
-                  </ActionIcon>
-                )}
-              </FileButton>
-              <Textarea
-                value={message}
-                onChange={(e) => setMessage(e.currentTarget.value)}
-                placeholder="Skriv en besked (valgfrit)..."
-                minRows={2}
-                maxRows={6}
-                autosize
-                style={{ flex: 1 }}
-                rightSection={
-                  <EmojiPicker
-                    onSelect={(emoji) => setMessage((prev) => prev + emoji)}
-                  />
-                }
-                rightSectionPointerEvents="auto"
-              />
-            </Group>
+                <Group gap="sm">
+                  <Avatar src={u.profile_picture} radius="xl" size="md">
+                    {u.first_name?.[0]}
+                    {u.last_name?.[0]}
+                  </Avatar>
+                  <div>
+                    <Text fw={500}>
+                      {u.first_name} {u.last_name}
+                    </Text>
+                    {u.house_name && (
+                      <Text size="xs" c="dimmed">
+                        {u.house_name}
+                      </Text>
+                    )}
+                  </div>
+                </Group>
+              </Paper>
+            ))}
+            {filteredUsers?.length === 0 && (
+              <Text c="dimmed" ta="center" py="md">
+                Ingen brugere fundet
+              </Text>
+            )}
+          </Stack>
+        </ScrollArea>
 
-            <Group justify="flex-end">
-              <Button variant="light" onClick={handleClose}>
-                Annuller
-              </Button>
-              <Button onClick={handleStart} loading={createMutation.isPending}>
-                {selectedUsers.length === 1
-                  ? "Start samtale"
-                  : `Start gruppesamtale (${selectedUsers.length})`}
-              </Button>
-            </Group>
-          </>
-        )}
+        <Group justify="flex-end">
+          <Button variant="light" onClick={handleClose}>
+            Annuller
+          </Button>
+          <Button
+            onClick={handleAdd}
+            loading={addMutation.isPending}
+            disabled={selectedUsers.length === 0}
+          >
+            Tilføj {selectedUsers.length > 0 ? `(${selectedUsers.length})` : ""}
+          </Button>
+        </Group>
       </Stack>
     </Modal>
   )

@@ -4,7 +4,6 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("food", "0011_remove_cook_name_from_drive_menu_cache"),
     ]

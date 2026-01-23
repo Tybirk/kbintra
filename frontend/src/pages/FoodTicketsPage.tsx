@@ -30,6 +30,7 @@ import {
   IconPhone,
   IconDotsVertical,
   IconTrash,
+  IconWallet,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 
@@ -159,21 +160,33 @@ interface TicketCardProps {
 
 function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
   const queryClient = useQueryClient()
+  const [buyModalOpened, { open: openBuyModal, close: closeBuyModal }] =
+    useDisclosure(false)
 
   const claimMutation = useMutation({
     mutationFn: () => foodApi.claimTicket(ticket.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "tickets"] })
-      notifications.show({
-        title: "Billet reserveret",
-        message: "Kontakt ejeren for at aftale betaling hvis nødvendigt.",
-        color: "green",
-      })
+      closeBuyModal()
+      if (ticket.is_own) {
+        notifications.show({
+          title: "Billet tilbagekaldt",
+          message:
+            "Du har tilbagekaldt din billet og kan nu tilmelde dig måltidet igen.",
+          color: "green",
+        })
+      } else {
+        notifications.show({
+          title: "Billet købt",
+          message: "Husk at betale ejeren via MobilePay eller kontant.",
+          color: "green",
+        })
+      }
     },
     onError: () => {
       notifications.show({
         title: "Fejl",
-        message: "Kunne ikke reservere billet.",
+        message: "Kunne ikke købe billet.",
         color: "red",
       })
     },
@@ -222,121 +235,237 @@ function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
   const isClaimedByMe = ticket.claimed_by && !isOwner
 
   return (
-    <Paper withBorder p="md" radius="md">
-      <Group justify="space-between" wrap="nowrap">
-        <Group gap="md" wrap="nowrap" style={{ flex: 1 }}>
-          <Avatar src={ticket.owner.profile_picture} radius="xl" size="lg">
-            {ticket.owner.first_name?.[0]}
-            {ticket.owner.last_name?.[0]}
-          </Avatar>
-          <div style={{ flex: 1 }}>
-            <Group gap="xs" mb={4}>
+    <>
+      <Paper withBorder p="md" radius="md">
+        <Group justify="space-between" wrap="nowrap">
+          <Group gap="md" wrap="nowrap" style={{ flex: 1 }}>
+            <Avatar src={ticket.owner.profile_picture} radius="xl" size="lg">
+              {ticket.owner.first_name?.[0]}
+              {ticket.owner.last_name?.[0]}
+            </Avatar>
+            <div style={{ flex: 1 }}>
+              <Group gap="xs" mb={4}>
+                <Text fw={500}>
+                  {ticket.owner.first_name} {ticket.owner.last_name}
+                </Text>
+                {ticket.is_free ? (
+                  <Badge color="green" variant="light">
+                    Gratis
+                  </Badge>
+                ) : (
+                  <Badge color="blue" variant="light">
+                    {ticket.price} DKK
+                  </Badge>
+                )}
+                {isClaimed && (
+                  <Badge color="gray" variant="light">
+                    {isOwner ? "Solgt" : "Reserveret"}
+                  </Badge>
+                )}
+              </Group>
+              <Text size="sm" c="dimmed">
+                {ticket.day_name}, {dayjs(ticket.date).format("D. MMM")} •{" "}
+                {ticket.total_portions}{" "}
+                {ticket.total_portions === 1 ? "portion" : "portioner"}
+                {ticket.day_of_week === 2 &&
+                  ` • ${ticket.meal_type === "meat" ? "Kød" : "Vegetar"}`}
+              </Text>
+              {ticket.description && (
+                <Text size="sm" mt={4}>
+                  {ticket.description}
+                </Text>
+              )}
+              {isClaimed && ticket.claimed_by && (
+                <Text size="sm" c="dimmed" mt={4}>
+                  {isOwner ? "Købt" : "Reserveret"} af{" "}
+                  {ticket.claimed_by.first_name} {ticket.claimed_by.last_name}
+                </Text>
+              )}
+            </div>
+          </Group>
+
+          <Group gap="xs">
+            {/* Show MobilePay button for claimed tickets with a price */}
+            {isClaimed &&
+              isClaimedByMe &&
+              !ticket.is_free &&
+              ticket.owner.phone_number && (
+                <Button
+                  variant="filled"
+                  color="indigo"
+                  size="sm"
+                  leftSection={<IconWallet size={14} />}
+                  component="a"
+                  href={`mobilepay://send?phone=${encodeURIComponent(ticket.owner.phone_number)}&amount=${ticket.price}&comment=${encodeURIComponent(`Madbillet ${dayjs(ticket.date).format("D/M")}`)}&lock=1`}
+                >
+                  Betal {ticket.price} kr
+                </Button>
+              )}
+
+            {/* Show phone number for claimed tickets */}
+            {isClaimed && isClaimedByMe && ticket.owner.phone_number && (
+              <Button
+                variant="light"
+                size="sm"
+                leftSection={<IconPhone size={14} />}
+                component="a"
+                href={`tel:${ticket.owner.phone_number}`}
+              >
+                {ticket.owner.phone_number}
+              </Button>
+            )}
+
+            {/* Buy button for available tickets */}
+            {showClaim && ticket.is_available && !ticket.is_own && (
+              <Button onClick={openBuyModal}>Køb</Button>
+            )}
+
+            {/* Actions for owned/claimed tickets */}
+            {showActions && (
+              <>
+                {isClaimedByMe && (
+                  <Button
+                    variant="light"
+                    color="red"
+                    onClick={() => releaseMutation.mutate()}
+                    loading={releaseMutation.isPending}
+                  >
+                    Frigiv
+                  </Button>
+                )}
+                {isOwner && ticket.is_available && (
+                  <Button
+                    variant="light"
+                    size="sm"
+                    onClick={() => claimMutation.mutate()}
+                    loading={claimMutation.isPending}
+                  >
+                    Tilbagekald
+                  </Button>
+                )}
+                {isOwner && (
+                  <Menu shadow="md" width={200}>
+                    <Menu.Target>
+                      <ActionIcon variant="subtle">
+                        <IconDotsVertical size={16} />
+                      </ActionIcon>
+                    </Menu.Target>
+                    <Menu.Dropdown>
+                      {!ticket.is_available && (
+                        <Menu.Item onClick={() => releaseMutation.mutate()}>
+                          Frigiv billet
+                        </Menu.Item>
+                      )}
+                      {ticket.is_available && (
+                        <Menu.Item
+                          color="red"
+                          leftSection={<IconTrash size={14} />}
+                          onClick={() => deleteMutation.mutate()}
+                        >
+                          Slet
+                        </Menu.Item>
+                      )}
+                    </Menu.Dropdown>
+                  </Menu>
+                )}
+              </>
+            )}
+          </Group>
+        </Group>
+      </Paper>
+
+      {/* Buy Modal */}
+      <Modal
+        opened={buyModalOpened}
+        onClose={closeBuyModal}
+        title="Køb madbillet"
+        centered
+      >
+        <Stack gap="md">
+          <div>
+            <Text size="sm" c="dimmed">
+              Sælger
+            </Text>
+            <Group gap="sm">
+              <Avatar src={ticket.owner.profile_picture} radius="xl" size="sm">
+                {ticket.owner.first_name?.[0]}
+                {ticket.owner.last_name?.[0]}
+              </Avatar>
               <Text fw={500}>
                 {ticket.owner.first_name} {ticket.owner.last_name}
               </Text>
-              {ticket.is_free ? (
-                <Badge color="green" variant="light">
-                  Gratis
-                </Badge>
-              ) : (
-                <Badge color="blue" variant="light">
-                  {ticket.price} DKK
-                </Badge>
-              )}
-              {isClaimed && (
-                <Badge color="gray" variant="light">
-                  Reserveret
-                </Badge>
-              )}
             </Group>
+          </div>
+
+          <div>
             <Text size="sm" c="dimmed">
+              Billet
+            </Text>
+            <Text>
               {ticket.day_name}, {dayjs(ticket.date).format("D. MMM")} •{" "}
               {ticket.total_portions}{" "}
               {ticket.total_portions === 1 ? "portion" : "portioner"}
               {ticket.day_of_week === 2 &&
                 ` • ${ticket.meal_type === "meat" ? "Kød" : "Vegetar"}`}
             </Text>
-            {ticket.description && (
-              <Text size="sm" mt={4}>
-                {ticket.description}
-              </Text>
-            )}
-            {isClaimed && ticket.claimed_by && (
-              <Text size="sm" c="dimmed" mt={4}>
-                Reserveret af {ticket.claimed_by.first_name}{" "}
-                {ticket.claimed_by.last_name}
-              </Text>
-            )}
           </div>
-        </Group>
 
-        <Group gap="xs">
-          {/* Show phone number for claimed tickets */}
-          {isClaimed && isClaimedByMe && ticket.owner.phone_number && (
-            <Button
-              variant="light"
-              size="sm"
-              leftSection={<IconPhone size={14} />}
-              component="a"
-              href={`tel:${ticket.owner.phone_number}`}
-            >
-              {ticket.owner.phone_number}
-            </Button>
+          <div>
+            <Text size="sm" c="dimmed">
+              Pris
+            </Text>
+            <Text fw={500} size="lg">
+              {ticket.is_free ? "Gratis" : `${ticket.price} kr`}
+            </Text>
+          </div>
+
+          {!ticket.is_free && (
+            <Stack gap="xs">
+              <Text size="sm" fw={500}>
+                Betal med MobilePay
+              </Text>
+              {ticket.owner.phone_number ? (
+                <Button
+                  variant="filled"
+                  color="indigo"
+                  leftSection={<IconWallet size={16} />}
+                  component="a"
+                  href={`mobilepay://send?phone=${encodeURIComponent(ticket.owner.phone_number)}&amount=${ticket.price}&comment=${encodeURIComponent(`Madbillet ${dayjs(ticket.date).format("D/M")}`)}&lock=1`}
+                >
+                  Åbn MobilePay ({ticket.price} kr)
+                </Button>
+              ) : (
+                <Text size="sm" c="dimmed">
+                  Sælger har ikke registreret telefonnummer
+                </Text>
+              )}
+              {ticket.owner.phone_number && (
+                <Button
+                  variant="light"
+                  leftSection={<IconPhone size={16} />}
+                  component="a"
+                  href={`tel:${ticket.owner.phone_number}`}
+                >
+                  Ring til {ticket.owner.phone_number}
+                </Button>
+              )}
+            </Stack>
           )}
 
-          {/* Claim button for available tickets */}
-          {showClaim && ticket.is_available && !ticket.is_own && (
+          <Group justify="flex-end" mt="md">
+            <Button variant="light" onClick={closeBuyModal}>
+              Annuller
+            </Button>
             <Button
               onClick={() => claimMutation.mutate()}
               loading={claimMutation.isPending}
             >
-              Reserver
+              Bekræft køb
             </Button>
-          )}
-
-          {/* Actions for owned/claimed tickets */}
-          {showActions && (
-            <>
-              {isClaimedByMe && (
-                <Button
-                  variant="light"
-                  color="red"
-                  onClick={() => releaseMutation.mutate()}
-                  loading={releaseMutation.isPending}
-                >
-                  Frigiv
-                </Button>
-              )}
-              {isOwner && (
-                <Menu shadow="md" width={200}>
-                  <Menu.Target>
-                    <ActionIcon variant="subtle">
-                      <IconDotsVertical size={16} />
-                    </ActionIcon>
-                  </Menu.Target>
-                  <Menu.Dropdown>
-                    {!ticket.is_available && (
-                      <Menu.Item onClick={() => releaseMutation.mutate()}>
-                        Frigiv billet
-                      </Menu.Item>
-                    )}
-                    {ticket.is_available && (
-                      <Menu.Item
-                        color="red"
-                        leftSection={<IconTrash size={14} />}
-                        onClick={() => deleteMutation.mutate()}
-                      >
-                        Slet
-                      </Menu.Item>
-                    )}
-                  </Menu.Dropdown>
-                </Menu>
-              )}
-            </>
-          )}
-        </Group>
-      </Group>
-    </Paper>
+          </Group>
+        </Stack>
+      </Modal>
+    </>
   )
 }
 
@@ -355,7 +484,6 @@ function CreateTicketModal({
   const [adults, setAdults] = useState(1)
   const [children, setChildren] = useState(0)
   const [mealType, setMealType] = useState<"meat" | "vegetarian">("meat")
-  const [price, setPrice] = useState<number | "">("")
   const [description, setDescription] = useState("")
 
   const createMutation = useMutation({
@@ -371,7 +499,6 @@ function CreateTicketModal({
       setAdults(1)
       setChildren(0)
       setMealType("meat")
-      setPrice("")
       setDescription("")
       onSuccess()
     },
@@ -393,7 +520,6 @@ function CreateTicketModal({
       adults_count: adults,
       children_count: children,
       meal_type: mealType,
-      price: price === "" ? null : price,
       description,
     })
   }
@@ -461,16 +587,6 @@ function CreateTicketModal({
               />
             </div>
           )}
-
-          <NumberInput
-            label="Pris (DKK)"
-            description="Lad være tom for gratis"
-            placeholder="0"
-            value={price}
-            onChange={(val) => setPrice(val === "" ? "" : Number(val))}
-            min={0}
-            max={999}
-          />
 
           <Textarea
             label="Note (valgfrit)"

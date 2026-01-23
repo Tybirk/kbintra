@@ -214,34 +214,55 @@ describe("MessagesPage", () => {
     })
   })
 
-  describe("NewMessageModal", () => {
+  describe("New Conversation Area", () => {
     beforeEach(() => {
       vi.mocked(apiClient.get).mockResolvedValue({ data: mockUsers })
     })
 
-    it("should open modal when clicking new message button", async () => {
+    it("should show inline compose area when clicking new message button", async () => {
       const user = userEvent.setup()
       render(<MessagesPage />)
 
       await user.click(screen.getByRole("button", { name: /ny besked/i }))
 
       await waitFor(() => {
-        expect(screen.getByRole("dialog")).toBeInTheDocument()
+        // Should show "Til:" label for recipient selection
+        expect(screen.getByText("Til:")).toBeInTheDocument()
       })
-      const dialog = screen.getByRole("dialog")
-      expect(within(dialog).getByText("Ny besked")).toBeInTheDocument()
     })
 
-    it("should display users in search results", async () => {
+    it("should show search input with placeholder", async () => {
       const user = userEvent.setup()
       render(<MessagesPage />)
 
       await user.click(screen.getByRole("button", { name: /ny besked/i }))
+
+      await waitFor(() => {
+        expect(
+          screen.getByPlaceholderText(/søg efter personer/i),
+        ).toBeInTheDocument()
+      })
+    })
+
+    it("should display users in search results when focused", async () => {
+      const user = userEvent.setup()
+      render(<MessagesPage />)
+
+      await user.click(screen.getByRole("button", { name: /ny besked/i }))
+
+      await waitFor(() => {
+        expect(
+          screen.getByPlaceholderText(/søg efter personer/i),
+        ).toBeInTheDocument()
+      })
+
+      // Focus on search input to show dropdown
+      const searchInput = screen.getByPlaceholderText(/søg efter personer/i)
+      await user.click(searchInput)
 
       await waitFor(() => {
         expect(screen.getByText("Alice Smith")).toBeInTheDocument()
         expect(screen.getByText("Bob Johnson")).toBeInTheDocument()
-        expect(screen.getByText("Carol Williams")).toBeInTheDocument()
       })
     })
 
@@ -252,14 +273,18 @@ describe("MessagesPage", () => {
       await user.click(screen.getByRole("button", { name: /ny besked/i }))
 
       await waitFor(() => {
-        expect(screen.getByText("Alice Smith")).toBeInTheDocument()
+        expect(
+          screen.getByPlaceholderText(/søg efter personer/i),
+        ).toBeInTheDocument()
       })
 
-      const searchInput = screen.getByPlaceholderText(/søg brugere/i)
+      const searchInput = screen.getByPlaceholderText(/søg efter personer/i)
       await user.type(searchInput, "bob")
 
+      await waitFor(() => {
+        expect(screen.getByText("Bob Johnson")).toBeInTheDocument()
+      })
       expect(screen.queryByText("Alice Smith")).not.toBeInTheDocument()
-      expect(screen.getByText("Bob Johnson")).toBeInTheDocument()
     })
 
     it("should select user and show as badge", async () => {
@@ -269,18 +294,25 @@ describe("MessagesPage", () => {
       await user.click(screen.getByRole("button", { name: /ny besked/i }))
 
       await waitFor(() => {
+        expect(
+          screen.getByPlaceholderText(/søg efter personer/i),
+        ).toBeInTheDocument()
+      })
+
+      const searchInput = screen.getByPlaceholderText(/søg efter personer/i)
+      await user.click(searchInput)
+
+      await waitFor(() => {
         expect(screen.getByText("Alice Smith")).toBeInTheDocument()
       })
 
       // Click to select Alice
       await user.click(screen.getByText("Alice Smith"))
 
-      // Should show as badge - badge shows full name and × button
-      const dialog = screen.getByRole("dialog")
-      // After selection, user is shown as badge with full name
+      // Should show as badge with first name
       await waitFor(() => {
-        // Badge still shows the full name, but in a badge component
-        expect(within(dialog).getByText("×")).toBeInTheDocument()
+        // Badge shows first name "Alice"
+        expect(screen.getByText("Alice")).toBeInTheDocument()
       })
     })
 
@@ -291,33 +323,53 @@ describe("MessagesPage", () => {
       await user.click(screen.getByRole("button", { name: /ny besked/i }))
 
       await waitFor(() => {
+        expect(
+          screen.getByPlaceholderText(/søg efter personer/i),
+        ).toBeInTheDocument()
+      })
+
+      const searchInput = screen.getByPlaceholderText(/søg efter personer/i)
+      await user.click(searchInput)
+
+      await waitFor(() => {
         expect(screen.getByText("Alice Smith")).toBeInTheDocument()
       })
 
       // Select Alice
       await user.click(screen.getByText("Alice Smith"))
 
-      // Search for Bob (since user list may be hidden after first selection)
-      const searchInput = screen.getByPlaceholderText(/tilføj flere/i)
-      await user.type(searchInput, "bob")
+      // Search for Bob
+      const updatedSearchInput = screen.getByPlaceholderText(/tilføj flere/i)
+      await user.type(updatedSearchInput, "bob")
+
+      await waitFor(() => {
+        expect(screen.getByText("Bob Johnson")).toBeInTheDocument()
+      })
 
       // Select Bob
       await user.click(screen.getByText("Bob Johnson"))
 
-      // Both should appear as badges - verify by checking × buttons exist
-      const dialog = screen.getByRole("dialog")
+      // Both should appear as badges
       await waitFor(() => {
-        // Two badges means two × buttons
-        const closeButtons = within(dialog).getAllByText("×")
-        expect(closeButtons).toHaveLength(2)
+        expect(screen.getByText("Alice")).toBeInTheDocument()
+        expect(screen.getByText("Bob")).toBeInTheDocument()
       })
     })
 
-    it("should show group conversation button when multiple users selected", async () => {
+    it("should show group conversation info when multiple users selected", async () => {
       const user = userEvent.setup()
       render(<MessagesPage />)
 
       await user.click(screen.getByRole("button", { name: /ny besked/i }))
+
+      await waitFor(() => {
+        expect(
+          screen.getByPlaceholderText(/søg efter personer/i),
+        ).toBeInTheDocument()
+      })
+
+      const searchInput = screen.getByPlaceholderText(/søg efter personer/i)
+      await user.click(searchInput)
 
       await waitFor(() => {
         expect(screen.getByText("Alice Smith")).toBeInTheDocument()
@@ -326,27 +378,43 @@ describe("MessagesPage", () => {
       // Select Alice
       await user.click(screen.getByText("Alice Smith"))
 
-      // Should show regular start button
-      expect(
-        screen.getByRole("button", { name: /start samtale/i }),
-      ).toBeInTheDocument()
+      // Should show single conversation message
+      await waitFor(() => {
+        expect(screen.getByText(/Ny samtale med Alice/i)).toBeInTheDocument()
+      })
 
       // Search for and select Bob
-      const searchInput = screen.getByPlaceholderText(/tilføj flere/i)
-      await user.type(searchInput, "bob")
+      const updatedSearchInput = screen.getByPlaceholderText(/tilføj flere/i)
+      await user.type(updatedSearchInput, "bob")
+
+      await waitFor(() => {
+        expect(screen.getByText("Bob Johnson")).toBeInTheDocument()
+      })
+
       await user.click(screen.getByText("Bob Johnson"))
 
-      // Should now show group conversation button
-      expect(
-        screen.getByRole("button", { name: /start gruppesamtale \(2\)/i }),
-      ).toBeInTheDocument()
+      // Should now show group conversation message
+      await waitFor(() => {
+        expect(
+          screen.getByText(/Gruppesamtale med 2 personer/i),
+        ).toBeInTheDocument()
+      })
     })
 
-    it("should show × on badges for removing users", async () => {
+    it("should show hint about adding multiple people", async () => {
       const user = userEvent.setup()
       render(<MessagesPage />)
 
       await user.click(screen.getByRole("button", { name: /ny besked/i }))
+
+      await waitFor(() => {
+        expect(
+          screen.getByPlaceholderText(/søg efter personer/i),
+        ).toBeInTheDocument()
+      })
+
+      const searchInput = screen.getByPlaceholderText(/søg efter personer/i)
+      await user.click(searchInput)
 
       await waitFor(() => {
         expect(screen.getByText("Alice Smith")).toBeInTheDocument()
@@ -355,10 +423,9 @@ describe("MessagesPage", () => {
       // Select Alice
       await user.click(screen.getByText("Alice Smith"))
 
-      // Badge should have × button for removal
-      const dialog = screen.getByRole("dialog")
+      // Should show hint about adding more people
       await waitFor(() => {
-        expect(within(dialog).getByText("×")).toBeInTheDocument()
+        expect(screen.getByText(/tilføje flere personer/i)).toBeInTheDocument()
       })
     })
 
@@ -369,6 +436,15 @@ describe("MessagesPage", () => {
       await user.click(screen.getByRole("button", { name: /ny besked/i }))
 
       await waitFor(() => {
+        expect(
+          screen.getByPlaceholderText(/søg efter personer/i),
+        ).toBeInTheDocument()
+      })
+
+      const searchInput = screen.getByPlaceholderText(/søg efter personer/i)
+      await user.click(searchInput)
+
+      await waitFor(() => {
         expect(screen.getByText("Alice Smith")).toBeInTheDocument()
       })
 
@@ -376,43 +452,13 @@ describe("MessagesPage", () => {
       await user.click(screen.getByText("Alice Smith"))
 
       // Search for alice again
-      const searchInput = screen.getByPlaceholderText(/tilføj flere/i)
-      await user.type(searchInput, "alice")
+      const updatedSearchInput = screen.getByPlaceholderText(/tilføj flere/i)
+      await user.type(updatedSearchInput, "alice")
 
       // Since Alice is the only user matching "alice" and she's selected,
       // the search results should show "Ingen brugere fundet"
       await waitFor(() => {
         expect(screen.getByText("Ingen brugere fundet")).toBeInTheDocument()
-      })
-    })
-
-    it("should close modal and reset state on cancel", async () => {
-      const user = userEvent.setup()
-      render(<MessagesPage />)
-
-      await user.click(screen.getByRole("button", { name: /ny besked/i }))
-
-      await waitFor(() => {
-        expect(screen.getByText("Alice Smith")).toBeInTheDocument()
-      })
-
-      // Select Alice
-      await user.click(screen.getByText("Alice Smith"))
-
-      // Click cancel
-      await user.click(screen.getByRole("button", { name: /annuller/i }))
-
-      // Modal should be closed
-      await waitFor(() => {
-        expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
-      })
-
-      // Open again and verify state is reset
-      await user.click(screen.getByRole("button", { name: /ny besked/i }))
-
-      await waitFor(() => {
-        // Alice should be back in the list, not as a badge
-        expect(screen.getByText("Alice Smith")).toBeInTheDocument()
       })
     })
   })

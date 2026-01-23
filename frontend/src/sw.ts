@@ -36,7 +36,10 @@ self.addEventListener("push", (event: PushEvent) => {
         options.icon = data.icon
       }
 
-      await self.registration.showNotification(data.title || "KB Intra", options)
+      await self.registration.showNotification(
+        data.title || "KB Intra",
+        options,
+      )
     } catch (error) {
       console.error("Error handling push event:", error)
       // Fallback: show generic notification

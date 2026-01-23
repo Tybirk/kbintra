@@ -151,65 +151,70 @@ export default function ChatRichTextEditor({
           </Group>
         </ScrollArea>
       )}
-      <Group gap={4} align="flex-end" style={{ width: "100%" }}>
-        {/* Image picker - opens photo gallery on mobile */}
-        <FileButton onChange={handleFilesSelected} multiple accept="image/*">
-          {(props) => (
-            <ActionIcon
-              {...props}
-              variant="subtle"
-              color="gray"
-              size="lg"
-              disabled={disabled}
-              mb={4}
-              title="Vælg billeder"
-            >
-              <IconPhoto size={20} />
-            </ActionIcon>
-          )}
-        </FileButton>
-        {/* General file picker */}
-        <FileButton onChange={handleFilesSelected} multiple>
-          {(props) => (
-            <ActionIcon
-              {...props}
-              variant="subtle"
-              color="gray"
-              size="lg"
-              disabled={disabled}
-              mb={4}
-              title="Vedhæft fil"
-            >
-              <IconPaperclip size={20} />
-            </ActionIcon>
-          )}
-        </FileButton>
-        <Box style={{ flex: 1 }}>
-          <Textarea
-            ref={textareaRef}
-            value={content}
-            onChange={(e) => onChange(e.currentTarget.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={placeholder}
-            disabled={disabled}
-            autosize
-            minRows={1}
-            maxRows={6}
-            styles={{
-              input: {
-                paddingRight: 40,
-              },
-            }}
-            rightSection={<EmojiPicker onSelect={handleEmojiSelect} />}
-            rightSectionPointerEvents="auto"
-          />
-        </Box>
+      <Group gap="xs" align="flex-end" wrap="nowrap">
+        {/* Action icons group */}
+        <Group gap={4} wrap="nowrap" mb={1}>
+          {/* Image picker - opens photo gallery on mobile */}
+          <FileButton onChange={handleFilesSelected} multiple accept="image/*">
+            {(props) => (
+              <ActionIcon
+                {...props}
+                variant="subtle"
+                color="gray"
+                size="lg"
+                disabled={disabled}
+                title="Vælg billeder"
+              >
+                <IconPhoto size={20} />
+              </ActionIcon>
+            )}
+          </FileButton>
+          {/* General file picker */}
+          <FileButton onChange={handleFilesSelected} multiple>
+            {(props) => (
+              <ActionIcon
+                {...props}
+                variant="subtle"
+                color="gray"
+                size="lg"
+                disabled={disabled}
+                title="Vedhæft fil"
+              >
+                <IconPaperclip size={20} />
+              </ActionIcon>
+            )}
+          </FileButton>
+          {/* Emoji picker */}
+          <EmojiPicker onSelect={handleEmojiSelect} disabled={disabled} />
+        </Group>
+
+        {/* Message input */}
+        <Textarea
+          ref={textareaRef}
+          value={content}
+          onChange={(e) => onChange(e.currentTarget.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          disabled={disabled}
+          autosize
+          minRows={1}
+          maxRows={6}
+          style={{ flex: 1 }}
+          styles={{
+            input: {
+              borderRadius: "var(--mantine-radius-xl)",
+            },
+          }}
+        />
+
+        {/* Send button */}
         <ActionIcon
           size="lg"
+          radius="xl"
           variant="filled"
           onClick={onSend}
           disabled={disabled || isEmpty}
-          mb={4}
+          mb={1}
         >
           <IconSend size={18} />
         </ActionIcon>

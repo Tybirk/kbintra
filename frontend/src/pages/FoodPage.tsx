@@ -54,6 +54,7 @@ import type {
   DiningOption,
   SeatingTime,
   DailyRegistrationStats,
+  FoodTicket,
 } from "../types"
 
 export default function FoodPage() {
@@ -136,6 +137,20 @@ export default function FoodPage() {
     queryKey: ["food", "drive-menu", regWeekNumber, regYear],
     queryFn: () => foodApi.getDriveMenu(regWeekNumber, regYear),
     enabled: regWeekNumber !== menuWeekNumber || regYear !== menuYear, // Only fetch if different from menu week
+  })
+
+  // Fetch user's tickets to check for active tickets when switching eating status
+  const { data: myTickets } = useQuery({
+    queryKey: ["food", "tickets", "my"],
+    queryFn: foodApi.getMyTickets,
+  })
+
+  // Create a map of active tickets by date (only available tickets owned by user)
+  const activeTicketsByDate = new Map<string, FoodTicket>()
+  myTickets?.forEach((ticket) => {
+    if (ticket.is_own && ticket.is_available) {
+      activeTicketsByDate.set(ticket.date, ticket)
+    }
   })
 
   // Helper to get menu text for a specific day offset (0=Mon, 1=Tue, 2=Wed, 3=Thu)
@@ -465,6 +480,7 @@ export default function FoodPage() {
                       isWednesday={isWednesday}
                       isPast={isPast}
                       weekStart={regWeekStart.format("YYYY-MM-DD")}
+                      activeTicketForDate={activeTicketsByDate.get(dateStr)}
                     />
                   )
                 })}
@@ -588,6 +604,7 @@ interface DayRegistrationCardProps {
   isWednesday: boolean
   isPast: boolean
   weekStart: string
+  activeTicketForDate?: FoodTicket
 }
 
 function DayRegistrationCard({
@@ -598,12 +615,18 @@ function DayRegistrationCard({
   isWednesday,
   isPast,
   weekStart,
+  activeTicketForDate,
 }: DayRegistrationCardProps) {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const { user } = useAuthStore()
   const [
     ticketModalOpened,
     { open: openTicketModal, close: closeTicketModal },
+  ] = useDisclosure(false)
+  const [
+    activeTicketModalOpened,
+    { open: openActiveTicketModal, close: closeActiveTicketModal },
   ] = useDisclosure(false)
   const [isSaving, setIsSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
@@ -699,6 +722,28 @@ function DayRegistrationCard({
     },
   })
 
+  const claimOwnTicketMutation = useMutation({
+    mutationFn: () => foodApi.claimTicket(activeTicketForDate!.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["food", "tickets"] })
+      closeActiveTicketModal()
+      setIsActive(true)
+      notifications.show({
+        title: "Billet tilbagekaldt",
+        message:
+          "Du har tilbagekaldt din billet og kan nu tilmelde dig måltidet.",
+        color: "green",
+      })
+    },
+    onError: () => {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke tilbagekalde billet. Prøv venligst igen.",
+        color: "red",
+      })
+    },
+  })
+
   // Debounced save function
   const debouncedSave = useDebouncedCallback(
     (data: CreateMealRegistrationData, regId: number | undefined) => {
@@ -739,6 +784,9 @@ function DayRegistrationCard({
     if (val === "no" && registration?.is_active) {
       // User is switching from eating to not eating - prompt for ticket
       openTicketModal()
+    } else if (val === "yes" && activeTicketForDate) {
+      // User has an active ticket for this date - show warning modal
+      openActiveTicketModal()
     } else {
       setIsActive(val === "yes")
     }
@@ -966,6 +1014,46 @@ function DayRegistrationCard({
               loading={createTicketMutation.isPending}
             >
               Opret billet
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={activeTicketModalOpened}
+        onClose={closeActiveTicketModal}
+        title="Du har en aktiv madbillet"
+        centered
+      >
+        <Stack gap="md">
+          <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
+            Du har sat din madbillet til salg for denne dag. Du kan ikke
+            tilmelde dig måltidet, før billetten er solgt eller du tilbagekalder
+            den.
+          </Alert>
+
+          <Text size="sm">
+            {activeTicketForDate && (
+              <>
+                Din billet: {activeTicketForDate.total_portions}{" "}
+                {activeTicketForDate.total_portions === 1
+                  ? "portion"
+                  : "portioner"}
+                {activeTicketForDate.price &&
+                  ` til ${activeTicketForDate.price} kr`}
+              </>
+            )}
+          </Text>
+
+          <Group justify="flex-end">
+            <Button variant="light" onClick={() => navigate("/mad/billetter")}>
+              Se mine billetter
+            </Button>
+            <Button
+              onClick={() => claimOwnTicketMutation.mutate()}
+              loading={claimOwnTicketMutation.isPending}
+            >
+              Tilbagekald billet
             </Button>
           </Group>
         </Stack>

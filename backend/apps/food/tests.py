@@ -471,8 +471,7 @@ class TestFoodTicketViews:
                 "meal_type": MealType.VEGETARIAN,
                 "price": "25.00",
             }
-            with patch("apps.notifications.services.notify_food_ticket_available"):
-                response = authenticated_client.post(url, data, format="json")
+            response = authenticated_client.post(url, data, format="json")
         assert response.status_code == 201
 
     def test_claim_ticket(self, api_client, admin_user, food_ticket):
@@ -486,11 +485,14 @@ class TestFoodTicketViews:
         assert food_ticket.is_available is False
         assert food_ticket.claimed_by == admin_user
 
-    def test_cannot_claim_own_ticket(self, authenticated_client, food_ticket):
-        """Test that user cannot claim their own ticket."""
+    def test_can_claim_own_ticket(self, authenticated_client, food_ticket):
+        """Test that user can claim (recall) their own ticket."""
         url = reverse("food:ticket-claim", kwargs={"pk": food_ticket.pk})
         response = authenticated_client.post(url)
-        assert response.status_code == 400
+        assert response.status_code == 200
+        food_ticket.refresh_from_db()
+        assert food_ticket.is_available is False
+        assert food_ticket.claimed_by == food_ticket.owner
 
     def test_release_ticket(self, api_client, user, admin_user, food_ticket):
         """Test releasing a claimed ticket."""
@@ -947,8 +949,7 @@ class TestFoodTicketDefaultPricing:
                 "meal_type": MealType.MEAT,
                 # No price specified - should use default
             }
-            with patch("apps.notifications.services.notify_food_ticket_available"):
-                response = api_client.post(url, data, format="json")
+            response = api_client.post(url, data, format="json")
 
             assert response.status_code == 201
             # Default price: 2 adults @ 37 + 1 child @ 18 = 92
@@ -988,8 +989,7 @@ class TestFoodTicketDeactivatesRegistration:
                 "children_count": 1,
                 "meal_type": MealType.MEAT,
             }
-            with patch("apps.notifications.services.notify_food_ticket_available"):
-                response = api_client.post(url, data, format="json")
+            response = api_client.post(url, data, format="json")
 
             assert response.status_code == 201
 
@@ -1120,8 +1120,7 @@ class TestTicketCreationDeadline:
                 "children_count": 0,
                 "meal_type": MealType.MEAT,
             }
-            with patch("apps.notifications.services.notify_food_ticket_available"):
-                response = api_client.post(url, data, format="json")
+            response = api_client.post(url, data, format="json")
 
             assert response.status_code == 400
             assert "deadline" in str(response.json()).lower()
@@ -1147,8 +1146,7 @@ class TestTicketCreationDeadline:
                 "children_count": 0,
                 "meal_type": MealType.MEAT,
             }
-            with patch("apps.notifications.services.notify_food_ticket_available"):
-                response = api_client.post(url, data, format="json")
+            response = api_client.post(url, data, format="json")
 
             assert response.status_code == 201
 

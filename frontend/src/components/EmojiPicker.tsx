@@ -1,11 +1,14 @@
 import { useState } from "react"
-import { Popover, ActionIcon } from "@mantine/core"
+import { Popover, ActionIcon, type MantineSize } from "@mantine/core"
 import { IconMoodSmile } from "@tabler/icons-react"
 import Picker from "@emoji-mart/react"
 import data from "@emoji-mart/data"
 
 interface EmojiPickerProps {
   onSelect: (emoji: string) => void
+  size?: MantineSize
+  iconSize?: number
+  disabled?: boolean
 }
 
 interface EmojiData {
@@ -16,7 +19,12 @@ interface EmojiData {
   shortcodes: string
 }
 
-export default function EmojiPicker({ onSelect }: EmojiPickerProps) {
+export default function EmojiPicker({
+  onSelect,
+  size = "lg",
+  iconSize = 20,
+  disabled = false,
+}: EmojiPickerProps) {
   const [opened, setOpened] = useState(false)
 
   const handleEmojiSelect = (emoji: EmojiData) => {
@@ -28,18 +36,20 @@ export default function EmojiPicker({ onSelect }: EmojiPickerProps) {
     <Popover
       opened={opened}
       onChange={setOpened}
-      position="bottom-start"
+      position="top-end"
       width="auto"
       shadow="md"
     >
       <Popover.Target>
         <ActionIcon
-          variant="default"
-          size="sm"
+          variant="subtle"
+          color="gray"
+          size={size}
           onClick={() => setOpened((o) => !o)}
           title="Emoji"
+          disabled={disabled}
         >
-          <IconMoodSmile size={16} />
+          <IconMoodSmile size={iconSize} />
         </ActionIcon>
       </Popover.Target>
 

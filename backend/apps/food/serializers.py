@@ -302,8 +302,6 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
         return (adult_price * adults_count) + (self.PRICE_CHILD * children_count)
 
     def create(self, validated_data: dict) -> FoodTicket:
-        from apps.notifications.services import notify_food_ticket_available
-
         user = self.context["request"].user
         validated_data["owner"] = user
 
@@ -323,15 +321,6 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
             date=ticket.date,
             is_active=True,
         ).update(is_active=False)
-
-        # Notify all users about the new ticket
-        notify_food_ticket_available(
-            recipients=User.objects.all(),
-            owner=ticket.owner,
-            ticket_date=ticket.date.strftime("%A, %b %d"),
-            ticket_id=ticket.id,
-            portions=ticket.total_portions,
-        )
 
         return ticket
 

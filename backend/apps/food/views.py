@@ -366,12 +366,6 @@ class ClaimTicketView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        if ticket.owner == request.user:
-            return Response(
-                {"detail": "You cannot claim your own ticket."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
         if not ticket.is_available:
             return Response(
                 {"detail": "This ticket is no longer available."},
@@ -384,19 +378,20 @@ class ClaimTicketView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        from apps.notifications.services import notify_ticket_claimed
-
         ticket.is_available = False
         ticket.claimed_by = request.user
         ticket.claimed_at = timezone.now()
         ticket.save()
 
-        # Notify the owner that their ticket was claimed
-        notify_ticket_claimed(
-            owner=ticket.owner,
-            claimer=request.user,
-            ticket_date=ticket.date.strftime("%A, %b %d"),
-        )
+        # Notify the owner that their ticket was claimed (skip if claiming own ticket)
+        if ticket.owner != request.user:
+            from apps.notifications.services import notify_ticket_claimed
+
+            notify_ticket_claimed(
+                owner=ticket.owner,
+                claimer=request.user,
+                ticket_date=ticket.date.strftime("%A, %b %d"),
+            )
 
         serializer = FoodTicketSerializer(ticket, context={"request": request})
         return Response(serializer.data)

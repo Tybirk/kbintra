@@ -66,7 +66,7 @@ export default function RichTextEditor({
         </MantineRTE.ControlsGroup>
 
         <MantineRTE.ControlsGroup>
-          <EmojiPicker onSelect={handleEmojiSelect} />
+          <EmojiPicker onSelect={handleEmojiSelect} size="sm" iconSize={16} />
         </MantineRTE.ControlsGroup>
 
         <MantineRTE.ControlsGroup>

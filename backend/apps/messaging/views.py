@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 
 from .models import Conversation, Message, MessageAttachment, MessageReadStatus
 from .serializers import (
+    AddParticipantsSerializer,
     ConversationDetailSerializer,
     ConversationSerializer,
     CreateConversationSerializer,
@@ -195,3 +196,105 @@ class UnreadCountView(APIView):
             .count()
         )
         return Response({"unread_count": unread_count})
+
+
+class AddParticipantsView(APIView):
+    """Add participants to an existing conversation."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request, pk: int) -> Response:
+        # Get the conversation - user must be a participant
+        conversation = get_object_or_404(
+            Conversation.objects.filter(participants=request.user),
+            pk=pk,
+        )
+
+        serializer = AddParticipantsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user_ids = serializer.validated_data["user_ids"]
+
+        # Get existing participant IDs
+        existing_participant_ids = set(conversation.participants.values_list("id", flat=True))
+
+        # Filter out users already in the conversation
+        new_user_ids = [uid for uid in user_ids if uid not in existing_participant_ids]
+
+        if not new_user_ids:
+            return Response(
+                {"detail": "All specified users are already participants"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Get the new users
+        from apps.users.models import User
+
+        new_users = User.objects.filter(id__in=new_user_ids)
+
+        # Add new participants
+        conversation.participants.add(*new_users)
+
+        # Create system message
+        new_user_names = ", ".join([u.first_name for u in new_users])
+        system_message = Message.objects.create(
+            conversation=conversation,
+            sender=request.user,
+            content=f"{request.user.first_name} tilføjede {new_user_names} til samtalen",
+            is_system_message=True,
+        )
+
+        # Update conversation timestamp
+        conversation.save()
+
+        # Send WebSocket notification to newly added users
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+
+        channel_layer = get_channel_layer()
+        conversation_data = ConversationDetailSerializer(
+            conversation, context={"request": request}
+        ).data
+
+        for user in new_users:
+            async_to_sync(channel_layer.group_send)(
+                f"user_{user.id}",
+                {
+                    "type": "new_conversation",
+                    "conversation_id": conversation.id,
+                    "conversation": conversation_data,
+                },
+            )
+
+        # Broadcast the system message to existing participants
+        message_data = {
+            "id": system_message.id,
+            "conversation": conversation.id,
+            "sender": {
+                "id": request.user.id,
+                "first_name": request.user.first_name,
+                "last_name": request.user.last_name,
+                "profile_picture": (
+                    request.user.profile_picture.url if request.user.profile_picture else None
+                ),
+            },
+            "content": system_message.content,
+            "is_own": False,
+            "is_read": False,
+            "is_system_message": True,
+            "created_at": system_message.created_at.isoformat(),
+            "attachments": [],
+        }
+
+        async_to_sync(channel_layer.group_send)(
+            f"conversation_{conversation.id}",
+            {
+                "type": "chat_message",
+                "message": message_data,
+            },
+        )
+
+        return Response(
+            ConversationDetailSerializer(conversation, context={"request": request}).data,
+            status=status.HTTP_200_OK,
+        )
