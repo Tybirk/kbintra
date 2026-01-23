@@ -274,7 +274,7 @@ def notify_new_message(
         notification_type=NotificationType.NEW_MESSAGE,
         title=f"Ny besked fra {sender.first_name}",
         message=preview,
-        link="/beskeder",
+        link=f"/beskeder/{conversation_id}",
         related_user=sender,
         html_content=f"<p>{message_content}</p>",  # Full message in email
     )

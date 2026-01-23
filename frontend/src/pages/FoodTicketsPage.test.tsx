@@ -131,9 +131,7 @@ describe("FoodTicketsPage", () => {
     })
     expect(screen.getByText("50.00 DKK")).toBeInTheDocument()
     expect(screen.getByText(/2 portioner/i)).toBeInTheDocument()
-    expect(
-      screen.getByRole("button", { name: /reserver/i }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /køb/i })).toBeInTheDocument()
   })
 
   it("should show free badge for free tickets", async () => {
@@ -147,7 +145,30 @@ describe("FoodTicketsPage", () => {
     })
   })
 
-  it("should allow claiming a ticket", async () => {
+  it("should open buy modal when clicking Køb button", async () => {
+    const user = userEvent.setup()
+    vi.mocked(foodApi.getTickets).mockResolvedValue([mockAvailableTicket])
+
+    render(<FoodTicketsPage />)
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /køb/i })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole("button", { name: /køb/i }))
+
+    // Buy modal should open
+    await waitFor(() => {
+      expect(screen.getByText("Køb madbillet")).toBeInTheDocument()
+    })
+    expect(screen.getByText("Sælger")).toBeInTheDocument()
+    expect(screen.getByText("Betal med MobilePay")).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: /bekræft køb/i }),
+    ).toBeInTheDocument()
+  })
+
+  it("should claim ticket when confirming in buy modal", async () => {
     const user = userEvent.setup()
     vi.mocked(foodApi.getTickets).mockResolvedValue([mockAvailableTicket])
     vi.mocked(foodApi.claimTicket).mockResolvedValue({
@@ -158,12 +179,20 @@ describe("FoodTicketsPage", () => {
     render(<FoodTicketsPage />)
 
     await waitFor(() => {
+      expect(screen.getByRole("button", { name: /køb/i })).toBeInTheDocument()
+    })
+
+    // Open buy modal
+    await user.click(screen.getByRole("button", { name: /køb/i }))
+
+    await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /reserver/i }),
+        screen.getByRole("button", { name: /bekræft køb/i }),
       ).toBeInTheDocument()
     })
 
-    await user.click(screen.getByRole("button", { name: /reserver/i }))
+    // Confirm purchase
+    await user.click(screen.getByRole("button", { name: /bekræft køb/i }))
 
     await waitFor(() => {
       expect(foodApi.claimTicket).toHaveBeenCalledWith(mockAvailableTicket.id)
@@ -196,7 +225,32 @@ describe("FoodTicketsPage", () => {
     expect(screen.getByText(/reserveret af jane/i)).toBeInTheDocument()
   })
 
-  it("should not show claim button for own tickets", async () => {
+  it("should show Solgt badge for owner's sold ticket", async () => {
+    const user = userEvent.setup()
+    const ownSoldTicket = {
+      ...mockOwnTicket,
+      is_available: false,
+      claimed_by: {
+        id: 3,
+        first_name: "Jane",
+        last_name: "Smith",
+      },
+    }
+    vi.mocked(foodApi.getMyTickets).mockResolvedValue([ownSoldTicket])
+
+    render(<FoodTicketsPage />)
+
+    // Switch to My Tickets tab
+    const myTicketsTab = screen.getByRole("tab", { name: /mine billetter/i })
+    await user.click(myTicketsTab)
+
+    await waitFor(() => {
+      expect(screen.getByText("Solgt")).toBeInTheDocument()
+    })
+    expect(screen.getByText(/købt af jane/i)).toBeInTheDocument()
+  })
+
+  it("should not show Køb button for own tickets", async () => {
     vi.mocked(foodApi.getTickets).mockResolvedValue([
       {
         ...mockAvailableTicket,
@@ -210,8 +264,80 @@ describe("FoodTicketsPage", () => {
       expect(screen.getByText("John Doe")).toBeInTheDocument()
     })
     expect(
-      screen.queryByRole("button", { name: /reserver/i }),
+      screen.queryByRole("button", { name: /køb/i }),
     ).not.toBeInTheDocument()
+  })
+
+  it("should show Tilbagekald button for own available ticket", async () => {
+    const user = userEvent.setup()
+    vi.mocked(foodApi.getMyTickets).mockResolvedValue([mockOwnTicket])
+
+    render(<FoodTicketsPage />)
+
+    // Switch to My Tickets tab
+    const myTicketsTab = screen.getByRole("tab", { name: /mine billetter/i })
+    await user.click(myTicketsTab)
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /tilbagekald/i }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it("should not show Tilbagekald button for sold ticket", async () => {
+    const user = userEvent.setup()
+    const ownSoldTicket = {
+      ...mockOwnTicket,
+      is_available: false,
+      claimed_by: {
+        id: 3,
+        first_name: "Jane",
+        last_name: "Smith",
+      },
+    }
+    vi.mocked(foodApi.getMyTickets).mockResolvedValue([ownSoldTicket])
+
+    render(<FoodTicketsPage />)
+
+    // Switch to My Tickets tab
+    const myTicketsTab = screen.getByRole("tab", { name: /mine billetter/i })
+    await user.click(myTicketsTab)
+
+    await waitFor(() => {
+      expect(screen.getByText("Me User")).toBeInTheDocument()
+    })
+    expect(
+      screen.queryByRole("button", { name: /tilbagekald/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("should allow owner to recall their own ticket", async () => {
+    const user = userEvent.setup()
+    vi.mocked(foodApi.getMyTickets).mockResolvedValue([mockOwnTicket])
+    vi.mocked(foodApi.claimTicket).mockResolvedValue({
+      ...mockOwnTicket,
+      is_available: false,
+      claimed_by: mockOwnTicket.owner,
+    })
+
+    render(<FoodTicketsPage />)
+
+    // Switch to My Tickets tab
+    const myTicketsTab = screen.getByRole("tab", { name: /mine billetter/i })
+    await user.click(myTicketsTab)
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /tilbagekald/i }),
+      ).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole("button", { name: /tilbagekald/i }))
+
+    await waitFor(() => {
+      expect(foodApi.claimTicket).toHaveBeenCalledWith(mockOwnTicket.id)
+    })
   })
 
   it("should have offer ticket button", async () => {

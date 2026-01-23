@@ -888,11 +888,15 @@ class MonthlyFoodCostView(APIView):
         serializer = MonthlyFoodCostSerializer(data={"year": year, "month": month})
         serializer.is_valid(raise_exception=True)
 
-        # Get all claimed tickets for this month
         from calendar import monthrange
         from decimal import Decimal
 
         from apps.houses.models import House
+
+        # Food prices (same as in FoodTicketCreateSerializer)
+        PRICE_ADULT_MEAT = Decimal("37.00")
+        PRICE_ADULT_VEG = Decimal("26.00")
+        PRICE_CHILD = Decimal("18.00")
 
         first_day = date(year, month, 1)
         _, last_day_num = monthrange(year, month)
@@ -904,23 +908,44 @@ class MonthlyFoodCostView(APIView):
         total_cost = Decimal("0.00")
 
         for house in houses:
-            # Find claimed tickets where the OWNER belongs to this house
-            # The owner pays for the meal, not the person who claims the ticket
-            claimed_tickets = FoodTicket.objects.filter(
-                owner__house=house,
-                date__gte=first_day,
-                date__lte=last_day,
-                is_available=False,
-            )
-
             house_total = Decimal("0.00")
+            registration_count = 0
             ticket_count = 0
             adult_portions = 0
             child_portions = 0
 
-            for ticket in claimed_tickets:
-                if ticket.price:
-                    house_total += ticket.price
+            # 1. Count all ACTIVE meal registrations for this house
+            # These are people who ate their meals
+            active_registrations = MealRegistration.objects.filter(
+                user__house=house,
+                date__gte=first_day,
+                date__lte=last_day,
+                is_active=True,
+            )
+
+            for reg in active_registrations:
+                # Calculate cost based on meal type and portions
+                adult_price = PRICE_ADULT_MEAT if reg.meal_type == "meat" else PRICE_ADULT_VEG
+                cost = (adult_price * reg.adults_count) + (PRICE_CHILD * reg.children_count)
+                house_total += cost
+                registration_count += 1
+                adult_portions += reg.adults_count
+                child_portions += reg.children_count
+
+            # 2. Count ALL food tickets owned by this house (regardless of is_available)
+            # Creating a ticket means you had a meal spot - you pay whether you sold it or not
+            # The ticket sale price is between users, but the house still owes for the meal
+            all_tickets = FoodTicket.objects.filter(
+                owner__house=house,
+                date__gte=first_day,
+                date__lte=last_day,
+            )
+
+            for ticket in all_tickets:
+                # Calculate cost based on meal type and portions (not the ticket sale price)
+                adult_price = PRICE_ADULT_MEAT if ticket.meal_type == "meat" else PRICE_ADULT_VEG
+                cost = (adult_price * ticket.adults_count) + (PRICE_CHILD * ticket.children_count)
+                house_total += cost
                 ticket_count += 1
                 adult_portions += ticket.adults_count
                 child_portions += ticket.children_count
@@ -930,6 +955,7 @@ class MonthlyFoodCostView(APIView):
                     "house_id": house.id,
                     "house_name": house.name,
                     "total_cost": house_total,
+                    "registration_count": registration_count,
                     "ticket_count": ticket_count,
                     "adult_portions": adult_portions,
                     "child_portions": child_portions,

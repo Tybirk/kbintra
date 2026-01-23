@@ -268,7 +268,7 @@ function App() {
 
             {/* Beskeder */}
             <Route
-              path="/beskeder"
+              path="/beskeder/:conversationId?"
               element={
                 <ProtectedRoute>
                   <MessagesPage />

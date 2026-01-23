@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react"
+import { useParams, useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
@@ -57,12 +58,29 @@ const chatWs = new ChatWebSocket(getAccessToken)
 
 export default function MessagesPage() {
   const { user } = useAuthStore()
+  const { conversationId } = useParams<{ conversationId?: string }>()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [selectedConversation, setSelectedConversation] =
-    useState<number | null>(null)
+    useState<number | null>(
+      conversationId ? parseInt(conversationId, 10) : null,
+    )
   const [isComposingNew, setIsComposingNew] = useState(false)
   const [isWsConnected, setIsWsConnected] = useState(false)
   const isMobile = useMediaQuery("(max-width: 768px)")
+
+  // Sync URL param to state when URL changes (e.g., from notification link)
+  useEffect(() => {
+    const urlConversationId = conversationId
+      ? parseInt(conversationId, 10)
+      : null
+    if (urlConversationId !== selectedConversation) {
+      setSelectedConversation(urlConversationId)
+      if (urlConversationId) {
+        setIsComposingNew(false)
+      }
+    }
+  }, [conversationId])
 
   // Fetch conversations
   const { data: conversations, isLoading: conversationsLoading } = useQuery({
@@ -156,17 +174,20 @@ export default function MessagesPage() {
   const handleSelectConversation = (id: number) => {
     setSelectedConversation(id)
     setIsComposingNew(false)
+    navigate(`/beskeder/${id}`, { replace: true })
   }
 
   const handleStartNewMessage = () => {
     setSelectedConversation(null)
     setIsComposingNew(true)
+    navigate("/beskeder", { replace: true })
   }
 
-  const handleNewConversationCreated = (conversationId: number) => {
+  const handleNewConversationCreated = (newConversationId: number) => {
     setIsComposingNew(false)
-    chatWs.joinConversation(conversationId)
-    setSelectedConversation(conversationId)
+    chatWs.joinConversation(newConversationId)
+    setSelectedConversation(newConversationId)
+    navigate(`/beskeder/${newConversationId}`, { replace: true })
     queryClient.invalidateQueries({ queryKey: ["conversations"] })
   }
 
@@ -275,7 +296,12 @@ export default function MessagesPage() {
               <ChatArea
                 conversation={activeConversation}
                 onBack={
-                  isMobile ? () => setSelectedConversation(null) : undefined
+                  isMobile
+                    ? () => {
+                        setSelectedConversation(null)
+                        navigate("/beskeder", { replace: true })
+                      }
+                    : undefined
                 }
                 onSendMessage={async (content, attachments) => {
                   const success = await chatWs.sendMessage(

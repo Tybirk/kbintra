@@ -233,13 +233,6 @@ export default function FoodPage() {
         <Group>
           <Button
             variant="light"
-            leftSection={<IconChefHat size={16} />}
-            onClick={() => navigate("/mad/admin")}
-          >
-            Administrer menuer
-          </Button>
-          <Button
-            variant="light"
             leftSection={<IconSettings size={16} />}
             onClick={() => navigate("/mad/praeferencer")}
           >
@@ -781,8 +774,9 @@ function DayRegistrationCard({
   }, [adults, children, mealType, diningOption, seatingTime, isActive])
 
   const handleEatingChange = (val: string) => {
-    if (val === "no" && registration?.is_active) {
+    if (val === "no" && isActive) {
       // User is switching from eating to not eating - prompt for ticket
+      // This works whether they have an explicit registration or just the default state
       openTicketModal()
     } else if (val === "yes" && activeTicketForDate) {
       // User has an active ticket for this date - show warning modal

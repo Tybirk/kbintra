@@ -494,6 +494,97 @@ class TestFoodTicketViews:
         assert food_ticket.is_available is False
         assert food_ticket.claimed_by == food_ticket.owner
 
+    def test_claim_own_ticket_no_notification(self, authenticated_client, food_ticket):
+        """Test that claiming own ticket doesn't send notification."""
+        with patch("apps.notifications.services.notify_ticket_claimed") as mock_notify:
+            url = reverse("food:ticket-claim", kwargs={"pk": food_ticket.pk})
+            response = authenticated_client.post(url)
+            assert response.status_code == 200
+            # Notification should NOT be called when claiming own ticket
+            mock_notify.assert_not_called()
+
+    def test_claim_ticket_sends_notification(self, api_client, admin_user, food_ticket):
+        """Test that claiming another user's ticket sends notification."""
+        api_client.force_authenticate(user=admin_user)
+        with patch("apps.notifications.services.notify_ticket_claimed") as mock_notify:
+            url = reverse("food:ticket-claim", kwargs={"pk": food_ticket.pk})
+            response = api_client.post(url)
+            assert response.status_code == 200
+            # Notification should be called when claiming someone else's ticket
+            mock_notify.assert_called_once()
+
+    def test_cannot_claim_already_claimed_ticket(self, api_client, admin_user, food_ticket):
+        """Test that already claimed tickets cannot be claimed again."""
+        # First claim the ticket
+        food_ticket.is_available = False
+        food_ticket.claimed_by = admin_user
+        food_ticket.save()
+
+        # Try to claim again
+        api_client.force_authenticate(user=admin_user)
+        url = reverse("food:ticket-claim", kwargs={"pk": food_ticket.pk})
+        response = api_client.post(url)
+        assert response.status_code == 400
+        assert "no longer available" in response.json()["detail"].lower()
+
+    def test_owner_cannot_claim_ticket_claimed_by_other(
+        self, authenticated_client, food_ticket, admin_user
+    ):
+        """Test that owner cannot claim back a ticket that someone else claimed."""
+        # Someone else claims the ticket
+        food_ticket.is_available = False
+        food_ticket.claimed_by = admin_user
+        food_ticket.save()
+
+        # Owner tries to claim it back
+        url = reverse("food:ticket-claim", kwargs={"pk": food_ticket.pk})
+        response = authenticated_client.post(url)
+        assert response.status_code == 400
+        assert "no longer available" in response.json()["detail"].lower()
+
+    def test_after_claiming_own_ticket_can_register(
+        self, api_client, user_with_house, monday_date
+    ):
+        """Test that after claiming own ticket, user can register for the meal again."""
+        api_client.force_authenticate(user=user_with_house)
+
+        # Create a ticket (which blocks registration)
+        with patch("apps.food.serializers.timezone") as mock_tz:
+            # Mock time to be after deadline
+            mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))
+            mock_tz.now.return_value = mock_now
+            mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
+
+            ticket = FoodTicket.objects.create(
+                owner=user_with_house,
+                date=monday_date,
+                adults_count=1,
+                children_count=0,
+                meal_type=MealType.MEAT,
+                price=Decimal("37.00"),
+            )
+
+        # Verify registration is blocked
+        reg_url = reverse("food:registration-list")
+        reg_data = {
+            "date": monday_date.isoformat(),
+            "adults_count": 1,
+            "children_count": 0,
+            "meal_type": MealType.MEAT,
+            "is_active": True,
+        }
+        response = api_client.post(reg_url, reg_data, format="json")
+        assert response.status_code == 400
+
+        # Owner claims their own ticket
+        claim_url = reverse("food:ticket-claim", kwargs={"pk": ticket.pk})
+        response = api_client.post(claim_url)
+        assert response.status_code == 200
+
+        # Now registration should work
+        response = api_client.post(reg_url, reg_data, format="json")
+        assert response.status_code == 201
+
     def test_release_ticket(self, api_client, user, admin_user, food_ticket):
         """Test releasing a claimed ticket."""
         # First claim the ticket
@@ -1178,12 +1269,23 @@ class TestTicketCreationDeadline:
 
 @pytest.mark.django_db
 class TestMonthlyFoodCostReport:
-    """Tests for monthly food cost report."""
+    """Tests for monthly food cost report.
+
+    The report should include:
+    1. All ACTIVE meal registrations (people who ate their meals)
+    2. All food tickets (regardless of whether sold) - owner pays for the meal
+
+    Cost is calculated based on portions and meal type, not ticket sale price.
+    """
 
     def test_cost_charged_to_owner_house(
         self, api_client, admin_user, user_with_house, house, house2
     ):
         """Test that food cost is charged to the ticket owner's house, not claimer's."""
+        # Clean up existing data for this month
+        FoodTicket.objects.filter(date__year=2025, date__month=1).delete()
+        MealRegistration.objects.filter(date__year=2025, date__month=1).delete()
+
         # Create a user in house2 who will claim the ticket
         claimer = User.objects.create_user(
             email="claimer@example.com",
@@ -1201,7 +1303,7 @@ class TestMonthlyFoodCostReport:
             adults_count=2,
             children_count=0,
             meal_type=MealType.MEAT,
-            price=Decimal("74.00"),  # 2 * 37
+            price=Decimal("74.00"),  # This price is for selling, not for cost calculation
             is_available=False,
             claimed_by=claimer,
             claimed_at=timezone.now(),
@@ -1219,9 +1321,11 @@ class TestMonthlyFoodCostReport:
         owner_house_cost = next((h for h in data["houses"] if h["house_id"] == house.id), None)
 
         # The OWNER's house (house) should have the cost
+        # Cost is calculated as: 2 adults * 37 DKK (meat) = 74 DKK
         assert owner_house_cost is not None
         assert Decimal(owner_house_cost["total_cost"]) == Decimal("74.00")
         assert owner_house_cost["ticket_count"] == 1
+        assert owner_house_cost["registration_count"] == 0
 
     def test_only_admin_can_access_report(self, api_client, user_with_house):
         """Test that non-admin users cannot access the cost report."""
@@ -1250,11 +1354,9 @@ class TestMonthlyFoodCostReport:
 
     def test_report_totals_multiple_tickets(self, api_client, admin_user, user_with_house, house):
         """Test that report correctly sums multiple tickets."""
-        # Clean up existing tickets for this test
-        FoodTicket.objects.filter(
-            date__year=2025,
-            date__month=2,
-        ).delete()
+        # Clean up existing data for this test
+        FoodTicket.objects.filter(date__year=2025, date__month=2).delete()
+        MealRegistration.objects.filter(date__year=2025, date__month=2).delete()
 
         # Create multiple tickets for the same owner
         for i in range(3):
@@ -1282,3 +1384,152 @@ class TestMonthlyFoodCostReport:
         assert owner_house_cost is not None
         assert Decimal(owner_house_cost["total_cost"]) == Decimal("111.00")  # 3 * 37
         assert owner_house_cost["ticket_count"] == 3
+
+    def test_unsold_tickets_still_charged(self, api_client, admin_user, user_with_house, house):
+        """Test that tickets that were NOT sold are still charged to the owner's house."""
+        # Clean up existing data for this test
+        FoodTicket.objects.filter(date__year=2025, date__month=3).delete()
+        MealRegistration.objects.filter(date__year=2025, date__month=3).delete()
+
+        # Create a ticket that is still available (not sold)
+        FoodTicket.objects.create(
+            owner=user_with_house,
+            date=date(2025, 3, 3),  # A Monday in March 2025
+            adults_count=1,
+            children_count=1,
+            meal_type=MealType.VEGETARIAN,
+            price=Decimal("44.00"),
+            is_available=True,  # NOT sold
+            claimed_by=None,
+            claimed_at=None,
+        )
+
+        api_client.force_authenticate(user=admin_user)
+        url = reverse("food:monthly-food-cost")
+        response = api_client.get(url, {"year": 2025, "month": 3})
+
+        assert response.status_code == 200
+        data = response.json()
+
+        owner_house_cost = next((h for h in data["houses"] if h["house_id"] == house.id), None)
+
+        # Cost should be: 1 adult * 26 (veg) + 1 child * 18 = 44 DKK
+        assert owner_house_cost is not None
+        assert Decimal(owner_house_cost["total_cost"]) == Decimal("44.00")
+        assert owner_house_cost["ticket_count"] == 1
+
+    def test_active_registrations_charged(self, api_client, admin_user, user_with_house, house):
+        """Test that active meal registrations are included in the cost report."""
+        # Clean up existing data for this test
+        FoodTicket.objects.filter(date__year=2025, date__month=4).delete()
+        MealRegistration.objects.filter(date__year=2025, date__month=4).delete()
+
+        # Create an active meal registration (user ate the meal)
+        MealRegistration.objects.create(
+            user=user_with_house,
+            date=date(2025, 4, 7),  # A Monday in April 2025
+            adults_count=2,
+            children_count=1,
+            meal_type=MealType.MEAT,
+            is_active=True,
+        )
+
+        api_client.force_authenticate(user=admin_user)
+        url = reverse("food:monthly-food-cost")
+        response = api_client.get(url, {"year": 2025, "month": 4})
+
+        assert response.status_code == 200
+        data = response.json()
+
+        owner_house_cost = next((h for h in data["houses"] if h["house_id"] == house.id), None)
+
+        # Cost should be: 2 adults * 37 (meat) + 1 child * 18 = 92 DKK
+        assert owner_house_cost is not None
+        assert Decimal(owner_house_cost["total_cost"]) == Decimal("92.00")
+        assert owner_house_cost["registration_count"] == 1
+        assert owner_house_cost["ticket_count"] == 0
+
+    def test_inactive_registrations_not_charged(
+        self, api_client, admin_user, user_with_house, house
+    ):
+        """Test that inactive meal registrations (cancelled) are NOT charged."""
+        # Clean up existing data for this test
+        FoodTicket.objects.filter(date__year=2025, date__month=5).delete()
+        MealRegistration.objects.filter(date__year=2025, date__month=5).delete()
+
+        # Create an inactive meal registration (user cancelled without creating ticket)
+        MealRegistration.objects.create(
+            user=user_with_house,
+            date=date(2025, 5, 5),  # A Monday in May 2025
+            adults_count=1,
+            children_count=0,
+            meal_type=MealType.MEAT,
+            is_active=False,  # Cancelled
+        )
+
+        api_client.force_authenticate(user=admin_user)
+        url = reverse("food:monthly-food-cost")
+        response = api_client.get(url, {"year": 2025, "month": 5})
+
+        assert response.status_code == 200
+        data = response.json()
+
+        owner_house_cost = next((h for h in data["houses"] if h["house_id"] == house.id), None)
+
+        # No cost - the registration was cancelled and no ticket was created
+        assert owner_house_cost is not None
+        assert Decimal(owner_house_cost["total_cost"]) == Decimal("0.00")
+        assert owner_house_cost["registration_count"] == 0
+        assert owner_house_cost["ticket_count"] == 0
+
+    def test_registration_and_ticket_both_counted(
+        self, api_client, admin_user, user_with_house, house
+    ):
+        """Test that both registrations and tickets are counted when present."""
+        # Clean up existing data for this test
+        FoodTicket.objects.filter(date__year=2025, date__month=6).delete()
+        MealRegistration.objects.filter(date__year=2025, date__month=6).delete()
+
+        # Day 1: User eats normally (active registration)
+        MealRegistration.objects.create(
+            user=user_with_house,
+            date=date(2025, 6, 2),  # A Monday
+            adults_count=1,
+            children_count=0,
+            meal_type=MealType.MEAT,
+            is_active=True,
+        )
+
+        # Day 2: User creates a ticket (registration becomes inactive)
+        MealRegistration.objects.create(
+            user=user_with_house,
+            date=date(2025, 6, 3),  # A Tuesday
+            adults_count=1,
+            children_count=0,
+            meal_type=MealType.MEAT,
+            is_active=False,  # Deactivated when ticket created
+        )
+        FoodTicket.objects.create(
+            owner=user_with_house,
+            date=date(2025, 6, 3),
+            adults_count=1,
+            children_count=0,
+            meal_type=MealType.MEAT,
+            price=Decimal("37.00"),
+            is_available=True,  # Not sold yet
+        )
+
+        api_client.force_authenticate(user=admin_user)
+        url = reverse("food:monthly-food-cost")
+        response = api_client.get(url, {"year": 2025, "month": 6})
+
+        assert response.status_code == 200
+        data = response.json()
+
+        owner_house_cost = next((h for h in data["houses"] if h["house_id"] == house.id), None)
+
+        # Cost should be: 37 (day 1 registration) + 37 (day 2 ticket) = 74 DKK
+        assert owner_house_cost is not None
+        assert Decimal(owner_house_cost["total_cost"]) == Decimal("74.00")
+        assert owner_house_cost["registration_count"] == 1
+        assert owner_house_cost["ticket_count"] == 1

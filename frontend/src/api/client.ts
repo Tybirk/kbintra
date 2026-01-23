@@ -48,17 +48,28 @@ apiClient.interceptors.request.use(
 )
 
 // Response interceptor to handle token refresh
-type TokenCallback = (token: string) => void
+type RefreshSubscriber = {
+  resolve: (token: string) => void
+  reject: (error: unknown) => void
+}
 
 let isRefreshing = false
-let refreshSubscribers: TokenCallback[] = []
+let refreshSubscribers: RefreshSubscriber[] = []
 
-const subscribeTokenRefresh = (callback: (token: string) => void) => {
-  refreshSubscribers.push(callback)
+const subscribeTokenRefresh = (
+  resolve: (token: string) => void,
+  reject: (error: unknown) => void,
+) => {
+  refreshSubscribers.push({ resolve, reject })
 }
 
 const onTokenRefreshed = (token: string) => {
-  refreshSubscribers.forEach((callback) => callback(token))
+  refreshSubscribers.forEach((subscriber) => subscriber.resolve(token))
+  refreshSubscribers = []
+}
+
+const onTokenRefreshFailed = (error: unknown) => {
+  refreshSubscribers.forEach((subscriber) => subscriber.reject(error))
   refreshSubscribers = []
 }
 
@@ -79,11 +90,16 @@ apiClient.interceptors.response.use(
     ) {
       if (isRefreshing) {
         // Wait for the token to be refreshed
-        return new Promise((resolve) => {
-          subscribeTokenRefresh((token: string) => {
-            originalRequest.headers.Authorization = `Bearer ${token}`
-            resolve(apiClient(originalRequest))
-          })
+        return new Promise((resolve, reject) => {
+          subscribeTokenRefresh(
+            (token: string) => {
+              originalRequest.headers.Authorization = `Bearer ${token}`
+              resolve(apiClient(originalRequest))
+            },
+            (refreshError: unknown) => {
+              reject(refreshError)
+            },
+          )
         })
       }
 
@@ -92,6 +108,8 @@ apiClient.interceptors.response.use(
 
       const refreshToken = getRefreshToken()
       if (!refreshToken) {
+        isRefreshing = false
+        onTokenRefreshFailed(error)
         clearTokens()
         window.location.href = "/login"
         return Promise.reject(error)
@@ -112,6 +130,7 @@ apiClient.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${access}`
         return apiClient(originalRequest)
       } catch (refreshError) {
+        onTokenRefreshFailed(refreshError)
         clearTokens()
         window.location.href = "/login"
         return Promise.reject(refreshError)

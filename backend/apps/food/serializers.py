@@ -739,6 +739,7 @@ class HouseFoodCostSerializer(serializers.Serializer):
     house_id = serializers.IntegerField()
     house_name = serializers.CharField()
     total_cost = serializers.DecimalField(max_digits=10, decimal_places=2)
+    registration_count = serializers.IntegerField()
     ticket_count = serializers.IntegerField()
     adult_portions = serializers.IntegerField()
     child_portions = serializers.IntegerField()

@@ -87,10 +87,11 @@ export const useAuthStore = create<AuthState>()(
       },
     }),
     {
-      name: "auth-storage",
+      name: "auth-storage-v2", // Changed key to invalidate old persisted data
+      // Only persist user data, not isAuthenticated
+      // isAuthenticated should be validated on each app load via checkAuth()
       partialize: (state) => ({
         user: state.user,
-        isAuthenticated: state.isAuthenticated,
       }),
     },
   ),
