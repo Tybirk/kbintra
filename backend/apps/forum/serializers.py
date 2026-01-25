@@ -39,6 +39,7 @@ class PostAttachmentSerializer(serializers.ModelSerializer):
             "name",
             "file",
             "file_url",
+            "preview_html",
             "uploaded_by",
             "uploaded_at",
         ]
@@ -179,6 +180,8 @@ class PostCreateSerializer(serializers.ModelSerializer):
 
         from apps.notifications.services import notify_post_reply, notify_thread_reply
 
+        from .utils import generate_docx_preview
+
         # Extract attachments before creating post
         attachments = validated_data.pop("attachments", [])
 
@@ -193,6 +196,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
                 uploaded_by=post.author,
                 file=attachment_file,
                 name=attachment_file.name,
+                preview_html=generate_docx_preview(attachment_file),
             )
 
         thread = post.thread
@@ -320,6 +324,8 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
 
         from apps.notifications.services import notify_new_thread
 
+        from .utils import generate_docx_preview
+
         content = validated_data.pop("content")
         attachments = validated_data.pop("attachments", [])
         validated_data["author"] = self.context["request"].user
@@ -341,6 +347,7 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
                 uploaded_by=post.author,
                 file=attachment_file,
                 name=attachment_file.name,
+                preview_html=generate_docx_preview(attachment_file),
             )
 
         # Update subgroup's last activity timestamp
@@ -415,6 +422,7 @@ class FileSerializer(serializers.ModelSerializer):
             "name",
             "file",
             "file_url",
+            "preview_html",
             "uploaded_by",
             "is_own",
             "uploaded_at",
@@ -442,6 +450,8 @@ class FileUploadSerializer(serializers.ModelSerializer):
         fields = ["file", "name"]
 
     def create(self, validated_data: dict) -> File:
+        from .utils import generate_docx_preview
+
         validated_data["uploaded_by"] = self.context["request"].user
         validated_data["folder"] = self.context.get("folder")
         validated_data["subgroup"] = self.context["subgroup"]
@@ -449,6 +459,8 @@ class FileUploadSerializer(serializers.ModelSerializer):
         name = validated_data.get("name", "").strip()
         if not name:
             validated_data["name"] = validated_data["file"].name
+        # Generate DOCX preview if applicable
+        validated_data["preview_html"] = generate_docx_preview(validated_data["file"])
         return super().create(validated_data)
 
 

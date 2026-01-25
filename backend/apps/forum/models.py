@@ -149,6 +149,10 @@ class PostAttachment(models.Model):
     )
     file = models.FileField(upload_to="post_attachments/")
     name = models.CharField(max_length=255)
+    preview_html = models.TextField(
+        blank=True,
+        help_text="HTML preview for DOCX files, generated on upload.",
+    )
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -252,6 +256,10 @@ class File(models.Model):
     )
     file = models.FileField(upload_to="forum_files/")
     name = models.CharField(max_length=255)
+    preview_html = models.TextField(
+        blank=True,
+        help_text="HTML preview for DOCX files, generated on upload.",
+    )
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

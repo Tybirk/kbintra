@@ -312,6 +312,31 @@ export function FilePreviewModal({
         )
 
       case "word":
+        if (file.preview_html) {
+          return (
+            <Stack gap="md">
+              <ScrollArea h="60vh">
+                <Box
+                  p="md"
+                  style={{
+                    backgroundColor: "var(--mantine-color-gray-0)",
+                    borderRadius: "var(--mantine-radius-md)",
+                  }}
+                  dangerouslySetInnerHTML={{ __html: file.preview_html }}
+                />
+              </ScrollArea>
+              <Group justify="center">
+                <Button
+                  variant="light"
+                  leftSection={<IconDownload size={16} />}
+                  onClick={handleDownload}
+                >
+                  Download fil
+                </Button>
+              </Group>
+            </Stack>
+          )
+        }
         return (
           <Stack align="center" gap="lg" py="xl">
             <IconFileTypeDoc size={80} color="var(--mantine-color-blue-6)" />
@@ -383,6 +408,8 @@ export function FilePreviewModal({
       case "pdf":
       case "text":
         return "xl"
+      case "word":
+        return file?.preview_html ? "xl" : "md"
       case "image":
         return "auto"
       default:

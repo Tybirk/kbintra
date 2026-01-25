@@ -136,6 +136,7 @@ export interface PostAttachment {
   name: string
   file: string
   file_url: string
+  preview_html?: string
   uploaded_by: Author
   uploaded_at: string
 }
@@ -218,6 +219,7 @@ export interface ForumFile {
   name: string
   file: string
   file_url: string
+  preview_html?: string
   uploaded_by: Author
   is_own: boolean
   uploaded_at: string

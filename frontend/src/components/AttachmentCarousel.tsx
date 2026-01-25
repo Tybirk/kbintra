@@ -28,6 +28,7 @@ interface Attachment {
   id: number
   name: string
   file_url: string
+  preview_html?: string
 }
 
 interface AttachmentCarouselProps {
@@ -366,6 +367,32 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
 
   // Word document
   if (fileType === "word") {
+    if (attachment.preview_html) {
+      return (
+        <Stack gap="md" style={{ height: "100%" }} p={isMobile ? "xs" : "md"}>
+          <ScrollArea style={{ flex: 1 }}>
+            <Box
+              p="md"
+              style={{
+                backgroundColor: "var(--mantine-color-gray-0)",
+                borderRadius: "var(--mantine-radius-md)",
+              }}
+              dangerouslySetInnerHTML={{ __html: attachment.preview_html }}
+            />
+          </ScrollArea>
+          <Group justify="center">
+            <Button
+              variant="light"
+              size="sm"
+              leftSection={<IconDownload size={16} />}
+              onClick={handleDownload}
+            >
+              Download fil
+            </Button>
+          </Group>
+        </Stack>
+      )
+    }
     return (
       <Stack
         align="center"
