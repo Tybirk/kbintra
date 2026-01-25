@@ -68,28 +68,8 @@ export default function AppHeader({
   useEffect(() => {
     notificationWs.connect()
 
-    let disconnectTimeout: ReturnType<typeof setTimeout> | null = null
-
     const unsubConnection = notificationWs.onConnectionChange((connected) => {
-      if (!connected) {
-        // Only show notification after 5 seconds of being disconnected
-        // This avoids showing it during brief reconnection attempts
-        disconnectTimeout = setTimeout(() => {
-          notifications.show({
-            id: "ws-disconnected",
-            title: "Forbindelse afbrudt",
-            message: "Forsøger at genoprette forbindelsen...",
-            color: "yellow",
-            autoClose: false,
-          })
-        }, 5000)
-      } else {
-        // Clear timeout and hide notification on reconnect
-        if (disconnectTimeout) {
-          clearTimeout(disconnectTimeout)
-          disconnectTimeout = null
-        }
-        notifications.hide("ws-disconnected")
+      if (connected) {
         // Refresh data when reconnected
         queryClient.invalidateQueries({
           queryKey: ["notifications", "unread-count"],
@@ -135,9 +115,6 @@ export default function AppHeader({
     })
 
     return () => {
-      if (disconnectTimeout) {
-        clearTimeout(disconnectTimeout)
-      }
       unsubConnection()
       unsubMessage()
     }
