@@ -86,3 +86,11 @@ self.addEventListener("pushsubscriptionchange", () => {
   console.log("Push subscription changed")
   // The subscription will be re-registered when the user opens the app
 })
+
+// Handle skip waiting message from the client (for forced updates)
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    console.log("[SW] Received SKIP_WAITING, activating new service worker")
+    self.skipWaiting()
+  }
+})

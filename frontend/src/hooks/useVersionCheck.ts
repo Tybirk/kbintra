@@ -6,13 +6,16 @@ declare const __APP_VERSION__: string
 const CURRENT_VERSION = __APP_VERSION__
 
 /**
- * Hook that checks for app updates when the window becomes visible.
- * Forces a hard reload when a new version is detected.
- * This is especially important for iOS PWAs which don't auto-update reliably.
+ * Hook that checks for app updates and forces reload when new version is detected.
+ * Uses multiple strategies to work reliably on iOS PWAs:
+ * - visibilitychange event (when tab becomes visible)
+ * - pageshow event (more reliable on iOS when returning to PWA)
+ * - focus event (backup)
+ * - periodic polling (fallback)
  */
 export function useVersionCheck() {
   const lastCheckRef = useRef<number>(0)
-  const MIN_CHECK_INTERVAL = 60_000 // Don't check more than once per minute
+  const MIN_CHECK_INTERVAL = 30_000 // 30 seconds between checks
 
   useEffect(() => {
     async function checkVersion() {
@@ -24,8 +27,15 @@ export function useVersionCheck() {
       lastCheckRef.current = now
 
       try {
-        // Fetch with cache-busting query param
-        const response = await fetch(`/version.json?t=${now}`)
+        // Fetch with aggressive cache bypass for iOS
+        const response = await fetch(`/version.json?_=${now}`, {
+          method: "GET",
+          cache: "no-store", // Completely bypass HTTP cache
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+          },
+        })
         if (!response.ok) return
 
         const data = await response.json()
@@ -33,41 +43,74 @@ export function useVersionCheck() {
 
         if (serverVersion && serverVersion !== CURRENT_VERSION) {
           console.log(
-            `New version detected: ${serverVersion} (current: ${CURRENT_VERSION})`
+            `[VersionCheck] New version detected: ${serverVersion} (current: ${CURRENT_VERSION})`
           )
 
-          // Try to update service worker first
+          // Clear all caches before reload
+          if ("caches" in window) {
+            const cacheNames = await caches.keys()
+            await Promise.all(cacheNames.map((name) => caches.delete(name)))
+            console.log("[VersionCheck] Cleared all caches")
+          }
+
+          // Try to update and activate new service worker
           if ("serviceWorker" in navigator) {
             const registration = await navigator.serviceWorker.getRegistration()
             if (registration) {
               await registration.update()
+              // If there's a waiting worker, skip waiting
+              if (registration.waiting) {
+                registration.waiting.postMessage({ type: "SKIP_WAITING" })
+              }
             }
           }
 
-          // Force hard reload to bypass all caches
-          window.location.reload()
+          // Small delay to let SW activate, then hard reload
+          setTimeout(() => {
+            window.location.reload()
+          }, 100)
         }
       } catch (error) {
         // Silently fail - don't break the app if version check fails
-        console.debug("Version check failed:", error)
+        console.debug("[VersionCheck] Check failed:", error)
       }
     }
 
-    // Check when tab becomes visible
+    // Multiple event listeners for iOS reliability
     function handleVisibilityChange() {
       if (document.visibilityState === "visible") {
         checkVersion()
       }
     }
 
+    // pageshow fires when navigating back to a page (including from bfcache on iOS)
+    function handlePageShow(event: PageTransitionEvent) {
+      // persisted means it came from bfcache
+      if (event.persisted) {
+        checkVersion()
+      }
+    }
+
+    function handleFocus() {
+      checkVersion()
+    }
+
     // Check on initial load (after a delay to not slow down startup)
-    const initialCheckTimer = setTimeout(checkVersion, 5000)
+    const initialCheckTimer = setTimeout(checkVersion, 3000)
+
+    // Periodic polling every 5 minutes as fallback
+    const pollingInterval = setInterval(checkVersion, 5 * 60 * 1000)
 
     document.addEventListener("visibilitychange", handleVisibilityChange)
+    window.addEventListener("pageshow", handlePageShow)
+    window.addEventListener("focus", handleFocus)
 
     return () => {
       clearTimeout(initialCheckTimer)
+      clearInterval(pollingInterval)
       document.removeEventListener("visibilitychange", handleVisibilityChange)
+      window.removeEventListener("pageshow", handlePageShow)
+      window.removeEventListener("focus", handleFocus)
     }
   }, [])
 }
