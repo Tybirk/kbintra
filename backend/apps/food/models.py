@@ -266,7 +266,8 @@ class FoodTeam(models.Model):
     @property
     def day_name(self) -> str:
         """Get the day name for this date."""
-        return self.date.strftime("%A")
+        days = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"]
+        return days[self.date.weekday()]
 
     @property
     def member_count(self) -> int:
