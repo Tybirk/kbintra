@@ -401,6 +401,7 @@ class ReactionToggleView(APIView):
                     reactor=request.user,
                     thread_title=post.thread.title,
                     thread_id=post.thread.id,
+                    subgroup_slug=post.thread.subgroup.slug,
                     reaction_emoji=emoji_map.get(reaction_type, ""),
                 )
             return Response(

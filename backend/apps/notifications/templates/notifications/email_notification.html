@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="da">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -95,7 +95,7 @@
 
         {% if related_user %}
         <p class="from-user">
-            From: {{ related_user.first_name }} {{ related_user.last_name }}
+            Fra: {{ related_user.first_name }} {{ related_user.last_name }}
         </p>
         {% endif %}
 
@@ -108,15 +108,15 @@
         </div>
 
         {% if link %}
-        <a href="{{ link }}" class="button">View in KB Intra</a>
+        <a href="{{ link }}" class="button">Se i KB Intra</a>
         {% endif %}
 
         <div class="footer">
             <p>
-                You received this email because you have email notifications enabled for {{ notification_type_display|lower }}.
+                Du modtog denne email fordi du har email-notifikationer aktiveret for {{ notification_type_display|lower }}.
             </p>
             <p>
-                <a href="{{ site_url }}/notifications">Manage your notification preferences</a>
+                <a href="{{ site_url }}/notifications">Administrer dine notifikationsindstillinger</a>
             </p>
         </div>
     </div>

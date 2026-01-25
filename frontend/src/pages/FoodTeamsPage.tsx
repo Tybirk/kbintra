@@ -45,6 +45,9 @@ import {
   IconReceipt,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
+import "dayjs/locale/da"
+
+dayjs.locale("da")
 
 import { foodApi } from "../api/food"
 import { useAuthStore } from "../store/authStore"
@@ -106,18 +109,18 @@ export default function FoodTeamsPage() {
     <>
       <Group justify="space-between" mb="md">
         <div>
-          <Title order={1}>Food Teams</Title>
-          <Text c="dimmed">Your cooking schedule and team swaps</Text>
+          <Title order={1}>Madhold</Title>
+          <Text c="dimmed">Din madlavningsplan og bytte af vagter</Text>
         </div>
       </Group>
 
       <Tabs defaultValue="my-teams">
         <Tabs.List mb="md">
           <Tabs.Tab value="my-teams" leftSection={<IconCalendar size={16} />}>
-            My Teams
+            Mine hold
           </Tabs.Tab>
           <Tabs.Tab value="all-teams" leftSection={<IconUsers size={16} />}>
-            All Teams
+            Alle hold
           </Tabs.Tab>
           <Tabs.Tab
             value="swaps"
@@ -130,7 +133,7 @@ export default function FoodTeamsPage() {
               ) : null
             }
           >
-            Swap Requests
+            Bytteanmodninger
           </Tabs.Tab>
           <Tabs.Tab
             value="wishes"
@@ -144,7 +147,7 @@ export default function FoodTeamsPage() {
               ) : null
             }
           >
-            Submit Wishes
+            Indsend ønsker
           </Tabs.Tab>
           {user?.is_staff && (
             <Tabs.Tab value="admin" leftSection={<IconSettings size={16} />}>
@@ -160,7 +163,7 @@ export default function FoodTeamsPage() {
             </Center>
           ) : !myTeams || myTeams.length === 0 ? (
             <Alert icon={<IconAlertCircle size={16} />} color="blue">
-              You are not assigned to any upcoming cooking teams.
+              Du er ikke tildelt nogle kommende madhold.
             </Alert>
           ) : (
             <Stack gap="md">
@@ -184,7 +187,7 @@ export default function FoodTeamsPage() {
             </Center>
           ) : !allTeams || allTeams.length === 0 ? (
             <Alert icon={<IconAlertCircle size={16} />} color="yellow">
-              No upcoming cooking teams scheduled.
+              Ingen kommende madhold planlagt.
             </Alert>
           ) : (
             <Stack gap="sm">
@@ -205,11 +208,11 @@ export default function FoodTeamsPage() {
               {/* Incoming requests */}
               <div>
                 <Title order={4} mb="sm">
-                  Incoming Requests
+                  Indgående anmodninger
                 </Title>
                 {incomingRequests.length === 0 ? (
                   <Text c="dimmed" size="sm">
-                    No incoming swap requests.
+                    Ingen indgående bytteanmodninger.
                   </Text>
                 ) : (
                   <Stack gap="sm">
@@ -225,11 +228,11 @@ export default function FoodTeamsPage() {
               {/* Outgoing requests */}
               <div>
                 <Title order={4} mb="sm">
-                  My Requests
+                  Mine anmodninger
                 </Title>
                 {outgoingRequests.length === 0 ? (
                   <Text c="dimmed" size="sm">
-                    You have no pending swap requests.
+                    Du har ingen afventende bytteanmodninger.
                   </Text>
                 ) : (
                   <Stack gap="sm">
@@ -250,8 +253,8 @@ export default function FoodTeamsPage() {
             </Center>
           ) : !activeCycle ? (
             <Alert icon={<IconAlertCircle size={16} />} color="blue">
-              There is no active cooking cycle at the moment. Please check back
-              later when a new cycle is announced.
+              Der er ingen aktiv madholdsperiode i øjeblikket. Kom tilbage senere
+              når en ny periode bliver annonceret.
             </Alert>
           ) : (
             <WishSubmissionPanel cycle={activeCycle} />
@@ -301,8 +304,8 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
         queryKey: ["food", "default-cooking-days"],
       })
       notifications.show({
-        title: "Defaults saved",
-        message: "Your default cooking days have been saved.",
+        title: "Standarder gemt",
+        message: "Dine standard madlavningsdage er blevet gemt.",
         color: "green",
       })
     },
@@ -349,15 +352,15 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
       })
       queryClient.invalidateQueries({ queryKey: ["food", "cycles", "active"] })
       notifications.show({
-        title: "Wish submitted",
-        message: "Your date preferences have been saved.",
+        title: "Ønsker indsendt",
+        message: "Dine datopræferencer er blevet gemt.",
         color: "green",
       })
     },
     onError: () => {
       notifications.show({
-        title: "Error",
-        message: "Failed to submit wish. Please try again.",
+        title: "Fejl",
+        message: "Kunne ikke indsende ønsker. Prøv igen.",
         color: "red",
       })
     },
@@ -422,51 +425,51 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
                 size="lg"
               >
                 {cycle.is_accepting_wishes
-                  ? "Accepting Wishes"
+                  ? "Modtager ønsker"
                   : deadlinePassed
-                    ? "Closed"
+                    ? "Lukket"
                     : cycle.status}
               </Badge>
             </Group>
             <Text c="dimmed" size="sm">
-              Cooking period:{" "}
+              Madlavningsperiode:{" "}
               {cycle.cooking_dates.length > 0
-                ? `${dayjs(cycle.cooking_dates[0]).format("MMMM D")} - ${dayjs(cycle.cooking_dates[cycle.cooking_dates.length - 1]).format("MMMM D, YYYY")} (${cycle.cooking_dates.length} days)`
-                : "No dates selected"}
+                ? `${dayjs(cycle.cooking_dates[0]).format("D. MMMM")} - ${dayjs(cycle.cooking_dates[cycle.cooking_dates.length - 1]).format("D. MMMM YYYY")} (${cycle.cooking_dates.length} dage)`
+                : "Ingen datoer valgt"}
             </Text>
             <Text c="dimmed" size="sm">
               Deadline:{" "}
-              {dayjs(cycle.wish_deadline).format("MMMM D, YYYY [at] HH:mm")}
+              {dayjs(cycle.wish_deadline).format("D. MMMM YYYY [kl.] HH:mm")}
             </Text>
           </div>
 
           {existingWish && (
             <Alert color="blue" variant="light">
               <Text size="sm">
-                You have already submitted your wishes (
-                {existingWish.available_date_count} dates selected). You can
-                update them below until the deadline.
+                Du har allerede indsendt dine ønsker (
+                {existingWish.available_date_count} datoer valgt). Du kan
+                opdatere dem nedenfor indtil deadline.
               </Text>
             </Alert>
           )}
 
           {!cycle.is_accepting_wishes ? (
             <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
-              This cycle is no longer accepting wishes. The deadline has passed.
+              Denne periode modtager ikke længere ønsker. Deadline er overskredet.
             </Alert>
           ) : (
             <>
               {/* Default cooking days section */}
               <Paper withBorder p="md" radius="md" bg="gray.0">
                 <Text fw={500} mb="sm">
-                  Your default cooking days
+                  Dine standard madlavningsdage
                 </Text>
                 <Text size="sm" c="dimmed" mb="md">
-                  Set your typical availability. These will be saved and can be
-                  applied to future cycles.
+                  Vælg din typiske tilgængelighed. Disse gemmes og kan bruges til
+                  fremtidige perioder.
                 </Text>
                 <Group gap="md" mb="md">
-                  {["Monday", "Tuesday", "Wednesday", "Thursday"].map(
+                  {["Mandag", "Tirsdag", "Onsdag", "Torsdag"].map(
                     (day, index) => (
                       <Checkbox
                         key={day}
@@ -485,8 +488,8 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
                     disabled={defaultsApplied}
                   >
                     {defaultsApplied
-                      ? "Defaults applied"
-                      : "Apply defaults to selection below"}
+                      ? "Standarder anvendt"
+                      : "Anvend standarder til valget nedenfor"}
                   </Button>
                 )}
               </Paper>
@@ -495,14 +498,14 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
 
               <div>
                 <Group justify="space-between" mb="sm">
-                  <Text fw={500}>Select dates you are available to cook:</Text>
+                  <Text fw={500}>Vælg datoer hvor du kan lave mad:</Text>
                   <Group gap="xs">
                     <Button
                       variant="subtle"
                       size="xs"
                       onClick={handleSelectAll}
                     >
-                      Select all
+                      Vælg alle
                     </Button>
                     <Button
                       variant="subtle"
@@ -510,13 +513,13 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
                       color="gray"
                       onClick={handleClearAll}
                     >
-                      Clear all
+                      Ryd alle
                     </Button>
                   </Group>
                 </Group>
                 <Text size="sm" c="dimmed" mb="md">
-                  Select all dates when you CAN cook. The more dates you select,
-                  the better chance you have of being assigned.
+                  Vælg alle datoer hvor du KAN lave mad. Jo flere datoer du
+                  vælger, jo større chance har du for at blive tildelt.
                 </Text>
                 <SimpleGrid cols={{ base: 2, sm: 3, md: 4 }} spacing="sm">
                   {cycle.cooking_dates.map((date) => {
@@ -551,9 +554,9 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
               </div>
 
               <Textarea
-                label="Comment (optional)"
-                description="Any special circumstances or preferences"
-                placeholder="E.g., I prefer to cook with my housemate, I can only do Mondays in week 2..."
+                label="Kommentar (valgfri)"
+                description="Eventuelle særlige omstændigheder eller præferencer"
+                placeholder="F.eks. jeg foretrækker at lave mad med min husfælle, jeg kan kun mandage i uge 2..."
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 minRows={2}
@@ -561,8 +564,8 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
 
               <Group justify="space-between">
                 <Text size="sm" c="dimmed">
-                  {selectedDates.length} of {cycle.cooking_dates.length} dates
-                  selected
+                  {selectedDates.length} af {cycle.cooking_dates.length} datoer
+                  valgt
                 </Text>
                 <Button
                   leftSection={<IconSend size={16} />}
@@ -570,7 +573,7 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
                   loading={submitWishMutation.isPending}
                   disabled={selectedDates.length === 0}
                 >
-                  {existingWish ? "Update Wishes" : "Submit Wishes"}
+                  {existingWish ? "Opdater ønsker" : "Indsend ønsker"}
                 </Button>
               </Group>
             </>
@@ -603,16 +606,16 @@ function AdminPanel() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "cycles"] })
       notifications.show({
-        title: "Cycle created",
-        message: "The new food team cycle has been created.",
+        title: "Periode oprettet",
+        message: "Den nye madholdsperiode er blevet oprettet.",
         color: "green",
       })
       closeCreateModal()
     },
     onError: () => {
       notifications.show({
-        title: "Error",
-        message: "Failed to create cycle.",
+        title: "Fejl",
+        message: "Kunne ikke oprette periode.",
         color: "red",
       })
     },
@@ -628,16 +631,16 @@ function AdminPanel() {
         queryClient.invalidateQueries({ queryKey: ["food", "cycles"] })
         queryClient.invalidateQueries({ queryKey: ["food", "teams"] })
         notifications.show({
-          title: "Teams generated",
-          message: `Successfully created ${result.teams_created} teams.`,
+          title: "Hold genereret",
+          message: `Oprettede ${result.teams_created} hold.`,
           color: "green",
         })
       }
     },
     onError: () => {
       notifications.show({
-        title: "Error",
-        message: "Failed to generate teams.",
+        title: "Fejl",
+        message: "Kunne ikke generere hold.",
         color: "red",
       })
     },
@@ -654,16 +657,16 @@ function AdminPanel() {
   return (
     <Stack gap="lg">
       <Group justify="space-between">
-        <Title order={3}>Manage Cycles</Title>
+        <Title order={3}>Administrer perioder</Title>
         <Button leftSection={<IconPlus size={16} />} onClick={openCreateModal}>
-          Create Cycle
+          Opret periode
         </Button>
       </Group>
 
       {!cycles || cycles.length === 0 ? (
         <Alert icon={<IconAlertCircle size={16} />} color="blue">
-          No cycles have been created yet. Create a cycle to start collecting
-          wishes.
+          Der er endnu ikke oprettet nogen perioder. Opret en periode for at
+          begynde at indsamle ønsker.
         </Alert>
       ) : (
         <Stack gap="md">
@@ -684,7 +687,7 @@ function AdminPanel() {
         <Modal
           opened={!!generationResult}
           onClose={() => setGenerationResult(null)}
-          title="Team Generation Result"
+          title="Holdgenerering resultat"
           size="lg"
         >
           <Stack gap="md">
@@ -701,12 +704,12 @@ function AdminPanel() {
               {generationResult.message}
             </Alert>
 
-            <Text>Teams created: {generationResult.teams_created}</Text>
+            <Text>Hold oprettet: {generationResult.teams_created}</Text>
 
             {generationResult.unassigned_persons.length > 0 && (
               <div>
                 <Text fw={500} mb="xs">
-                  Unassigned persons (
+                  Ikke-tildelte personer (
                   {generationResult.unassigned_persons.length}):
                 </Text>
                 <Paper withBorder p="sm" bg="yellow.0">
@@ -720,7 +723,7 @@ function AdminPanel() {
             {generationResult.warnings.length > 0 && (
               <div>
                 <Text fw={500} mb="xs">
-                  Warnings:
+                  Advarsler:
                 </Text>
                 <Stack gap="xs">
                   {generationResult.warnings.map((warning, i) => (
@@ -732,7 +735,7 @@ function AdminPanel() {
               </div>
             )}
 
-            <Button onClick={() => setGenerationResult(null)}>Close</Button>
+            <Button onClick={() => setGenerationResult(null)}>Luk</Button>
           </Stack>
         </Modal>
       )}
@@ -778,16 +781,16 @@ function MonthlyCostReport() {
   })
 
   const months = [
-    { value: "1", label: "January" },
-    { value: "2", label: "February" },
-    { value: "3", label: "March" },
+    { value: "1", label: "Januar" },
+    { value: "2", label: "Februar" },
+    { value: "3", label: "Marts" },
     { value: "4", label: "April" },
-    { value: "5", label: "May" },
-    { value: "6", label: "June" },
-    { value: "7", label: "July" },
+    { value: "5", label: "Maj" },
+    { value: "6", label: "Juni" },
+    { value: "7", label: "Juli" },
     { value: "8", label: "August" },
     { value: "9", label: "September" },
-    { value: "10", label: "October" },
+    { value: "10", label: "Oktober" },
     { value: "11", label: "November" },
     { value: "12", label: "December" },
   ]
@@ -798,7 +801,7 @@ function MonthlyCostReport() {
         <Title order={3}>
           <Group gap="xs">
             <IconReceipt size={24} />
-            Monthly Food Cost Report
+            Månedlig madomkostningsrapport
           </Group>
         </Title>
         <Group>
@@ -834,16 +837,16 @@ function MonthlyCostReport() {
             </Group>
 
             {costReport.houses.length === 0 ? (
-              <Text c="dimmed">No food tickets claimed this month.</Text>
+              <Text c="dimmed">Ingen madbilletter taget denne måned.</Text>
             ) : (
               <Table striped highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
-                    <Table.Th>House</Table.Th>
-                    <Table.Th ta="right">Tickets</Table.Th>
-                    <Table.Th ta="right">Adults</Table.Th>
-                    <Table.Th ta="right">Children</Table.Th>
-                    <Table.Th ta="right">Total Cost</Table.Th>
+                    <Table.Th>Hus</Table.Th>
+                    <Table.Th ta="right">Billetter</Table.Th>
+                    <Table.Th ta="right">Voksne</Table.Th>
+                    <Table.Th ta="right">Børn</Table.Th>
+                    <Table.Th ta="right">Total pris</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -934,19 +937,19 @@ function CycleAdminCard({
       <SimpleGrid cols={4} mb="md">
         <div>
           <Text size="xs" c="dimmed">
-            Cooking Days
+            Madlavningsdage
           </Text>
           <Text fw={500}>{cycle.cooking_dates.length}</Text>
         </div>
         <div>
           <Text size="xs" c="dimmed">
-            Wishes
+            Ønsker
           </Text>
           <Text fw={500}>{cycle.wish_count}</Text>
         </div>
         <div>
           <Text size="xs" c="dimmed">
-            Teams
+            Hold
           </Text>
           <Text fw={500}>{cycle.team_count}</Text>
         </div>
@@ -968,14 +971,14 @@ function CycleAdminCard({
             onClick={() => onGenerate(true)}
             loading={isGenerating}
           >
-            Preview (Dry Run)
+            Forhåndsvisning
           </Button>
           <Button
             leftSection={<IconPlayerPlay size={16} />}
             onClick={() => onGenerate(false)}
             loading={isGenerating}
           >
-            Generate Teams
+            Generer hold
           </Button>
         </Group>
       )}
@@ -1027,14 +1030,14 @@ function CreateCycleModal({
     <Modal
       opened={opened}
       onClose={handleClose}
-      title="Create Food Team Cycle"
+      title="Opret madholdsperiode"
       centered
       size="lg"
     >
       <Stack gap="md">
         <TextInput
-          label="Cycle Name"
-          placeholder="e.g., January 2025 Cycle"
+          label="Periodenavn"
+          placeholder="F.eks. Januar 2025 periode"
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
@@ -1042,51 +1045,51 @@ function CreateCycleModal({
 
         <DatePickerInput<"multiple">
           type="multiple"
-          label="Cooking Dates"
-          placeholder="Click to select dates"
+          label="Madlavningsdatoer"
+          placeholder="Klik for at vælge datoer"
           value={cookingDates}
           onChange={(dates) => setCookingDates(dates as unknown as Date[])}
           required
-          description={`${cookingDates.length} date${
-            cookingDates.length !== 1 ? "s" : ""
-          } selected. Click dates to add/remove them.`}
-          valueFormat="ddd, MMM D"
+          description={`${cookingDates.length} dato${
+            cookingDates.length !== 1 ? "er" : ""
+          } valgt. Klik på datoer for at tilføje/fjerne dem.`}
+          valueFormat="ddd, D. MMM"
           clearable
         />
 
         {cookingDates.length > 0 && (
           <Paper withBorder p="sm" bg="gray.0">
             <Text size="sm" fw={500} mb="xs">
-              Selected dates ({cookingDates.length}):
+              Valgte datoer ({cookingDates.length}):
             </Text>
             <Text size="sm" c="dimmed">
               {[...cookingDates]
                 .sort((a, b) => dayjs(a).valueOf() - dayjs(b).valueOf())
-                .map((d) => dayjs(d).format("ddd, MMM D"))
+                .map((d) => dayjs(d).format("ddd, D. MMM"))
                 .join(" - ")}
             </Text>
           </Paper>
         )}
 
         <DateTimePicker
-          label="Wish Deadline"
-          placeholder="Select deadline for wish submission"
+          label="Deadline for ønsker"
+          placeholder="Vælg deadline for indsendelse af ønsker"
           value={wishDeadline}
           onChange={(date) => setWishDeadline(date as unknown as Date | null)}
           required
-          description="Users must submit their date preferences before this deadline"
+          description="Brugere skal indsende deres datopræferencer før denne deadline"
         />
 
         <Group justify="flex-end">
           <Button variant="light" onClick={handleClose}>
-            Cancel
+            Annuller
           </Button>
           <Button
             onClick={handleSubmit}
             loading={isLoading}
             disabled={!isValid}
           >
-            Create Cycle
+            Opret periode
           </Button>
         </Group>
       </Stack>
@@ -1137,8 +1140,8 @@ function MyTeamCard({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "swap-requests"] })
       notifications.show({
-        title: "Swap requested",
-        message: "Your swap request has been sent.",
+        title: "Bytte anmodet",
+        message: "Din bytteanmodning er blevet sendt.",
         color: "green",
       })
       closeSwapModal()
@@ -1148,8 +1151,8 @@ function MyTeamCard({
     },
     onError: () => {
       notifications.show({
-        title: "Error",
-        message: "Failed to create swap request.",
+        title: "Fejl",
+        message: "Kunne ikke oprette bytteanmodning.",
         color: "red",
       })
     },
@@ -1176,13 +1179,13 @@ function MyTeamCard({
                 {team.day_name}, {dayjs(team.date).format("MMMM D, YYYY")}
               </Text>
               <Text size="sm" c="dimmed">
-                {team.member_count} team members
+                {team.member_count} holdmedlemmer
               </Text>
             </div>
           </Group>
           <Group>
             {isPast ? (
-              <Badge color="gray">Past</Badge>
+              <Badge color="gray">Overstået</Badge>
             ) : (
               <Button
                 variant="light"
@@ -1190,7 +1193,7 @@ function MyTeamCard({
                 leftSection={<IconArrowsExchange size={14} />}
                 onClick={openSwapModal}
               >
-                Request Swap
+                Anmod om bytte
               </Button>
             )}
           </Group>
@@ -1203,7 +1206,7 @@ function MyTeamCard({
           mb={expanded ? "sm" : 0}
         >
           <Text size="sm" fw={500}>
-            Team members
+            Holdmedlemmer
           </Text>
           <ActionIcon variant="subtle" size="xs">
             {expanded ? (
@@ -1227,30 +1230,30 @@ function MyTeamCard({
       <Modal
         opened={swapModalOpened}
         onClose={closeSwapModal}
-        title="Request Team Swap"
+        title="Anmod om bytte af hold"
         size="lg"
         centered
       >
         <Stack gap="md">
           <Text size="sm">
-            Select another team date to swap with. The person you select will
-            need to accept your request.
+            Vælg en anden holddato at bytte med. Personen du vælger skal
+            acceptere din anmodning.
           </Text>
 
           <div>
             <Text fw={500} mb="xs">
-              Your date: {dayjs(team.date).format("dddd, MMMM D, YYYY")}
+              Din dato: {dayjs(team.date).format("dddd, D. MMMM YYYY")}
             </Text>
           </div>
 
           <div>
             <Text fw={500} mb="xs">
-              Select a date to swap with:
+              Vælg en dato at bytte med:
             </Text>
             <Stack gap="xs">
               {availableSwapTeams.length === 0 ? (
                 <Text size="sm" c="dimmed">
-                  No other team dates available.
+                  Ingen andre holddatoer tilgængelige.
                 </Text>
               ) : (
                 availableSwapTeams.slice(0, 8).map((t) => (
@@ -1277,7 +1280,7 @@ function MyTeamCard({
                       </div>
                       {selectedTargetTeamId === t.id && (
                         <Badge color="blue" variant="light">
-                          Selected
+                          Valgt
                         </Badge>
                       )}
                     </Group>
@@ -1290,7 +1293,7 @@ function MyTeamCard({
           {selectedTargetTeamId && selectedTeamDetails && (
             <div>
               <Text fw={500} mb="xs">
-                Select who to swap with:
+                Vælg hvem du vil bytte med:
               </Text>
               <Stack gap="xs">
                 {selectedTeamDetails.members.map((member) => (
@@ -1321,13 +1324,13 @@ function MyTeamCard({
                         </Text>
                         {member.house_number && (
                           <Text size="xs" c="dimmed">
-                            House {member.house_number}
+                            Hus {member.house_number}
                           </Text>
                         )}
                       </div>
                       {selectedTargetMemberId === member.id && (
                         <Badge color="green" variant="light" ml="auto">
-                          Selected
+                          Valgt
                         </Badge>
                       )}
                     </Group>
@@ -1338,22 +1341,22 @@ function MyTeamCard({
           )}
 
           <Textarea
-            label="Message (optional)"
-            placeholder="Add a message to your swap request..."
+            label="Besked (valgfri)"
+            placeholder="Tilføj en besked til din bytteanmodning..."
             value={swapMessage}
             onChange={(e) => setSwapMessage(e.target.value)}
           />
 
           <Group justify="flex-end">
             <Button variant="light" onClick={closeSwapModal}>
-              Cancel
+              Annuller
             </Button>
             <Button
               onClick={handleRequestSwap}
               disabled={!selectedTargetMemberId}
               loading={createSwapMutation.isPending}
             >
-              Send Request
+              Send anmodning
             </Button>
           </Group>
         </Stack>
@@ -1385,7 +1388,7 @@ function AllTeamCard({ team }: AllTeamCardProps) {
             </Text>
             {team.is_my_team && (
               <Badge size="sm" color="blue" variant="filled">
-                My Team
+                Mit hold
               </Badge>
             )}
           </Group>
@@ -1393,7 +1396,7 @@ function AllTeamCard({ team }: AllTeamCardProps) {
             {team.members_display}
           </Text>
         </div>
-        <Badge variant="light">{team.member_count} members</Badge>
+        <Badge variant="light">{team.member_count} medlemmer</Badge>
       </Group>
     </Paper>
   )
@@ -1413,11 +1416,11 @@ function TeamMemberRow({ member }: TeamMemberRowProps) {
       <div>
         <Text size="sm" fw={member.is_own ? 600 : 400}>
           {member.user.first_name} {member.user.last_name}
-          {member.is_own && " (You)"}
+          {member.is_own && " (Dig)"}
         </Text>
         {member.house_number && (
           <Text size="xs" c="dimmed">
-            House {member.house_number}
+            Hus {member.house_number}
           </Text>
         )}
       </div>
@@ -1452,18 +1455,18 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
       queryClient.invalidateQueries({ queryKey: ["food", "teams"] })
       notifications.show({
         title:
-          variables.action === "accept" ? "Swap accepted" : "Swap declined",
+          variables.action === "accept" ? "Bytte accepteret" : "Bytte afvist",
         message:
           variables.action === "accept"
-            ? "The team swap has been completed."
-            : "The swap request has been declined.",
+            ? "Holdbyttet er gennemført."
+            : "Bytteanmodningen er blevet afvist.",
         color: variables.action === "accept" ? "green" : "orange",
       })
     },
     onError: () => {
       notifications.show({
-        title: "Error",
-        message: "Failed to respond to swap request.",
+        title: "Fejl",
+        message: "Kunne ikke svare på bytteanmodning.",
         color: "red",
       })
     },
@@ -1474,15 +1477,15 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "swap-requests"] })
       notifications.show({
-        title: "Request cancelled",
-        message: "Your swap request has been cancelled.",
+        title: "Anmodning annulleret",
+        message: "Din bytteanmodning er blevet annulleret.",
         color: "blue",
       })
     },
     onError: () => {
       notifications.show({
-        title: "Error",
-        message: "Failed to cancel swap request.",
+        title: "Fejl",
+        message: "Kunne ikke annullere bytteanmodning.",
         color: "red",
       })
     },
@@ -1514,11 +1517,11 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
                   <Text span fw={600}>
                     {request.requester.first_name} {request.requester.last_name}
                   </Text>{" "}
-                  wants to swap with you
+                  vil bytte med dig
                 </Text>
               ) : (
                 <Text size="sm">
-                  You requested to swap with{" "}
+                  Du anmodede om at bytte med{" "}
                   <Text span fw={600}>
                     {request.target_membership.user.first_name}{" "}
                     {request.target_membership.user.last_name}
@@ -1543,21 +1546,21 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
         <Group gap="xl">
           <div>
             <Text size="xs" c="dimmed">
-              Their date
+              Deres dato
             </Text>
             <Text size="sm" fw={500}>
               {request.requester_membership.team_day_name},{" "}
-              {dayjs(request.requester_membership.team_date).format("MMM D")}
+              {dayjs(request.requester_membership.team_date).format("D. MMM")}
             </Text>
           </div>
           <IconArrowsExchange size={16} />
           <div>
             <Text size="xs" c="dimmed">
-              Your date
+              Din dato
             </Text>
             <Text size="sm" fw={500}>
               {request.target_membership.team_day_name},{" "}
-              {dayjs(request.target_membership.team_date).format("MMM D")}
+              {dayjs(request.target_membership.team_date).format("D. MMM")}
             </Text>
           </div>
         </Group>
@@ -1576,7 +1579,7 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
               <>
                 {showResponseInput && (
                   <Textarea
-                    placeholder="Optional response message..."
+                    placeholder="Valgfri svarbesked..."
                     value={responseMessage}
                     onChange={(e) => setResponseMessage(e.target.value)}
                     size="sm"
@@ -1589,7 +1592,7 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
                       size="xs"
                       onClick={() => setShowResponseInput(true)}
                     >
-                      Add message
+                      Tilføj besked
                     </Button>
                   )}
                   <Group ml="auto">
@@ -1601,7 +1604,7 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
                       onClick={handleDecline}
                       loading={respondMutation.isPending}
                     >
-                      Decline
+                      Afvis
                     </Button>
                     <Button
                       color="green"
@@ -1610,7 +1613,7 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
                       onClick={handleAccept}
                       loading={respondMutation.isPending}
                     >
-                      Accept
+                      Accepter
                     </Button>
                   </Group>
                 </Group>
@@ -1623,7 +1626,7 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
                 onClick={() => cancelMutation.mutate()}
                 loading={cancelMutation.isPending}
               >
-                Cancel Request
+                Annuller anmodning
               </Button>
             )}
           </>

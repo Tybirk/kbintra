@@ -175,7 +175,7 @@ export default function SubgroupPage() {
                 <ThreadRow
                   key={thread.id}
                   thread={thread}
-                  onClick={() => navigate(`/forum/traad/${thread.id}`)}
+                  onClick={() => navigate(`/forum/${slug}/${thread.id}`)}
                 />
               ))
             )}

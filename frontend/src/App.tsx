@@ -202,6 +202,14 @@ function App() {
               }
             />
             <Route
+              path="/forum/:slug/:threadId"
+              element={
+                <ProtectedRoute>
+                  <ThreadPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/forum/traad/:id"
               element={
                 <ProtectedRoute>

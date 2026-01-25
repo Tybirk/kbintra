@@ -303,7 +303,7 @@ def notify_new_announcement(
         notification = create_notification(
             user=user,
             notification_type=NotificationType.NEW_ANNOUNCEMENT,
-            title="New Announcement",
+            title="Nyt opslag",
             message=announcement_title,
             link="/opslag",
             related_user=author,
@@ -322,6 +322,7 @@ def notify_new_thread(
     thread_title: str,
     thread_id: int,
     subgroup_name: str,
+    subgroup_slug: str,
     initial_post_content: str = "",
 ) -> int:
     """Create notifications for a new thread in a subgroup.
@@ -332,6 +333,7 @@ def notify_new_thread(
         thread_title: Title of the thread
         thread_id: ID of the thread
         subgroup_name: Name of the subgroup
+        subgroup_slug: Slug of the subgroup for URL
         initial_post_content: Full HTML content of the initial post
 
     Returns the count of notifications created.
@@ -341,9 +343,9 @@ def notify_new_thread(
         notification = create_notification(
             user=user,
             notification_type=NotificationType.NEW_THREAD,
-            title=f"New thread in {subgroup_name}",
+            title=f"Ny tråd i {subgroup_name}",
             message=thread_title,
-            link=f"/forum/traad/{thread_id}",
+            link=f"/forum/{subgroup_slug}/{thread_id}",
             related_user=author,
             html_content=f"<h3>{thread_title}</h3>{initial_post_content}"
             if initial_post_content
@@ -359,6 +361,7 @@ def notify_thread_reply(
     replier: User,
     thread_title: str,
     thread_id: int,
+    subgroup_slug: str,
     reply_content: str,
 ) -> Notification | None:
     """Create notification for a reply to user's thread.
@@ -368,6 +371,7 @@ def notify_thread_reply(
         replier: User who replied
         thread_title: Title of the thread
         thread_id: ID of the thread
+        subgroup_slug: Slug of the subgroup for URL
         reply_content: Full HTML content of the reply
     """
     if thread_author.id == replier.id:
@@ -382,11 +386,11 @@ def notify_thread_reply(
     return create_notification(
         user=thread_author,
         notification_type=NotificationType.THREAD_REPLY,
-        title=f"{replier.first_name} replied to your thread",
+        title=f"{replier.first_name} svarede på din tråd",
         message=f'"{thread_title}": {preview}',
-        link=f"/forum/traad/{thread_id}",
+        link=f"/forum/{subgroup_slug}/{thread_id}",
         related_user=replier,
-        html_content=f"<p><strong>In thread: {thread_title}</strong></p>{reply_content}",
+        html_content=f"<p><strong>I tråden: {thread_title}</strong></p>{reply_content}",
     )
 
 
@@ -395,6 +399,7 @@ def notify_post_reply(
     replier: User,
     thread_title: str,
     thread_id: int,
+    subgroup_slug: str,
     reply_content: str,
 ) -> Notification | None:
     """Create notification for a reply after user's post.
@@ -404,6 +409,7 @@ def notify_post_reply(
         replier: User who replied
         thread_title: Title of the thread
         thread_id: ID of the thread
+        subgroup_slug: Slug of the subgroup for URL
         reply_content: Full HTML content of the reply
     """
     if post_author.id == replier.id:
@@ -418,11 +424,11 @@ def notify_post_reply(
     return create_notification(
         user=post_author,
         notification_type=NotificationType.POST_REPLY,
-        title=f"{replier.first_name} replied in a thread you're in",
+        title=f"{replier.first_name} svarede i en tråd du følger",
         message=f'"{thread_title}": {preview}',
-        link=f"/forum/traad/{thread_id}",
+        link=f"/forum/{subgroup_slug}/{thread_id}",
         related_user=replier,
-        html_content=f"<p><strong>In thread: {thread_title}</strong></p>{reply_content}",
+        html_content=f"<p><strong>I tråden: {thread_title}</strong></p>{reply_content}",
     )
 
 
@@ -442,8 +448,8 @@ def notify_food_ticket_available(
         notification = create_notification(
             user=user,
             notification_type=NotificationType.FOOD_TICKET,
-            title="Food ticket available",
-            message=f"{owner.first_name} is offering {portions} portion(s) for {ticket_date}",
+            title="Madbillet tilgængelig",
+            message=f"{owner.first_name} tilbyder {portions} portion(er) den {ticket_date}",
             link="/mad/billetter",
             related_user=owner,
         )
@@ -461,8 +467,8 @@ def notify_ticket_claimed(
     return create_notification(
         user=owner,
         notification_type=NotificationType.FOOD_TICKET,
-        title="Your food ticket was claimed",
-        message=f"{claimer.first_name} claimed your ticket for {ticket_date}",
+        title="Din madbillet blev taget",
+        message=f"{claimer.first_name} tog din billet til {ticket_date}",
         link="/mad/billetter",
         related_user=claimer,
         check_preferences=False,  # Always notify owner
@@ -474,6 +480,7 @@ def notify_post_reaction(
     reactor: User,
     thread_title: str,
     thread_id: int,
+    subgroup_slug: str,
     reaction_emoji: str,
 ) -> Notification | None:
     """Create notification when someone reacts to a user's post.
@@ -483,6 +490,7 @@ def notify_post_reaction(
         reactor: User who added the reaction
         thread_title: Title of the thread containing the post
         thread_id: ID of the thread
+        subgroup_slug: Slug of the subgroup for URL
         reaction_emoji: The emoji used for the reaction
     """
     if post_author.id == reactor.id:
@@ -493,6 +501,6 @@ def notify_post_reaction(
         notification_type=NotificationType.POST_REACTION,
         title=f"{reactor.first_name} reagerede på dit indlæg",
         message=f'{reaction_emoji} i "{thread_title}"',
-        link=f"/forum/traad/{thread_id}",
+        link=f"/forum/{subgroup_slug}/{thread_id}",
         related_user=reactor,
     )

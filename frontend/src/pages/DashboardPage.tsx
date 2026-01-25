@@ -666,7 +666,17 @@ function ActivityPreview({ activity }: ActivityPreviewProps) {
       p="sm"
       radius="sm"
       bg="gray.0"
-      style={{ cursor: "pointer" }}
+      style={{
+        cursor: "pointer",
+        transition: "background-color 150ms ease",
+      }}
+      styles={{
+        root: {
+          "&:hover": {
+            backgroundColor: "var(--mantine-color-gray-1)",
+          },
+        },
+      }}
       onClick={() =>
         navigate(`/forum/${activity.subgroup_slug}/${activity.thread_id}`)
       }

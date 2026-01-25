@@ -110,7 +110,7 @@ class MealRegistrationSerializer(serializers.ModelSerializer):
         return obj.date.weekday()
 
     def get_day_name(self, obj: MealRegistration) -> str:
-        days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        days = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"]
         return days[obj.date.weekday()]
 
 
@@ -242,7 +242,7 @@ class FoodTicketSerializer(serializers.ModelSerializer):
         return obj.date.weekday()
 
     def get_day_name(self, obj: FoodTicket) -> str:
-        days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        days = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"]
         return days[obj.date.weekday()]
 
 

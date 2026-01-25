@@ -18,24 +18,24 @@ from django.db import models
 class DayOfWeek(models.IntegerChoices):
     """Days when dinner is served (Mon-Thu)."""
 
-    MONDAY = 0, "Monday"
-    TUESDAY = 1, "Tuesday"
-    WEDNESDAY = 2, "Wednesday"
-    THURSDAY = 3, "Thursday"
+    MONDAY = 0, "Mandag"
+    TUESDAY = 1, "Tirsdag"
+    WEDNESDAY = 2, "Onsdag"
+    THURSDAY = 3, "Torsdag"
 
 
 class MealType(models.TextChoices):
     """Meal type options (mainly for Wednesday)."""
 
-    MEAT = "meat", "Meat"
-    VEGETARIAN = "vegetarian", "Vegetarian"
+    MEAT = "meat", "Kød"
+    VEGETARIAN = "vegetarian", "Vegetar"
 
 
 class DiningOption(models.TextChoices):
     """Dining options for meal registration."""
 
-    EAT_IN = "eat_in", "Eat In"
-    TAKE_AWAY = "take_away", "Take Away"
+    EAT_IN = "eat_in", "Spis i fælleshuset"
+    TAKE_AWAY = "take_away", "Tag med"
 
 
 class SeatingTime(models.TextChoices):
@@ -224,10 +224,10 @@ class FoodTicket(models.Model):
 class SwapRequestStatus(models.TextChoices):
     """Status options for team swap requests."""
 
-    PENDING = "pending", "Pending"
-    ACCEPTED = "accepted", "Accepted"
-    DECLINED = "declined", "Declined"
-    CANCELLED = "cancelled", "Cancelled"
+    PENDING = "pending", "Afventer"
+    ACCEPTED = "accepted", "Accepteret"
+    DECLINED = "declined", "Afvist"
+    CANCELLED = "cancelled", "Annulleret"
 
 
 class FoodTeam(models.Model):
@@ -367,10 +367,10 @@ class TeamSwapRequest(models.Model):
 class CycleStatus(models.TextChoices):
     """Status options for food team cycles."""
 
-    COLLECTING_WISHES = "collecting_wishes", "Collecting Wishes"
-    GENERATING = "generating", "Generating Teams"
-    FINALIZED = "finalized", "Finalized"
-    ARCHIVED = "archived", "Archived"
+    COLLECTING_WISHES = "collecting_wishes", "Indsamler ønsker"
+    GENERATING = "generating", "Genererer hold"
+    FINALIZED = "finalized", "Afsluttet"
+    ARCHIVED = "archived", "Arkiveret"
 
 
 class FoodTeamCycle(models.Model):

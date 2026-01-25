@@ -969,16 +969,16 @@ class MonthlyFoodCostView(APIView):
         # Get month name
         month_names = [
             "",
-            "January",
-            "February",
-            "March",
+            "Januar",
+            "Februar",
+            "Marts",
             "April",
-            "May",
-            "June",
-            "July",
+            "Maj",
+            "Juni",
+            "Juli",
             "August",
             "September",
-            "October",
+            "Oktober",
             "November",
             "December",
         ]

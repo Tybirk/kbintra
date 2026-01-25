@@ -31,7 +31,6 @@ import {
   IconTicket,
   IconSettings,
   IconAlertCircle,
-  IconChefHat,
   IconChevronLeft,
   IconChevronRight,
   IconUsers,

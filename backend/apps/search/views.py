@@ -87,7 +87,7 @@ class GlobalSearchView(APIView):
                 "type": "thread",
                 "title": thread.title,
                 "subtitle": thread.subgroup.name,
-                "url": f"/forum/traad/{thread.id}",
+                "url": f"/forum/{thread.subgroup.slug}/{thread.id}",
                 "score": score,
             }
             for thread, score in matches
@@ -103,7 +103,7 @@ class GlobalSearchView(APIView):
                 "type": "post",
                 "title": post.thread.title,
                 "subtitle": create_excerpt(post.content, 80),
-                "url": f"/forum/traad/{post.thread.id}",
+                "url": f"/forum/{post.thread.subgroup.slug}/{post.thread.id}",
                 "score": score,
                 "extra": {"thread_id": post.thread.id},
             }

@@ -208,6 +208,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
             replier=author,
             thread_title=thread.title,
             thread_id=thread.id,
+            subgroup_slug=thread.subgroup.slug,
             reply_content=post.content,  # Full HTML content
         )
 
@@ -228,6 +229,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
                         replier=author,
                         thread_title=thread.title,
                         thread_id=thread.id,
+                        subgroup_slug=thread.subgroup.slug,
                         reply_content=post.content,  # Full HTML content
                     )
                     notified_users.add(poster_id)
@@ -356,6 +358,7 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
             thread_title=thread.title,
             thread_id=thread.id,
             subgroup_name=thread.subgroup.name,
+            subgroup_slug=thread.subgroup.slug,
             initial_post_content=content,  # Full HTML content
         )
 

@@ -59,10 +59,13 @@ interface UpdatePostParams {
 dayjs.extend(relativeTime)
 
 export default function ThreadPage() {
-  const { id } = useParams<{ id: string }>()
+  const { id, threadId: threadIdParam } = useParams<{
+    id?: string
+    threadId?: string
+  }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const threadId = parseInt(id!, 10)
+  const threadId = parseInt(threadIdParam || id || "0", 10)
 
   const [newPostContent, setNewPostContent] = useState("")
   const [attachments, setAttachments] = useState<File[]>([])

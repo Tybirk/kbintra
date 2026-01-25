@@ -337,7 +337,8 @@ class TestGlobalSearchAPI:
 
         threads = response.data["results"]["threads"]
         if threads:
-            assert threads[0]["url"].startswith("/forum/traad/")
+            # URL format is /forum/{subgroup_slug}/{thread_id}
+            assert threads[0]["url"].startswith("/forum/")
 
         response2 = authenticated_client.get("/api/search/?q=General Discussion")
         subgroups = response2.data["results"]["subgroups"]
