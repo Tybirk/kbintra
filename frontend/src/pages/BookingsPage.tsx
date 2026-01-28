@@ -62,6 +62,40 @@ const DAYS_OF_WEEK = [
   { value: "6", label: "Søndag" },
 ]
 
+// Helper to extract error messages from Django REST Framework responses
+function extractErrorMessage(error: any, fallback: string): string {
+  const data = error?.response?.data
+  if (!data) return fallback
+
+  // Check for detail (common for permission/auth errors)
+  if (typeof data.detail === "string") return data.detail
+
+  // Check for non_field_errors
+  if (
+    Array.isArray(data.non_field_errors) &&
+    data.non_field_errors.length > 0
+  ) {
+    return data.non_field_errors.join(" ")
+  }
+
+  // Check for field-specific errors (e.g., start_datetime, end_datetime, title)
+  const fieldErrors: string[] = []
+  for (const key of Object.keys(data)) {
+    if (key === "non_field_errors" || key === "detail") continue
+    const value = data[key]
+    if (Array.isArray(value)) {
+      fieldErrors.push(...value)
+    } else if (typeof value === "string") {
+      fieldErrors.push(value)
+    }
+  }
+  if (fieldErrors.length > 0) {
+    return fieldErrors.join(" ")
+  }
+
+  return fallback
+}
+
 const HOURS = Array.from({ length: 25 }, (_, i) => i)
 
 export default function BookingsPage() {
@@ -153,10 +187,14 @@ export default function BookingsPage() {
         color: "blue",
       })
     },
-    onError: () => {
+    onError: (error: any) => {
+      const errorMessage = extractErrorMessage(
+        error,
+        "Kunne ikke slette booking. Prøv igen.",
+      )
       notifications.show({
         title: "Fejl",
-        message: "Kunne ikke slette booking. Prøv igen.",
+        message: errorMessage,
         color: "red",
       })
     },
@@ -1047,10 +1085,10 @@ function CreateBookingModal({
       onSuccess()
     },
     onError: (error: any) => {
-      const errorMessage =
-        error?.response?.data?.non_field_errors?.[0] ||
-        error?.response?.data?.detail ||
-        "Kunne ikke oprette booking. Prøv igen."
+      const errorMessage = extractErrorMessage(
+        error,
+        "Kunne ikke oprette booking. Prøv igen.",
+      )
       notifications.show({
         title: "Fejl",
         message: errorMessage,
@@ -1280,10 +1318,10 @@ function EditBookingModal({
       onSuccess()
     },
     onError: (error: any) => {
-      const errorMessage =
-        error?.response?.data?.non_field_errors?.[0] ||
-        error?.response?.data?.detail ||
-        "Kunne ikke opdatere booking. Prøv igen."
+      const errorMessage = extractErrorMessage(
+        error,
+        "Kunne ikke opdatere booking. Prøv igen.",
+      )
       notifications.show({
         title: "Fejl",
         message: errorMessage,
@@ -1554,10 +1592,14 @@ function CreateRoomModal({ opened, onClose, onSuccess }: CreateRoomModalProps) {
       resetForm()
       onSuccess()
     },
-    onError: () => {
+    onError: (error: any) => {
+      const errorMessage = extractErrorMessage(
+        error,
+        "Kunne ikke oprette lokale. Prøv igen.",
+      )
       notifications.show({
         title: "Fejl",
-        message: "Kunne ikke oprette lokale. Prøv igen.",
+        message: errorMessage,
         color: "red",
       })
     },
@@ -1660,10 +1702,14 @@ function EditRoomModal({
       })
       onSuccess()
     },
-    onError: () => {
+    onError: (error: any) => {
+      const errorMessage = extractErrorMessage(
+        error,
+        "Kunne ikke opdatere lokale. Prøv igen.",
+      )
       notifications.show({
         title: "Fejl",
-        message: "Kunne ikke opdatere lokale. Prøv igen.",
+        message: errorMessage,
         color: "red",
       })
     },
@@ -1757,10 +1803,14 @@ function RecurringBookingsAdmin({
         color: "blue",
       })
     },
-    onError: () => {
+    onError: (error: any) => {
+      const errorMessage = extractErrorMessage(
+        error,
+        "Kunne ikke slette booking. Prøv igen.",
+      )
       notifications.show({
         title: "Fejl",
-        message: "Kunne ikke slette booking. Prøv igen.",
+        message: errorMessage,
         color: "red",
       })
     },
@@ -1870,10 +1920,14 @@ function CreateRecurringBookingModal({
       resetForm()
       onSuccess()
     },
-    onError: () => {
+    onError: (error: any) => {
+      const errorMessage = extractErrorMessage(
+        error,
+        "Kunne ikke oprette booking. Prøv igen.",
+      )
       notifications.show({
         title: "Fejl",
-        message: "Kunne ikke oprette booking. Prøv igen.",
+        message: errorMessage,
         color: "red",
       })
     },
