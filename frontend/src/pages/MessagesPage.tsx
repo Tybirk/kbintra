@@ -21,6 +21,7 @@ import {
   Image,
   CloseButton,
   ActionIcon,
+  Menu,
 } from "@mantine/core"
 import { useDisclosure, useMediaQuery } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -32,6 +33,8 @@ import {
   IconChecks,
   IconArrowLeft,
   IconUserPlus,
+  IconDots,
+  IconLogout,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -195,6 +198,22 @@ export default function MessagesPage() {
     setIsComposingNew(false)
   }
 
+  const handleLeaveConversation = async () => {
+    if (!selectedConversation) return
+    try {
+      await messagingApi.leaveConversation(selectedConversation)
+      setSelectedConversation(null)
+      navigate("/beskeder", { replace: true })
+      queryClient.invalidateQueries({ queryKey: ["conversations"] })
+    } catch {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke forlade samtalen",
+        color: "red",
+      })
+    }
+  }
+
   return (
     <>
       <Group justify="space-between" mb="md">
@@ -336,6 +355,7 @@ export default function MessagesPage() {
                     queryKey: ["conversations"],
                   })
                 }}
+                onLeave={handleLeaveConversation}
               />
             ) : null
           ) : (
@@ -453,6 +473,7 @@ interface ChatAreaProps {
   onSendMessage: (content: string, attachments: File[]) => Promise<void> | void
   onBack?: () => void
   onParticipantsAdded?: () => void
+  onLeave?: () => void
 }
 
 function ChatArea({
@@ -460,6 +481,7 @@ function ChatArea({
   onSendMessage,
   onBack,
   onParticipantsAdded,
+  onLeave,
 }: ChatAreaProps) {
   const [message, setMessage] = useState("")
   const [attachments, setAttachments] = useState<File[]>([])
@@ -467,6 +489,10 @@ function ChatArea({
   const [
     addParticipantsOpened,
     { open: openAddParticipants, close: closeAddParticipants },
+  ] = useDisclosure(false)
+  const [
+    leaveConfirmOpened,
+    { open: openLeaveConfirm, close: closeLeaveConfirm },
   ] = useDisclosure(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -538,14 +564,33 @@ function ChatArea({
               </Text>
             </div>
           </Group>
-          <ActionIcon
-            variant="subtle"
-            onClick={openAddParticipants}
-            size="lg"
-            title="Tilføj personer"
-          >
-            <IconUserPlus size={20} />
-          </ActionIcon>
+          <Menu shadow="md" width={200} position="bottom-end">
+            <Menu.Target>
+              <ActionIcon variant="subtle" size="lg">
+                <IconDots size={20} />
+              </ActionIcon>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item
+                leftSection={<IconUserPlus size={16} />}
+                onClick={openAddParticipants}
+              >
+                Tilføj personer
+              </Menu.Item>
+              {conversation.participants.length > 2 && (
+                <>
+                  <Menu.Divider />
+                  <Menu.Item
+                    leftSection={<IconLogout size={16} />}
+                    color="red"
+                    onClick={openLeaveConfirm}
+                  >
+                    Forlad samtale
+                  </Menu.Item>
+                </>
+              )}
+            </Menu.Dropdown>
+          </Menu>
         </Group>
       </Box>
 
@@ -558,6 +603,34 @@ function ChatArea({
           onParticipantsAdded?.()
         }}
       />
+
+      <Modal
+        opened={leaveConfirmOpened}
+        onClose={closeLeaveConfirm}
+        title="Forlad samtale"
+        size="sm"
+      >
+        <Stack gap="md">
+          <Text size="sm">
+            Er du sikker på, at du vil forlade denne samtale? Du vil ikke længere
+            kunne se beskeder i samtalen.
+          </Text>
+          <Group justify="flex-end">
+            <Button variant="light" onClick={closeLeaveConfirm}>
+              Annuller
+            </Button>
+            <Button
+              color="red"
+              onClick={() => {
+                closeLeaveConfirm()
+                onLeave?.()
+              }}
+            >
+              Forlad
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
 
       {/* Messages */}
       <ScrollArea style={{ flex: 1 }} p="md" viewportRef={scrollRef}>

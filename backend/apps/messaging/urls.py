@@ -8,6 +8,7 @@ from .views import (
     AddParticipantsView,
     ConversationDetailView,
     ConversationListCreateView,
+    LeaveConversationView,
     MarkMessagesReadView,
     MessageListCreateView,
     UnreadCountView,
@@ -20,6 +21,11 @@ urlpatterns = [
         "conversations/<int:pk>/add-participants/",
         AddParticipantsView.as_view(),
         name="add-participants",
+    ),
+    path(
+        "conversations/<int:pk>/leave/",
+        LeaveConversationView.as_view(),
+        name="leave-conversation",
     ),
     path(
         "conversations/<int:conversation_id>/messages/",

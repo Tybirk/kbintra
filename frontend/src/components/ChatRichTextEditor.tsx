@@ -10,6 +10,7 @@ import {
   Stack,
   ScrollArea,
 } from "@mantine/core"
+import { useMediaQuery } from "@mantine/hooks"
 import {
   IconSend,
   IconPaperclip,
@@ -49,9 +50,12 @@ export default function ChatRichTextEditor({
   onAttachmentsChange,
 }: ChatRichTextEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const isMobile = useMediaQuery("(max-width: 768px)")
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey) {
+    // On mobile, Enter creates a newline (more natural for touch keyboards)
+    // On desktop, Enter submits (Shift+Enter for newline)
+    if (event.key === "Enter" && !event.shiftKey && !isMobile) {
       event.preventDefault()
       if (content.trim() || attachments.length > 0) {
         onSend()
@@ -87,6 +91,11 @@ export default function ChatRichTextEditor({
   }
 
   const isEmpty = !content.trim() && attachments.length === 0
+
+  // Add hint about Shift+Enter on desktop
+  const actualPlaceholder = isMobile
+    ? placeholder
+    : `${placeholder} (Shift+Enter for ny linje)`
 
   return (
     <Stack gap="xs">
@@ -194,7 +203,7 @@ export default function ChatRichTextEditor({
           value={content}
           onChange={(e) => onChange(e.currentTarget.value)}
           onKeyDown={handleKeyDown}
-          placeholder={placeholder}
+          placeholder={actualPlaceholder}
           disabled={disabled}
           autosize
           minRows={1}

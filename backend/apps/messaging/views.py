@@ -298,3 +298,72 @@ class AddParticipantsView(APIView):
             ConversationDetailSerializer(conversation, context={"request": request}).data,
             status=status.HTTP_200_OK,
         )
+
+
+class LeaveConversationView(APIView):
+    """Leave a conversation."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request, pk: int) -> Response:
+        # Get the conversation - user must be a participant
+        conversation = get_object_or_404(
+            Conversation.objects.filter(participants=request.user),
+            pk=pk,
+        )
+
+        # Cannot leave a 1-on-1 conversation
+        if conversation.participants.count() <= 2:
+            return Response(
+                {"detail": "Du kan ikke forlade en samtale med kun én anden person"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Remove user from participants
+        conversation.participants.remove(request.user)
+
+        # Create system message
+        system_message = Message.objects.create(
+            conversation=conversation,
+            sender=request.user,
+            content=f"{request.user.first_name} forlod samtalen",
+            is_system_message=True,
+        )
+
+        # Update conversation timestamp
+        conversation.save()
+
+        # Broadcast the system message to remaining participants
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+
+        channel_layer = get_channel_layer()
+
+        message_data = {
+            "id": system_message.id,
+            "conversation": conversation.id,
+            "sender": {
+                "id": request.user.id,
+                "first_name": request.user.first_name,
+                "last_name": request.user.last_name,
+                "profile_picture": (
+                    request.user.profile_picture.url if request.user.profile_picture else None
+                ),
+            },
+            "content": system_message.content,
+            "is_own": False,
+            "is_read": False,
+            "is_system_message": True,
+            "created_at": system_message.created_at.isoformat(),
+            "attachments": [],
+        }
+
+        async_to_sync(channel_layer.group_send)(
+            f"conversation_{conversation.id}",
+            {
+                "type": "chat_message",
+                "message": message_data,
+            },
+        )
+
+        return Response(status=status.HTTP_204_NO_CONTENT)

@@ -114,6 +114,11 @@ export const messagingApi = {
     )
     return response.data
   },
+
+  // Leave a conversation
+  leaveConversation: async (conversationId: number): Promise<void> => {
+    await apiClient.post(`/messages/conversations/${conversationId}/leave/`)
+  },
 }
 
 /**
