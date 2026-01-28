@@ -220,16 +220,26 @@ export default function BookingsPage() {
     return map
   }, [rooms])
 
-  // Bookings for the selected day
+  // Bookings for the selected day (including multi-day bookings that overlap)
   const dayBookings = useMemo(() => {
-    if (!selectedDate) return []
-    const dateKey = dayjs(selectedDate).format("YYYY-MM-DD")
-    return (bookingsByDate[dateKey] || []).sort(
-      (a, b) =>
-        new Date(a.start_datetime).getTime() -
-        new Date(b.start_datetime).getTime(),
-    )
-  }, [bookingsByDate, selectedDate])
+    if (!selectedDate || !bookings) return []
+    const dayStart = dayjs(selectedDate).startOf("day")
+    const dayEnd = dayjs(selectedDate).endOf("day")
+
+    // Filter bookings that overlap with the selected day
+    return bookings
+      .filter((booking) => {
+        const bookingStart = dayjs(booking.start_datetime)
+        const bookingEnd = dayjs(booking.end_datetime)
+        // Booking overlaps if it starts before day ends AND ends after day starts
+        return bookingStart.isBefore(dayEnd) && bookingEnd.isAfter(dayStart)
+      })
+      .sort(
+        (a, b) =>
+          new Date(a.start_datetime).getTime() -
+          new Date(b.start_datetime).getTime(),
+      )
+  }, [bookings, selectedDate])
 
   const handleDeleteClick = (id: string, isRecurring: boolean) => {
     setBookingToDelete({ id, isRecurring })
@@ -470,6 +480,7 @@ export default function BookingsPage() {
                 <DayTimeline
                   bookings={dayBookings}
                   rooms={rooms || []}
+                  selectedDate={selectedDate}
                   onEdit={setEditingBooking}
                   onDelete={handleDeleteClick}
                   onViewDetails={handleViewDetails}
@@ -670,6 +681,7 @@ export default function BookingsPage() {
 interface DayTimelineProps {
   bookings: CalendarBooking[]
   rooms: Room[]
+  selectedDate: Date
   onEdit: (booking: CalendarBooking) => void
   onDelete: (id: string, isRecurring: boolean) => void
   onViewDetails: (booking: CalendarBooking) => void
@@ -680,6 +692,7 @@ interface DayTimelineProps {
 function DayTimeline({
   bookings,
   rooms,
+  selectedDate,
   onEdit,
   onDelete,
   onViewDetails,
@@ -698,15 +711,34 @@ function DayTimeline({
     return map
   }, [bookings])
 
-  // Calculate positions for bookings on timeline
+  // Calculate positions for bookings on timeline, handling multi-day bookings
   const getBookingPosition = (booking: CalendarBooking) => {
-    const start = dayjs(booking.start_datetime)
-    const end = dayjs(booking.end_datetime)
-    const startHour = start.hour() + start.minute() / 60
-    const endHour = end.hour() + end.minute() / 60
+    const bookingStart = dayjs(booking.start_datetime)
+    const bookingEnd = dayjs(booking.end_datetime)
+    const dayStart = dayjs(selectedDate).startOf("day")
+    const dayEnd = dayjs(selectedDate).endOf("day")
+
+    // Determine the visible start/end for this day
+    const visibleStart = bookingStart.isBefore(dayStart)
+      ? dayStart
+      : bookingStart
+    const visibleEnd = bookingEnd.isAfter(dayEnd) ? dayEnd : bookingEnd
+
+    const startHour = visibleStart.hour() + visibleStart.minute() / 60
+    // If booking extends past midnight, show until 24:00
+    const endHour = bookingEnd.isAfter(dayEnd)
+      ? 24
+      : visibleEnd.hour() + visibleEnd.minute() / 60
+
+    // Flags for visual indicators
+    const continuesFromPrevDay = bookingStart.isBefore(dayStart)
+    const continuesToNextDay = bookingEnd.isAfter(dayEnd)
+
     return {
       top: startHour * 40,
       height: Math.max((endHour - startHour) * 40, 20),
+      continuesFromPrevDay,
+      continuesToNextDay,
     }
   }
 
@@ -720,7 +752,12 @@ function DayTimeline({
   if (bookings.length === 0) {
     return (
       <ScrollArea h={isMobile ? 400 : 500} offsetScrollbars>
-        <Box style={{ position: "relative", minHeight: 24 * 40 + 20 }}>
+        <Box
+          style={{
+            position: "relative",
+            minHeight: 24 * 40 + 20,
+          }}
+        >
           {/* Hour labels */}
           <Box style={{ position: "absolute", left: 0, top: 0, width: 40 }}>
             {HOURS.map((hour) => (
@@ -784,8 +821,8 @@ function DayTimeline({
   const activeRooms = rooms.filter((r) => activeRoomIds.includes(r.id))
 
   return (
-    <ScrollArea h={isMobile ? 400 : 500} offsetScrollbars>
-      <Box style={{ position: "relative", minHeight: 24 * 40 + 20 }}>
+    <ScrollArea h={isMobile ? 400 : 500} offsetScrollbars >
+      <Box style={{ position: "relative", minHeight: 24 * 40 + 20 }} mt={8}>
         {/* Hour labels */}
         <Box style={{ position: "absolute", left: 0, top: 0, width: 40 }}>
           {HOURS.map((hour) => (
@@ -829,7 +866,11 @@ function DayTimeline({
           <Group
             gap="xs"
             align="flex-start"
-            style={{ position: "relative", minHeight: 24 * 40, zIndex: 1 }}
+            style={{
+              position: "relative",
+              minHeight: 24 * 40,
+              zIndex: 1,
+            }}
             wrap="nowrap"
           >
             {activeRooms.map((room) => (
@@ -864,6 +905,13 @@ function DayTimeline({
                   const canEdit =
                     booking.is_own || (isAdmin && booking.is_recurring)
 
+                  // Format time display based on whether booking spans days
+                  const timeDisplay = pos.continuesFromPrevDay
+                    ? `← ${dayjs(booking.end_datetime).format("HH:mm")}`
+                    : pos.continuesToNextDay
+                      ? `${dayjs(booking.start_datetime).format("HH:mm")} →`
+                      : `${dayjs(booking.start_datetime).format("HH:mm")} - ${dayjs(booking.end_datetime).format("HH:mm")}`
+
                   return (
                     <Paper
                       key={booking.id}
@@ -883,6 +931,13 @@ function DayTimeline({
                         overflow: "hidden",
                         opacity: isPast ? 0.5 : 1,
                         cursor: "pointer",
+                        // Visual indicator for multi-day bookings
+                        borderTopStyle: pos.continuesFromPrevDay
+                          ? "dashed"
+                          : "solid",
+                        borderBottomStyle: pos.continuesToNextDay
+                          ? "dashed"
+                          : "solid",
                       }}
                       onClick={() => onViewDetails(booking)}
                     >
@@ -906,8 +961,7 @@ function DayTimeline({
                             c="dimmed"
                             style={{ lineHeight: 1.2 }}
                           >
-                            {dayjs(booking.start_datetime).format("HH:mm")} -{" "}
-                            {dayjs(booking.end_datetime).format("HH:mm")}
+                            {timeDisplay}
                           </Text>
                           {booking.is_recurring && (
                             <IconRepeat size={10} style={{ marginTop: 2 }} />
