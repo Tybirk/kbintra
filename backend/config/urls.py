@@ -25,6 +25,7 @@ urlpatterns = [
     path("api/messages/", include("apps.messaging.urls")),
     path("api/notifications/", include("apps.notifications.urls")),
     path("api/search/", include("apps.search.urls")),
+    path("api/bookings/", include("apps.bookings.urls")),
 ]
 
 # Serve media files (static() helper doesn't work when DEBUG=False, so use re_path directly)

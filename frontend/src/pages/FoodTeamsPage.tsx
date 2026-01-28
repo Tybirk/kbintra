@@ -253,8 +253,8 @@ export default function FoodTeamsPage() {
             </Center>
           ) : !activeCycle ? (
             <Alert icon={<IconAlertCircle size={16} />} color="blue">
-              Der er ingen aktiv madholdsperiode i øjeblikket. Kom tilbage senere
-              når en ny periode bliver annonceret.
+              Der er ingen aktiv madholdsperiode i øjeblikket. Kom tilbage
+              senere når en ny periode bliver annonceret.
             </Alert>
           ) : (
             <WishSubmissionPanel cycle={activeCycle} />
@@ -455,7 +455,8 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
 
           {!cycle.is_accepting_wishes ? (
             <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
-              Denne periode modtager ikke længere ønsker. Deadline er overskredet.
+              Denne periode modtager ikke længere ønsker. Deadline er
+              overskredet.
             </Alert>
           ) : (
             <>
@@ -465,8 +466,8 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
                   Dine standard madlavningsdage
                 </Text>
                 <Text size="sm" c="dimmed" mb="md">
-                  Vælg din typiske tilgængelighed. Disse gemmes og kan bruges til
-                  fremtidige perioder.
+                  Vælg din typiske tilgængelighed. Disse gemmes og kan bruges
+                  til fremtidige perioder.
                 </Text>
                 <Group gap="md" mb="md">
                   {["Mandag", "Tirsdag", "Onsdag", "Torsdag"].map(

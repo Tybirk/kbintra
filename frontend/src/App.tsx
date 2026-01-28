@@ -28,6 +28,7 @@ import FoodPreferencesPage from "./pages/FoodPreferencesPage"
 import FoodTicketsPage from "./pages/FoodTicketsPage"
 import FoodTeamsPage from "./pages/FoodTeamsPage"
 import CalendarPage from "./pages/CalendarPage"
+import BookingsPage from "./pages/BookingsPage"
 import MessagesPage from "./pages/MessagesPage"
 import NotificationsPage from "./pages/NotificationsPage"
 import AppHeader from "./components/AppHeader"
@@ -274,6 +275,16 @@ function App() {
               element={
                 <ProtectedRoute>
                   <CalendarPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Booking */}
+            <Route
+              path="/booking"
+              element={
+                <ProtectedRoute>
+                  <BookingsPage />
                 </ProtectedRoute>
               }
             />

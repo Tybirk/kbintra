@@ -43,7 +43,7 @@ export function useVersionCheck() {
 
         if (serverVersion && serverVersion !== CURRENT_VERSION) {
           console.log(
-            `[VersionCheck] New version detected: ${serverVersion} (current: ${CURRENT_VERSION})`
+            `[VersionCheck] New version detected: ${serverVersion} (current: ${CURRENT_VERSION})`,
           )
 
           // Clear all caches before reload

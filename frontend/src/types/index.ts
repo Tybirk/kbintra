@@ -677,3 +677,115 @@ export interface TeamGenerationResult {
   unassigned_persons: string[]
   warnings: string[]
 }
+
+// Booking Types
+export interface Room {
+  id: number
+  name: string
+  description: string
+  image: string | null
+  capacity: number
+  color: string
+  is_active: boolean
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export interface BookingRoom {
+  id: number
+  name: string
+  color: string
+}
+
+export interface BookingUser {
+  id: number
+  first_name: string
+  last_name: string
+  profile_picture: string | null
+}
+
+export interface Booking {
+  id: number
+  room: BookingRoom
+  user: BookingUser
+  title: string
+  description: string
+  start_datetime: string
+  end_datetime: string
+  duration_hours: number
+  is_own: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateBookingData {
+  room_id?: number
+  room_ids?: number[]
+  title: string
+  description?: string
+  start_datetime: string
+  end_datetime: string
+}
+
+export interface UpdateBookingData {
+  title?: string
+  description?: string
+  start_datetime?: string
+  end_datetime?: string
+}
+
+export interface RecurringBooking {
+  id: number
+  room: BookingRoom
+  created_by: BookingUser
+  title: string
+  description: string
+  day_of_week: number
+  day_of_week_display: string
+  start_time: string
+  end_time: string
+  effective_from: string | null
+  effective_until: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateRecurringBookingData {
+  room_id: number
+  title: string
+  description?: string
+  day_of_week: number
+  start_time: string
+  end_time: string
+  effective_from?: string | null
+  effective_until?: string | null
+  is_active?: boolean
+}
+
+export interface CalendarBooking {
+  id: string
+  room: BookingRoom
+  user: BookingUser
+  title: string
+  description: string
+  start_datetime: string
+  end_datetime: string
+  is_recurring: boolean
+  recurring_booking_id: number | null
+  is_own: boolean
+}
+
+export interface AvailabilityCheckRequest {
+  room_ids: number[]
+  start_datetime: string
+  end_datetime: string
+  exclude_booking_id?: number
+}
+
+export interface AvailabilityResult {
+  can_book_all: boolean
+  available_rooms: number[]
+  conflicts_by_room: Record<number, string[]>
+}

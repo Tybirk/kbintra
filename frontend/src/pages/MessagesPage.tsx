@@ -229,7 +229,10 @@ export default function MessagesPage() {
             borderRight: isMobile
               ? "none"
               : "1px solid var(--mantine-color-gray-3)",
-            display: isMobile && (selectedConversation || isComposingNew) ? "none" : "flex",
+            display:
+              isMobile && (selectedConversation || isComposingNew)
+                ? "none"
+                : "flex",
             flexDirection: "column",
           }}
         >

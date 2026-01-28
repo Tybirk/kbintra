@@ -11,6 +11,7 @@ import {
   IconBuildingCommunity,
   IconBell,
   IconUsersGroup,
+  IconDoor,
 } from "@tabler/icons-react"
 import { messagingApi } from "../api/messaging"
 import { notificationsApi } from "../api/notifications"
@@ -38,6 +39,7 @@ const navItems: NavItem[] = [
   { icon: IconSoup, label: "Mad", path: "/mad" },
   { icon: IconUsersGroup, label: "Madhold", path: "/madhold" },
   { icon: IconCalendar, label: "Kalender", path: "/kalender" },
+  { icon: IconDoor, label: "Booking", path: "/booking" },
   {
     icon: IconBuildingCommunity,
     label: "Beboeroversigt",
