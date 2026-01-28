@@ -5,6 +5,8 @@ Notification services for creating notifications.
 import contextlib
 import json
 import logging
+import time
+from urllib.parse import urlparse
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
@@ -165,11 +167,18 @@ def send_push_notification(
 
     for subscription in subscriptions:
         try:
+            # Build claims with aud (audience) derived from endpoint
+            # Apple requires aud to be the push service origin (e.g., https://web.push.apple.com)
+            parsed = urlparse(subscription.endpoint)
+            claims = vapid_claims.copy()
+            claims["aud"] = f"{parsed.scheme}://{parsed.netloc}"
+            claims["exp"] = int(time.time()) + 86400  # 24 hours
+
             webpush(
                 subscription_info=subscription.get_subscription_info(),
                 data=payload,
                 vapid_private_key=vapid_private_key,
-                vapid_claims=vapid_claims,
+                vapid_claims=claims,
             )
             success_count += 1
             logger.debug(f"Push notification sent to subscription {subscription.id}")
