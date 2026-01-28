@@ -11,13 +11,14 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Booking, RecurringBooking, Room
+from .models import Booking, RecurringBooking, RecurringBookingException, Room
 from .serializers import (
     AvailabilityCheckSerializer,
     BookingCreateUpdateSerializer,
     BookingSerializer,
     CalendarBookingSerializer,
     RecurringBookingCreateUpdateSerializer,
+    RecurringBookingExceptionSerializer,
     RecurringBookingSerializer,
     RoomCreateUpdateSerializer,
     RoomSerializer,
@@ -180,6 +181,44 @@ class RecurringBookingDetailView(generics.RetrieveUpdateDestroyAPIView):
         if self.request.method in ["PUT", "PATCH"]:
             return RecurringBookingCreateUpdateSerializer
         return RecurringBookingSerializer
+
+
+class RecurringBookingExceptionView(APIView):
+    """Create an exception for a recurring booking (skip a single occurrence)."""
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrReadOnly]
+
+    def post(self, request: Request, pk: int) -> Response:
+        """Create an exception for a specific date."""
+        try:
+            recurring_booking = RecurringBooking.objects.get(pk=pk)
+        except RecurringBooking.DoesNotExist:
+            return Response(
+                {"error": "Recurring booking not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        exception_date = request.data.get("exception_date")
+        if not exception_date:
+            return Response(
+                {"error": "exception_date is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Check if exception already exists
+        exception, created = RecurringBookingException.objects.get_or_create(
+            recurring_booking=recurring_booking,
+            exception_date=exception_date,
+        )
+
+        if not created:
+            return Response(
+                {"message": "Exception already exists for this date"},
+                status=status.HTTP_200_OK,
+            )
+
+        serializer = RecurringBookingExceptionSerializer(exception)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 # Calendar and utility views

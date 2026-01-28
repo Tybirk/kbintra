@@ -94,10 +94,9 @@ def check_recurring_overlaps(
 
             # Check overlap
             if start < occurrence_end and end > occurrence_start:
-                day_name = RecurringBooking.DayOfWeek(recurring.day_of_week).label
                 conflicts.append(
                     f"Overlapper med tilbagevendende booking '{recurring.title}' "
-                    f"({day_name} {recurring.start_time.strftime('%H:%M')} - "
+                    f"({recurring.days_of_week_display} {recurring.start_time.strftime('%H:%M')} - "
                     f"{recurring.end_time.strftime('%H:%M')})"
                 )
 

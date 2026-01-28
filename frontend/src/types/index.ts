@@ -684,7 +684,6 @@ export interface Room {
   name: string
   description: string
   image: string | null
-  capacity: number
   color: string
   is_active: boolean
   sort_order: number
@@ -741,8 +740,8 @@ export interface RecurringBooking {
   created_by: BookingUser
   title: string
   description: string
-  day_of_week: number
-  day_of_week_display: string
+  days_of_week: number[]
+  days_of_week_display: string
   start_time: string
   end_time: string
   effective_from: string | null
@@ -756,7 +755,7 @@ export interface CreateRecurringBookingData {
   room_id: number
   title: string
   description?: string
-  day_of_week: number
+  days_of_week: number[]
   start_time: string
   end_time: string
   effective_from?: string | null

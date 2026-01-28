@@ -14,7 +14,6 @@ class Room(models.Model):
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
     image = models.ImageField(upload_to="rooms/", blank=True, null=True)
-    capacity = models.PositiveIntegerField(default=0)
     color = models.CharField(max_length=7, default="#3B82F6", help_text="Hex color for calendar")
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
@@ -82,7 +81,8 @@ class RecurringBooking(models.Model):
     )
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
-    day_of_week = models.IntegerField(choices=DayOfWeek.choices)
+    # Support multiple days - stored as JSON list of integers [0, 1, 2, 3] for Mon-Thu
+    days_of_week = models.JSONField(default=list, help_text="List of day integers (0=Monday, 6=Sunday)")
     start_time = models.TimeField()
     end_time = models.TimeField()
     effective_from = models.DateField(null=True, blank=True)
@@ -92,11 +92,16 @@ class RecurringBooking(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["room", "day_of_week", "start_time"]
+        ordering = ["room", "start_time"]
 
     def __str__(self) -> str:
-        day_name = self.DayOfWeek(self.day_of_week).label
-        return f"{self.title} - {self.room.name} ({day_name})"
+        days = ", ".join(self.DayOfWeek(d).label for d in self.days_of_week)
+        return f"{self.title} - {self.room.name} ({days})"
+
+    @property
+    def days_of_week_display(self) -> str:
+        """Return human-readable day names."""
+        return ", ".join(self.DayOfWeek(d).label for d in sorted(self.days_of_week))
 
     def is_active_on_date(self, date: "datetime.date") -> bool:
         """Check if this recurring booking is active on a given date."""
@@ -106,4 +111,26 @@ class RecurringBooking(models.Model):
             return False
         if self.effective_until and date > self.effective_until:
             return False
-        return date.weekday() == self.day_of_week
+        # Check if date has an exception
+        if self.exceptions.filter(exception_date=date).exists():
+            return False
+        return date.weekday() in self.days_of_week
+
+
+class RecurringBookingException(models.Model):
+    """Tracks single occurrence deletions for recurring bookings."""
+
+    recurring_booking = models.ForeignKey(
+        RecurringBooking,
+        on_delete=models.CASCADE,
+        related_name="exceptions",
+    )
+    exception_date = models.DateField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ["recurring_booking", "exception_date"]
+        ordering = ["exception_date"]
+
+    def __str__(self) -> str:
+        return f"Exception for {self.recurring_booking.title} on {self.exception_date}"

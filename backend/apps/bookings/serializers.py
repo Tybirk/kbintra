@@ -9,7 +9,7 @@ from rest_framework import serializers
 
 from apps.users.models import User
 
-from .models import Booking, RecurringBooking, Room
+from .models import Booking, RecurringBooking, RecurringBookingException, Room
 from .validators import check_multi_room_booking
 
 
@@ -31,7 +31,6 @@ class RoomSerializer(serializers.ModelSerializer):
             "name",
             "description",
             "image",
-            "capacity",
             "color",
             "is_active",
             "sort_order",
@@ -50,7 +49,6 @@ class RoomCreateUpdateSerializer(serializers.ModelSerializer):
             "name",
             "description",
             "image",
-            "capacity",
             "color",
             "is_active",
             "sort_order",
@@ -216,7 +214,7 @@ class RecurringBookingSerializer(serializers.ModelSerializer):
 
     room = BookingRoomSerializer(read_only=True)
     created_by = UserSerializer(read_only=True)
-    day_of_week_display = serializers.SerializerMethodField()
+    days_of_week_display = serializers.ReadOnlyField()
 
     class Meta:
         model = RecurringBooking
@@ -226,8 +224,8 @@ class RecurringBookingSerializer(serializers.ModelSerializer):
             "created_by",
             "title",
             "description",
-            "day_of_week",
-            "day_of_week_display",
+            "days_of_week",
+            "days_of_week_display",
             "start_time",
             "end_time",
             "effective_from",
@@ -238,14 +236,16 @@ class RecurringBookingSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "room", "created_by", "created_at", "updated_at"]
 
-    def get_day_of_week_display(self, obj: RecurringBooking) -> str:
-        return obj.get_day_of_week_display()
-
 
 class RecurringBookingCreateUpdateSerializer(serializers.ModelSerializer):
     """Serializer for creating/updating recurring bookings (admin only)."""
 
     room_id = serializers.IntegerField(write_only=True)
+    days_of_week = serializers.ListField(
+        child=serializers.IntegerField(min_value=0, max_value=6),
+        min_length=1,
+        help_text="List of day integers (0=Monday, 6=Sunday)",
+    )
 
     class Meta:
         model = RecurringBooking
@@ -253,13 +253,17 @@ class RecurringBookingCreateUpdateSerializer(serializers.ModelSerializer):
             "room_id",
             "title",
             "description",
-            "day_of_week",
+            "days_of_week",
             "start_time",
             "end_time",
             "effective_from",
             "effective_until",
             "is_active",
         ]
+
+    def validate_days_of_week(self, value: list) -> list:
+        # Ensure unique and sorted
+        return sorted(set(value))
 
     def validate(self, data: dict) -> dict:
         # Validate dates
@@ -288,6 +292,15 @@ class RecurringBookingCreateUpdateSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
         return instance
+
+
+class RecurringBookingExceptionSerializer(serializers.ModelSerializer):
+    """Serializer for creating single occurrence exceptions."""
+
+    class Meta:
+        model = RecurringBookingException
+        fields = ["id", "recurring_booking", "exception_date", "created_at"]
+        read_only_fields = ["id", "created_at"]
 
 
 class CalendarBookingSerializer(serializers.Serializer):

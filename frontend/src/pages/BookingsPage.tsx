@@ -119,7 +119,10 @@ export default function BookingsPage() {
   const [bookingToDelete, setBookingToDelete] = useState<{
     id: string
     isRecurring: boolean
+    recurringBookingId?: number
+    occurrenceDate?: string
   } | null>(null)
+  const [deleteMode, setDeleteMode] = useState<"all" | "single">("all")
   const [adminModalOpened, { open: openAdminModal, close: closeAdminModal }] =
     useDisclosure(false)
   const [
@@ -167,13 +170,32 @@ export default function BookingsPage() {
     mutationFn: async ({
       id,
       isRecurring,
+      deleteAll,
+      recurringBookingId,
+      occurrenceDate,
     }: {
       id: string
       isRecurring: boolean
+      deleteAll: boolean
+      recurringBookingId?: number
+      occurrenceDate?: string
     }) => {
       if (isRecurring) {
-        const recurringId = parseInt(id.split("_")[1])
-        return bookingsApi.deleteRecurringBooking(recurringId)
+        if (deleteAll) {
+          // Delete the entire recurring booking
+          const recurringId = recurringBookingId || parseInt(id.split("_")[1])
+          return bookingsApi.deleteRecurringBooking(recurringId)
+        } else {
+          // Create an exception for just this occurrence
+          const recurringId = recurringBookingId || parseInt(id.split("_")[1])
+          if (!occurrenceDate) {
+            throw new Error("Occurrence date required for single deletion")
+          }
+          return bookingsApi.createRecurringBookingException(
+            recurringId,
+            occurrenceDate,
+          )
+        }
       }
       return bookingsApi.deleteBooking(parseInt(id))
     },
@@ -181,9 +203,13 @@ export default function BookingsPage() {
       queryClient.invalidateQueries({ queryKey: ["bookings"] })
       closeDeleteModal()
       setBookingToDelete(null)
+      setDeleteMode("all")
       notifications.show({
         title: "Booking slettet",
-        message: "Bookingen er blevet slettet.",
+        message:
+          deleteMode === "single"
+            ? "Denne forekomst er blevet fjernet."
+            : "Bookingen er blevet slettet.",
         color: "blue",
       })
     },
@@ -241,14 +267,26 @@ export default function BookingsPage() {
       )
   }, [bookings, selectedDate])
 
-  const handleDeleteClick = (id: string, isRecurring: boolean) => {
-    setBookingToDelete({ id, isRecurring })
+  const handleDeleteClick = (
+    id: string,
+    isRecurring: boolean,
+    recurringBookingId?: number,
+    occurrenceDate?: string,
+  ) => {
+    setBookingToDelete({ id, isRecurring, recurringBookingId, occurrenceDate })
+    setDeleteMode(isRecurring ? "single" : "all") // Default to single for recurring
     openDeleteModal()
   }
 
   const handleConfirmDelete = () => {
     if (bookingToDelete) {
-      deleteMutation.mutate(bookingToDelete)
+      deleteMutation.mutate({
+        id: bookingToDelete.id,
+        isRecurring: bookingToDelete.isRecurring,
+        deleteAll: deleteMode === "all",
+        recurringBookingId: bookingToDelete.recurringBookingId,
+        occurrenceDate: bookingToDelete.occurrenceDate,
+      })
     }
   }
 
@@ -534,31 +572,123 @@ export default function BookingsPage() {
 
       <Modal
         opened={deleteModalOpened}
-        onClose={closeDeleteModal}
+        onClose={() => {
+          closeDeleteModal()
+          setDeleteMode("all")
+        }}
         title="Slet booking"
         centered
       >
-        <Text mb="lg">
-          Er du sikker på, at du vil slette denne booking?
+        <Stack gap="md">
+          <Text>Er du sikker på, at du vil slette denne booking?</Text>
+
           {bookingToDelete?.isRecurring && (
-            <Text c="red" size="sm" mt="xs">
-              Dette er en tilbagevendende booking. Sletning vil fjerne alle
-              fremtidige forekomster.
-            </Text>
+            <Stack gap="xs">
+              <Text size="sm" fw={500}>
+                Vælg hvad der skal slettes:
+              </Text>
+              <Paper
+                withBorder
+                p="sm"
+                style={{
+                  cursor: "pointer",
+                  borderColor:
+                    deleteMode === "single"
+                      ? "var(--mantine-color-blue-6)"
+                      : undefined,
+                  backgroundColor:
+                    deleteMode === "single"
+                      ? "var(--mantine-color-blue-0)"
+                      : undefined,
+                }}
+                onClick={() => setDeleteMode("single")}
+              >
+                <Group gap="sm">
+                  <Box
+                    w={16}
+                    h={16}
+                    style={{
+                      borderRadius: "50%",
+                      border: "2px solid var(--mantine-color-blue-6)",
+                      backgroundColor:
+                        deleteMode === "single"
+                          ? "var(--mantine-color-blue-6)"
+                          : "transparent",
+                    }}
+                  />
+                  <div>
+                    <Text size="sm" fw={500}>
+                      Kun denne forekomst
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      Slet kun bookingen for denne specifikke dag
+                    </Text>
+                  </div>
+                </Group>
+              </Paper>
+              <Paper
+                withBorder
+                p="sm"
+                style={{
+                  cursor: "pointer",
+                  borderColor:
+                    deleteMode === "all"
+                      ? "var(--mantine-color-red-6)"
+                      : undefined,
+                  backgroundColor:
+                    deleteMode === "all"
+                      ? "var(--mantine-color-red-0)"
+                      : undefined,
+                }}
+                onClick={() => setDeleteMode("all")}
+              >
+                <Group gap="sm">
+                  <Box
+                    w={16}
+                    h={16}
+                    style={{
+                      borderRadius: "50%",
+                      border: "2px solid var(--mantine-color-red-6)",
+                      backgroundColor:
+                        deleteMode === "all"
+                          ? "var(--mantine-color-red-6)"
+                          : "transparent",
+                    }}
+                  />
+                  <div>
+                    <Text size="sm" fw={500}>
+                      Alle forekomster
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      Slet hele den tilbagevendende booking
+                    </Text>
+                  </div>
+                </Group>
+              </Paper>
+            </Stack>
           )}
-        </Text>
-        <Group justify="flex-end">
-          <Button variant="light" onClick={closeDeleteModal}>
-            Annuller
-          </Button>
-          <Button
-            color="red"
-            onClick={handleConfirmDelete}
-            loading={deleteMutation.isPending}
-          >
-            Slet
-          </Button>
-        </Group>
+
+          <Group justify="flex-end">
+            <Button
+              variant="light"
+              onClick={() => {
+                closeDeleteModal()
+                setDeleteMode("all")
+              }}
+            >
+              Annuller
+            </Button>
+            <Button
+              color="red"
+              onClick={handleConfirmDelete}
+              loading={deleteMutation.isPending}
+            >
+              {bookingToDelete?.isRecurring && deleteMode === "single"
+                ? "Slet denne forekomst"
+                : "Slet"}
+            </Button>
+          </Group>
+        </Stack>
       </Modal>
 
       {user?.is_staff && (
@@ -662,6 +792,10 @@ export default function BookingsPage() {
                       handleDeleteClick(
                         selectedBooking.id,
                         selectedBooking.is_recurring,
+                        selectedBooking.recurring_booking_id || undefined,
+                        dayjs(selectedBooking.start_datetime).format(
+                          "YYYY-MM-DD",
+                        ),
                       )
                     }}
                   >
@@ -683,7 +817,12 @@ interface DayTimelineProps {
   rooms: Room[]
   selectedDate: Date
   onEdit: (booking: CalendarBooking) => void
-  onDelete: (id: string, isRecurring: boolean) => void
+  onDelete: (
+    id: string,
+    isRecurring: boolean,
+    recurringBookingId?: number,
+    occurrenceDate?: string,
+  ) => void
   onViewDetails: (booking: CalendarBooking) => void
   onCreateAtTime: (hour: number) => void
   isAdmin: boolean
@@ -995,7 +1134,14 @@ function DayTimeline({
                                 leftSection={<IconTrash size={12} />}
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  onDelete(booking.id, booking.is_recurring)
+                                  onDelete(
+                                    booking.id,
+                                    booking.is_recurring,
+                                    booking.recurring_booking_id || undefined,
+                                    dayjs(booking.start_datetime).format(
+                                      "YYYY-MM-DD",
+                                    ),
+                                  )
                                 }}
                               >
                                 Slet
@@ -1632,7 +1778,6 @@ function CreateRoomModal({ opened, onClose, onSuccess }: CreateRoomModalProps) {
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [color, setColor] = useState("#3B82F6")
-  const [capacity, setCapacity] = useState<number | string>(0)
   const [sortOrder, setSortOrder] = useState<number | string>(0)
 
   const createMutation = useMutation({
@@ -1663,7 +1808,6 @@ function CreateRoomModal({ opened, onClose, onSuccess }: CreateRoomModalProps) {
     setName("")
     setDescription("")
     setColor("#3B82F6")
-    setCapacity(0)
     setSortOrder(0)
   }
 
@@ -1675,7 +1819,6 @@ function CreateRoomModal({ opened, onClose, onSuccess }: CreateRoomModalProps) {
       name: name.trim(),
       description: description.trim(),
       color,
-      capacity: typeof capacity === "string" ? parseInt(capacity) : capacity,
       sort_order:
         typeof sortOrder === "string" ? parseInt(sortOrder) : sortOrder,
       is_active: true,
@@ -1700,12 +1843,6 @@ function CreateRoomModal({ opened, onClose, onSuccess }: CreateRoomModalProps) {
             onChange={(e) => setDescription(e.currentTarget.value)}
           />
           <ColorInput label="Farve" value={color} onChange={setColor} />
-          <NumberInput
-            label="Kapacitet"
-            value={capacity}
-            onChange={setCapacity}
-            min={0}
-          />
           <NumberInput
             label="Sorteringsrækkefølge"
             value={sortOrder}
@@ -1742,7 +1879,6 @@ function EditRoomModal({
   const [name, setName] = useState(room.name)
   const [description, setDescription] = useState(room.description)
   const [color, setColor] = useState(room.color)
-  const [capacity, setCapacity] = useState<number | string>(room.capacity)
   const [sortOrder, setSortOrder] = useState<number | string>(room.sort_order)
   const [isActive] = useState(room.is_active)
 
@@ -1777,7 +1913,6 @@ function EditRoomModal({
       name: name.trim(),
       description: description.trim(),
       color,
-      capacity: typeof capacity === "string" ? parseInt(capacity) : capacity,
       sort_order:
         typeof sortOrder === "string" ? parseInt(sortOrder) : sortOrder,
       is_active: isActive,
@@ -1802,12 +1937,6 @@ function EditRoomModal({
             onChange={(e) => setDescription(e.currentTarget.value)}
           />
           <ColorInput label="Farve" value={color} onChange={setColor} />
-          <NumberInput
-            label="Kapacitet"
-            value={capacity}
-            onChange={setCapacity}
-            min={0}
-          />
           <NumberInput
             label="Sorteringsrækkefølge"
             value={sortOrder}
@@ -1908,10 +2037,21 @@ function RecurringBookingsAdmin({
                   <div>
                     <Text fw={500}>{booking.title}</Text>
                     <Text size="sm" c="dimmed">
-                      {booking.room.name} - {booking.day_of_week_display}{" "}
+                      {booking.room.name} - {booking.days_of_week_display}{" "}
                       {booking.start_time.slice(0, 5)} -{" "}
                       {booking.end_time.slice(0, 5)}
                     </Text>
+                    {(booking.effective_from || booking.effective_until) && (
+                      <Text size="xs" c="dimmed">
+                        {booking.effective_from &&
+                          `Fra ${dayjs(booking.effective_from).format("D. MMM YYYY")}`}
+                        {booking.effective_from &&
+                          booking.effective_until &&
+                          " - "}
+                        {booking.effective_until &&
+                          `Til ${dayjs(booking.effective_until).format("D. MMM YYYY")}`}
+                      </Text>
+                    )}
                   </div>
                 </Group>
                 <Button
@@ -1958,9 +2098,11 @@ function CreateRecurringBookingModal({
   const [roomId, setRoomId] = useState<string | null>(null)
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
-  const [dayOfWeek, setDayOfWeek] = useState<string | null>(null)
+  const [daysOfWeek, setDaysOfWeek] = useState<string[]>([])
   const [startTime, setStartTime] = useState("")
   const [endTime, setEndTime] = useState("")
+  const [effectiveFrom, setEffectiveFrom] = useState<Date | null>(null)
+  const [effectiveUntil, setEffectiveUntil] = useState<Date | null>(null)
 
   const createMutation = useMutation({
     mutationFn: (data: CreateRecurringBookingData) =>
@@ -1991,9 +2133,11 @@ function CreateRecurringBookingModal({
     setRoomId(null)
     setTitle("")
     setDescription("")
-    setDayOfWeek(null)
+    setDaysOfWeek([])
     setStartTime("")
     setEndTime("")
+    setEffectiveFrom(null)
+    setEffectiveUntil(null)
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -2001,7 +2145,7 @@ function CreateRecurringBookingModal({
     if (
       !roomId ||
       !title.trim() ||
-      dayOfWeek === null ||
+      daysOfWeek.length === 0 ||
       !startTime ||
       !endTime
     )
@@ -2011,9 +2155,15 @@ function CreateRecurringBookingModal({
       room_id: parseInt(roomId),
       title: title.trim(),
       description: description.trim(),
-      day_of_week: parseInt(dayOfWeek),
+      days_of_week: daysOfWeek.map((d) => parseInt(d)),
       start_time: startTime,
       end_time: endTime,
+      effective_from: effectiveFrom
+        ? dayjs(effectiveFrom).format("YYYY-MM-DD")
+        : null,
+      effective_until: effectiveUntil
+        ? dayjs(effectiveUntil).format("YYYY-MM-DD")
+        : null,
       is_active: true,
     })
   }
@@ -2056,12 +2206,12 @@ function CreateRecurringBookingModal({
             onChange={(e) => setDescription(e.currentTarget.value)}
           />
 
-          <Select
-            label="Ugedag"
-            placeholder="Vælg ugedag"
+          <MultiSelect
+            label="Ugedage"
+            placeholder="Vælg en eller flere ugedage"
             data={DAYS_OF_WEEK}
-            value={dayOfWeek}
-            onChange={setDayOfWeek}
+            value={daysOfWeek}
+            onChange={setDaysOfWeek}
             required
           />
 
@@ -2086,6 +2236,28 @@ function CreateRecurringBookingModal({
             />
           </Group>
 
+          <Group grow>
+            <DateInput
+              label="Gyldig fra"
+              placeholder="Vælg startdato (valgfrit)"
+              value={effectiveFrom}
+              onChange={(value) =>
+                setEffectiveFrom(value ? new Date(value) : null)
+              }
+              clearable
+            />
+            <DateInput
+              label="Gyldig til"
+              placeholder="Vælg slutdato (valgfrit)"
+              value={effectiveUntil}
+              onChange={(value) =>
+                setEffectiveUntil(value ? new Date(value) : null)
+              }
+              minDate={effectiveFrom || undefined}
+              clearable
+            />
+          </Group>
+
           <Group justify="flex-end">
             <Button variant="light" onClick={onClose}>
               Annuller
@@ -2096,7 +2268,7 @@ function CreateRecurringBookingModal({
               disabled={
                 !roomId ||
                 !title.trim() ||
-                dayOfWeek === null ||
+                daysOfWeek.length === 0 ||
                 !startTime ||
                 !endTime
               }

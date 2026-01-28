@@ -117,6 +117,16 @@ export const bookingsApi = {
     await apiClient.delete(`/bookings/recurring/${id}/`)
   },
 
+  // Create exception for a single occurrence (skip one date)
+  createRecurringBookingException: async (
+    recurringBookingId: number,
+    exceptionDate: string,
+  ): Promise<void> => {
+    await apiClient.post(`/bookings/recurring/${recurringBookingId}/exception/`, {
+      exception_date: exceptionDate,
+    })
+  },
+
   // Calendar view
   getCalendarBookings: async (
     start: string,
