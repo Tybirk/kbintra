@@ -207,6 +207,9 @@ class CreateMessageSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data: dict) -> Message:
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+
         from apps.notifications.services import notify_new_message
 
         attachments = validated_data.pop("attachments", [])
@@ -216,16 +219,51 @@ class CreateMessageSerializer(serializers.ModelSerializer):
 
         # Create attachments
         user = self.context["request"].user
+        attachment_objects = []
         for attachment_file in attachments:
-            MessageAttachment.objects.create(
+            att = MessageAttachment.objects.create(
                 message=message,
                 file=attachment_file,
                 name=attachment_file.name,
                 uploaded_by=user,
             )
+            attachment_objects.append(att)
 
         # Update conversation's updated_at
         message.conversation.save()
+
+        # Broadcast message via WebSocket to all participants
+        channel_layer = get_channel_layer()
+        message_data = {
+            "id": message.id,
+            "conversation": message.conversation.id,
+            "sender": {
+                "id": user.id,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "profile_picture": user.profile_picture.url if user.profile_picture else None,
+            },
+            "content": message.content,
+            "is_own": False,  # Will be set correctly by the consumer
+            "is_read": False,
+            "is_system_message": message.is_system_message,
+            "created_at": message.created_at.isoformat(),
+            "attachments": [
+                {
+                    "id": att.id,
+                    "name": att.name,
+                    "file_url": att.file.url if att.file else "",
+                }
+                for att in attachment_objects
+            ],
+        }
+        async_to_sync(channel_layer.group_send)(
+            f"conversation_{message.conversation.id}",
+            {
+                "type": "chat_message",
+                "message": message_data,
+            },
+        )
 
         # Send notifications to other participants
         sender = message.sender

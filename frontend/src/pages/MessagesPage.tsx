@@ -174,6 +174,23 @@ export default function MessagesPage() {
     }
   }, [selectedConversation, activeConversation?.unread_count, queryClient])
 
+  // Polling fallback when WebSocket is disconnected
+  useEffect(() => {
+    if (isWsConnected || !selectedConversation) {
+      return
+    }
+
+    // Poll for new messages every 5 seconds when WebSocket is down
+    const pollInterval = setInterval(() => {
+      queryClient.invalidateQueries({
+        queryKey: ["conversation", selectedConversation],
+      })
+      queryClient.invalidateQueries({ queryKey: ["conversations"] })
+    }, 5000)
+
+    return () => clearInterval(pollInterval)
+  }, [isWsConnected, selectedConversation, queryClient])
+
   const handleSelectConversation = (id: number) => {
     setSelectedConversation(id)
     setIsComposingNew(false)
