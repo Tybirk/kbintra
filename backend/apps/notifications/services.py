@@ -174,14 +174,17 @@ def send_push_notification(
             claims["aud"] = f"{parsed.scheme}://{parsed.netloc}"
             claims["exp"] = int(time.time()) + 86400  # 24 hours
 
-            webpush(
+            response = webpush(
                 subscription_info=subscription.get_subscription_info(),
                 data=payload,
                 vapid_private_key=vapid_private_key,
                 vapid_claims=claims,
             )
             success_count += 1
-            logger.debug(f"Push notification sent to subscription {subscription.id}")
+            logger.info(
+                f"Push sent to subscription {subscription.id}: "
+                f"status={response.status_code}, endpoint={parsed.netloc}"
+            )
         except WebPushException as e:
             # Handle expired/invalid subscriptions
             if e.response and e.response.status_code in (404, 410):
