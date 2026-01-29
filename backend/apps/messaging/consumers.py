@@ -151,11 +151,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def chat_message(self, event):
         """Send message to WebSocket."""
+        # Compute is_own dynamically based on who is receiving the message
+        message = event["message"].copy()
+        message["is_own"] = message["sender"]["id"] == self.user.id
         await self.send(
             json.dumps(
                 {
                     "type": "new_message",
-                    "message": event["message"],
+                    "message": message,
                 }
             )
         )

@@ -22,7 +22,7 @@ import {
   IconHome,
   IconSearch,
 } from "@tabler/icons-react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router-dom"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { notifications } from "@mantine/notifications"
 
@@ -46,6 +46,7 @@ export default function AppHeader({
   toggleNavbar,
 }: AppHeaderProps) {
   const navigate = useNavigate()
+  const location = useLocation()
   const queryClient = useQueryClient()
   const { user, logout } = useAuthStore()
 
@@ -90,20 +91,27 @@ export default function AppHeader({
         })
         queryClient.invalidateQueries({ queryKey: ["notifications"] })
 
-        // Show toast notification
-        notifications.show({
-          title: wsData.notification.title,
-          message: wsData.notification.message,
-          color: "blue",
-          autoClose: 5000,
-          onClick: () => {
-            if (wsData.notification.link) {
-              navigate(wsData.notification.link)
-            } else {
-              navigate("/notifikationer")
-            }
-          },
-        })
+        // Don't show toast if user is already viewing the linked page
+        const notificationLink = wsData.notification.link
+        const isAlreadyViewing =
+          notificationLink && location.pathname === notificationLink
+
+        if (!isAlreadyViewing) {
+          // Show toast notification
+          notifications.show({
+            title: wsData.notification.title,
+            message: wsData.notification.message,
+            color: "blue",
+            autoClose: 5000,
+            onClick: () => {
+              if (notificationLink) {
+                navigate(notificationLink)
+              } else {
+                navigate("/notifikationer")
+              }
+            },
+          })
+        }
       }
 
       // Update messages unread count when receiving new messages
@@ -118,7 +126,7 @@ export default function AppHeader({
       unsubConnection()
       unsubMessage()
     }
-  }, [queryClient, navigate])
+  }, [queryClient, navigate, location.pathname])
 
   const handleLogout = () => {
     logout()
