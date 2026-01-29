@@ -195,10 +195,12 @@ def send_push_notification(
         except Exception as e:
             logger.error(f"Unexpected error sending push notification: {e}")
 
-    # Clean up expired subscriptions
+    # Log expired subscriptions but don't delete (for debugging)
     if expired_subscriptions:
-        PushSubscription.objects.filter(id__in=expired_subscriptions).delete()
-        logger.info(f"Deleted {len(expired_subscriptions)} expired push subscriptions")
+        logger.warning(
+            f"Found {len(expired_subscriptions)} expired push subscriptions "
+            f"(IDs: {expired_subscriptions}) - NOT deleting for now"
+        )
 
     return success_count
 
