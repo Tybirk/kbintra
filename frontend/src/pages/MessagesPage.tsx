@@ -508,7 +508,8 @@ function ChatArea({
   // Scroll to bottom when opening a conversation (instant) or when new messages arrive (smooth)
   useEffect(() => {
     if (scrollRef.current) {
-      const isNewConversation = prevConversationIdRef.current !== conversation.id
+      const isNewConversation =
+        prevConversationIdRef.current !== conversation.id
       scrollRef.current.scrollTo({
         top: scrollRef.current.scrollHeight,
         behavior: isNewConversation ? "auto" : "smooth",
@@ -615,8 +616,8 @@ function ChatArea({
       >
         <Stack gap="md">
           <Text size="sm">
-            Er du sikker på, at du vil forlade denne samtale? Du vil ikke længere
-            kunne se beskeder i samtalen.
+            Er du sikker på, at du vil forlade denne samtale? Du vil ikke
+            længere kunne se beskeder i samtalen.
           </Text>
           <Group justify="flex-end">
             <Button variant="light" onClick={closeLeaveConfirm}>

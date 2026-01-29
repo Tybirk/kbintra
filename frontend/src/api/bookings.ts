@@ -122,9 +122,12 @@ export const bookingsApi = {
     recurringBookingId: number,
     exceptionDate: string,
   ): Promise<void> => {
-    await apiClient.post(`/bookings/recurring/${recurringBookingId}/exception/`, {
-      exception_date: exceptionDate,
-    })
+    await apiClient.post(
+      `/bookings/recurring/${recurringBookingId}/exception/`,
+      {
+        exception_date: exceptionDate,
+      },
+    )
   },
 
   // Calendar view

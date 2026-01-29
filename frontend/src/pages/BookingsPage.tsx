@@ -902,7 +902,11 @@ function DayTimeline({
 
   if (bookings.length === 0) {
     return (
-      <ScrollArea h={isMobile ? 400 : 500} offsetScrollbars viewportRef={scrollAreaRef}>
+      <ScrollArea
+        h={isMobile ? 400 : 500}
+        offsetScrollbars
+        viewportRef={scrollAreaRef}
+      >
         <Box
           style={{
             position: "relative",
@@ -972,7 +976,11 @@ function DayTimeline({
   const activeRooms = rooms.filter((r) => activeRoomIds.includes(r.id))
 
   return (
-    <ScrollArea h={isMobile ? 400 : 500} offsetScrollbars viewportRef={scrollAreaRef}>
+    <ScrollArea
+      h={isMobile ? 400 : 500}
+      offsetScrollbars
+      viewportRef={scrollAreaRef}
+    >
       <Box style={{ position: "relative", minHeight: 24 * 40 + 20 }} mt={8}>
         {/* Hour labels */}
         <Box style={{ position: "absolute", left: 0, top: 0, width: 40 }}>

@@ -130,14 +130,48 @@ type ConnectionHandler = (connected: boolean) => void
 export class ChatWebSocket {
   ws: WebSocket | null = null
   reconnectAttempts = 0
-  maxReconnectAttempts = 5
-  reconnectDelay = 1000
+  baseReconnectDelay = 1000
+  maxReconnectDelay = 5000
   messageHandlers: MessageHandler[] = []
   connectionHandlers: ConnectionHandler[] = []
   getToken: () => string | null
+  reconnectTimeout: ReturnType<typeof setTimeout> | null = null
+  intentionalDisconnect = false
 
   constructor(getToken: () => string | null) {
     this.getToken = getToken
+    this.setupEventListeners()
+  }
+
+  private setupEventListeners(): void {
+    // Reconnect when the tab becomes visible
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && !this.isConnected) {
+        console.log("Tab became visible, attempting reconnection")
+        this.reconnectAttempts = 0 // Reset attempts on visibility change
+        this.connect()
+      }
+    })
+
+    // Reconnect when the browser comes back online
+    window.addEventListener("online", () => {
+      console.log("Browser came online, attempting reconnection")
+      this.reconnectAttempts = 0 // Reset attempts when coming online
+      this.connect()
+    })
+
+    // Track offline state
+    window.addEventListener("offline", () => {
+      console.log("Browser went offline")
+    })
+  }
+
+  private getReconnectDelay(): number {
+    // Exponential backoff with jitter: base * 2^attempts + random jitter
+    const exponentialDelay =
+      this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts)
+    const jitter = Math.random() * 1000
+    return Math.min(exponentialDelay + jitter, this.maxReconnectDelay)
   }
 
   connect(): void {
@@ -150,9 +184,19 @@ export class ChatWebSocket {
       return
     }
 
+    // Clear any pending reconnect timeout
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout)
+      this.reconnectTimeout = null
+    }
+
+    this.intentionalDisconnect = false
+
     const token = this.getToken()
     if (!token) {
       console.error("No token available for WebSocket connection")
+      // Retry after a delay if we don't have a token yet (might be loading)
+      this.scheduleReconnect()
       return
     }
 
@@ -162,11 +206,17 @@ export class ChatWebSocket {
     const port = import.meta.env.DEV ? ":7000" : ""
     const url = `${protocol}//${host}${port}/ws/chat/?token=${token}`
 
-    this.ws = new WebSocket(url)
+    try {
+      this.ws = new WebSocket(url)
+    } catch (e) {
+      console.error("Failed to create WebSocket:", e)
+      this.scheduleReconnect()
+      return
+    }
 
     this.ws.onopen = () => {
       console.log("WebSocket connected")
-      this.reconnectAttempts = 0
+      this.reconnectAttempts = 0 // Reset on successful connection
       this.notifyConnectionHandlers(true)
     }
 
@@ -180,26 +230,48 @@ export class ChatWebSocket {
     }
 
     this.ws.onclose = (event) => {
-      console.log("WebSocket disconnected:", event.code)
+      console.log("WebSocket disconnected:", event.code, event.reason)
       this.notifyConnectionHandlers(false)
       this.ws = null
 
-      // Attempt to reconnect
-      if (this.reconnectAttempts < this.maxReconnectAttempts) {
-        this.reconnectAttempts++
-        setTimeout(
-          () => this.connect(),
-          this.reconnectDelay * this.reconnectAttempts,
-        )
+      // Only reconnect if this wasn't an intentional disconnect
+      if (!this.intentionalDisconnect) {
+        this.scheduleReconnect()
       }
     }
 
     this.ws.onerror = (error) => {
       console.error("WebSocket error:", error)
+      // onclose will be called after onerror, which will trigger reconnect
     }
   }
 
+  private scheduleReconnect(): void {
+    // Don't schedule if we're offline
+    if (!navigator.onLine) {
+      console.log("Browser is offline, will reconnect when online")
+      return
+    }
+
+    const delay = this.getReconnectDelay()
+    console.log(
+      `Scheduling reconnect attempt ${this.reconnectAttempts + 1} in ${Math.round(delay)}ms`,
+    )
+
+    this.reconnectTimeout = setTimeout(() => {
+      this.reconnectAttempts++
+      this.connect()
+    }, delay)
+  }
+
   disconnect(): void {
+    this.intentionalDisconnect = true
+
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout)
+      this.reconnectTimeout = null
+    }
+
     if (this.ws) {
       this.ws.close()
       this.ws = null
