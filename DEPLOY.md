@@ -59,8 +59,8 @@ Fill in:
 To enable Web Push notifications:
 
 ```bash
-# Generate VAPID keys (run once)
-docker compose exec backend python -c "from py_vapid import Vapid; v = Vapid(); v.generate_keys(); print(f'VAPID_PUBLIC_KEY={v.public_key.urlsafe_b64encode().decode()}\nVAPID_PRIVATE_KEY={v.private_key.urlsafe_b64encode().decode()}')"
+# Generate VAPID keys (run once, requires Node.js)
+npx web-push generate-vapid-keys
 ```
 
 Add the generated keys to your `.env` file:
