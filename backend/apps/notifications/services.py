@@ -109,7 +109,7 @@ def send_push_notification(
     title: str,
     message: str,
     link: str = "",
-) -> int:
+) -> dict:
     """Send push notification to all user's subscribed devices.
 
     Args:
@@ -120,33 +120,35 @@ def send_push_notification(
         link: URL to open when notification is clicked
 
     Returns:
-        Number of successful push notifications sent
+        Dict with total, success_ids, expired_ids, failed_ids
     """
     # Check if push notifications are configured
     vapid_private_key = getattr(settings, "VAPID_PRIVATE_KEY", None)
     vapid_claims = getattr(settings, "VAPID_CLAIMS", None)
 
+    empty_result: dict = {"total": 0, "success_ids": [], "expired_ids": [], "failed_ids": []}
+
     if not vapid_private_key or not vapid_claims:
         logger.debug("Push notifications not configured, skipping")
-        return 0
+        return empty_result
 
     # Check user push preference
     if not get_user_push_preference(user, notification_type):
         logger.debug(f"User {user.id} has push disabled for {notification_type}")
-        return 0
+        return empty_result
 
     # Get user's push subscriptions
     subscriptions = PushSubscription.objects.filter(user=user)
     if not subscriptions.exists():
         logger.debug(f"User {user.id} has no push subscriptions")
-        return 0
+        return empty_result
 
     # Import pywebpush here to avoid import errors if not installed
     try:
         from pywebpush import WebPushException, webpush
     except ImportError:
         logger.warning("pywebpush not installed, skipping push notifications")
-        return 0
+        return empty_result
 
     # Prepare notification payload
     payload = json.dumps(
@@ -162,8 +164,9 @@ def send_push_notification(
         }
     )
 
-    success_count = 0
-    expired_subscriptions = []
+    success_ids: list[int] = []
+    expired_ids: list[int] = []
+    failed_ids: list[int] = []
 
     for subscription in subscriptions:
         try:
@@ -180,7 +183,7 @@ def send_push_notification(
                 vapid_private_key=vapid_private_key,
                 vapid_claims=claims,
             )
-            success_count += 1
+            success_ids.append(subscription.id)
             logger.info(
                 f"Push sent to subscription {subscription.id}: "
                 f"status={response.status_code}, endpoint={parsed.netloc}"
@@ -189,20 +192,27 @@ def send_push_notification(
             # Handle expired/invalid subscriptions
             if e.response and e.response.status_code in (404, 410):
                 logger.info(f"Push subscription {subscription.id} is expired, marking for deletion")
-                expired_subscriptions.append(subscription.id)
+                expired_ids.append(subscription.id)
             else:
                 logger.error(f"Push notification failed for subscription {subscription.id}: {e}")
+                failed_ids.append(subscription.id)
         except Exception as e:
             logger.error(f"Unexpected error sending push notification: {e}")
+            failed_ids.append(subscription.id)
 
     # Log expired subscriptions but don't delete (for debugging)
-    if expired_subscriptions:
+    if expired_ids:
         logger.warning(
-            f"Found {len(expired_subscriptions)} expired push subscriptions "
-            f"(IDs: {expired_subscriptions}) - NOT deleting for now"
+            f"Found {len(expired_ids)} expired push subscriptions "
+            f"(IDs: {expired_ids}) - NOT deleting for now"
         )
 
-    return success_count
+    return {
+        "total": len(subscriptions),
+        "success_ids": success_ids,
+        "expired_ids": expired_ids,
+        "failed_ids": failed_ids,
+    }
 
 
 def create_notification(

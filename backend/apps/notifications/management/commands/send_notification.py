@@ -91,19 +91,30 @@ class Command(BaseCommand):
         users_notified = 0
 
         for user in matching_users:
-            count = send_push_notification(
+            result = send_push_notification(
                 user=user,
                 notification_type=NotificationType(notification_type),
                 title=title,
                 message=message,
                 link=link,
             )
-            if count > 0:
-                users_notified += 1
-                total_sent += count
-                self.stdout.write(self.style.SUCCESS(f"  Sent {count} push(es) to {user.email}"))
-            else:
+            sub_count = result["total"]
+            success_ids = result["success_ids"]
+            expired_ids = result["expired_ids"]
+            failed_ids = result["failed_ids"]
+
+            if sub_count == 0:
                 self.stdout.write(f"  No subscriptions for {user.email}")
+            else:
+                self.stdout.write(f"  {user.email} has {sub_count} subscription(s):")
+                if success_ids:
+                    users_notified += 1
+                    total_sent += len(success_ids)
+                    self.stdout.write(self.style.SUCCESS(f"    ✓ Sent: {success_ids}"))
+                if expired_ids:
+                    self.stdout.write(self.style.WARNING(f"    ✗ Expired: {expired_ids}"))
+                if failed_ids:
+                    self.stdout.write(self.style.ERROR(f"    ✗ Failed: {failed_ids}"))
 
         self.stdout.write("")
         self.stdout.write(self.style.SUCCESS("=" * 50))
