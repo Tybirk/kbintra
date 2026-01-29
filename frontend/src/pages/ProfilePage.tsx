@@ -142,6 +142,12 @@ export default function ProfilePage() {
           )}
         </Stack>
       </Paper>
+
+      {isOwnProfile && (
+        <Text ta="center" size="xs" c="dimmed" mt="xl">
+          Version: {new Date(__APP_VERSION__).toLocaleDateString("da-DK")}
+        </Text>
+      )}
     </>
   )
 }
