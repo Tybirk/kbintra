@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
@@ -839,6 +839,18 @@ function DayTimeline({
   isAdmin,
 }: DayTimelineProps) {
   const isMobile = useMediaQuery("(max-width: 768px)")
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
+
+  // Scroll to ~9 AM on initial render
+  useEffect(() => {
+    if (scrollAreaRef.current) {
+      const nineAmPosition = 9 * 40 // 9 hours * 40px per hour
+      scrollAreaRef.current.scrollTo({
+        top: nineAmPosition,
+        behavior: "auto",
+      })
+    }
+  }, [selectedDate])
 
   // Group bookings by room for column display - must be before any early returns
   const bookingsByRoom = useMemo(() => {
@@ -890,7 +902,7 @@ function DayTimeline({
 
   if (bookings.length === 0) {
     return (
-      <ScrollArea h={isMobile ? 400 : 500} offsetScrollbars>
+      <ScrollArea h={isMobile ? 400 : 500} offsetScrollbars viewportRef={scrollAreaRef}>
         <Box
           style={{
             position: "relative",
@@ -960,7 +972,7 @@ function DayTimeline({
   const activeRooms = rooms.filter((r) => activeRoomIds.includes(r.id))
 
   return (
-    <ScrollArea h={isMobile ? 400 : 500} offsetScrollbars >
+    <ScrollArea h={isMobile ? 400 : 500} offsetScrollbars viewportRef={scrollAreaRef}>
       <Box style={{ position: "relative", minHeight: 24 * 40 + 20 }} mt={8}>
         {/* Hour labels */}
         <Box style={{ position: "absolute", left: 0, top: 0, width: 40 }}>

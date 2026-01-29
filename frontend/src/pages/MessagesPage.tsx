@@ -495,6 +495,7 @@ function ChatArea({
     { open: openLeaveConfirm, close: closeLeaveConfirm },
   ] = useDisclosure(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const prevConversationIdRef = useRef<number | null>(null)
 
   const otherParticipants = conversation.other_participants
   const displayName =
@@ -504,15 +505,17 @@ function ChatArea({
           .join(", ")
       : "Unknown"
 
-  // Scroll to bottom when messages change
+  // Scroll to bottom when opening a conversation (instant) or when new messages arrive (smooth)
   useEffect(() => {
     if (scrollRef.current) {
+      const isNewConversation = prevConversationIdRef.current !== conversation.id
       scrollRef.current.scrollTo({
         top: scrollRef.current.scrollHeight,
-        behavior: "smooth",
+        behavior: isNewConversation ? "auto" : "smooth",
       })
+      prevConversationIdRef.current = conversation.id
     }
-  }, [conversation.messages])
+  }, [conversation.id, conversation.messages])
 
   const handleSend = async () => {
     const textContent = message.trim()
