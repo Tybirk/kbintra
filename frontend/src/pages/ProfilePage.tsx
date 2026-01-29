@@ -145,7 +145,10 @@ export default function ProfilePage() {
 
       {isOwnProfile && (
         <Text ta="center" size="xs" c="dimmed" mt="xl">
-          Version: {new Date(__APP_VERSION__).toLocaleDateString("da-DK")}
+          Version:{" "}
+          {new Date(__APP_VERSION__).toLocaleString("da-DK", {
+            timeZone: "Europe/Copenhagen",
+          })}
         </Text>
       )}
     </>
