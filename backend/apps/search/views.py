@@ -25,8 +25,22 @@ class GlobalSearchView(APIView):
 
     def get(self, request):
         query = request.query_params.get("q", "").strip()
-        limit = min(int(request.query_params.get("limit", 5)), 20)
-        threshold = int(request.query_params.get("threshold", 60))
+
+        # Parse and validate limit parameter
+        try:
+            limit = min(int(request.query_params.get("limit", 5)), 20)
+            if limit < 1:
+                limit = 5
+        except (ValueError, TypeError):
+            limit = 5
+
+        # Parse and validate threshold parameter
+        try:
+            threshold = int(request.query_params.get("threshold", 60))
+            if threshold < 0 or threshold > 100:
+                threshold = 60
+        except (ValueError, TypeError):
+            threshold = 60
 
         if not query or len(query) < 2:
             return Response(
