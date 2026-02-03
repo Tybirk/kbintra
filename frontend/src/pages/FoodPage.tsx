@@ -267,10 +267,7 @@ export default function FoodPage() {
           <Tabs.Tab value="menu" leftSection={<IconSoup size={16} />}>
             Menu
           </Tabs.Tab>
-          <Tabs.Tab
-            value="tilmelding"
-            leftSection={<IconCalendar size={16} />}
-          >
+          <Tabs.Tab value="tilmelding" leftSection={<IconCalendar size={16} />}>
             Min tilmelding
           </Tabs.Tab>
           {user?.is_staff && (

@@ -205,6 +205,15 @@ class RecurringBookingExceptionView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Validate date format
+        try:
+            datetime.strptime(exception_date, "%Y-%m-%d")
+        except (ValueError, TypeError):
+            return Response(
+                {"error": "Invalid date format. Use YYYY-MM-DD."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # Check if exception already exists
         exception, created = RecurringBookingException.objects.get_or_create(
             recurring_booking=recurring_booking,

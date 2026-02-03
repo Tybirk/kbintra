@@ -2,7 +2,6 @@
 Views for House models.
 """
 
-from django.db.models import Count
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -29,12 +28,19 @@ class HouseListView(generics.ListAPIView):
     pagination_class = None  # Houses are few, no pagination needed
 
     def get_queryset(self):
-        """Return houses ordered by inhabitant count (populated first), then name."""
-        return (
-            House.objects.prefetch_related("inhabitants", "children")
-            .annotate(inhabitant_count_annotated=Count("inhabitants"))
-            .order_by("-inhabitant_count_annotated", "name")
-        )
+        """Return houses ordered by house number."""
+        houses = list(House.objects.prefetch_related("inhabitants", "children"))
+
+        def sort_key(house):
+            # Extract numeric part from end of house name (e.g., "MyRoad 7" -> 7)
+            parts = house.name.split()
+            try:
+                return int(parts[-1]) if parts else 0
+            except ValueError:
+                return 0
+
+        houses.sort(key=sort_key)
+        return houses
 
 
 class HouseDetailView(generics.RetrieveAPIView):

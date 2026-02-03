@@ -1266,8 +1266,8 @@ function CreateBookingModal({
   )
 
   // Set initial date/time when opening modal
-  useMemo(() => {
-    if (opened && initialDate && !startDate) {
+  useEffect(() => {
+    if (opened && initialDate) {
       setStartDate(initialDate)
       setEndDate(initialDate)
       if (initialHour !== null) {
@@ -1278,7 +1278,7 @@ function CreateBookingModal({
         setEndTime("10:00")
       }
     }
-  }, [opened, initialDate, initialHour, startDate])
+  }, [opened, initialDate, initialHour])
 
   // Compute combined datetimes
   const startDatetime = useMemo(() => {

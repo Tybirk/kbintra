@@ -82,7 +82,9 @@ class RecurringBooking(models.Model):
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     # Support multiple days - stored as JSON list of integers [0, 1, 2, 3] for Mon-Thu
-    days_of_week = models.JSONField(default=list, help_text="List of day integers (0=Monday, 6=Sunday)")
+    days_of_week = models.JSONField(
+        default=list, help_text="List of day integers (0=Monday, 6=Sunday)"
+    )
     start_time = models.TimeField()
     end_time = models.TimeField()
     effective_from = models.DateField(null=True, blank=True)

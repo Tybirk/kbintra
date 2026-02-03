@@ -290,7 +290,7 @@ class ApplyDefaultsView(APIView):
                         "house": house,
                         "adults_count": house_inhabitant_count,
                         "children_count": 0,
-                        "meal_type": MealType.MEAT if is_wednesday else MealType.MEAT,
+                        "meal_type": MealType.MEAT if is_wednesday else MealType.VEGETARIAN,
                         "dining_option": "eat_in",
                         "seating_time": "17:30",
                         "is_active": True,

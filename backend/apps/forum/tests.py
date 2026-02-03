@@ -345,6 +345,34 @@ class TestPostViews:
         assert response.status_code == 204
         assert not Post.objects.filter(id=post_id).exists()
 
+    def test_create_post_thread_author_deleted(self, api_client, second_user, subgroup, user):
+        """Test creating a post when thread author has been deleted.
+
+        This tests the fix for the NoneType error when thread.author is None.
+        The notification system should handle this gracefully.
+        """
+        # Create thread as first user
+        api_client.force_authenticate(user=user)
+        response = api_client.post(
+            f"/api/forum/subgroups/{subgroup.slug}/threads/",
+            {"title": "Thread by deleted user", "content": "Initial content"},
+        )
+        assert response.status_code == 201
+        thread = Thread.objects.get(title="Thread by deleted user")
+
+        # Delete the thread author (simulating user deletion with SET_NULL)
+        thread.author = None
+        thread.save()
+
+        # Second user replies to thread - should not crash
+        api_client.force_authenticate(user=second_user)
+        response = api_client.post(
+            f"/api/forum/threads/{thread.id}/posts/",
+            {"content": "Reply to orphaned thread"},
+        )
+        assert response.status_code == 201
+        assert Post.objects.filter(content="Reply to orphaned thread").exists()
+
 
 class TestFolderViews:
     """Tests for folder views."""
@@ -660,6 +688,27 @@ class TestRecentActivityView:
         response = authenticated_client.get("/api/forum/recent/?limit=3")
         assert response.status_code == 200
         assert len(response.data) == 3
+
+    def test_recent_activity_invalid_limit_parameter(self, authenticated_client, subgroup):
+        """Test that invalid limit parameter is handled gracefully."""
+        # Create a thread with initial post
+        response = authenticated_client.post(
+            f"/api/forum/subgroups/{subgroup.slug}/threads/",
+            {"title": "Test Thread", "content": "Test content"},
+        )
+        assert response.status_code == 201
+
+        # Test with invalid limit (non-numeric)
+        response = authenticated_client.get("/api/forum/recent/?limit=abc")
+        assert response.status_code == 200  # Should not crash, defaults to 10
+
+        # Test with negative limit (should be clamped to 1)
+        response = authenticated_client.get("/api/forum/recent/?limit=-5")
+        assert response.status_code == 200
+
+        # Test with limit over max (should be clamped to 50)
+        response = authenticated_client.get("/api/forum/recent/?limit=100")
+        assert response.status_code == 200
 
     def test_recent_activity_across_subgroups(self, authenticated_client, subgroup, db):
         """Test that recent activity includes posts from all subgroups."""

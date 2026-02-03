@@ -45,7 +45,6 @@ def delete_rooms(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("bookings", "0001_initial"),
     ]

@@ -207,17 +207,22 @@ class PostCreateSerializer(serializers.ModelSerializer):
         thread.subgroup.save(update_fields=["last_activity_at"])
 
         # Notify thread author (with full content for email)
-        notify_thread_reply(
-            thread_author=thread.author,
-            replier=author,
-            thread_title=thread.title,
-            thread_id=thread.id,
-            subgroup_slug=thread.subgroup.slug,
-            reply_content=post.content,  # Full HTML content
-        )
+        # thread.author can be None if the original author was deleted
+        if thread.author is not None:
+            notify_thread_reply(
+                thread_author=thread.author,
+                replier=author,
+                thread_title=thread.title,
+                thread_id=thread.id,
+                subgroup_slug=thread.subgroup.slug,
+                reply_content=post.content,  # Full HTML content
+            )
 
         # Notify other participants in the thread (previous posters)
-        notified_users = {thread.author.id, author.id}
+        # Handle None thread author case
+        notified_users = {author.id}
+        if thread.author is not None:
+            notified_users.add(thread.author.id)
         previous_posters = (
             Post.objects.filter(thread=thread)
             .exclude(author=author)
@@ -225,7 +230,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
             .distinct()
         )
         for poster_id in previous_posters:
-            if poster_id not in notified_users:
+            if poster_id is not None and poster_id not in notified_users:
                 try:
                     poster = User.objects.get(id=poster_id)
                     notify_post_reply(

@@ -25,6 +25,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { icon: IconHome, label: "Forside", path: "/" },
+  { icon: IconUsers, label: "Beskeder", path: "/beskeder" },
   {
     icon: IconBell,
     label: "Notifikationer",
@@ -39,13 +40,12 @@ const navItems: NavItem[] = [
   { icon: IconSoup, label: "Mad", path: "/mad" },
   { icon: IconUsersGroup, label: "Madhold", path: "/madhold" },
   { icon: IconCalendar, label: "Kalender", path: "/kalender" },
-  { icon: IconDoor, label: "Booking", path: "/booking" },
   {
     icon: IconBuildingCommunity,
     label: "Beboeroversigt",
     path: "/beboere",
   },
-  { icon: IconUsers, label: "Beskeder", path: "/beskeder" },
+  { icon: IconDoor, label: "Booking", path: "/booking" },
 ]
 
 interface AppNavbarProps {

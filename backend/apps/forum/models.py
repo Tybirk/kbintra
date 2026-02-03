@@ -267,3 +267,8 @@ class File(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+    def delete(self, *args: object, **kwargs: object) -> tuple:
+        """Delete the file from storage when the model instance is deleted."""
+        self.file.delete(save=False)
+        return super().delete(*args, **kwargs)

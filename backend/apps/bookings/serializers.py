@@ -4,6 +4,7 @@ Serializers for Bookings models.
 
 from datetime import timedelta
 
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -176,25 +177,38 @@ class BookingCreateUpdateSerializer(serializers.ModelSerializer):
         room_ids = validated_data.pop("_room_ids")
         validated_data.pop("room_id", None)
         validated_data.pop("room_ids", None)
+        start = validated_data.get("start_datetime")
+        end = validated_data.get("end_datetime")
 
         user = self.context["request"].user
 
-        # Create booking for first room (or only room)
-        first_room = Room.objects.get(id=room_ids[0])
-        booking = Booking.objects.create(
-            room=first_room,
-            user=user,
-            **validated_data,
-        )
+        # Use transaction with re-check to prevent race conditions
+        with transaction.atomic():
+            # Re-check for overlaps inside transaction to prevent race conditions
+            result = check_multi_room_booking(room_ids, start, end, None)
+            if not result["can_book_all"]:
+                error_messages = []
+                for rid, conflicts in result["conflicts_by_room"].items():
+                    room = Room.objects.get(id=rid)
+                    error_messages.append(f"{room.name}: {'; '.join(conflicts)}")
+                raise serializers.ValidationError({"non_field_errors": error_messages})
 
-        # Create additional bookings for other rooms
-        for room_id in room_ids[1:]:
-            room = Room.objects.get(id=room_id)
-            Booking.objects.create(
-                room=room,
+            # Create booking for first room (or only room)
+            first_room = Room.objects.get(id=room_ids[0])
+            booking = Booking.objects.create(
+                room=first_room,
                 user=user,
                 **validated_data,
             )
+
+            # Create additional bookings for other rooms
+            for room_id in room_ids[1:]:
+                room = Room.objects.get(id=room_id)
+                Booking.objects.create(
+                    room=room,
+                    user=user,
+                    **validated_data,
+                )
 
         return booking
 
@@ -203,9 +217,24 @@ class BookingCreateUpdateSerializer(serializers.ModelSerializer):
         validated_data.pop("room_id", None)
         validated_data.pop("room_ids", None)
 
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
+        start = validated_data.get("start_datetime", instance.start_datetime)
+        end = validated_data.get("end_datetime", instance.end_datetime)
+
+        # Use transaction with re-check to prevent race conditions
+        with transaction.atomic():
+            # Re-check for overlaps inside transaction (excluding this booking)
+            result = check_multi_room_booking([instance.room_id], start, end, instance.id)
+            if not result["can_book_all"]:
+                error_messages = []
+                for rid, conflicts in result["conflicts_by_room"].items():
+                    room = Room.objects.get(id=rid)
+                    error_messages.append(f"{room.name}: {'; '.join(conflicts)}")
+                raise serializers.ValidationError({"non_field_errors": error_messages})
+
+            for attr, value in validated_data.items():
+                setattr(instance, attr, value)
+            instance.save()
+
         return instance
 
 

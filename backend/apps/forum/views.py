@@ -352,8 +352,11 @@ class RecentActivityView(generics.ListAPIView):
     pagination_class = None
 
     def get_queryset(self) -> Any:
-        limit = int(self.request.query_params.get("limit", 10))
-        limit = min(limit, 50)  # Cap at 50
+        try:
+            limit = int(self.request.query_params.get("limit", 10))
+        except (ValueError, TypeError):
+            limit = 10
+        limit = min(max(limit, 1), 50)  # Clamp between 1 and 50
 
         return Post.objects.select_related("author", "thread", "thread__subgroup").order_by(
             "-created_at"
