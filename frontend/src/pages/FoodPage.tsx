@@ -66,10 +66,10 @@ export default function FoodPage() {
   const { user } = useAuthStore()
 
   // Path-based tab state
-  const validTabs = ["menu", "registration", "admin"]
-  const activeTab = tab && validTabs.includes(tab) ? tab : "registration"
+  const validTabs = ["menu", "tilmelding", "admin"]
+  const activeTab = tab && validTabs.includes(tab) ? tab : "tilmelding"
   const setActiveTab = (newTab: string | null) => {
-    if (newTab && newTab !== "registration") {
+    if (newTab && newTab !== "tilmelding") {
       navigate(`/mad/${newTab}`)
     } else {
       navigate("/mad")
@@ -268,7 +268,7 @@ export default function FoodPage() {
             Menu
           </Tabs.Tab>
           <Tabs.Tab
-            value="registration"
+            value="tilmelding"
             leftSection={<IconCalendar size={16} />}
           >
             Min tilmelding
@@ -410,7 +410,7 @@ export default function FoodPage() {
           </Stack>
         </Tabs.Panel>
 
-        <Tabs.Panel value="registration">
+        <Tabs.Panel value="tilmelding">
           <Stack gap="md">
             {/* Week Navigation */}
             <Paper withBorder p="sm" radius="md">

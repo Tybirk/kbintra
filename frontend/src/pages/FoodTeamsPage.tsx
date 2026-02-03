@@ -74,10 +74,10 @@ export default function FoodTeamsPage() {
   const { user } = useAuthStore()
 
   // Path-based tab state
-  const validTabs = ["my-teams", "all-teams", "swaps", "wishes", "admin"]
-  const activeTab = tab && validTabs.includes(tab) ? tab : "my-teams"
+  const validTabs = ["mine-hold", "alle-hold", "bytte", "oensker", "admin"]
+  const activeTab = tab && validTabs.includes(tab) ? tab : "mine-hold"
   const setActiveTab = (newTab: string | null) => {
-    if (newTab && newTab !== "my-teams") {
+    if (newTab && newTab !== "mine-hold") {
       navigate(`/madhold/${newTab}`)
     } else {
       navigate("/madhold")
@@ -127,14 +127,14 @@ export default function FoodTeamsPage() {
 
       <Tabs value={activeTab} onChange={setActiveTab}>
         <Tabs.List mb="md">
-          <Tabs.Tab value="my-teams" leftSection={<IconCalendar size={16} />}>
+          <Tabs.Tab value="mine-hold" leftSection={<IconCalendar size={16} />}>
             Mine hold
           </Tabs.Tab>
-          <Tabs.Tab value="all-teams" leftSection={<IconUsers size={16} />}>
+          <Tabs.Tab value="alle-hold" leftSection={<IconUsers size={16} />}>
             Alle hold
           </Tabs.Tab>
           <Tabs.Tab
-            value="swaps"
+            value="bytte"
             leftSection={<IconArrowsExchange size={16} />}
             rightSection={
               pendingRequests.length > 0 ? (
@@ -147,7 +147,7 @@ export default function FoodTeamsPage() {
             Bytteanmodninger
           </Tabs.Tab>
           <Tabs.Tab
-            value="wishes"
+            value="oensker"
             leftSection={<IconClipboardList size={16} />}
             rightSection={
               activeCycle?.is_accepting_wishes &&
@@ -167,7 +167,7 @@ export default function FoodTeamsPage() {
           )}
         </Tabs.List>
 
-        <Tabs.Panel value="my-teams">
+        <Tabs.Panel value="mine-hold">
           {isLoading ? (
             <Center h={200}>
               <Loader size="lg" />
@@ -191,7 +191,7 @@ export default function FoodTeamsPage() {
           )}
         </Tabs.Panel>
 
-        <Tabs.Panel value="all-teams">
+        <Tabs.Panel value="alle-hold">
           {isLoading ? (
             <Center h={200}>
               <Loader size="lg" />
@@ -209,7 +209,7 @@ export default function FoodTeamsPage() {
           )}
         </Tabs.Panel>
 
-        <Tabs.Panel value="swaps">
+        <Tabs.Panel value="bytte">
           {isLoading ? (
             <Center h={200}>
               <Loader size="lg" />
@@ -257,7 +257,7 @@ export default function FoodTeamsPage() {
           )}
         </Tabs.Panel>
 
-        <Tabs.Panel value="wishes">
+        <Tabs.Panel value="oensker">
           {cycleLoading ? (
             <Center h={200}>
               <Loader size="lg" />
