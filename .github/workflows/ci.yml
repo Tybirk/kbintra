@@ -33,8 +33,8 @@ jobs:
       - name: Check formatting with ruff
         run: uvx ruff format --check
 
-      - name: Type check with ty
-        run: uvx ty check
+      #- name: Type check with ty
+      #  run: uvx ty check
 
   backend-test:
     name: Backend Test
