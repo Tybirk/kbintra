@@ -100,25 +100,38 @@ class UserRegistrationSerializer(serializers.Serializer):
 
     def create(self, validated_data: dict[str, Any]) -> User:
         """Create the user and mark invitation as used."""
-        invitation = Invitation.objects.get(token=validated_data["token"])
+        from django.db import transaction
 
-        user = User.objects.create_user(
-            email=validated_data["email"],
-            password=validated_data["password"],
-            first_name=validated_data["first_name"],
-            last_name=validated_data["last_name"],
-            house=invitation.house,  # Assign user to the house from invitation
-        )
-
-        # Mark invitation as used
-        invitation.mark_used()
-
-        # Subscribe to default forum subgroups
         from apps.forum.models import Subgroup, SubgroupSubscription
 
-        default_subgroups = Subgroup.objects.filter(is_default=True)
-        for subgroup in default_subgroups:
-            SubgroupSubscription.objects.create(user=user, subgroup=subgroup)
+        with transaction.atomic():
+            # Re-fetch invitation with lock to prevent race conditions
+            invitation = Invitation.objects.select_for_update().get(
+                token=validated_data["token"]
+            )
+            if not invitation.is_valid:
+                raise serializers.ValidationError(
+                    {"token": "This invitation has already been used."}
+                )
+
+            user = User.objects.create_user(
+                email=validated_data["email"],
+                password=validated_data["password"],
+                first_name=validated_data["first_name"],
+                last_name=validated_data["last_name"],
+                house=invitation.house,  # Assign user to the house from invitation
+            )
+
+            # Mark invitation as used
+            invitation.mark_used()
+
+            # Subscribe to default forum subgroups using bulk_create
+            default_subgroups = Subgroup.objects.filter(is_default=True)
+            subscriptions = [
+                SubgroupSubscription(user=user, subgroup=subgroup)
+                for subgroup in default_subgroups
+            ]
+            SubgroupSubscription.objects.bulk_create(subscriptions)
 
         return user
 

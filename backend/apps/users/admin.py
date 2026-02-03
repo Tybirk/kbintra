@@ -5,7 +5,7 @@ Admin configuration for User models.
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
-from .models import Invitation, User
+from .models import Invitation, PasswordResetToken, User
 
 
 @admin.register(User)
@@ -79,4 +79,20 @@ class InvitationAdmin(admin.ModelAdmin):
     @admin.display(boolean=True, description="Valid")
     def is_valid_display(self, obj: Invitation) -> bool:
         """Display whether invitation is still valid."""
+        return obj.is_valid
+
+
+@admin.register(PasswordResetToken)
+class PasswordResetTokenAdmin(admin.ModelAdmin):
+    """Admin configuration for PasswordResetToken model."""
+
+    list_display = ("user", "created_at", "used_at", "is_valid_display")
+    list_filter = ("created_at", "used_at")
+    search_fields = ("user__email", "user__first_name", "user__last_name")
+    readonly_fields = ("token", "created_at", "used_at")
+    ordering = ("-created_at",)
+
+    @admin.display(boolean=True, description="Valid")
+    def is_valid_display(self, obj: PasswordResetToken) -> bool:
+        """Display whether token is still valid."""
         return obj.is_valid
