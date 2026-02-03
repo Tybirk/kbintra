@@ -280,7 +280,7 @@ You are reviewing the {MODULE_NAME} module of KB Intra, a community platform for
 ---
 
 ### Module 7: Houses & Directory
-**Status**: pending
+**Status**: completed
 **Review File**: `REVIEW_HOUSES.md`
 **Agent Description**: "Review Houses Directory module"
 
@@ -298,10 +298,16 @@ You are reviewing the {MODULE_NAME} module of KB Intra, a community platform for
 **Focus**: House member management, profile pictures, children data, edit permissions
 
 **Findings**:
-<!-- Agent updates this section -->
+- N+1 query in HouseSerializer.get_inhabitant_count (Medium) - Fixed with len() on prefetched data
+- N+1 query in HouseListSerializer.get_inhabitant_count (Medium) - Fixed with len() on prefetched data
+- Missing prefetch_related in MyHouseView (Medium) - Added prefetch calls
+- Small mobile touch targets for ActionIcons (Low) - Added size="lg"
+- Table overflow on mobile (Low) - Added Table.ScrollContainer
+- English error messages (Low) - Translated to Danish
 
 **Commits**:
-<!-- Agent lists commits here -->
+- `153db63` fix(houses): fix N+1 query issues in house serializers and views
+- `73fb047` fix(houses): improve mobile UX and translate to Danish
 
 ---
 
@@ -405,12 +411,12 @@ You are reviewing the {MODULE_NAME} module of KB Intra, a community platform for
 | 4. Bookings System | completed | 4 | 4 | 12 |
 | 5. User & Auth System | pending | - | - | - |
 | 6. Notifications System | pending | - | - | - |
-| 7. Houses & Directory | pending | - | - | - |
+| 7. Houses & Directory | completed | 6 | 6 | 0 |
 | 8. Calendar & Announcements | pending | - | - | - |
 | 9. Search System | pending | - | - | - |
 | 10. Shared Infrastructure | pending | - | - | - |
 
-**Total**: 14 bugs found, 13 fixed, 12 tests added
+**Total**: 25 bugs found, 24 fixed, 12 tests added
 
 ---
 
