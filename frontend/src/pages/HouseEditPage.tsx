@@ -423,45 +423,51 @@ export default function HouseEditPage() {
         </Text>
 
         {house.children && house.children.length > 0 ? (
-          <Table>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Navn</Table.Th>
-                <Table.Th>Fødselsdag</Table.Th>
-                <Table.Th style={{ width: 100 }}>Handlinger</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {house.children.map((child) => (
-                <Table.Tr key={child.id}>
-                  <Table.Td>{child.name}</Table.Td>
-                  <Table.Td>
-                    {child.birthdate
-                      ? dayjs(child.birthdate).format("D. MMMM YYYY")
-                      : "-"}
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap="xs">
-                      <ActionIcon
-                        variant="subtle"
-                        color="blue"
-                        onClick={() => handleOpenEditChild(child)}
-                      >
-                        <IconPencil size={16} />
-                      </ActionIcon>
-                      <ActionIcon
-                        variant="subtle"
-                        color="red"
-                        onClick={() => handleOpenDeleteChild(child)}
-                      >
-                        <IconTrash size={16} />
-                      </ActionIcon>
-                    </Group>
-                  </Table.Td>
+          <Table.ScrollContainer minWidth={400}>
+            <Table>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Navn</Table.Th>
+                  <Table.Th>Fødselsdag</Table.Th>
+                  <Table.Th style={{ width: 100 }}>Handlinger</Table.Th>
                 </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
+              </Table.Thead>
+              <Table.Tbody>
+                {house.children.map((child) => (
+                  <Table.Tr key={child.id}>
+                    <Table.Td>{child.name}</Table.Td>
+                    <Table.Td>
+                      {child.birthdate
+                        ? dayjs(child.birthdate).format("D. MMMM YYYY")
+                        : "-"}
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap="xs">
+                        <ActionIcon
+                          variant="subtle"
+                          color="blue"
+                          size="lg"
+                          onClick={() => handleOpenEditChild(child)}
+                          aria-label="Rediger barn"
+                        >
+                          <IconPencil size={18} />
+                        </ActionIcon>
+                        <ActionIcon
+                          variant="subtle"
+                          color="red"
+                          size="lg"
+                          onClick={() => handleOpenDeleteChild(child)}
+                          aria-label="Fjern barn"
+                        >
+                          <IconTrash size={18} />
+                        </ActionIcon>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
         ) : (
           <Text c="dimmed" ta="center" py="lg">
             Ingen børn registreret i husstanden.

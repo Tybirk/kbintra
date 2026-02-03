@@ -56,7 +56,7 @@ export default function DirectoryPage() {
   if (error) {
     return (
       <Center h={200}>
-        <Text c="red">Failed to load houses. Please try again.</Text>
+        <Text c="red">Kunne ikke indlæse huse. Prøv igen.</Text>
       </Center>
     )
   }
@@ -87,7 +87,7 @@ export default function DirectoryPage() {
       />
 
       {filteredHouses?.length === 0 ? (
-        <Text c="dimmed">No houses found.</Text>
+        <Text c="dimmed">Ingen huse fundet.</Text>
       ) : (
         <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
           {filteredHouses?.map((house) => (
