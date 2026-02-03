@@ -74,8 +74,8 @@ class UserRegistrationSerializer(serializers.Serializer):
         """Validate that the invitation token exists and is valid."""
         try:
             invitation = Invitation.objects.get(token=value)
-        except Invitation.DoesNotExist:
-            raise serializers.ValidationError("Invalid invitation token.")
+        except Invitation.DoesNotExist as err:
+            raise serializers.ValidationError("Invalid invitation token.") from err
 
         if not invitation.is_valid:
             raise serializers.ValidationError("This invitation has expired or already been used.")
@@ -106,9 +106,7 @@ class UserRegistrationSerializer(serializers.Serializer):
 
         with transaction.atomic():
             # Re-fetch invitation with lock to prevent race conditions
-            invitation = Invitation.objects.select_for_update().get(
-                token=validated_data["token"]
-            )
+            invitation = Invitation.objects.select_for_update().get(token=validated_data["token"])
             if not invitation.is_valid:
                 raise serializers.ValidationError(
                     {"token": "This invitation has already been used."}
@@ -128,8 +126,7 @@ class UserRegistrationSerializer(serializers.Serializer):
             # Subscribe to default forum subgroups using bulk_create
             default_subgroups = Subgroup.objects.filter(is_default=True)
             subscriptions = [
-                SubgroupSubscription(user=user, subgroup=subgroup)
-                for subgroup in default_subgroups
+                SubgroupSubscription(user=user, subgroup=subgroup) for subgroup in default_subgroups
             ]
             SubgroupSubscription.objects.bulk_create(subscriptions)
 
@@ -195,8 +192,8 @@ class InvitationValidateSerializer(serializers.Serializer):
         """Validate the invitation token."""
         try:
             invitation = Invitation.objects.get(token=value)
-        except Invitation.DoesNotExist:
-            raise serializers.ValidationError("Invalid invitation token.")
+        except Invitation.DoesNotExist as err:
+            raise serializers.ValidationError("Invalid invitation token.") from err
 
         if not invitation.is_valid:
             raise serializers.ValidationError("This invitation has expired or already been used.")

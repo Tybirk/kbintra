@@ -2,6 +2,7 @@
 Views for Food app.
 """
 
+import contextlib
 from datetime import date, timedelta
 from typing import Any
 
@@ -464,16 +465,12 @@ class FoodTeamListView(generics.ListAPIView):
         to_date = self.request.query_params.get("to_date")
 
         if from_date:
-            try:
+            with contextlib.suppress(ValueError):
                 queryset = queryset.filter(date__gte=date.fromisoformat(from_date))
-            except ValueError:
-                pass
 
         if to_date:
-            try:
+            with contextlib.suppress(ValueError):
                 queryset = queryset.filter(date__lte=date.fromisoformat(to_date))
-            except ValueError:
-                pass
 
         # Default to show upcoming teams only
         if not from_date and not to_date:
@@ -897,9 +894,9 @@ class MonthlyFoodCostView(APIView):
         from apps.houses.models import House
 
         # Food prices (same as in FoodTicketCreateSerializer)
-        PRICE_ADULT_MEAT = Decimal("37.00")
-        PRICE_ADULT_VEG = Decimal("26.00")
-        PRICE_CHILD = Decimal("18.00")
+        price_adult_meat = Decimal("37.00")
+        price_adult_veg = Decimal("26.00")
+        price_child = Decimal("18.00")
 
         first_day = date(year, month, 1)
         _, last_day_num = monthrange(year, month)
@@ -928,8 +925,8 @@ class MonthlyFoodCostView(APIView):
 
             for reg in active_registrations:
                 # Calculate cost based on meal type and portions
-                adult_price = PRICE_ADULT_MEAT if reg.meal_type == "meat" else PRICE_ADULT_VEG
-                cost = (adult_price * reg.adults_count) + (PRICE_CHILD * reg.children_count)
+                adult_price = price_adult_meat if reg.meal_type == "meat" else price_adult_veg
+                cost = (adult_price * reg.adults_count) + (price_child * reg.children_count)
                 house_total += cost
                 registration_count += 1
                 adult_portions += reg.adults_count
@@ -946,8 +943,8 @@ class MonthlyFoodCostView(APIView):
 
             for ticket in all_tickets:
                 # Calculate cost based on meal type and portions (not the ticket sale price)
-                adult_price = PRICE_ADULT_MEAT if ticket.meal_type == "meat" else PRICE_ADULT_VEG
-                cost = (adult_price * ticket.adults_count) + (PRICE_CHILD * ticket.children_count)
+                adult_price = price_adult_meat if ticket.meal_type == "meat" else price_adult_veg
+                cost = (adult_price * ticket.adults_count) + (price_child * ticket.children_count)
                 house_total += cost
                 ticket_count += 1
                 adult_portions += ticket.adults_count

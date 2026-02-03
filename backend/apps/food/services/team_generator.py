@@ -180,10 +180,7 @@ class TeamGenerator:
             return False
 
         # Check head chef distribution (don't have too many on one day)
-        if person.can_be_head_chef and self.date_to_head_chef_count[d] >= 3:
-            return False
-
-        return True
+        return not (person.can_be_head_chef and self.date_to_head_chef_count[d] >= 3)
 
     def is_valid_switch(
         self, person_id: int, from_date: date, switch_id: int, switch_date: date
@@ -218,22 +215,31 @@ class TeamGenerator:
                 return False
 
         # Check over-50 balance after switch
-        if person.is_over_50 and not switch_person.is_over_50:
-            if self.date_to_old_count[switch_date] > 1:
-                return False
-        if switch_person.is_over_50 and not person.is_over_50:
-            if self.date_to_old_count[from_date] > 1:
-                return False
+        if (
+            person.is_over_50
+            and not switch_person.is_over_50
+            and self.date_to_old_count[switch_date] > 1
+        ):
+            return False
+        if (
+            switch_person.is_over_50
+            and not person.is_over_50
+            and self.date_to_old_count[from_date] > 1
+        ):
+            return False
 
         # Check head chef balance
-        if person.can_be_head_chef and not switch_person.can_be_head_chef:
-            if self.date_to_head_chef_count[from_date] <= 1:
-                return False
-        if switch_person.can_be_head_chef and not person.can_be_head_chef:
-            if self.date_to_head_chef_count[switch_date] <= 1:
-                return False
-
-        return True
+        if (
+            person.can_be_head_chef
+            and not switch_person.can_be_head_chef
+            and self.date_to_head_chef_count[from_date] <= 1
+        ):
+            return False
+        return not (
+            switch_person.can_be_head_chef
+            and not person.can_be_head_chef
+            and self.date_to_head_chef_count[switch_date] <= 1
+        )
 
     def switch_persons(
         self, person_id: int, from_date: date, switch_id: int, switch_date: date
@@ -309,11 +315,12 @@ class TeamGenerator:
             for d in person.available_dates:
                 if d not in self.cooking_dates:
                     continue
-                if len(self.date_to_persons[d]) < self.MIN_TEAM_SIZE:
-                    if self.is_valid_assignment(user_id, d):
-                        self.assign_person(user_id, d)
-                        assigned = True
-                        break
+                if len(self.date_to_persons[d]) < self.MIN_TEAM_SIZE and self.is_valid_assignment(
+                    user_id, d
+                ):
+                    self.assign_person(user_id, d)
+                    assigned = True
+                    break
 
             if not assigned:
                 self.unassigned.append(user_id)
@@ -346,15 +353,16 @@ class TeamGenerator:
 
                     # Find dates where assigned person could go
                     for switch_date in dates_needing_members:
-                        if switch_date in assigned_person.available_dates:
-                            if self.is_valid_switch(user_id, switch_date, assigned_id, d):
-                                # Move assigned person to switch_date
-                                self.remove_person(assigned_id, d)
-                                self.assign_person(assigned_id, switch_date)
-                                # Assign our person to d
-                                self.assign_person(user_id, d)
-                                resolved = True
-                                break
+                        if switch_date in assigned_person.available_dates and self.is_valid_switch(
+                            user_id, switch_date, assigned_id, d
+                        ):
+                            # Move assigned person to switch_date
+                            self.remove_person(assigned_id, d)
+                            self.assign_person(assigned_id, switch_date)
+                            # Assign our person to d
+                            self.assign_person(user_id, d)
+                            resolved = True
+                            break
                     if resolved:
                         break
                 if resolved:
@@ -387,11 +395,12 @@ class TeamGenerator:
 
                             # Find someone to switch with
                             for switch_id in self.date_to_persons[switch_date]:
-                                if not self.persons[switch_id].is_over_50:
-                                    if self.is_valid_switch(person_id, d, switch_id, switch_date):
-                                        self.switch_persons(person_id, d, switch_id, switch_date)
-                                        made_change = True
-                                        break
+                                if not self.persons[switch_id].is_over_50 and self.is_valid_switch(
+                                    person_id, d, switch_id, switch_date
+                                ):
+                                    self.switch_persons(person_id, d, switch_id, switch_date)
+                                    made_change = True
+                                    break
                             if made_change:
                                 break
                         if made_change:
@@ -411,11 +420,14 @@ class TeamGenerator:
                                 continue
 
                             for switch_id in self.date_to_persons[switch_date]:
-                                if self.persons[switch_id].can_be_head_chef:
-                                    if self.is_valid_switch(person_id, d, switch_id, switch_date):
-                                        self.switch_persons(person_id, d, switch_id, switch_date)
-                                        made_change = True
-                                        break
+                                if self.persons[
+                                    switch_id
+                                ].can_be_head_chef and self.is_valid_switch(
+                                    person_id, d, switch_id, switch_date
+                                ):
+                                    self.switch_persons(person_id, d, switch_id, switch_date)
+                                    made_change = True
+                                    break
                             if made_change:
                                 break
                         if made_change:
@@ -434,11 +446,12 @@ class TeamGenerator:
                 if d not in self.cooking_dates:
                     continue
                 # Allow up to 7 members
-                if len(self.date_to_persons[d]) < self.MIN_TEAM_SIZE + 1:
-                    if self.is_valid_assignment(user_id, d):
-                        self.assign_person(user_id, d)
-                        self.unassigned.remove(user_id)
-                        break
+                if len(
+                    self.date_to_persons[d]
+                ) < self.MIN_TEAM_SIZE + 1 and self.is_valid_assignment(user_id, d):
+                    self.assign_person(user_id, d)
+                    self.unassigned.remove(user_id)
+                    break
 
     def validate_result(self) -> None:
         """Validate the generated teams."""

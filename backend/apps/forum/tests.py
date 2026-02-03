@@ -67,8 +67,10 @@ class TestSubgroupSubscriptionModel:
 
     def test_subscription_unique_together(self, db, user, subgroup):
         """Test that a user can only subscribe once to a subgroup."""
+        from django.db import IntegrityError
+
         SubgroupSubscription.objects.create(user=user, subgroup=subgroup)
-        with pytest.raises(Exception):
+        with pytest.raises(IntegrityError):
             SubgroupSubscription.objects.create(user=user, subgroup=subgroup)
 
 
@@ -81,7 +83,7 @@ class TestThreadModel:
 
     def test_thread_ordering_pinned_first(self, db, user, subgroup):
         """Test that pinned threads appear first."""
-        regular = Thread.objects.create(subgroup=subgroup, title="Regular", author=user)
+        Thread.objects.create(subgroup=subgroup, title="Regular", author=user)
         pinned = Thread.objects.create(
             subgroup=subgroup, title="Pinned", author=user, is_pinned=True
         )

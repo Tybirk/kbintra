@@ -75,7 +75,7 @@ export async function isPushConfigured(): Promise<boolean> {
   try {
     const { public_key } = await notificationsApi.getVapidPublicKey()
     return !!public_key
-  } catch (error) {
+  } catch {
     return false
   }
 }

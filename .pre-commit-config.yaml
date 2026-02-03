@@ -5,37 +5,37 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
-        language_version: python3.13
+        language_version: python3.11
       - id: check-yaml
-        language_version: python3.13
+        language_version: python3.11
       - id: check-added-large-files
-        language_version: python3.13
+        language_version: python3.11
       - id: check-ast
-        language_version: python3.13
+        language_version: python3.11
       - id: check-json
-        language_version: python3.13
+        language_version: python3.11
 
   - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: v0.9.6
+    rev: v0.14.14
     hooks:
       - id: ruff-check
         args: [--fix]
-        language_version: python3.13
+        language_version: python3.11
       - id: ruff-format
-        language_version: python3.13
+        language_version: python3.11
 
   - repo: local
     hooks:
       - id: frontend-lint
         name: Frontend Lint (oxlint)
-        entry: npm run lint
+        entry: bash -c 'cd frontend && npm run lint'
         language: system
         files: ^frontend/.*\.(ts|tsx|js|jsx)$
         pass_filenames: false
 
       - id: frontend-format-check
         name: Frontend Format Check (oxfmt)
-        entry: npm run format:check
+        entry: bash -c 'cd frontend && npm run format'
         language: system
         files: ^frontend/.*\.(ts|tsx|js|jsx)$
         pass_filenames: false

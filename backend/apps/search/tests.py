@@ -356,7 +356,7 @@ class TestGlobalSearchAPI:
 
     def test_search_only_active_users(self, db, authenticated_client):
         """Test search only returns active users."""
-        inactive_user = User.objects.create_user(
+        User.objects.create_user(
             email="inactive@example.com",
             password="test",
             first_name="Inactive",

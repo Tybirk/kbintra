@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("food", "0012_alter_dailymenu_unique_together_and_more"),
     ]

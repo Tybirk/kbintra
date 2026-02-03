@@ -157,13 +157,13 @@ class TestFoodTeamModel:
         """Test creating a food team."""
         assert food_team.date is not None
         assert food_team.day_name in [
-            "Monday",
-            "Tuesday",
-            "Wednesday",
-            "Thursday",
-            "Friday",
-            "Saturday",
-            "Sunday",
+            "Mandag",
+            "Tirsdag",
+            "Onsdag",
+            "Torsdag",
+            "Fredag",
+            "Lørdag",
+            "Søndag",
         ]
 
     def test_member_count(self, food_team, food_team_member):
@@ -542,9 +542,7 @@ class TestFoodTicketViews:
         assert response.status_code == 400
         assert "no longer available" in response.json()["detail"].lower()
 
-    def test_after_claiming_own_ticket_can_register(
-        self, api_client, user_with_house, monday_date
-    ):
+    def test_after_claiming_own_ticket_can_register(self, api_client, user_with_house, monday_date):
         """Test that after claiming own ticket, user can register for the meal again."""
         api_client.force_authenticate(user=user_with_house)
 

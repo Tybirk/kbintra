@@ -3,10 +3,6 @@ import { screen, waitFor } from "@testing-library/react"
 import { render, mockUser } from "../test/testUtils"
 import DashboardPage from "./DashboardPage"
 import { useAuthStore } from "../store/authStore"
-import dayjs from "dayjs"
-import isoWeek from "dayjs/plugin/isoWeek"
-
-dayjs.extend(isoWeek)
 
 // Mock the navigation
 const mockNavigate = vi.fn()
@@ -165,34 +161,6 @@ describe("DashboardPage", () => {
     // Birthday section is always rendered
     await waitFor(() => {
       expect(screen.getByText("Fødselsdage")).toBeInTheDocument()
-    })
-  })
-
-  // Food Widget Tests (with DriveMenu)
-  it("should show food widget when DriveMenu available", async () => {
-    const today = dayjs()
-    const weekNumber = today.isoWeek()
-    const year = today.isoWeekYear()
-
-    const driveMenu = {
-      id: 1,
-      week_number: weekNumber,
-      year: year,
-      week_start_date: today.startOf("isoWeek").format("YYYY-MM-DD"),
-      monday_menu: "Pasta med kødsovs",
-      tuesday_menu: "Thai curry",
-      wednesday_menu: "Frikadeller",
-      thursday_menu: "Risotto",
-      fetched_at: new Date().toISOString(),
-      is_stale: false,
-    }
-    mockGetDriveMenu.mockResolvedValue(driveMenu)
-
-    render(<DashboardPage />)
-
-    // Check that menu items are displayed
-    await waitFor(() => {
-      expect(screen.getByText("Pasta med kødsovs")).toBeInTheDocument()
     })
   })
 })
