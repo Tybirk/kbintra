@@ -840,56 +840,58 @@ function MonthlyCostReport() {
             {costReport.houses.length === 0 ? (
               <Text c="dimmed">Ingen madbilletter taget denne måned.</Text>
             ) : (
-              <Table striped highlightOnHover>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Hus</Table.Th>
-                    <Table.Th ta="right">Billetter</Table.Th>
-                    <Table.Th ta="right">Voksne</Table.Th>
-                    <Table.Th ta="right">Børn</Table.Th>
-                    <Table.Th ta="right">Total pris</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {costReport.houses.map((house) => (
-                    <Table.Tr key={house.house_id}>
-                      <Table.Td>{house.house_name}</Table.Td>
-                      <Table.Td ta="right">{house.ticket_count}</Table.Td>
-                      <Table.Td ta="right">{house.adult_portions}</Table.Td>
-                      <Table.Td ta="right">{house.child_portions}</Table.Td>
-                      <Table.Td ta="right" fw={500}>
-                        {parseFloat(house.total_cost).toFixed(2)} kr
+              <Table.ScrollContainer minWidth={400}>
+                <Table striped highlightOnHover>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Hus</Table.Th>
+                      <Table.Th ta="right">Billetter</Table.Th>
+                      <Table.Th ta="right">Voksne</Table.Th>
+                      <Table.Th ta="right">Børn</Table.Th>
+                      <Table.Th ta="right">Total pris</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {costReport.houses.map((house) => (
+                      <Table.Tr key={house.house_id}>
+                        <Table.Td>{house.house_name}</Table.Td>
+                        <Table.Td ta="right">{house.ticket_count}</Table.Td>
+                        <Table.Td ta="right">{house.adult_portions}</Table.Td>
+                        <Table.Td ta="right">{house.child_portions}</Table.Td>
+                        <Table.Td ta="right" fw={500}>
+                          {parseFloat(house.total_cost).toFixed(2)} kr
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                  <Table.Tfoot>
+                    <Table.Tr>
+                      <Table.Td fw={600}>Total</Table.Td>
+                      <Table.Td ta="right" fw={600}>
+                        {costReport.houses.reduce(
+                          (sum, h) => sum + h.ticket_count,
+                          0,
+                        )}
+                      </Table.Td>
+                      <Table.Td ta="right" fw={600}>
+                        {costReport.houses.reduce(
+                          (sum, h) => sum + h.adult_portions,
+                          0,
+                        )}
+                      </Table.Td>
+                      <Table.Td ta="right" fw={600}>
+                        {costReport.houses.reduce(
+                          (sum, h) => sum + h.child_portions,
+                          0,
+                        )}
+                      </Table.Td>
+                      <Table.Td ta="right" fw={600}>
+                        {parseFloat(costReport.total_cost).toFixed(2)} kr
                       </Table.Td>
                     </Table.Tr>
-                  ))}
-                </Table.Tbody>
-                <Table.Tfoot>
-                  <Table.Tr>
-                    <Table.Td fw={600}>Total</Table.Td>
-                    <Table.Td ta="right" fw={600}>
-                      {costReport.houses.reduce(
-                        (sum, h) => sum + h.ticket_count,
-                        0,
-                      )}
-                    </Table.Td>
-                    <Table.Td ta="right" fw={600}>
-                      {costReport.houses.reduce(
-                        (sum, h) => sum + h.adult_portions,
-                        0,
-                      )}
-                    </Table.Td>
-                    <Table.Td ta="right" fw={600}>
-                      {costReport.houses.reduce(
-                        (sum, h) => sum + h.child_portions,
-                        0,
-                      )}
-                    </Table.Td>
-                    <Table.Td ta="right" fw={600}>
-                      {parseFloat(costReport.total_cost).toFixed(2)} kr
-                    </Table.Td>
-                  </Table.Tr>
-                </Table.Tfoot>
-              </Table>
+                  </Table.Tfoot>
+                </Table>
+              </Table.ScrollContainer>
             )}
           </Stack>
         </Card>

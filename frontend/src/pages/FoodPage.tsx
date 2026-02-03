@@ -548,41 +548,47 @@ function DriveMenuDayCard({
       </Group>
 
       <Collapse in={expanded}>
-        <Table mt="xs">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th></Table.Th>
-              <Table.Th ta="right">Voksne</Table.Th>
-              <Table.Th ta="right">Børn</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            <Table.Tr>
-              <Table.Td>Take Away</Table.Td>
-              <Table.Td ta="right">{stats?.takeaway.adults ?? 0}</Table.Td>
-              <Table.Td ta="right">{stats?.takeaway.children ?? 0}</Table.Td>
-            </Table.Tr>
-            <Table.Tr>
-              <Table.Td>Spise i fælleshuset 17:30</Table.Td>
-              <Table.Td ta="right">{stats?.eat_in_1730.adults ?? 0}</Table.Td>
-              <Table.Td ta="right">{stats?.eat_in_1730.children ?? 0}</Table.Td>
-            </Table.Tr>
-            <Table.Tr>
-              <Table.Td>Spise i fælleshuset 18:30</Table.Td>
-              <Table.Td ta="right">{stats?.eat_in_1830.adults ?? 0}</Table.Td>
-              <Table.Td ta="right">{stats?.eat_in_1830.children ?? 0}</Table.Td>
-            </Table.Tr>
-            <Table.Tr>
-              <Table.Td fw={600}>Total</Table.Td>
-              <Table.Td ta="right" fw={600}>
-                {totalAdults}
-              </Table.Td>
-              <Table.Td ta="right" fw={600}>
-                {totalChildren}
-              </Table.Td>
-            </Table.Tr>
-          </Table.Tbody>
-        </Table>
+        <Table.ScrollContainer minWidth={300}>
+          <Table mt="xs">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th></Table.Th>
+                <Table.Th ta="right">Voksne</Table.Th>
+                <Table.Th ta="right">Børn</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              <Table.Tr>
+                <Table.Td>Take Away</Table.Td>
+                <Table.Td ta="right">{stats?.takeaway.adults ?? 0}</Table.Td>
+                <Table.Td ta="right">{stats?.takeaway.children ?? 0}</Table.Td>
+              </Table.Tr>
+              <Table.Tr>
+                <Table.Td>Spise i fælleshuset 17:30</Table.Td>
+                <Table.Td ta="right">{stats?.eat_in_1730.adults ?? 0}</Table.Td>
+                <Table.Td ta="right">
+                  {stats?.eat_in_1730.children ?? 0}
+                </Table.Td>
+              </Table.Tr>
+              <Table.Tr>
+                <Table.Td>Spise i fælleshuset 18:30</Table.Td>
+                <Table.Td ta="right">{stats?.eat_in_1830.adults ?? 0}</Table.Td>
+                <Table.Td ta="right">
+                  {stats?.eat_in_1830.children ?? 0}
+                </Table.Td>
+              </Table.Tr>
+              <Table.Tr>
+                <Table.Td fw={600}>Total</Table.Td>
+                <Table.Td ta="right" fw={600}>
+                  {totalAdults}
+                </Table.Td>
+                <Table.Td ta="right" fw={600}>
+                  {totalChildren}
+                </Table.Td>
+              </Table.Tr>
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       </Collapse>
     </Paper>
   )
