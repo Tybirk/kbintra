@@ -6,9 +6,14 @@ from django.contrib import admin
 
 from .models import (
     DriveMenuCache,
+    FoodTeam,
+    FoodTeamCycle,
+    FoodTeamMember,
+    FoodTeamWish,
     FoodTicket,
     MealPreference,
     MealRegistration,
+    TeamSwapRequest,
 )
 
 
@@ -52,3 +57,45 @@ class DriveMenuCacheAdmin(admin.ModelAdmin):
     list_filter = ["year"]
     search_fields = ["monday_menu", "tuesday_menu", "wednesday_menu", "thursday_menu"]
     readonly_fields = ["fetched_at"]
+
+
+@admin.register(FoodTeam)
+class FoodTeamAdmin(admin.ModelAdmin):
+    list_display = ["date", "cycle", "member_count", "created_at"]
+    list_filter = ["cycle"]
+    search_fields = ["notes"]
+    date_hierarchy = "date"
+    raw_id_fields = ["cycle"]
+
+
+@admin.register(FoodTeamMember)
+class FoodTeamMemberAdmin(admin.ModelAdmin):
+    list_display = ["user", "team", "house_number", "created_at"]
+    list_filter = ["team__date"]
+    search_fields = ["user__email", "user__first_name", "house_number"]
+    raw_id_fields = ["team", "user"]
+
+
+@admin.register(FoodTeamCycle)
+class FoodTeamCycleAdmin(admin.ModelAdmin):
+    list_display = ["name", "status", "wish_deadline", "created_by", "created_at"]
+    list_filter = ["status"]
+    search_fields = ["name"]
+    raw_id_fields = ["created_by"]
+    readonly_fields = ["created_at", "updated_at"]
+
+
+@admin.register(FoodTeamWish)
+class FoodTeamWishAdmin(admin.ModelAdmin):
+    list_display = ["user", "cycle", "available_date_count", "created_at"]
+    list_filter = ["cycle"]
+    search_fields = ["user__email", "user__first_name", "comment"]
+    raw_id_fields = ["cycle", "user"]
+
+
+@admin.register(TeamSwapRequest)
+class TeamSwapRequestAdmin(admin.ModelAdmin):
+    list_display = ["requester", "status", "created_at"]
+    list_filter = ["status"]
+    search_fields = ["requester__email", "message"]
+    raw_id_fields = ["requester", "requester_membership", "target_membership"]

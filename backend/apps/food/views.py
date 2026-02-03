@@ -358,30 +358,33 @@ class ClaimTicketView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request: Request, pk: int) -> Response:
-        try:
-            ticket = FoodTicket.objects.get(pk=pk)
-        except FoodTicket.DoesNotExist:
-            return Response(
-                {"detail": "Ticket not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+        from django.db import transaction
 
-        if not ticket.is_available:
-            return Response(
-                {"detail": "This ticket is no longer available."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        with transaction.atomic():
+            try:
+                ticket = FoodTicket.objects.select_for_update().get(pk=pk)
+            except FoodTicket.DoesNotExist:
+                return Response(
+                    {"detail": "Ticket not found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
 
-        if ticket.date < timezone.now().date():
-            return Response(
-                {"detail": "Cannot claim ticket for past dates."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            if not ticket.is_available:
+                return Response(
+                    {"detail": "This ticket is no longer available."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-        ticket.is_available = False
-        ticket.claimed_by = request.user
-        ticket.claimed_at = timezone.now()
-        ticket.save()
+            if ticket.date < timezone.now().date():
+                return Response(
+                    {"detail": "Cannot claim ticket for past dates."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            ticket.is_available = False
+            ticket.claimed_by = request.user
+            ticket.claimed_at = timezone.now()
+            ticket.save()
 
         # Notify the owner that their ticket was claimed (skip if claiming own ticket)
         if ticket.owner != request.user:
