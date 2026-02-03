@@ -221,11 +221,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def get_user_from_token(self, token: str) -> User | None:
         """Validate JWT token and return user."""
+        import logging
+
+        logger = logging.getLogger(__name__)
         try:
             access_token = AccessToken(token)
             user_id = access_token["user_id"]
             return User.objects.get(id=user_id)
-        except Exception:
+        except Exception as e:
+            logger.warning("WebSocket JWT validation failed: %s", e)
             return None
 
     @database_sync_to_async
@@ -289,12 +293,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def mark_messages_read(self, conversation_id: int):
         """Mark all messages in conversation as read by current user."""
+        import logging
+
+        logger = logging.getLogger(__name__)
         try:
             conversation = Conversation.objects.get(id=conversation_id, participants=self.user)
             unread_messages = conversation.messages.exclude(sender=self.user).exclude(
                 read_statuses__user=self.user
             )
-            for message in unread_messages:
-                MessageReadStatus.objects.get_or_create(message=message, user=self.user)
-        except Exception:
-            pass
+            # Use bulk_create to avoid N+1 queries
+            read_statuses = [
+                MessageReadStatus(message=msg, user=self.user) for msg in unread_messages
+            ]
+            MessageReadStatus.objects.bulk_create(read_statuses, ignore_conflicts=True)
+        except Exception as e:
+            logger.warning("Failed to mark messages as read: %s", e)

@@ -111,12 +111,14 @@ class ConversationDetailView(generics.RetrieveAPIView):
 
     def retrieve(self, request: Request, *args, **kwargs) -> Response:
         instance = self.get_object()
-        # Mark messages as read
+        # Mark messages as read using bulk_create to avoid N+1 queries
         unread_messages = instance.messages.exclude(sender=request.user).exclude(
             read_statuses__user=request.user
         )
-        for message in unread_messages:
-            MessageReadStatus.objects.get_or_create(message=message, user=request.user)
+        read_statuses = [
+            MessageReadStatus(message=msg, user=request.user) for msg in unread_messages
+        ]
+        MessageReadStatus.objects.bulk_create(read_statuses, ignore_conflicts=True)
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
@@ -148,13 +150,15 @@ class MessageListCreateView(generics.ListCreateAPIView):
         return context
 
     def list(self, request: Request, *args, **kwargs) -> Response:
-        # Mark messages as read when listing
+        # Mark messages as read when listing using bulk_create to avoid N+1 queries
         conversation = self.get_conversation()
         unread_messages = conversation.messages.exclude(sender=request.user).exclude(
             read_statuses__user=request.user
         )
-        for message in unread_messages:
-            MessageReadStatus.objects.get_or_create(message=message, user=request.user)
+        read_statuses = [
+            MessageReadStatus(message=msg, user=request.user) for msg in unread_messages
+        ]
+        MessageReadStatus.objects.bulk_create(read_statuses, ignore_conflicts=True)
         return super().list(request, *args, **kwargs)
 
 

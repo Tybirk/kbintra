@@ -138,6 +138,11 @@ export class ChatWebSocket {
   reconnectTimeout: ReturnType<typeof setTimeout> | null = null
   intentionalDisconnect = false
 
+  // Store event listener references for cleanup
+  private visibilityHandler: (() => void) | null = null
+  private onlineHandler: (() => void) | null = null
+  private offlineHandler: (() => void) | null = null
+
   constructor(getToken: () => string | null) {
     this.getToken = getToken
     this.setupEventListeners()
@@ -145,25 +150,43 @@ export class ChatWebSocket {
 
   private setupEventListeners(): void {
     // Reconnect when the tab becomes visible
-    document.addEventListener("visibilitychange", () => {
+    this.visibilityHandler = () => {
       if (document.visibilityState === "visible" && !this.isConnected) {
         console.log("Tab became visible, attempting reconnection")
         this.reconnectAttempts = 0 // Reset attempts on visibility change
         this.connect()
       }
-    })
+    }
+    document.addEventListener("visibilitychange", this.visibilityHandler)
 
     // Reconnect when the browser comes back online
-    window.addEventListener("online", () => {
+    this.onlineHandler = () => {
       console.log("Browser came online, attempting reconnection")
       this.reconnectAttempts = 0 // Reset attempts when coming online
       this.connect()
-    })
+    }
+    window.addEventListener("online", this.onlineHandler)
 
     // Track offline state
-    window.addEventListener("offline", () => {
+    this.offlineHandler = () => {
       console.log("Browser went offline")
-    })
+    }
+    window.addEventListener("offline", this.offlineHandler)
+  }
+
+  private removeEventListeners(): void {
+    if (this.visibilityHandler) {
+      document.removeEventListener("visibilitychange", this.visibilityHandler)
+      this.visibilityHandler = null
+    }
+    if (this.onlineHandler) {
+      window.removeEventListener("online", this.onlineHandler)
+      this.onlineHandler = null
+    }
+    if (this.offlineHandler) {
+      window.removeEventListener("offline", this.offlineHandler)
+      this.offlineHandler = null
+    }
   }
 
   private getReconnectDelay(): number {
@@ -278,6 +301,9 @@ export class ChatWebSocket {
     }
     this.messageHandlers = []
     this.connectionHandlers = []
+
+    // Clean up event listeners to prevent memory leaks
+    this.removeEventListeners()
   }
 
   async sendMessage(

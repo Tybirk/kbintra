@@ -17,7 +17,7 @@ import {
   IconFile,
   IconPhoto,
 } from "@tabler/icons-react"
-import { useRef, type KeyboardEvent } from "react"
+import { useRef, useEffect, useState, type KeyboardEvent } from "react"
 import EmojiPicker from "./EmojiPicker"
 
 interface ChatRichTextEditorProps {
@@ -51,6 +51,48 @@ export default function ChatRichTextEditor({
 }: ChatRichTextEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const isMobile = useMediaQuery("(max-width: 768px)")
+
+  // Track object URLs to revoke them when files are removed or component unmounts
+  const [previewUrls, setPreviewUrls] = useState<Map<File, string>>(new Map())
+
+  // Create object URLs for new files and revoke URLs for removed files
+  useEffect(() => {
+    const newUrls = new Map<File, string>()
+    const urlsToRevoke: string[] = []
+
+    // Create URLs for current attachments
+    for (const file of attachments) {
+      if (previewUrls.has(file)) {
+        // Keep existing URL
+        newUrls.set(file, previewUrls.get(file)!)
+      } else if (isImageFile(file)) {
+        // Create new URL for image files
+        newUrls.set(file, URL.createObjectURL(file))
+      }
+    }
+
+    // Find URLs to revoke (files that were removed)
+    for (const [file, url] of previewUrls) {
+      if (!attachments.includes(file)) {
+        urlsToRevoke.push(url)
+      }
+    }
+
+    // Revoke old URLs
+    for (const url of urlsToRevoke) {
+      URL.revokeObjectURL(url)
+    }
+
+    setPreviewUrls(newUrls)
+
+    // Cleanup all URLs on unmount
+    return () => {
+      for (const url of newUrls.values()) {
+        URL.revokeObjectURL(url)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attachments])
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // On mobile, Enter creates a newline (more natural for touch keyboards)
@@ -113,16 +155,16 @@ export default function ChatRichTextEditor({
                   flexShrink: 0,
                 }}
               >
-                {isImageFile(file) ? (
+                {isImageFile(file) && previewUrls.get(file) ? (
                   <Image
-                    src={URL.createObjectURL(file)}
+                    src={previewUrls.get(file)}
                     alt={file.name}
                     w={80}
                     h={80}
                     fit="cover"
                     radius="sm"
                   />
-                ) : (
+                ) : isImageFile(file) ? null : (
                   <Box
                     w={80}
                     h={80}

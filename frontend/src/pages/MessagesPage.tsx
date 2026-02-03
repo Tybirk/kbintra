@@ -17,7 +17,6 @@ import {
   Badge,
   Box,
   Indicator,
-  TypographyStylesProvider,
   Image,
   CloseButton,
   ActionIcon,
@@ -83,6 +82,9 @@ export default function MessagesPage() {
         setIsComposingNew(false)
       }
     }
+    // Note: selectedConversation is intentionally excluded to prevent sync loops.
+    // This effect syncs URL -> state, not the other way around.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId])
 
   // Fetch conversations
@@ -256,7 +258,12 @@ export default function MessagesPage() {
       <Paper
         withBorder
         radius="md"
-        style={{ height: "calc(100vh - 200px)", display: "flex" }}
+        style={{
+          // Use dvh (dynamic viewport height) for mobile keyboard support, with vh fallback
+          height: "calc(100dvh - 200px)",
+          minHeight: "400px",
+          display: "flex",
+        }}
       >
         {/* Conversation List - hide on mobile when conversation is selected */}
         <Box
@@ -824,15 +831,15 @@ function MessageBubble({ message, showAvatar, showTime }: MessageBubbleProps) {
                   maxWidth: "100%",
                 }}
               >
-                <TypographyStylesProvider
+                <Text
+                  size="sm"
                   style={{
                     color: isOwn ? "white" : "inherit",
-                    fontSize: "var(--mantine-font-size-sm)",
                     whiteSpace: "pre-wrap",
                   }}
                 >
-                  <div dangerouslySetInnerHTML={{ __html: message.content }} />
-                </TypographyStylesProvider>
+                  {message.content}
+                </Text>
               </Paper>
             </Box>
           )}
