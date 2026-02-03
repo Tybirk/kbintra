@@ -1,0 +1,41 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        language_version: python3.13
+      - id: check-yaml
+        language_version: python3.13
+      - id: check-added-large-files
+        language_version: python3.13
+      - id: check-ast
+        language_version: python3.13
+      - id: check-json
+        language_version: python3.13
+
+  - repo: https://github.com/charliermarsh/ruff-pre-commit
+    rev: v0.9.6
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+        language_version: python3.13
+      - id: ruff-format
+        language_version: python3.13
+
+  - repo: local
+    hooks:
+      - id: frontend-lint
+        name: Frontend Lint (oxlint)
+        entry: npm run lint
+        language: system
+        files: ^frontend/.*\.(ts|tsx|js|jsx)$
+        pass_filenames: false
+
+      - id: frontend-format-check
+        name: Frontend Format Check (oxfmt)
+        entry: npm run format:check
+        language: system
+        files: ^frontend/.*\.(ts|tsx|js|jsx)$
+        pass_filenames: false

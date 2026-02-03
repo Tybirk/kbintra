@@ -52,6 +52,15 @@ kbintra/
 - Python 3.11+
 - Node.js 18+ (20+ recommended)
 - uv (Python package manager)
+- prek (pre-commit hook manager): `uv tool install prek`
+
+### Pre-commit Hooks
+
+Install pre-commit hooks to run linting automatically before each commit:
+
+```bash
+prek install -f .
+```
 
 ### Backend Setup
 
