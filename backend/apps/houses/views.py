@@ -70,7 +70,9 @@ class MyHouseView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        serializer = HouseSerializer(user.house)
+        # Prefetch related data to avoid N+1 queries
+        house = House.objects.prefetch_related("inhabitants", "children").get(pk=user.house.pk)
+        serializer = HouseSerializer(house)
         return Response(serializer.data)
 
     def patch(self, request):
@@ -86,8 +88,11 @@ class MyHouseView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
-        # Return full house data
-        return Response(HouseSerializer(user.house).data)
+        # Refresh with prefetched data to avoid N+1 queries in serializer
+        house_with_prefetch = House.objects.prefetch_related("inhabitants", "children").get(
+            pk=user.house.pk
+        )
+        return Response(HouseSerializer(house_with_prefetch).data)
 
 
 class ChildListCreateView(generics.ListCreateAPIView):

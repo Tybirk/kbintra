@@ -72,8 +72,12 @@ class HouseSerializer(serializers.ModelSerializer):
         ]
 
     def get_inhabitant_count(self, obj: House) -> int:
-        """Get the number of inhabitants in the house."""
-        return obj.inhabitants.count()
+        """Get the number of inhabitants in the house.
+
+        Uses len() on prefetched queryset to avoid extra database queries.
+        """
+        # Use len() to leverage prefetch_related, .count() would hit DB again
+        return len(obj.inhabitants.all())
 
 
 class HouseListSerializer(serializers.ModelSerializer):
@@ -97,11 +101,15 @@ class HouseListSerializer(serializers.ModelSerializer):
         ]
 
     def get_inhabitant_count(self, obj: House) -> int:
-        """Get the number of inhabitants in the house."""
-        # Use annotated count if available (from view queryset), otherwise count
+        """Get the number of inhabitants in the house.
+
+        Uses len() on prefetched queryset to avoid extra database queries.
+        If an annotated count is available (from view queryset), use that instead.
+        """
         if hasattr(obj, "inhabitant_count_annotated"):
             return obj.inhabitant_count_annotated
-        return obj.inhabitants.count()
+        # Use len() to leverage prefetch_related, .count() would hit DB again
+        return len(obj.inhabitants.all())
 
 
 class HouseUpdateSerializer(serializers.ModelSerializer):
