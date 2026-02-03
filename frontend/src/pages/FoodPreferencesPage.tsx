@@ -28,10 +28,10 @@ import type {
 } from "../types"
 
 const DAYS = [
-  { value: 0, label: "Monday" },
-  { value: 1, label: "Tuesday" },
-  { value: 2, label: "Wednesday" },
-  { value: 3, label: "Thursday" },
+  { value: 0, label: "Mandag" },
+  { value: 1, label: "Tirsdag" },
+  { value: 2, label: "Onsdag" },
+  { value: 3, label: "Torsdag" },
 ]
 
 export default function FoodPreferencesPage() {
@@ -64,15 +64,15 @@ export default function FoodPreferencesPage() {
         onClick={() => navigate("/mad")}
         mb="md"
       >
-        Back to Food
+        Tilbage til mad
       </Button>
 
       <Title order={1} mb="xs">
-        Default Preferences
+        Standardindstillinger
       </Title>
       <Text c="dimmed" mb="xl">
-        Set your default meal preferences for each day. These will be used when
-        applying defaults to a week.
+        Angiv dine standardindstillinger for hver dag. Disse bruges når du
+        anvender standarder på en uge.
       </Text>
 
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
@@ -133,15 +133,15 @@ function PreferenceCard({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "preferences"] })
       notifications.show({
-        title: "Saved",
-        message: `Preferences saved for ${dayName}`,
+        title: "Gemt",
+        message: `Præferencer gemt for ${dayName}`,
         color: "green",
       })
     },
     onError: () => {
       notifications.show({
-        title: "Error",
-        message: "Failed to save preferences.",
+        title: "Fejl",
+        message: "Kunne ikke gemme præferencer.",
         color: "red",
       })
     },
@@ -153,15 +153,15 @@ function PreferenceCard({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "preferences"] })
       notifications.show({
-        title: "Updated",
-        message: `Preferences updated for ${dayName}`,
+        title: "Opdateret",
+        message: `Præferencer opdateret for ${dayName}`,
         color: "green",
       })
     },
     onError: () => {
       notifications.show({
-        title: "Error",
-        message: "Failed to update preferences.",
+        title: "Fejl",
+        message: "Kunne ikke opdatere præferencer.",
         color: "red",
       })
     },
@@ -172,15 +172,15 @@ function PreferenceCard({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "preferences"] })
       notifications.show({
-        title: "Deleted",
-        message: `Preferences removed for ${dayName}`,
+        title: "Slettet",
+        message: `Præferencer fjernet for ${dayName}`,
         color: "blue",
       })
     },
     onError: () => {
       notifications.show({
-        title: "Error",
-        message: "Failed to delete preferences.",
+        title: "Fejl",
+        message: "Kunne ikke slette præferencer.",
         color: "red",
       })
     },
@@ -220,14 +220,14 @@ function PreferenceCard({
       <Stack gap="sm">
         <Group grow>
           <NumberInput
-            label="Adults"
+            label="Voksne"
             value={adults}
             onChange={(val) => setAdults(Number(val) || 0)}
             min={0}
             max={10}
           />
           <NumberInput
-            label="Children"
+            label="Børn"
             value={children}
             onChange={(val) => setChildren(Number(val) || 0)}
             min={0}
@@ -237,7 +237,7 @@ function PreferenceCard({
 
         {isWednesday && (
           <Switch
-            label="Prefer meat option"
+            label="Foretrækker kød"
             checked={prefersMeat}
             onChange={(e) => setPrefersMeat(e.currentTarget.checked)}
           />
@@ -247,14 +247,14 @@ function PreferenceCard({
 
         <div>
           <Text size="sm" fw={500} mb={4}>
-            Dining Option
+            Spisemulighed
           </Text>
           <SegmentedControl
             value={diningOption}
             onChange={(val) => setDiningOption(val as DiningOption)}
             data={[
-              { label: "Eat In", value: "eat_in" },
-              { label: "Take Away", value: "take_away" },
+              { label: "Spis i fælleshuset", value: "eat_in" },
+              { label: "Tag med", value: "take_away" },
             ]}
             fullWidth
           />
@@ -263,7 +263,7 @@ function PreferenceCard({
         {diningOption === "eat_in" && (
           <div>
             <Text size="sm" fw={500} mb={4}>
-              Seating Time
+              Spisetid
             </Text>
             <SegmentedControl
               value={seatingTime}
@@ -286,7 +286,7 @@ function PreferenceCard({
             loading={createMutation.isPending || updateMutation.isPending}
             style={{ flex: 1 }}
           >
-            {preference ? "Update" : "Save"}
+            {preference ? "Opdater" : "Gem"}
           </Button>
           {preference && (
             <Button
@@ -295,7 +295,7 @@ function PreferenceCard({
               onClick={() => deleteMutation.mutate()}
               loading={deleteMutation.isPending}
             >
-              Remove
+              Fjern
             </Button>
           )}
         </Group>

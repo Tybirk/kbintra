@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
@@ -337,12 +337,12 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
   }
 
   // Initialize selected dates from existing wish
-  useState(() => {
+  useEffect(() => {
     if (existingWish) {
       setSelectedDates(existingWish.available_dates)
       setComment(existingWish.comment)
     }
-  })
+  }, [existingWish])
 
   const submitWishMutation = useMutation({
     mutationFn: (data: WishSubmitData) => foodApi.submitWish(cycle.id, data),
