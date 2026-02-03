@@ -258,10 +258,26 @@ function App() {
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="/mad/:tab"
+              element={
+                <ProtectedRoute>
+                  <FoodPage />
+                </ProtectedRoute>
+              }
+            />
 
             {/* Madhold */}
             <Route
               path="/madhold"
+              element={
+                <ProtectedRoute>
+                  <FoodTeamsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/madhold/:tab"
               element={
                 <ProtectedRoute>
                   <FoodTeamsPage />

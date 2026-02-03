@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
@@ -22,6 +22,8 @@ import {
   ActionIcon,
   Collapse,
   Table,
+  Card,
+  Select,
 } from "@mantine/core"
 import { useDisclosure, useDebouncedCallback } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -37,6 +39,7 @@ import {
   IconChevronDown,
   IconChevronUp,
   IconRefresh,
+  IconReceipt,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import isoWeek from "dayjs/plugin/isoWeek"
@@ -58,8 +61,20 @@ import type {
 
 export default function FoodPage() {
   const navigate = useNavigate()
+  const { tab } = useParams<{ tab?: string }>()
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
+
+  // Path-based tab state
+  const validTabs = ["menu", "registration", "admin"]
+  const activeTab = tab && validTabs.includes(tab) ? tab : "registration"
+  const setActiveTab = (newTab: string | null) => {
+    if (newTab && newTab !== "registration") {
+      navigate(`/mad/${newTab}`)
+    } else {
+      navigate("/mad")
+    }
+  }
 
   // Get current week's Monday
   const today = dayjs()
@@ -247,7 +262,7 @@ export default function FoodPage() {
         </Group>
       </Group>
 
-      <Tabs defaultValue="registration">
+      <Tabs value={activeTab} onChange={setActiveTab}>
         <Tabs.List mb="md">
           <Tabs.Tab value="menu" leftSection={<IconSoup size={16} />}>
             Menu
@@ -258,6 +273,11 @@ export default function FoodPage() {
           >
             Min tilmelding
           </Tabs.Tab>
+          {user?.is_staff && (
+            <Tabs.Tab value="admin" leftSection={<IconSettings size={16} />}>
+              Admin
+            </Tabs.Tab>
+          )}
         </Tabs.List>
 
         <Tabs.Panel value="menu">
@@ -480,8 +500,158 @@ export default function FoodPage() {
             )}
           </Stack>
         </Tabs.Panel>
+
+        {user?.is_staff && (
+          <Tabs.Panel value="admin">
+            <MonthlyCostReport />
+          </Tabs.Panel>
+        )}
       </Tabs>
     </>
+  )
+}
+
+// Monthly Cost Report Component (Admin only)
+function MonthlyCostReport() {
+  const currentDate = dayjs()
+  const [selectedYear, setSelectedYear] = useState(
+    currentDate.year().toString(),
+  )
+  const [selectedMonth, setSelectedMonth] = useState(
+    (currentDate.month() + 1).toString(),
+  )
+
+  const { data: costReport, isLoading } = useQuery({
+    queryKey: ["food", "monthly-cost", selectedYear, selectedMonth],
+    queryFn: () =>
+      foodApi.getMonthlyFoodCost(
+        parseInt(selectedYear),
+        parseInt(selectedMonth),
+      ),
+    enabled: !!selectedYear && !!selectedMonth,
+  })
+
+  const years = Array.from({ length: 5 }, (_, i) => {
+    const year = currentDate.year() - 2 + i
+    return { value: year.toString(), label: year.toString() }
+  })
+
+  const months = [
+    { value: "1", label: "Januar" },
+    { value: "2", label: "Februar" },
+    { value: "3", label: "Marts" },
+    { value: "4", label: "April" },
+    { value: "5", label: "Maj" },
+    { value: "6", label: "Juni" },
+    { value: "7", label: "Juli" },
+    { value: "8", label: "August" },
+    { value: "9", label: "September" },
+    { value: "10", label: "Oktober" },
+    { value: "11", label: "November" },
+    { value: "12", label: "December" },
+  ]
+
+  return (
+    <Stack gap="lg">
+      <Group justify="space-between">
+        <Title order={3}>
+          <Group gap="xs">
+            <IconReceipt size={24} />
+            Månedlig madomkostningsrapport
+          </Group>
+        </Title>
+        <Group>
+          <Select
+            value={selectedMonth}
+            onChange={(val) => val && setSelectedMonth(val)}
+            data={months}
+            w={140}
+          />
+          <Select
+            value={selectedYear}
+            onChange={(val) => val && setSelectedYear(val)}
+            data={years}
+            w={100}
+          />
+        </Group>
+      </Group>
+
+      {isLoading ? (
+        <Center h={200}>
+          <Loader size="lg" />
+        </Center>
+      ) : costReport ? (
+        <Card withBorder p="md" radius="md">
+          <Stack gap="md">
+            <Group justify="space-between">
+              <Text fw={600} size="lg">
+                {costReport.month_name} {costReport.year}
+              </Text>
+              <Badge size="lg" color="blue">
+                Total: {parseFloat(costReport.total_cost).toFixed(2)} kr
+              </Badge>
+            </Group>
+
+            {costReport.houses.length === 0 ? (
+              <Text c="dimmed">Ingen madbilletter taget denne måned.</Text>
+            ) : (
+              <Table.ScrollContainer minWidth={400}>
+                <Table striped highlightOnHover>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Hus</Table.Th>
+                      <Table.Th ta="right">Billetter</Table.Th>
+                      <Table.Th ta="right">Voksne</Table.Th>
+                      <Table.Th ta="right">Børn</Table.Th>
+                      <Table.Th ta="right">Total pris</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {costReport.houses.map((house) => (
+                      <Table.Tr key={house.house_id}>
+                        <Table.Td>{house.house_name}</Table.Td>
+                        <Table.Td ta="right">{house.ticket_count}</Table.Td>
+                        <Table.Td ta="right">{house.adult_portions}</Table.Td>
+                        <Table.Td ta="right">{house.child_portions}</Table.Td>
+                        <Table.Td ta="right" fw={500}>
+                          {parseFloat(house.total_cost).toFixed(2)} kr
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                  <Table.Tfoot>
+                    <Table.Tr>
+                      <Table.Td fw={600}>Total</Table.Td>
+                      <Table.Td ta="right" fw={600}>
+                        {costReport.houses.reduce(
+                          (sum, h) => sum + h.ticket_count,
+                          0,
+                        )}
+                      </Table.Td>
+                      <Table.Td ta="right" fw={600}>
+                        {costReport.houses.reduce(
+                          (sum, h) => sum + h.adult_portions,
+                          0,
+                        )}
+                      </Table.Td>
+                      <Table.Td ta="right" fw={600}>
+                        {costReport.houses.reduce(
+                          (sum, h) => sum + h.child_portions,
+                          0,
+                        )}
+                      </Table.Td>
+                      <Table.Td ta="right" fw={600}>
+                        {parseFloat(costReport.total_cost).toFixed(2)} kr
+                      </Table.Td>
+                    </Table.Tr>
+                  </Table.Tfoot>
+                </Table>
+              </Table.ScrollContainer>
+            )}
+          </Stack>
+        </Card>
+      ) : null}
+    </Stack>
   )
 }
 
