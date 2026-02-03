@@ -123,8 +123,8 @@ apiClient.interceptors.response.use(
           },
         )
 
-        const { access } = response.data
-        setTokens(access, refreshToken)
+        const { access, refresh: newRefreshToken } = response.data
+        setTokens(access, newRefreshToken ?? refreshToken)
         onTokenRefreshed(access)
 
         originalRequest.headers.Authorization = `Bearer ${access}`

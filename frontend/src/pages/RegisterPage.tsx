@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { useNavigate, useSearchParams } from "react-router-dom"
+import { useNavigate, useSearchParams, Link } from "react-router-dom"
 import {
   Container,
   Paper,
@@ -141,7 +141,7 @@ export default function RegisterPage() {
           </Alert>
 
           <Text ta="center" mt="md">
-            <Anchor href="/login" size="sm">
+            <Anchor component={Link} to="/login" size="sm">
               Tilbage til login
             </Anchor>
           </Text>
@@ -232,7 +232,7 @@ export default function RegisterPage() {
 
         <Text c="dimmed" size="sm" ta="center" mt={15}>
           Har du allerede en konto?{" "}
-          <Anchor href="/login" size="sm">
+          <Anchor component={Link} to="/login" size="sm">
             Log ind
           </Anchor>
         </Text>

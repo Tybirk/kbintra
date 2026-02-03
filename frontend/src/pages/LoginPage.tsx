@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useNavigate, useLocation } from "react-router-dom"
+import { useNavigate, useLocation, Link } from "react-router-dom"
 import {
   Container,
   Paper,
@@ -81,7 +81,7 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.currentTarget.value)}
             />
 
-            <Anchor href="/forgot-password" size="sm" ta="right">
+            <Anchor component={Link} to="/forgot-password" size="sm" ta="right">
               Glemt adgangskode?
             </Anchor>
 

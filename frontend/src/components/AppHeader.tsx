@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import {
   Group,
   Burger,
@@ -33,9 +33,6 @@ import { ChatWebSocket, messagingApi } from "../api/messaging"
 import { getAccessToken } from "../api/client"
 import type { WsMessage } from "../types"
 
-// Global WebSocket instance for notifications
-const notificationWs = new ChatWebSocket(getAccessToken)
-
 interface AppHeaderProps {
   navbarOpened: boolean
   toggleNavbar: () => void
@@ -49,6 +46,7 @@ export default function AppHeader({
   const location = useLocation()
   const queryClient = useQueryClient()
   const { user, logout } = useAuthStore()
+  const notificationWsRef = useRef<ChatWebSocket | null>(null)
 
   const { data: unreadNotificationsData } = useQuery({
     queryKey: ["notifications", "unread-count"],
@@ -67,6 +65,15 @@ export default function AppHeader({
 
   // Connect to WebSocket for real-time notifications
   useEffect(() => {
+    // Only connect if user is authenticated
+    if (!user) return
+
+    // Create WebSocket instance if not exists
+    if (!notificationWsRef.current) {
+      notificationWsRef.current = new ChatWebSocket(getAccessToken)
+    }
+    const notificationWs = notificationWsRef.current
+
     notificationWs.connect()
 
     const unsubConnection = notificationWs.onConnectionChange((connected) => {
@@ -125,10 +132,17 @@ export default function AppHeader({
     return () => {
       unsubConnection()
       unsubMessage()
+      // Disconnect WebSocket on cleanup
+      notificationWs.disconnect()
     }
-  }, [queryClient, navigate, location.pathname])
+  }, [queryClient, navigate, location.pathname, user])
 
   const handleLogout = () => {
+    // Disconnect WebSocket before logout
+    if (notificationWsRef.current) {
+      notificationWsRef.current.disconnect()
+      notificationWsRef.current = null
+    }
     logout()
     navigate("/login")
   }
