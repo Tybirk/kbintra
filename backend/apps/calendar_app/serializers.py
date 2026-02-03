@@ -62,11 +62,18 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, data: dict) -> dict:
-        if data.get("end_datetime") and data.get("start_datetime"):
-            if data["end_datetime"] < data["start_datetime"]:
-                raise serializers.ValidationError(
-                    {"end_datetime": "End time must be after start time."}
-                )
+        # For partial updates, use instance values as fallback
+        start = data.get("start_datetime")
+        end = data.get("end_datetime")
+        if self.instance:
+            if start is None:
+                start = self.instance.start_datetime
+            if end is None:
+                end = self.instance.end_datetime
+        if start and end and end < start:
+            raise serializers.ValidationError(
+                {"end_datetime": "Sluttidspunkt skal være efter starttidspunkt."}
+            )
         return data
 
     def create(self, validated_data: dict) -> Event:

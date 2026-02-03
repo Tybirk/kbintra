@@ -100,10 +100,10 @@ class AnnouncementCreateSerializer(serializers.ModelSerializer):
                 name=attachment_file.name,
             )
 
-        # Send notifications to all users if announcement is active
+        # Send notifications to all users (except author) if announcement is active
         if announcement.is_active:
             notify_new_announcement(
-                recipients=User.objects.all(),
+                recipients=User.objects.exclude(id=announcement.author.id),
                 author=announcement.author,
                 announcement_title=announcement.title,
                 announcement_id=announcement.id,
