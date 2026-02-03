@@ -29,6 +29,7 @@ def should_send_email(user: User, notification_type: NotificationType) -> bool:
         NotificationType.NEW_THREAD: prefs.email_forum_subscriptions,
         NotificationType.THREAD_REPLY: prefs.email_thread_replies,
         NotificationType.POST_REPLY: prefs.email_thread_replies,
+        NotificationType.POST_REACTION: prefs.email_post_reactions,
         NotificationType.EVENT_REMINDER: prefs.email_event_reminders,
         NotificationType.FOOD_TICKET: prefs.email_food_tickets,
     }

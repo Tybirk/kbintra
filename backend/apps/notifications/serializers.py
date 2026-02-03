@@ -53,6 +53,7 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
             "notify_announcements",
             "notify_forum_subscriptions",
             "notify_thread_replies",
+            "notify_post_reactions",
             "notify_event_reminders",
             "notify_food_tickets",
             # Email preferences
@@ -60,6 +61,7 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
             "email_announcements",
             "email_forum_subscriptions",
             "email_thread_replies",
+            "email_post_reactions",
             "email_event_reminders",
             "email_food_tickets",
             # Push preferences
@@ -67,6 +69,7 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
             "push_announcements",
             "push_forum_subscriptions",
             "push_thread_replies",
+            "push_post_reactions",
             "push_event_reminders",
             "push_food_tickets",
             "created_at",

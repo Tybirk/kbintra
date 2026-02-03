@@ -37,6 +37,7 @@ import {
   IconBellOff,
   IconDeviceMobile,
   IconInfoCircle,
+  IconHeart,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -64,6 +65,7 @@ const notificationIcons: Record<NotificationType, React.ReactNode> = {
   new_thread: <IconMessageCircle size={20} />,
   thread_reply: <IconMessageCircle size={20} />,
   post_reply: <IconMessageCircle size={20} />,
+  post_reaction: <IconHeart size={20} />,
   event_reminder: <IconCalendar size={20} />,
   food_ticket: <IconToolsKitchen2 size={20} />,
 }
@@ -74,6 +76,7 @@ const notificationColors: Record<NotificationType, string> = {
   new_thread: "green",
   thread_reply: "green",
   post_reply: "green",
+  post_reaction: "pink",
   event_reminder: "violet",
   food_ticket: "teal",
 }

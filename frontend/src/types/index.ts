@@ -489,7 +489,7 @@ export interface WsNewNotification {
 export type WsMessage = WsNewMessage | WsMessagesRead | WsTyping | WsNewConversation | WsNewNotification
 
 // Notification Types
-export type NotificationType = "new_message" | "new_announcement" | "new_thread" | "thread_reply" | "post_reply" | "event_reminder" | "food_ticket"
+export type NotificationType = "new_message" | "new_announcement" | "new_thread" | "thread_reply" | "post_reply" | "post_reaction" | "event_reminder" | "food_ticket"
 
 export interface RelatedUser {
   id: number
