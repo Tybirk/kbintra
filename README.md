@@ -85,7 +85,7 @@ uv run python manage.py runserver 7000
 
 uv run ruff check --fix .   # Linting
 uv run ruff format .  # Formatting
-uvx ty check         # Type checking
+uvx ty check         # Type checking - note this is not completely implemented, so can be disregarded for now
 uv run pytest         # Tests
 ```
 
