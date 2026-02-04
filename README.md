@@ -76,15 +76,11 @@ uv run python manage.py migrate
 # Create superuser (for admin access)
 uv run python manage.py createsuperuser
 
-# Create default forum subgroups
-uv run python manage.py shell -c "
-from apps.forum.models import Subgroup
-Subgroup.objects.get_or_create(name='Common', defaults={'is_default': True, 'description': 'General community discussions'})
-Subgroup.objects.get_or_create(name='Important', defaults={'is_default': True, 'description': 'Important announcements'})
-"
+# Optionally seed some data (currently seed users requires a CSV I did not commit)
+uv run python manage.py seed_forum_subgroups.py
 
 # Run development server
-uv run python manage.py runserver
+uv run python manage.py runserver 7000
 
 
 uv run ruff check --fix .   # Linting
