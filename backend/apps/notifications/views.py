@@ -2,6 +2,8 @@
 Views for Notifications app.
 """
 
+import threading
+
 from django.conf import settings
 from django.db.models import QuerySet
 from rest_framework import generics, permissions, status
@@ -189,7 +191,48 @@ class TestPushNotificationView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Send test notification (bypass preferences check)
+        # Check for delay parameter (in seconds)
+        delay = request.data.get("delay", 0)
+        try:
+            delay = int(delay)
+            if delay < 0 or delay > 60:
+                delay = 0  # Cap at 60 seconds for safety
+        except (ValueError, TypeError):
+            delay = 0
+
+        user_id = request.user.id
+
+        def send_delayed_notification() -> None:
+            from django.contrib.auth import get_user_model
+
+            user_model = get_user_model()
+            try:
+                user = user_model.objects.get(id=user_id)
+                send_push_notification(
+                    user=user,
+                    notification_type=NotificationType.NEW_MESSAGE,
+                    title="Test Push Notification (Delayed)",
+                    message="This is a delayed test notification to verify push is working.",
+                    link="/notifikationer",
+                )
+            except user_model.DoesNotExist:
+                pass
+
+        if delay > 0:
+            # Schedule the notification to be sent after delay
+            timer = threading.Timer(delay, send_delayed_notification)
+            timer.start()
+            return Response(
+                {
+                    "configured": True,
+                    "scheduled": True,
+                    "delay": delay,
+                    "subscription_count": subscription_count,
+                    "message": f"Push notification scheduled to be sent in {delay} seconds",
+                }
+            )
+
+        # Send test notification immediately (bypass preferences check)
         result = send_push_notification(
             user=request.user,
             notification_type=NotificationType.NEW_MESSAGE,  # Use message type

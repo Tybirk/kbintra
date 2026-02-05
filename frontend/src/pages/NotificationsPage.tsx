@@ -411,6 +411,7 @@ function NotificationPreferencesModal({
   const [pushConfigured, setPushConfigured] = useState<boolean | null>(null)
   const [pushLoading, setPushLoading] = useState(false)
   const [testPushLoading, setTestPushLoading] = useState(false)
+  const [testPushDelayedLoading, setTestPushDelayedLoading] = useState(false)
   const [testPushResult, setTestPushResult] = useState<TestPushResult | null>(
     null,
   )
@@ -522,6 +523,30 @@ function NotificationPreferencesModal({
       )
     } finally {
       setTestPushLoading(false)
+    }
+  }
+
+  const handleTestPushDelayed = async () => {
+    setTestPushDelayedLoading(true)
+    setTestPushResult(null)
+    setTestPushError(null)
+    try {
+      const result = await notificationsApi.testPush(10)
+      setTestPushResult(result)
+      if (result.scheduled) {
+        notifications.show({
+          title: "Push notification scheduled",
+          message: `Test push will be sent in ${result.delay} seconds. You can close the app now.`,
+          color: "blue",
+        })
+      }
+    } catch (err) {
+      const error = err as { response?: { data?: { error?: string } } }
+      setTestPushError(
+        error.response?.data?.error || "Failed to schedule test notification",
+      )
+    } finally {
+      setTestPushDelayedLoading(false)
     }
   }
 
@@ -782,6 +807,15 @@ function NotificationPreferencesModal({
                         loading={testPushLoading}
                       >
                         Send Test Push Notification
+                      </Button>
+
+                      <Button
+                        variant="light"
+                        leftSection={<IconTestPipe size={16} />}
+                        onClick={handleTestPushDelayed}
+                        loading={testPushDelayedLoading}
+                      >
+                        Send Test Push (10s delay)
                       </Button>
 
                       {testPushError && (

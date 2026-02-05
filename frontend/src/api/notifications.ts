@@ -86,8 +86,10 @@ export const notificationsApi = {
   },
 
   // Send a test push notification (for debugging)
-  testPush: async (): Promise<TestPushResult> => {
-    const response = await apiClient.post("/notifications/push/test/")
+  testPush: async (delay?: number): Promise<TestPushResult> => {
+    const response = await apiClient.post("/notifications/push/test/", {
+      delay: delay ?? 0,
+    })
     return response.data
   },
 }
@@ -95,12 +97,15 @@ export const notificationsApi = {
 export interface TestPushResult {
   configured: boolean
   subscription_count: number
-  subscriptions: Array<{
+  scheduled?: boolean
+  delay?: number
+  message?: string
+  subscriptions?: Array<{
     id: number
     endpoint_domain: string
     created_at: string
   }>
-  result: {
+  result?: {
     total: number
     success_ids: number[]
     expired_ids: number[]
