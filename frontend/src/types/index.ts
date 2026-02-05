@@ -173,6 +173,7 @@ export interface Thread {
   title: string
   author: Author
   is_pinned: boolean
+  is_closed: boolean
   post_count: number
   last_post_at: string | null
   created_at: string
@@ -182,6 +183,7 @@ export interface Thread {
 export interface ThreadDetail extends Thread {
   subgroup_name: string
   is_own: boolean
+  can_close: boolean
   posts: Post[]
 }
 

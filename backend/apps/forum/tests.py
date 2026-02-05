@@ -303,6 +303,83 @@ class TestThreadViews:
         assert response.status_code == 403
 
 
+class TestThreadCloseViews:
+    """Tests for thread close/reopen functionality."""
+
+    def test_owner_can_close_thread(self, authenticated_client, thread):
+        """Test that thread owner can close their thread."""
+        response = authenticated_client.post(f"/api/forum/threads/{thread.id}/close/")
+        assert response.status_code == 200
+        assert response.data["is_closed"] is True
+        thread.refresh_from_db()
+        assert thread.is_closed is True
+
+    def test_owner_can_reopen_thread(self, authenticated_client, thread):
+        """Test that thread owner can reopen their closed thread."""
+        thread.is_closed = True
+        thread.save()
+
+        response = authenticated_client.post(f"/api/forum/threads/{thread.id}/close/")
+        assert response.status_code == 200
+        assert response.data["is_closed"] is False
+        thread.refresh_from_db()
+        assert thread.is_closed is False
+
+    def test_admin_can_close_thread(self, api_client, admin_user, thread):
+        """Test that admin can close any thread."""
+        api_client.force_authenticate(user=admin_user)
+        response = api_client.post(f"/api/forum/threads/{thread.id}/close/")
+        assert response.status_code == 200
+        assert response.data["is_closed"] is True
+
+    def test_non_owner_cannot_close_thread(self, api_client, second_user, thread):
+        """Test that non-owner cannot close thread."""
+        api_client.force_authenticate(user=second_user)
+        response = api_client.post(f"/api/forum/threads/{thread.id}/close/")
+        assert response.status_code == 403
+
+    def test_explicit_close_value(self, authenticated_client, thread):
+        """Test that explicit is_closed value can be passed."""
+        response = authenticated_client.post(
+            f"/api/forum/threads/{thread.id}/close/",
+            {"is_closed": True},
+        )
+        assert response.status_code == 200
+        assert response.data["is_closed"] is True
+
+    def test_cannot_post_to_closed_thread(self, authenticated_client, thread):
+        """Test that posting to a closed thread is rejected."""
+        thread.is_closed = True
+        thread.save()
+
+        response = authenticated_client.post(
+            f"/api/forum/threads/{thread.id}/posts/",
+            {"content": "This should fail"},
+        )
+        assert response.status_code == 403
+        assert "lukket" in response.data["detail"].lower()
+
+    def test_thread_detail_includes_closed_status(self, authenticated_client, thread):
+        """Test that thread detail includes is_closed and can_close fields."""
+        response = authenticated_client.get(f"/api/forum/threads/{thread.id}/")
+        assert response.status_code == 200
+        assert "is_closed" in response.data
+        assert "can_close" in response.data
+        assert response.data["is_closed"] is False
+        assert response.data["can_close"] is True  # Owner can close
+
+    def test_thread_list_includes_closed_status(self, authenticated_client, subgroup, thread):
+        """Test that thread list includes is_closed field."""
+        thread.is_closed = True
+        thread.save()
+
+        response = authenticated_client.get(f"/api/forum/subgroups/{subgroup.slug}/threads/")
+        assert response.status_code == 200
+        threads = get_results(response.data)
+        assert len(threads) == 1
+        assert threads[0]["is_closed"] is True
+
+
 class TestPostViews:
     """Tests for post views."""
 

@@ -30,6 +30,8 @@ import {
   IconTrash,
   IconSend,
   IconPaperclip,
+  IconLock,
+  IconLockOpen,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -173,6 +175,27 @@ export default function ThreadPage() {
     },
   })
 
+  const closeThreadMutation = useMutation({
+    mutationFn: (isClosed: boolean) => forumApi.closeThread(threadId, isClosed),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
+      notifications.show({
+        title: data.is_closed ? "Tråd lukket" : "Tråd genåbnet",
+        message: data.is_closed
+          ? "Denne tråd accepterer ikke længere nye svar."
+          : "Denne tråd er nu åben for nye svar.",
+        color: data.is_closed ? "orange" : "green",
+      })
+    },
+    onError: () => {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke opdatere trådens status. Prøv igen.",
+        color: "red",
+      })
+    },
+  })
+
   const handleSubmitPost = (e: React.FormEvent) => {
     e.preventDefault()
     if (!newPostContent.trim()) return
@@ -247,9 +270,16 @@ export default function ThreadPage() {
             <Text size="sm" c="dimmed" mb={4}>
               {thread.subgroup_name}
             </Text>
-            <Title order={2}>{thread.title}</Title>
+            <Group gap="sm">
+              <Title order={2}>{thread.title}</Title>
+              {thread.is_closed && (
+                <Badge color="orange" leftSection={<IconLock size={12} />}>
+                  Lukket
+                </Badge>
+              )}
+            </Group>
           </div>
-          {thread.is_own && (
+          {(thread.is_own || thread.can_close) && (
             <Menu shadow="md" width={200}>
               <Menu.Target>
                 <ActionIcon variant="subtle">
@@ -257,13 +287,31 @@ export default function ThreadPage() {
                 </ActionIcon>
               </Menu.Target>
               <Menu.Dropdown>
-                <Menu.Item
-                  color="red"
-                  leftSection={<IconTrash size={14} />}
-                  onClick={() => deleteThreadMutation.mutate(threadId)}
-                >
-                  Delete Thread
-                </Menu.Item>
+                {thread.can_close && (
+                  <Menu.Item
+                    leftSection={
+                      thread.is_closed ? (
+                        <IconLockOpen size={14} />
+                      ) : (
+                        <IconLock size={14} />
+                      )
+                    }
+                    onClick={() =>
+                      closeThreadMutation.mutate(!thread.is_closed)
+                    }
+                  >
+                    {thread.is_closed ? "Genåbn tråd" : "Luk tråd"}
+                  </Menu.Item>
+                )}
+                {thread.is_own && (
+                  <Menu.Item
+                    color="red"
+                    leftSection={<IconTrash size={14} />}
+                    onClick={() => deleteThreadMutation.mutate(threadId)}
+                  >
+                    Slet tråd
+                  </Menu.Item>
+                )}
               </Menu.Dropdown>
             </Menu>
           )}
@@ -311,59 +359,70 @@ export default function ThreadPage() {
 
       <Divider my="lg" />
 
-      <Paper withBorder p="lg" radius="md">
-        <form onSubmit={handleSubmitPost}>
-          <Stack gap="md">
-            <Text fw={500}>Add a Reply</Text>
-            <RichTextEditor
-              content={newPostContent}
-              onChange={setNewPostContent}
-              placeholder="Write your reply..."
-              minHeight={150}
-            />
+      {thread.is_closed ? (
+        <Paper withBorder p="lg" radius="md" bg="gray.0">
+          <Group justify="center" gap="xs">
+            <IconLock size={20} color="var(--mantine-color-gray-6)" />
+            <Text c="dimmed">
+              Denne tråd er lukket og accepterer ikke længere nye svar.
+            </Text>
+          </Group>
+        </Paper>
+      ) : (
+        <Paper withBorder p="lg" radius="md">
+          <form onSubmit={handleSubmitPost}>
+            <Stack gap="md">
+              <Text fw={500}>Add a Reply</Text>
+              <RichTextEditor
+                content={newPostContent}
+                onChange={setNewPostContent}
+                placeholder="Write your reply..."
+                minHeight={150}
+              />
 
-            {attachments.length > 0 && (
-              <Group gap="xs">
-                {attachments.map((file, index) => (
-                  <AttachmentBadge
-                    key={`${file.name}-${file.size}-${index}`}
-                    file={file}
-                    onRemove={() => handleRemoveFile(index)}
-                  />
-                ))}
+              {attachments.length > 0 && (
+                <Group gap="xs">
+                  {attachments.map((file, index) => (
+                    <AttachmentBadge
+                      key={`${file.name}-${file.size}-${index}`}
+                      file={file}
+                      onRemove={() => handleRemoveFile(index)}
+                    />
+                  ))}
+                </Group>
+              )}
+
+              <Group justify="space-between">
+                <FileButton
+                  resetRef={resetRef}
+                  onChange={handleAddFiles}
+                  multiple
+                >
+                  {(props) => (
+                    <Button
+                      variant="light"
+                      leftSection={<IconPaperclip size={16} />}
+                      {...props}
+                    >
+                      Attach Files
+                    </Button>
+                  )}
+                </FileButton>
+                <Button
+                  type="submit"
+                  leftSection={<IconSend size={16} />}
+                  loading={createPostMutation.isPending}
+                  disabled={
+                    !newPostContent.trim() || newPostContent === "<p></p>"
+                  }
+                >
+                  Post Reply
+                </Button>
               </Group>
-            )}
-
-            <Group justify="space-between">
-              <FileButton
-                resetRef={resetRef}
-                onChange={handleAddFiles}
-                multiple
-              >
-                {(props) => (
-                  <Button
-                    variant="light"
-                    leftSection={<IconPaperclip size={16} />}
-                    {...props}
-                  >
-                    Attach Files
-                  </Button>
-                )}
-              </FileButton>
-              <Button
-                type="submit"
-                leftSection={<IconSend size={16} />}
-                loading={createPostMutation.isPending}
-                disabled={
-                  !newPostContent.trim() || newPostContent === "<p></p>"
-                }
-              >
-                Post Reply
-              </Button>
-            </Group>
-          </Stack>
-        </form>
-      </Paper>
+            </Stack>
+          </form>
+        </Paper>
+      )}
 
       <Modal
         opened={deleteModalOpened}

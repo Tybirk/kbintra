@@ -94,6 +94,10 @@ class Thread(models.Model):
         related_name="threads",
     )
     is_pinned = models.BooleanField(default=False)
+    is_closed = models.BooleanField(
+        default=False,
+        help_text="If true, no new posts can be added to this thread.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

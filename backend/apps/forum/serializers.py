@@ -263,6 +263,7 @@ class ThreadSerializer(serializers.ModelSerializer):
             "title",
             "author",
             "is_pinned",
+            "is_closed",
             "post_count",
             "last_post_at",
             "created_at",
@@ -286,6 +287,7 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
     posts = PostSerializer(many=True, read_only=True)
     subgroup_name = serializers.CharField(source="subgroup.name", read_only=True)
     is_own = serializers.SerializerMethodField()
+    can_close = serializers.SerializerMethodField()
 
     class Meta:
         model = Thread
@@ -296,7 +298,9 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
             "title",
             "author",
             "is_pinned",
+            "is_closed",
             "is_own",
+            "can_close",
             "posts",
             "created_at",
             "updated_at",
@@ -306,6 +310,13 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if request and request.user.is_authenticated:
             return obj.author_id == request.user.id
+        return False
+
+    def get_can_close(self, obj: Thread) -> bool:
+        """Check if current user can close/reopen this thread (owner or admin)."""
+        request = self.context.get("request")
+        if request and request.user.is_authenticated:
+            return obj.author_id == request.user.id or request.user.is_staff
         return False
 
 

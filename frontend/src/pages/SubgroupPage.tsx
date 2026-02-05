@@ -28,6 +28,7 @@ import {
   IconArrowLeft,
   IconPlus,
   IconPin,
+  IconLock,
   IconMessage,
   IconFolder,
   IconUpload,
@@ -224,6 +225,9 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
             <Group gap="xs" mb={4}>
               {thread.is_pinned && (
                 <IconPin size={14} color="var(--mantine-color-blue-6)" />
+              )}
+              {thread.is_closed && (
+                <IconLock size={14} color="var(--mantine-color-orange-6)" />
               )}
               <Text fw={500} lineClamp={1}>
                 {thread.title}

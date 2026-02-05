@@ -25,8 +25,16 @@ class SubgroupSubscriptionAdmin(admin.ModelAdmin):
 
 @admin.register(Thread)
 class ThreadAdmin(admin.ModelAdmin):
-    list_display = ["title", "subgroup", "author", "is_pinned", "created_at", "updated_at"]
-    list_filter = ["subgroup", "is_pinned", "created_at"]
+    list_display = [
+        "title",
+        "subgroup",
+        "author",
+        "is_pinned",
+        "is_closed",
+        "created_at",
+        "updated_at",
+    ]
+    list_filter = ["subgroup", "is_pinned", "is_closed", "created_at"]
     search_fields = ["title", "author__email"]
     raw_id_fields = ["author", "subgroup"]
     date_hierarchy = "created_at"

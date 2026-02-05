@@ -101,6 +101,16 @@ export const forumApi = {
     await apiClient.delete(`/forum/threads/${threadId}/delete/`)
   },
 
+  closeThread: async (threadId: number, isClosed?: boolean): Promise<{
+    detail: string
+    is_closed: boolean
+  }> => {
+    const response = await apiClient.post(`/forum/threads/${threadId}/close/`, {
+      is_closed: isClosed,
+    })
+    return response.data
+  },
+
   // Posts
   getPosts: async (threadId: number): Promise<Post[]> => {
     const response = await apiClient.get(`/forum/threads/${threadId}/posts/`)

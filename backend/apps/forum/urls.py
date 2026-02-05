@@ -20,6 +20,7 @@ from .views import (
     SubgroupFileListCreateView,
     SubgroupListView,
     SubscribeView,
+    ThreadCloseView,
     ThreadDeleteView,
     ThreadDetailView,
     ThreadListCreateView,
@@ -38,6 +39,7 @@ urlpatterns = [
     # Threads
     path("subgroups/<slug:slug>/threads/", ThreadListCreateView.as_view(), name="thread-list"),
     path("threads/<int:pk>/", ThreadDetailView.as_view(), name="thread-detail"),
+    path("threads/<int:pk>/close/", ThreadCloseView.as_view(), name="thread-close"),
     path("threads/<int:pk>/delete/", ThreadDeleteView.as_view(), name="thread-delete"),
     # Posts
     path("threads/<int:thread_id>/posts/", PostListCreateView.as_view(), name="post-list"),

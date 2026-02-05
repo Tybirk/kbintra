@@ -41,6 +41,22 @@ class IsOwnerOrReadOnly(permissions.BasePermission):
         return False
 
 
+class IsOwnerOrAdmin(permissions.BasePermission):
+    """Permission to only allow owners or admins to perform action."""
+
+    def has_object_permission(self, request: Request, view: Any, obj: Any) -> bool:
+        # Admin can do anything
+        if request.user.is_staff:
+            return True
+        # Check for author attribute (for threads/posts)
+        if hasattr(obj, "author"):
+            return obj.author == request.user
+        # Check for uploaded_by attribute (for files)
+        if hasattr(obj, "uploaded_by"):
+            return obj.uploaded_by == request.user
+        return False
+
+
 # Subgroup Views
 class SubgroupListView(generics.ListAPIView):
     """List all subgroups."""
@@ -154,6 +170,41 @@ class ThreadDeleteView(generics.DestroyAPIView):
     queryset = Thread.objects.all()
 
 
+class ThreadCloseView(APIView):
+    """Close or reopen a thread (owner or admin only)."""
+
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrAdmin]
+
+    def get_object(self, pk: int) -> Thread:
+        obj = get_object_or_404(Thread, pk=pk)
+        self.check_object_permissions(self.request, obj)
+        return obj
+
+    def post(self, request: Request, pk: int) -> Response:
+        """Toggle the closed state of a thread."""
+        thread = self.get_object(pk)
+        # Toggle the closed state, or use explicit value if provided
+        if "is_closed" in request.data:
+            value = request.data["is_closed"]
+            # Handle string values from form data
+            if isinstance(value, str):
+                thread.is_closed = value.lower() in ("true", "1", "yes")
+            else:
+                thread.is_closed = bool(value)
+        else:
+            thread.is_closed = not thread.is_closed
+        thread.save(update_fields=["is_closed"])
+
+        action = "lukket" if thread.is_closed else "genåbnet"
+        return Response(
+            {
+                "detail": f"Tråden blev {action}.",
+                "is_closed": thread.is_closed,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 # Post Views
 class PostListCreateView(generics.ListCreateAPIView):
     """List posts in a thread or create a new post."""
@@ -178,6 +229,16 @@ class PostListCreateView(generics.ListCreateAPIView):
         if self.request.method == "POST":
             context["thread"] = get_object_or_404(Thread, pk=self.kwargs["thread_id"])
         return context
+
+    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        """Override create to check if thread is closed."""
+        thread = get_object_or_404(Thread, pk=self.kwargs["thread_id"])
+        if thread.is_closed:
+            return Response(
+                {"detail": "Denne tråd er lukket og accepterer ikke længere nye svar."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer: Any) -> None:
         serializer.save()
@@ -294,19 +355,6 @@ class FileDeleteView(generics.DestroyAPIView):
         if instance.file:
             instance.file.delete(save=False)
         instance.delete()
-
-
-class IsOwnerOrAdmin(permissions.BasePermission):
-    """Permission to only allow owners or admins to perform action."""
-
-    def has_object_permission(self, request: Request, view: Any, obj: Any) -> bool:
-        # Admin can do anything
-        if request.user.is_staff:
-            return True
-        # Check for uploaded_by attribute (for files)
-        if hasattr(obj, "uploaded_by"):
-            return obj.uploaded_by == request.user
-        return False
 
 
 class FileMoveView(APIView):
