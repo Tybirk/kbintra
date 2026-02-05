@@ -13,7 +13,6 @@ import {
   Box,
 } from "@mantine/core"
 import {
-  IconSettings,
   IconLogout,
   IconUser,
   IconChevronDown,
@@ -270,15 +269,6 @@ export default function AppHeader({
                 Mit hus
               </Menu.Item>
             )}
-            <Menu.Item
-              leftSection={
-                <IconSettings style={{ width: rem(14), height: rem(14) }} />
-              }
-              onClick={() => navigate("/indstillinger")}
-            >
-              Indstillinger
-            </Menu.Item>
-
             <Menu.Divider />
 
             <Menu.Item

@@ -324,27 +324,12 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            <Route
-              path="/indstillinger"
-              element={<ComingSoon title="Indstillinger" />}
-            />
-
             {/* Catch all */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </AppShell.Main>
       </AppShell>
     </ErrorBoundary>
-  )
-}
-
-// Placeholder component for future features
-function ComingSoon({ title }: { title: string }) {
-  return (
-    <div style={{ textAlign: "center", padding: "60px 20px" }}>
-      <h1>{title}</h1>
-      <p style={{ color: "gray" }}>This feature is coming soon!</p>
-    </div>
   )
 }
 
