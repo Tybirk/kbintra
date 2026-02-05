@@ -175,6 +175,13 @@ class PostCreateSerializer(serializers.ModelSerializer):
         model = Post
         fields = ["content", "attachments"]
 
+    def validate_attachments(self, value: list) -> list:
+        from .utils import validate_file_size
+
+        for file in value:
+            validate_file_size(file)
+        return value
+
     def create(self, validated_data: dict) -> Post:
         from django.utils import timezone
 
@@ -335,6 +342,13 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
         model = Thread
         fields = ["title", "content", "attachments"]
 
+    def validate_attachments(self, value: list) -> list:
+        from .utils import validate_file_size
+
+        for file in value:
+            validate_file_size(file)
+        return value
+
     def create(self, validated_data: dict) -> Thread:
         from django.utils import timezone
 
@@ -464,6 +478,12 @@ class FileUploadSerializer(serializers.ModelSerializer):
     class Meta:
         model = File
         fields = ["file", "name"]
+
+    def validate_file(self, value):
+        from .utils import validate_file_size
+
+        validate_file_size(value)
+        return value
 
     def create(self, validated_data: dict) -> File:
         from .utils import generate_docx_preview

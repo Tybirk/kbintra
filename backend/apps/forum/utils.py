@@ -4,7 +4,31 @@ Utility functions for the forum app.
 
 import logging
 
+from django.conf import settings
+from django.core.files.uploadedfile import UploadedFile
+from rest_framework import serializers
+
 logger = logging.getLogger(__name__)
+
+
+def validate_file_size(file: UploadedFile) -> None:
+    """
+    Validate that an uploaded file doesn't exceed the maximum allowed size.
+
+    Args:
+        file: The uploaded file to validate
+
+    Raises:
+        serializers.ValidationError: If the file exceeds MAX_UPLOAD_FILE_SIZE
+    """
+    max_size = getattr(settings, "MAX_UPLOAD_FILE_SIZE", 50 * 1024 * 1024)
+    if file.size > max_size:
+        max_size_mb = max_size / (1024 * 1024)
+        file_size_mb = file.size / (1024 * 1024)
+        raise serializers.ValidationError(
+            f"File '{file.name}' is too large ({file_size_mb:.1f}MB). "
+            f"Maximum allowed size is {max_size_mb:.0f}MB."
+        )
 
 
 def generate_docx_preview(file_field) -> str:
@@ -15,8 +39,8 @@ def generate_docx_preview(file_field) -> str:
         file_field: Django FileField containing the uploaded file
 
     Returns:
-        HTML string preview of the document, or empty string if not a DOCX
-        or conversion fails.
+        HTML string preview of the document, or empty string if not a DOCX,
+        file is too large, or conversion fails.
     """
     if not file_field or not file_field.name:
         return ""
@@ -25,6 +49,21 @@ def generate_docx_preview(file_field) -> str:
     filename = file_field.name.lower()
     if not filename.endswith(".docx"):
         return ""
+
+    # Skip preview for files larger than MAX_DOCX_PREVIEW_SIZE
+    max_preview_size = getattr(settings, "MAX_DOCX_PREVIEW_SIZE", 50 * 1024 * 1024)
+    try:
+        file_size = file_field.size
+        if file_size > max_preview_size:
+            logger.info(
+                f"Skipping DOCX preview for {file_field.name}: "
+                f"file size ({file_size / (1024 * 1024):.1f}MB) exceeds limit "
+                f"({max_preview_size / (1024 * 1024):.0f}MB)"
+            )
+            return ""
+    except (AttributeError, OSError):
+        # If we can't determine file size, proceed with preview generation
+        pass
 
     try:
         import mammoth

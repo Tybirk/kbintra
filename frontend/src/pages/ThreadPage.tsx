@@ -37,6 +37,7 @@ import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
 
 import { forumApi } from "../api/forum"
+import { filterFilesBySize } from "../config"
 import RichTextEditor from "../components/RichTextEditor"
 import Reactions from "../components/Reactions"
 import {
@@ -206,7 +207,19 @@ export default function ThreadPage() {
   }
 
   const handleAddFiles = (files: File[]) => {
-    setAttachments((prev) => [...prev, ...files])
+    const { validFiles, errors } = filterFilesBySize(files)
+    if (errors.length > 0) {
+      errors.forEach((error) => {
+        notifications.show({
+          title: "File too large",
+          message: error,
+          color: "red",
+        })
+      })
+    }
+    if (validFiles.length > 0) {
+      setAttachments((prev) => [...prev, ...validFiles])
+    }
   }
 
   const handleRemoveFile = (index: number) => {

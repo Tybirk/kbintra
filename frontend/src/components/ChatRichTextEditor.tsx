@@ -11,6 +11,7 @@ import {
   ScrollArea,
 } from "@mantine/core"
 import { useMediaQuery } from "@mantine/hooks"
+import { notifications } from "@mantine/notifications"
 import {
   IconSend,
   IconPaperclip,
@@ -18,6 +19,7 @@ import {
   IconPhoto,
 } from "@tabler/icons-react"
 import { useRef, useEffect, useState, type KeyboardEvent } from "react"
+import { filterFilesBySize } from "../config"
 import EmojiPicker from "./EmojiPicker"
 
 interface ChatRichTextEditorProps {
@@ -125,7 +127,19 @@ export default function ChatRichTextEditor({
   }
 
   const handleFilesSelected = (files: File[]) => {
-    onAttachmentsChange([...attachments, ...files])
+    const { validFiles, errors } = filterFilesBySize(files)
+    if (errors.length > 0) {
+      errors.forEach((error) => {
+        notifications.show({
+          title: "File too large",
+          message: error,
+          color: "red",
+        })
+      })
+    }
+    if (validFiles.length > 0) {
+      onAttachmentsChange([...attachments, ...validFiles])
+    }
   }
 
   const handleRemoveFile = (index: number) => {

@@ -138,6 +138,10 @@ REST_FRAMEWORK = {
 DATA_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50MB
 FILE_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50MB
 
+# Application-level file limits (validated in serializers)
+MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024  # 50MB per file
+MAX_DOCX_PREVIEW_SIZE = 50 * 1024 * 1024  # 50MB - skip DOCX preview for larger files
+
 # JWT settings
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),

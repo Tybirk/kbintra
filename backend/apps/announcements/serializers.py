@@ -84,6 +84,13 @@ class AnnouncementCreateSerializer(serializers.ModelSerializer):
         model = Announcement
         fields = ["title", "content", "is_active", "priority", "attachments"]
 
+    def validate_attachments(self, value: list) -> list:
+        from apps.forum.utils import validate_file_size
+
+        for file in value:
+            validate_file_size(file)
+        return value
+
     def create(self, validated_data: dict) -> Announcement:
         from apps.notifications.services import notify_new_announcement
 

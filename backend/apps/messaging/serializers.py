@@ -155,6 +155,13 @@ class CreateConversationSerializer(serializers.Serializer):
         required=False,
     )
 
+    def validate_attachments(self, value: list) -> list:
+        from apps.forum.utils import validate_file_size
+
+        for file in value:
+            validate_file_size(file)
+        return value
+
     def validate_participant_ids(self, value: list) -> list:
         request = self.context.get("request")
         if request and request.user.id in value:
@@ -198,6 +205,13 @@ class CreateMessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = Message
         fields = ["content", "attachments"]
+
+    def validate_attachments(self, value: list) -> list:
+        from apps.forum.utils import validate_file_size
+
+        for file in value:
+            validate_file_size(file)
+        return value
 
     def validate(self, attrs: dict) -> dict:
         content = attrs.get("content", "").strip()

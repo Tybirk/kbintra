@@ -44,6 +44,11 @@ import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
 
 import { forumApi } from "../api/forum"
+import {
+  filterFilesBySize,
+  validateFileSize,
+  MAX_UPLOAD_FILE_SIZE_MB,
+} from "../config"
 import RichTextEditor from "../components/RichTextEditor"
 import {
   FilePreviewModal,
@@ -310,7 +315,19 @@ function CreateThreadModal({
   }
 
   const handleAddFiles = (files: File[]) => {
-    setAttachments((prev) => [...prev, ...files])
+    const { validFiles, errors } = filterFilesBySize(files)
+    if (errors.length > 0) {
+      errors.forEach((error) => {
+        notifications.show({
+          title: "File too large",
+          message: error,
+          color: "red",
+        })
+      })
+    }
+    if (validFiles.length > 0) {
+      setAttachments((prev) => [...prev, ...validFiles])
+    }
   }
 
   const handleRemoveFile = (index: number) => {
@@ -902,8 +919,22 @@ function UploadFileModal({
           <FileInput
             label="Vælg fil"
             placeholder="Klik for at vælge fil..."
+            description={`Max ${MAX_UPLOAD_FILE_SIZE_MB}MB`}
             value={file}
-            onChange={setFile}
+            onChange={(newFile) => {
+              if (newFile) {
+                const error = validateFileSize(newFile)
+                if (error) {
+                  notifications.show({
+                    title: "File too large",
+                    message: error,
+                    color: "red",
+                  })
+                  return
+                }
+              }
+              setFile(newFile)
+            }}
             required
           />
           <TextInput
