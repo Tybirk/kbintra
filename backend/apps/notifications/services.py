@@ -238,26 +238,27 @@ def create_notification(
         html_content: Optional rich HTML content for email (announcements, posts, etc.)
 
     Returns:
-        The created notification, or None if user opted out
+        The created notification, or None if user opted out of in-app notifications
     """
-    # Check user preferences
-    if check_preferences and not get_user_preference(user, notification_type):
-        return None
+    notification = None
 
-    notification = Notification.objects.create(
-        user=user,
-        notification_type=notification_type,
-        title=title,
-        message=message,
-        link=link,
-        related_user=related_user,
-    )
+    # Create in-app notification if user wants it (or if check_preferences is False)
+    if not check_preferences or get_user_preference(user, notification_type):
+        notification = Notification.objects.create(
+            user=user,
+            notification_type=notification_type,
+            title=title,
+            message=message,
+            link=link,
+            related_user=related_user,
+        )
 
-    # Send real-time notification via WebSocket
-    with contextlib.suppress(Exception):
-        send_notification_to_websocket(notification)
+        # Send real-time notification via WebSocket
+        with contextlib.suppress(Exception):
+            send_notification_to_websocket(notification)
 
     # Send email notification if user has email enabled for this type
+    # (email_service checks its own preferences)
     with contextlib.suppress(Exception):
         from .email_service import send_notification_email
 
@@ -272,6 +273,7 @@ def create_notification(
         )
 
     # Send push notification if user has push enabled for this type
+    # (send_push_notification checks its own preferences)
     with contextlib.suppress(Exception):
         send_push_notification(
             user=user,
