@@ -12,8 +12,6 @@ import {
   Anchor,
   Alert,
 } from "@mantine/core"
-import { notifications } from "@mantine/notifications"
-
 import { useAuthStore } from "../store/authStore"
 
 interface LocationState {
@@ -35,11 +33,6 @@ export default function LoginPage() {
 
     try {
       await login(email, password)
-      notifications.show({
-        title: "Velkommen tilbage!",
-        message: "Du er nu logget ind.",
-        color: "green",
-      })
       navigate(from, { replace: true })
     } catch {
       // Error is handled by the store

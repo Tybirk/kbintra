@@ -89,11 +89,6 @@ export default function ProfileEditPage() {
     onSuccess: (updatedUser) => {
       updateUser(updatedUser)
       queryClient.invalidateQueries({ queryKey: ["user"] })
-      notifications.show({
-        title: "Picture updated",
-        message: "Your profile picture has been updated.",
-        color: "green",
-      })
     },
     onError: () => {
       notifications.show({

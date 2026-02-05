@@ -12,7 +12,6 @@ import {
   Anchor,
   Alert,
 } from "@mantine/core"
-import { notifications } from "@mantine/notifications"
 import { IconArrowLeft, IconCheck, IconAlertCircle } from "@tabler/icons-react"
 
 import { authApi } from "../api/auth"
@@ -39,11 +38,6 @@ export default function ResetPasswordPage() {
     mutationFn: (data: ResetPasswordData) => authApi.resetPassword(data),
     onSuccess: () => {
       setSuccess(true)
-      notifications.show({
-        title: "Adgangskode nulstillet",
-        message: "Din adgangskode er blevet nulstillet. Du kan nu logge ind.",
-        color: "green",
-      })
     },
     onError: (err: { response?: { data?: Record<string, string[]> } }) => {
       const data = err.response?.data

@@ -132,11 +132,6 @@ function PreferenceCard({
       foodApi.createPreference(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "preferences"] })
-      notifications.show({
-        title: "Gemt",
-        message: `Præferencer gemt for ${dayName}`,
-        color: "green",
-      })
     },
     onError: () => {
       notifications.show({
@@ -152,11 +147,6 @@ function PreferenceCard({
       foodApi.updatePreference(preference!.id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "preferences"] })
-      notifications.show({
-        title: "Opdateret",
-        message: `Præferencer opdateret for ${dayName}`,
-        color: "green",
-      })
     },
     onError: () => {
       notifications.show({

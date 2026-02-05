@@ -436,11 +436,6 @@ function NotificationPreferencesModal({
     mutationFn: notificationsApi.updatePreferences,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notification-preferences"] })
-      notifications.show({
-        title: "Indstillinger opdateret",
-        message: "Dine notifikationsindstillinger er blevet gemt.",
-        color: "green",
-      })
     },
     onError: () => {
       notifications.show({
