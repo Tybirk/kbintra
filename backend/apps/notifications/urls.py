@@ -11,6 +11,7 @@ from .views import (
     NotificationListView,
     NotificationPreferenceView,
     PushSubscriptionView,
+    TestPushNotificationView,
     UnreadNotificationCountView,
     VapidPublicKeyView,
 )
@@ -25,4 +26,5 @@ urlpatterns = [
     # Push notifications
     path("push/vapid-key/", VapidPublicKeyView.as_view(), name="push-vapid-key"),
     path("push/subscribe/", PushSubscriptionView.as_view(), name="push-subscribe"),
+    path("push/test/", TestPushNotificationView.as_view(), name="push-test"),
 ]

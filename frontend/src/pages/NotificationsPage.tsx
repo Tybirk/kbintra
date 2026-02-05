@@ -19,6 +19,8 @@ import {
   Tabs,
   Box,
   Alert,
+  Code,
+  Divider,
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -38,11 +40,12 @@ import {
   IconDeviceMobile,
   IconInfoCircle,
   IconHeart,
+  IconTestPipe,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
 
-import { notificationsApi } from "../api/notifications"
+import { notificationsApi, type TestPushResult } from "../api/notifications"
 import {
   isPushSupported,
   getNotificationPermission,
@@ -407,6 +410,11 @@ function NotificationPreferencesModal({
   const [pushSubscribed, setPushSubscribed] = useState(false)
   const [pushConfigured, setPushConfigured] = useState<boolean | null>(null)
   const [pushLoading, setPushLoading] = useState(false)
+  const [testPushLoading, setTestPushLoading] = useState(false)
+  const [testPushResult, setTestPushResult] = useState<TestPushResult | null>(
+    null,
+  )
+  const [testPushError, setTestPushError] = useState<string | null>(null)
 
   // Check push subscription status and server configuration when modal opens
   useEffect(() => {
@@ -497,6 +505,23 @@ function NotificationPreferencesModal({
       }
     } finally {
       setPushLoading(false)
+    }
+  }
+
+  const handleTestPush = async () => {
+    setTestPushLoading(true)
+    setTestPushResult(null)
+    setTestPushError(null)
+    try {
+      const result = await notificationsApi.testPush()
+      setTestPushResult(result)
+    } catch (err) {
+      const error = err as { response?: { data?: { error?: string } } }
+      setTestPushError(
+        error.response?.data?.error || "Failed to send test notification",
+      )
+    } finally {
+      setTestPushLoading(false)
     }
   }
 
@@ -747,6 +772,34 @@ function NotificationPreferencesModal({
                           )
                         }
                       />
+
+                      <Divider my="md" label="Debug" labelPosition="center" />
+
+                      <Button
+                        variant="light"
+                        leftSection={<IconTestPipe size={16} />}
+                        onClick={handleTestPush}
+                        loading={testPushLoading}
+                      >
+                        Send Test Push Notification
+                      </Button>
+
+                      {testPushError && (
+                        <Alert color="red" title="Error">
+                          {testPushError}
+                        </Alert>
+                      )}
+
+                      {testPushResult && (
+                        <Box>
+                          <Text size="sm" fw={500} mb="xs">
+                            Web Push API Response:
+                          </Text>
+                          <Code block style={{ whiteSpace: "pre-wrap" }}>
+                            {JSON.stringify(testPushResult, null, 2)}
+                          </Code>
+                        </Box>
+                      )}
                     </>
                   )}
                 </>

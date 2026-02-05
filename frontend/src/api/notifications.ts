@@ -84,4 +84,27 @@ export const notificationsApi = {
       data: { endpoint },
     })
   },
+
+  // Send a test push notification (for debugging)
+  testPush: async (): Promise<TestPushResult> => {
+    const response = await apiClient.post("/notifications/push/test/")
+    return response.data
+  },
+}
+
+export interface TestPushResult {
+  configured: boolean
+  subscription_count: number
+  subscriptions: Array<{
+    id: number
+    endpoint_domain: string
+    created_at: string
+  }>
+  result: {
+    total: number
+    success_ids: number[]
+    expired_ids: number[]
+    failed_ids: number[]
+  }
+  error?: string
 }

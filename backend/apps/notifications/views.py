@@ -9,7 +9,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Notification, NotificationPreference, PushSubscription
+from .models import Notification, NotificationPreference, NotificationType, PushSubscription
 from .serializers import (
     MarkNotificationsReadSerializer,
     NotificationPreferenceSerializer,
@@ -17,6 +17,7 @@ from .serializers import (
     PushSubscriptionInputSerializer,
     PushSubscriptionSerializer,
 )
+from .services import send_push_notification
 
 
 class NotificationListView(generics.ListAPIView):
@@ -155,3 +156,62 @@ class PushSubscriptionView(APIView):
             )
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class TestPushNotificationView(APIView):
+    """Send a test push notification to the current user for debugging."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request) -> Response:
+        # Check if push is configured
+        vapid_private_key = getattr(settings, "VAPID_PRIVATE_KEY", None)
+        if not vapid_private_key:
+            return Response(
+                {
+                    "error": "VAPID_PRIVATE_KEY not configured",
+                    "configured": False,
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        # Get user's subscriptions for debug info
+        subscriptions = PushSubscription.objects.filter(user=request.user)
+        subscription_count = subscriptions.count()
+
+        if subscription_count == 0:
+            return Response(
+                {
+                    "error": "No push subscriptions found for this user",
+                    "subscription_count": 0,
+                    "configured": True,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Send test notification (bypass preferences check)
+        result = send_push_notification(
+            user=request.user,
+            notification_type=NotificationType.NEW_MESSAGE,  # Use message type
+            title="Test Push Notification",
+            message="This is a test notification to verify push is working.",
+            link="/notifikationer",
+        )
+
+        return Response(
+            {
+                "configured": True,
+                "subscription_count": subscription_count,
+                "subscriptions": [
+                    {
+                        "id": sub.id,
+                        "endpoint_domain": sub.endpoint.split("/")[2]
+                        if "/" in sub.endpoint
+                        else sub.endpoint[:50],
+                        "created_at": sub.created_at.isoformat(),
+                    }
+                    for sub in subscriptions
+                ],
+                "result": result,
+            }
+        )
