@@ -576,14 +576,6 @@ function NotificationPreferencesModal({
                 Vælg hvilke notifikationer du vil modtage i appen.
               </Text>
               <Switch
-                label="Nye beskeder"
-                description="Når nogen sender dig en direkte besked"
-                checked={preferences.notify_messages}
-                onChange={(e) =>
-                  handleToggle("notify_messages", e.currentTarget.checked)
-                }
-              />
-              <Switch
                 label="Opslag"
                 description="Når nye fællesskabsopslag bliver oprettet"
                 checked={preferences.notify_announcements}

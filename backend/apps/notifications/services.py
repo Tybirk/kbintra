@@ -68,7 +68,6 @@ def get_user_preference(user: User, notification_type: NotificationType) -> bool
         return True
 
     preference_map = {
-        NotificationType.NEW_MESSAGE: prefs.notify_messages,
         NotificationType.NEW_ANNOUNCEMENT: prefs.notify_announcements,
         NotificationType.NEW_THREAD: prefs.notify_forum_subscriptions,
         NotificationType.THREAD_REPLY: prefs.notify_thread_replies,
@@ -242,8 +241,11 @@ def create_notification(
     """
     notification = None
 
+    # Skip in-app notifications for messages — the unread message count handles that
+    skip_in_app = notification_type == NotificationType.NEW_MESSAGE
+
     # Create in-app notification if user wants it (or if check_preferences is False)
-    if not check_preferences or get_user_preference(user, notification_type):
+    if not skip_in_app and (not check_preferences or get_user_preference(user, notification_type)):
         notification = Notification.objects.create(
             user=user,
             notification_type=notification_type,
