@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
@@ -21,7 +21,7 @@ import {
   Box,
   Indicator,
 } from "@mantine/core"
-import { Calendar, DateTimePicker } from "@mantine/dates"
+import { Calendar, DateInput, TimePicker } from "@mantine/dates"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
 import {
@@ -39,6 +39,66 @@ import dayjs from "dayjs"
 import { calendarApi } from "../api/calendar"
 import type { CalendarEvent, CreateEventData } from "../types"
 
+const TIME_PRESETS = [
+  {
+    label: "Morgen",
+    values: [
+      "06:00",
+      "06:30",
+      "07:00",
+      "07:30",
+      "08:00",
+      "08:30",
+      "09:00",
+      "09:30",
+      "10:00",
+      "10:30",
+      "11:00",
+      "11:30",
+    ],
+  },
+  {
+    label: "Eftermiddag",
+    values: [
+      "12:00",
+      "12:30",
+      "13:00",
+      "13:30",
+      "14:00",
+      "14:30",
+      "15:00",
+      "15:30",
+      "16:00",
+      "16:30",
+      "17:00",
+      "17:30",
+    ],
+  },
+  {
+    label: "Aften",
+    values: [
+      "18:00",
+      "18:30",
+      "19:00",
+      "19:30",
+      "20:00",
+      "20:30",
+      "21:00",
+      "21:30",
+      "22:00",
+      "22:30",
+      "23:00",
+      "23:30",
+    ],
+  },
+]
+
+function addOneHour(time: string): string {
+  const [hours, minutes] = time.split(":").map(Number)
+  const newHours = Math.min(hours + 1, 23)
+  return `${newHours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`
+}
+
 export default function CalendarPage() {
   const queryClient = useQueryClient()
   const [selectedMonth, setSelectedMonth] = useState(new Date())
@@ -46,6 +106,8 @@ export default function CalendarPage() {
     createModalOpened,
     { open: openCreateModal, close: closeCreateModal },
   ] = useDisclosure(false)
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null)
+  const [createInitialDate, setCreateInitialDate] = useState<Date | null>(null)
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
   const [
     deleteModalOpened,
@@ -191,6 +253,17 @@ export default function CalendarPage() {
               date={selectedMonth}
               onDateChange={(date) => setSelectedMonth(new Date(date))}
               size="md"
+              getDayProps={(date) => ({
+                onClick: () => setSelectedDate(new Date(date)),
+                style:
+                  selectedDate && dayjs(date).isSame(dayjs(selectedDate), "day")
+                    ? {
+                        backgroundColor: "var(--mantine-color-blue-filled)",
+                        color: "white",
+                        borderRadius: "var(--mantine-radius-default)",
+                      }
+                    : undefined,
+              })}
               renderDay={(date) => {
                 const dateValue = new Date(date)
                 const dateKey = dayjs(dateValue).format("YYYY-MM-DD")
@@ -213,44 +286,115 @@ export default function CalendarPage() {
 
         {/* Events List */}
         <Paper withBorder p="md" radius="md">
-          <Text fw={500} mb="md">
-            Begivenheder i {dayjs(selectedMonth).format("MMMM YYYY")}
-          </Text>
-
-          {isLoading ? (
-            <Center h={200}>
-              <Loader size="md" />
-            </Center>
-          ) : monthEvents?.length === 0 ? (
-            <Center h={200}>
-              <Stack align="center" gap="xs">
-                <IconCalendarEvent size={48} color="gray" />
-                <Text c="dimmed">Ingen begivenheder denne måned.</Text>
-                <Button onClick={openCreateModal} mt="sm">
-                  Opret begivenhed
+          {selectedDate ? (
+            <>
+              <Group justify="space-between" mb="md">
+                <Text fw={500}>
+                  {dayjs(selectedDate).format("ddd D. MMMM YYYY")}
+                </Text>
+                <Button
+                  variant="subtle"
+                  size="xs"
+                  onClick={() => setSelectedDate(null)}
+                >
+                  Vis hele måneden
                 </Button>
-              </Stack>
-            </Center>
+              </Group>
+
+              {isLoading ? (
+                <Center h={200}>
+                  <Loader size="md" />
+                </Center>
+              ) : (
+                <>
+                  {(() => {
+                    const dateEvents = events?.filter((event) =>
+                      dayjs(event.start_datetime).isSame(
+                        dayjs(selectedDate),
+                        "day",
+                      ),
+                    )
+                    return dateEvents?.length ? (
+                      <Stack gap="sm">
+                        {dateEvents.map((event) => (
+                          <EventCard
+                            key={event.id}
+                            event={event}
+                            onEdit={() => setEditingEvent(event)}
+                            onDelete={() => handleDeleteClick(event.id)}
+                          />
+                        ))}
+                      </Stack>
+                    ) : (
+                      <Center h={100}>
+                        <Text c="dimmed">
+                          Ingen begivenheder på denne dato.
+                        </Text>
+                      </Center>
+                    )
+                  })()}
+                  <Button
+                    leftSection={<IconPlus size={16} />}
+                    variant="light"
+                    fullWidth
+                    mt="md"
+                    onClick={() => {
+                      setCreateInitialDate(selectedDate)
+                      openCreateModal()
+                    }}
+                  >
+                    Opret begivenhed d. {dayjs(selectedDate).format("D. MMMM")}
+                  </Button>
+                </>
+              )}
+            </>
           ) : (
-            <Stack gap="sm">
-              {monthEvents?.map((event) => (
-                <EventCard
-                  key={event.id}
-                  event={event}
-                  onEdit={() => setEditingEvent(event)}
-                  onDelete={() => handleDeleteClick(event.id)}
-                />
-              ))}
-            </Stack>
+            <>
+              <Text fw={500} mb="md">
+                Begivenheder i {dayjs(selectedMonth).format("MMMM YYYY")}
+              </Text>
+
+              {isLoading ? (
+                <Center h={200}>
+                  <Loader size="md" />
+                </Center>
+              ) : monthEvents?.length === 0 ? (
+                <Center h={200}>
+                  <Stack align="center" gap="xs">
+                    <IconCalendarEvent size={48} color="gray" />
+                    <Text c="dimmed">Ingen begivenheder denne måned.</Text>
+                    <Button onClick={openCreateModal} mt="sm">
+                      Opret begivenhed
+                    </Button>
+                  </Stack>
+                </Center>
+              ) : (
+                <Stack gap="sm">
+                  {monthEvents?.map((event) => (
+                    <EventCard
+                      key={event.id}
+                      event={event}
+                      onEdit={() => setEditingEvent(event)}
+                      onDelete={() => handleDeleteClick(event.id)}
+                    />
+                  ))}
+                </Stack>
+              )}
+            </>
           )}
         </Paper>
       </SimpleGrid>
 
       <CreateEventModal
         opened={createModalOpened}
-        onClose={closeCreateModal}
+        onClose={() => {
+          setCreateInitialDate(null)
+          closeCreateModal()
+        }}
+        initialDate={createInitialDate}
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ["calendar"] })
+          setCreateInitialDate(null)
           closeCreateModal()
         }}
       />
@@ -392,19 +536,61 @@ interface CreateEventModalProps {
   opened: boolean
   onClose: () => void
   onSuccess: () => void
+  initialDate?: Date | null
 }
 
 function CreateEventModal({
   opened,
   onClose,
   onSuccess,
+  initialDate,
 }: CreateEventModalProps) {
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [location, setLocation] = useState("")
   const [isAllDay, setIsAllDay] = useState(false)
-  const [startDatetime, setStartDatetime] = useState<Date | null>(null)
-  const [endDatetime, setEndDatetime] = useState<Date | null>(null)
+  const [startDate, setStartDate] = useState<Date | null>(null)
+  const [startTime, setStartTime] = useState("")
+  const [endDate, setEndDate] = useState<Date | null>(null)
+  const [endTime, setEndTime] = useState("")
+
+  // Pre-fill start/end from initialDate when modal opens
+  useEffect(() => {
+    if (opened && initialDate) {
+      setStartDate(initialDate)
+      setEndDate(initialDate)
+      setStartTime("12:00")
+      setEndTime("13:00")
+    }
+  }, [opened, initialDate])
+
+  // Compute combined datetimes
+  const startDatetime = useMemo(() => {
+    if (!startDate || !startTime) return null
+    const [hours, minutes] = startTime.split(":").map(Number)
+    return dayjs(startDate).hour(hours).minute(minutes).second(0).toDate()
+  }, [startDate, startTime])
+
+  const endDatetime = useMemo(() => {
+    if (!endDate || !endTime) return null
+    const [hours, minutes] = endTime.split(":").map(Number)
+    return dayjs(endDate).hour(hours).minute(minutes).second(0).toDate()
+  }, [endDate, endTime])
+
+  const handleStartDateChange = (value: string | null) => {
+    const newDate = value ? new Date(value) : null
+    setStartDate(newDate)
+    if (newDate && !endDate) {
+      setEndDate(newDate)
+    }
+  }
+
+  const handleStartTimeChange = (value: string) => {
+    setStartTime(value)
+    if (value && (!endTime || endTime <= value)) {
+      setEndTime(addOneHour(value))
+    }
+  }
 
   const createMutation = useMutation({
     mutationFn: (data: CreateEventData) => calendarApi.createEvent(data),
@@ -431,8 +617,10 @@ function CreateEventModal({
     setDescription("")
     setLocation("")
     setIsAllDay(false)
-    setStartDatetime(null)
-    setEndDatetime(null)
+    setStartDate(null)
+    setStartTime("")
+    setEndDate(null)
+    setEndTime("")
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -493,26 +681,44 @@ function CreateEventModal({
             onChange={(e) => setIsAllDay(e.currentTarget.checked)}
           />
 
-          <DateTimePicker
-            label="Start"
-            placeholder="Vælg startdato og -tid"
-            value={startDatetime}
-            onChange={(value) =>
-              setStartDatetime(value ? new Date(value) : null)
-            }
-            withSeconds={false}
-            required
-          />
+          <Group grow>
+            <DateInput
+              label="Startdato"
+              placeholder="Vælg dato"
+              value={startDate}
+              onChange={handleStartDateChange}
+              required
+            />
+            <TimePicker
+              label="Starttid"
+              description="Skriv eller vælg tid"
+              value={startTime}
+              onChange={handleStartTimeChange}
+              withDropdown
+              maxDropdownContentHeight={200}
+              presets={TIME_PRESETS}
+            />
+          </Group>
 
-          <DateTimePicker
-            label="Slut"
-            placeholder="Vælg slutdato og -tid"
-            value={endDatetime}
-            onChange={(value) => setEndDatetime(value ? new Date(value) : null)}
-            withSeconds={false}
-            minDate={startDatetime || undefined}
-            required
-          />
+          <Group grow>
+            <DateInput
+              label="Slutdato"
+              placeholder="Vælg dato"
+              value={endDate}
+              onChange={(value) => setEndDate(value ? new Date(value) : null)}
+              minDate={startDate || undefined}
+              required
+            />
+            <TimePicker
+              label="Sluttid"
+              description="Skriv eller vælg tid"
+              value={endTime}
+              onChange={(value) => setEndTime(value)}
+              withDropdown
+              maxDropdownContentHeight={200}
+              presets={TIME_PRESETS}
+            />
+          </Group>
 
           <Group justify="flex-end">
             <Button variant="light" onClick={handleClose}>
@@ -549,12 +755,30 @@ function EditEventModal({
   const [description, setDescription] = useState(event.description)
   const [location, setLocation] = useState(event.location)
   const [isAllDay, setIsAllDay] = useState(event.is_all_day)
-  const [startDatetime, setStartDatetime] = useState<Date | null>(
+  const [startDate, setStartDate] = useState<Date | null>(
     new Date(event.start_datetime),
   )
-  const [endDatetime, setEndDatetime] = useState<Date | null>(
+  const [startTime, setStartTime] = useState(
+    dayjs(event.start_datetime).format("HH:mm"),
+  )
+  const [endDate, setEndDate] = useState<Date | null>(
     new Date(event.end_datetime),
   )
+  const [endTime, setEndTime] = useState(
+    dayjs(event.end_datetime).format("HH:mm"),
+  )
+
+  const startDatetime = useMemo(() => {
+    if (!startDate || !startTime) return null
+    const [hours, minutes] = startTime.split(":").map(Number)
+    return dayjs(startDate).hour(hours).minute(minutes).second(0).toDate()
+  }, [startDate, startTime])
+
+  const endDatetime = useMemo(() => {
+    if (!endDate || !endTime) return null
+    const [hours, minutes] = endTime.split(":").map(Number)
+    return dayjs(endDate).hour(hours).minute(minutes).second(0).toDate()
+  }, [endDate, endTime])
 
   const updateMutation = useMutation({
     mutationFn: (data: CreateEventData) =>
@@ -629,26 +853,44 @@ function EditEventModal({
             onChange={(e) => setIsAllDay(e.currentTarget.checked)}
           />
 
-          <DateTimePicker
-            label="Start"
-            placeholder="Vælg startdato og -tid"
-            value={startDatetime}
-            onChange={(value) =>
-              setStartDatetime(value ? new Date(value) : null)
-            }
-            withSeconds={false}
-            required
-          />
+          <Group grow>
+            <DateInput
+              label="Startdato"
+              placeholder="Vælg dato"
+              value={startDate}
+              onChange={(value) => setStartDate(value ? new Date(value) : null)}
+              required
+            />
+            <TimePicker
+              label="Starttid"
+              description="Skriv eller vælg tid"
+              value={startTime}
+              onChange={(value) => setStartTime(value)}
+              withDropdown
+              maxDropdownContentHeight={200}
+              presets={TIME_PRESETS}
+            />
+          </Group>
 
-          <DateTimePicker
-            label="Slut"
-            placeholder="Vælg slutdato og -tid"
-            value={endDatetime}
-            onChange={(value) => setEndDatetime(value ? new Date(value) : null)}
-            withSeconds={false}
-            minDate={startDatetime || undefined}
-            required
-          />
+          <Group grow>
+            <DateInput
+              label="Slutdato"
+              placeholder="Vælg dato"
+              value={endDate}
+              onChange={(value) => setEndDate(value ? new Date(value) : null)}
+              minDate={startDate || undefined}
+              required
+            />
+            <TimePicker
+              label="Sluttid"
+              description="Skriv eller vælg tid"
+              value={endTime}
+              onChange={(value) => setEndTime(value)}
+              withDropdown
+              maxDropdownContentHeight={200}
+              presets={TIME_PRESETS}
+            />
+          </Group>
 
           <Group justify="flex-end">
             <Button variant="light" onClick={onClose}>
