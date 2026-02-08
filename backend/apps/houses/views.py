@@ -4,7 +4,6 @@ Views for House models.
 
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import PermissionDenied
-from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -59,7 +58,6 @@ class MyHouseView(APIView):
     """
 
     permission_classes = [permissions.IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser]
 
     def get(self, request):
         """Get the current user's house."""

@@ -62,11 +62,7 @@ export const authApi = {
   async updateProfilePicture(file: File): Promise<User> {
     const formData = new FormData()
     formData.append("profile_picture", file)
-    const response = await apiClient.patch<User>("/users/me/", formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    })
+    const response = await apiClient.patch<User>("/users/me/", formData)
     return response.data
   },
 

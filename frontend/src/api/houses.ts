@@ -43,9 +43,7 @@ export const housesApi = {
   async updateMyHousePicture(file: File): Promise<House> {
     const formData = new FormData()
     formData.append("profile_picture", file)
-    const response = await apiClient.patch<House>("/houses/my/", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    })
+    const response = await apiClient.patch<House>("/houses/my/", formData)
     return response.data
   },
 
