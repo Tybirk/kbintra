@@ -2,10 +2,22 @@
 Tests for the Forum app.
 """
 
+import json
+
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 
-from apps.forum.models import File, Folder, Post, Subgroup, SubgroupSubscription, Thread
+from apps.forum.models import (
+    File,
+    Folder,
+    Poll,
+    PollOption,
+    PollVote,
+    Post,
+    Subgroup,
+    SubgroupSubscription,
+    Thread,
+)
 
 
 def get_results(response_data):
@@ -878,3 +890,291 @@ class TestForumIntegration:
         results = get_results(response.data)
         assert len(results) == 1
         assert results[0]["name"] == "Important Document"
+
+
+# =============================================================================
+# Poll Tests
+# =============================================================================
+
+
+@pytest.fixture
+def poll(db, user, post):
+    """Create a test poll on a post."""
+    poll = Poll.objects.create(
+        post=post,
+        question="What is your favorite color?",
+        allow_multiple_votes=False,
+        is_anonymous=False,
+        created_by=user,
+    )
+    PollOption.objects.create(poll=poll, text="Red", order=0)
+    PollOption.objects.create(poll=poll, text="Blue", order=1)
+    PollOption.objects.create(poll=poll, text="Green", order=2)
+    return poll
+
+
+class TestPollModel:
+    """Tests for the Poll model."""
+
+    def test_poll_str(self, poll):
+        assert str(poll) == "What is your favorite color?"
+
+    def test_poll_one_to_one_with_post(self, poll, post):
+        assert poll.post == post
+        assert post.poll == poll
+
+    def test_poll_option_ordering(self, poll):
+        options = list(poll.options.all())
+        assert options[0].text == "Red"
+        assert options[1].text == "Blue"
+        assert options[2].text == "Green"
+
+    def test_poll_option_str(self, poll):
+        option = poll.options.first()
+        assert str(option) == "Red"
+
+    def test_poll_vote_str(self, poll, user):
+        option = poll.options.first()
+        vote = PollVote.objects.create(option=option, user=user)
+        assert "voted for" in str(vote)
+
+
+class TestPollVoteView:
+    """Tests for poll voting."""
+
+    def test_vote_on_poll(self, authenticated_client, poll):
+        option = poll.options.first()
+        response = authenticated_client.post(
+            f"/api/forum/polls/{poll.id}/vote/",
+            {"option_id": option.id},
+        )
+        assert response.status_code == 201
+        assert response.data["action"] == "added"
+        assert PollVote.objects.filter(option=option).count() == 1
+
+    def test_toggle_vote_off(self, authenticated_client, poll, user):
+        option = poll.options.first()
+        PollVote.objects.create(option=option, user=user)
+
+        response = authenticated_client.post(
+            f"/api/forum/polls/{poll.id}/vote/",
+            {"option_id": option.id},
+        )
+        assert response.status_code == 200
+        assert response.data["action"] == "removed"
+        assert PollVote.objects.filter(option=option).count() == 0
+
+    def test_single_choice_replaces_vote(self, authenticated_client, poll, user):
+        """Single-choice poll: voting for a new option removes the old vote."""
+        options = list(poll.options.all())
+        PollVote.objects.create(option=options[0], user=user)
+
+        response = authenticated_client.post(
+            f"/api/forum/polls/{poll.id}/vote/",
+            {"option_id": options[1].id},
+        )
+        assert response.status_code == 201
+        assert PollVote.objects.filter(option__poll=poll, user=user).count() == 1
+        assert PollVote.objects.filter(option=options[1], user=user).exists()
+
+    def test_multi_choice_allows_multiple_votes(self, authenticated_client, post, user):
+        """Multi-choice poll: user can vote for multiple options."""
+        poll = Poll.objects.create(
+            post=post,
+            question="Select your favorites",
+            allow_multiple_votes=True,
+            created_by=user,
+        )
+        opt1 = PollOption.objects.create(poll=poll, text="A", order=0)
+        opt2 = PollOption.objects.create(poll=poll, text="B", order=1)
+
+        authenticated_client.post(
+            f"/api/forum/polls/{poll.id}/vote/",
+            {"option_id": opt1.id},
+        )
+        response = authenticated_client.post(
+            f"/api/forum/polls/{poll.id}/vote/",
+            {"option_id": opt2.id},
+        )
+        assert response.status_code == 201
+        assert PollVote.objects.filter(option__poll=poll, user=user).count() == 2
+
+    def test_vote_requires_option_id(self, authenticated_client, poll):
+        response = authenticated_client.post(f"/api/forum/polls/{poll.id}/vote/", {})
+        assert response.status_code == 400
+
+    def test_vote_invalid_option(self, authenticated_client, poll):
+        response = authenticated_client.post(
+            f"/api/forum/polls/{poll.id}/vote/",
+            {"option_id": 99999},
+        )
+        assert response.status_code == 404
+
+    def test_vote_unauthenticated(self, api_client, poll):
+        option = poll.options.first()
+        response = api_client.post(
+            f"/api/forum/polls/{poll.id}/vote/",
+            {"option_id": option.id},
+        )
+        assert response.status_code == 401
+
+
+class TestPollCreateViaThread:
+    """Tests for creating polls via thread creation."""
+
+    def test_create_thread_with_poll(self, authenticated_client, subgroup):
+        response = authenticated_client.post(
+            f"/api/forum/subgroups/{subgroup.slug}/threads/",
+            json.dumps(
+                {
+                    "title": "Poll Thread",
+                    "content": "Check out this poll",
+                    "poll_data": {
+                        "question": "Best language?",
+                        "allow_multiple_votes": False,
+                        "is_anonymous": False,
+                        "options": [{"text": "Python"}, {"text": "JavaScript"}],
+                    },
+                }
+            ),
+            content_type="application/json",
+        )
+        assert response.status_code == 201
+        thread = Thread.objects.get(title="Poll Thread")
+        post = thread.posts.first()
+        assert hasattr(post, "poll")
+        assert post.poll.question == "Best language?"
+        assert post.poll.options.count() == 2
+
+    def test_create_thread_without_poll(self, authenticated_client, subgroup):
+        response = authenticated_client.post(
+            f"/api/forum/subgroups/{subgroup.slug}/threads/",
+            {"title": "No Poll Thread", "content": "Just text"},
+        )
+        assert response.status_code == 201
+        thread = Thread.objects.get(title="No Poll Thread")
+        post = thread.posts.first()
+        assert not Poll.objects.filter(post=post).exists()
+
+    def test_create_thread_poll_too_few_options(self, authenticated_client, subgroup):
+        response = authenticated_client.post(
+            f"/api/forum/subgroups/{subgroup.slug}/threads/",
+            json.dumps(
+                {
+                    "title": "Bad Poll",
+                    "content": "Only one option",
+                    "poll_data": {
+                        "question": "Only one?",
+                        "options": [{"text": "Only"}],
+                    },
+                }
+            ),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
+
+class TestPollCreateViaPost:
+    """Tests for creating polls via post/reply creation."""
+
+    def test_create_post_with_poll(self, authenticated_client, thread):
+        response = authenticated_client.post(
+            f"/api/forum/threads/{thread.id}/posts/",
+            json.dumps(
+                {
+                    "content": "Here is a poll",
+                    "poll_data": {
+                        "question": "Lunch plans?",
+                        "allow_multiple_votes": True,
+                        "is_anonymous": True,
+                        "options": [{"text": "Pizza"}, {"text": "Sushi"}, {"text": "Tacos"}],
+                    },
+                }
+            ),
+            content_type="application/json",
+        )
+        assert response.status_code == 201
+        post = Post.objects.get(content="Here is a poll")
+        assert post.poll.question == "Lunch plans?"
+        assert post.poll.allow_multiple_votes is True
+        assert post.poll.is_anonymous is True
+        assert post.poll.options.count() == 3
+
+
+class TestPollDeleteView:
+    """Tests for poll deletion."""
+
+    def test_creator_can_delete_poll(self, authenticated_client, poll):
+        response = authenticated_client.delete(f"/api/forum/polls/{poll.id}/")
+        assert response.status_code == 204
+        assert not Poll.objects.filter(id=poll.id).exists()
+
+    def test_non_creator_cannot_delete_poll(self, api_client, second_user, poll):
+        api_client.force_authenticate(user=second_user)
+        response = api_client.delete(f"/api/forum/polls/{poll.id}/")
+        assert response.status_code == 403
+
+    def test_admin_can_delete_poll(self, admin_client, poll):
+        response = admin_client.delete(f"/api/forum/polls/{poll.id}/")
+        assert response.status_code == 204
+        assert not Poll.objects.filter(id=poll.id).exists()
+
+
+class TestPollInThreadDetail:
+    """Tests for poll data appearing in thread detail."""
+
+    def test_thread_detail_includes_poll(self, authenticated_client, thread, poll):
+        response = authenticated_client.get(f"/api/forum/threads/{thread.id}/")
+        assert response.status_code == 200
+        post_data = response.data["posts"][0]
+        assert post_data["poll"] is not None
+        assert post_data["poll"]["question"] == "What is your favorite color?"
+        assert len(post_data["poll"]["options"]) == 3
+        assert post_data["poll"]["total_votes"] == 0
+        assert post_data["poll"]["is_own"] is True
+
+    def test_thread_detail_poll_null_when_no_poll(self, authenticated_client, thread, post):
+        response = authenticated_client.get(f"/api/forum/threads/{thread.id}/")
+        assert response.status_code == 200
+        post_data = response.data["posts"][0]
+        assert post_data["poll"] is None
+
+    def test_anonymous_poll_hides_voters(self, authenticated_client, thread, post, user):
+        """Anonymous poll should return empty voters list."""
+        anon_poll = Poll.objects.create(
+            post=post,
+            question="Secret vote",
+            is_anonymous=True,
+            created_by=user,
+        )
+        opt = PollOption.objects.create(poll=anon_poll, text="Option A", order=0)
+        PollOption.objects.create(poll=anon_poll, text="Option B", order=1)
+        PollVote.objects.create(option=opt, user=user)
+
+        response = authenticated_client.get(f"/api/forum/threads/{thread.id}/")
+        assert response.status_code == 200
+        poll_data = response.data["posts"][0]["poll"]
+        assert poll_data["is_anonymous"] is True
+        # Voters should be empty for anonymous polls
+        for option in poll_data["options"]:
+            assert option["voters"] == []
+        # But vote counts should still be visible
+        assert poll_data["options"][0]["vote_count"] == 1
+
+    def test_non_anonymous_poll_shows_voters(self, authenticated_client, thread, post, user):
+        """Non-anonymous poll should show voter details."""
+        poll = Poll.objects.create(
+            post=post,
+            question="Public vote",
+            is_anonymous=False,
+            created_by=user,
+        )
+        opt = PollOption.objects.create(poll=poll, text="Option A", order=0)
+        PollOption.objects.create(poll=poll, text="Option B", order=1)
+        PollVote.objects.create(option=opt, user=user)
+
+        response = authenticated_client.get(f"/api/forum/threads/{thread.id}/")
+        assert response.status_code == 200
+        poll_data = response.data["posts"][0]["poll"]
+        assert len(poll_data["options"][0]["voters"]) == 1
+        assert poll_data["options"][0]["voters"][0]["id"] == user.id

@@ -234,6 +234,75 @@ class Reaction(models.Model):
         return f"{self.user} reacted {self.reaction_type} to {self.post}"
 
 
+class Poll(models.Model):
+    """
+    A poll attached to a forum post. Supports single/multiple choice and anonymous voting.
+    """
+
+    post = models.OneToOneField(
+        Post,
+        on_delete=models.CASCADE,
+        related_name="poll",
+    )
+    question = models.CharField(max_length=300)
+    allow_multiple_votes = models.BooleanField(default=False)
+    is_anonymous = models.BooleanField(default=False)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="polls",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return self.question
+
+
+class PollOption(models.Model):
+    """
+    An option within a poll.
+    """
+
+    poll = models.ForeignKey(
+        Poll,
+        on_delete=models.CASCADE,
+        related_name="options",
+    )
+    text = models.CharField(max_length=200)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "id"]
+
+    def __str__(self) -> str:
+        return self.text
+
+
+class PollVote(models.Model):
+    """
+    A user's vote on a poll option.
+    """
+
+    option = models.ForeignKey(
+        PollOption,
+        on_delete=models.CASCADE,
+        related_name="votes",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="poll_votes",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ["option", "user"]
+
+    def __str__(self) -> str:
+        return f"{self.user} voted for {self.option}"
+
+
 class File(models.Model):
     """
     A file uploaded to a subgroup, either in a folder or at root level.

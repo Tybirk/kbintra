@@ -4,7 +4,17 @@ Admin configuration for Forum models.
 
 from django.contrib import admin
 
-from .models import File, Folder, Post, Subgroup, SubgroupSubscription, Thread
+from .models import (
+    File,
+    Folder,
+    Poll,
+    PollOption,
+    PollVote,
+    Post,
+    Subgroup,
+    SubgroupSubscription,
+    Thread,
+)
 
 
 @admin.register(Subgroup)
@@ -55,6 +65,39 @@ class FolderAdmin(admin.ModelAdmin):
     list_filter = ["subgroup"]
     search_fields = ["name"]
     raw_id_fields = ["subgroup", "parent"]
+
+
+class PollOptionInline(admin.TabularInline):
+    model = PollOption
+    extra = 2
+
+
+@admin.register(Poll)
+class PollAdmin(admin.ModelAdmin):
+    list_display = [
+        "question",
+        "post",
+        "created_by",
+        "allow_multiple_votes",
+        "is_anonymous",
+        "created_at",
+    ]
+    list_filter = ["allow_multiple_votes", "is_anonymous"]
+    search_fields = ["question"]
+    raw_id_fields = ["post", "created_by"]
+    inlines = [PollOptionInline]
+
+
+@admin.register(PollOption)
+class PollOptionAdmin(admin.ModelAdmin):
+    list_display = ["text", "poll", "order"]
+    raw_id_fields = ["poll"]
+
+
+@admin.register(PollVote)
+class PollVoteAdmin(admin.ModelAdmin):
+    list_display = ["user", "option", "created_at"]
+    raw_id_fields = ["option", "user"]
 
 
 @admin.register(File)

@@ -40,6 +40,8 @@ import { forumApi } from "../api/forum"
 import { filterFilesBySize } from "../config"
 import RichTextEditor from "../components/RichTextEditor"
 import Reactions from "../components/Reactions"
+import PollDisplay from "../components/PollDisplay"
+import PollCreator from "../components/PollCreator"
 import {
   getFileIcon,
   getFileType,
@@ -47,11 +49,17 @@ import {
 } from "../components/FilePreview"
 import { AttachmentCarousel } from "../components/AttachmentCarousel"
 import { AttachmentBadge } from "../components/AttachmentBadge"
-import type { Post, CreatePostData, PostAttachment } from "../types"
+import type {
+  Post,
+  CreatePostData,
+  CreatePollData,
+  PostAttachment,
+} from "../types"
 
 interface CreatePostParams {
   data: CreatePostData
   files: File[]
+  pollData?: CreatePollData
 }
 
 interface UpdatePostParams {
@@ -72,6 +80,7 @@ export default function ThreadPage() {
 
   const [newPostContent, setNewPostContent] = useState("")
   const [attachments, setAttachments] = useState<File[]>([])
+  const [pollData, setPollData] = useState<CreatePollData | null>(null)
   const resetRef = useRef<() => void>(null)
   const [editingPost, setEditingPost] = useState<Post | null>(null)
   const [editContent, setEditContent] = useState("")
@@ -92,12 +101,18 @@ export default function ThreadPage() {
   })
 
   const createPostMutation = useMutation({
-    mutationFn: ({ data, files }: CreatePostParams) =>
-      forumApi.createPost(threadId, data, files.length > 0 ? files : undefined),
+    mutationFn: ({ data, files, pollData: pd }: CreatePostParams) =>
+      forumApi.createPost(
+        threadId,
+        data,
+        files.length > 0 ? files : undefined,
+        pd || undefined,
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
       setNewPostContent("")
       setAttachments([])
+      setPollData(null)
       resetRef.current?.()
       notifications.show({
         title: "Reply posted",
@@ -203,6 +218,7 @@ export default function ThreadPage() {
     createPostMutation.mutate({
       data: { content: newPostContent.trim() },
       files: attachments,
+      pollData: pollData || undefined,
     })
   }
 
@@ -392,6 +408,8 @@ export default function ThreadPage() {
                 placeholder="Write your reply..."
                 minHeight={150}
               />
+
+              <PollCreator pollData={pollData} onChange={setPollData} />
 
               {attachments.length > 0 && (
                 <Group gap="xs">
@@ -621,6 +639,8 @@ function PostCard({
                 })}
               </Group>
             )}
+
+            {post.poll && <PollDisplay poll={post.poll} threadId={threadId} />}
 
             <Divider my="sm" />
             <Reactions

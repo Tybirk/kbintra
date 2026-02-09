@@ -50,6 +50,7 @@ import {
   MAX_UPLOAD_FILE_SIZE_MB,
 } from "../config"
 import RichTextEditor from "../components/RichTextEditor"
+import PollCreator from "../components/PollCreator"
 import {
   FilePreviewModal,
   ImageThumbnail,
@@ -59,11 +60,18 @@ import {
 } from "../components/FilePreview"
 import { AttachmentBadge } from "../components/AttachmentBadge"
 import { useAuthStore } from "../store/authStore"
-import type { Thread, CreateThreadData, Folder, ForumFile } from "../types"
+import type {
+  Thread,
+  CreateThreadData,
+  CreatePollData,
+  Folder,
+  ForumFile,
+} from "../types"
 
 interface CreateThreadParams {
   data: CreateThreadData
   files: File[]
+  pollData?: CreatePollData
 }
 
 dayjs.extend(relativeTime)
@@ -275,14 +283,16 @@ function CreateThreadModal({
   const [title, setTitle] = useState("")
   const [content, setContent] = useState("")
   const [attachments, setAttachments] = useState<File[]>([])
+  const [pollData, setPollData] = useState<CreatePollData | null>(null)
   const resetRef = useRef<() => void>(null)
 
   const createMutation = useMutation({
-    mutationFn: ({ data, files }: CreateThreadParams) =>
+    mutationFn: ({ data, files, pollData: pd }: CreateThreadParams) =>
       forumApi.createThread(
         subgroupSlug,
         data,
         files.length > 0 ? files : undefined,
+        pd || undefined,
       ),
     onSuccess: () => {
       notifications.show({
@@ -293,6 +303,7 @@ function CreateThreadModal({
       setTitle("")
       setContent("")
       setAttachments([])
+      setPollData(null)
       resetRef.current?.()
       onSuccess()
     },
@@ -311,6 +322,7 @@ function CreateThreadModal({
     createMutation.mutate({
       data: { title: title.trim(), content: content.trim() },
       files: attachments,
+      pollData: pollData || undefined,
     })
   }
 
@@ -361,6 +373,8 @@ function CreateThreadModal({
               minHeight={200}
             />
           </div>
+
+          <PollCreator pollData={pollData} onChange={setPollData} />
 
           {attachments.length > 0 && (
             <Group gap="xs">

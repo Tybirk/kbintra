@@ -11,6 +11,8 @@ from .views import (
     FolderDetailView,
     FolderListCreateView,
     MySubscriptionsView,
+    PollDeleteView,
+    PollVoteView,
     PostListCreateView,
     PostUpdateDeleteView,
     ReactionToggleView,
@@ -59,4 +61,7 @@ urlpatterns = [
     path("folders/<int:folder_id>/files/", FileListCreateView.as_view(), name="file-list"),
     path("files/<int:pk>/", FileDeleteView.as_view(), name="file-delete"),
     path("files/<int:pk>/move/", FileMoveView.as_view(), name="file-move"),
+    # Polls
+    path("polls/<int:poll_id>/vote/", PollVoteView.as_view(), name="poll-vote"),
+    path("polls/<int:poll_id>/", PollDeleteView.as_view(), name="poll-delete"),
 ]

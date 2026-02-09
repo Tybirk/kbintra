@@ -155,6 +155,33 @@ export interface ReactionTypeInfo {
   emoji: string
 }
 
+export interface PollOption {
+  id: number
+  text: string
+  order: number
+  vote_count: number
+  has_voted: boolean
+  voters: Author[]
+}
+
+export interface Poll {
+  id: number
+  question: string
+  allow_multiple_votes: boolean
+  is_anonymous: boolean
+  options: PollOption[]
+  total_votes: number
+  is_own: boolean
+  created_at: string
+}
+
+export interface CreatePollData {
+  question: string
+  allow_multiple_votes: boolean
+  is_anonymous: boolean
+  options: { text: string }[]
+}
+
 export interface Post {
   id: number
   thread: number
@@ -163,6 +190,7 @@ export interface Post {
   is_own: boolean
   attachments: PostAttachment[]
   reactions: ReactionSummary[]
+  poll: Poll | null
   created_at: string
   updated_at: string
 }

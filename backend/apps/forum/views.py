@@ -10,7 +10,18 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import File, Folder, Post, Reaction, Subgroup, SubgroupSubscription, Thread
+from .models import (
+    File,
+    Folder,
+    Poll,
+    PollOption,
+    PollVote,
+    Post,
+    Reaction,
+    Subgroup,
+    SubgroupSubscription,
+    Thread,
+)
 from .serializers import (
     FileSerializer,
     FileUploadSerializer,
@@ -159,7 +170,10 @@ class ThreadDetailView(generics.RetrieveAPIView):
     serializer_class = ThreadDetailSerializer
     permission_classes = [permissions.IsAuthenticated]
     queryset = Thread.objects.prefetch_related(
-        "posts__author", "posts__attachments__uploaded_by", "posts__reactions"
+        "posts__author",
+        "posts__attachments__uploaded_by",
+        "posts__reactions",
+        "posts__poll__options__votes__user",
     ).select_related("author", "subgroup")
 
 
@@ -221,7 +235,7 @@ class PostListCreateView(generics.ListCreateAPIView):
         return (
             Post.objects.filter(thread=thread)
             .select_related("author")
-            .prefetch_related("attachments__uploaded_by", "reactions")
+            .prefetch_related("attachments__uploaded_by", "reactions", "poll__options__votes__user")
         )
 
     def get_serializer_context(self) -> dict:
@@ -472,3 +486,61 @@ class ReactionTypesView(APIView):
             {"type": choice[0], "emoji": choice[1]} for choice in Reaction.REACTION_CHOICES
         ]
         return Response(reaction_types)
+
+
+# Poll Views
+class PollVoteView(APIView):
+    """Vote on a poll option (toggle)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request, poll_id: int) -> Response:
+        poll = get_object_or_404(Poll, pk=poll_id)
+        option_id = request.data.get("option_id")
+
+        if not option_id:
+            return Response(
+                {"detail": "option_id is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        option = get_object_or_404(PollOption, pk=option_id, poll=poll)
+
+        # Check if user already voted for this option
+        existing_vote = PollVote.objects.filter(option=option, user=request.user).first()
+
+        if existing_vote:
+            # Toggle off - remove the vote
+            existing_vote.delete()
+            return Response(
+                {"detail": "Vote removed.", "action": "removed"},
+                status=status.HTTP_200_OK,
+            )
+
+        # For single-choice polls, remove any existing votes on other options
+        if not poll.allow_multiple_votes:
+            PollVote.objects.filter(option__poll=poll, user=request.user).delete()
+
+        PollVote.objects.create(option=option, user=request.user)
+        return Response(
+            {"detail": "Vote recorded.", "action": "added"},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class PollDeleteView(APIView):
+    """Delete a poll (creator or admin only)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request: Request, poll_id: int) -> Response:
+        poll = get_object_or_404(Poll, pk=poll_id)
+
+        if poll.created_by != request.user and not request.user.is_staff:
+            return Response(
+                {"detail": "You do not have permission to delete this poll."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        poll.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

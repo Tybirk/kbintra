@@ -11,6 +11,7 @@ import type {
   CreateThreadData,
   Post,
   CreatePostData,
+  CreatePollData,
   Folder,
   ForumFile,
   RecentActivity,
@@ -70,6 +71,7 @@ export const forumApi = {
     subgroupSlug: string,
     data: CreateThreadData,
     attachments?: File[],
+    pollData?: CreatePollData,
   ): Promise<Thread> => {
     if (attachments && attachments.length > 0) {
       const formData = new FormData()
@@ -78,6 +80,9 @@ export const forumApi = {
       attachments.forEach((file) => {
         formData.append("attachments", file)
       })
+      if (pollData) {
+        formData.append("poll_data", JSON.stringify(pollData))
+      }
       // Don't set Content-Type header - let browser set it with boundary
       const response = await apiClient.post(
         `/forum/subgroups/${subgroupSlug}/threads/`,
@@ -90,9 +95,13 @@ export const forumApi = {
       )
       return response.data
     }
+    const payload: Record<string, unknown> = { ...data }
+    if (pollData) {
+      payload.poll_data = pollData
+    }
     const response = await apiClient.post(
       `/forum/subgroups/${subgroupSlug}/threads/`,
-      data,
+      payload,
     )
     return response.data
   },
@@ -121,6 +130,7 @@ export const forumApi = {
     threadId: number,
     data: CreatePostData,
     attachments?: File[],
+    pollData?: CreatePollData,
   ): Promise<Post> => {
     if (attachments && attachments.length > 0) {
       const formData = new FormData()
@@ -128,6 +138,9 @@ export const forumApi = {
       attachments.forEach((file) => {
         formData.append("attachments", file)
       })
+      if (pollData) {
+        formData.append("poll_data", JSON.stringify(pollData))
+      }
       // Don't set Content-Type header - let browser set it with boundary
       const response = await apiClient.post(
         `/forum/threads/${threadId}/posts/`,
@@ -140,9 +153,13 @@ export const forumApi = {
       )
       return response.data
     }
+    const payload: Record<string, unknown> = { ...data }
+    if (pollData) {
+      payload.poll_data = pollData
+    }
     const response = await apiClient.post(
       `/forum/threads/${threadId}/posts/`,
-      data,
+      payload,
     )
     return response.data
   },
@@ -301,5 +318,20 @@ export const forumApi = {
   getReactionTypes: async (): Promise<ReactionTypeInfo[]> => {
     const response = await apiClient.get("/forum/reactions/types/")
     return response.data
+  },
+
+  // Polls
+  votePoll: async (pollId: number, optionId: number): Promise<{
+    detail: string
+    action: "added" | "removed"
+  }> => {
+    const response = await apiClient.post(`/forum/polls/${pollId}/vote/`, {
+      option_id: optionId,
+    })
+    return response.data
+  },
+
+  deletePoll: async (pollId: number): Promise<void> => {
+    await apiClient.delete(`/forum/polls/${pollId}/`)
   },
 }
