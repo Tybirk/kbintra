@@ -8,6 +8,7 @@ vi.mock("./client", () => ({
     get: vi.fn(),
     post: vi.fn(),
   },
+  getAccessToken: vi.fn().mockReturnValue("mock-token"),
 }))
 
 describe("messagingApi", () => {

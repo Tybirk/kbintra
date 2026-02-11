@@ -195,41 +195,20 @@ class ForgotPasswordView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request: Request) -> Response:
-        import contextlib
-
-        from django.conf import settings
-        from django.core.mail import send_mail
-
         serializer = ForgotPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         token = serializer.save()
 
         # Send email if token was created (user exists)
         if token:
+            from apps.notifications.tasks import send_password_reset_email_task
+
             reset_url = f"{request.headers.get('Origin', 'http://localhost:5173')}/reset-password?token={token.token}"
-            # Use contextlib.suppress to silently handle email failures
-            # (we don't want to reveal whether the email was sent or not)
-            with contextlib.suppress(Exception):
-                send_mail(
-                    subject="Nulstil din adgangskode - KB Intra",
-                    message=f"""Hej {token.user.first_name},
-
-Du har anmodet om at nulstille din adgangskode til KB Intra.
-
-Klik på linket herunder for at vælge en ny adgangskode:
-{reset_url}
-
-Linket udløber om 1 time.
-
-Hvis du ikke har anmodet om at nulstille din adgangskode, kan du ignorere denne email.
-
-Med venlig hilsen,
-KB Intra
-""",
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[token.user.email],
-                    fail_silently=True,
-                )
+            send_password_reset_email_task(
+                first_name=token.user.first_name,
+                email=token.user.email,
+                reset_url=reset_url,
+            )
 
         # Always return success to prevent email enumeration
         return Response(

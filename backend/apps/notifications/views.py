@@ -2,8 +2,6 @@
 Views for Notifications app.
 """
 
-import threading
-
 from django.conf import settings
 from django.db.models import QuerySet
 from rest_framework import generics, permissions, status
@@ -200,28 +198,20 @@ class TestPushNotificationView(APIView):
         except (ValueError, TypeError):
             delay = 0
 
-        user_id = request.user.id
-
-        def send_delayed_notification() -> None:
-            from django.contrib.auth import get_user_model
-
-            user_model = get_user_model()
-            try:
-                user = user_model.objects.get(id=user_id)
-                send_push_notification(
-                    user=user,
-                    notification_type=NotificationType.NEW_MESSAGE,
-                    title="Test Push Notification (Delayed)",
-                    message="This is a delayed test notification to verify push is working.",
-                    link="/notifikationer",
-                )
-            except user_model.DoesNotExist:
-                pass
-
         if delay > 0:
+            from .tasks import send_push_task
+
             # Schedule the notification to be sent after delay
-            timer = threading.Timer(delay, send_delayed_notification)
-            timer.start()
+            send_push_task.schedule(
+                args=(
+                    request.user.id,
+                    NotificationType.NEW_MESSAGE,
+                    "Test Push Notification (Delayed)",
+                    "This is a delayed test notification to verify push is working.",
+                    "/notifikationer",
+                ),
+                delay=delay,
+            )
             return Response(
                 {
                     "configured": True,

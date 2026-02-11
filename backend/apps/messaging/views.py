@@ -66,8 +66,6 @@ class ConversationListCreateView(generics.ListCreateAPIView):
 
         # Create initial message if provided (with text or attachments)
         if initial_message or attachments:
-            from apps.notifications.services import notify_new_message
-
             message = Message.objects.create(
                 conversation=conversation,
                 sender=request.user,
@@ -83,11 +81,13 @@ class ConversationListCreateView(generics.ListCreateAPIView):
                     uploaded_by=request.user,
                 )
 
-            # Send notifications to other participants
+            # Send notifications to other participants in background
+            from apps.notifications.tasks import notify_new_message_task
+
             for participant in conversation.participants.exclude(id=request.user.id):
-                notify_new_message(
-                    recipient=participant,
-                    sender=request.user,
+                notify_new_message_task(
+                    recipient_id=participant.id,
+                    sender_id=request.user.id,
                     message_content=initial_message or "(Vedhæftet fil)",
                     conversation_id=conversation.id,
                 )

@@ -185,7 +185,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data: dict) -> Post:
         from django.utils import timezone
 
-        from apps.notifications.services import notify_post_reply, notify_thread_reply
+        from apps.notifications.tasks import notify_post_reply_task, notify_thread_reply_task
 
         from .utils import generate_docx_preview
 
@@ -213,16 +213,16 @@ class PostCreateSerializer(serializers.ModelSerializer):
         thread.subgroup.last_activity_at = timezone.now()
         thread.subgroup.save(update_fields=["last_activity_at"])
 
-        # Notify thread author (with full content for email)
+        # Notify thread author in background
         # thread.author can be None if the original author was deleted
         if thread.author is not None:
-            notify_thread_reply(
-                thread_author=thread.author,
-                replier=author,
+            notify_thread_reply_task(
+                thread_author_id=thread.author.id,
+                replier_id=author.id,
                 thread_title=thread.title,
                 thread_id=thread.id,
                 subgroup_slug=thread.subgroup.slug,
-                reply_content=post.content,  # Full HTML content
+                reply_content=post.content,
             )
 
         # Notify other participants in the thread (previous posters)
@@ -238,19 +238,15 @@ class PostCreateSerializer(serializers.ModelSerializer):
         )
         for poster_id in previous_posters:
             if poster_id is not None and poster_id not in notified_users:
-                try:
-                    poster = User.objects.get(id=poster_id)
-                    notify_post_reply(
-                        post_author=poster,
-                        replier=author,
-                        thread_title=thread.title,
-                        thread_id=thread.id,
-                        subgroup_slug=thread.subgroup.slug,
-                        reply_content=post.content,  # Full HTML content
-                    )
-                    notified_users.add(poster_id)
-                except User.DoesNotExist:
-                    pass
+                notify_post_reply_task(
+                    post_author_id=poster_id,
+                    replier_id=author.id,
+                    thread_title=thread.title,
+                    thread_id=thread.id,
+                    subgroup_slug=thread.subgroup.slug,
+                    reply_content=post.content,
+                )
+                notified_users.add(poster_id)
 
         return post
 
@@ -352,8 +348,6 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data: dict) -> Thread:
         from django.utils import timezone
 
-        from apps.notifications.services import notify_new_thread
-
         from .utils import generate_docx_preview
 
         content = validated_data.pop("content")
@@ -384,19 +378,17 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
         thread.subgroup.last_activity_at = timezone.now()
         thread.subgroup.save(update_fields=["last_activity_at"])
 
-        # Notify subscribers of the subgroup (with full content for email)
-        subscribers = User.objects.filter(
-            subgroup_subscriptions__subgroup=thread.subgroup,
-            subgroup_subscriptions__notify_new_threads=True,
-        )
-        notify_new_thread(
-            subscribers=subscribers,
-            author=thread.author,
+        # Notify subscribers of the subgroup in background
+        from apps.notifications.tasks import notify_new_thread_task
+
+        notify_new_thread_task(
+            author_id=thread.author.id,
             thread_title=thread.title,
             thread_id=thread.id,
             subgroup_name=thread.subgroup.name,
             subgroup_slug=thread.subgroup.slug,
-            initial_post_content=content,  # Full HTML content
+            subgroup_id=thread.subgroup.id,
+            initial_post_content=content,
         )
 
         return thread

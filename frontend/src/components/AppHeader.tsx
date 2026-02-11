@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react"
+import { useEffect } from "react"
 import {
   Group,
   Burger,
@@ -28,8 +28,7 @@ import { notifications } from "@mantine/notifications"
 import { useAuthStore } from "../store/authStore"
 import { spotlight } from "./GlobalSearch"
 import { notificationsApi } from "../api/notifications"
-import { ChatWebSocket, messagingApi } from "../api/messaging"
-import { getAccessToken } from "../api/client"
+import { chatWs, messagingApi } from "../api/messaging"
 import type { WsMessage } from "../types"
 
 interface AppHeaderProps {
@@ -45,7 +44,6 @@ export default function AppHeader({
   const location = useLocation()
   const queryClient = useQueryClient()
   const { user, logout } = useAuthStore()
-  const notificationWsRef = useRef<ChatWebSocket | null>(null)
 
   const { data: unreadNotificationsData } = useQuery({
     queryKey: ["notifications", "unread-count"],
@@ -62,22 +60,14 @@ export default function AppHeader({
   const unreadNotificationsCount = unreadNotificationsData?.unread_count ?? 0
   const unreadMessagesCount = unreadMessagesData?.unread_count ?? 0
 
-  // Connect to WebSocket for real-time notifications
+  // Connect shared WebSocket for real-time notifications
   useEffect(() => {
-    // Only connect if user is authenticated
     if (!user) return
 
-    // Create WebSocket instance if not exists
-    if (!notificationWsRef.current) {
-      notificationWsRef.current = new ChatWebSocket(getAccessToken)
-    }
-    const notificationWs = notificationWsRef.current
+    chatWs.connect()
 
-    notificationWs.connect()
-
-    const unsubConnection = notificationWs.onConnectionChange((connected) => {
+    const unsubConnection = chatWs.onConnectionChange((connected) => {
       if (connected) {
-        // Refresh data when reconnected
         queryClient.invalidateQueries({
           queryKey: ["notifications", "unread-count"],
         })
@@ -87,23 +77,20 @@ export default function AppHeader({
       }
     })
 
-    const unsubMessage = notificationWs.onMessage((data) => {
+    const unsubMessage = chatWs.onMessage((data) => {
       const wsData = data as WsMessage
 
       if (wsData.type === "new_notification") {
-        // Update notification count
         queryClient.invalidateQueries({
           queryKey: ["notifications", "unread-count"],
         })
         queryClient.invalidateQueries({ queryKey: ["notifications"] })
 
-        // Don't show toast if user is already viewing the linked page
         const notificationLink = wsData.notification.link
         const isAlreadyViewing =
           notificationLink && location.pathname === notificationLink
 
         if (!isAlreadyViewing) {
-          // Show toast notification
           notifications.show({
             title: wsData.notification.title,
             message: wsData.notification.message,
@@ -120,7 +107,6 @@ export default function AppHeader({
         }
       }
 
-      // Update messages unread count when receiving new messages
       if (wsData.type === "new_message") {
         queryClient.invalidateQueries({
           queryKey: ["messages", "unread-count"],
@@ -131,17 +117,11 @@ export default function AppHeader({
     return () => {
       unsubConnection()
       unsubMessage()
-      // Disconnect WebSocket on cleanup
-      notificationWs.disconnect()
     }
   }, [queryClient, navigate, location.pathname, user])
 
   const handleLogout = () => {
-    // Disconnect WebSocket before logout
-    if (notificationWsRef.current) {
-      notificationWsRef.current.disconnect()
-      notificationWsRef.current = null
-    }
+    chatWs.disconnect()
     logout()
     navigate("/login")
   }

@@ -19,7 +19,7 @@ vi.mock("../api/messaging", () => ({
     markAsRead: vi.fn(),
     getUnreadCount: vi.fn(),
   },
-  ChatWebSocket: vi.fn().mockImplementation(() => ({
+  chatWs: {
     connect: vi.fn(),
     disconnect: vi.fn(),
     onConnectionChange: vi.fn().mockReturnValue(vi.fn()),
@@ -27,7 +27,8 @@ vi.mock("../api/messaging", () => ({
     sendMessage: vi.fn(),
     markRead: vi.fn(),
     joinConversation: vi.fn(),
-  })),
+    isConnected: false,
+  },
 }))
 
 // Mock apiClient for user fetching

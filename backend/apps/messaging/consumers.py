@@ -67,7 +67,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             data = json.loads(text_data)
             action = data.get("action")
 
-            if action == "send_message":
+            if action == "ping":
+                await self.send(json.dumps({"type": "pong"}))
+            elif action == "send_message":
                 await self.handle_send_message(data)
             elif action == "mark_read":
                 await self.handle_mark_read(data)
@@ -257,13 +259,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Update conversation timestamp
             conversation.save()
 
-            # Send notifications to other participants
-            from apps.notifications.services import notify_new_message
+            # Send notifications to other participants in background
+            from apps.notifications.tasks import notify_new_message_task
 
             for participant in conversation.participants.exclude(id=self.user.id):
-                notify_new_message(
-                    recipient=participant,
-                    sender=self.user,
+                notify_new_message_task(
+                    recipient_id=participant.id,
+                    sender_id=self.user.id,
                     message_content=content,
                     conversation_id=conversation_id,
                 )

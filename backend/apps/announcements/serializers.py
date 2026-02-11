@@ -92,8 +92,6 @@ class AnnouncementCreateSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data: dict) -> Announcement:
-        from apps.notifications.services import notify_new_announcement
-
         attachments = validated_data.pop("attachments", [])
         validated_data["author"] = self.context["request"].user
         announcement = super().create(validated_data)
@@ -109,12 +107,13 @@ class AnnouncementCreateSerializer(serializers.ModelSerializer):
 
         # Send notifications to all users (except author) if announcement is active
         if announcement.is_active:
-            notify_new_announcement(
-                recipients=User.objects.exclude(id=announcement.author.id),
-                author=announcement.author,
+            from apps.notifications.tasks import notify_new_announcement_task
+
+            notify_new_announcement_task(
+                author_id=announcement.author.id,
                 announcement_title=announcement.title,
                 announcement_id=announcement.id,
-                announcement_content=announcement.content,  # Full HTML content
+                announcement_content=announcement.content or "",
             )
 
         return announcement

@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "corsheaders",
     "channels",
+    "huey.contrib.djhuey",
     # Local apps
     "apps.users",
     "apps.houses",
@@ -83,18 +84,33 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
-# Channels configuration (using InMemoryChannelLayer for simplicity)
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer",
-    },
-}
+# Channels configuration
+# Use Redis in production (set REDIS_URL), fall back to InMemory for local dev/tests
+REDIS_URL = os.getenv("REDIS_URL", "")
+if REDIS_URL:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {
+                "hosts": [REDIS_URL],
+            },
+        },
+    }
+else:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
+        },
+    }
 
 # Database
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / "db.sqlite3",
+        "OPTIONS": {
+            "timeout": 20,
+        },
     }
 }
 
@@ -226,6 +242,19 @@ GOOGLE_DRIVE_MENU_FOLDER_ID = os.getenv(
     "GOOGLE_DRIVE_MENU_FOLDER_ID", "18AaQw20ZlWIKLeeyW2R0OrXFaSkc2rPm"
 )
 MENU_CACHE_HOURS = int(os.getenv("MENU_CACHE_HOURS", "12"))
+
+# Huey task queue
+HUEY = {
+    "huey_class": "huey.SqliteHuey",
+    "name": "kb-intra",
+    "results": False,
+    "immediate": DEBUG,  # Sync in dev/test, async in prod
+    "filename": str(BASE_DIR / "huey.db"),
+    "consumer": {
+        "workers": 2,
+        "worker_type": "thread",
+    },
+}
 
 # Production security settings
 if not DEBUG:

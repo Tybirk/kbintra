@@ -1113,32 +1113,18 @@ class DriveMenuRefreshAllView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request: Request) -> Response:
-        """Refresh all available menus from Drive."""
+        """Refresh all available menus from Drive (runs in background)."""
         if not request.user.is_staff:
             return Response(
                 {"detail": "Only administrators can refresh all menus."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        from .services.drive_menu import DriveMenuService
+        from apps.notifications.tasks import refresh_all_drive_menus_task
 
-        service = DriveMenuService()
+        refresh_all_drive_menus_task()
 
-        try:
-            result = service.refresh_all_menus()
-            return Response(
-                {
-                    "detail": f"Refreshed {result['updated']} menus, {result['failed']} failed.",
-                    **result,
-                }
-            )
-        except ValueError as e:
-            return Response(
-                {"detail": str(e)},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-        except Exception as e:
-            return Response(
-                {"detail": f"Error refreshing menus: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+        return Response(
+            {"detail": "Menu refresh started in background."},
+            status=status.HTTP_202_ACCEPTED,
+        )
