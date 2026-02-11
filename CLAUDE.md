@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 KB Intra is a community communication platform for a co-living community (~90 users). It features forum discussions, food management (meal registration, tickets, cooking teams), direct messaging, calendar, and resident directory.
-It is a small scale app, with few developers who do not wish to spend time maintaining it, but it is also critical infrastructure for our community, so the app should be simple and rock solid at the same time.
+It is a small scale app, with few developers who do not wish to spend time maintaining it, but it is also critical infrastructure for our community, so the app should be simple and rock solid at the same time and easy to debug.
 
 ## Tech Stack
 

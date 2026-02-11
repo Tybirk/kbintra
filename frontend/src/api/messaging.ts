@@ -131,7 +131,7 @@ export class ChatWebSocket {
   ws: WebSocket | null = null
   reconnectAttempts = 0
   baseReconnectDelay = 1000
-  maxReconnectDelay = 5000
+  maxReconnectDelay = 30000
   messageHandlers: MessageHandler[] = []
   connectionHandlers: ConnectionHandler[] = []
   getToken: () => string | null
@@ -307,8 +307,6 @@ export class ChatWebSocket {
       this.ws.close()
       this.ws = null
     }
-    this.messageHandlers = []
-    this.connectionHandlers = []
 
     // Clean up event listeners to prevent memory leaks
     this.removeEventListeners()

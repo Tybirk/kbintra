@@ -82,9 +82,36 @@ self.addEventListener("notificationclick", (event: NotificationEvent) => {
 })
 
 // Handle push subscription change (when browser refreshes the subscription)
-self.addEventListener("pushsubscriptionchange", () => {
-  console.log("Push subscription changed")
-  // The subscription will be re-registered when the user opens the app
+self.addEventListener("pushsubscriptionchange", (event: ExtendableEvent) => {
+  console.log("[SW] Push subscription changed, re-subscribing")
+  event.waitUntil(
+    (async () => {
+      try {
+        // Re-subscribe with the same application server key
+        const subscription = await self.registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          // The browser retains the applicationServerKey from the previous subscription
+        })
+
+        // Send the new subscription to the backend
+        const subscriptionJson = subscription.toJSON()
+        await fetch("/api/notifications/push/subscribe/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            endpoint: subscriptionJson.endpoint,
+            keys: subscriptionJson.keys,
+          }),
+        })
+        console.log("[SW] Push subscription re-registered successfully")
+      } catch (error) {
+        console.error(
+          "[SW] Failed to re-subscribe after pushsubscriptionchange:",
+          error,
+        )
+      }
+    })(),
+  )
 })
 
 // Handle skip waiting message from the client (for forced updates)

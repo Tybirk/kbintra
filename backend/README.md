@@ -6,9 +6,11 @@ Django REST API backend for the KB Intra community platform.
 
 - Django 5.x
 - Django REST Framework
-- Django Channels (WebSocket)
+- Django Channels (WebSocket via Daphne)
 - djangorestframework-simplejwt (JWT auth)
-- SQLite (dev) / PostgreSQL (prod)
+- Huey (background task queue, SQLite broker)
+- Redis (Channels layer for WebSocket message routing)
+- SQLite (database, suitable for ~90 users)
 - pytest + pytest-django (testing)
 - Ruff (linting/formatting) + ty (type checking)
 
@@ -29,13 +31,17 @@ backend/
 │   ├── food/                   # Food module
 │   ├── calendar_app/           # Calendar events
 │   ├── messaging/              # Direct messaging
-│   └── notifications/          # Notifications
+│   └── notifications/          # Notifications (in-app, email, push)
+├── docker-entrypoint.sh        # Container startup (migrations + Daphne)
+├── Dockerfile
 ├── conftest.py                 # Pytest fixtures
 ├── manage.py
 └── pyproject.toml              # Dependencies (uv)
 ```
 
 ## Running the Server
+
+### Local development
 
 ```bash
 # Install dependencies
@@ -44,12 +50,54 @@ uv sync
 # Run migrations
 uv run python manage.py migrate
 
-# Run development server
+# Run development server (HTTP only)
 uv run python manage.py runserver
 
 # Run with Daphne (WebSocket support)
 uv run daphne -b 0.0.0.0 -p 7000 config.asgi:application
 ```
+
+### Docker (production)
+
+```bash
+# From project root
+docker compose up -d --build
+
+# Or use the deploy script (pulls latest code first)
+./deploy.sh
+```
+
+Migrations run automatically on container startup via `docker-entrypoint.sh`.
+
+### Production architecture
+
+```
+Internet → Cloudflare Tunnel → Traefik → Backend (Daphne, port 8000)
+                                       → Frontend (Nginx, port 80)
+```
+
+**Docker services:**
+
+| Service | Role |
+|---|---|
+| `traefik` | Reverse proxy, routes `/api`, `/ws`, `/admin`, `/media`, `/static` to backend |
+| `cloudflared` | Cloudflare Tunnel for secure ingress |
+| `redis` | Channel layer backend for Django Channels (WebSocket routing) |
+| `backend` | Daphne ASGI server handling HTTP + WebSocket |
+| `huey` | Background task worker (emails, push notifications) |
+| `frontend` | Nginx serving the React SPA |
+
+**Daphne configuration** (via `docker-entrypoint.sh`):
+- `--proxy-headers` — trusts `X-Forwarded-For`/`X-Forwarded-Proto` from Traefik
+- `--ping-interval 20 --ping-timeout 30` — detects stale WebSocket connections
+- `-v 1` — basic access logging
+
+**Reliability:**
+- Health checks on `redis` and `backend` (via `GET /api/health/`)
+- Graceful shutdown with `SIGINT` + 30s grace period
+- Memory limits on all containers
+- SQLite write timeout of 20s to handle concurrent access from Daphne + Huey
+- `restart: unless-stopped` on all services
 
 ## Database Models
 
@@ -211,6 +259,12 @@ uv run daphne -b 0.0.0.0 -p 7000 config.asgi:application
 - `user_agent` - Browser/device identifier
 
 ## API Endpoints
+
+### Health Check
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/health/` | Unauthenticated health check (used by Docker/Traefik) |
 
 ### Authentication (`/api/auth/`)
 
@@ -517,8 +571,10 @@ Users can control push notifications per notification type:
 
 ## Key Files
 
-- `config/settings.py` - Django settings with JWT, CORS, Channels config
-- `config/urls.py` - API URL routing
+- `config/settings.py` - Django settings (JWT, CORS, Channels, Huey, Redis)
+- `config/urls.py` - API URL routing (includes `/api/health/`)
+- `config/asgi.py` - ASGI config with WebSocket routing
+- `docker-entrypoint.sh` - Container startup script (migrations + Daphne)
 - `conftest.py` - Shared pytest fixtures
 - `apps/*/models.py` - Database models
 - `apps/*/serializers.py` - DRF serializers
@@ -526,5 +582,6 @@ Users can control push notifications per notification type:
 - `apps/*/urls.py` - App URL patterns
 - `apps/*/admin.py` - Admin configuration
 - `apps/notifications/services.py` - Notification creation + push sending
-- `apps/notifications/email_service.py` - Email sending
+- `apps/notifications/tasks.py` - Huey background tasks (email, push)
+- `apps/notifications/email_service.py` - Email rendering
 - `apps/messaging/consumers.py` - WebSocket consumer

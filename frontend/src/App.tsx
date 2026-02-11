@@ -6,6 +6,7 @@ import { useAuthStore } from "./store/authStore"
 import { getAccessToken } from "./api/client"
 import { ErrorBoundary } from "./components/ErrorBoundary"
 import { useVersionCheck } from "./hooks/useVersionCheck"
+import { usePushSubscriptionSync } from "./hooks/usePushSubscriptionSync"
 
 // Pages
 import LoginPage from "./pages/LoginPage"
@@ -58,6 +59,9 @@ function App() {
 
   // Check for app updates when user returns to the app
   useVersionCheck()
+
+  // Re-sync push subscription if it was invalidated (e.g. Android force-close)
+  usePushSubscriptionSync()
 
   useEffect(() => {
     const initAuth = async () => {

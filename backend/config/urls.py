@@ -4,13 +4,13 @@ URL configuration for KB Intra project.
 
 from django.conf import settings
 from django.contrib import admin
-from django.http import JsonResponse
+from django.http import HttpRequest, JsonResponse
 from django.urls import include, path, re_path
 from django.views.static import serve
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 
-def health_check(request):
+def health_check(request: HttpRequest) -> JsonResponse:
     return JsonResponse({"status": "ok"})
 
 

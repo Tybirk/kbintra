@@ -121,7 +121,7 @@ KB Intra
 # ---------------------------------------------------------------------------
 
 
-@db_task()
+@db_task(retries=1, retry_delay=5)
 def notify_new_announcement_task(
     author_id: int,
     announcement_title: str,
@@ -148,7 +148,7 @@ def notify_new_announcement_task(
     )
 
 
-@db_task()
+@db_task(retries=1, retry_delay=5)
 def notify_new_thread_task(
     author_id: int,
     thread_title: str,
@@ -183,7 +183,7 @@ def notify_new_thread_task(
     )
 
 
-@db_task()
+@db_task(retries=1, retry_delay=5)
 def notify_new_message_task(
     recipient_id: int,
     sender_id: int,
@@ -209,7 +209,7 @@ def notify_new_message_task(
     )
 
 
-@db_task()
+@db_task(retries=1, retry_delay=5)
 def notify_thread_reply_task(
     thread_author_id: int,
     replier_id: int,
@@ -239,7 +239,7 @@ def notify_thread_reply_task(
     )
 
 
-@db_task()
+@db_task(retries=1, retry_delay=5)
 def notify_post_reply_task(
     post_author_id: int,
     replier_id: int,
@@ -274,7 +274,7 @@ def notify_post_reply_task(
 # ---------------------------------------------------------------------------
 
 
-@db_task()
+@db_task(retries=1, retry_delay=5)
 def refresh_all_drive_menus_task() -> None:
     """Refresh all Google Drive menus in background."""
     from apps.food.services.drive_menu import DriveMenuService
