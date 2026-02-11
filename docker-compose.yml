@@ -87,6 +87,11 @@ services:
     stop_signal: SIGINT
     stop_grace_period: 30s
     mem_limit: 512m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/')"]
       interval: 30s
@@ -116,6 +121,17 @@ services:
     stop_signal: SIGINT
     stop_grace_period: 30s
     mem_limit: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'run_huey' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   frontend:
     build: ./frontend
@@ -129,6 +145,11 @@ services:
       - web
     restart: unless-stopped
     mem_limit: 128m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   web:

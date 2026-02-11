@@ -6,6 +6,7 @@ import contextlib
 from datetime import date, timedelta
 from typing import Any
 
+from django.db import transaction
 from django.db.models import Q, QuerySet, Sum
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -247,58 +248,61 @@ class ApplyDefaultsView(APIView):
 
         created_count = 0
 
-        if preferences.exists():
-            # Use user's preferences
-            for pref in preferences:
-                reg_date = week_start + timedelta(days=pref.day_of_week)
+        with transaction.atomic():
+            if preferences.exists():
+                # Use user's preferences
+                for pref in preferences:
+                    reg_date = week_start + timedelta(days=pref.day_of_week)
 
-                # Skip if date is in the past
-                if reg_date < timezone.now().date():
-                    continue
+                    # Skip if date is in the past
+                    if reg_date < timezone.now().date():
+                        continue
 
-                # Create or update registration (always house-based)
-                registration, created = MealRegistration.objects.update_or_create(
-                    user=user,
-                    date=reg_date,
-                    defaults={
-                        "house": house,
-                        "adults_count": pref.adults_count,
-                        "children_count": pref.children_count,
-                        "meal_type": MealType.MEAT if pref.prefers_meat else MealType.VEGETARIAN,
-                        "dining_option": pref.dining_option,
-                        "seating_time": pref.seating_time,
-                        "is_active": True,
-                    },
-                )
-                if created:
-                    created_count += 1
-        else:
-            # Use sensible house-based defaults for all days (Mon-Thu)
-            for day in range(4):  # 0=Mon, 1=Tue, 2=Wed, 3=Thu
-                reg_date = week_start + timedelta(days=day)
+                    # Create or update registration (always house-based)
+                    registration, created = MealRegistration.objects.update_or_create(
+                        user=user,
+                        date=reg_date,
+                        defaults={
+                            "house": house,
+                            "adults_count": pref.adults_count,
+                            "children_count": pref.children_count,
+                            "meal_type": MealType.MEAT
+                            if pref.prefers_meat
+                            else MealType.VEGETARIAN,
+                            "dining_option": pref.dining_option,
+                            "seating_time": pref.seating_time,
+                            "is_active": True,
+                        },
+                    )
+                    if created:
+                        created_count += 1
+            else:
+                # Use sensible house-based defaults for all days (Mon-Thu)
+                for day in range(4):  # 0=Mon, 1=Tue, 2=Wed, 3=Thu
+                    reg_date = week_start + timedelta(days=day)
 
-                # Skip if date is in the past
-                if reg_date < timezone.now().date():
-                    continue
+                    # Skip if date is in the past
+                    if reg_date < timezone.now().date():
+                        continue
 
-                is_wednesday = day == 2
+                    is_wednesday = day == 2
 
-                # Create or update registration with defaults
-                registration, created = MealRegistration.objects.update_or_create(
-                    user=user,
-                    date=reg_date,
-                    defaults={
-                        "house": house,
-                        "adults_count": house_inhabitant_count,
-                        "children_count": 0,
-                        "meal_type": MealType.MEAT if is_wednesday else MealType.VEGETARIAN,
-                        "dining_option": "eat_in",
-                        "seating_time": "17:30",
-                        "is_active": True,
-                    },
-                )
-                if created:
-                    created_count += 1
+                    # Create or update registration with defaults
+                    registration, created = MealRegistration.objects.update_or_create(
+                        user=user,
+                        date=reg_date,
+                        defaults={
+                            "house": house,
+                            "adults_count": house_inhabitant_count,
+                            "children_count": 0,
+                            "meal_type": MealType.MEAT if is_wednesday else MealType.VEGETARIAN,
+                            "dining_option": "eat_in",
+                            "seating_time": "17:30",
+                            "is_active": True,
+                        },
+                    )
+                    if created:
+                        created_count += 1
 
         return Response(
             {"detail": f"Applied defaults. {created_count} new registrations created."},
@@ -359,8 +363,6 @@ class ClaimTicketView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request: Request, pk: int) -> Response:
-        from django.db import transaction
-
         with transaction.atomic():
             try:
                 ticket = FoodTicket.objects.select_for_update().get(pk=pk)

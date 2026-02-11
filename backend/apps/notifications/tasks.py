@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-@db_task(retries=3, retry_delay=2)
+@db_task(retries=3, retry_delay=60)
 def send_email_task(
     user_id: int,
     notification_type: str,
@@ -52,7 +52,7 @@ def send_email_task(
     )
 
 
-@db_task(retries=2, retry_delay=5)
+@db_task(retries=2, retry_delay=60)
 def send_push_task(
     user_id: int,
     notification_type: str,
@@ -85,7 +85,7 @@ def send_push_task(
 # ---------------------------------------------------------------------------
 
 
-@db_task(retries=3, retry_delay=2)
+@db_task(retries=3, retry_delay=60)
 def send_password_reset_email_task(
     first_name: str,
     email: str,
@@ -121,7 +121,7 @@ KB Intra
 # ---------------------------------------------------------------------------
 
 
-@db_task(retries=1, retry_delay=5)
+@db_task(retries=1, retry_delay=60)
 def notify_new_announcement_task(
     author_id: int,
     announcement_title: str,
@@ -148,7 +148,7 @@ def notify_new_announcement_task(
     )
 
 
-@db_task(retries=1, retry_delay=5)
+@db_task(retries=1, retry_delay=60)
 def notify_new_thread_task(
     author_id: int,
     thread_title: str,
@@ -183,7 +183,7 @@ def notify_new_thread_task(
     )
 
 
-@db_task(retries=1, retry_delay=5)
+@db_task(retries=1, retry_delay=60)
 def notify_new_message_task(
     recipient_id: int,
     sender_id: int,
@@ -209,7 +209,7 @@ def notify_new_message_task(
     )
 
 
-@db_task(retries=1, retry_delay=5)
+@db_task(retries=1, retry_delay=60)
 def notify_thread_reply_task(
     thread_author_id: int,
     replier_id: int,
@@ -239,7 +239,7 @@ def notify_thread_reply_task(
     )
 
 
-@db_task(retries=1, retry_delay=5)
+@db_task(retries=1, retry_delay=60)
 def notify_post_reply_task(
     post_author_id: int,
     replier_id: int,
@@ -274,7 +274,7 @@ def notify_post_reply_task(
 # ---------------------------------------------------------------------------
 
 
-@db_task(retries=1, retry_delay=5)
+@db_task(retries=1, retry_delay=60)
 def refresh_all_drive_menus_task() -> None:
     """Refresh all Google Drive menus in background."""
     from apps.food.services.drive_menu import DriveMenuService

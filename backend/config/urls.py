@@ -11,6 +11,10 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 
 def health_check(request: HttpRequest) -> JsonResponse:
+    from django.db import connection
+
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT 1")
     return JsonResponse({"status": "ok"})
 
 

@@ -58,6 +58,7 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
             "bio",
             "house",
         ]
+        read_only_fields = ["house"]
 
 
 class UserRegistrationSerializer(serializers.Serializer):

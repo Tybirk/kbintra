@@ -3,6 +3,7 @@ WebSocket consumers for real-time messaging.
 """
 
 import json
+import logging
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
@@ -10,6 +11,8 @@ from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import AccessToken
 
 from .models import Conversation, Message, MessageReadStatus
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
@@ -223,9 +226,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def get_user_from_token(self, token: str) -> User | None:
         """Validate JWT token and return user."""
-        import logging
-
-        logger = logging.getLogger(__name__)
         try:
             access_token = AccessToken(token)
             user_id = access_token["user_id"]
@@ -250,16 +250,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
     def create_message(self, conversation_id: int, content: str) -> dict | None:
         """Create a new message in the database."""
         try:
-            conversation = Conversation.objects.get(id=conversation_id, participants=self.user)
-            message = Message.objects.create(
-                conversation=conversation,
-                sender=self.user,
-                content=content,
-            )
-            # Update conversation timestamp
-            conversation.save()
+            from django.db import transaction
 
-            # Send notifications to other participants in background
+            with transaction.atomic():
+                conversation = Conversation.objects.get(id=conversation_id, participants=self.user)
+                message = Message.objects.create(
+                    conversation=conversation,
+                    sender=self.user,
+                    content=content,
+                )
+                # Update conversation timestamp
+                conversation.save()
+
+            # Send notifications to other participants in background (outside transaction)
             from apps.notifications.tasks import notify_new_message_task
 
             for participant in conversation.participants.exclude(id=self.user.id):
@@ -290,14 +293,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 "attachments": [],  # WebSocket messages are text-only
             }
         except Exception:
+            logger.exception("Failed to create message in conversation")
             return None
 
     @database_sync_to_async
     def mark_messages_read(self, conversation_id: int):
         """Mark all messages in conversation as read by current user."""
-        import logging
-
-        logger = logging.getLogger(__name__)
         try:
             conversation = Conversation.objects.get(id=conversation_id, participants=self.user)
             unread_messages = conversation.messages.exclude(sender=self.user).exclude(
@@ -308,5 +309,5 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 MessageReadStatus(message=msg, user=self.user) for msg in unread_messages
             ]
             MessageReadStatus.objects.bulk_create(read_statuses, ignore_conflicts=True)
-        except Exception as e:
-            logger.warning("Failed to mark messages as read: %s", e)
+        except Exception:
+            logger.exception("Failed to mark messages as read")
