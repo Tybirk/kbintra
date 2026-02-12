@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react"
+import { useAuthStore } from "../store/authStore"
 
 // Injected at build time by Vite
 declare const __APP_VERSION__: string
@@ -12,12 +13,17 @@ const CURRENT_VERSION = __APP_VERSION__
  * - pageshow event (more reliable on iOS when returning to PWA)
  * - focus event (backup)
  * - periodic polling (fallback)
+ *
+ * Only runs when authenticated — reloading on the login page wipes form inputs.
  */
 export function useVersionCheck() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const lastCheckRef = useRef<number>(0)
   const MIN_CHECK_INTERVAL = 30_000 // 30 seconds between checks
 
   useEffect(() => {
+    // Don't run version checks on the login page — reloading clears form inputs
+    if (!isAuthenticated) return
     async function checkVersion() {
       // Rate limit checks
       const now = Date.now()
@@ -112,5 +118,5 @@ export function useVersionCheck() {
       window.removeEventListener("pageshow", handlePageShow)
       window.removeEventListener("focus", handleFocus)
     }
-  }, [])
+  }, [isAuthenticated])
 }

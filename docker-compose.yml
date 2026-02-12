@@ -44,10 +44,22 @@ services:
     build: ./backend
     labels:
       - "traefik.enable=true"
+      # Rate limit middleware (general: 100 req/s, burst 200)
+      - "traefik.http.middlewares.rate-limit.ratelimit.average=100"
+      - "traefik.http.middlewares.rate-limit.ratelimit.burst=200"
+      # Strict rate limit for auth endpoints (5 req/s, burst 10)
+      - "traefik.http.middlewares.auth-rate-limit.ratelimit.average=5"
+      - "traefik.http.middlewares.auth-rate-limit.ratelimit.burst=10"
+      # Auth routes (strict rate limit to prevent brute-force)
+      - "traefik.http.routers.backend-auth.rule=PathPrefix(`/api/auth`)"
+      - "traefik.http.routers.backend-auth.entrypoints=web"
+      - "traefik.http.routers.backend-auth.service=backend"
+      - "traefik.http.routers.backend-auth.middlewares=auth-rate-limit"
       # API routes
       - "traefik.http.routers.backend-api.rule=PathPrefix(`/api`)"
       - "traefik.http.routers.backend-api.entrypoints=web"
       - "traefik.http.routers.backend-api.service=backend"
+      - "traefik.http.routers.backend-api.middlewares=rate-limit"
       # WebSocket routes
       - "traefik.http.routers.backend-ws.rule=PathPrefix(`/ws`)"
       - "traefik.http.routers.backend-ws.entrypoints=web"
