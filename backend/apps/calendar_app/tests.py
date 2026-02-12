@@ -89,7 +89,7 @@ class TestEventAPI:
         assert response.status_code == 200
 
         data = response.json()
-        results = data.get("results", data)
+        results = data if isinstance(data, list) else data.get("results", data)
         assert len(results) == 1
         assert results[0]["title"] == "Test Event"
 
@@ -100,7 +100,7 @@ class TestEventAPI:
         assert response.status_code == 200
 
         data = response.json()
-        results = data.get("results", data)
+        results = data if isinstance(data, list) else data.get("results", data)
         # Events are filtered by start_datetime >= start
         # So only the future event should be included
         assert any(e["title"] == "Test Event" for e in results)

@@ -87,7 +87,7 @@ class TestNotificationAPI:
         assert response.status_code == 200
 
         data = response.json()
-        results = data.get("results", data)
+        results = data if isinstance(data, list) else data.get("results", data)
         assert len(results) == 1
         assert results[0]["title"] == "New Thread"
 

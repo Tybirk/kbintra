@@ -65,7 +65,7 @@ class TestConversationAPI:
         assert response.status_code == 200
 
         data = response.json()
-        results = data.get("results", data)
+        results = data if isinstance(data, list) else data.get("results", data)
         assert len(results) == 1
 
     def test_create_conversation(self, authenticated_client, second_user):
@@ -150,7 +150,7 @@ class TestGroupConversationAPI:
         assert response.status_code == 200
 
         data = response.json()
-        results = data.get("results", data)
+        results = data if isinstance(data, list) else data.get("results", data)
         assert len(results) == 1
         assert len(results[0]["other_participants"]) == 2
 

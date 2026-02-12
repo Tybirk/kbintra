@@ -24,7 +24,6 @@ class HouseListView(generics.ListAPIView):
 
     serializer_class = HouseListSerializer
     permission_classes = [permissions.IsAuthenticated]
-    pagination_class = None  # Houses are few, no pagination needed
 
     def get_queryset(self):
         """Return houses ordered by house number."""
