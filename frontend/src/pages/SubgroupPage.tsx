@@ -197,9 +197,10 @@ export default function SubgroupPage() {
         opened={createThreadModalOpened}
         onClose={closeCreateThreadModal}
         subgroupSlug={slug!}
-        onSuccess={() => {
+        onSuccess={(thread) => {
           queryClient.invalidateQueries({ queryKey: ["threads", slug] })
           closeCreateThreadModal()
+          navigate(`/forum/${slug}/${thread.id}`)
         }}
       />
     </>
@@ -263,7 +264,7 @@ interface CreateThreadModalProps {
   opened: boolean
   onClose: () => void
   subgroupSlug: string
-  onSuccess: () => void
+  onSuccess: (thread: Thread) => void
 }
 
 function CreateThreadModal({
@@ -284,7 +285,7 @@ function CreateThreadModal({
         data,
         files.length > 0 ? files : undefined,
       ),
-    onSuccess: () => {
+    onSuccess: (thread) => {
       notifications.show({
         title: "Thread created",
         message: "Your thread has been posted.",
@@ -294,7 +295,7 @@ function CreateThreadModal({
       setContent("")
       setAttachments([])
       resetRef.current?.()
-      onSuccess()
+      onSuccess(thread)
     },
     onError: () => {
       notifications.show({

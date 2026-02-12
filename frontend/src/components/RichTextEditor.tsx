@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { useEditor } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import Link from "@tiptap/extension-link"
@@ -33,6 +34,12 @@ export default function RichTextEditor({
       onChange(editor.getHTML())
     },
   })
+
+  useEffect(() => {
+    if (editor && !editor.isDestroyed && content !== editor.getHTML()) {
+      editor.commands.setContent(content)
+    }
+  }, [content, editor])
 
   const handleEmojiSelect = (emoji: string) => {
     editor?.chain().focus().insertContent(emoji).run()
