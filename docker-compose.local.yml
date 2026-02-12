@@ -18,17 +18,23 @@ services:
     image: redis:7-alpine
     networks:
       - web
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
 
   backend:
     build: ./backend
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.backend.rule=PathPrefix(`/api`) || PathPrefix(`/admin`) || PathPrefix(`/media`)"
+      - "traefik.http.routers.backend.rule=PathPrefix(`/api`) || PathPrefix(`/admin`) || PathPrefix(`/media`) || PathPrefix(`/ws`) || PathPrefix(`/static`)"
       - "traefik.http.routers.backend.entrypoints=web"
       - "traefik.http.services.backend.loadbalancer.server.port=8000"
     volumes:
       - ./data/db.sqlite3:/app/db.sqlite3
       - ./data/media:/app/media
+      - ./data/huey.db:/app/huey.db
     env_file:
       - .env
     environment:
@@ -41,7 +47,8 @@ services:
     networks:
       - web
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   frontend:

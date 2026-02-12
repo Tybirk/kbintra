@@ -82,35 +82,19 @@ self.addEventListener("notificationclick", (event: NotificationEvent) => {
 })
 
 // Handle push subscription change (when browser refreshes the subscription)
+// The SW cannot send authenticated API requests, so we notify the client
+// to re-sync via usePushSubscriptionSync (which has access to the JWT).
+// If no client is open, the next app open will re-sync automatically.
 self.addEventListener("pushsubscriptionchange", (event: ExtendableEvent) => {
-  console.log("[SW] Push subscription changed, re-subscribing")
+  console.log("[SW] Push subscription changed, notifying clients to re-sync")
   event.waitUntil(
-    (async () => {
-      try {
-        // Re-subscribe with the same application server key
-        const subscription = await self.registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          // The browser retains the applicationServerKey from the previous subscription
-        })
-
-        // Send the new subscription to the backend
-        const subscriptionJson = subscription.toJSON()
-        await fetch("/api/notifications/push/subscribe/", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            endpoint: subscriptionJson.endpoint,
-            keys: subscriptionJson.keys,
-          }),
-        })
-        console.log("[SW] Push subscription re-registered successfully")
-      } catch (error) {
-        console.error(
-          "[SW] Failed to re-subscribe after pushsubscriptionchange:",
-          error,
-        )
-      }
-    })(),
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clients) => {
+        for (const client of clients) {
+          client.postMessage({ type: "PUSH_SUBSCRIPTION_CHANGED" })
+        }
+      }),
   )
 })
 

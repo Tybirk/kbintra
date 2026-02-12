@@ -4,7 +4,7 @@ Views for User models.
 
 from typing import Any
 
-from django.db.models import QuerySet
+from django.db.models import Count, QuerySet
 from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.request import Request
@@ -91,7 +91,11 @@ class UserListView(generics.ListAPIView):
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = None  # Small community (~90 users), no need for pagination
-    queryset = User.objects.filter(is_active=True).select_related("house")
+    queryset = (
+        User.objects.filter(is_active=True)
+        .select_related("house")
+        .annotate(_house_inhabitant_count=Count("house__inhabitants"))
+    )
 
 
 class UserDetailView(generics.RetrieveAPIView):
@@ -115,7 +119,10 @@ class UpcomingBirthdaysView(generics.ListAPIView):
     pagination_class = None  # No pagination for this endpoint
 
     def get_queryset(self) -> QuerySet[User]:
-        days = int(self.request.query_params.get("days", 7))
+        try:
+            days = int(self.request.query_params.get("days", 7))
+        except (ValueError, TypeError):
+            days = 7
         days = min(days, 30)  # Cap at 30 days
 
         today = timezone.now().date()
@@ -201,9 +208,11 @@ class ForgotPasswordView(APIView):
 
         # Send email if token was created (user exists)
         if token:
+            from django.conf import settings
+
             from apps.notifications.tasks import send_password_reset_email_task
 
-            reset_url = f"{request.headers.get('Origin', 'http://localhost:5173')}/reset-password?token={token.token}"
+            reset_url = f"{settings.SITE_URL}/reset-password?token={token.token}"
             send_password_reset_email_task(
                 first_name=token.user.first_name,
                 email=token.user.email,

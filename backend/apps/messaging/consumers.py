@@ -2,6 +2,7 @@
 WebSocket consumers for real-time messaging.
 """
 
+import contextlib
 import json
 import logging
 
@@ -83,6 +84,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         except json.JSONDecodeError:
             await self.send(json.dumps({"error": "Invalid JSON"}))
+        except Exception:
+            logger.exception("Unexpected error in WebSocket receive")
+            with contextlib.suppress(Exception):
+                await self.send(json.dumps({"error": "Internal server error"}))
 
     async def handle_send_message(self, data: dict):
         """Handle sending a new message."""
@@ -100,13 +105,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         # Broadcast message to conversation group
-        await self.channel_layer.group_send(
-            f"conversation_{conversation_id}",
-            {
-                "type": "chat_message",
-                "message": message,
-            },
-        )
+        try:
+            await self.channel_layer.group_send(
+                f"conversation_{conversation_id}",
+                {
+                    "type": "chat_message",
+                    "message": message,
+                },
+            )
+        except Exception:
+            logger.exception("Failed to broadcast message to conversation %s", conversation_id)
+            await self.send(json.dumps({"error": "Message saved but failed to broadcast"}))
 
     async def handle_mark_read(self, data: dict):
         """Handle marking messages as read."""
@@ -114,17 +123,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if not conversation_id:
             return
 
-        await self.mark_messages_read(conversation_id)
+        success = await self.mark_messages_read(conversation_id)
+        if not success:
+            return
 
         # Notify sender that messages were read
-        await self.channel_layer.group_send(
-            f"conversation_{conversation_id}",
-            {
-                "type": "messages_read",
-                "conversation_id": conversation_id,
-                "reader_id": self.user.id,
-            },
-        )
+        try:
+            await self.channel_layer.group_send(
+                f"conversation_{conversation_id}",
+                {
+                    "type": "messages_read",
+                    "conversation_id": conversation_id,
+                    "reader_id": self.user.id,
+                },
+            )
+        except Exception:
+            logger.exception("Failed to broadcast read status for conversation %s", conversation_id)
 
     async def handle_join_conversation(self, data: dict):
         """Handle joining a new conversation (after it's created via REST API)."""
@@ -144,21 +158,23 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if not conversation_id:
             return
 
-        await self.channel_layer.group_send(
-            f"conversation_{conversation_id}",
-            {
-                "type": "user_typing",
-                "conversation_id": conversation_id,
-                "user_id": self.user.id,
-                "user_name": f"{self.user.first_name}",
-            },
-        )
+        try:
+            await self.channel_layer.group_send(
+                f"conversation_{conversation_id}",
+                {
+                    "type": "user_typing",
+                    "conversation_id": conversation_id,
+                    "user_id": self.user.id,
+                    "user_name": f"{self.user.first_name}",
+                },
+            )
+        except Exception:
+            logger.exception("Failed to broadcast typing indicator")
 
     async def chat_message(self, event):
         """Send message to WebSocket."""
         # Compute is_own dynamically based on who is receiving the message
-        message = event["message"].copy()
-        message["is_own"] = message["sender"]["id"] == self.user.id
+        message = {**event["message"], "is_own": event["message"]["sender"]["id"] == self.user.id}
         await self.send(
             json.dumps(
                 {
@@ -297,7 +313,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return None
 
     @database_sync_to_async
-    def mark_messages_read(self, conversation_id: int):
+    def mark_messages_read(self, conversation_id: int) -> bool:
         """Mark all messages in conversation as read by current user."""
         try:
             conversation = Conversation.objects.get(id=conversation_id, participants=self.user)
@@ -309,5 +325,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 MessageReadStatus(message=msg, user=self.user) for msg in unread_messages
             ]
             MessageReadStatus.objects.bulk_create(read_statuses, ignore_conflicts=True)
+            return True
         except Exception:
-            logger.exception("Failed to mark messages as read")
+            logger.exception("Failed to mark messages as read for conversation %s", conversation_id)
+            return False

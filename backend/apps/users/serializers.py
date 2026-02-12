@@ -39,6 +39,9 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_house_inhabitant_count(self, obj: User) -> int:
         """Get the number of inhabitants in the user's house."""
+        # Use annotated value if available (avoids N+1 queries)
+        if hasattr(obj, "_house_inhabitant_count"):
+            return obj._house_inhabitant_count
         if obj.house:
             return obj.house.inhabitants.count()
         return 0

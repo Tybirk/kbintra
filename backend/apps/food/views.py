@@ -3,6 +3,7 @@ Views for Food app.
 """
 
 import contextlib
+import logging
 from datetime import date, timedelta
 from typing import Any
 
@@ -50,6 +51,8 @@ from .serializers import (
     TeamSwapRequestSerializer,
 )
 from .services.team_generator import TeamGenerator
+
+logger = logging.getLogger(__name__)
 
 
 def get_week_start(d: date) -> date:
@@ -200,10 +203,10 @@ class MealRegistrationListCreateView(generics.ListCreateAPIView):
         if week_start:
             try:
                 start_date = date.fromisoformat(week_start)
-                end_date = start_date + timedelta(days=6)
-                queryset = queryset.filter(date__gte=start_date, date__lte=end_date)
             except ValueError:
-                pass
+                return queryset.none()
+            end_date = start_date + timedelta(days=6)
+            queryset = queryset.filter(date__gte=start_date, date__lte=end_date)
 
         return queryset
 
@@ -616,33 +619,34 @@ class RespondSwapRequestView(APIView):
                 TeamSwapRequestSerializer(swap_request, context={"request": request}).data
             )
 
-        # Accept: perform the swap
-        requester_membership = swap_request.requester_membership
-        target_membership = swap_request.target_membership
+        # Accept: perform the swap atomically
+        with transaction.atomic():
+            requester_membership = swap_request.requester_membership
+            target_membership = swap_request.target_membership
 
-        # Swap the users between teams
-        requester_user = requester_membership.user
-        requester_house = requester_membership.house_number
-        target_user = target_membership.user
-        target_house = target_membership.house_number
+            # Swap the users between teams
+            requester_user = requester_membership.user
+            requester_house = requester_membership.house_number
+            target_user = target_membership.user
+            target_house = target_membership.house_number
 
-        requester_membership.user = target_user
-        requester_membership.house_number = target_house
-        target_membership.user = requester_user
-        target_membership.house_number = requester_house
+            requester_membership.user = target_user
+            requester_membership.house_number = target_house
+            target_membership.user = requester_user
+            target_membership.house_number = requester_house
 
-        requester_membership.save()
-        target_membership.save()
+            requester_membership.save()
+            target_membership.save()
 
-        swap_request.status = SwapRequestStatus.ACCEPTED
-        swap_request.response_message = response_message
-        swap_request.save()
+            swap_request.status = SwapRequestStatus.ACCEPTED
+            swap_request.response_message = response_message
+            swap_request.save()
 
-        # Cancel any other pending requests involving these memberships
-        TeamSwapRequest.objects.filter(status=SwapRequestStatus.PENDING).filter(
-            Q(requester_membership__in=[requester_membership, target_membership])
-            | Q(target_membership__in=[requester_membership, target_membership])
-        ).exclude(pk=swap_request.pk).update(status=SwapRequestStatus.CANCELLED)
+            # Cancel any other pending requests involving these memberships
+            TeamSwapRequest.objects.filter(status=SwapRequestStatus.PENDING).filter(
+                Q(requester_membership__in=[requester_membership, target_membership])
+                | Q(target_membership__in=[requester_membership, target_membership])
+            ).exclude(pk=swap_request.pk).update(status=SwapRequestStatus.CANCELLED)
 
         return Response(TeamSwapRequestSerializer(swap_request, context={"request": request}).data)
 
@@ -1055,9 +1059,10 @@ class DriveMenuView(APIView):
                 {"detail": str(e)},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception("Error fetching menu")
             return Response(
-                {"detail": f"Error fetching menu: {str(e)}"},
+                {"detail": "Error fetching menu. Please try again later."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1102,9 +1107,10 @@ class DriveMenuView(APIView):
                 {"detail": str(e)},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception("Error refreshing menu")
             return Response(
-                {"detail": f"Error refreshing menu: {str(e)}"},
+                {"detail": "Error refreshing menu. Please try again later."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

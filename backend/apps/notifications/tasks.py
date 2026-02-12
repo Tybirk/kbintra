@@ -136,6 +136,7 @@ def notify_new_announcement_task(
     try:
         author = User.objects.get(id=author_id)
     except User.DoesNotExist:
+        logger.warning("notify_new_announcement_task: Author %d not found", author_id)
         return
 
     recipients = User.objects.exclude(id=author_id)
@@ -166,6 +167,7 @@ def notify_new_thread_task(
     try:
         author = User.objects.get(id=author_id)
     except User.DoesNotExist:
+        logger.warning("notify_new_thread_task: Author %d not found", author_id)
         return
 
     subscribers = User.objects.filter(
@@ -197,8 +199,14 @@ def notify_new_message_task(
 
     try:
         recipient = User.objects.get(id=recipient_id)
+    except User.DoesNotExist:
+        logger.warning("notify_new_message_task: Recipient %d not found", recipient_id)
+        return
+
+    try:
         sender = User.objects.get(id=sender_id)
     except User.DoesNotExist:
+        logger.warning("notify_new_message_task: Sender %d not found", sender_id)
         return
 
     notify_new_message(
@@ -225,8 +233,14 @@ def notify_thread_reply_task(
 
     try:
         thread_author = User.objects.get(id=thread_author_id)
+    except User.DoesNotExist:
+        logger.warning("notify_thread_reply_task: Thread author %d not found", thread_author_id)
+        return
+
+    try:
         replier = User.objects.get(id=replier_id)
     except User.DoesNotExist:
+        logger.warning("notify_thread_reply_task: Replier %d not found", replier_id)
         return
 
     notify_thread_reply(
@@ -255,8 +269,14 @@ def notify_post_reply_task(
 
     try:
         post_author = User.objects.get(id=post_author_id)
+    except User.DoesNotExist:
+        logger.warning("notify_post_reply_task: Post author %d not found", post_author_id)
+        return
+
+    try:
         replier = User.objects.get(id=replier_id)
     except User.DoesNotExist:
+        logger.warning("notify_post_reply_task: Replier %d not found", replier_id)
         return
 
     notify_post_reply(

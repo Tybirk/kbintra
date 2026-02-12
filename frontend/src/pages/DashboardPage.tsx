@@ -196,10 +196,7 @@ export default function DashboardPage() {
     return null
   }
 
-  const nextFoodDay =
-    !isTodayFoodDay || todayDayOfWeek === 4
-      ? getNextFoodDay()
-      : getNextFoodDay()
+  const nextFoodDay = getNextFoodDay()
 
   // Find registrations
   const allRegistrations = [

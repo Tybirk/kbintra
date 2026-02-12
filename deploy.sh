@@ -19,15 +19,15 @@ if [ -f ./data/db.sqlite3 ]; then
     ls -t ./data/backups/db-*.sqlite3 2>/dev/null | tail -n +11 | xargs -r rm
 fi
 
+echo "Ensuring data files exist..."
+mkdir -p ./data
+touch ./data/db.sqlite3 ./data/huey.db
+
 echo "Building and restarting services..."
 docker compose up -d --build
 
 echo "Cleaning up old images..."
 docker image prune -f
-
-echo "Ensuring data files exist..."
-mkdir -p ./data
-touch ./data/db.sqlite3 ./data/huey.db
 
 echo "Waiting for backend health check..."
 timeout=60
