@@ -77,7 +77,7 @@ uv run python manage.py migrate
 uv run python manage.py createsuperuser
 
 # Optionally seed some data (currently seed users requires a CSV I did not commit)
-uv run python manage.py seed_forum_subgroups.py
+uv run python manage.py seed_forum_subgroups
 
 # Run development server
 uv run python manage.py runserver 7000
