@@ -54,6 +54,7 @@ import {
   subscribeToPushNotificationsWithReason,
   unsubscribeFromPushNotifications,
 } from "../utils/pushNotifications"
+import { invalidateCacheForLink } from "../utils/cacheInvalidation"
 import type {
   Notification,
   NotificationPreference,
@@ -164,6 +165,7 @@ export default function NotificationsPage() {
       markOneReadMutation.mutate(notification.id)
     }
     if (notification.link) {
+      invalidateCacheForLink(queryClient, notification.link)
       navigate(notification.link)
     }
   }

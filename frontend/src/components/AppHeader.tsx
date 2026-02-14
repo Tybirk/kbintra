@@ -29,6 +29,7 @@ import { useAuthStore } from "../store/authStore"
 import { spotlight } from "./GlobalSearch"
 import { notificationsApi } from "../api/notifications"
 import { chatWs, messagingApi } from "../api/messaging"
+import { invalidateCacheForLink } from "../utils/cacheInvalidation"
 import type { WsMessage } from "../types"
 
 interface AppHeaderProps {
@@ -90,6 +91,11 @@ export default function AppHeader({
         const notificationPathname = notificationLink?.split("#")[0]
         const isAlreadyViewing =
           notificationPathname && location.pathname === notificationPathname
+
+        // Invalidate cached data so the destination page shows fresh content
+        if (notificationLink) {
+          invalidateCacheForLink(queryClient, notificationLink)
+        }
 
         if (!isAlreadyViewing) {
           notifications.show({

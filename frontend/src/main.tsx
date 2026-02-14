@@ -18,7 +18,7 @@ import App from "./App"
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 5, // 5 minutes
+      staleTime: 1000 * 15, // 15 seconds
       retry: (failureCount, error) => {
         const status = (error as { response?: { status?: number } })?.response
           ?.status
