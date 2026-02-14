@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import { useParams, useNavigate } from "react-router-dom"
+import { useParams, useNavigate, useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
@@ -511,6 +511,7 @@ function ChatArea({
   onParticipantsAdded,
   onLeave,
 }: ChatAreaProps) {
+  const location = useLocation()
   const [message, setMessage] = useState("")
   const [attachments, setAttachments] = useState<File[]>([])
   const [isSending, setIsSending] = useState(false)
@@ -538,13 +539,31 @@ function ChatArea({
     if (scrollRef.current) {
       const isNewConversation =
         prevConversationIdRef.current !== conversation.id
+
+      // If navigating with a hash fragment, scroll to that message instead
+      if (isNewConversation && location.hash) {
+        const timer = setTimeout(() => {
+          const el = document.getElementById(location.hash.slice(1))
+          if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "center" })
+            el.style.transition = "box-shadow 0.3s ease"
+            el.style.boxShadow = "0 0 0 3px var(--mantine-color-blue-4)"
+            setTimeout(() => {
+              el.style.boxShadow = ""
+            }, 2000)
+          }
+        }, 100)
+        prevConversationIdRef.current = conversation.id
+        return () => clearTimeout(timer)
+      }
+
       scrollRef.current.scrollTo({
         top: scrollRef.current.scrollHeight,
         behavior: isNewConversation ? "auto" : "smooth",
       })
       prevConversationIdRef.current = conversation.id
     }
-  }, [conversation.id, conversation.messages])
+  }, [conversation.id, conversation.messages, location.hash])
 
   const handleSend = async () => {
     const textContent = message.trim()
@@ -750,6 +769,7 @@ function MessageBubble({ message, showAvatar, showTime }: MessageBubbleProps) {
   return (
     <>
       <Group
+        id={`msg-${message.id}`}
         justify={isOwn ? "flex-end" : "flex-start"}
         gap="xs"
         align="flex-end"

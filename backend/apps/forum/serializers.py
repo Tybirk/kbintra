@@ -345,6 +345,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
                 thread_id=thread.id,
                 subgroup_slug=thread.subgroup.slug,
                 reply_content=post.content,
+                post_id=post.id,
             )
 
         # Notify other participants in the thread (previous posters)
@@ -367,6 +368,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
                     thread_id=thread.id,
                     subgroup_slug=thread.subgroup.slug,
                     reply_content=post.content,
+                    post_id=post.id,
                 )
                 notified_users.add(poster_id)
 

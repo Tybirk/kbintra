@@ -205,6 +205,7 @@ def notify_new_message_task(
     sender_id: int,
     message_content: str,
     conversation_id: int,
+    message_id: int = 0,
 ) -> None:
     """Send message notification in background."""
     logger.info("notify_new_message_task STARTED: recipient=%d sender=%d", recipient_id, sender_id)
@@ -229,6 +230,7 @@ def notify_new_message_task(
         sender=sender,
         message_content=message_content,
         conversation_id=conversation_id,
+        message_id=message_id,
     )
     logger.info(
         "notify_new_message_task COMPLETED: recipient=%d sender=%d", recipient_id, sender_id
@@ -243,6 +245,7 @@ def notify_thread_reply_task(
     thread_id: int,
     subgroup_slug: str,
     reply_content: str,
+    post_id: int = 0,
 ) -> None:
     """Send thread reply notification in background."""
     logger.info(
@@ -273,6 +276,7 @@ def notify_thread_reply_task(
         thread_id=thread_id,
         subgroup_slug=subgroup_slug,
         reply_content=reply_content,
+        post_id=post_id,
     )
     logger.info(
         "notify_thread_reply_task COMPLETED: thread_author=%d replier=%d",
@@ -289,6 +293,7 @@ def notify_post_reply_task(
     thread_id: int,
     subgroup_slug: str,
     reply_content: str,
+    post_id: int = 0,
 ) -> None:
     """Send post reply notification in background."""
     logger.info(
@@ -317,6 +322,7 @@ def notify_post_reply_task(
         thread_id=thread_id,
         subgroup_slug=subgroup_slug,
         reply_content=reply_content,
+        post_id=post_id,
     )
     logger.info(
         "notify_post_reply_task COMPLETED: post_author=%d replier=%d", post_author_id, replier_id

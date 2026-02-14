@@ -90,6 +90,7 @@ class ConversationListCreateView(generics.ListCreateAPIView):
                     sender_id=request.user.id,
                     message_content=initial_message or "(Vedhæftet fil)",
                     conversation_id=conversation.id,
+                    message_id=message.id,
                 )
 
         return Response(

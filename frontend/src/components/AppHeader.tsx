@@ -87,8 +87,9 @@ export default function AppHeader({
         queryClient.invalidateQueries({ queryKey: ["notifications"] })
 
         const notificationLink = wsData.notification.link
+        const notificationPathname = notificationLink?.split("#")[0]
         const isAlreadyViewing =
-          notificationLink && location.pathname === notificationLink
+          notificationPathname && location.pathname === notificationPathname
 
         if (!isAlreadyViewing) {
           notifications.show({

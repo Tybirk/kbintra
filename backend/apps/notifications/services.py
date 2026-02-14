@@ -198,12 +198,9 @@ def send_push_notification(
             logger.error(f"Unexpected error sending push notification: {e}")
             failed_ids.append(subscription.id)
 
-    # Log expired subscriptions but don't delete (for debugging)
     if expired_ids:
-        logger.warning(
-            f"Found {len(expired_ids)} expired push subscriptions "
-            f"(IDs: {expired_ids}) - NOT deleting for now"
-        )
+        deleted_count, _ = PushSubscription.objects.filter(id__in=expired_ids).delete()
+        logger.info(f"Deleted {deleted_count} expired push subscriptions (IDs: {expired_ids})")
 
     return {
         "total": len(subscriptions),
@@ -300,16 +297,20 @@ def notify_new_message(
     sender: User,
     message_content: str,
     conversation_id: int,
+    message_id: int = 0,
 ) -> Notification | None:
     """Create notification for a new message."""
     # Preview for in-app notification
     preview = message_content[:100] + ("..." if len(message_content) > 100 else "")
+    link = f"/beskeder/{conversation_id}"
+    if message_id:
+        link += f"#msg-{message_id}"
     return create_notification(
         user=recipient,
         notification_type=NotificationType.NEW_MESSAGE,
         title=f"Ny besked fra {sender.first_name}",
         message=preview,
-        link=f"/beskeder/{conversation_id}",
+        link=link,
         related_user=sender,
         html_content=f"<p>{message_content}</p>",  # Full message in email
     )
@@ -398,6 +399,7 @@ def notify_thread_reply(
     thread_id: int,
     subgroup_slug: str,
     reply_content: str,
+    post_id: int = 0,
 ) -> Notification | None:
     """Create notification for a reply to user's thread.
 
@@ -408,6 +410,7 @@ def notify_thread_reply(
         thread_id: ID of the thread
         subgroup_slug: Slug of the subgroup for URL
         reply_content: Full HTML content of the reply
+        post_id: ID of the reply post (for scroll-to link)
     """
     if thread_author.id == replier.id:
         return None
@@ -418,12 +421,16 @@ def notify_thread_reply(
     plain_text = strip_tags(reply_content)
     preview = plain_text[:80] + "..." if len(plain_text) > 80 else plain_text
 
+    link = f"/forum/{subgroup_slug}/{thread_id}"
+    if post_id:
+        link += f"#post-{post_id}"
+
     return create_notification(
         user=thread_author,
         notification_type=NotificationType.THREAD_REPLY,
         title=f"{replier.first_name} svarede på din tråd",
         message=f'"{thread_title}": {preview}',
-        link=f"/forum/{subgroup_slug}/{thread_id}",
+        link=link,
         related_user=replier,
         html_content=f"<p><strong>I tråden: {thread_title}</strong></p>{reply_content}",
     )
@@ -436,6 +443,7 @@ def notify_post_reply(
     thread_id: int,
     subgroup_slug: str,
     reply_content: str,
+    post_id: int = 0,
 ) -> Notification | None:
     """Create notification for a reply after user's post.
 
@@ -446,6 +454,7 @@ def notify_post_reply(
         thread_id: ID of the thread
         subgroup_slug: Slug of the subgroup for URL
         reply_content: Full HTML content of the reply
+        post_id: ID of the reply post (for scroll-to link)
     """
     if post_author.id == replier.id:
         return None
@@ -456,12 +465,16 @@ def notify_post_reply(
     plain_text = strip_tags(reply_content)
     preview = plain_text[:80] + "..." if len(plain_text) > 80 else plain_text
 
+    link = f"/forum/{subgroup_slug}/{thread_id}"
+    if post_id:
+        link += f"#post-{post_id}"
+
     return create_notification(
         user=post_author,
         notification_type=NotificationType.POST_REPLY,
         title=f"{replier.first_name} svarede i en tråd du følger",
         message=f'"{thread_title}": {preview}',
-        link=f"/forum/{subgroup_slug}/{thread_id}",
+        link=link,
         related_user=replier,
         html_content=f"<p><strong>I tråden: {thread_title}</strong></p>{reply_content}",
     )
@@ -517,6 +530,7 @@ def notify_post_reaction(
     thread_id: int,
     subgroup_slug: str,
     reaction_emoji: str,
+    post_id: int = 0,
 ) -> Notification | None:
     """Create notification when someone reacts to a user's post.
 
@@ -527,15 +541,20 @@ def notify_post_reaction(
         thread_id: ID of the thread
         subgroup_slug: Slug of the subgroup for URL
         reaction_emoji: The emoji used for the reaction
+        post_id: ID of the reacted post (for scroll-to link)
     """
     if post_author.id == reactor.id:
         return None
+
+    link = f"/forum/{subgroup_slug}/{thread_id}"
+    if post_id:
+        link += f"#post-{post_id}"
 
     return create_notification(
         user=post_author,
         notification_type=NotificationType.POST_REACTION,
         title=f"{reactor.first_name} reagerede på dit indlæg",
         message=f'{reaction_emoji} i "{thread_title}"',
-        link=f"/forum/{subgroup_slug}/{thread_id}",
+        link=link,
         related_user=reactor,
     )

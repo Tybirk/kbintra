@@ -287,6 +287,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     sender_id=self.user.id,
                     message_content=content,
                     conversation_id=conversation_id,
+                    message_id=message.id,
                 )
 
             # Return serialized message

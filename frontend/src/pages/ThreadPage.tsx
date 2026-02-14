@@ -1,5 +1,5 @@
-import { useState } from "react"
-import { useParams, useNavigate } from "react-router-dom"
+import { useState, useEffect } from "react"
+import { useParams, useNavigate, useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
@@ -75,6 +75,7 @@ export default function ThreadPage() {
     threadId?: string
   }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const queryClient = useQueryClient()
   const threadId = parseInt(threadIdParam || id || "0", 10)
 
@@ -98,6 +99,23 @@ export default function ThreadPage() {
     queryFn: () => forumApi.getThread(threadId),
     enabled: !isNaN(threadId),
   })
+
+  // Scroll to and highlight a specific post when navigating from a notification
+  useEffect(() => {
+    if (!thread || !location.hash) return
+    const el = document.getElementById(location.hash.slice(1))
+    if (!el) return
+    // Small delay to ensure layout is settled
+    const timer = setTimeout(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "center" })
+      el.style.transition = "box-shadow 0.3s ease"
+      el.style.boxShadow = "0 0 0 3px var(--mantine-color-blue-4)"
+      setTimeout(() => {
+        el.style.boxShadow = ""
+      }, 2000)
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [thread, location.hash])
 
   const createPostMutation = useMutation({
     mutationFn: ({ data, files, pollData: pd }: CreatePostParams) =>
@@ -535,7 +553,13 @@ function PostCard({
 
   return (
     <>
-      <Paper withBorder p="md" radius="md" bg={isFirst ? "blue.0" : undefined}>
+      <Paper
+        id={`post-${post.id}`}
+        withBorder
+        p="md"
+        radius="md"
+        bg={isFirst ? "blue.0" : undefined}
+      >
         <Group justify="space-between" mb="sm">
           <Group gap="sm">
             <Avatar src={post.author.profile_picture} radius="xl" size="md">

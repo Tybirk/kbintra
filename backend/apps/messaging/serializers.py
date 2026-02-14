@@ -287,6 +287,7 @@ class CreateMessageSerializer(serializers.ModelSerializer):
                 sender_id=sender.id,
                 message_content=message.content,
                 conversation_id=message.conversation.id,
+                message_id=message.id,
             )
 
         return message

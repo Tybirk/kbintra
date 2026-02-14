@@ -467,6 +467,7 @@ class ReactionToggleView(APIView):
                     thread_id=post.thread.id,
                     subgroup_slug=post.thread.subgroup.slug,
                     reaction_emoji=emoji_map.get(reaction_type, ""),
+                    post_id=post.id,
                 )
             return Response(
                 {"detail": "Reaction added.", "action": "added"},
