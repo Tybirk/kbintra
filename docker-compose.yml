@@ -79,13 +79,12 @@ services:
       # Service
       - "traefik.http.services.backend.loadbalancer.server.port=8000"
     volumes:
-      - ./data/db.sqlite3:/app/db.sqlite3
-      - ./data/media:/app/media
-      - ./data/huey.db:/app/huey.db
+      - ./data:/app/data
     env_file:
       - .env
     environment:
       - DEBUG=False
+      - DATA_DIR=/app/data
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost}
       - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS:-http://localhost}
@@ -115,13 +114,12 @@ services:
     build: ./backend
     command: ["uv", "run", "python", "manage.py", "run_huey", "-w", "2", "-k", "thread", "--flush-locks"]
     volumes:
-      - ./data/db.sqlite3:/app/db.sqlite3
-      - ./data/media:/app/media
-      - ./data/huey.db:/app/huey.db
+      - ./data:/app/data
     env_file:
       - .env
     environment:
       - DEBUG=False
+      - DATA_DIR=/app/data
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost}
       - REDIS_URL=redis://redis:6379/0
     networks:

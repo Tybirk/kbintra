@@ -13,6 +13,11 @@ load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Data directory: in Docker this is a mounted volume (/app/data), locally it's BASE_DIR.
+# Using a directory mount (not individual file mounts) ensures SQLite WAL/SHM files are shared
+# between the backend and huey containers.
+DATA_DIR = Path(os.getenv("DATA_DIR", str(BASE_DIR)))
+
 # Security settings
 SECRET_KEY = os.getenv(
     "SECRET_KEY",
@@ -113,7 +118,7 @@ else:
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "NAME": DATA_DIR / "db.sqlite3",
         "OPTIONS": {
             "timeout": 20,
             "init_command": "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;",
@@ -201,7 +206,7 @@ STORAGES = {
 
 # Media files (uploads)
 MEDIA_URL = "media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = DATA_DIR / "media"
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -254,7 +259,7 @@ HUEY = {
     "name": "kb-intra",
     "results": False,
     "immediate": DEBUG,  # Sync in dev/test, async in prod
-    "filename": str(BASE_DIR / "huey.db"),
+    "filename": str(DATA_DIR / "huey.db"),
     "consumer": {
         "workers": 2,
         "worker_type": "thread",
