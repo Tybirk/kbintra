@@ -1,4 +1,4 @@
-import { useState, useRef } from "react"
+import { useState } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
@@ -19,7 +19,6 @@ import {
   Breadcrumbs,
   Anchor,
   FileInput,
-  FileButton,
   Select,
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
@@ -38,7 +37,6 @@ import {
   IconChevronRight,
   IconFolderSymlink,
   IconEye,
-  IconPaperclip,
   IconChartBar,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
@@ -52,6 +50,7 @@ import {
   MAX_UPLOAD_FILE_SIZE_MB,
 } from "../config"
 import RichTextEditor from "../components/RichTextEditor"
+import FileDropzone, { AttachmentArea } from "../components/FileDropzone"
 import PollCreator from "../components/PollCreator"
 import {
   FilePreviewModal,
@@ -288,7 +287,6 @@ function CreateThreadModal({
   const [content, setContent] = useState("")
   const [attachments, setAttachments] = useState<File[]>([])
   const [pollData, setPollData] = useState<CreatePollData | null>(null)
-  const resetRef = useRef<() => void>(null)
 
   const createMutation = useMutation({
     mutationFn: ({ data, files, pollData: pd }: CreateThreadParams) =>
@@ -308,7 +306,6 @@ function CreateThreadModal({
       setContent("")
       setAttachments([])
       setPollData(null)
-      resetRef.current?.()
       onSuccess(thread)
     },
     onError: () => {
@@ -357,92 +354,82 @@ function CreateThreadModal({
       title="Opret ny diskussion"
       size="lg"
     >
-      <form onSubmit={handleSubmit}>
-        <Stack gap="md">
-          <TextInput
-            label="Titel"
-            placeholder="Hvad vil du diskutere?"
-            value={title}
-            onChange={(e) => setTitle(e.currentTarget.value)}
-            required
-          />
-          <div>
-            <Text size="sm" fw={500} mb={4}>
-              Indhold
-            </Text>
-            <RichTextEditor
-              content={content}
-              onChange={setContent}
-              placeholder="Skriv dit første indlæg..."
-              minHeight={200}
+      <FileDropzone onDrop={handleAddFiles}>
+        <form onSubmit={handleSubmit}>
+          <Stack gap="md">
+            <TextInput
+              label="Titel"
+              placeholder="Hvad vil du diskutere?"
+              value={title}
+              onChange={(e) => setTitle(e.currentTarget.value)}
+              required
             />
-          </div>
+            <div>
+              <Text size="sm" fw={500} mb={4}>
+                Indhold
+              </Text>
+              <RichTextEditor
+                content={content}
+                onChange={setContent}
+                placeholder="Skriv dit første indlæg..."
+                minHeight={200}
+                onFilePaste={handleAddFiles}
+              />
+            </div>
 
-          {pollData && (
-            <PollCreator pollData={pollData} onChange={setPollData} />
-          )}
+            {pollData && (
+              <PollCreator pollData={pollData} onChange={setPollData} />
+            )}
 
-          {attachments.length > 0 && (
-            <Group gap="xs">
-              {attachments.map((file, index) => (
-                <AttachmentBadge
-                  key={`${file.name}-${file.size}-${index}`}
-                  file={file}
-                  onRemove={() => handleRemoveFile(index)}
-                />
-              ))}
-            </Group>
-          )}
+            <AttachmentArea onAddFiles={handleAddFiles}>
+              {attachments.length > 0 && (
+                <Group gap="xs">
+                  {attachments.map((file, index) => (
+                    <AttachmentBadge
+                      key={`${file.name}-${file.size}-${index}`}
+                      file={file}
+                      onRemove={() => handleRemoveFile(index)}
+                    />
+                  ))}
+                </Group>
+              )}
+            </AttachmentArea>
 
-          <Group justify="space-between">
-            <Group gap="xs">
-              <FileButton
-                resetRef={resetRef}
-                onChange={handleAddFiles}
-                multiple
-              >
-                {(props) => (
+            <Group justify="space-between">
+              <Group gap="xs">
+                {!pollData && (
                   <Button
                     variant="light"
-                    leftSection={<IconPaperclip size={16} />}
-                    {...props}
+                    leftSection={<IconChartBar size={16} />}
+                    onClick={() =>
+                      setPollData({
+                        question: "",
+                        allow_multiple_votes: false,
+                        is_anonymous: false,
+                        options: [{ text: "" }, { text: "" }],
+                      })
+                    }
                   >
-                    Vedhæft filer
+                    Afstemning
                   </Button>
                 )}
-              </FileButton>
-              {!pollData && (
-                <Button
-                  variant="light"
-                  leftSection={<IconChartBar size={16} />}
-                  onClick={() =>
-                    setPollData({
-                      question: "",
-                      allow_multiple_votes: false,
-                      is_anonymous: false,
-                      options: [{ text: "" }, { text: "" }],
-                    })
-                  }
-                >
-                  Afstemning
+              </Group>
+              <Group>
+                <Button variant="light" onClick={onClose}>
+                  Annuller
                 </Button>
-              )}
+                <Button
+                  type="submit"
+                  loading={createMutation.isPending}
+                  disabled={!title.trim() || !content.trim()}
+                >
+                  Opret diskussion
+                </Button>
+              </Group>
             </Group>
-            <Group>
-              <Button variant="light" onClick={onClose}>
-                Annuller
-              </Button>
-              <Button
-                type="submit"
-                loading={createMutation.isPending}
-                disabled={!title.trim() || !content.trim()}
-              >
-                Opret diskussion
-              </Button>
-            </Group>
-          </Group>
-        </Stack>
-      </form>
+          </Stack>
+        </form>
+      </FileDropzone>
     </Modal>
   )
 }

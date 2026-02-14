@@ -18,7 +18,13 @@ import {
   IconFile,
   IconPhoto,
 } from "@tabler/icons-react"
-import { useRef, useEffect, useState, type KeyboardEvent } from "react"
+import {
+  useRef,
+  useEffect,
+  useState,
+  type KeyboardEvent,
+  type ClipboardEvent,
+} from "react"
 import { filterFilesBySize } from "../config"
 import EmojiPicker from "./EmojiPicker"
 
@@ -95,6 +101,22 @@ export default function ChatRichTextEditor({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attachments])
+
+  const handlePaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = event.clipboardData?.items
+    if (!items) return
+    const files: File[] = []
+    for (const item of items) {
+      if (item.kind === "file") {
+        const file = item.getAsFile()
+        if (file) files.push(file)
+      }
+    }
+    if (files.length > 0) {
+      event.preventDefault()
+      handleFilesSelected(files)
+    }
+  }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // On mobile, Enter creates a newline (more natural for touch keyboards)
@@ -259,6 +281,7 @@ export default function ChatRichTextEditor({
           value={content}
           onChange={(e) => onChange(e.currentTarget.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           placeholder={actualPlaceholder}
           disabled={disabled}
           autosize

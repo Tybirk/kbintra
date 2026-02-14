@@ -1,4 +1,4 @@
-import { useState, useRef } from "react"
+import { useState } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
@@ -16,7 +16,6 @@ import {
   Modal,
   Divider,
   TypographyStylesProvider,
-  FileButton,
   Badge,
   Image,
   SimpleGrid,
@@ -29,7 +28,6 @@ import {
   IconEdit,
   IconTrash,
   IconSend,
-  IconPaperclip,
   IconLock,
   IconLockOpen,
   IconChartBar,
@@ -40,6 +38,7 @@ import relativeTime from "dayjs/plugin/relativeTime"
 import { forumApi } from "../api/forum"
 import { filterFilesBySize } from "../config"
 import RichTextEditor from "../components/RichTextEditor"
+import FileDropzone, { AttachmentArea } from "../components/FileDropzone"
 import Reactions from "../components/Reactions"
 import PollDisplay from "../components/PollDisplay"
 import PollCreator from "../components/PollCreator"
@@ -82,7 +81,6 @@ export default function ThreadPage() {
   const [newPostContent, setNewPostContent] = useState("")
   const [attachments, setAttachments] = useState<File[]>([])
   const [pollData, setPollData] = useState<CreatePollData | null>(null)
-  const resetRef = useRef<() => void>(null)
   const [editingPost, setEditingPost] = useState<Post | null>(null)
   const [editContent, setEditContent] = useState("")
   const [
@@ -114,7 +112,6 @@ export default function ThreadPage() {
       setNewPostContent("")
       setAttachments([])
       setPollData(null)
-      resetRef.current?.()
       notifications.show({
         title: "Reply posted",
         message: "Your reply has been added.",
@@ -400,79 +397,69 @@ export default function ThreadPage() {
         </Paper>
       ) : (
         <Paper withBorder p="lg" radius="md">
-          <form onSubmit={handleSubmitPost}>
-            <Stack gap="md">
-              <Text fw={500}>Add a Reply</Text>
-              <RichTextEditor
-                content={newPostContent}
-                onChange={setNewPostContent}
-                placeholder="Write your reply..."
-                minHeight={150}
-              />
+          <FileDropzone onDrop={handleAddFiles}>
+            <form onSubmit={handleSubmitPost}>
+              <Stack gap="md">
+                <Text fw={500}>Add a Reply</Text>
+                <RichTextEditor
+                  content={newPostContent}
+                  onChange={setNewPostContent}
+                  placeholder="Write your reply..."
+                  minHeight={150}
+                  onFilePaste={handleAddFiles}
+                />
 
-              {pollData && (
-                <PollCreator pollData={pollData} onChange={setPollData} />
-              )}
+                {pollData && (
+                  <PollCreator pollData={pollData} onChange={setPollData} />
+                )}
 
-              {attachments.length > 0 && (
-                <Group gap="xs">
-                  {attachments.map((file, index) => (
-                    <AttachmentBadge
-                      key={`${file.name}-${file.size}-${index}`}
-                      file={file}
-                      onRemove={() => handleRemoveFile(index)}
-                    />
-                  ))}
-                </Group>
-              )}
+                <AttachmentArea onAddFiles={handleAddFiles}>
+                  {attachments.length > 0 && (
+                    <Group gap="xs">
+                      {attachments.map((file, index) => (
+                        <AttachmentBadge
+                          key={`${file.name}-${file.size}-${index}`}
+                          file={file}
+                          onRemove={() => handleRemoveFile(index)}
+                        />
+                      ))}
+                    </Group>
+                  )}
+                </AttachmentArea>
 
-              <Group justify="space-between">
-                <Group gap="xs">
-                  <FileButton
-                    resetRef={resetRef}
-                    onChange={handleAddFiles}
-                    multiple
-                  >
-                    {(props) => (
+                <Group justify="space-between">
+                  <Group gap="xs">
+                    {!pollData && (
                       <Button
                         variant="light"
-                        leftSection={<IconPaperclip size={16} />}
-                        {...props}
+                        leftSection={<IconChartBar size={16} />}
+                        onClick={() =>
+                          setPollData({
+                            question: "",
+                            allow_multiple_votes: false,
+                            is_anonymous: false,
+                            options: [{ text: "" }, { text: "" }],
+                          })
+                        }
                       >
-                        Vedhæft filer
+                        Afstemning
                       </Button>
                     )}
-                  </FileButton>
-                  {!pollData && (
-                    <Button
-                      variant="light"
-                      leftSection={<IconChartBar size={16} />}
-                      onClick={() =>
-                        setPollData({
-                          question: "",
-                          allow_multiple_votes: false,
-                          is_anonymous: false,
-                          options: [{ text: "" }, { text: "" }],
-                        })
-                      }
-                    >
-                      Afstemning
-                    </Button>
-                  )}
+                  </Group>
+                  <Button
+                    type="submit"
+                    leftSection={<IconSend size={16} />}
+                    loading={createPostMutation.isPending}
+                    disabled={
+                      !newPostContent.trim() || newPostContent === "<p></p>"
+                    }
+                  >
+                    Post Reply
+                  </Button>
                 </Group>
-                <Button
-                  type="submit"
-                  leftSection={<IconSend size={16} />}
-                  loading={createPostMutation.isPending}
-                  disabled={
-                    !newPostContent.trim() || newPostContent === "<p></p>"
-                  }
-                >
-                  Post Reply
-                </Button>
-              </Group>
-            </Stack>
-          </form>
+              </Stack>
+            </form>
+          </FileDropzone>
         </Paper>
       )}
 

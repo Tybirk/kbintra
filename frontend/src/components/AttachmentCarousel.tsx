@@ -68,7 +68,7 @@ export function AttachmentCarousel({
       opened={opened}
       onClose={onClose}
       fullScreen={isMobile}
-      size={isMobile ? undefined : "xxl"}
+      size={isMobile ? undefined : "80%"}
       centered
       title={
         <Text size="sm" c="dimmed">

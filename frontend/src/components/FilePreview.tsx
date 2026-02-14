@@ -406,6 +406,7 @@ export function FilePreviewModal({
   const modalSize = () => {
     switch (fileType) {
       case "pdf":
+        return "80%"
       case "text":
         return "xl"
       case "word":

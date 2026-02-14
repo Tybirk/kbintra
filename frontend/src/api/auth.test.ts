@@ -153,7 +153,6 @@ describe("authApi", () => {
       expect(apiClient.patch).toHaveBeenCalledWith(
         "/users/me/",
         expect.any(FormData),
-        { headers: { "Content-Type": "multipart/form-data" } },
       )
       expect(result).toEqual(mockUser)
     })

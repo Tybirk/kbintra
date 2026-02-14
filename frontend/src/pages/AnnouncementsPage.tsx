@@ -16,8 +16,6 @@ import {
   Menu,
   Badge,
   TypographyStylesProvider,
-  FileButton,
-  CloseButton,
   Box,
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
@@ -28,8 +26,6 @@ import {
   IconDotsVertical,
   IconEdit,
   IconTrash,
-  IconPaperclip,
-  IconFile,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -37,6 +33,8 @@ import relativeTime from "dayjs/plugin/relativeTime"
 import { announcementsApi } from "../api/announcements"
 import { filterFilesBySize } from "../config"
 import RichTextEditor from "../components/RichTextEditor"
+import FileDropzone, { AttachmentArea } from "../components/FileDropzone"
+import { AttachmentBadge } from "../components/AttachmentBadge"
 import {
   getFileIcon,
   getFileTypeColor,
@@ -431,87 +429,60 @@ function CreateAnnouncementModal({
 
   return (
     <Modal opened={opened} onClose={onClose} title="Opret opslag" size="lg">
-      <form onSubmit={handleSubmit}>
-        <Stack gap="md">
-          <TextInput
-            label="Titel"
-            placeholder="Opslagstitel"
-            value={title}
-            onChange={(e) => setTitle(e.currentTarget.value)}
-            required
-          />
-          <div>
-            <Text size="sm" fw={500} mb={4}>
-              Indhold
-            </Text>
-            <RichTextEditor
-              content={content}
-              onChange={setContent}
-              placeholder="Skriv dit opslag..."
-              minHeight={200}
+      <FileDropzone onDrop={handleAddFiles}>
+        <form onSubmit={handleSubmit}>
+          <Stack gap="md">
+            <TextInput
+              label="Titel"
+              placeholder="Opslagstitel"
+              value={title}
+              onChange={(e) => setTitle(e.currentTarget.value)}
+              required
             />
-          </div>
-
-          {/* File attachments */}
-          <div>
-            <Group gap="xs" mb="xs">
-              <Text size="sm" fw={500}>
-                Vedhæftede filer
+            <div>
+              <Text size="sm" fw={500} mb={4}>
+                Indhold
               </Text>
-              <FileButton onChange={handleAddFiles} multiple>
-                {(props) => (
-                  <Button
-                    variant="light"
-                    size="xs"
-                    leftSection={<IconPaperclip size={14} />}
-                    {...props}
-                  >
-                    Tilføj filer
-                  </Button>
-                )}
-              </FileButton>
-            </Group>
-            {attachments.length > 0 && (
-              <Stack gap="xs">
-                {attachments.map((file, index) => (
-                  <Paper key={index} withBorder p="xs" radius="sm">
-                    <Group justify="space-between">
-                      <Group gap="xs">
-                        <IconFile size={16} />
-                        <Text size="sm" lineClamp={1}>
-                          {file.name}
-                        </Text>
-                        <Text size="xs" c="dimmed">
-                          ({(file.size / 1024).toFixed(1)} KB)
-                        </Text>
-                      </Group>
-                      <CloseButton
-                        size="sm"
-                        onClick={() => handleRemoveFile(index)}
-                      />
-                    </Group>
-                  </Paper>
-                ))}
-              </Stack>
-            )}
-          </div>
+              <RichTextEditor
+                content={content}
+                onChange={setContent}
+                placeholder="Skriv dit opslag..."
+                minHeight={200}
+                onFilePaste={handleAddFiles}
+              />
+            </div>
 
-          <Group justify="flex-end">
-            <Button variant="light" onClick={onClose}>
-              Annuller
-            </Button>
-            <Button
-              type="submit"
-              loading={createMutation.isPending}
-              disabled={
-                !title.trim() || !content.trim() || content === "<p></p>"
-              }
-            >
-              Opret opslag
-            </Button>
-          </Group>
-        </Stack>
-      </form>
+            <AttachmentArea onAddFiles={handleAddFiles}>
+              {attachments.length > 0 && (
+                <Group gap="xs">
+                  {attachments.map((file, index) => (
+                    <AttachmentBadge
+                      key={`${file.name}-${file.size}-${index}`}
+                      file={file}
+                      onRemove={() => handleRemoveFile(index)}
+                    />
+                  ))}
+                </Group>
+              )}
+            </AttachmentArea>
+
+            <Group justify="flex-end">
+              <Button variant="light" onClick={onClose}>
+                Annuller
+              </Button>
+              <Button
+                type="submit"
+                loading={createMutation.isPending}
+                disabled={
+                  !title.trim() || !content.trim() || content === "<p></p>"
+                }
+              >
+                Opret opslag
+              </Button>
+            </Group>
+          </Stack>
+        </form>
+      </FileDropzone>
     </Modal>
   )
 }
