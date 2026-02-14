@@ -263,7 +263,13 @@ def create_notification(
     # Enqueue email and push notifications as background tasks
     from apps.notifications.tasks import send_email_task, send_push_task
 
-    send_email_task(
+    logger.info(
+        "Enqueuing email+push tasks for user=%d type=%s title='%s'",
+        user.id,
+        notification_type,
+        title,
+    )
+    email_result = send_email_task(
         user.id,
         notification_type,
         title,
@@ -272,12 +278,18 @@ def create_notification(
         related_user.id if related_user else None,
         html_content,
     )
-    send_push_task(
+    push_result = send_push_task(
         user.id,
         notification_type,
         title,
         message,
         link,
+    )
+    logger.info(
+        "Enqueued tasks for user=%d: email=%s push=%s",
+        user.id,
+        email_result,
+        push_result,
     )
 
     return notification

@@ -5,8 +5,8 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
-    ports:
-      - "80:80"
+    #ports:
+    #  - "127.0.0.1:80:80"  # localhost only — not exposed to public internet
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
@@ -134,7 +134,7 @@ services:
     stop_grace_period: 30s
     mem_limit: 256m
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'run_huey' || exit 1"]
+      test: ["CMD-SHELL", "grep -qa run_huey /proc/1/cmdline"]
       interval: 30s
       timeout: 5s
       retries: 3

@@ -26,6 +26,9 @@ def send_email_task(
     html_content: str | None,
 ) -> None:
     """Send notification email in background."""
+    logger.info(
+        "send_email_task STARTED: user=%d type=%s title='%s'", user_id, notification_type, title
+    )
     from apps.users.models import User
 
     from .email_service import send_notification_email
@@ -50,6 +53,7 @@ def send_email_task(
         related_user=related_user,
         html_content=html_content,
     )
+    logger.info("send_email_task COMPLETED: user=%d type=%s", user_id, notification_type)
 
 
 @db_task(retries=2, retry_delay=60)
@@ -61,6 +65,9 @@ def send_push_task(
     link: str,
 ) -> None:
     """Send push notification in background."""
+    logger.info(
+        "send_push_task STARTED: user=%d type=%s title='%s'", user_id, notification_type, title
+    )
     from apps.users.models import User
 
     from .services import send_push_notification
@@ -78,6 +85,7 @@ def send_push_task(
         message=message,
         link=link,
     )
+    logger.info("send_push_task COMPLETED: user=%d type=%s", user_id, notification_type)
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +137,9 @@ def notify_new_announcement_task(
     announcement_content: str,
 ) -> None:
     """Send announcement notifications to all users in background."""
+    logger.info(
+        "notify_new_announcement_task STARTED: author=%d title='%s'", author_id, announcement_title
+    )
     from apps.users.models import User
 
     from .services import notify_new_announcement
@@ -140,13 +151,14 @@ def notify_new_announcement_task(
         return
 
     recipients = User.objects.exclude(id=author_id)
-    notify_new_announcement(
+    count = notify_new_announcement(
         recipients=recipients,
         author=author,
         announcement_title=announcement_title,
         announcement_id=announcement_id,
         announcement_content=announcement_content,
     )
+    logger.info("notify_new_announcement_task COMPLETED: %d notifications created", count)
 
 
 @db_task(retries=1, retry_delay=60)
@@ -160,6 +172,7 @@ def notify_new_thread_task(
     initial_post_content: str,
 ) -> None:
     """Send new-thread notifications to subscribers in background."""
+    logger.info("notify_new_thread_task STARTED: author=%d thread='%s'", author_id, thread_title)
     from apps.users.models import User
 
     from .services import notify_new_thread
@@ -174,7 +187,7 @@ def notify_new_thread_task(
         subgroup_subscriptions__subgroup_id=subgroup_id,
         subgroup_subscriptions__notify_new_threads=True,
     )
-    notify_new_thread(
+    count = notify_new_thread(
         subscribers=subscribers,
         author=author,
         thread_title=thread_title,
@@ -183,6 +196,7 @@ def notify_new_thread_task(
         subgroup_slug=subgroup_slug,
         initial_post_content=initial_post_content,
     )
+    logger.info("notify_new_thread_task COMPLETED: %d notifications created", count)
 
 
 @db_task(retries=1, retry_delay=60)
@@ -193,6 +207,7 @@ def notify_new_message_task(
     conversation_id: int,
 ) -> None:
     """Send message notification in background."""
+    logger.info("notify_new_message_task STARTED: recipient=%d sender=%d", recipient_id, sender_id)
     from apps.users.models import User
 
     from .services import notify_new_message
@@ -215,6 +230,9 @@ def notify_new_message_task(
         message_content=message_content,
         conversation_id=conversation_id,
     )
+    logger.info(
+        "notify_new_message_task COMPLETED: recipient=%d sender=%d", recipient_id, sender_id
+    )
 
 
 @db_task(retries=1, retry_delay=60)
@@ -227,6 +245,11 @@ def notify_thread_reply_task(
     reply_content: str,
 ) -> None:
     """Send thread reply notification in background."""
+    logger.info(
+        "notify_thread_reply_task STARTED: thread_author=%d replier=%d",
+        thread_author_id,
+        replier_id,
+    )
     from apps.users.models import User
 
     from .services import notify_thread_reply
@@ -251,6 +274,11 @@ def notify_thread_reply_task(
         subgroup_slug=subgroup_slug,
         reply_content=reply_content,
     )
+    logger.info(
+        "notify_thread_reply_task COMPLETED: thread_author=%d replier=%d",
+        thread_author_id,
+        replier_id,
+    )
 
 
 @db_task(retries=1, retry_delay=60)
@@ -263,6 +291,9 @@ def notify_post_reply_task(
     reply_content: str,
 ) -> None:
     """Send post reply notification in background."""
+    logger.info(
+        "notify_post_reply_task STARTED: post_author=%d replier=%d", post_author_id, replier_id
+    )
     from apps.users.models import User
 
     from .services import notify_post_reply
@@ -286,6 +317,9 @@ def notify_post_reply_task(
         thread_id=thread_id,
         subgroup_slug=subgroup_slug,
         reply_content=reply_content,
+    )
+    logger.info(
+        "notify_post_reply_task COMPLETED: post_author=%d replier=%d", post_author_id, replier_id
     )
 
 
