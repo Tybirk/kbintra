@@ -4,11 +4,23 @@ URL configuration for KB Intra project.
 
 from django.conf import settings
 from django.contrib import admin
+from django.http import HttpRequest, JsonResponse
 from django.urls import include, path, re_path
 from django.views.static import serve
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
+
+def health_check(request: HttpRequest) -> JsonResponse:
+    from django.db import connection
+
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT 1")
+    return JsonResponse({"status": "ok"})
+
+
 urlpatterns = [
+    # Health check (unauthenticated, used by Docker/Traefik)
+    path("api/health/", health_check),
     # Admin
     path("admin/", admin.site.urls),
     # JWT Authentication

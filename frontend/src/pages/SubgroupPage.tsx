@@ -39,9 +39,11 @@ import {
   IconFolderSymlink,
   IconEye,
   IconPaperclip,
+  IconChartBar,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
+import "dayjs/locale/da"
 
 import { forumApi } from "../api/forum"
 import {
@@ -75,6 +77,7 @@ interface CreateThreadParams {
 }
 
 dayjs.extend(relativeTime)
+dayjs.locale("da")
 
 export default function SubgroupPage() {
   const { slug } = useParams<{ slug: string }>()
@@ -111,7 +114,7 @@ export default function SubgroupPage() {
   if (!subgroup) {
     return (
       <Center h={200}>
-        <Text c="red">Subgroup not found.</Text>
+        <Text c="red">Gruppen blev ikke fundet.</Text>
       </Center>
     )
   }
@@ -131,7 +134,7 @@ export default function SubgroupPage() {
         onClick={() => navigate("/forum")}
         mb="md"
       >
-        Back to Forum
+        Tilbage til forum
       </Button>
 
       <Group justify="space-between" mb="md">
@@ -205,9 +208,10 @@ export default function SubgroupPage() {
         opened={createThreadModalOpened}
         onClose={closeCreateThreadModal}
         subgroupSlug={slug!}
-        onSuccess={() => {
+        onSuccess={(thread) => {
           queryClient.invalidateQueries({ queryKey: ["threads", slug] })
           closeCreateThreadModal()
+          navigate(`/forum/${slug}/${thread.id}`)
         }}
       />
     </>
@@ -254,11 +258,11 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
         </Group>
         <Group gap="xs">
           <Badge variant="light" color="gray">
-            {thread.post_count} {thread.post_count === 1 ? "reply" : "replies"}
+            {thread.post_count} {thread.post_count === 1 ? "svar" : "svar"}
           </Badge>
           {thread.last_post_at && (
             <Text size="xs" c="dimmed">
-              Last activity {dayjs(thread.last_post_at).fromNow()}
+              Seneste aktivitet {dayjs(thread.last_post_at).fromNow()}
             </Text>
           )}
         </Group>
@@ -271,7 +275,7 @@ interface CreateThreadModalProps {
   opened: boolean
   onClose: () => void
   subgroupSlug: string
-  onSuccess: () => void
+  onSuccess: (thread: Thread) => void
 }
 
 function CreateThreadModal({
@@ -294,10 +298,10 @@ function CreateThreadModal({
         files.length > 0 ? files : undefined,
         pd || undefined,
       ),
-    onSuccess: () => {
+    onSuccess: (thread) => {
       notifications.show({
-        title: "Thread created",
-        message: "Your thread has been posted.",
+        title: "Diskussion oprettet",
+        message: "Din diskussion er blevet oprettet.",
         color: "green",
       })
       setTitle("")
@@ -305,12 +309,12 @@ function CreateThreadModal({
       setAttachments([])
       setPollData(null)
       resetRef.current?.()
-      onSuccess()
+      onSuccess(thread)
     },
     onError: () => {
       notifications.show({
-        title: "Error",
-        message: "Failed to create thread. Please try again.",
+        title: "Fejl",
+        message: "Kunne ikke oprette diskussion. Prøv igen.",
         color: "red",
       })
     },
@@ -331,7 +335,7 @@ function CreateThreadModal({
     if (errors.length > 0) {
       errors.forEach((error) => {
         notifications.show({
-          title: "File too large",
+          title: "Filen er for stor",
           message: error,
           color: "red",
         })
@@ -350,31 +354,33 @@ function CreateThreadModal({
     <Modal
       opened={opened}
       onClose={onClose}
-      title="Create New Thread"
+      title="Opret ny diskussion"
       size="lg"
     >
       <form onSubmit={handleSubmit}>
         <Stack gap="md">
           <TextInput
-            label="Title"
-            placeholder="What do you want to discuss?"
+            label="Titel"
+            placeholder="Hvad vil du diskutere?"
             value={title}
             onChange={(e) => setTitle(e.currentTarget.value)}
             required
           />
           <div>
             <Text size="sm" fw={500} mb={4}>
-              Content
+              Indhold
             </Text>
             <RichTextEditor
               content={content}
               onChange={setContent}
-              placeholder="Write your first post..."
+              placeholder="Skriv dit første indlæg..."
               minHeight={200}
             />
           </div>
 
-          <PollCreator pollData={pollData} onChange={setPollData} />
+          {pollData && (
+            <PollCreator pollData={pollData} onChange={setPollData} />
+          )}
 
           {attachments.length > 0 && (
             <Group gap="xs">
@@ -389,27 +395,49 @@ function CreateThreadModal({
           )}
 
           <Group justify="space-between">
-            <FileButton resetRef={resetRef} onChange={handleAddFiles} multiple>
-              {(props) => (
+            <Group gap="xs">
+              <FileButton
+                resetRef={resetRef}
+                onChange={handleAddFiles}
+                multiple
+              >
+                {(props) => (
+                  <Button
+                    variant="light"
+                    leftSection={<IconPaperclip size={16} />}
+                    {...props}
+                  >
+                    Vedhæft filer
+                  </Button>
+                )}
+              </FileButton>
+              {!pollData && (
                 <Button
                   variant="light"
-                  leftSection={<IconPaperclip size={16} />}
-                  {...props}
+                  leftSection={<IconChartBar size={16} />}
+                  onClick={() =>
+                    setPollData({
+                      question: "",
+                      allow_multiple_votes: false,
+                      is_anonymous: false,
+                      options: [{ text: "" }, { text: "" }],
+                    })
+                  }
                 >
-                  Attach Files
+                  Afstemning
                 </Button>
               )}
-            </FileButton>
+            </Group>
             <Group>
               <Button variant="light" onClick={onClose}>
-                Cancel
+                Annuller
               </Button>
               <Button
                 type="submit"
                 loading={createMutation.isPending}
                 disabled={!title.trim() || !content.trim()}
               >
-                Create Thread
+                Opret diskussion
               </Button>
             </Group>
           </Group>
@@ -940,7 +968,7 @@ function UploadFileModal({
                 const error = validateFileSize(newFile)
                 if (error) {
                   notifications.show({
-                    title: "File too large",
+                    title: "Filen er for stor",
                     message: error,
                     color: "red",
                   })

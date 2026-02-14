@@ -3,9 +3,11 @@ Views for Food app.
 """
 
 import contextlib
+import logging
 from datetime import date, timedelta
 from typing import Any
 
+from django.db import transaction
 from django.db.models import Q, QuerySet, Sum
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -49,6 +51,8 @@ from .serializers import (
     TeamSwapRequestSerializer,
 )
 from .services.team_generator import TeamGenerator
+
+logger = logging.getLogger(__name__)
 
 
 def get_week_start(d: date) -> date:
@@ -199,10 +203,10 @@ class MealRegistrationListCreateView(generics.ListCreateAPIView):
         if week_start:
             try:
                 start_date = date.fromisoformat(week_start)
-                end_date = start_date + timedelta(days=6)
-                queryset = queryset.filter(date__gte=start_date, date__lte=end_date)
             except ValueError:
-                pass
+                return queryset.none()
+            end_date = start_date + timedelta(days=6)
+            queryset = queryset.filter(date__gte=start_date, date__lte=end_date)
 
         return queryset
 
@@ -247,58 +251,61 @@ class ApplyDefaultsView(APIView):
 
         created_count = 0
 
-        if preferences.exists():
-            # Use user's preferences
-            for pref in preferences:
-                reg_date = week_start + timedelta(days=pref.day_of_week)
+        with transaction.atomic():
+            if preferences.exists():
+                # Use user's preferences
+                for pref in preferences:
+                    reg_date = week_start + timedelta(days=pref.day_of_week)
 
-                # Skip if date is in the past
-                if reg_date < timezone.now().date():
-                    continue
+                    # Skip if date is in the past
+                    if reg_date < timezone.now().date():
+                        continue
 
-                # Create or update registration (always house-based)
-                registration, created = MealRegistration.objects.update_or_create(
-                    user=user,
-                    date=reg_date,
-                    defaults={
-                        "house": house,
-                        "adults_count": pref.adults_count,
-                        "children_count": pref.children_count,
-                        "meal_type": MealType.MEAT if pref.prefers_meat else MealType.VEGETARIAN,
-                        "dining_option": pref.dining_option,
-                        "seating_time": pref.seating_time,
-                        "is_active": True,
-                    },
-                )
-                if created:
-                    created_count += 1
-        else:
-            # Use sensible house-based defaults for all days (Mon-Thu)
-            for day in range(4):  # 0=Mon, 1=Tue, 2=Wed, 3=Thu
-                reg_date = week_start + timedelta(days=day)
+                    # Create or update registration (always house-based)
+                    registration, created = MealRegistration.objects.update_or_create(
+                        user=user,
+                        date=reg_date,
+                        defaults={
+                            "house": house,
+                            "adults_count": pref.adults_count,
+                            "children_count": pref.children_count,
+                            "meal_type": MealType.MEAT
+                            if pref.prefers_meat
+                            else MealType.VEGETARIAN,
+                            "dining_option": pref.dining_option,
+                            "seating_time": pref.seating_time,
+                            "is_active": True,
+                        },
+                    )
+                    if created:
+                        created_count += 1
+            else:
+                # Use sensible house-based defaults for all days (Mon-Thu)
+                for day in range(4):  # 0=Mon, 1=Tue, 2=Wed, 3=Thu
+                    reg_date = week_start + timedelta(days=day)
 
-                # Skip if date is in the past
-                if reg_date < timezone.now().date():
-                    continue
+                    # Skip if date is in the past
+                    if reg_date < timezone.now().date():
+                        continue
 
-                is_wednesday = day == 2
+                    is_wednesday = day == 2
 
-                # Create or update registration with defaults
-                registration, created = MealRegistration.objects.update_or_create(
-                    user=user,
-                    date=reg_date,
-                    defaults={
-                        "house": house,
-                        "adults_count": house_inhabitant_count,
-                        "children_count": 0,
-                        "meal_type": MealType.MEAT if is_wednesday else MealType.VEGETARIAN,
-                        "dining_option": "eat_in",
-                        "seating_time": "17:30",
-                        "is_active": True,
-                    },
-                )
-                if created:
-                    created_count += 1
+                    # Create or update registration with defaults
+                    registration, created = MealRegistration.objects.update_or_create(
+                        user=user,
+                        date=reg_date,
+                        defaults={
+                            "house": house,
+                            "adults_count": house_inhabitant_count,
+                            "children_count": 0,
+                            "meal_type": MealType.MEAT if is_wednesday else MealType.VEGETARIAN,
+                            "dining_option": "eat_in",
+                            "seating_time": "17:30",
+                            "is_active": True,
+                        },
+                    )
+                    if created:
+                        created_count += 1
 
         return Response(
             {"detail": f"Applied defaults. {created_count} new registrations created."},
@@ -359,8 +366,6 @@ class ClaimTicketView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request: Request, pk: int) -> Response:
-        from django.db import transaction
-
         with transaction.atomic():
             try:
                 ticket = FoodTicket.objects.select_for_update().get(pk=pk)
@@ -614,33 +619,34 @@ class RespondSwapRequestView(APIView):
                 TeamSwapRequestSerializer(swap_request, context={"request": request}).data
             )
 
-        # Accept: perform the swap
-        requester_membership = swap_request.requester_membership
-        target_membership = swap_request.target_membership
+        # Accept: perform the swap atomically
+        with transaction.atomic():
+            requester_membership = swap_request.requester_membership
+            target_membership = swap_request.target_membership
 
-        # Swap the users between teams
-        requester_user = requester_membership.user
-        requester_house = requester_membership.house_number
-        target_user = target_membership.user
-        target_house = target_membership.house_number
+            # Swap the users between teams
+            requester_user = requester_membership.user
+            requester_house = requester_membership.house_number
+            target_user = target_membership.user
+            target_house = target_membership.house_number
 
-        requester_membership.user = target_user
-        requester_membership.house_number = target_house
-        target_membership.user = requester_user
-        target_membership.house_number = requester_house
+            requester_membership.user = target_user
+            requester_membership.house_number = target_house
+            target_membership.user = requester_user
+            target_membership.house_number = requester_house
 
-        requester_membership.save()
-        target_membership.save()
+            requester_membership.save()
+            target_membership.save()
 
-        swap_request.status = SwapRequestStatus.ACCEPTED
-        swap_request.response_message = response_message
-        swap_request.save()
+            swap_request.status = SwapRequestStatus.ACCEPTED
+            swap_request.response_message = response_message
+            swap_request.save()
 
-        # Cancel any other pending requests involving these memberships
-        TeamSwapRequest.objects.filter(status=SwapRequestStatus.PENDING).filter(
-            Q(requester_membership__in=[requester_membership, target_membership])
-            | Q(target_membership__in=[requester_membership, target_membership])
-        ).exclude(pk=swap_request.pk).update(status=SwapRequestStatus.CANCELLED)
+            # Cancel any other pending requests involving these memberships
+            TeamSwapRequest.objects.filter(status=SwapRequestStatus.PENDING).filter(
+                Q(requester_membership__in=[requester_membership, target_membership])
+                | Q(target_membership__in=[requester_membership, target_membership])
+            ).exclude(pk=swap_request.pk).update(status=SwapRequestStatus.CANCELLED)
 
         return Response(TeamSwapRequestSerializer(swap_request, context={"request": request}).data)
 
@@ -1053,9 +1059,10 @@ class DriveMenuView(APIView):
                 {"detail": str(e)},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception("Error fetching menu")
             return Response(
-                {"detail": f"Error fetching menu: {str(e)}"},
+                {"detail": "Error fetching menu. Please try again later."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1100,9 +1107,10 @@ class DriveMenuView(APIView):
                 {"detail": str(e)},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception("Error refreshing menu")
             return Response(
-                {"detail": f"Error refreshing menu: {str(e)}"},
+                {"detail": "Error refreshing menu. Please try again later."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1113,32 +1121,18 @@ class DriveMenuRefreshAllView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request: Request) -> Response:
-        """Refresh all available menus from Drive."""
+        """Refresh all available menus from Drive (runs in background)."""
         if not request.user.is_staff:
             return Response(
                 {"detail": "Only administrators can refresh all menus."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        from .services.drive_menu import DriveMenuService
+        from apps.notifications.tasks import refresh_all_drive_menus_task
 
-        service = DriveMenuService()
+        refresh_all_drive_menus_task()
 
-        try:
-            result = service.refresh_all_menus()
-            return Response(
-                {
-                    "detail": f"Refreshed {result['updated']} menus, {result['failed']} failed.",
-                    **result,
-                }
-            )
-        except ValueError as e:
-            return Response(
-                {"detail": str(e)},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-        except Exception as e:
-            return Response(
-                {"detail": f"Error refreshing menus: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+        return Response(
+            {"detail": "Menu refresh started in background."},
+            status=status.HTTP_202_ACCEPTED,
+        )

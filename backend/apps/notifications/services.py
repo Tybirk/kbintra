@@ -2,7 +2,6 @@
 Notification services for creating notifications.
 """
 
-import contextlib
 import json
 import logging
 import time
@@ -256,34 +255,42 @@ def create_notification(
         )
 
         # Send real-time notification via WebSocket
-        with contextlib.suppress(Exception):
+        try:
             send_notification_to_websocket(notification)
+        except Exception:
+            logger.exception("Failed to send WebSocket notification to user %s", user.id)
 
-    # Send email notification if user has email enabled for this type
-    # (email_service checks its own preferences)
-    with contextlib.suppress(Exception):
-        from .email_service import send_notification_email
+    # Enqueue email and push notifications as background tasks
+    from apps.notifications.tasks import send_email_task, send_push_task
 
-        send_notification_email(
-            user=user,
-            notification_type=notification_type,
-            title=title,
-            message=message,
-            link=link,
-            related_user=related_user,
-            html_content=html_content,
-        )
-
-    # Send push notification if user has push enabled for this type
-    # (send_push_notification checks its own preferences)
-    with contextlib.suppress(Exception):
-        send_push_notification(
-            user=user,
-            notification_type=notification_type,
-            title=title,
-            message=message,
-            link=link,
-        )
+    logger.info(
+        "Enqueuing email+push tasks for user=%d type=%s title='%s'",
+        user.id,
+        notification_type,
+        title,
+    )
+    email_result = send_email_task(
+        user.id,
+        notification_type,
+        title,
+        message,
+        link,
+        related_user.id if related_user else None,
+        html_content,
+    )
+    push_result = send_push_task(
+        user.id,
+        notification_type,
+        title,
+        message,
+        link,
+    )
+    logger.info(
+        "Enqueued tasks for user=%d: email=%s push=%s",
+        user.id,
+        email_result,
+        push_result,
+    )
 
     return notification
 

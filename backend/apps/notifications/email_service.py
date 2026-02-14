@@ -111,6 +111,6 @@ def send_notification_email(
         logger.info(f"Sent notification email to {user.email}: {title}")
         return True
 
-    except Exception as e:
-        logger.error(f"Failed to send notification email to {user.email}: {e}")
-        return False
+    except Exception:
+        logger.exception(f"Failed to send notification email to {user.email}")
+        raise

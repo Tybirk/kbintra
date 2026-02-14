@@ -38,8 +38,8 @@ import {
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
 
-import { messagingApi, ChatWebSocket } from "../api/messaging"
-import { apiClient, getAccessToken } from "../api/client"
+import { messagingApi, chatWs } from "../api/messaging"
+import { apiClient } from "../api/client"
 import { useAuthStore } from "../store/authStore"
 import type {
   Conversation,
@@ -55,9 +55,6 @@ import { AttachmentCarousel } from "../components/AttachmentCarousel"
 
 dayjs.extend(relativeTime)
 
-// Create WebSocket instance
-const chatWs = new ChatWebSocket(getAccessToken)
-
 export default function MessagesPage() {
   const { user } = useAuthStore()
   const { conversationId } = useParams<{ conversationId?: string }>()
@@ -68,8 +65,9 @@ export default function MessagesPage() {
       conversationId ? parseInt(conversationId, 10) : null,
     )
   const [isComposingNew, setIsComposingNew] = useState(false)
-  const [isWsConnected, setIsWsConnected] = useState(false)
+  const [isWsConnected, setIsWsConnected] = useState(chatWs.isConnected)
   const isMobile = useMediaQuery("(max-width: 768px)")
+  const selectedConversationRef = useRef(selectedConversation)
 
   // Sync URL param to state when URL changes (e.g., from notification link)
   useEffect(() => {
@@ -105,7 +103,12 @@ export default function MessagesPage() {
     },
   )
 
-  // Connect WebSocket on mount
+  // Keep ref in sync with state
+  useEffect(() => {
+    selectedConversationRef.current = selectedConversation
+  }, [selectedConversation])
+
+  // Connect WebSocket on mount (stable — does not reconnect on conversation switch)
   useEffect(() => {
     chatWs.connect()
 
@@ -120,9 +123,10 @@ export default function MessagesPage() {
         // Update conversation list
         queryClient.invalidateQueries({ queryKey: ["conversations"] })
         // Update active conversation if it matches
-        if (wsData.message.conversation === selectedConversation) {
+        const currentConv = selectedConversationRef.current
+        if (wsData.message.conversation === currentConv) {
           queryClient.setQueryData<ConversationDetail>(
-            ["conversation", selectedConversation],
+            ["conversation", currentConv],
             (old) => {
               if (!old) return old
               // Check if message already exists to prevent duplicates
@@ -149,9 +153,8 @@ export default function MessagesPage() {
     return () => {
       unsubConnection()
       unsubMessage()
-      chatWs.disconnect()
     }
-  }, [queryClient, selectedConversation])
+  }, [queryClient])
 
   // Mark messages as read when viewing conversation
   useEffect(() => {
@@ -433,6 +436,7 @@ function ConversationItem({
           color="blue"
           size={10}
           offset={4}
+          zIndex={1}
         >
           {isGroupChat ? (
             <Avatar.Group spacing="sm">

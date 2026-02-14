@@ -275,6 +275,7 @@ export default function CalendarPage() {
                     color="blue"
                     offset={-2}
                     disabled={!dayEvents?.length}
+                    zIndex={1}
                   >
                     <div>{day}</div>
                   </Indicator>

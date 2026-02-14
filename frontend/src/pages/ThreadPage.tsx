@@ -32,6 +32,7 @@ import {
   IconPaperclip,
   IconLock,
   IconLockOpen,
+  IconChartBar,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -409,7 +410,9 @@ export default function ThreadPage() {
                 minHeight={150}
               />
 
-              <PollCreator pollData={pollData} onChange={setPollData} />
+              {pollData && (
+                <PollCreator pollData={pollData} onChange={setPollData} />
+              )}
 
               {attachments.length > 0 && (
                 <Group gap="xs">
@@ -424,21 +427,39 @@ export default function ThreadPage() {
               )}
 
               <Group justify="space-between">
-                <FileButton
-                  resetRef={resetRef}
-                  onChange={handleAddFiles}
-                  multiple
-                >
-                  {(props) => (
+                <Group gap="xs">
+                  <FileButton
+                    resetRef={resetRef}
+                    onChange={handleAddFiles}
+                    multiple
+                  >
+                    {(props) => (
+                      <Button
+                        variant="light"
+                        leftSection={<IconPaperclip size={16} />}
+                        {...props}
+                      >
+                        Vedhæft filer
+                      </Button>
+                    )}
+                  </FileButton>
+                  {!pollData && (
                     <Button
                       variant="light"
-                      leftSection={<IconPaperclip size={16} />}
-                      {...props}
+                      leftSection={<IconChartBar size={16} />}
+                      onClick={() =>
+                        setPollData({
+                          question: "",
+                          allow_multiple_votes: false,
+                          is_anonymous: false,
+                          options: [{ text: "" }, { text: "" }],
+                        })
+                      }
                     >
-                      Attach Files
+                      Afstemning
                     </Button>
                   )}
-                </FileButton>
+                </Group>
                 <Button
                   type="submit"
                   leftSection={<IconSend size={16} />}

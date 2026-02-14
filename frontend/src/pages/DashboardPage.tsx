@@ -15,6 +15,7 @@ import {
   Badge,
   SegmentedControl,
   Divider,
+  Alert,
 } from "@mantine/core"
 import { useDebouncedCallback } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -57,12 +58,20 @@ export default function DashboardPage() {
   const { user } = useAuthStore()
   const navigate = useNavigate()
 
-  const { data: announcements, isLoading: announcementsLoading } = useQuery({
+  const {
+    data: announcements,
+    isLoading: announcementsLoading,
+    isError: announcementsError,
+  } = useQuery({
     queryKey: ["announcements", "recent"],
     queryFn: () => announcementsApi.getAnnouncements(),
   })
 
-  const { data: upcomingEvents, isLoading: eventsLoading } = useQuery({
+  const {
+    data: upcomingEvents,
+    isLoading: eventsLoading,
+    isError: eventsError,
+  } = useQuery({
     queryKey: ["calendar", "upcoming"],
     queryFn: () => calendarApi.getUpcomingEvents(),
   })
@@ -72,15 +81,26 @@ export default function DashboardPage() {
     queryFn: () => notificationsApi.getNotifications(),
   })
 
-  const { data: birthdayUsers, isLoading: birthdaysLoading } = useQuery({
+  const {
+    data: birthdayUsers,
+    isLoading: birthdaysLoading,
+    isError: birthdaysError,
+  } = useQuery({
     queryKey: ["users", "birthdays"],
     queryFn: () => usersApi.getUpcomingBirthdays(7),
   })
 
-  const { data: recentActivity, isLoading: activityLoading } = useQuery({
+  const {
+    data: recentActivity,
+    isLoading: activityLoading,
+    isError: activityError,
+  } = useQuery({
     queryKey: ["forum", "recent"],
     queryFn: () => forumApi.getRecentActivity(5),
   })
+
+  const hasError =
+    announcementsError || eventsError || birthdaysError || activityError
 
   // Food queries
   const today = dayjs()
@@ -176,10 +196,7 @@ export default function DashboardPage() {
     return null
   }
 
-  const nextFoodDay =
-    !isTodayFoodDay || todayDayOfWeek === 4
-      ? getNextFoodDay()
-      : getNextFoodDay()
+  const nextFoodDay = getNextFoodDay()
 
   // Find registrations
   const allRegistrations = [
@@ -224,6 +241,12 @@ export default function DashboardPage() {
       <Text c="dimmed" mb="xl">
         Hvad vil du lave i dag?
       </Text>
+
+      {hasError && (
+        <Alert color="red" title="Fejl" mb="xl">
+          Kunne ikke hente data. Prøv at genindlæse siden.
+        </Alert>
+      )}
 
       {/* Notifications Widget */}
       {recentNotifications && recentNotifications.length > 0 && (

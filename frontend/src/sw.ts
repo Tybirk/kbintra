@@ -82,9 +82,20 @@ self.addEventListener("notificationclick", (event: NotificationEvent) => {
 })
 
 // Handle push subscription change (when browser refreshes the subscription)
-self.addEventListener("pushsubscriptionchange", () => {
-  console.log("Push subscription changed")
-  // The subscription will be re-registered when the user opens the app
+// The SW cannot send authenticated API requests, so we notify the client
+// to re-sync via usePushSubscriptionSync (which has access to the JWT).
+// If no client is open, the next app open will re-sync automatically.
+self.addEventListener("pushsubscriptionchange", (event: ExtendableEvent) => {
+  console.log("[SW] Push subscription changed, notifying clients to re-sync")
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clients) => {
+        for (const client of clients) {
+          client.postMessage({ type: "PUSH_SUBSCRIPTION_CHANGED" })
+        }
+      }),
+  )
 })
 
 // Handle skip waiting message from the client (for forced updates)

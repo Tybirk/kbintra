@@ -224,8 +224,6 @@ class CreateMessageSerializer(serializers.ModelSerializer):
         from asgiref.sync import async_to_sync
         from channels.layers import get_channel_layer
 
-        from apps.notifications.services import notify_new_message
-
         attachments = validated_data.pop("attachments", [])
         validated_data["sender"] = self.context["request"].user
         validated_data["conversation"] = self.context["conversation"]
@@ -279,12 +277,14 @@ class CreateMessageSerializer(serializers.ModelSerializer):
             },
         )
 
-        # Send notifications to other participants
+        # Send notifications to other participants in background
+        from apps.notifications.tasks import notify_new_message_task
+
         sender = message.sender
         for participant in message.conversation.participants.exclude(id=sender.id):
-            notify_new_message(
-                recipient=participant,
-                sender=sender,
+            notify_new_message_task(
+                recipient_id=participant.id,
+                sender_id=sender.id,
                 message_content=message.content,
                 conversation_id=message.conversation.id,
             )

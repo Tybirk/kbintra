@@ -6,12 +6,14 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "channels>=4.3.2",
+    "channels-redis>=4.2.1",
     "daphne>=4.2.1",
     "django>=5.2.9",
     "django-cors-headers>=4.9.0",
     "djangorestframework>=3.16.1",
     "djangorestframework-simplejwt>=5.5.1",
     "google-api-python-client>=2.188.0",
+    "huey>=2.6.0",
     "mammoth>=1.11.0",
     "pillow>=12.0.0",
     "python-docx>=1.2.0",

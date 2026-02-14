@@ -4,22 +4,190 @@ import {
   Text,
   Group,
   Badge,
-  Progress,
   UnstyledButton,
   Avatar,
   Tooltip,
   ActionIcon,
   Stack,
+  Box,
 } from "@mantine/core"
 import { notifications } from "@mantine/notifications"
 import { IconTrash, IconCheck } from "@tabler/icons-react"
 
 import { forumApi } from "../api/forum"
-import type { Poll } from "../types"
+import type { Poll, PollOption } from "../types"
 
 interface PollDisplayProps {
   poll: Poll
   threadId: number
+}
+
+function RadioIndicator({ checked }: { checked: boolean }) {
+  return (
+    <Box
+      style={{
+        width: 20,
+        height: 20,
+        borderRadius: "50%",
+        border: `2px solid ${
+          checked
+            ? "var(--mantine-color-blue-6)"
+            : "var(--mantine-color-gray-4)"
+        }`,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        transition: "border-color 150ms ease",
+      }}
+    >
+      {checked && (
+        <Box
+          style={{
+            width: 10,
+            height: 10,
+            borderRadius: "50%",
+            backgroundColor: "var(--mantine-color-blue-6)",
+          }}
+        />
+      )}
+    </Box>
+  )
+}
+
+function CheckboxIndicator({ checked }: { checked: boolean }) {
+  return (
+    <Box
+      style={{
+        width: 20,
+        height: 20,
+        borderRadius: 4,
+        border: `2px solid ${
+          checked
+            ? "var(--mantine-color-blue-6)"
+            : "var(--mantine-color-gray-4)"
+        }`,
+        backgroundColor: checked
+          ? "var(--mantine-color-blue-6)"
+          : "transparent",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        transition: "all 150ms ease",
+      }}
+    >
+      {checked && <IconCheck size={14} color="white" stroke={3} />}
+    </Box>
+  )
+}
+
+function OptionBar({
+  option,
+  poll,
+  hasVoted,
+  onVote,
+}: {
+  option: PollOption
+  poll: Poll
+  hasVoted: boolean
+  onVote: () => void
+}) {
+  const percentage =
+    poll.total_votes > 0
+      ? Math.round((option.vote_count / poll.total_votes) * 100)
+      : 0
+
+  const Indicator = poll.allow_multiple_votes
+    ? CheckboxIndicator
+    : RadioIndicator
+
+  return (
+    <UnstyledButton onClick={onVote} style={{ width: "100%" }}>
+      <Box
+        style={{
+          position: "relative",
+          border: `1.5px solid ${
+            option.has_voted
+              ? "var(--mantine-color-blue-5)"
+              : "var(--mantine-color-gray-3)"
+          }`,
+          borderRadius: "var(--mantine-radius-md)",
+          overflow: "hidden",
+          transition: "border-color 150ms ease",
+          cursor: "pointer",
+          "&:hover": { borderColor: "var(--mantine-color-blue-3)" },
+        }}
+      >
+        {/* Progress bar background */}
+        {hasVoted && (
+          <Box
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              height: "100%",
+              width: `${percentage}%`,
+              backgroundColor: option.has_voted
+                ? "var(--mantine-color-blue-1)"
+                : "var(--mantine-color-gray-1)",
+              transition: "width 400ms ease",
+              zIndex: 0,
+            }}
+          />
+        )}
+
+        {/* Content */}
+        <Group
+          wrap="nowrap"
+          gap="sm"
+          px="sm"
+          py={10}
+          style={{ position: "relative", zIndex: 1 }}
+        >
+          <Indicator checked={option.has_voted} />
+
+          <Text size="sm" fw={option.has_voted ? 600 : 400} style={{ flex: 1 }}>
+            {option.text}
+          </Text>
+
+          {hasVoted && (
+            <Text size="sm" fw={500} c="dimmed" style={{ flexShrink: 0 }}>
+              {percentage}%
+            </Text>
+          )}
+        </Group>
+
+        {/* Voter avatars */}
+        {!poll.is_anonymous && option.voters.length > 0 && (
+          <Group
+            gap={4}
+            px="sm"
+            pb={6}
+            style={{ position: "relative", zIndex: 1 }}
+          >
+            <Avatar.Group spacing="xs">
+              {option.voters.slice(0, 5).map((voter) => (
+                <Tooltip
+                  key={voter.id}
+                  label={`${voter.first_name} ${voter.last_name}`}
+                >
+                  <Avatar src={voter.profile_picture} size="xs" radius="xl">
+                    {voter.first_name?.[0]}
+                  </Avatar>
+                </Tooltip>
+              ))}
+              {option.voters.length > 5 && (
+                <Avatar size="xs" radius="xl">
+                  +{option.voters.length - 5}
+                </Avatar>
+              )}
+            </Avatar.Group>
+          </Group>
+        )}
+      </Box>
+    </UnstyledButton>
+  )
 }
 
 export default function PollDisplay({ poll, threadId }: PollDisplayProps) {
@@ -32,8 +200,8 @@ export default function PollDisplay({ poll, threadId }: PollDisplayProps) {
     },
     onError: () => {
       notifications.show({
-        title: "Error",
-        message: "Failed to vote. Please try again.",
+        title: "Fejl",
+        message: "Kunne ikke stemme. Prøv igen.",
         color: "red",
       })
     },
@@ -44,15 +212,15 @@ export default function PollDisplay({ poll, threadId }: PollDisplayProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
       notifications.show({
-        title: "Poll deleted",
-        message: "The poll has been removed.",
+        title: "Afstemning slettet",
+        message: "Afstemningen er blevet fjernet.",
         color: "blue",
       })
     },
     onError: () => {
       notifications.show({
-        title: "Error",
-        message: "Failed to delete poll. Please try again.",
+        title: "Fejl",
+        message: "Kunne ikke slette afstemningen. Prøv igen.",
         color: "red",
       })
     },
@@ -65,7 +233,7 @@ export default function PollDisplay({ poll, threadId }: PollDisplayProps) {
   }
 
   const handleDelete = () => {
-    if (window.confirm("Are you sure you want to delete this poll?")) {
+    if (window.confirm("Er du sikker på, at du vil slette denne afstemning?")) {
       deleteMutation.mutate()
     }
   }
@@ -86,7 +254,7 @@ export default function PollDisplay({ poll, threadId }: PollDisplayProps) {
           )}
           {poll.is_anonymous && (
             <Badge size="xs" variant="light" color="gray">
-              Anonymous
+              Anonym
             </Badge>
           )}
           {poll.is_own && (
@@ -96,7 +264,7 @@ export default function PollDisplay({ poll, threadId }: PollDisplayProps) {
               size="sm"
               onClick={handleDelete}
               loading={deleteMutation.isPending}
-              title="Delete poll"
+              title="Slet afstemning"
             >
               <IconTrash size={14} />
             </ActionIcon>
@@ -104,85 +272,20 @@ export default function PollDisplay({ poll, threadId }: PollDisplayProps) {
         </Group>
       </Group>
 
-      <Stack gap="xs">
-        {poll.options.map((option) => {
-          const percentage =
-            poll.total_votes > 0
-              ? Math.round((option.vote_count / poll.total_votes) * 100)
-              : 0
-
-          return (
-            <UnstyledButton
-              key={option.id}
-              onClick={() => handleVote(option.id)}
-              style={{ width: "100%" }}
-            >
-              <Paper
-                withBorder
-                p="xs"
-                radius="sm"
-                style={{
-                  borderColor: option.has_voted
-                    ? "var(--mantine-color-blue-5)"
-                    : undefined,
-                  backgroundColor: option.has_voted
-                    ? "var(--mantine-color-blue-0)"
-                    : undefined,
-                }}
-              >
-                <Group justify="space-between" mb={4}>
-                  <Group gap="xs">
-                    {option.has_voted && (
-                      <IconCheck
-                        size={14}
-                        color="var(--mantine-color-blue-6)"
-                      />
-                    )}
-                    <Text size="sm" fw={option.has_voted ? 600 : 400}>
-                      {option.text}
-                    </Text>
-                  </Group>
-                  <Text size="xs" c="dimmed">
-                    {option.vote_count}{" "}
-                    {option.vote_count === 1 ? "vote" : "votes"} ({percentage}%)
-                  </Text>
-                </Group>
-                {hasVoted && (
-                  <Progress value={percentage} size="sm" radius="xl" />
-                )}
-                {!poll.is_anonymous && option.voters.length > 0 && (
-                  <Group gap={4} mt={4}>
-                    <Avatar.Group spacing="xs">
-                      {option.voters.slice(0, 5).map((voter) => (
-                        <Tooltip
-                          key={voter.id}
-                          label={`${voter.first_name} ${voter.last_name}`}
-                        >
-                          <Avatar
-                            src={voter.profile_picture}
-                            size="xs"
-                            radius="xl"
-                          >
-                            {voter.first_name?.[0]}
-                          </Avatar>
-                        </Tooltip>
-                      ))}
-                      {option.voters.length > 5 && (
-                        <Avatar size="xs" radius="xl">
-                          +{option.voters.length - 5}
-                        </Avatar>
-                      )}
-                    </Avatar.Group>
-                  </Group>
-                )}
-              </Paper>
-            </UnstyledButton>
-          )
-        })}
+      <Stack gap={8}>
+        {poll.options.map((option) => (
+          <OptionBar
+            key={option.id}
+            option={option}
+            poll={poll}
+            hasVoted={hasVoted}
+            onVote={() => handleVote(option.id)}
+          />
+        ))}
       </Stack>
 
       <Text size="xs" c="dimmed" mt="xs">
-        {poll.total_votes} {poll.total_votes === 1 ? "vote" : "votes"} total
+        {poll.total_votes} {poll.total_votes === 1 ? "stemme" : "stemmer"} i alt
       </Text>
     </Paper>
   )

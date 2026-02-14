@@ -5,11 +5,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 KB Intra is a community communication platform for a co-living community (~90 users). It features forum discussions, food management (meal registration, tickets, cooking teams), direct messaging, calendar, and resident directory.
+It is a small scale app, with few developers who do not wish to spend time maintaining it, but it is also critical infrastructure for our community, so the app should be simple and rock solid at the same time and easy to debug.
 
 ## Tech Stack
 
-- **Backend**: Django 5.x + Django REST Framework + Django Channels (WebSockets via Daphne)
+- **Backend**: Django 5.x + Django REST Framework + Django Channels (WebSockets via Daphne) + Huey (task queue)
 - **Frontend**: React 19 + TypeScript + Vite + Mantine UI v8 + Zustand + React Query + Tiptap
+- **Infrastructure**: Redis (channel layer), Traefik (reverse proxy), Cloudflare Tunnel (ingress)
 - **Package Managers**: uv (Python), npm (JavaScript)
 - **Database**: SQLite (dev/prod - suitable for ~90 users)
 
@@ -51,8 +53,9 @@ npm run test:coverage                      # With coverage
 ```bash
 docker compose -f docker-compose.local.yml up -d --build  # Local dev
 docker compose up -d --build                               # Production
-docker compose exec backend uv run python manage.py migrate
 ```
+
+Note: Migrations run automatically on backend container startup via `docker-entrypoint.sh`.
 
 ## Architecture
 
@@ -84,8 +87,9 @@ Key config files:
 
 - REST endpoints: `/api/{auth,users,houses,forum,announcements,food,calendar,messages,notifications}/`
 - WebSocket: `ws://localhost:7000/ws/chat/?token=<jwt>` - messaging, notifications, typing indicators
+- Health check: `GET /api/health/` (unauthenticated, used by Docker healthcheck)
 - Vite proxies `/api` and `/media` to backend in dev (configured in vite.config.ts)
-- Production: Traefik routes `/api`, `/admin`, `/media`, `/static` to backend
+- Production: Traefik routes `/api`, `/ws`, `/admin`, `/media`, `/static` to backend
 
 ### Auth Flow
 
@@ -94,12 +98,85 @@ Key config files:
 - Invitation-only registration with house assignment
 - Frontend auto-refreshes tokens via axios interceptor
 
+### Background Tasks (Huey)
+
+Huey is used as a lightweight task queue for background work (emails, push notifications). It uses SQLite as its broker — no Redis needed.
+
+**Configuration** (`backend/config/settings.py`):
+- `huey.contrib.djhuey` is in `INSTALLED_APPS`
+- `HUEY` dict configures `SqliteHuey` with broker at `backend/huey.db`
+- `immediate: DEBUG` — tasks run synchronously in dev/test, async via worker in production
+- 2 thread workers in production
+
+**Writing tasks** (`backend/apps/<app>/tasks.py`):
+```python
+from huey.contrib.djhuey import db_task
+
+@db_task(retries=3, retry_delay=2)
+def my_task(user_id: int, ...) -> None:
+    """Always pass primitive args (int, str) — not model instances."""
+    from apps.users.models import User  # import inside task to avoid AppRegistryNotReady
+    user = User.objects.get(id=user_id)
+    # do work...
+```
+
+Key rules:
+- Use `@db_task()` (wraps task execution in a database transaction) or `@task()` for no transaction
+- Pass only serializable primitives (int, str, bool) — never Django model instances
+- Import models inside the task function body, not at module top level
+- Use `retries` and `retry_delay` for transient failures (network, SMTP, etc.)
+
+**Calling tasks** (from views/services):
+```python
+from apps.notifications.tasks import send_email_task
+
+# This enqueues immediately; the worker picks it up in the background
+send_email_task(user.id, notification_type, title, message, link, related_user_id, html_content)
+```
+
+**Running the worker**:
+```bash
+# Dev: not needed (immediate=True runs tasks synchronously)
+# Production (or to test async behavior):
+uv run python manage.py run_huey -w 2 -k thread --flush-locks
+```
+
+**Docker**: The `huey` service in `docker-compose.yml` runs the worker. It shares the same `huey.db` and `db.sqlite3` volumes as the `backend` service.
+
+**Existing tasks**: `backend/apps/notifications/tasks.py` — `send_email_task`, `send_push_task`
+
+### Production Infrastructure
+
+**Docker services** (`docker-compose.yml`):
+- `traefik` — Reverse proxy, routes by path prefix to backend/frontend
+- `cloudflared` — Cloudflare Tunnel for secure ingress (no exposed ports)
+- `redis` — Channel layer backend for Django Channels (WebSocket message routing)
+- `backend` — Daphne ASGI server (HTTP + WebSocket)
+- `huey` — Background task worker
+- `frontend` — Nginx serving the React SPA
+
+**Daphne configuration** (`backend/docker-entrypoint.sh`):
+- Runs migrations automatically on startup
+- `--proxy-headers` — trusts X-Forwarded-For/Proto from Traefik
+- `--ping-interval 20 --ping-timeout 30` — detects and cleans up stale WebSocket connections
+
+**Channel layer** (`backend/config/settings.py`):
+- Uses `channels_redis` when `REDIS_URL` env var is set (production/Docker)
+- Falls back to `InMemoryChannelLayer` when `REDIS_URL` is empty (local dev, tests)
+
+**Reliability features**:
+- Health checks on Redis and backend (`/api/health/`) containers
+- Graceful shutdown (`stop_signal: SIGINT`, `stop_grace_period: 30s`) on backend and huey
+- Memory limits on all containers (512m backend, 256m huey, 128m others)
+- SQLite write timeout of 20s to reduce `database is locked` errors from concurrent access
+
 ## Key Files for Common Tasks
 
 - Adding a new API endpoint: `backend/apps/<app>/views.py`, `backend/apps/<app>/urls.py`, `backend/config/urls.py`
 - Adding a new page: `frontend/src/pages/`, `frontend/src/App.tsx` (routes)
 - Adding a new API type: `frontend/src/types/index.ts`, `frontend/src/api/<module>.ts`
 - Modifying WebSocket: `backend/apps/messaging/consumers.py`, `backend/config/asgi.py`
+- Modifying production setup: `docker-compose.yml`, `backend/Dockerfile`, `backend/docker-entrypoint.sh`
 
 ## Code Style
 
@@ -128,3 +205,5 @@ npm run lint          # Linting (oxlint)
 npm run format:check  # Formatting check (oxfmt)
 npm run test:run      # Tests
 ```
+
+Also ensure that ALL user facing text is in danish!

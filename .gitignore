@@ -73,7 +73,7 @@ dmypy.json
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
-
+db.sqlite3*
 # Static files collected
 staticfiles/
 
@@ -214,4 +214,6 @@ data/
 # Server config
 .server
 
-seed.data.md
+seed.data.md# pixi environments
+.pixi/*
+!.pixi/config.toml

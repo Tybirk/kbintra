@@ -2,7 +2,7 @@
  * Messaging API functions
  */
 
-import { apiClient } from "./client"
+import { apiClient, getAccessToken } from "./client"
 import type {
   Conversation,
   ConversationDetail,
@@ -131,12 +131,13 @@ export class ChatWebSocket {
   ws: WebSocket | null = null
   reconnectAttempts = 0
   baseReconnectDelay = 1000
-  maxReconnectDelay = 5000
+  maxReconnectDelay = 30000
   messageHandlers: MessageHandler[] = []
   connectionHandlers: ConnectionHandler[] = []
   getToken: () => string | null
   reconnectTimeout: ReturnType<typeof setTimeout> | null = null
   intentionalDisconnect = false
+  private pingInterval: ReturnType<typeof setInterval> | null = null
 
   // Store event listener references for cleanup
   private visibilityHandler: (() => void) | null = null
@@ -145,7 +146,6 @@ export class ChatWebSocket {
 
   constructor(getToken: () => string | null) {
     this.getToken = getToken
-    this.setupEventListeners()
   }
 
   private setupEventListeners(): void {
@@ -207,6 +207,11 @@ export class ChatWebSocket {
       return
     }
 
+    // Setup event listeners lazily on first connect
+    if (!this.visibilityHandler) {
+      this.setupEventListeners()
+    }
+
     // Clear any pending reconnect timeout
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout)
@@ -217,9 +222,6 @@ export class ChatWebSocket {
 
     const token = this.getToken()
     if (!token) {
-      console.error("No token available for WebSocket connection")
-      // Retry after a delay if we don't have a token yet (might be loading)
-      this.scheduleReconnect()
       return
     }
 
@@ -240,12 +242,15 @@ export class ChatWebSocket {
     this.ws.onopen = () => {
       console.log("WebSocket connected")
       this.reconnectAttempts = 0 // Reset on successful connection
+      this.startPing()
       this.notifyConnectionHandlers(true)
     }
 
     this.ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
+        // Ignore pong responses
+        if (data.type === "pong") return
         this.messageHandlers.forEach((handler) => handler(data))
       } catch (e) {
         console.error("Failed to parse WebSocket message:", e)
@@ -254,6 +259,7 @@ export class ChatWebSocket {
 
     this.ws.onclose = (event) => {
       console.log("WebSocket disconnected:", event.code, event.reason)
+      this.stopPing()
       this.notifyConnectionHandlers(false)
       this.ws = null
 
@@ -290,6 +296,8 @@ export class ChatWebSocket {
   disconnect(): void {
     this.intentionalDisconnect = true
 
+    this.stopPing()
+
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout)
       this.reconnectTimeout = null
@@ -299,8 +307,6 @@ export class ChatWebSocket {
       this.ws.close()
       this.ws = null
     }
-    this.messageHandlers = []
-    this.connectionHandlers = []
 
     // Clean up event listeners to prevent memory leaks
     this.removeEventListeners()
@@ -397,7 +403,26 @@ export class ChatWebSocket {
     this.connectionHandlers.forEach((handler) => handler(connected))
   }
 
+  private startPing(): void {
+    this.stopPing()
+    this.pingInterval = setInterval(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ action: "ping" }))
+      }
+    }, 30000)
+  }
+
+  private stopPing(): void {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval)
+      this.pingInterval = null
+    }
+  }
+
   get isConnected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN
   }
 }
+
+// Shared singleton — all components should use this instead of creating their own instances
+export const chatWs = new ChatWebSocket(getAccessToken)

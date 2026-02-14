@@ -2,7 +2,9 @@
 WebSocket consumers for real-time messaging.
 """
 
+import contextlib
 import json
+import logging
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
@@ -10,6 +12,8 @@ from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import AccessToken
 
 from .models import Conversation, Message, MessageReadStatus
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
@@ -67,7 +71,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             data = json.loads(text_data)
             action = data.get("action")
 
-            if action == "send_message":
+            if action == "ping":
+                await self.send(json.dumps({"type": "pong"}))
+            elif action == "send_message":
                 await self.handle_send_message(data)
             elif action == "mark_read":
                 await self.handle_mark_read(data)
@@ -78,6 +84,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         except json.JSONDecodeError:
             await self.send(json.dumps({"error": "Invalid JSON"}))
+        except Exception:
+            logger.exception("Unexpected error in WebSocket receive")
+            with contextlib.suppress(Exception):
+                await self.send(json.dumps({"error": "Internal server error"}))
 
     async def handle_send_message(self, data: dict):
         """Handle sending a new message."""
@@ -95,13 +105,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         # Broadcast message to conversation group
-        await self.channel_layer.group_send(
-            f"conversation_{conversation_id}",
-            {
-                "type": "chat_message",
-                "message": message,
-            },
-        )
+        try:
+            await self.channel_layer.group_send(
+                f"conversation_{conversation_id}",
+                {
+                    "type": "chat_message",
+                    "message": message,
+                },
+            )
+        except Exception:
+            logger.exception("Failed to broadcast message to conversation %s", conversation_id)
+            await self.send(json.dumps({"error": "Message saved but failed to broadcast"}))
 
     async def handle_mark_read(self, data: dict):
         """Handle marking messages as read."""
@@ -109,17 +123,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if not conversation_id:
             return
 
-        await self.mark_messages_read(conversation_id)
+        success = await self.mark_messages_read(conversation_id)
+        if not success:
+            return
 
         # Notify sender that messages were read
-        await self.channel_layer.group_send(
-            f"conversation_{conversation_id}",
-            {
-                "type": "messages_read",
-                "conversation_id": conversation_id,
-                "reader_id": self.user.id,
-            },
-        )
+        try:
+            await self.channel_layer.group_send(
+                f"conversation_{conversation_id}",
+                {
+                    "type": "messages_read",
+                    "conversation_id": conversation_id,
+                    "reader_id": self.user.id,
+                },
+            )
+        except Exception:
+            logger.exception("Failed to broadcast read status for conversation %s", conversation_id)
 
     async def handle_join_conversation(self, data: dict):
         """Handle joining a new conversation (after it's created via REST API)."""
@@ -139,21 +158,23 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if not conversation_id:
             return
 
-        await self.channel_layer.group_send(
-            f"conversation_{conversation_id}",
-            {
-                "type": "user_typing",
-                "conversation_id": conversation_id,
-                "user_id": self.user.id,
-                "user_name": f"{self.user.first_name}",
-            },
-        )
+        try:
+            await self.channel_layer.group_send(
+                f"conversation_{conversation_id}",
+                {
+                    "type": "user_typing",
+                    "conversation_id": conversation_id,
+                    "user_id": self.user.id,
+                    "user_name": f"{self.user.first_name}",
+                },
+            )
+        except Exception:
+            logger.exception("Failed to broadcast typing indicator")
 
     async def chat_message(self, event):
         """Send message to WebSocket."""
         # Compute is_own dynamically based on who is receiving the message
-        message = event["message"].copy()
-        message["is_own"] = message["sender"]["id"] == self.user.id
+        message = {**event["message"], "is_own": event["message"]["sender"]["id"] == self.user.id}
         await self.send(
             json.dumps(
                 {
@@ -221,9 +242,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def get_user_from_token(self, token: str) -> User | None:
         """Validate JWT token and return user."""
-        import logging
-
-        logger = logging.getLogger(__name__)
         try:
             access_token = AccessToken(token)
             user_id = access_token["user_id"]
@@ -248,22 +266,25 @@ class ChatConsumer(AsyncWebsocketConsumer):
     def create_message(self, conversation_id: int, content: str) -> dict | None:
         """Create a new message in the database."""
         try:
-            conversation = Conversation.objects.get(id=conversation_id, participants=self.user)
-            message = Message.objects.create(
-                conversation=conversation,
-                sender=self.user,
-                content=content,
-            )
-            # Update conversation timestamp
-            conversation.save()
+            from django.db import transaction
 
-            # Send notifications to other participants
-            from apps.notifications.services import notify_new_message
+            with transaction.atomic():
+                conversation = Conversation.objects.get(id=conversation_id, participants=self.user)
+                message = Message.objects.create(
+                    conversation=conversation,
+                    sender=self.user,
+                    content=content,
+                )
+                # Update conversation timestamp
+                conversation.save()
+
+            # Send notifications to other participants in background (outside transaction)
+            from apps.notifications.tasks import notify_new_message_task
 
             for participant in conversation.participants.exclude(id=self.user.id):
-                notify_new_message(
-                    recipient=participant,
-                    sender=self.user,
+                notify_new_message_task(
+                    recipient_id=participant.id,
+                    sender_id=self.user.id,
                     message_content=content,
                     conversation_id=conversation_id,
                 )
@@ -288,14 +309,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 "attachments": [],  # WebSocket messages are text-only
             }
         except Exception:
+            logger.exception("Failed to create message in conversation")
             return None
 
     @database_sync_to_async
-    def mark_messages_read(self, conversation_id: int):
+    def mark_messages_read(self, conversation_id: int) -> bool:
         """Mark all messages in conversation as read by current user."""
-        import logging
-
-        logger = logging.getLogger(__name__)
         try:
             conversation = Conversation.objects.get(id=conversation_id, participants=self.user)
             unread_messages = conversation.messages.exclude(sender=self.user).exclude(
@@ -306,5 +325,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 MessageReadStatus(message=msg, user=self.user) for msg in unread_messages
             ]
             MessageReadStatus.objects.bulk_create(read_statuses, ignore_conflicts=True)
-        except Exception as e:
-            logger.warning("Failed to mark messages as read: %s", e)
+            return True
+        except Exception:
+            logger.exception("Failed to mark messages as read for conversation %s", conversation_id)
+            return False

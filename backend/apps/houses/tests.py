@@ -116,7 +116,7 @@ class TestChildAPI:
         response = authenticated_client.get("/api/houses/my/children/")
         assert response.status_code == 200
         data = response.json()
-        results = data.get("results", data)
+        results = data if isinstance(data, list) else data.get("results", data)
         assert len(results) == 0
 
     def test_list_children(self, api_client, user_with_house, child):
@@ -126,7 +126,7 @@ class TestChildAPI:
         assert response.status_code == 200
 
         data = response.json()
-        results = data.get("results", data)
+        results = data if isinstance(data, list) else data.get("results", data)
         assert len(results) == 1
         assert results[0]["name"] == "Test Child"
 

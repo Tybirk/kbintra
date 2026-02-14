@@ -5,7 +5,9 @@ import { LoadingOverlay, AppShell } from "@mantine/core"
 import { useAuthStore } from "./store/authStore"
 import { getAccessToken } from "./api/client"
 import { ErrorBoundary } from "./components/ErrorBoundary"
+import { PageErrorBoundary } from "./components/PageErrorBoundary"
 import { useVersionCheck } from "./hooks/useVersionCheck"
+import { usePushSubscriptionSync } from "./hooks/usePushSubscriptionSync"
 
 // Pages
 import LoginPage from "./pages/LoginPage"
@@ -59,6 +61,9 @@ function App() {
   // Check for app updates when user returns to the app
   useVersionCheck()
 
+  // Re-sync push subscription if it was invalidated (e.g. Android force-close)
+  usePushSubscriptionSync()
+
   useEffect(() => {
     const initAuth = async () => {
       const token = getAccessToken()
@@ -80,10 +85,38 @@ function App() {
     return (
       <ErrorBoundary>
         <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route
+            path="/login"
+            element={
+              <PageErrorBoundary>
+                <LoginPage />
+              </PageErrorBoundary>
+            }
+          />
+          <Route
+            path="/register"
+            element={
+              <PageErrorBoundary>
+                <RegisterPage />
+              </PageErrorBoundary>
+            }
+          />
+          <Route
+            path="/forgot-password"
+            element={
+              <PageErrorBoundary>
+                <ForgotPasswordPage />
+              </PageErrorBoundary>
+            }
+          />
+          <Route
+            path="/reset-password"
+            element={
+              <PageErrorBoundary>
+                <ResetPasswordPage />
+              </PageErrorBoundary>
+            }
+          />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </ErrorBoundary>
@@ -122,7 +155,9 @@ function App() {
               path="/"
               element={
                 <ProtectedRoute>
-                  <DashboardPage />
+                  <PageErrorBoundary>
+                    <DashboardPage />
+                  </PageErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -132,7 +167,9 @@ function App() {
               path="/beboere"
               element={
                 <ProtectedRoute>
-                  <DirectoryPage />
+                  <PageErrorBoundary>
+                    <DirectoryPage />
+                  </PageErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -140,7 +177,9 @@ function App() {
               path="/beboere/hus/:id"
               element={
                 <ProtectedRoute>
-                  <HouseDetailPage />
+                  <PageErrorBoundary>
+                    <HouseDetailPage />
+                  </PageErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -150,7 +189,9 @@ function App() {
               path="/profil"
               element={
                 <ProtectedRoute>
-                  <ProfilePage />
+                  <PageErrorBoundary>
+                    <ProfilePage />
+                  </PageErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -158,7 +199,9 @@ function App() {
               path="/profil/rediger"
               element={
                 <ProtectedRoute>
-                  <ProfileEditPage />
+                  <PageErrorBoundary>
+                    <ProfileEditPage />
+                  </PageErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -166,7 +209,9 @@ function App() {
               path="/profil/skift-adgangskode"
               element={
                 <ProtectedRoute>
-                  <ChangePasswordPage />
+                  <PageErrorBoundary>
+                    <ChangePasswordPage />
+                  </PageErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -174,7 +219,9 @@ function App() {
               path="/profil/:userId"
               element={
                 <ProtectedRoute>
-                  <ProfilePage />
+                  <PageErrorBoundary>
+                    <ProfilePage />
+                  </PageErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -184,7 +231,9 @@ function App() {
               path="/hus/rediger"
               element={
                 <ProtectedRoute>
-                  <HouseEditPage />
+                  <PageErrorBoundary>
+                    <HouseEditPage />
+                  </PageErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -194,7 +243,9 @@ function App() {
               path="/forum"
               element={
                 <ProtectedRoute>
-                  <ForumPage />
+                  <PageErrorBoundary>
+                    <ForumPage />
+                  </PageErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -202,7 +253,9 @@ function App() {
               path="/forum/:slug"
               element={
                 <ProtectedRoute>
-                  <SubgroupPage />
+                  <PageErrorBoundary>
+                    <SubgroupPage />
+                  </PageErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -210,7 +263,9 @@ function App() {
               path="/forum/:slug/:threadId"
               element={
                 <ProtectedRoute>
-                  <ThreadPage />
+                  <PageErrorBoundary>
+                    <ThreadPage />
+                  </PageErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -218,7 +273,9 @@ function App() {
               path="/forum/traad/:id"
               element={
                 <ProtectedRoute>
-                  <ThreadPage />
+                  <PageErrorBoundary>
+                    <ThreadPage />
+                  </PageErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -228,7 +285,9 @@ function App() {
               path="/opslag"
               element={
                 <ProtectedRoute>
-                  <AnnouncementsPage />
+                  <PageErrorBoundary>
+                    <AnnouncementsPage />
+                  </PageErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -238,7 +297,9 @@ function App() {
               path="/mad"
               element={
                 <ProtectedRoute>
-                  <FoodPage />
+                  <PageErrorBoundary>
+                    <FoodPage />
+                  </PageErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -246,7 +307,9 @@ function App() {
               path="/mad/praeferencer"
               element={
                 <ProtectedRoute>
-                  <FoodPreferencesPage />
+                  <PageErrorBoundary>
+                    <FoodPreferencesPage />
+                  </PageErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -254,7 +317,9 @@ function App() {
               path="/mad/billetter"
               element={
                 <ProtectedRoute>
-                  <FoodTicketsPage />
+                  <PageErrorBoundary>
+                    <FoodTicketsPage />
+                  </PageErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -262,7 +327,9 @@ function App() {
               path="/mad/:tab"
               element={
                 <ProtectedRoute>
-                  <FoodPage />
+                  <PageErrorBoundary>
+                    <FoodPage />
+                  </PageErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -272,7 +339,9 @@ function App() {
               path="/madhold"
               element={
                 <ProtectedRoute>
-                  <FoodTeamsPage />
+                  <PageErrorBoundary>
+                    <FoodTeamsPage />
+                  </PageErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -280,7 +349,9 @@ function App() {
               path="/madhold/:tab"
               element={
                 <ProtectedRoute>
-                  <FoodTeamsPage />
+                  <PageErrorBoundary>
+                    <FoodTeamsPage />
+                  </PageErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -290,7 +361,9 @@ function App() {
               path="/kalender"
               element={
                 <ProtectedRoute>
-                  <CalendarPage />
+                  <PageErrorBoundary>
+                    <CalendarPage />
+                  </PageErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -300,7 +373,9 @@ function App() {
               path="/booking"
               element={
                 <ProtectedRoute>
-                  <BookingsPage />
+                  <PageErrorBoundary>
+                    <BookingsPage />
+                  </PageErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -310,7 +385,9 @@ function App() {
               path="/beskeder/:conversationId?"
               element={
                 <ProtectedRoute>
-                  <MessagesPage />
+                  <PageErrorBoundary>
+                    <MessagesPage />
+                  </PageErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -320,7 +397,9 @@ function App() {
               path="/notifikationer"
               element={
                 <ProtectedRoute>
-                  <NotificationsPage />
+                  <PageErrorBoundary>
+                    <NotificationsPage />
+                  </PageErrorBoundary>
                 </ProtectedRoute>
               }
             />

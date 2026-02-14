@@ -5,45 +5,19 @@ import {
   Switch,
   Button,
   Group,
-  ActionIcon,
   Stack,
   CloseButton,
 } from "@mantine/core"
-import { IconPlus, IconChartBar } from "@tabler/icons-react"
+import { IconPlus } from "@tabler/icons-react"
 
 import type { CreatePollData } from "../types"
 
 interface PollCreatorProps {
-  pollData: CreatePollData | null
+  pollData: CreatePollData
   onChange: (data: CreatePollData | null) => void
 }
 
-const defaultPollData: CreatePollData = {
-  question: "",
-  allow_multiple_votes: false,
-  is_anonymous: false,
-  options: [{ text: "" }, { text: "" }],
-}
-
 export default function PollCreator({ pollData, onChange }: PollCreatorProps) {
-  if (!pollData) {
-    return (
-      <Button
-        variant="light"
-        leftSection={<IconChartBar size={16} />}
-        onClick={() =>
-          onChange({
-            ...defaultPollData,
-            options: [{ text: "" }, { text: "" }],
-          })
-        }
-        size="sm"
-      >
-        Add Poll
-      </Button>
-    )
-  }
-
   const updateField = <K extends keyof CreatePollData,>(
     key: K,
     value: CreatePollData[K],
@@ -74,18 +48,18 @@ export default function PollCreator({ pollData, onChange }: PollCreatorProps) {
     <Paper withBorder p="md" radius="md" bg="gray.0">
       <Group justify="space-between" mb="sm">
         <Text size="sm" fw={600}>
-          Poll
+          Afstemning
         </Text>
         <CloseButton
           size="sm"
           onClick={() => onChange(null)}
-          title="Remove poll"
+          title="Fjern afstemning"
         />
       </Group>
 
       <Stack gap="sm">
         <TextInput
-          placeholder="Ask a question..."
+          placeholder="Stil et spørgsmål..."
           value={pollData.question}
           onChange={(e) => updateField("question", e.currentTarget.value)}
           size="sm"
@@ -94,21 +68,19 @@ export default function PollCreator({ pollData, onChange }: PollCreatorProps) {
         {pollData.options.map((option, index) => (
           <Group key={index} gap="xs">
             <TextInput
-              placeholder={`Option ${index + 1}`}
+              placeholder={`Valgmulighed ${index + 1}`}
               value={option.text}
               onChange={(e) => updateOption(index, e.currentTarget.value)}
               size="sm"
               style={{ flex: 1 }}
             />
             {pollData.options.length > 2 && (
-              <ActionIcon
+              <CloseButton
                 variant="subtle"
                 color="red"
                 size="sm"
                 onClick={() => removeOption(index)}
-              >
-                <CloseButton size="sm" />
-              </ActionIcon>
+              />
             )}
           </Group>
         ))}
@@ -121,7 +93,7 @@ export default function PollCreator({ pollData, onChange }: PollCreatorProps) {
             onClick={addOption}
             style={{ alignSelf: "flex-start" }}
           >
-            Add option
+            Tilføj valgmulighed
           </Button>
         )}
 
@@ -135,7 +107,7 @@ export default function PollCreator({ pollData, onChange }: PollCreatorProps) {
             }
           />
           <Switch
-            label="Anonymous voting"
+            label="Anonym afstemning"
             size="xs"
             checked={pollData.is_anonymous}
             onChange={(e) =>

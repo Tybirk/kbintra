@@ -5,8 +5,8 @@ An internal communication platform for a co-living community with forum, food ma
 ## Tech Stack
 
 - **Backend**: Django 5.x with Django REST Framework
-- **Frontend**: React 18 with Vite, Mantine UI v7, TypeScript
-- **Database**: SQLite (dev), PostgreSQL (production)
+- **Frontend**: React 19 with Vite, Mantine UI v8, TypeScript
+- **Database**: SQLite (dev and production)
 - **Authentication**: JWT via djangorestframework-simplejwt
 - **Real-time**: Django Channels with WebSockets
 - **Package Management**: uv (Python), npm (JavaScript)
@@ -77,7 +77,7 @@ uv run python manage.py migrate
 uv run python manage.py createsuperuser
 
 # Optionally seed some data (currently seed users requires a CSV I did not commit)
-uv run python manage.py seed_forum_subgroups.py
+uv run python manage.py seed_forum_subgroups
 
 # Run development server
 uv run python manage.py runserver 7000

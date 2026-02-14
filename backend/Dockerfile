@@ -17,4 +17,4 @@ RUN uv run python manage.py collectstatic --noinput
 
 # Run with daphne (ASGI server for channels support)
 EXPOSE 8000
-CMD ["uv", "run", "daphne", "-b", "0.0.0.0", "-p", "8000", "config.asgi:application"]
+ENTRYPOINT ["./docker-entrypoint.sh"]
