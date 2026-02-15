@@ -21,6 +21,7 @@ import {
   CloseButton,
   ActionIcon,
   Menu,
+  Anchor,
 } from "@mantine/core"
 import { useDisclosure, useMediaQuery } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -724,6 +725,65 @@ function ChatArea({
   )
 }
 
+const URL_REGEX = /https?:\/\/[^\s<>)"']+/g
+
+function truncateUrl(url: string, maxLen = 40): string {
+  try {
+    const parsed = new URL(url)
+    const display = parsed.hostname + parsed.pathname
+    if (display.length <= maxLen) return display
+    return display.slice(0, maxLen) + "…"
+  } catch {
+    return url.length > maxLen ? url.slice(0, maxLen) + "…" : url
+  }
+}
+
+function MessageContent({
+  content,
+  isOwn,
+}: {
+  content: string
+  isOwn: boolean
+}) {
+  const parts: { type: "text" | "link" value: string }[] = []
+  let lastIndex = 0
+  for (const match of content.matchAll(URL_REGEX)) {
+    if (match.index > lastIndex) {
+      parts.push({ type: "text", value: content.slice(lastIndex, match.index) })
+    }
+    parts.push({ type: "link", value: match[0] })
+    lastIndex = match.index + match[0].length
+  }
+  if (lastIndex < content.length) {
+    parts.push({ type: "text", value: content.slice(lastIndex) })
+  }
+
+  if (parts.length === 0) return <>{content}</>
+
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.type === "link" ? (
+          <Anchor
+            key={i}
+            href={part.value}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              color: isOwn ? "white" : undefined,
+              textDecoration: "underline",
+            }}
+          >
+            {truncateUrl(part.value)}
+          </Anchor>
+        ) : (
+          <span key={i}>{part.value}</span>
+        ),
+      )}
+    </>
+  )
+}
+
 interface MessageBubbleProps {
   message: Message
   showAvatar: boolean
@@ -860,9 +920,10 @@ function MessageBubble({ message, showAvatar, showTime }: MessageBubbleProps) {
                   style={{
                     color: isOwn ? "white" : "inherit",
                     whiteSpace: "pre-wrap",
+                    overflowWrap: "break-word",
                   }}
                 >
-                  {message.content}
+                  <MessageContent content={message.content} isOwn={isOwn} />
                 </Text>
               </Paper>
             </Box>
