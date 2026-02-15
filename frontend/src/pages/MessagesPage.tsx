@@ -731,6 +731,11 @@ function ChatArea({
   )
 }
 
+type MessageSegment = {
+  type: "text" | "link"
+  value: string
+}
+
 const URL_REGEX = /https?:\/\/[^\s<>)"']+/g
 
 function truncateUrl(url: string, maxLen = 40): string {
@@ -751,7 +756,7 @@ function MessageContent({
   content: string
   isOwn: boolean
 }) {
-  const parts: { type: "text" | "link" value: string }[] = []
+  const parts: MessageSegment[] = []
   let lastIndex = 0
   for (const match of content.matchAll(URL_REGEX)) {
     if (match.index > lastIndex) {
