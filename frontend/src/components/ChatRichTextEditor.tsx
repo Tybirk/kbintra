@@ -209,7 +209,7 @@ export default function ChatRichTextEditor({
                       flexDirection: "column",
                       alignItems: "center",
                       justifyContent: "center",
-                      backgroundColor: "var(--mantine-color-gray-1)",
+                      backgroundColor: "var(--mantine-color-default-hover)",
                       borderRadius: "var(--mantine-radius-sm)",
                     }}
                   >
@@ -229,7 +229,7 @@ export default function ChatRichTextEditor({
                   right={-8}
                   onClick={() => handleRemoveFile(index)}
                   style={{
-                    backgroundColor: "var(--mantine-color-gray-0)",
+                    backgroundColor: "var(--mantine-color-default-hover)",
                     borderRadius: "50%",
                   }}
                 />

@@ -11,6 +11,8 @@ import {
   Center,
   Stack,
   Badge,
+  SegmentedControl,
+  useMantineColorScheme,
 } from "@mantine/core"
 import {
   IconPhone,
@@ -23,6 +25,30 @@ import dayjs from "dayjs"
 
 import { usersApi } from "../api/users"
 import { useAuthStore } from "../store/authStore"
+
+function ThemeSettings() {
+  const { colorScheme, setColorScheme } = useMantineColorScheme()
+
+  return (
+    <Paper withBorder p="xl" radius="md" mt="xl">
+      <Title order={4} mb="md">
+        Indstillinger
+      </Title>
+      <Text size="sm" mb="xs">
+        Udseende
+      </Text>
+      <SegmentedControl
+        value={colorScheme}
+        onChange={(value) => setColorScheme(value as "light" | "dark" | "auto")}
+        data={[
+          { label: "Lys", value: "light" },
+          { label: "Mørk", value: "dark" },
+          { label: "Auto", value: "auto" },
+        ]}
+      />
+    </Paper>
+  )
+}
 
 export default function ProfilePage() {
   const { userId } = useParams<{ userId: string }>()
@@ -142,6 +168,8 @@ export default function ProfilePage() {
           )}
         </Stack>
       </Paper>
+
+      {isOwnProfile && <ThemeSettings />}
 
       {isOwnProfile && (
         <Text ta="center" size="xs" c="dimmed" mt="xl">

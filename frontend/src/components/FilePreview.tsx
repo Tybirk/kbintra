@@ -319,7 +319,7 @@ export function FilePreviewModal({
                 <Box
                   p="md"
                   style={{
-                    backgroundColor: "var(--mantine-color-gray-0)",
+                    backgroundColor: "var(--mantine-color-default-hover)",
                     borderRadius: "var(--mantine-radius-md)",
                   }}
                   dangerouslySetInnerHTML={{ __html: file.preview_html }}

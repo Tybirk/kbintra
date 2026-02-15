@@ -110,8 +110,8 @@ export function AttachmentCarousel({
             container: { height: "100%" },
             slide: { height: "100%" },
             control: {
-              backgroundColor: "var(--mantine-color-white)",
-              border: "1px solid var(--mantine-color-gray-3)",
+              backgroundColor: "var(--mantine-color-default)",
+              border: "1px solid var(--mantine-color-default-border)",
               boxShadow: "var(--mantine-shadow-sm)",
               "&[data-inactive]": {
                 opacity: 0,
@@ -374,7 +374,7 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
             <Box
               p="md"
               style={{
-                backgroundColor: "var(--mantine-color-gray-0)",
+                backgroundColor: "var(--mantine-color-default-hover)",
                 borderRadius: "var(--mantine-radius-md)",
               }}
               dangerouslySetInnerHTML={{ __html: attachment.preview_html }}

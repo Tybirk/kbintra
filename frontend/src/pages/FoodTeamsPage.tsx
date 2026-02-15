@@ -472,7 +472,12 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
           ) : (
             <>
               {/* Default cooking days section */}
-              <Paper withBorder p="md" radius="md" bg="gray.0">
+              <Paper
+                withBorder
+                p="md"
+                radius="md"
+                bg="var(--mantine-color-default-hover)"
+              >
                 <Text fw={500} mb="sm">
                   Dine standard madlavningsdage
                 </Text>
@@ -544,7 +549,11 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
                         p="sm"
                         radius="md"
                         style={{ cursor: "pointer" }}
-                        bg={isSelected ? "green.0" : undefined}
+                        bg={
+                          isSelected
+                            ? "var(--mantine-color-green-light)"
+                            : undefined
+                        }
                         onClick={() => handleDateToggle(date)}
                       >
                         <Group gap="sm">
@@ -724,7 +733,7 @@ function AdminPanel() {
                   Ikke-tildelte personer (
                   {generationResult.unassigned_persons.length}):
                 </Text>
-                <Paper withBorder p="sm" bg="yellow.0">
+                <Paper withBorder p="sm" bg="var(--mantine-color-yellow-light)">
                   <Text size="sm">
                     {generationResult.unassigned_persons.join(", ")}
                   </Text>
@@ -923,7 +932,7 @@ function CreateCycleModal({
         />
 
         {cookingDates.length > 0 && (
-          <Paper withBorder p="sm" bg="gray.0">
+          <Paper withBorder p="sm" bg="var(--mantine-color-default-hover)">
             <Text size="sm" fw={500} mb="xs">
               Valgte datoer ({cookingDates.length}):
             </Text>
@@ -1036,7 +1045,12 @@ function MyTeamCard({
 
   return (
     <>
-      <Card withBorder p="md" radius="md" bg={isPast ? "gray.0" : undefined}>
+      <Card
+        withBorder
+        p="md"
+        radius="md"
+        bg={isPast ? "var(--mantine-color-default-hover)" : undefined}
+      >
         <Group justify="space-between" mb="xs">
           <Group>
             <div>
@@ -1128,7 +1142,11 @@ function MyTeamCard({
                     p="sm"
                     radius="sm"
                     style={{ cursor: "pointer" }}
-                    bg={selectedTargetTeamId === t.id ? "blue.0" : undefined}
+                    bg={
+                      selectedTargetTeamId === t.id
+                        ? "var(--mantine-color-blue-light)"
+                        : undefined
+                    }
                     onClick={() => {
                       setSelectedTargetTeamId(t.id)
                       setSelectedTargetMemberId(null)
@@ -1170,7 +1188,7 @@ function MyTeamCard({
                     style={{ cursor: "pointer" }}
                     bg={
                       selectedTargetMemberId === member.id
-                        ? "green.0"
+                        ? "var(--mantine-color-green-light)"
                         : undefined
                     }
                     onClick={() => setSelectedTargetMemberId(member.id)}
@@ -1243,7 +1261,13 @@ function AllTeamCard({ team }: AllTeamCardProps) {
       withBorder
       p="sm"
       radius="md"
-      bg={team.is_my_team ? "blue.0" : isPast ? "gray.0" : undefined}
+      bg={
+        team.is_my_team
+          ? "var(--mantine-color-blue-light)"
+          : isPast
+            ? "var(--mantine-color-default-hover)"
+            : undefined
+      }
     >
       <Group justify="space-between">
         <div>
@@ -1431,7 +1455,7 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
         </Group>
 
         {request.message && (
-          <Paper p="xs" bg="gray.0" radius="sm">
+          <Paper p="xs" bg="var(--mantine-color-default-hover)" radius="sm">
             <Text size="sm" c="dimmed">
               "{request.message}"
             </Text>

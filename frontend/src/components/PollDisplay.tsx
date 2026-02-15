@@ -129,8 +129,8 @@ function OptionBar({
               height: "100%",
               width: `${percentage}%`,
               backgroundColor: option.has_voted
-                ? "var(--mantine-color-blue-1)"
-                : "var(--mantine-color-gray-1)",
+                ? "var(--mantine-color-blue-light)"
+                : "var(--mantine-color-default-hover)",
               transition: "width 400ms ease",
               zIndex: 0,
             }}
@@ -241,7 +241,13 @@ export default function PollDisplay({ poll, threadId }: PollDisplayProps) {
   const hasVoted = poll.options.some((o) => o.has_voted)
 
   return (
-    <Paper withBorder p="md" radius="md" bg="gray.0" mt="sm">
+    <Paper
+      withBorder
+      p="md"
+      radius="md"
+      bg="var(--mantine-color-default-hover)"
+      mt="sm"
+    >
       <Group justify="space-between" mb="xs">
         <Text fw={600} size="sm">
           {poll.question}

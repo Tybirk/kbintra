@@ -159,8 +159,8 @@ export default function AppHeader({
             gap: rem(8),
             padding: `${rem(8)} ${rem(14)}`,
             borderRadius: rem(8),
-            backgroundColor: "var(--mantine-color-gray-1)",
-            border: "1px solid var(--mantine-color-gray-3)",
+            backgroundColor: "var(--mantine-color-default-hover)",
+            border: "1px solid var(--mantine-color-default-border)",
           }}
         >
           <IconSearch

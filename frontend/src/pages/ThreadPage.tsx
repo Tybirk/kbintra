@@ -405,7 +405,12 @@ export default function ThreadPage() {
       <Divider my="lg" />
 
       {thread.is_closed ? (
-        <Paper withBorder p="lg" radius="md" bg="gray.0">
+        <Paper
+          withBorder
+          p="lg"
+          radius="md"
+          bg="var(--mantine-color-default-hover)"
+        >
           <Group justify="center" gap="xs">
             <IconLock size={20} color="var(--mantine-color-gray-6)" />
             <Text c="dimmed">
@@ -558,7 +563,7 @@ function PostCard({
         withBorder
         p="md"
         radius="md"
-        bg={isFirst ? "blue.0" : undefined}
+        bg={isFirst ? "var(--mantine-color-blue-light)" : undefined}
       >
         <Group justify="space-between" mb="sm">
           <Group gap="sm">

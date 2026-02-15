@@ -250,7 +250,13 @@ export default function DashboardPage() {
 
       {/* Notifications Widget */}
       {recentNotifications && recentNotifications.length > 0 && (
-        <Paper withBorder p="lg" radius="md" mt="xl" bg="blue.0">
+        <Paper
+          withBorder
+          p="lg"
+          radius="md"
+          mt="xl"
+          bg="var(--mantine-color-blue-light)"
+        >
           <Group justify="space-between" mb="md">
             <Group gap="xs">
               <ThemeIcon size="sm" color="red" radius="xl">
@@ -498,7 +504,7 @@ function AnnouncementPreview({ announcement }: AnnouncementPreviewProps) {
     <Paper
       p="sm"
       radius="sm"
-      bg="gray.0"
+      bg="var(--mantine-color-default-hover)"
       style={{ cursor: "pointer" }}
       onClick={() => navigate("/opslag")}
     >
@@ -541,7 +547,7 @@ function EventPreview({ event }: EventPreviewProps) {
     <Paper
       p="sm"
       radius="sm"
-      bg="gray.0"
+      bg="var(--mantine-color-default-hover)"
       style={{ cursor: "pointer" }}
       onClick={() => navigate("/kalender")}
     >
@@ -578,7 +584,6 @@ function NotificationPreview({ notification }: NotificationPreviewProps) {
     <Paper
       p="sm"
       radius="sm"
-      bg="white"
       style={{ cursor: "pointer" }}
       onClick={() => {
         if (notification.link) {
@@ -647,7 +652,6 @@ function BirthdayPreview({ birthday }: BirthdayPreviewProps) {
     <Paper
       p="sm"
       radius="sm"
-      bg="white"
       style={{ cursor: "pointer" }}
       onClick={() => navigate(`/beboere/${user.house}`)}
     >
@@ -688,17 +692,10 @@ function ActivityPreview({ activity }: ActivityPreviewProps) {
     <Paper
       p="sm"
       radius="sm"
-      bg="gray.0"
+      bg="var(--mantine-color-default-hover)"
       style={{
         cursor: "pointer",
         transition: "background-color 150ms ease",
-      }}
-      styles={{
-        root: {
-          "&:hover": {
-            backgroundColor: "var(--mantine-color-gray-1)",
-          },
-        },
       }}
       onClick={() =>
         navigate(`/forum/${activity.subgroup_slug}/${activity.thread_id}`)
@@ -847,7 +844,7 @@ function FoodDayWidget({
   }, [isActive, diningOption, seatingTime])
 
   return (
-    <Paper p="sm" radius="sm" bg="white">
+    <Paper p="sm" radius="sm">
       <Group justify="space-between" mb="xs">
         <div>
           <Badge color={isToday ? "green" : "blue"} variant="light" size="sm">

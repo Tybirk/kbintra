@@ -45,7 +45,12 @@ export default function PollCreator({ pollData, onChange }: PollCreatorProps) {
   }
 
   return (
-    <Paper withBorder p="md" radius="md" bg="gray.0">
+    <Paper
+      withBorder
+      p="md"
+      radius="md"
+      bg="var(--mantine-color-default-hover)"
+    >
       <Group justify="space-between" mb="sm">
         <Text size="sm" fw={600}>
           Afstemning

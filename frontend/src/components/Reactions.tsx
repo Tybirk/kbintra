@@ -89,27 +89,22 @@ export default function Reactions({
             <Box
               px="xs"
               py={4}
-              style={(theme) => ({
+              style={{
                 display: "flex",
                 alignItems: "center",
-                gap: theme.spacing.xs,
-                borderRadius: theme.radius.md,
+                gap: "var(--mantine-spacing-xs)",
+                borderRadius: "var(--mantine-radius-md)",
                 backgroundColor: reaction.has_reacted
-                  ? theme.colors.blue[1]
-                  : theme.colors.gray[1],
+                  ? "var(--mantine-color-blue-light)"
+                  : "var(--mantine-color-default-hover)",
                 border: `1px solid ${
                   reaction.has_reacted
-                    ? theme.colors.blue[3]
-                    : theme.colors.gray[3]
+                    ? "var(--mantine-color-blue-light-color)"
+                    : "var(--mantine-color-default-border)"
                 }`,
                 cursor: "pointer",
                 transition: "all 0.15s ease",
-                "&:hover": {
-                  backgroundColor: reaction.has_reacted
-                    ? theme.colors.blue[2]
-                    : theme.colors.gray[2],
-                },
-              })}
+              }}
             >
               <Text size="sm" lh={1}>
                 {reaction.emoji}

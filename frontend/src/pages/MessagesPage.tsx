@@ -275,7 +275,7 @@ export default function MessagesPage() {
             width: isMobile ? "100%" : 320,
             borderRight: isMobile
               ? "none"
-              : "1px solid var(--mantine-color-gray-3)",
+              : "1px solid var(--mantine-color-default-border)",
             display:
               isMobile && (selectedConversation || isComposingNew)
                 ? "none"
@@ -285,7 +285,9 @@ export default function MessagesPage() {
         >
           <Box
             p="md"
-            style={{ borderBottom: "1px solid var(--mantine-color-gray-3)" }}
+            style={{
+              borderBottom: "1px solid var(--mantine-color-default-border)",
+            }}
           >
             <TextInput
               placeholder="Søg i samtaler..."
@@ -426,8 +428,10 @@ function ConversationItem({
       p="sm"
       style={{
         cursor: "pointer",
-        backgroundColor: isSelected ? "var(--mantine-color-blue-0)" : undefined,
-        borderBottom: "1px solid var(--mantine-color-gray-2)",
+        backgroundColor: isSelected
+          ? "var(--mantine-color-blue-light)"
+          : undefined,
+        borderBottom: "1px solid var(--mantine-color-default-border)",
       }}
       onClick={onClick}
     >
@@ -593,7 +597,9 @@ function ChatArea({
       {/* Header */}
       <Box
         p="md"
-        style={{ borderBottom: "1px solid var(--mantine-color-gray-3)" }}
+        style={{
+          borderBottom: "1px solid var(--mantine-color-default-border)",
+        }}
       >
         <Group gap="sm" justify="space-between">
           <Group gap="sm">
@@ -710,7 +716,7 @@ function ChatArea({
       {/* Input */}
       <Box
         p="md"
-        style={{ borderTop: "1px solid var(--mantine-color-gray-3)" }}
+        style={{ borderTop: "1px solid var(--mantine-color-default-border)" }}
       >
         <ChatRichTextEditor
           content={message}
@@ -911,7 +917,7 @@ function MessageBubble({ message, showAvatar, showTime }: MessageBubbleProps) {
                 style={{
                   backgroundColor: isOwn
                     ? "var(--mantine-color-blue-6)"
-                    : "var(--mantine-color-gray-1)",
+                    : "var(--mantine-color-default-hover)",
                   maxWidth: "100%",
                 }}
               >
@@ -1034,7 +1040,9 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
       {/* Header with recipient selector */}
       <Box
         p="md"
-        style={{ borderBottom: "1px solid var(--mantine-color-gray-3)" }}
+        style={{
+          borderBottom: "1px solid var(--mantine-color-default-border)",
+        }}
       >
         <Group gap="sm" mb="xs">
           {onBack && (
@@ -1120,7 +1128,8 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
                       p="sm"
                       style={{
                         cursor: "pointer",
-                        borderBottom: "1px solid var(--mantine-color-gray-2)",
+                        borderBottom:
+                          "1px solid var(--mantine-color-default-border)",
                       }}
                       onMouseDown={() => handleSelectUser(u)}
                     >
@@ -1209,7 +1218,7 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
       {/* Message input */}
       <Box
         p="md"
-        style={{ borderTop: "1px solid var(--mantine-color-gray-3)" }}
+        style={{ borderTop: "1px solid var(--mantine-color-default-border)" }}
       >
         <ChatRichTextEditor
           content={message}
