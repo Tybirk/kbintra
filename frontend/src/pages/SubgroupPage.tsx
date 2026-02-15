@@ -231,40 +231,41 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
       style={{ cursor: "pointer" }}
       onClick={onClick}
     >
-      <Group justify="space-between" wrap="nowrap">
-        <Group gap="md" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
-          <Avatar src={thread.author.profile_picture} radius="xl" size="md">
-            {thread.author.first_name?.[0]}
-            {thread.author.last_name?.[0]}
-          </Avatar>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <Group gap="xs" mb={4}>
-              {thread.is_pinned && (
-                <IconPin size={14} color="var(--mantine-color-blue-6)" />
-              )}
-              {thread.is_closed && (
-                <IconLock size={14} color="var(--mantine-color-orange-6)" />
-              )}
-              <Text fw={500} lineClamp={1}>
-                {thread.title}
-              </Text>
-            </Group>
-            <Text size="sm" c="dimmed">
+      <Group gap="md" wrap="nowrap">
+        <Avatar src={thread.author.profile_picture} radius="xl" size="md">
+          {thread.author.first_name?.[0]}
+          {thread.author.last_name?.[0]}
+        </Avatar>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Group gap="xs" mb={4} wrap="nowrap">
+            {thread.is_pinned && (
+              <IconPin
+                size={14}
+                color="var(--mantine-color-blue-6)"
+                style={{ flexShrink: 0 }}
+              />
+            )}
+            {thread.is_closed && (
+              <IconLock
+                size={14}
+                color="var(--mantine-color-orange-6)"
+                style={{ flexShrink: 0 }}
+              />
+            )}
+            <Text fw={500} lineClamp={1}>
+              {thread.title}
+            </Text>
+          </Group>
+          <Group gap="xs">
+            <Text size="sm" c="dimmed" style={{ whiteSpace: "nowrap" }}>
               {thread.author.first_name} {thread.author.last_name} •{" "}
-              {dayjs(thread.created_at).fromNow()}
+              {dayjs(thread.last_post_at ?? thread.created_at).fromNow()}
             </Text>
-          </div>
-        </Group>
-        <Group gap="xs">
-          <Badge variant="light" color="gray">
-            {thread.post_count} {thread.post_count === 1 ? "svar" : "svar"}
-          </Badge>
-          {thread.last_post_at && (
-            <Text size="xs" c="dimmed">
-              Seneste aktivitet {dayjs(thread.last_post_at).fromNow()}
-            </Text>
-          )}
-        </Group>
+            <Badge variant="light" color="gray" size="sm">
+              {thread.post_count} svar
+            </Badge>
+          </Group>
+        </div>
       </Group>
     </Paper>
   )
