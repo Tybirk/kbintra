@@ -1,26 +1,56 @@
 import { useState, useEffect } from "react"
-import { Button, Paper, Group, Text, CloseButton } from "@mantine/core"
-import { IconDownload } from "@tabler/icons-react"
+import { Button, Paper, Group, Text, Stack, CloseButton } from "@mantine/core"
+import { IconDownload, IconShare } from "@tabler/icons-react"
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>
 }
 
+function isIosSafari(): boolean {
+  const ua = navigator.userAgent
+  const isIos =
+    /iPad|iPhone|iPod/.test(ua) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  // Exclude Chrome/Firefox/Edge on iOS — they can't add to home screen either,
+  // but the share sheet instructions only apply to Safari
+  const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS/.test(ua)
+  return isIos && isSafari
+}
+
+function isStandalone(): boolean {
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    ("standalone" in navigator &&
+      (navigator as { standalone?: boolean }).standalone === true)
+  )
+}
+
 export function InstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] =
     useState<BeforeInstallPromptEvent | null>(null)
   const [showPrompt, setShowPrompt] = useState(false)
+  const [isIos, setIsIos] = useState(false)
   const [dismissed, setDismissed] = useState(false)
 
   useEffect(() => {
-    // Check if already dismissed this session
     const wasDismissed = sessionStorage.getItem("pwa-install-dismissed")
     if (wasDismissed) {
       setDismissed(true)
       return
     }
 
+    // Already running as installed PWA — don't show
+    if (isStandalone()) return
+
+    // iOS Safari: show instructions banner
+    if (isIosSafari()) {
+      setIsIos(true)
+      setShowPrompt(true)
+      return
+    }
+
+    // Android/Chrome: use beforeinstallprompt
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault()
       setDeferredPrompt(e as BeforeInstallPromptEvent)
@@ -73,18 +103,41 @@ export function InstallPrompt() {
         margin: "0 auto",
       }}
     >
-      <Group justify="space-between" wrap="nowrap">
-        <Group gap="sm" wrap="nowrap">
-          <IconDownload size={20} />
-          <Text size="sm">Installér KB Intra som app</Text>
-        </Group>
-        <Group gap="xs" wrap="nowrap">
-          <Button size="xs" onClick={handleInstall}>
-            Installér
-          </Button>
+      {isIos ? (
+        <Group justify="space-between" align="flex-start" wrap="nowrap">
+          <Stack gap={4}>
+            <Group gap="sm" wrap="nowrap">
+              <IconDownload size={20} />
+              <Text size="sm" fw={500}>
+                Installér KB Intra som app
+              </Text>
+            </Group>
+            <Group gap={4} wrap="nowrap">
+              <Text size="xs" c="dimmed">
+                Tryk på del-knappen
+              </Text>
+              <IconShare size={14} color="var(--mantine-color-blue-6)" />
+              <Text size="xs" c="dimmed">
+                og vælg &quot;Føj til hjemmeskærm&quot;
+              </Text>
+            </Group>
+          </Stack>
           <CloseButton size="sm" onClick={handleDismiss} />
         </Group>
-      </Group>
+      ) : (
+        <Group justify="space-between" wrap="nowrap">
+          <Group gap="sm" wrap="nowrap">
+            <IconDownload size={20} />
+            <Text size="sm">Installér KB Intra som app</Text>
+          </Group>
+          <Group gap="xs" wrap="nowrap">
+            <Button size="xs" onClick={handleInstall}>
+              Installér
+            </Button>
+            <CloseButton size="sm" onClick={handleDismiss} />
+          </Group>
+        </Group>
+      )}
     </Paper>
   )
 }
