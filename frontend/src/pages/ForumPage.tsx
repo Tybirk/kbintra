@@ -86,17 +86,34 @@ export default function ForumPage() {
     },
   })
 
-  // Split subgroups into main, committees and regular groups
-  const { mainGroups, committees, regularGroups } = useMemo(() => {
+  // Split subgroups: subscribed groups first, then remaining committees and regular groups
+  const { subscribedGroups, committees, regularGroups } = useMemo(() => {
     const filtered =
       subgroups?.filter((subgroup) =>
         subgroup.name.toLowerCase().includes(search.toLowerCase()),
       ) || []
 
+    const byActivity = (a: Subgroup, b: Subgroup) => {
+      const aTime = a.last_activity_at
+        ? new Date(a.last_activity_at).getTime()
+        : 0
+      const bTime = b.last_activity_at
+        ? new Date(b.last_activity_at).getTime()
+        : 0
+      return bTime - aTime
+    }
+
+    const subscribed = filtered.filter((s) => s.is_subscribed).sort(byActivity)
+    const subscribedIds = new Set(subscribed.map((s) => s.id))
+
     return {
-      mainGroups: filtered.filter((s) => s.is_main),
-      committees: filtered.filter((s) => s.is_committee && !s.is_main),
-      regularGroups: filtered.filter((s) => !s.is_committee && !s.is_main),
+      subscribedGroups: subscribed,
+      committees: filtered.filter(
+        (s) => s.is_committee && !subscribedIds.has(s.id),
+      ),
+      regularGroups: filtered.filter(
+        (s) => !s.is_committee && !subscribedIds.has(s.id),
+      ),
     }
   }, [subgroups, search])
 
@@ -146,17 +163,30 @@ export default function ForumPage() {
         style={{ maxWidth: 300 }}
       />
 
-      {mainGroups.length === 0 &&
+      {subscribedGroups.length === 0 &&
       committees.length === 0 &&
       regularGroups.length === 0 ? (
         <Text c="dimmed">Ingen grupper fundet.</Text>
       ) : (
         <Stack gap="xl">
-          {/* Main Groups Section (e.g., Fælles) */}
-          {mainGroups.length > 0 && (
-            <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
-              {mainGroups.map(renderSubgroupCard)}
-            </SimpleGrid>
+          {/* Subscribed Groups Section */}
+          {subscribedGroups.length > 0 && (
+            <Box>
+              <Group gap="sm" mb="lg">
+                <ThemeIcon size="lg" radius="md" variant="filled" color="blue">
+                  <IconBell size={20} />
+                </ThemeIcon>
+                <div>
+                  <Title order={3}>Mine grupper</Title>
+                  <Text size="sm" c="dimmed">
+                    Grupper du er tilmeldt
+                  </Text>
+                </div>
+              </Group>
+              <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
+                {subscribedGroups.map(renderSubgroupCard)}
+              </SimpleGrid>
+            </Box>
           )}
 
           {/* Committees Section */}
