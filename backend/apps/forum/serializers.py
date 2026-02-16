@@ -57,6 +57,7 @@ class SubgroupSerializer(serializers.ModelSerializer):
 
     thread_count = serializers.SerializerMethodField()
     is_subscribed = serializers.SerializerMethodField()
+    unread_thread_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Subgroup
@@ -69,6 +70,7 @@ class SubgroupSerializer(serializers.ModelSerializer):
             "is_committee",
             "is_main",
             "thread_count",
+            "unread_thread_count",
             "is_subscribed",
             "created_at",
             "last_activity_at",
@@ -82,6 +84,17 @@ class SubgroupSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             return SubgroupSubscription.objects.filter(user=request.user, subgroup=obj).exists()
         return False
+
+    def get_unread_thread_count(self, obj: Subgroup) -> int:
+        read_status_map = self.context.get("read_status_map")
+        if read_status_map is None:
+            return 0
+        count = 0
+        for thread in obj.threads.all():
+            last_read = read_status_map.get(thread.id)
+            if last_read is None or thread.updated_at > last_read:
+                count += 1
+        return count
 
 
 class SubgroupSubscriptionSerializer(serializers.ModelSerializer):
@@ -381,6 +394,7 @@ class ThreadSerializer(serializers.ModelSerializer):
     author = AuthorSerializer(read_only=True)
     post_count = serializers.SerializerMethodField()
     last_post_at = serializers.SerializerMethodField()
+    is_unread = serializers.SerializerMethodField()
 
     class Meta:
         model = Thread
@@ -393,6 +407,7 @@ class ThreadSerializer(serializers.ModelSerializer):
             "is_closed",
             "post_count",
             "last_post_at",
+            "is_unread",
             "created_at",
             "updated_at",
         ]
@@ -405,6 +420,12 @@ class ThreadSerializer(serializers.ModelSerializer):
         if last_post:
             return last_post.created_at.isoformat()
         return None
+
+    def get_is_unread(self, obj: Thread) -> bool:
+        unread_thread_ids = self.context.get("unread_thread_ids")
+        if unread_thread_ids is None:
+            return False
+        return obj.id in unread_thread_ids
 
 
 class ThreadDetailSerializer(serializers.ModelSerializer):

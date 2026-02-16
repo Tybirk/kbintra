@@ -14,6 +14,7 @@ from .models import (
     Subgroup,
     SubgroupSubscription,
     Thread,
+    ThreadReadStatus,
 )
 
 
@@ -98,6 +99,14 @@ class PollOptionAdmin(admin.ModelAdmin):
 class PollVoteAdmin(admin.ModelAdmin):
     list_display = ["user", "option", "created_at"]
     raw_id_fields = ["option", "user"]
+
+
+@admin.register(ThreadReadStatus)
+class ThreadReadStatusAdmin(admin.ModelAdmin):
+    list_display = ["user", "thread", "last_read_at"]
+    list_filter = ["last_read_at"]
+    search_fields = ["user__email", "thread__title"]
+    raw_id_fields = ["user", "thread"]
 
 
 @admin.register(File)

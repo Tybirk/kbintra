@@ -10,6 +10,9 @@ from .views import (
     FileMoveView,
     FolderDetailView,
     FolderListCreateView,
+    ForumUnreadCountView,
+    MarkAllForumReadView,
+    MarkSubgroupReadView,
     MySubscriptionsView,
     PollDeleteView,
     PollVoteView,
@@ -32,11 +35,19 @@ from .views import (
 urlpatterns = [
     # Recent activity
     path("recent/", RecentActivityView.as_view(), name="recent-activity"),
+    # Read status
+    path("mark-all-read/", MarkAllForumReadView.as_view(), name="mark-all-read"),
+    path("unread-count/", ForumUnreadCountView.as_view(), name="forum-unread-count"),
     # Subgroups
     path("subgroups/", SubgroupListView.as_view(), name="subgroup-list"),
     path("subgroups/<slug:slug>/", SubgroupDetailView.as_view(), name="subgroup-detail"),
     path("subgroups/<slug:slug>/subscribe/", SubscribeView.as_view(), name="subscribe"),
     path("subgroups/<slug:slug>/unsubscribe/", UnsubscribeView.as_view(), name="unsubscribe"),
+    path(
+        "subgroups/<slug:slug>/mark-read/",
+        MarkSubgroupReadView.as_view(),
+        name="mark-subgroup-read",
+    ),
     path("subscriptions/", MySubscriptionsView.as_view(), name="my-subscriptions"),
     # Threads
     path("subgroups/<slug:slug>/threads/", ThreadListCreateView.as_view(), name="thread-list"),

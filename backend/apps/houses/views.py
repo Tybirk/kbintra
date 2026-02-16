@@ -7,8 +7,10 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Child, House
+from .models import Car, Child, House
 from .serializers import (
+    CarCreateUpdateSerializer,
+    CarSerializer,
     ChildCreateUpdateSerializer,
     ChildSerializer,
     HouseListSerializer,
@@ -27,7 +29,7 @@ class HouseListView(generics.ListAPIView):
 
     def get_queryset(self):
         """Return houses ordered by house number."""
-        houses = list(House.objects.prefetch_related("inhabitants", "children"))
+        houses = list(House.objects.prefetch_related("inhabitants", "children", "cars"))
 
         def sort_key(house):
             # Extract numeric part from end of house name (e.g., "MyRoad 7" -> 7)
@@ -48,7 +50,7 @@ class HouseDetailView(generics.RetrieveAPIView):
 
     serializer_class = HouseSerializer
     permission_classes = [permissions.IsAuthenticated]
-    queryset = House.objects.prefetch_related("inhabitants", "children")
+    queryset = House.objects.prefetch_related("inhabitants", "children", "cars")
 
 
 class MyHouseView(APIView):
@@ -68,7 +70,9 @@ class MyHouseView(APIView):
             )
 
         # Prefetch related data to avoid N+1 queries
-        house = House.objects.prefetch_related("inhabitants", "children").get(pk=user.house.pk)
+        house = House.objects.prefetch_related("inhabitants", "children", "cars").get(
+            pk=user.house.pk
+        )
         serializer = HouseSerializer(house)
         return Response(serializer.data)
 
@@ -86,7 +90,7 @@ class MyHouseView(APIView):
         serializer.save()
 
         # Refresh with prefetched data to avoid N+1 queries in serializer
-        house_with_prefetch = House.objects.prefetch_related("inhabitants", "children").get(
+        house_with_prefetch = House.objects.prefetch_related("inhabitants", "children", "cars").get(
             pk=user.house.pk
         )
         return Response(HouseSerializer(house_with_prefetch).data)
@@ -160,4 +164,68 @@ class ChildDetailView(generics.RetrieveUpdateDestroyAPIView):
 
         # Return full serializer
         output_serializer = ChildSerializer(instance)
+        return Response(output_serializer.data)
+
+
+class CarListCreateView(generics.ListCreateAPIView):
+    """
+    List cars in the current user's house or create a new car.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.request.method == "POST":
+            return CarCreateUpdateSerializer
+        return CarSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.house:
+            return Car.objects.none()
+        return Car.objects.filter(house=user.house)
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if not user.house:
+            raise PermissionDenied("Du skal være tilknyttet et hus for at tilføje biler.")
+        serializer.save(house=user.house)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+
+        output_serializer = CarSerializer(serializer.instance)
+        headers = self.get_success_headers(output_serializer.data)
+        return Response(output_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+
+class CarDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Retrieve, update or delete a car.
+    Users can only manage cars in their own house.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.request.method in ["PUT", "PATCH"]:
+            return CarCreateUpdateSerializer
+        return CarSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.house:
+            return Car.objects.none()
+        return Car.objects.filter(house=user.house)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        output_serializer = CarSerializer(instance)
         return Response(output_serializer.data)

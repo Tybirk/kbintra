@@ -15,11 +15,17 @@ import {
   Anchor,
   Badge,
 } from "@mantine/core"
-import { IconArrowLeft, IconHome } from "@tabler/icons-react"
+import {
+  IconArrowLeft,
+  IconHome,
+  IconCar,
+  IconPhone,
+  IconMail,
+} from "@tabler/icons-react"
 import dayjs from "dayjs"
 
 import { housesApi } from "../api/houses"
-import type { Child, UserSummary } from "../types"
+import type { Car, Child, UserSummary } from "../types"
 
 export default function HouseDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -126,6 +132,20 @@ export default function HouseDetailPage() {
           </SimpleGrid>
         </>
       )}
+
+      {house.cars && house.cars.length > 0 && (
+        <>
+          <Title order={3} mt="xl" mb="md">
+            Biler ({house.cars.length})
+          </Title>
+
+          <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
+            {house.cars.map((car) => (
+              <CarCard key={car.id} car={car} />
+            ))}
+          </SimpleGrid>
+        </>
+      )}
     </>
   )
 }
@@ -153,10 +173,27 @@ function InhabitantCard({ inhabitant, onClick }: InhabitantCardProps) {
           <Text fw={500}>
             {inhabitant.first_name} {inhabitant.last_name}
           </Text>
-          {inhabitant.bio && (
-            <Text size="sm" c="dimmed" lineClamp={2}>
-              {inhabitant.bio}
-            </Text>
+          {inhabitant.phone_number && (
+            <Group gap={4}>
+              <IconPhone
+                size={14}
+                style={{ color: "var(--mantine-color-dimmed)" }}
+              />
+              <Text size="sm" c="dimmed">
+                {inhabitant.phone_number}
+              </Text>
+            </Group>
+          )}
+          {inhabitant.email && (
+            <Group gap={4}>
+              <IconMail
+                size={14}
+                style={{ color: "var(--mantine-color-dimmed)" }}
+              />
+              <Text size="sm" c="dimmed">
+                {inhabitant.email}
+              </Text>
+            </Group>
           )}
         </div>
       </Group>
@@ -195,6 +232,32 @@ function ChildCard({ child }: ChildCardProps) {
               {age} {age === 1 ? "år" : "år"}
             </Text>
           )}
+        </div>
+      </Group>
+    </Paper>
+  )
+}
+
+interface CarCardProps {
+  car: Car
+}
+
+function CarCard({ car }: CarCardProps) {
+  return (
+    <Paper withBorder p="lg" radius="md">
+      <Group>
+        <Avatar size="lg" radius="xl" color="blue">
+          <IconCar size={24} />
+        </Avatar>
+        <div style={{ flex: 1 }}>
+          <Group gap="xs">
+            <Text fw={500}>{car.license_plate}</Text>
+            {car.is_electric && (
+              <Badge size="sm" variant="light" color="green">
+                Elbil
+              </Badge>
+            )}
+          </Group>
         </div>
       </Group>
     </Paper>

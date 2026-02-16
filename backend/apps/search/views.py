@@ -2,6 +2,7 @@
 Global search API endpoint using FTS5 full-text search.
 """
 
+import re
 from collections import defaultdict
 
 from django.db.models import Q
@@ -10,7 +11,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.forum.models import Subgroup
-from apps.houses.models import House
+from apps.houses.models import Car, House
 from apps.users.models import User
 
 from .services import create_excerpt, fts_search
@@ -24,6 +25,7 @@ TYPE_TO_KEY = {
     "announcement": "announcements",
     "event": "events",
     "house": "houses",
+    "car": "cars",
     "file": "files",
 }
 
@@ -37,6 +39,7 @@ GROUP_DISPLAY_ORDER = [
     "announcements",
     "events",
     "houses",
+    "cars",
     "files",
 ]
 
@@ -167,6 +170,29 @@ class GlobalSearchView(APIView):
                         }
                     )
             results["subgroups"] = (injected + results["subgroups"])[:limit]
+
+        # Heuristic 4: License plate direct lookup
+        if re.match(r"^[A-Za-z]{2}\d{2,5}$", query):
+            plate_matches = Car.objects.filter(license_plate__istartswith=query).select_related(
+                "house"
+            )[:limit]
+            injected = []
+            for car in plate_matches:
+                if car.id not in seen["cars"]:
+                    seen["cars"].add(car.id)
+                    subtitle_parts = [car.house.name]
+                    if car.is_electric:
+                        subtitle_parts.append("Elbil")
+                    injected.append(
+                        {
+                            "id": car.id,
+                            "type": "car",
+                            "title": car.license_plate,
+                            "subtitle": " · ".join(subtitle_parts),
+                            "url": f"/beboere/hus/{car.house_id}",
+                        }
+                    )
+            results["cars"] = (injected + results["cars"])[:limit]
 
         # Ensure all expected keys exist
         for key in GROUP_DISPLAY_ORDER:

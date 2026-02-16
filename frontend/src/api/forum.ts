@@ -334,4 +334,20 @@ export const forumApi = {
   deletePoll: async (pollId: number): Promise<void> => {
     await apiClient.delete(`/forum/polls/${pollId}/`)
   },
+
+  // Read status
+  markAllRead: async (): Promise<{ detail: string }> => {
+    const response = await apiClient.post("/forum/mark-all-read/")
+    return response.data
+  },
+
+  markSubgroupRead: async (slug: string): Promise<{ detail: string }> => {
+    const response = await apiClient.post(`/forum/subgroups/${slug}/mark-read/`)
+    return response.data
+  },
+
+  getUnreadCount: async (): Promise<{ unread_count: number }> => {
+    const response = await apiClient.get("/forum/unread-count/")
+    return response.data
+  },
 }

@@ -7,6 +7,7 @@ import {
   Paper,
   Group,
   Badge,
+  Button,
   TextInput,
   Loader,
   Center,
@@ -22,6 +23,7 @@ import {
   IconBell,
   IconBellOff,
   IconUsers,
+  IconChecks,
 } from "@tabler/icons-react"
 import { useNavigate } from "react-router-dom"
 import dayjs from "dayjs"
@@ -85,6 +87,19 @@ export default function ForumPage() {
       })
     },
   })
+
+  const markAllReadMutation = useMutation({
+    mutationFn: forumApi.markAllRead,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["subgroups"] })
+      queryClient.invalidateQueries({ queryKey: ["forum", "unread-count"] })
+    },
+  })
+
+  const totalUnread = useMemo(
+    () => subgroups?.reduce((sum, s) => sum + s.unread_thread_count, 0) ?? 0,
+    [subgroups],
+  )
 
   // Split subgroups: subscribed groups first, then remaining committees and regular groups
   const { subscribedGroups, committees, regularGroups } = useMemo(() => {
@@ -152,6 +167,16 @@ export default function ForumPage() {
           <Title order={1}>Forum</Title>
           <Text c="dimmed">Gennemse og deltag i fællesskabets grupper</Text>
         </div>
+        {totalUnread > 0 && (
+          <Button
+            variant="light"
+            leftSection={<IconChecks size={16} />}
+            onClick={() => markAllReadMutation.mutate()}
+            loading={markAllReadMutation.isPending}
+          >
+            Markér alt som læst
+          </Button>
+        )}
       </Group>
 
       <TextInput
@@ -312,6 +337,18 @@ function SubgroupCard({
             <Badge variant="light" color="blue">
               {subgroup.thread_count} tråde
             </Badge>
+            {subgroup.unread_thread_count > 0 &&
+              (subgroup.is_subscribed ? (
+                <Badge variant="filled" color="red">
+                  {subgroup.unread_thread_count}{" "}
+                  {subgroup.unread_thread_count === 1 ? "ulæst" : "ulæste"}
+                </Badge>
+              ) : (
+                <Badge variant="light" color="gray">
+                  {subgroup.unread_thread_count}{" "}
+                  {subgroup.unread_thread_count === 1 ? "ulæst" : "ulæste"}
+                </Badge>
+              ))}
             {subgroup.is_subscribed && (
               <Badge variant="outline" color="green">
                 Tilmeldt

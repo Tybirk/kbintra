@@ -4,7 +4,7 @@ Tests for the Houses app.
 
 import pytest
 
-from apps.houses.models import Child
+from apps.houses.models import Car, Child
 
 
 @pytest.fixture
@@ -13,6 +13,16 @@ def child(db, house):
     return Child.objects.create(
         house=house,
         name="Test Child",
+    )
+
+
+@pytest.fixture
+def car(db, house):
+    """Create a test car."""
+    return Car.objects.create(
+        house=house,
+        license_plate="AB12345",
+        is_electric=False,
     )
 
 
@@ -48,6 +58,23 @@ class TestChildModel:
         children = list(Child.objects.filter(house=house))
         assert children[0] == child_a
         assert children[1] == child_b
+
+
+class TestCarModel:
+    """Tests for the Car model."""
+
+    def test_car_str(self, car):
+        """Test string representation of car."""
+        assert "AB12345" in str(car)
+
+    def test_car_ordering(self, db, house):
+        """Test that cars are ordered by license plate."""
+        car_b = Car.objects.create(house=house, license_plate="CD67890")
+        car_a = Car.objects.create(house=house, license_plate="AB12345")
+
+        cars = list(Car.objects.filter(house=house))
+        assert cars[0] == car_a
+        assert cars[1] == car_b
 
 
 # =============================================================================
@@ -168,3 +195,74 @@ class TestChildAPI:
         response = api_client.delete(f"/api/houses/my/children/{child.id}/")
         assert response.status_code == 204
         assert not Child.objects.filter(id=child.id).exists()
+
+
+class TestCarAPI:
+    """Tests for the Car API endpoints."""
+
+    def test_list_cars_without_house(self, authenticated_client):
+        """Test listing cars when user has no house."""
+        response = authenticated_client.get("/api/houses/my/cars/")
+        assert response.status_code == 200
+        data = response.json()
+        results = data if isinstance(data, list) else data.get("results", data)
+        assert len(results) == 0
+
+    def test_list_cars(self, api_client, user_with_house, car):
+        """Test listing cars in user's house."""
+        api_client.force_authenticate(user=user_with_house)
+        response = api_client.get("/api/houses/my/cars/")
+        assert response.status_code == 200
+
+        data = response.json()
+        results = data if isinstance(data, list) else data.get("results", data)
+        assert len(results) == 1
+        assert results[0]["license_plate"] == "AB12345"
+
+    def test_create_car(self, api_client, user_with_house):
+        """Test creating a car."""
+        api_client.force_authenticate(user=user_with_house)
+        response = api_client.post(
+            "/api/houses/my/cars/",
+            {"license_plate": "XY98765", "is_electric": True},
+            format="json",
+        )
+        assert response.status_code == 201
+        assert Car.objects.filter(license_plate="XY98765").exists()
+        assert Car.objects.get(license_plate="XY98765").is_electric is True
+
+    def test_cannot_create_car_without_house(self, authenticated_client):
+        """Test that users without a house cannot create cars."""
+        response = authenticated_client.post(
+            "/api/houses/my/cars/",
+            {"license_plate": "XY98765"},
+            format="json",
+        )
+        assert response.status_code == 403
+
+    def test_update_car(self, api_client, user_with_house, car):
+        """Test updating a car."""
+        api_client.force_authenticate(user=user_with_house)
+        response = api_client.patch(
+            f"/api/houses/my/cars/{car.id}/",
+            {"license_plate": "ZZ99999"},
+            format="json",
+        )
+        assert response.status_code == 200
+        car.refresh_from_db()
+        assert car.license_plate == "ZZ99999"
+
+    def test_delete_car(self, api_client, user_with_house, car):
+        """Test deleting a car."""
+        api_client.force_authenticate(user=user_with_house)
+        response = api_client.delete(f"/api/houses/my/cars/{car.id}/")
+        assert response.status_code == 204
+        assert not Car.objects.filter(id=car.id).exists()
+
+    def test_cars_included_in_house_detail(self, api_client, user_with_house, car):
+        """Test that cars are included in house detail response."""
+        api_client.force_authenticate(user=user_with_house)
+        response = api_client.get(f"/api/houses/{user_with_house.house.id}/")
+        assert response.status_code == 200
+        assert len(response.json()["cars"]) == 1
+        assert response.json()["cars"][0]["license_plate"] == "AB12345"

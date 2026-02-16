@@ -18,6 +18,8 @@ import {
   Table,
   Modal,
   Alert,
+  Switch,
+  Badge,
 } from "@mantine/core"
 import { DateInput } from "@mantine/dates"
 import { Dropzone, IMAGE_MIME_TYPE } from "@mantine/dropzone"
@@ -40,12 +42,19 @@ import {
   housesApi,
   type CreateChildData,
   type UpdateChildData,
+  type CreateCarData,
+  type UpdateCarData,
 } from "../api/houses"
-import type { Child } from "../types"
+import type { Car, Child } from "../types"
 
 interface UpdateChildParams {
   id: number
   data: UpdateChildData
+}
+
+interface UpdateCarParams {
+  id: number
+  data: UpdateCarData
 }
 
 export default function HouseEditPage() {
@@ -65,6 +74,20 @@ export default function HouseEditPage() {
   const [childForm, setChildForm] = useState({
     name: "",
     birthdate: null as Date | null,
+  })
+
+  const [editingCar, setEditingCar] = useState<Car | null>(null)
+  const [carModalOpened, { open: openCarModal, close: closeCarModal }] =
+    useDisclosure(false)
+  const [
+    deleteCarModalOpened,
+    { open: openDeleteCarModal, close: closeDeleteCarModal },
+  ] = useDisclosure(false)
+  const [carToDelete, setCarToDelete] = useState<Car | null>(null)
+
+  const [carForm, setCarForm] = useState({
+    license_plate: "",
+    is_electric: false,
   })
 
   const {
@@ -190,6 +213,73 @@ export default function HouseEditPage() {
     },
   })
 
+  const createCarMutation = useMutation({
+    mutationFn: (data: CreateCarData) => housesApi.createCar(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["house"] })
+      queryClient.invalidateQueries({ queryKey: ["houses"] })
+      notifications.show({
+        title: "Bil tilføjet",
+        message: "Bilen er blevet tilføjet til husstanden.",
+        color: "green",
+      })
+      closeCarModal()
+      resetCarForm()
+    },
+    onError: () => {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke tilføje bilen. Prøv igen.",
+        color: "red",
+      })
+    },
+  })
+
+  const updateCarMutation = useMutation({
+    mutationFn: ({ id, data }: UpdateCarParams) =>
+      housesApi.updateCar(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["house"] })
+      queryClient.invalidateQueries({ queryKey: ["houses"] })
+      notifications.show({
+        title: "Bil opdateret",
+        message: "Bilens oplysninger er blevet opdateret.",
+        color: "green",
+      })
+      closeCarModal()
+      resetCarForm()
+    },
+    onError: () => {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke opdatere bilen. Prøv igen.",
+        color: "red",
+      })
+    },
+  })
+
+  const deleteCarMutation = useMutation({
+    mutationFn: (id: number) => housesApi.deleteCar(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["house"] })
+      queryClient.invalidateQueries({ queryKey: ["houses"] })
+      notifications.show({
+        title: "Bil fjernet",
+        message: "Bilen er blevet fjernet fra husstanden.",
+        color: "green",
+      })
+      closeDeleteCarModal()
+      setCarToDelete(null)
+    },
+    onError: () => {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke fjerne bilen. Prøv igen.",
+        color: "red",
+      })
+    },
+  })
+
   const resetChildForm = () => {
     setChildForm({ name: "", birthdate: null })
     setEditingChild(null)
@@ -232,6 +322,49 @@ export default function HouseEditPage() {
   const handleConfirmDelete = () => {
     if (childToDelete) {
       deleteChildMutation.mutate(childToDelete.id)
+    }
+  }
+
+  const resetCarForm = () => {
+    setCarForm({ license_plate: "", is_electric: false })
+    setEditingCar(null)
+  }
+
+  const handleOpenAddCar = () => {
+    resetCarForm()
+    openCarModal()
+  }
+
+  const handleOpenEditCar = (car: Car) => {
+    setEditingCar(car)
+    setCarForm({
+      license_plate: car.license_plate,
+      is_electric: car.is_electric,
+    })
+    openCarModal()
+  }
+
+  const handleOpenDeleteCar = (car: Car) => {
+    setCarToDelete(car)
+    openDeleteCarModal()
+  }
+
+  const handleSaveCar = () => {
+    const data = {
+      license_plate: carForm.license_plate,
+      is_electric: carForm.is_electric,
+    }
+
+    if (editingCar) {
+      updateCarMutation.mutate({ id: editingCar.id, data })
+    } else {
+      createCarMutation.mutate(data)
+    }
+  }
+
+  const handleConfirmDeleteCar = () => {
+    if (carToDelete) {
+      deleteCarMutation.mutate(carToDelete.id)
     }
   }
 
@@ -475,6 +608,78 @@ export default function HouseEditPage() {
         )}
       </Paper>
 
+      <Paper withBorder p="xl" radius="md" mt="xl">
+        <Group justify="space-between" mb="md">
+          <Title order={4}>Biler i husstanden</Title>
+          <Button
+            leftSection={<IconPlus size={16} />}
+            onClick={handleOpenAddCar}
+          >
+            Tilføj bil
+          </Button>
+        </Group>
+
+        <Text size="sm" c="dimmed" mb="md">
+          Registrer jeres biler så naboer kan finde ejeren via nummerpladen.
+        </Text>
+
+        {house.cars && house.cars.length > 0 ? (
+          <Table.ScrollContainer minWidth={400}>
+            <Table>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Nummerplade</Table.Th>
+                  <Table.Th>Type</Table.Th>
+                  <Table.Th style={{ width: 100 }}>Handlinger</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {house.cars.map((car) => (
+                  <Table.Tr key={car.id}>
+                    <Table.Td>{car.license_plate}</Table.Td>
+                    <Table.Td>
+                      {car.is_electric ? (
+                        <Badge size="sm" variant="light" color="green">
+                          Elbil
+                        </Badge>
+                      ) : (
+                        "-"
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap="xs">
+                        <ActionIcon
+                          variant="subtle"
+                          color="blue"
+                          size="lg"
+                          onClick={() => handleOpenEditCar(car)}
+                          aria-label="Rediger bil"
+                        >
+                          <IconPencil size={18} />
+                        </ActionIcon>
+                        <ActionIcon
+                          variant="subtle"
+                          color="red"
+                          size="lg"
+                          onClick={() => handleOpenDeleteCar(car)}
+                          aria-label="Fjern bil"
+                        >
+                          <IconTrash size={18} />
+                        </ActionIcon>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        ) : (
+          <Text c="dimmed" ta="center" py="lg">
+            Ingen biler registreret i husstanden.
+          </Text>
+        )}
+      </Paper>
+
       {/* Child Add/Edit Modal */}
       <Modal
         opened={childModalOpened}
@@ -557,6 +762,96 @@ export default function HouseEditPage() {
             color="red"
             onClick={handleConfirmDelete}
             loading={deleteChildMutation.isPending}
+          >
+            Fjern
+          </Button>
+        </Group>
+      </Modal>
+
+      {/* Car Add/Edit Modal */}
+      <Modal
+        opened={carModalOpened}
+        onClose={() => {
+          closeCarModal()
+          resetCarForm()
+        }}
+        title={editingCar ? "Rediger bil" : "Tilføj bil"}
+      >
+        <Stack>
+          <TextInput
+            label="Nummerplade"
+            placeholder="F.eks. AB12345"
+            value={carForm.license_plate}
+            onChange={(e) =>
+              setCarForm((prev) => ({
+                ...prev,
+                license_plate: e.target.value,
+              }))
+            }
+            required
+          />
+
+          <Switch
+            label="Elbil"
+            checked={carForm.is_electric}
+            onChange={(e) =>
+              setCarForm((prev) => ({
+                ...prev,
+                is_electric: e.currentTarget.checked,
+              }))
+            }
+          />
+
+          <Group justify="flex-end" mt="md">
+            <Button
+              variant="light"
+              onClick={() => {
+                closeCarModal()
+                resetCarForm()
+              }}
+            >
+              Annuller
+            </Button>
+            <Button
+              onClick={handleSaveCar}
+              loading={
+                createCarMutation.isPending || updateCarMutation.isPending
+              }
+              disabled={!carForm.license_plate.trim()}
+            >
+              {editingCar ? "Gem ændringer" : "Tilføj"}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Car Delete Confirmation Modal */}
+      <Modal
+        opened={deleteCarModalOpened}
+        onClose={() => {
+          closeDeleteCarModal()
+          setCarToDelete(null)
+        }}
+        title="Fjern bil"
+      >
+        <Text mb="lg">
+          Er du sikker på, at du vil fjerne bilen med nummerplade{" "}
+          <strong>{carToDelete?.license_plate}</strong> fra husstanden?
+        </Text>
+        <Group justify="flex-end">
+          <Button
+            variant="light"
+            onClick={() => {
+              closeDeleteCarModal()
+              setCarToDelete(null)
+            }}
+          >
+            Annuller
+          </Button>
+          <Button
+            color="red"
+            onClick={handleConfirmDeleteCar}
+            loading={deleteCarMutation.isPending}
           >
             Fjern
           </Button>

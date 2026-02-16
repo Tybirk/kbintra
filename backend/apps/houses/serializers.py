@@ -6,7 +6,7 @@ from rest_framework import serializers
 
 from apps.users.models import User
 
-from .models import Child, House
+from .models import Car, Child, House
 
 
 class ChildSerializer(serializers.ModelSerializer):
@@ -36,6 +36,33 @@ class ChildCreateUpdateSerializer(serializers.ModelSerializer):
         read_only_fields = ["id"]
 
 
+class CarSerializer(serializers.ModelSerializer):
+    """Serializer for Car model."""
+
+    class Meta:
+        model = Car
+        fields = [
+            "id",
+            "license_plate",
+            "is_electric",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
+
+
+class CarCreateUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for creating/updating cars."""
+
+    class Meta:
+        model = Car
+        fields = [
+            "id",
+            "license_plate",
+            "is_electric",
+        ]
+        read_only_fields = ["id"]
+
+
 class HouseInhabitantSerializer(serializers.ModelSerializer):
     """Serializer for users as house inhabitants (minimal info)."""
 
@@ -47,6 +74,8 @@ class HouseInhabitantSerializer(serializers.ModelSerializer):
             "last_name",
             "profile_picture",
             "bio",
+            "phone_number",
+            "email",
         ]
 
 
@@ -55,6 +84,7 @@ class HouseSerializer(serializers.ModelSerializer):
 
     inhabitants = HouseInhabitantSerializer(many=True, read_only=True)
     children = ChildSerializer(many=True, read_only=True)
+    cars = CarSerializer(many=True, read_only=True)
     inhabitant_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -67,6 +97,7 @@ class HouseSerializer(serializers.ModelSerializer):
             "profile_picture",
             "inhabitants",
             "children",
+            "cars",
             "inhabitant_count",
             "created_at",
         ]
@@ -85,6 +116,7 @@ class HouseListSerializer(serializers.ModelSerializer):
 
     inhabitants = HouseInhabitantSerializer(many=True, read_only=True)
     children = ChildSerializer(many=True, read_only=True)
+    cars = CarSerializer(many=True, read_only=True)
     inhabitant_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -97,6 +129,7 @@ class HouseListSerializer(serializers.ModelSerializer):
             "profile_picture",
             "inhabitants",
             "children",
+            "cars",
             "inhabitant_count",
         ]
 

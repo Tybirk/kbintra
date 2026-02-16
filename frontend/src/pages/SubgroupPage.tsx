@@ -7,6 +7,7 @@ import {
   Paper,
   Group,
   Badge,
+  Box,
   Button,
   Loader,
   Center,
@@ -38,6 +39,7 @@ import {
   IconFolderSymlink,
   IconEye,
   IconChartBar,
+  IconChecks,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -99,6 +101,17 @@ export default function SubgroupPage() {
     queryFn: () => forumApi.getThreads(slug!),
     enabled: !!slug,
   })
+
+  const markReadMutation = useMutation({
+    mutationFn: () => forumApi.markSubgroupRead(slug!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["threads", slug] })
+      queryClient.invalidateQueries({ queryKey: ["subgroups"] })
+      queryClient.invalidateQueries({ queryKey: ["forum", "unread-count"] })
+    },
+  })
+
+  const hasUnread = threads?.some((t) => t.is_unread) ?? false
 
   const isLoading = subgroupLoading || threadsLoading
 
@@ -164,6 +177,16 @@ export default function SubgroupPage() {
 
         <Tabs.Panel value="threads" pt="md">
           <Group justify="flex-end" mb="md">
+            {hasUnread && (
+              <Button
+                variant="light"
+                leftSection={<IconChecks size={16} />}
+                onClick={() => markReadMutation.mutate()}
+                loading={markReadMutation.isPending}
+              >
+                Markér som læst
+              </Button>
+            )}
             <Button
               leftSection={<IconPlus size={16} />}
               onClick={openCreateThreadModal}
@@ -238,6 +261,17 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
         </Avatar>
         <div style={{ flex: 1, minWidth: 0 }}>
           <Group gap="xs" mb={4} wrap="nowrap">
+            {thread.is_unread && (
+              <Box
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  backgroundColor: "var(--mantine-color-blue-6)",
+                  flexShrink: 0,
+                }}
+              />
+            )}
             {thread.is_pinned && (
               <IconPin
                 size={14}
@@ -252,7 +286,7 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
                 style={{ flexShrink: 0 }}
               />
             )}
-            <Text fw={500} lineClamp={1}>
+            <Text fw={thread.is_unread ? 700 : 500} lineClamp={1}>
               {thread.title}
             </Text>
           </Group>

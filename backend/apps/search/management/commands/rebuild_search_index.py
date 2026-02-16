@@ -69,6 +69,25 @@ class Command(BaseCommand):
                 )
             counts["houses"] = houses.count()
 
+            # Cars
+            from apps.houses.models import Car
+
+            cars = Car.objects.select_related("house")
+            for car in cars:
+                subtitle_parts = [car.house.name]
+                if car.is_electric:
+                    subtitle_parts.append("Elbil")
+                index_object(
+                    obj_type="car",
+                    object_id=car.id,
+                    title=car.license_plate,
+                    body=car.house.name,
+                    url=f"/beboere/hus/{car.house_id}",
+                    subtitle=" · ".join(subtitle_parts),
+                    created_at=_isoformat(car.created_at),
+                )
+            counts["cars"] = cars.count()
+
             # Threads (include first post content as body)
             from apps.forum.models import Post, Thread
 

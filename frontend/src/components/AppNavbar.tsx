@@ -14,6 +14,7 @@ import {
   IconDoor,
   IconLink,
 } from "@tabler/icons-react"
+import { forumApi } from "../api/forum"
 import { messagingApi } from "../api/messaging"
 import { notificationsApi } from "../api/notifications"
 
@@ -72,8 +73,16 @@ export default function AppNavbar({ onNavigate }: AppNavbarProps) {
     refetchInterval: 30000,
   })
 
+  // Fetch unread forum thread count
+  const { data: unreadForumData } = useQuery({
+    queryKey: ["forum", "unread-count"],
+    queryFn: forumApi.getUnreadCount,
+    refetchInterval: 30000,
+  })
+
   const unreadMessages = unreadMessagesData?.unread_count ?? 0
   const unreadNotifications = unreadNotificationsData?.unread_count ?? 0
+  const unreadForum = unreadForumData?.unread_count ?? 0
 
   const handleNavigate = (path: string) => {
     navigate(path)
@@ -84,6 +93,7 @@ export default function AppNavbar({ onNavigate }: AppNavbarProps) {
     let badgeCount = 0
     if (item.path === "/beskeder") badgeCount = unreadMessages
     if (item.path === "/notifikationer") badgeCount = unreadNotifications
+    if (item.path === "/forum") badgeCount = unreadForum
 
     if (badgeCount > 0) {
       return (

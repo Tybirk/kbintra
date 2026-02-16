@@ -3,7 +3,7 @@
  */
 
 import { apiClient } from "./client"
-import type { Child, House } from "../types"
+import type { Car, Child, House } from "../types"
 
 export interface UpdateHouseData {
   description?: string
@@ -17,6 +17,16 @@ export interface CreateChildData {
 export interface UpdateChildData {
   name?: string
   birthdate?: string | null
+}
+
+export interface CreateCarData {
+  license_plate: string
+  is_electric?: boolean
+}
+
+export interface UpdateCarData {
+  license_plate?: string
+  is_electric?: boolean
 }
 
 export const housesApi = {
@@ -67,5 +77,24 @@ export const housesApi = {
 
   async deleteChild(id: number): Promise<void> {
     await apiClient.delete(`/houses/my/children/${id}/`)
+  },
+
+  async getCars(): Promise<Car[]> {
+    const response = await apiClient.get<Car[]>("/houses/my/cars/")
+    return response.data
+  },
+
+  async createCar(data: CreateCarData): Promise<Car> {
+    const response = await apiClient.post<Car>("/houses/my/cars/", data)
+    return response.data
+  },
+
+  async updateCar(id: number, data: UpdateCarData): Promise<Car> {
+    const response = await apiClient.patch<Car>(`/houses/my/cars/${id}/`, data)
+    return response.data
+  },
+
+  async deleteCar(id: number): Promise<void> {
+    await apiClient.delete(`/houses/my/cars/${id}/`)
   },
 }

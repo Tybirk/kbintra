@@ -51,3 +51,26 @@ class Child(models.Model):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.house.name})"
+
+
+class Car(models.Model):
+    """
+    Represents a car registered to a house.
+    Used to look up car owners by license plate number.
+    """
+
+    house = models.ForeignKey(
+        House,
+        on_delete=models.CASCADE,
+        related_name="cars",
+    )
+    license_plate = models.CharField(max_length=15)
+    is_electric = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["license_plate"]
+
+    def __str__(self) -> str:
+        return f"{self.license_plate} ({self.house.name})"

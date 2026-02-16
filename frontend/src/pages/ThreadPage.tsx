@@ -100,6 +100,15 @@ export default function ThreadPage() {
     enabled: !isNaN(threadId),
   })
 
+  // After thread loads (backend marks it as read), invalidate unread counts
+  useEffect(() => {
+    if (thread) {
+      queryClient.invalidateQueries({ queryKey: ["forum", "unread-count"] })
+      queryClient.invalidateQueries({ queryKey: ["subgroups"] })
+      queryClient.invalidateQueries({ queryKey: ["threads"] })
+    }
+  }, [thread?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Scroll to and highlight a specific post when navigating from a notification
   useEffect(() => {
     if (!thread || !location.hash) return

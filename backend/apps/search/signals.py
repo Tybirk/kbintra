@@ -71,6 +71,36 @@ def deindex_house(sender, instance, **kwargs):
         logger.exception("Failed to deindex house %s", instance.id)
 
 
+# -- Car signals --
+
+
+@receiver(post_save, sender="houses.Car")
+def index_car(sender, instance, **kwargs):
+    try:
+        subtitle_parts = [instance.house.name]
+        if instance.is_electric:
+            subtitle_parts.append("Elbil")
+        index_object(
+            obj_type="car",
+            object_id=instance.id,
+            title=instance.license_plate,
+            body=instance.house.name,
+            url=f"/beboere/hus/{instance.house_id}",
+            subtitle=" · ".join(subtitle_parts),
+            created_at=_isoformat(instance.created_at),
+        )
+    except OperationalError:
+        logger.exception("Failed to index car %s", instance.id)
+
+
+@receiver(post_delete, sender="houses.Car")
+def deindex_car(sender, instance, **kwargs):
+    try:
+        remove_object("car", instance.id)
+    except OperationalError:
+        logger.exception("Failed to deindex car %s", instance.id)
+
+
 # -- Thread signals --
 
 

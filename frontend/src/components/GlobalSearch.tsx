@@ -15,6 +15,7 @@ import {
   IconCalendar,
   IconHome,
   IconMessages,
+  IconCar,
 } from "@tabler/icons-react"
 import { useDebouncedValue } from "@mantine/hooks"
 import { useQuery } from "@tanstack/react-query"
@@ -33,6 +34,7 @@ const TYPE_ICONS: Record<Exclude<SearchResultType, "file">, typeof IconSearch> =
     announcement: IconBell,
     event: IconCalendar,
     house: IconHome,
+    car: IconCar,
   }
 
 const TYPE_LABELS: Record<SearchResultType, string> = {
@@ -43,6 +45,7 @@ const TYPE_LABELS: Record<SearchResultType, string> = {
   announcement: "Opslag",
   event: "Begivenhed",
   house: "Hus",
+  car: "Bil",
   file: "Fil",
 }
 
@@ -55,6 +58,7 @@ const RESULT_KEY_TO_TYPE: Record<string, SearchResultType> = {
   announcements: "announcement",
   events: "event",
   houses: "house",
+  cars: "car",
   files: "file",
 }
 

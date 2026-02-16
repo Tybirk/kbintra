@@ -5,6 +5,7 @@ Views for Forum models.
 from typing import Any
 
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -21,6 +22,7 @@ from .models import (
     Subgroup,
     SubgroupSubscription,
     Thread,
+    ThreadReadStatus,
 )
 from .serializers import (
     FileSerializer,
@@ -74,7 +76,17 @@ class SubgroupListView(generics.ListAPIView):
 
     serializer_class = SubgroupSerializer
     permission_classes = [permissions.IsAuthenticated]
-    queryset = Subgroup.objects.all()
+    queryset = Subgroup.objects.prefetch_related("threads").all()
+
+    def get_serializer_context(self) -> dict:
+        context = super().get_serializer_context()
+        user = self.request.user
+        if user.is_authenticated:
+            statuses = ThreadReadStatus.objects.filter(user=user).values_list(
+                "thread_id", "last_read_at"
+            )
+            context["read_status_map"] = dict(statuses)
+        return context
 
 
 class SubgroupDetailView(generics.RetrieveAPIView):
@@ -161,6 +173,20 @@ class ThreadListCreateView(generics.ListCreateAPIView):
         context = super().get_serializer_context()
         if self.request.method == "POST":
             context["subgroup"] = get_object_or_404(Subgroup, slug=self.kwargs["slug"])
+        elif self.request.user.is_authenticated:
+            subgroup = get_object_or_404(Subgroup, slug=self.kwargs["slug"])
+            threads = Thread.objects.filter(subgroup=subgroup)
+            read_map = dict(
+                ThreadReadStatus.objects.filter(
+                    user=self.request.user, thread__in=threads
+                ).values_list("thread_id", "last_read_at")
+            )
+            unread_ids = set()
+            for thread in threads:
+                last_read = read_map.get(thread.id)
+                if last_read is None or thread.updated_at > last_read:
+                    unread_ids.add(thread.id)
+            context["unread_thread_ids"] = unread_ids
         return context
 
 
@@ -175,6 +201,16 @@ class ThreadDetailView(generics.RetrieveAPIView):
         "posts__reactions",
         "posts__poll__options__votes__user",
     ).select_related("author", "subgroup")
+
+    def retrieve(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        response = super().retrieve(request, *args, **kwargs)
+        thread = self.get_object()
+        ThreadReadStatus.objects.update_or_create(
+            user=request.user,
+            thread=thread,
+            defaults={"last_read_at": timezone.now()},
+        )
+        return response
 
 
 class ThreadDeleteView(generics.DestroyAPIView):
@@ -544,3 +580,71 @@ class PollDeleteView(APIView):
 
         poll.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# Read Status Views
+class MarkAllForumReadView(APIView):
+    """Mark all forum threads as read for the current user."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request) -> Response:
+        now = timezone.now()
+        threads = Thread.objects.all()
+        records = [
+            ThreadReadStatus(user=request.user, thread=thread, last_read_at=now)
+            for thread in threads
+        ]
+        ThreadReadStatus.objects.bulk_create(
+            records,
+            update_conflicts=True,
+            unique_fields=["user", "thread"],
+            update_fields=["last_read_at"],
+        )
+        return Response({"detail": "Alt markeret som læst."}, status=status.HTTP_200_OK)
+
+
+class MarkSubgroupReadView(APIView):
+    """Mark all threads in a subgroup as read for the current user."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request, slug: str) -> Response:
+        subgroup = get_object_or_404(Subgroup, slug=slug)
+        now = timezone.now()
+        threads = Thread.objects.filter(subgroup=subgroup)
+        records = [
+            ThreadReadStatus(user=request.user, thread=thread, last_read_at=now)
+            for thread in threads
+        ]
+        ThreadReadStatus.objects.bulk_create(
+            records,
+            update_conflicts=True,
+            unique_fields=["user", "thread"],
+            update_fields=["last_read_at"],
+        )
+        return Response({"detail": "Gruppen markeret som læst."}, status=status.HTTP_200_OK)
+
+
+class ForumUnreadCountView(APIView):
+    """Get total unread thread count across all subgroups."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        subscribed_subgroup_ids = SubgroupSubscription.objects.filter(
+            user=request.user
+        ).values_list("subgroup_id", flat=True)
+        read_map = dict(
+            ThreadReadStatus.objects.filter(user=request.user).values_list(
+                "thread_id", "last_read_at"
+            )
+        )
+        count = 0
+        for thread in Thread.objects.filter(subgroup_id__in=subscribed_subgroup_ids).only(
+            "id", "updated_at"
+        ):
+            last_read = read_map.get(thread.id)
+            if last_read is None or thread.updated_at > last_read:
+                count += 1
+        return Response({"unread_count": count})

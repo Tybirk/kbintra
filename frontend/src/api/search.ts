@@ -4,7 +4,7 @@
 
 import { apiClient } from "./client"
 
-export type SearchResultType = "user" | "thread" | "post" | "subgroup" | "announcement" | "event" | "house" | "file"
+export type SearchResultType = "user" | "thread" | "post" | "subgroup" | "announcement" | "event" | "house" | "car" | "file"
 
 export interface SearchItem {
   id: number
@@ -24,6 +24,7 @@ export interface SearchResults {
   announcements: SearchItem[]
   events: SearchItem[]
   houses: SearchItem[]
+  cars: SearchItem[]
   files: SearchItem[]
 }
 

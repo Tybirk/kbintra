@@ -25,6 +25,13 @@ export interface Child {
   created_at: string
 }
 
+export interface Car {
+  id: number
+  license_plate: string
+  is_electric: boolean
+  created_at: string
+}
+
 export interface House {
   id: number
   name: string
@@ -34,6 +41,7 @@ export interface House {
   inhabitant_count: number
   inhabitants?: UserSummary[]
   children?: Child[]
+  cars?: Car[]
   created_at: string
 }
 
@@ -43,6 +51,8 @@ export interface UserSummary {
   last_name: string
   profile_picture: string | null
   bio: string
+  phone_number?: string
+  email?: string
 }
 
 export interface Invitation {
@@ -118,6 +128,7 @@ export interface Subgroup {
   is_committee: boolean
   is_main: boolean
   thread_count: number
+  unread_thread_count: number
   is_subscribed: boolean
   created_at: string
   last_activity_at: string | null
@@ -204,6 +215,7 @@ export interface Thread {
   is_closed: boolean
   post_count: number
   last_post_at: string | null
+  is_unread: boolean
   created_at: string
   updated_at: string
 }

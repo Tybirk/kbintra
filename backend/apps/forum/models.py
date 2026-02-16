@@ -303,6 +303,28 @@ class PollVote(models.Model):
         return f"{self.user} voted for {self.option}"
 
 
+class ThreadReadStatus(models.Model):
+    """Tracks when a user last read a thread, for unread tracking."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="thread_read_statuses",
+    )
+    thread = models.ForeignKey(
+        Thread,
+        on_delete=models.CASCADE,
+        related_name="read_statuses",
+    )
+    last_read_at = models.DateTimeField()
+
+    class Meta:
+        unique_together = ["user", "thread"]
+
+    def __str__(self) -> str:
+        return f"{self.user} read {self.thread} at {self.last_read_at}"
+
+
 class File(models.Model):
     """
     A file uploaded to a subgroup, either in a folder or at root level.
