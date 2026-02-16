@@ -1,24 +1,37 @@
 """
-Global search API endpoint.
+Global search API endpoint using FTS5 full-text search.
 """
 
+from collections import defaultdict
+
+from django.db.models import Q
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.announcements.models import Announcement
-from apps.calendar_app.models import Event
-from apps.forum.models import File, Post, Subgroup, Thread
+from apps.forum.models import Subgroup
 from apps.houses.models import House
 from apps.users.models import User
 
-from .services import create_excerpt, search_queryset
+from .services import create_excerpt, fts_search
+
+# FTS stores singular types; API returns plural keys
+TYPE_TO_KEY = {
+    "user": "users",
+    "thread": "threads",
+    "post": "posts",
+    "subgroup": "subgroups",
+    "announcement": "announcements",
+    "event": "events",
+    "house": "houses",
+    "file": "files",
+}
 
 
 class GlobalSearchView(APIView):
     """
-    Global search endpoint with fuzzy matching.
-    GET /api/search/?q=<query>&limit=<limit>&threshold=<threshold>
+    Global search endpoint using FTS5 with heuristic shortcuts.
+    GET /api/search/?q=<query>&limit=<limit>
     """
 
     permission_classes = [permissions.IsAuthenticated]
@@ -34,177 +47,133 @@ class GlobalSearchView(APIView):
         except (ValueError, TypeError):
             limit = 5
 
-        # Parse and validate threshold parameter
-        try:
-            threshold = int(request.query_params.get("threshold", 60))
-            if threshold < 0 or threshold > 100:
-                threshold = 60
-        except (ValueError, TypeError):
-            threshold = 60
-
-        if not query or len(query) < 2:
+        # Allow 1-char queries for house numbers, otherwise require 2 chars
+        is_house_number = query.isdigit() and 1 <= int(query) <= 62
+        if not query or (len(query) < 2 and not is_house_number):
             return Response(
                 {"detail": "Query must be at least 2 characters."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        results = {
-            "users": self._search_users(query, limit, threshold),
-            "threads": self._search_threads(query, limit, threshold),
-            "posts": self._search_posts(query, limit, threshold),
-            "subgroups": self._search_subgroups(query, limit, threshold),
-            "announcements": self._search_announcements(query, limit, threshold),
-            "events": self._search_events(query, limit, threshold),
-            "houses": self._search_houses(query, limit, threshold),
-            "files": self._search_files(query, limit, threshold),
-        }
+        results: dict[str, list[dict]] = defaultdict(list)
+
+        # Heuristic 1: House number direct lookup
+        if is_house_number:
+            house_num = int(query)
+            houses = House.objects.filter(name__iendswith=f" {house_num}")
+            for house in houses:
+                results["houses"].append(
+                    {
+                        "id": house.id,
+                        "type": "house",
+                        "title": house.name,
+                        "subtitle": create_excerpt(house.description, 80)
+                        if house.description
+                        else "",
+                        "url": f"/beboere/hus/{house.id}",
+                    }
+                )
+            # Also show residents of matching houses
+            residents = User.objects.filter(
+                is_active=True, house__name__iendswith=f" {house_num}"
+            ).select_related("house")
+            for user in residents[:limit]:
+                results["users"].append(
+                    {
+                        "id": user.id,
+                        "type": "user",
+                        "title": user.get_full_name() or user.email,
+                        "subtitle": user.house.name if user.house else "",
+                        "url": f"/profil/{user.id}",
+                    }
+                )
+
+        # Track IDs already added by heuristic 1 to avoid duplicates
+        seen: dict[str, set[int]] = defaultdict(set)
+        for key, items in results.items():
+            for item in items:
+                seen[key].add(item["id"])
+
+        # FTS5 search
+        fts_results = fts_search(query, limit * 8)  # Get more results to distribute across types
+        for item in fts_results:
+            result_key = TYPE_TO_KEY.get(item["type"], item["type"])
+            obj_id = item["object_id"]
+            if len(results[result_key]) < limit and obj_id not in seen[result_key]:
+                seen[result_key].add(obj_id)
+                results[result_key].append(
+                    {
+                        "id": obj_id,
+                        "type": item["type"],
+                        "title": item["title"],
+                        "subtitle": item["subtitle"] or "",
+                        "url": item["url"],
+                        **({"extra": item["extra"]} if item["extra"] else {}),
+                    }
+                )
+
+        # Heuristic 2: User name priority — inject istartswith matches at top
+        if len(query) >= 2:
+            name_matches = User.objects.filter(
+                Q(first_name__istartswith=query) | Q(last_name__istartswith=query),
+                is_active=True,
+            ).select_related("house")[:limit]
+            existing_user_ids = {u["id"] for u in results["users"]}
+            injected = []
+            for user in name_matches:
+                if user.id not in existing_user_ids:
+                    injected.append(
+                        {
+                            "id": user.id,
+                            "type": "user",
+                            "title": user.get_full_name() or user.email,
+                            "subtitle": user.house.name if user.house else "",
+                            "url": f"/profil/{user.id}",
+                        }
+                    )
+            results["users"] = (injected + results["users"])[:limit]
+
+        # Heuristic 3: Subgroup name — inject icontains matches at top
+        if len(query) >= 2:
+            subgroup_matches = Subgroup.objects.filter(name__icontains=query)[:limit]
+            existing_subgroup_ids = {s["id"] for s in results["subgroups"]}
+            injected = []
+            for subgroup in subgroup_matches:
+                if subgroup.id not in existing_subgroup_ids:
+                    injected.append(
+                        {
+                            "id": subgroup.id,
+                            "type": "subgroup",
+                            "title": subgroup.name,
+                            "subtitle": (
+                                create_excerpt(subgroup.description, 80)
+                                if subgroup.description
+                                else ""
+                            ),
+                            "url": f"/forum/{subgroup.slug}",
+                        }
+                    )
+            results["subgroups"] = (injected + results["subgroups"])[:limit]
+
+        # Ensure all expected keys exist
+        for key in [
+            "users",
+            "threads",
+            "posts",
+            "subgroups",
+            "announcements",
+            "events",
+            "houses",
+            "files",
+        ]:
+            results.setdefault(key, [])
 
         total_count = sum(len(v) for v in results.values())
 
         return Response(
             {
                 "query": query,
-                "results": results,
+                "results": dict(results),
                 "total_count": total_count,
             }
         )
-
-    def _search_users(self, query: str, limit: int, threshold: int) -> list[dict]:
-        """Search users by name and email."""
-        queryset = User.objects.filter(is_active=True)
-        matches = search_queryset(
-            queryset,
-            ["first_name", "last_name", "email"],
-            query,
-            limit,
-            threshold,
-        )
-        return [
-            {
-                "id": user.id,
-                "type": "user",
-                "title": user.get_full_name() or user.email,
-                "subtitle": user.house.name if user.house else "",
-                "url": f"/profil/{user.id}",
-                "score": score,
-            }
-            for user, score in matches
-        ]
-
-    def _search_threads(self, query: str, limit: int, threshold: int) -> list[dict]:
-        """Search threads by title."""
-        queryset = Thread.objects.select_related("subgroup", "author")
-        matches = search_queryset(queryset, ["title"], query, limit, threshold)
-        return [
-            {
-                "id": thread.id,
-                "type": "thread",
-                "title": thread.title,
-                "subtitle": thread.subgroup.name,
-                "url": f"/forum/{thread.subgroup.slug}/{thread.id}",
-                "score": score,
-            }
-            for thread, score in matches
-        ]
-
-    def _search_posts(self, query: str, limit: int, threshold: int) -> list[dict]:
-        """Search posts by content."""
-        queryset = Post.objects.select_related("thread__subgroup", "author")
-        matches = search_queryset(queryset, ["content"], query, limit, threshold)
-        return [
-            {
-                "id": post.id,
-                "type": "post",
-                "title": post.thread.title,
-                "subtitle": create_excerpt(post.content, 80),
-                "url": f"/forum/{post.thread.subgroup.slug}/{post.thread.id}",
-                "score": score,
-                "extra": {"thread_id": post.thread.id},
-            }
-            for post, score in matches
-        ]
-
-    def _search_subgroups(self, query: str, limit: int, threshold: int) -> list[dict]:
-        """Search subgroups by name and description."""
-        queryset = Subgroup.objects.all()
-        matches = search_queryset(queryset, ["name", "description"], query, limit, threshold)
-        return [
-            {
-                "id": subgroup.id,
-                "type": "subgroup",
-                "title": subgroup.name,
-                "subtitle": create_excerpt(subgroup.description, 80),
-                "url": f"/forum/{subgroup.slug}",
-                "score": score,
-            }
-            for subgroup, score in matches
-        ]
-
-    def _search_announcements(self, query: str, limit: int, threshold: int) -> list[dict]:
-        """Search announcements by title and content."""
-        queryset = Announcement.objects.filter(is_active=True).select_related("author")
-        matches = search_queryset(queryset, ["title", "content"], query, limit, threshold)
-        return [
-            {
-                "id": announcement.id,
-                "type": "announcement",
-                "title": announcement.title,
-                "subtitle": create_excerpt(announcement.content, 80),
-                "url": "/opslag",
-                "score": score,
-            }
-            for announcement, score in matches
-        ]
-
-    def _search_events(self, query: str, limit: int, threshold: int) -> list[dict]:
-        """Search events by title, description, and location."""
-        queryset = Event.objects.select_related("created_by")
-        matches = search_queryset(
-            queryset, ["title", "description", "location"], query, limit, threshold
-        )
-        return [
-            {
-                "id": event.id,
-                "type": "event",
-                "title": event.title,
-                "subtitle": event.location or create_excerpt(event.description, 80),
-                "url": "/kalender",
-                "score": score,
-            }
-            for event, score in matches
-        ]
-
-    def _search_houses(self, query: str, limit: int, threshold: int) -> list[dict]:
-        """Search houses by name and description."""
-        queryset = House.objects.all()
-        matches = search_queryset(queryset, ["name", "description"], query, limit, threshold)
-        return [
-            {
-                "id": house.id,
-                "type": "house",
-                "title": house.name,
-                "subtitle": create_excerpt(house.description, 80),
-                "url": f"/beboere/hus/{house.id}",
-                "score": score,
-            }
-            for house, score in matches
-        ]
-
-    def _search_files(self, query: str, limit: int, threshold: int) -> list[dict]:
-        """Search files by name."""
-        queryset = File.objects.select_related("subgroup", "uploaded_by")
-        matches = search_queryset(queryset, ["name"], query, limit, threshold)
-        return [
-            {
-                "id": file.id,
-                "type": "file",
-                "title": file.name,
-                "subtitle": file.subgroup.name,
-                "url": f"/forum/{file.subgroup.slug}",
-                "score": score,
-                "extra": {
-                    "file_url": file.file.url,
-                },
-            }
-            for file, score in matches
-        ]

@@ -170,6 +170,18 @@ uv run python manage.py run_huey -w 2 -k thread --flush-locks
 - Memory limits on all containers (512m backend, 256m huey, 128m others)
 - SQLite write timeout of 20s to reduce `database is locked` errors from concurrent access
 
+### Full-Text Search (FTS5)
+
+The `search` app provides global search using SQLite FTS5 with recency-boosted BM25 ranking. See `backend/apps/search/SEARCH.md` for full architecture docs.
+
+**Key commands**:
+```bash
+uv run python manage.py rebuild_search_index            # Full reindex
+uv run python manage.py rebuild_search_index --if-empty  # Only if index is empty (used on container startup)
+```
+
+**Adding a new searchable model**: Add signals in `signals.py`, indexing in `rebuild_search_index.py`, type mapping in `views.py:TYPE_TO_KEY`.
+
 ## Key Files for Common Tasks
 
 - Adding a new API endpoint: `backend/apps/<app>/views.py`, `backend/apps/<app>/urls.py`, `backend/config/urls.py`

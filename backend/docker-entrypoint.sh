@@ -4,6 +4,9 @@ set -e
 echo "Running database migrations..."
 uv run python manage.py migrate --noinput
 
+echo "Checking search index..."
+uv run python manage.py rebuild_search_index --if-empty
+
 # If a command was passed (e.g. from docker-compose `command:`), run it
 if [ $# -gt 0 ]; then
     echo "Running custom command: $@"

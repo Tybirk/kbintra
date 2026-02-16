@@ -52,10 +52,16 @@ export function GlobalSearch() {
   const [debouncedQuery] = useDebouncedValue(query, 300)
   const [previewFile, setPreviewFile] = useState<ForumFile | null>(null)
 
+  const isHouseNumber =
+    /^\d+$/.test(debouncedQuery) &&
+    Number(debouncedQuery) >= 1 &&
+    Number(debouncedQuery) <= 62
+  const queryActive = debouncedQuery.length >= 2 || isHouseNumber
+
   const { data, isLoading } = useQuery({
     queryKey: ["search", debouncedQuery],
     queryFn: () => searchApi.search(debouncedQuery, 5),
-    enabled: debouncedQuery.length >= 2,
+    enabled: queryActive,
     staleTime: 1000 * 60, // 1 minute
   })
 
@@ -119,22 +125,21 @@ export function GlobalSearch() {
         })
     : []
 
-  const nothingFoundContent =
-    debouncedQuery.length >= 2 ? (
-      isLoading ? (
-        <Center py="xl">
-          <Loader size="sm" />
-        </Center>
-      ) : (
-        <Text c="dimmed" ta="center" py="xl">
-          Ingen resultater fundet
-        </Text>
-      )
+  const nothingFoundContent = queryActive ? (
+    isLoading ? (
+      <Center py="xl">
+        <Loader size="sm" />
+      </Center>
     ) : (
       <Text c="dimmed" ta="center" py="xl">
-        Skriv mindst 2 tegn for at søge
+        Ingen resultater fundet
       </Text>
     )
+  ) : (
+    <Text c="dimmed" ta="center" py="xl">
+      Skriv mindst 2 tegn for at søge (eller et husnummer)
+    </Text>
+  )
 
   return (
     <>
