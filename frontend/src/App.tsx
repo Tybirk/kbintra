@@ -34,10 +34,12 @@ import BookingsPage from "./pages/BookingsPage"
 import LinksPage from "./pages/LinksPage"
 import MessagesPage from "./pages/MessagesPage"
 import NotificationsPage from "./pages/NotificationsPage"
+import NotificationPreferencesPage from "./pages/NotificationPreferencesPage"
 import AppHeader from "./components/AppHeader"
 import AppNavbar from "./components/AppNavbar"
 import { GlobalSearch } from "./components/GlobalSearch"
 import { InstallPrompt } from "./components/InstallPrompt"
+import { PushNotificationPrompt } from "./components/PushNotificationPrompt"
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -129,6 +131,7 @@ function App() {
     <ErrorBoundary>
       <GlobalSearch />
       <InstallPrompt />
+      <PushNotificationPrompt />
       <AppShell
         header={{ height: 60 }}
         navbar={{
@@ -406,6 +409,16 @@ function App() {
             />
 
             {/* Notifikationer */}
+            <Route
+              path="/notifikationer/indstillinger"
+              element={
+                <ProtectedRoute>
+                  <PageErrorBoundary>
+                    <NotificationPreferencesPage />
+                  </PageErrorBoundary>
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/notifikationer"
               element={
