@@ -219,3 +219,7 @@ npm run test:run      # Tests
 ```
 
 Also ensure that ALL user facing text is in danish!
+
+## Adding New Models or Columns
+
+When adding a new major database model or a significant column to an existing model, consider whether it should be included in the full-text search index. See `backend/apps/search/SEARCH.md` for details on how to add a new searchable model (signals, rebuild command, type mapping).

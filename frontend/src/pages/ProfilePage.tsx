@@ -20,10 +20,12 @@ import {
   IconCake,
   IconHome,
   IconEdit,
+  IconMessage,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 
 import { usersApi } from "../api/users"
+import { messagingApi } from "../api/messaging"
 import { useAuthStore } from "../store/authStore"
 
 function ThemeSettings() {
@@ -80,9 +82,9 @@ export default function ProfilePage() {
     return (
       <Center h={200}>
         <Stack align="center">
-          <Text c="red">Failed to load profile.</Text>
+          <Text c="red">Kunne ikke indlæse profil.</Text>
           <Button variant="light" onClick={() => navigate("/")}>
-            Go to Dashboard
+            Gå til forsiden
           </Button>
         </Stack>
       </Center>
@@ -117,13 +119,26 @@ export default function ProfilePage() {
             </div>
           </Group>
 
-          {isOwnProfile && (
+          {isOwnProfile ? (
             <Button
               variant="light"
               leftSection={<IconEdit size={16} />}
               onClick={() => navigate("/profil/rediger")}
             >
-              Edit Profile
+              Rediger profil
+            </Button>
+          ) : (
+            <Button
+              variant="light"
+              leftSection={<IconMessage size={16} />}
+              onClick={async () => {
+                const conversation = await messagingApi.createConversation({
+                  participant_ids: [user.id],
+                })
+                navigate(`/beskeder/${conversation.id}`)
+              }}
+            >
+              Send besked
             </Button>
           )}
         </Group>
@@ -131,20 +146,20 @@ export default function ProfilePage() {
 
       <Paper withBorder p="xl" radius="md" mb="xl">
         <Title order={4} mb="md">
-          About
+          Om
         </Title>
         {user.bio ? (
           <Text>{user.bio}</Text>
         ) : (
           <Text c="dimmed" fs="italic">
-            No bio added yet.
+            Ingen bio tilføjet endnu.
           </Text>
         )}
       </Paper>
 
       <Paper withBorder p="xl" radius="md">
         <Title order={4} mb="md">
-          Contact Information
+          Kontaktoplysninger
         </Title>
 
         <Stack gap="sm">

@@ -1,4 +1,5 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
@@ -52,6 +53,8 @@ dayjs.extend(relativeTime)
 
 export default function AnnouncementsPage() {
   const queryClient = useQueryClient()
+  const { hash } = useLocation()
+  const scrolledRef = useRef(false)
   const [
     createModalOpened,
     { open: openCreateModal, close: closeCreateModal },
@@ -73,6 +76,23 @@ export default function AnnouncementsPage() {
     queryKey: ["announcements"],
     queryFn: () => announcementsApi.getAnnouncements(),
   })
+
+  // Scroll to and highlight a specific announcement when navigating from search
+  useEffect(() => {
+    if (!hash || !announcements || scrolledRef.current) return
+    const el = document.getElementById(hash.slice(1))
+    if (el) {
+      scrolledRef.current = true
+      el.scrollIntoView({ behavior: "smooth", block: "center" })
+      el.style.outline = "2px solid var(--mantine-color-blue-5)"
+      el.style.borderRadius = "var(--mantine-radius-md)"
+      const timer = setTimeout(() => {
+        el.style.outline = ""
+        el.style.borderRadius = ""
+      }, 2000)
+      return () => clearTimeout(timer)
+    }
+  }, [hash, announcements])
 
   const deleteMutation = useMutation({
     mutationFn: announcementsApi.deleteAnnouncement,
@@ -149,12 +169,13 @@ export default function AnnouncementsPage() {
           </Paper>
         ) : (
           announcements?.map((announcement) => (
-            <AnnouncementCard
-              key={announcement.id}
-              announcement={announcement}
-              onEdit={() => setEditingAnnouncement(announcement)}
-              onDelete={() => handleDeleteClick(announcement.id)}
-            />
+            <div key={announcement.id} id={`announcement-${announcement.id}`}>
+              <AnnouncementCard
+                announcement={announcement}
+                onEdit={() => setEditingAnnouncement(announcement)}
+                onDelete={() => handleDeleteClick(announcement.id)}
+              />
+            </div>
           ))
         )}
       </Stack>

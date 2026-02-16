@@ -46,6 +46,18 @@ const TYPE_LABELS: Record<SearchResultType, string> = {
   file: "Fil",
 }
 
+// Maps backend plural result keys to singular type keys
+const RESULT_KEY_TO_TYPE: Record<string, SearchResultType> = {
+  users: "user",
+  threads: "thread",
+  posts: "post",
+  subgroups: "subgroup",
+  announcements: "announcement",
+  events: "event",
+  houses: "house",
+  files: "file",
+}
+
 export function GlobalSearch() {
   const navigate = useNavigate()
   const [query, setQuery] = useState("")
@@ -92,6 +104,15 @@ export function GlobalSearch() {
     [navigate],
   )
 
+  // Build group priority from backend ordering
+  const groupLabelPriority: Record<string, number> = {}
+  if (data?.group_order) {
+    data.group_order.forEach((key, idx) => {
+      const type = RESULT_KEY_TO_TYPE[key]
+      if (type) groupLabelPriority[TYPE_LABELS[type]] = idx
+    })
+  }
+
   // Flatten results into actions grouped by type
   const actions = data
     ? Object.entries(data.results)
@@ -118,10 +139,10 @@ export function GlobalSearch() {
           }),
         )
         .sort((a, b) => {
-          // Sort by group for better visual grouping
-          if (a.group < b.group) return -1
-          if (a.group > b.group) return 1
-          return 0
+          // Sort by backend-defined group priority (not alphabetical)
+          const pa = groupLabelPriority[a.group] ?? 999
+          const pb = groupLabelPriority[b.group] ?? 999
+          return pa - pb
         })
     : []
 

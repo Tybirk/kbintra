@@ -31,6 +31,7 @@ export interface SearchResponse {
   query: string
   results: SearchResults
   total_count: number
+  group_order: string[]
 }
 
 export const searchApi = {

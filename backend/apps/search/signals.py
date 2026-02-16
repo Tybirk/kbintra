@@ -9,14 +9,9 @@ from django.db.models.signals import post_delete, post_save
 from django.db.utils import OperationalError
 from django.dispatch import receiver
 
-from .services import create_excerpt, index_object, remove_object, strip_html
+from .services import _isoformat, create_excerpt, index_object, remove_object, strip_html
 
 logger = logging.getLogger(__name__)
-
-
-def _isoformat(dt) -> str:
-    """Convert a datetime to ISO string, or empty string if None."""
-    return dt.isoformat() if dt else ""
 
 
 # -- User signals --
@@ -82,27 +77,32 @@ def deindex_house(sender, instance, **kwargs):
 @receiver(post_save, sender="forum.Thread")
 def index_thread(sender, instance, **kwargs):
     try:
+        first_post = instance.posts.order_by("created_at").first()
         index_object(
             obj_type="thread",
             object_id=instance.id,
             title=instance.title,
-            body="",
+            body=strip_html(first_post.content) if first_post else "",
             url=f"/forum/{instance.subgroup.slug}/{instance.id}",
             subtitle=instance.subgroup.name,
             created_at=_isoformat(instance.created_at),
         )
-        # Cascade: re-index all posts so they pick up the (possibly changed) thread title
-        for post in instance.posts.select_related("thread__subgroup").all():
-            index_object(
-                obj_type="post",
-                object_id=post.id,
-                title=instance.title,
-                body=strip_html(post.content),
-                url=f"/forum/{instance.subgroup.slug}/{instance.id}",
-                subtitle=create_excerpt(post.content, 80),
-                extra=json.dumps({"thread_id": instance.id}),
-                created_at=_isoformat(post.created_at),
-            )
+        # Cascade: re-index all posts so they pick up the (possibly changed) thread title.
+        # Skip on create (no posts yet) and when update_fields is set without "title".
+        created = kwargs.get("created", False)
+        update_fields = kwargs.get("update_fields")
+        if not created and (update_fields is None or "title" in update_fields):
+            for post in instance.posts.select_related("thread__subgroup").all():
+                index_object(
+                    obj_type="post",
+                    object_id=post.id,
+                    title=instance.title,
+                    body=strip_html(post.content),
+                    url=f"/forum/{instance.subgroup.slug}/{instance.id}",
+                    subtitle=create_excerpt(post.content, 80),
+                    extra=json.dumps({"thread_id": instance.id}),
+                    created_at=_isoformat(post.created_at),
+                )
     except OperationalError:
         logger.exception("Failed to index thread %s", instance.id)
 
@@ -121,16 +121,30 @@ def deindex_thread(sender, instance, **kwargs):
 @receiver(post_save, sender="forum.Post")
 def index_post(sender, instance, **kwargs):
     try:
+        thread = instance.thread
         index_object(
             obj_type="post",
             object_id=instance.id,
-            title=instance.thread.title,
+            title=thread.title,
             body=strip_html(instance.content),
-            url=f"/forum/{instance.thread.subgroup.slug}/{instance.thread.id}",
+            url=f"/forum/{thread.subgroup.slug}/{thread.id}",
             subtitle=create_excerpt(instance.content, 80),
-            extra=json.dumps({"thread_id": instance.thread.id}),
+            extra=json.dumps({"thread_id": thread.id}),
             created_at=_isoformat(instance.created_at),
         )
+        # If this is the first post, also update the thread's body so the thread
+        # is findable by its opening content.
+        first_post_id = thread.posts.order_by("created_at").values_list("id", flat=True).first()
+        if first_post_id == instance.id:
+            index_object(
+                obj_type="thread",
+                object_id=thread.id,
+                title=thread.title,
+                body=strip_html(instance.content),
+                url=f"/forum/{thread.subgroup.slug}/{thread.id}",
+                subtitle=thread.subgroup.name,
+                created_at=_isoformat(thread.created_at),
+            )
     except OperationalError:
         logger.exception("Failed to index post %s", instance.id)
 
@@ -184,7 +198,7 @@ def index_announcement(sender, instance, **kwargs):
             object_id=instance.id,
             title=instance.title,
             body=strip_html(instance.content),
-            url="/opslag",
+            url=f"/opslag#announcement-{instance.id}",
             subtitle=create_excerpt(instance.content, 80),
             created_at=_isoformat(instance.created_at),
         )
@@ -241,6 +255,10 @@ def deindex_event(sender, instance, **kwargs):
 @receiver(post_save, sender="forum.File")
 def index_file(sender, instance, **kwargs):
     try:
+        try:
+            file_url = instance.file.url
+        except ValueError:
+            file_url = ""
         index_object(
             obj_type="file",
             object_id=instance.id,
@@ -248,7 +266,7 @@ def index_file(sender, instance, **kwargs):
             body="",
             url=f"/forum/{instance.subgroup.slug}",
             subtitle=instance.subgroup.name,
-            extra=json.dumps({"file_url": instance.file.url}),
+            extra=json.dumps({"file_url": file_url}) if file_url else "",
             created_at=_isoformat(instance.uploaded_at),
         )
     except OperationalError:

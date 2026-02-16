@@ -99,6 +99,8 @@ uv run python manage.py rebuild_search_index --if-empty
 
 The `--if-empty` variant is used in `docker-entrypoint.sh` on container startup.
 
+**Note on schema migrations**: FTS5 virtual tables cannot be ALTERed. Adding a column requires DROP + CREATE, which empties the index. During deploy there is a brief window between migration (DROP/CREATE) and `rebuild_search_index --if-empty` (repopulates) where the index is empty. For our single-server setup this is fine — the rebuild runs immediately after migration in `docker-entrypoint.sh`.
+
 ## Adding a New Searchable Model
 
 1. Add `post_save` / `post_delete` signal pair in `signals.py` calling `index_object()` / `remove_object()`

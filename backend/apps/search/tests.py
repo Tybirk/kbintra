@@ -22,7 +22,13 @@ from apps.users.models import User
 
 @pytest.fixture(autouse=True)
 def ensure_fts_table(db):
-    """Ensure the FTS5 virtual table exists for every test."""
+    """Ensure the FTS5 virtual table exists for every test.
+
+    This runs before test-specific fixtures (user, thread, etc.) that trigger
+    post_save signals which write to the FTS table. The signals catch
+    OperationalError, so even if ordering is surprising, no test will crash.
+    Teardown clears the table for isolation between tests.
+    """
     with connection.cursor() as cursor:
         cursor.execute(
             "CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5("
@@ -245,6 +251,36 @@ class TestIndexAndSearch:
         # The newer one (id=2) should come first
         assert results[0]["object_id"] == 2
         assert results[1]["object_id"] == 1
+
+    def test_snippet_replaces_subtitle_for_content_types(self):
+        """Test that fts_search returns a dynamic snippet as subtitle for content types."""
+        index_object(
+            obj_type="post",
+            object_id=1,
+            title="Tråd titel",
+            body="Her er en lang tekst om haveprojektet med mange detaljer",
+            url="/forum/test/1",
+            subtitle="Statisk undertekst",
+        )
+        results = fts_search("haveprojektet")
+        assert len(results) == 1
+        # The subtitle should be the snippet (containing the matched term), not the static one
+        assert "haveprojektet" in results[0]["subtitle"]
+
+    def test_snippet_preserved_for_static_types(self):
+        """Test that static types (users) keep their stored subtitle."""
+        index_object(
+            obj_type="user",
+            object_id=1,
+            title="Johannes Hansen",
+            body="johannes@example.com",
+            url="/profil/1",
+            subtitle="Hus 5",
+        )
+        results = fts_search("Johannes")
+        assert len(results) == 1
+        # User subtitle should remain the static "Hus 5", not an email snippet
+        assert results[0]["subtitle"] == "Hus 5"
 
     def test_content_types_decay_faster_than_static(self):
         """Test that threads/posts decay faster than users with the same age."""
@@ -542,6 +578,45 @@ class TestGlobalSearchAPI:
         # The user fixture has first_name="Test", should match istartswith "Te"
         assert len(users) >= 1
         assert any("Test" in u["title"] for u in users)
+
+    def test_search_returns_group_order(self, authenticated_client, user):
+        """Test search response includes group_order for frontend sorting."""
+        response = authenticated_client.get("/api/search/?q=Test")
+        assert response.status_code == 200
+        assert "group_order" in response.data
+        # group_order should contain all known type keys
+        for key in [
+            "users",
+            "threads",
+            "posts",
+            "subgroups",
+            "announcements",
+            "events",
+            "houses",
+            "files",
+        ]:
+            assert key in response.data["group_order"]
+
+    def test_announcement_url_has_id(self, authenticated_client, user):
+        """Test announcement search results include the ID in the URL for deep-linking."""
+        ann = Announcement.objects.create(
+            title="Deep Link Test Announcement",
+            content="Testing deep link",
+            author=user,
+            is_active=True,
+        )
+        index_object(
+            "announcement",
+            ann.id,
+            ann.title,
+            strip_html(ann.content),
+            f"/opslag#announcement-{ann.id}",
+        )
+        response = authenticated_client.get("/api/search/?q=Deep Link Test")
+        assert response.status_code == 200
+        announcements = response.data["results"]["announcements"]
+        assert len(announcements) >= 1
+        assert f"#announcement-{ann.id}" in announcements[0]["url"]
 
     def test_subgroup_name_injection(self, authenticated_client, subgroup):
         """Test subgroup icontains heuristic injects matches."""

@@ -27,6 +27,19 @@ TYPE_TO_KEY = {
     "file": "files",
 }
 
+# Display priority for result groups (most useful types first).
+# The frontend uses this ordering instead of alphabetical sort.
+GROUP_DISPLAY_ORDER = [
+    "users",
+    "threads",
+    "subgroups",
+    "posts",
+    "announcements",
+    "events",
+    "houses",
+    "files",
+]
+
 
 class GlobalSearchView(APIView):
     """
@@ -60,7 +73,7 @@ class GlobalSearchView(APIView):
         # Heuristic 1: House number direct lookup
         if is_house_number:
             house_num = int(query)
-            houses = House.objects.filter(name__iendswith=f" {house_num}")
+            houses = House.objects.filter(name__iregex=rf"\b{house_num}$")
             for house in houses:
                 results["houses"].append(
                     {
@@ -75,7 +88,7 @@ class GlobalSearchView(APIView):
                 )
             # Also show residents of matching houses
             residents = User.objects.filter(
-                is_active=True, house__name__iendswith=f" {house_num}"
+                is_active=True, house__name__iregex=rf"\b{house_num}$"
             ).select_related("house")
             for user in residents[:limit]:
                 results["users"].append(
@@ -118,10 +131,10 @@ class GlobalSearchView(APIView):
                 Q(first_name__istartswith=query) | Q(last_name__istartswith=query),
                 is_active=True,
             ).select_related("house")[:limit]
-            existing_user_ids = {u["id"] for u in results["users"]}
             injected = []
             for user in name_matches:
-                if user.id not in existing_user_ids:
+                if user.id not in seen["users"]:
+                    seen["users"].add(user.id)
                     injected.append(
                         {
                             "id": user.id,
@@ -136,10 +149,10 @@ class GlobalSearchView(APIView):
         # Heuristic 3: Subgroup name — inject icontains matches at top
         if len(query) >= 2:
             subgroup_matches = Subgroup.objects.filter(name__icontains=query)[:limit]
-            existing_subgroup_ids = {s["id"] for s in results["subgroups"]}
             injected = []
             for subgroup in subgroup_matches:
-                if subgroup.id not in existing_subgroup_ids:
+                if subgroup.id not in seen["subgroups"]:
+                    seen["subgroups"].add(subgroup.id)
                     injected.append(
                         {
                             "id": subgroup.id,
@@ -156,24 +169,21 @@ class GlobalSearchView(APIView):
             results["subgroups"] = (injected + results["subgroups"])[:limit]
 
         # Ensure all expected keys exist
-        for key in [
-            "users",
-            "threads",
-            "posts",
-            "subgroups",
-            "announcements",
-            "events",
-            "houses",
-            "files",
-        ]:
+        for key in GROUP_DISPLAY_ORDER:
             results.setdefault(key, [])
 
         total_count = sum(len(v) for v in results.values())
+
+        # Groups with results first (in priority order), then empty groups
+        group_order = [k for k in GROUP_DISPLAY_ORDER if results[k]] + [
+            k for k in GROUP_DISPLAY_ORDER if not results[k]
+        ]
 
         return Response(
             {
                 "query": query,
                 "results": dict(results),
                 "total_count": total_count,
+                "group_order": group_order,
             }
         )
