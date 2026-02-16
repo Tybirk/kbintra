@@ -31,6 +31,7 @@ import FoodTicketsPage from "./pages/FoodTicketsPage"
 import FoodTeamsPage from "./pages/FoodTeamsPage"
 import CalendarPage from "./pages/CalendarPage"
 import BookingsPage from "./pages/BookingsPage"
+import LinksPage from "./pages/LinksPage"
 import MessagesPage from "./pages/MessagesPage"
 import NotificationsPage from "./pages/NotificationsPage"
 import AppHeader from "./components/AppHeader"
@@ -375,6 +376,18 @@ function App() {
                 <ProtectedRoute>
                   <PageErrorBoundary>
                     <BookingsPage />
+                  </PageErrorBoundary>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Nyttige links */}
+            <Route
+              path="/links"
+              element={
+                <ProtectedRoute>
+                  <PageErrorBoundary>
+                    <LinksPage />
                   </PageErrorBoundary>
                 </ProtectedRoute>
               }

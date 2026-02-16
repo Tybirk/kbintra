@@ -12,6 +12,7 @@ import {
   IconBell,
   IconUsersGroup,
   IconDoor,
+  IconLink,
 } from "@tabler/icons-react"
 import { messagingApi } from "../api/messaging"
 import { notificationsApi } from "../api/notifications"
@@ -46,6 +47,7 @@ const navItems: NavItem[] = [
     path: "/beboere",
   },
   { icon: IconDoor, label: "Booking", path: "/booking" },
+  { icon: IconLink, label: "Nyttige links", path: "/links" },
 ]
 
 interface AppNavbarProps {
