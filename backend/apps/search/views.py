@@ -184,7 +184,7 @@ class GlobalSearchView(APIView):
                 "type": "house",
                 "title": house.name,
                 "subtitle": create_excerpt(house.description, 80),
-                "url": "/beboere",
+                "url": f"/beboere/hus/{house.id}",
                 "score": score,
             }
             for house, score in matches
