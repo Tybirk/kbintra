@@ -31,7 +31,6 @@ class Event(models.Model):
     # Time
     start_datetime = models.DateTimeField()
     end_datetime = models.DateTimeField()
-    is_all_day = models.BooleanField(default=False)
 
     # Location — room FK, free text, or both
     room = models.ForeignKey(

@@ -13,7 +13,7 @@ import {
   TextInput,
   Switch,
   Select,
-  MultiSelect,
+  TagsInput,
   Alert,
 } from "@mantine/core"
 import { DateInput, TimePicker } from "@mantine/dates"
@@ -126,8 +126,7 @@ export default function EventFormPage() {
   const [startTime, setStartTime] = useState("")
   const [endDate, setEndDate] = useState<Date | null>(null)
   const [endTime, setEndTime] = useState("")
-  const [location, setLocation] = useState("")
-  const [roomIds, setRoomIds] = useState<string[]>([])
+  const [stedTags, setStedTags] = useState<string[]>([])
   const [subgroupId, setSubgroupId] = useState<string | null>(null)
   const [rsvpEnabled, setRsvpEnabled] = useState(false)
   const [rsvpDeadline, setRsvpDeadline] = useState<Date | null>(null)
@@ -173,6 +172,18 @@ export default function EventFormPage() {
     queryFn: () => forumApi.getSubgroups(),
   })
 
+  // Room name → ID lookup + derived state from stedTags
+  const roomByName = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const r of rooms || []) map.set(r.name, r.id)
+    return map
+  }, [rooms])
+
+  const selectedRoomIds = stedTags
+    .filter((t) => roomByName.has(t))
+    .map((t) => roomByName.get(t)!)
+  const customLocation = stedTags.filter((t) => !roomByName.has(t)).join(", ")
+
   // Populate form in edit mode
   useEffect(() => {
     if (existingEvent) {
@@ -182,8 +193,10 @@ export default function EventFormPage() {
       setStartTime(dayjs(existingEvent.start_datetime).format("HH:mm"))
       setEndDate(new Date(existingEvent.end_datetime))
       setEndTime(dayjs(existingEvent.end_datetime).format("HH:mm"))
-      setLocation(existingEvent.location)
-      setRoomIds(existingEvent.room ? [String(existingEvent.room.id)] : [])
+      const tags: string[] = []
+      if (existingEvent.room) tags.push(existingEvent.room.name)
+      if (existingEvent.location) tags.push(existingEvent.location)
+      setStedTags(tags)
       setSubgroupId(
         existingEvent.subgroup ? String(existingEvent.subgroup.id) : null,
       )
@@ -198,31 +211,27 @@ export default function EventFormPage() {
 
   // Compute combined datetimes
   const startDatetime = useMemo(() => {
-    if (!startDate) return null
-    if (isAllDay) return dayjs(startDate).startOf("day").toDate()
-    if (!startTime) return null
+    if (!startDate || !startTime) return null
     const [hours, minutes] = startTime.split(":").map(Number)
     return dayjs(startDate).hour(hours).minute(minutes).second(0).toDate()
-  }, [startDate, startTime, isAllDay])
+  }, [startDate, startTime])
 
   const endDatetime = useMemo(() => {
-    if (!endDate) return null
-    if (isAllDay) return dayjs(endDate).endOf("day").toDate()
-    if (!endTime) return null
+    if (!endDate || !endTime) return null
     const [hours, minutes] = endTime.split(":").map(Number)
     return dayjs(endDate).hour(hours).minute(minutes).second(0).toDate()
-  }, [endDate, endTime, isAllDay])
+  }, [endDate, endTime])
 
   // Proactive room availability check
   useEffect(() => {
-    if (roomIds.length === 0 || !startDatetime || !endDatetime) {
+    if (selectedRoomIds.length === 0 || !startDatetime || !endDatetime) {
       setRoomConflicts(null)
       return
     }
     const timeout = setTimeout(async () => {
       try {
         const result = await bookingsApi.checkAvailability({
-          room_ids: roomIds.map(Number),
+          room_ids: selectedRoomIds,
           start_datetime: startDatetime.toISOString(),
           end_datetime: endDatetime.toISOString(),
           exclude_event_id: isEditMode ? eventId : undefined,
@@ -246,7 +255,14 @@ export default function EventFormPage() {
       }
     }, 500)
     return () => clearTimeout(timeout)
-  }, [roomIds, startDatetime, endDatetime, isEditMode, eventId, rooms])
+  }, [
+    selectedRoomIds.join(","),
+    startDatetime,
+    endDatetime,
+    isEditMode,
+    eventId,
+    rooms,
+  ])
 
   const handleStartDateChange = (value: string | null) => {
     clearErrors()
@@ -348,11 +364,10 @@ export default function EventFormPage() {
       title: title.trim(),
       description: description.trim(),
       visibility,
-      is_all_day: isAllDay,
       start_datetime: startDatetime.toISOString(),
       end_datetime: endDatetime.toISOString(),
-      location: location.trim(),
-      room_ids: roomIds.length > 0 ? roomIds.map(Number) : undefined,
+      location: customLocation,
+      room_ids: selectedRoomIds.length > 0 ? selectedRoomIds : undefined,
       subgroup_id: subgroupId ? Number(subgroupId) : null,
       rsvp_enabled: rsvpEnabled,
       rsvp_deadline:
@@ -376,11 +391,6 @@ export default function EventFormPage() {
       </Center>
     )
   }
-
-  const roomOptions = (rooms || []).map((r) => ({
-    value: String(r.id),
-    label: r.name,
-  }))
 
   const subgroupOptions = (subgroups || []).map((s) => ({
     value: String(s.id),
@@ -452,12 +462,6 @@ export default function EventFormPage() {
               </AttachmentArea>
             </div>
 
-            <Switch
-              label="Hele dagen"
-              checked={isAllDay}
-              onChange={(e) => setIsAllDay(e.currentTarget.checked)}
-            />
-
             <Group grow>
               <DateInput
                 label="Startdato"
@@ -468,18 +472,16 @@ export default function EventFormPage() {
                 error={errors.start_datetime}
                 required
               />
-              {!isAllDay && (
-                <TimePicker
-                  label="Starttid"
-                  description="Skriv eller vælg tid"
-                  value={startTime}
-                  onChange={handleStartTimeChange}
-                  error={errors.start_datetime}
-                  withDropdown
-                  maxDropdownContentHeight={200}
-                  presets={TIME_PRESETS}
-                />
-              )}
+              <TimePicker
+                label="Starttid"
+                description="Skriv eller vælg tid"
+                value={startTime}
+                onChange={handleStartTimeChange}
+                error={errors.start_datetime}
+                withDropdown
+                maxDropdownContentHeight={200}
+                presets={TIME_PRESETS}
+              />
             </Group>
 
             <Group grow>
@@ -495,48 +497,40 @@ export default function EventFormPage() {
                 error={errors.end_datetime}
                 required
               />
-              {!isAllDay && (
-                <TimePicker
-                  label="Sluttid"
-                  description="Skriv eller vælg tid"
-                  value={endTime}
-                  onChange={(value) => {
-                    clearErrors()
-                    setEndTime(value)
-                  }}
-                  error={errors.end_datetime}
-                  withDropdown
-                  maxDropdownContentHeight={200}
-                  presets={TIME_PRESETS}
-                />
-              )}
+              <TimePicker
+                label="Sluttid"
+                description="Skriv eller vælg tid"
+                value={endTime}
+                onChange={(value) => {
+                  clearErrors()
+                  setEndTime(value)
+                }}
+                error={errors.end_datetime}
+                withDropdown
+                maxDropdownContentHeight={200}
+                presets={TIME_PRESETS}
+              />
             </Group>
 
-            <TextInput
+            <TagsInput
               label="Sted"
-              placeholder="Sted (valgfrit)"
+              placeholder="Vælg lokale eller skriv sted"
               leftSection={<IconMapPin size={16} />}
-              value={location}
-              onChange={(e) => {
-                clearErrors()
-                setLocation(e.currentTarget.value)
-              }}
-              error={errors.location}
-            />
-
-            <MultiSelect
-              label="Lokale"
-              placeholder="Vælg lokale (valgfrit)"
-              data={roomOptions}
-              value={roomIds}
+              data={(rooms || []).map((r) => r.name)}
+              value={stedTags}
               onChange={(value) => {
                 clearErrors()
-                setRoomIds(value)
+                setStedTags(value)
               }}
-              error={errors.room_ids || errors.room_id}
+              error={errors.room_ids || errors.room_id || errors.location}
               clearable
-              searchable
             />
+
+            {selectedRoomIds.length > 0 && !roomConflicts && (
+              <Text size="xs" c="dimmed" mt={-8}>
+                Lokale valgt — tilgængelighed tjekkes automatisk
+              </Text>
+            )}
 
             {roomConflicts && (
               <Alert

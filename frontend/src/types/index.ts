@@ -461,7 +461,6 @@ export interface Event {
   visibility: EventVisibility
   start_datetime: string
   end_datetime: string
-  is_all_day: boolean
   room: RoomInfo | null
   location: string
   subgroup: SubgroupInfo | null
@@ -482,7 +481,6 @@ export interface CreateEventData {
   visibility?: EventVisibility
   start_datetime: string
   end_datetime: string
-  is_all_day?: boolean
   room_id?: number | null
   room_ids?: number[]
   location?: string

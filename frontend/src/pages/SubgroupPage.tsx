@@ -21,6 +21,7 @@ import {
   Anchor,
   FileInput,
   Select,
+  SimpleGrid,
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -41,11 +42,13 @@ import {
   IconChartBar,
   IconChecks,
   IconCalendarEvent,
+  IconMapPin,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
 import "dayjs/locale/da"
 
+import { eventsApi } from "../api/events"
 import { forumApi } from "../api/forum"
 import {
   filterFilesBySize,
@@ -65,6 +68,7 @@ import {
 import { AttachmentBadge } from "../components/AttachmentBadge"
 import { useAuthStore } from "../store/authStore"
 import type {
+  Event,
   Thread,
   CreateThreadData,
   CreatePollData,
@@ -101,6 +105,16 @@ export default function SubgroupPage() {
     queryKey: ["threads", slug],
     queryFn: () => forumApi.getThreads(slug!),
     enabled: !!slug,
+  })
+
+  const { data: upcomingEvents } = useQuery({
+    queryKey: ["events", "subgroup", subgroup?.id],
+    queryFn: () =>
+      eventsApi.getEvents({
+        subgroup: subgroup!.id,
+        start: dayjs().toISOString(),
+      }),
+    enabled: !!subgroup?.is_committee,
   })
 
   const markReadMutation = useMutation({
@@ -172,6 +186,14 @@ export default function SubgroupPage() {
           Opret begivenhed
         </Button>
       </Group>
+
+      {upcomingEvents && upcomingEvents.length > 0 && (
+        <SimpleGrid cols={{ base: 1, sm: 2 }} mb="md">
+          {upcomingEvents.slice(0, 2).map((event) => (
+            <CompactEventCard key={event.id} event={event} />
+          ))}
+        </SimpleGrid>
+      )}
 
       <Tabs value={activeTab} onChange={setActiveTab} mb="md">
         <Tabs.List>
@@ -245,6 +267,54 @@ export default function SubgroupPage() {
         }}
       />
     </>
+  )
+}
+
+function CompactEventCard({ event }: { event: Event }) {
+  const navigate = useNavigate()
+
+  return (
+    <Paper
+      withBorder
+      p="sm"
+      radius="md"
+      style={{ cursor: "pointer" }}
+      onClick={() => navigate(`/kalender/${event.id}`)}
+    >
+      <Group gap="sm" wrap="nowrap">
+        <Box
+          style={{
+            width: 4,
+            alignSelf: "stretch",
+            borderRadius: 2,
+            backgroundColor: event.room?.color || "var(--mantine-color-blue-4)",
+          }}
+        />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Group gap="xs" mb={4}>
+            <Text fw={500} truncate>
+              {event.title}
+            </Text>
+            {event.rsvp_enabled && event.rsvp_summary && (
+              <Badge size="xs" variant="light" color="grape">
+                {event.rsvp_summary.attending} deltager
+              </Badge>
+            )}
+          </Group>
+          <Text size="sm" c="dimmed">
+            {`${dayjs(event.start_datetime).format("ddd, MMM D")} kl. ${dayjs(event.start_datetime).format("HH:mm")} – ${dayjs(event.end_datetime).format("HH:mm")}`}
+          </Text>
+          {(event.room || event.location) && (
+            <Group gap={4} mt={4}>
+              <IconMapPin size={14} color="gray" />
+              <Text size="sm" c="dimmed" truncate>
+                {[event.room?.name, event.location].filter(Boolean).join(", ")}
+              </Text>
+            </Group>
+          )}
+        </div>
+      </Group>
+    </Paper>
   )
 }
 

@@ -19,7 +19,7 @@ class EventAdmin(admin.ModelAdmin):
         "created_by",
         "rsvp_enabled",
     ]
-    list_filter = ["visibility", "is_all_day", "rsvp_enabled", "room", "start_datetime"]
+    list_filter = ["visibility", "rsvp_enabled", "room", "start_datetime"]
     search_fields = ["title", "description", "location"]
     date_hierarchy = "start_datetime"
     ordering = ["start_datetime"]

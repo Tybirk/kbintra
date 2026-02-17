@@ -331,11 +331,6 @@ function EventCard({ event }: { event: Event }) {
             <Text fw={500} truncate>
               {event.title}
             </Text>
-            {event.is_all_day && (
-              <Badge size="xs" variant="light">
-                Hele dagen
-              </Badge>
-            )}
             {isToday && (
               <Badge size="xs" color="blue">
                 I dag
@@ -353,9 +348,7 @@ function EventCard({ event }: { event: Event }) {
             )}
           </Group>
           <Text size="sm" c="dimmed">
-            {event.is_all_day
-              ? dayjs(event.start_datetime).format("ddd, MMM D")
-              : `${dayjs(event.start_datetime).format("ddd, MMM D")} kl. ${dayjs(event.start_datetime).format("HH:mm")} – ${dayjs(event.end_datetime).format("HH:mm")}`}
+            {`${dayjs(event.start_datetime).format("ddd, MMM D")} kl. ${dayjs(event.start_datetime).format("HH:mm")} – ${dayjs(event.end_datetime).format("HH:mm")}`}
           </Text>
           {(event.room || event.location) && (
             <Group gap={4} mt={4}>

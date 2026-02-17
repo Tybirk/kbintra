@@ -145,7 +145,6 @@ export default function EventDetailPage() {
           <div style={{ flex: 1, minWidth: 0 }}>
             <Group gap="xs" mb="xs">
               <Title order={2}>{event.title}</Title>
-              {event.is_all_day && <Badge variant="light">Hele dagen</Badge>}
               {event.rsvp_enabled && (
                 <Badge variant="light" color="grape">
                   RSVP
@@ -195,9 +194,7 @@ export default function EventDetailPage() {
           <Group gap="xs">
             <IconClock size={16} color="gray" />
             <Text size="sm">
-              {event.is_all_day
-                ? dayjs(event.start_datetime).format("dddd D. MMMM YYYY")
-                : `${dayjs(event.start_datetime).format("dddd D. MMMM YYYY")} kl. ${dayjs(event.start_datetime).format("HH:mm")} – ${dayjs(event.end_datetime).format("HH:mm")}`}
+              {`${dayjs(event.start_datetime).format("dddd D. MMMM YYYY")} kl. ${dayjs(event.start_datetime).format("HH:mm")} – ${dayjs(event.end_datetime).format("HH:mm")}`}
             </Text>
           </Group>
 

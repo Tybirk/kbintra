@@ -561,8 +561,7 @@ function EventPreview({ event }: EventPreviewProps) {
       </Group>
       <Text size="xs" c="dimmed">
         {dateLabel}
-        {!event.is_all_day &&
-          ` kl. ${dayjs(event.start_datetime).format("HH:mm")}`}
+        {` kl. ${dayjs(event.start_datetime).format("HH:mm")}`}
       </Text>
       {(event.room || event.location) && (
         <Text size="xs" c="dimmed" lineClamp={1}>

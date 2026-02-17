@@ -40,7 +40,6 @@ class Migration(migrations.Migration):
                 ),
                 ("start_datetime", models.DateTimeField()),
                 ("end_datetime", models.DateTimeField()),
-                ("is_all_day", models.BooleanField(default=False)),
                 ("location", models.CharField(blank=True, max_length=255)),
                 ("rsvp_enabled", models.BooleanField(default=False)),
                 ("rsvp_deadline", models.DateTimeField(blank=True, null=True)),
