@@ -180,6 +180,8 @@ class Folder(models.Model):
         Subgroup,
         on_delete=models.CASCADE,
         related_name="folders",
+        null=True,
+        blank=True,
     )
     name = models.CharField(max_length=100)
     parent = models.ForeignKey(
@@ -334,6 +336,8 @@ class File(models.Model):
         Subgroup,
         on_delete=models.CASCADE,
         related_name="files",
+        null=True,
+        blank=True,
     )
     folder = models.ForeignKey(
         Folder,
@@ -341,7 +345,6 @@ class File(models.Model):
         related_name="files",
         null=True,
         blank=True,
-        help_text="If null, file is at root level of the subgroup.",
     )
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

@@ -418,16 +418,59 @@ export interface DriveMenu {
   is_stale: boolean
 }
 
-// Calendar Types
-export interface CalendarEvent {
+// Event Types (unified: community events + private room bookings)
+export type EventVisibility = "community" | "private"
+
+export interface RoomInfo {
+  id: number
+  name: string
+  color: string
+}
+
+export interface SubgroupInfo {
+  id: number
+  name: string
+  slug: string
+}
+
+export interface FolderInfo {
+  id: number
+  name: string
+}
+
+export interface EventAttendance {
+  id: number
+  user: Author | null
+  child_id: number | null
+  child_name: string | null
+  status: "attending" | "not_attending" | "not_answered"
+  updated_at: string
+}
+
+export interface RsvpSummary {
+  attending: number
+  not_attending: number
+  not_answered: number
+}
+
+export interface Event {
   id: number
   title: string
   description: string
   created_by: Author
+  visibility: EventVisibility
   start_datetime: string
   end_datetime: string
-  location: string
   is_all_day: boolean
+  room: RoomInfo | null
+  location: string
+  subgroup: SubgroupInfo | null
+  folder: FolderInfo | null
+  rsvp_enabled: boolean
+  rsvp_deadline: string | null
+  rsvp_summary: RsvpSummary | null
+  my_rsvp: string | null
+  household_rsvps: EventAttendance[] | null
   is_own: boolean
   created_at: string
   updated_at: string
@@ -436,13 +479,47 @@ export interface CalendarEvent {
 export interface CreateEventData {
   title: string
   description?: string
+  visibility?: EventVisibility
   start_datetime: string
   end_datetime: string
-  location?: string
   is_all_day?: boolean
+  room_id?: number | null
+  room_ids?: number[]
+  location?: string
+  subgroup_id?: number | null
+  rsvp_enabled?: boolean
+  rsvp_deadline?: string | null
 }
 
 export interface UpdateEventData extends Partial<CreateEventData> {}
+
+export interface HouseholdMember {
+  type: "adult" | "child"
+  id: number
+  name: string
+  current_status: string | null
+}
+
+export interface RsvpItem {
+  user_id?: number
+  child_id?: number
+  status: "attending" | "not_attending" | "not_answered"
+}
+
+export interface RsvpSubmitData {
+  attendances: RsvpItem[]
+}
+
+export interface EventFile {
+  id: number
+  name: string
+  file_url: string
+  uploaded_by: Author
+  uploaded_at: string
+}
+
+// Legacy alias for backward compatibility in DashboardPage
+export type CalendarEvent = Event
 
 // Messaging Types
 export interface Participant {
@@ -531,7 +608,7 @@ export interface WsNewNotification {
 export type WsMessage = WsNewMessage | WsMessagesRead | WsTyping | WsNewConversation | WsNewNotification
 
 // Notification Types
-export type NotificationType = "new_message" | "new_announcement" | "new_thread" | "thread_reply" | "post_reply" | "post_reaction" | "event_reminder" | "food_ticket"
+export type NotificationType = "new_message" | "new_announcement" | "new_thread" | "thread_reply" | "post_reply" | "post_reaction" | "event_created" | "event_updated" | "event_reminder" | "food_ticket"
 
 export interface RelatedUser {
   id: number
@@ -559,6 +636,8 @@ export interface NotificationPreference {
   notify_announcements: boolean
   notify_forum_subscriptions: boolean
   notify_thread_replies: boolean
+  notify_post_reactions: boolean
+  notify_events: boolean
   notify_event_reminders: boolean
   notify_food_tickets: boolean
   // Email preferences
@@ -566,6 +645,8 @@ export interface NotificationPreference {
   email_announcements: boolean
   email_forum_subscriptions: boolean
   email_thread_replies: boolean
+  email_post_reactions: boolean
+  email_events: boolean
   email_event_reminders: boolean
   email_food_tickets: boolean
   // Push preferences
@@ -573,6 +654,8 @@ export interface NotificationPreference {
   push_announcements: boolean
   push_forum_subscriptions: boolean
   push_thread_replies: boolean
+  push_post_reactions: boolean
+  push_events: boolean
   push_event_reminders: boolean
   push_food_tickets: boolean
   created_at: string
@@ -584,18 +667,24 @@ export interface UpdateNotificationPreferenceData {
   notify_announcements?: boolean
   notify_forum_subscriptions?: boolean
   notify_thread_replies?: boolean
+  notify_post_reactions?: boolean
+  notify_events?: boolean
   notify_event_reminders?: boolean
   notify_food_tickets?: boolean
   email_messages?: boolean
   email_announcements?: boolean
   email_forum_subscriptions?: boolean
   email_thread_replies?: boolean
+  email_post_reactions?: boolean
+  email_events?: boolean
   email_event_reminders?: boolean
   email_food_tickets?: boolean
   push_messages?: boolean
   push_announcements?: boolean
   push_forum_subscriptions?: boolean
   push_thread_replies?: boolean
+  push_post_reactions?: boolean
+  push_events?: boolean
   push_event_reminders?: boolean
   push_food_tickets?: boolean
 }
@@ -746,36 +835,6 @@ export interface BookingUser {
   profile_picture: string | null
 }
 
-export interface Booking {
-  id: number
-  room: BookingRoom
-  user: BookingUser
-  title: string
-  description: string
-  start_datetime: string
-  end_datetime: string
-  duration_hours: number
-  is_own: boolean
-  created_at: string
-  updated_at: string
-}
-
-export interface CreateBookingData {
-  room_id?: number
-  room_ids?: number[]
-  title: string
-  description?: string
-  start_datetime: string
-  end_datetime: string
-}
-
-export interface UpdateBookingData {
-  title?: string
-  description?: string
-  start_datetime?: string
-  end_datetime?: string
-}
-
 export interface RecurringBooking {
   id: number
   room: BookingRoom
@@ -822,7 +881,7 @@ export interface AvailabilityCheckRequest {
   room_ids: number[]
   start_datetime: string
   end_datetime: string
-  exclude_booking_id?: number
+  exclude_event_id?: number
 }
 
 export interface AvailabilityResult {

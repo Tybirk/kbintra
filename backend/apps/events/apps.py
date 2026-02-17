@@ -1,6 +1,6 @@
 from django.apps import AppConfig
 
 
-class CalendarAppConfig(AppConfig):
+class EventsConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
-    name = "apps.calendar_app"
+    name = "apps.events"

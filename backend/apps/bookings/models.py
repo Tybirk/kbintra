@@ -1,5 +1,5 @@
 """
-Models for Bookings app.
+Models for Bookings app — Room catalog and recurring room reservations.
 """
 
 import datetime
@@ -25,40 +25,6 @@ class Room(models.Model):
 
     def __str__(self) -> str:
         return self.name
-
-
-class Booking(models.Model):
-    """A room booking by a user."""
-
-    MAX_DURATION_HOURS = 30
-
-    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="bookings")
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="bookings",
-    )
-    title = models.CharField(max_length=200)
-    description = models.TextField(blank=True)
-    start_datetime = models.DateTimeField()
-    end_datetime = models.DateTimeField()
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["start_datetime"]
-        indexes = [
-            models.Index(fields=["room", "start_datetime", "end_datetime"]),
-        ]
-
-    def __str__(self) -> str:
-        return f"{self.title} - {self.room.name} ({self.start_datetime})"
-
-    @property
-    def duration_hours(self) -> float:
-        """Return booking duration in hours."""
-        delta = self.end_datetime - self.start_datetime
-        return delta.total_seconds() / 3600
 
 
 class RecurringBooking(models.Model):

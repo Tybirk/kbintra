@@ -15,6 +15,8 @@ class NotificationType(models.TextChoices):
     THREAD_REPLY = "thread_reply", "Nyt svar i tråden"
     POST_REPLY = "post_reply", "Nyt svar på dit opslag"
     POST_REACTION = "post_reaction", "Reaktion på dit opslag"
+    EVENT_CREATED = "event_created", "Nyt arrangement"
+    EVENT_UPDATED = "event_updated", "Arrangement opdateret"
     EVENT_REMINDER = "event_reminder", "Begivenhedsreminder"
     FOOD_TICKET = "food_ticket", "Madbillet tilgængelig"
 
@@ -68,6 +70,7 @@ class NotificationPreference(models.Model):
     notify_forum_subscriptions = models.BooleanField(default=True)
     notify_thread_replies = models.BooleanField(default=True)
     notify_post_reactions = models.BooleanField(default=True)
+    notify_events = models.BooleanField(default=True)
     notify_event_reminders = models.BooleanField(default=True)
     notify_food_tickets = models.BooleanField(default=True)
 
@@ -77,6 +80,7 @@ class NotificationPreference(models.Model):
     email_forum_subscriptions = models.BooleanField(default=False)
     email_thread_replies = models.BooleanField(default=False)
     email_post_reactions = models.BooleanField(default=False)
+    email_events = models.BooleanField(default=False)
     email_event_reminders = models.BooleanField(default=False)
     email_food_tickets = models.BooleanField(default=False)
 
@@ -86,6 +90,7 @@ class NotificationPreference(models.Model):
     push_forum_subscriptions = models.BooleanField(default=True)
     push_thread_replies = models.BooleanField(default=True)
     push_post_reactions = models.BooleanField(default=True)
+    push_events = models.BooleanField(default=True)
     push_event_reminders = models.BooleanField(default=True)
     push_food_tickets = models.BooleanField(default=True)
 

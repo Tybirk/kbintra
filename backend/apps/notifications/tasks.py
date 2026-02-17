@@ -329,6 +329,48 @@ def notify_post_reply_task(
     )
 
 
+@db_task(retries=1, retry_delay=60)
+def notify_event_created_task(
+    event_id: int,
+    author_id: int,
+) -> None:
+    """Send event-created notifications to all users in background."""
+    logger.info("notify_event_created_task STARTED: event=%d author=%d", event_id, author_id)
+    from apps.users.models import User
+
+    from .services import notify_event_created
+
+    try:
+        author = User.objects.get(id=author_id)
+    except User.DoesNotExist:
+        logger.warning("notify_event_created_task: Author %d not found", author_id)
+        return
+
+    count = notify_event_created(event_id=event_id, author=author)
+    logger.info("notify_event_created_task COMPLETED: %d notifications created", count)
+
+
+@db_task(retries=1, retry_delay=60)
+def notify_event_updated_task(
+    event_id: int,
+    updater_id: int,
+) -> None:
+    """Send event-updated notifications in background."""
+    logger.info("notify_event_updated_task STARTED: event=%d updater=%d", event_id, updater_id)
+    from apps.users.models import User
+
+    from .services import notify_event_updated
+
+    try:
+        updater = User.objects.get(id=updater_id)
+    except User.DoesNotExist:
+        logger.warning("notify_event_updated_task: Updater %d not found", updater_id)
+        return
+
+    count = notify_event_updated(event_id=event_id, updater=updater)
+    logger.info("notify_event_updated_task COMPLETED: %d notifications created", count)
+
+
 # ---------------------------------------------------------------------------
 # Drive menu refresh
 # ---------------------------------------------------------------------------

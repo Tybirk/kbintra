@@ -72,6 +72,8 @@ def get_user_preference(user: User, notification_type: NotificationType) -> bool
         NotificationType.THREAD_REPLY: prefs.notify_thread_replies,
         NotificationType.POST_REPLY: prefs.notify_thread_replies,
         NotificationType.POST_REACTION: prefs.notify_post_reactions,
+        NotificationType.EVENT_CREATED: prefs.notify_events,
+        NotificationType.EVENT_UPDATED: prefs.notify_events,
         NotificationType.EVENT_REMINDER: prefs.notify_event_reminders,
         NotificationType.FOOD_TICKET: prefs.notify_food_tickets,
     }
@@ -94,6 +96,8 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
         NotificationType.THREAD_REPLY: prefs.push_thread_replies,
         NotificationType.POST_REPLY: prefs.push_thread_replies,
         NotificationType.POST_REACTION: prefs.push_post_reactions,
+        NotificationType.EVENT_CREATED: prefs.push_events,
+        NotificationType.EVENT_UPDATED: prefs.push_events,
         NotificationType.EVENT_REMINDER: prefs.push_event_reminders,
         NotificationType.FOOD_TICKET: prefs.push_food_tickets,
     }
@@ -521,6 +525,107 @@ def notify_ticket_claimed(
         related_user=claimer,
         check_preferences=False,  # Always notify owner
     )
+
+
+def notify_event_created(
+    event_id: int,
+    author: User,
+) -> int:
+    """Notify users about a new community event.
+
+    If the event has a subgroup, only notify subgroup subscribers.
+    Otherwise, notify all users. Always skip the creator.
+
+    Returns the count of notifications created.
+    """
+    from apps.events.models import Event
+
+    event = Event.objects.select_related("room", "subgroup").get(id=event_id)
+    location = event.resolved_location
+    title_text = f"Nyt arrangement: {event.title}"
+    message = location or event.start_datetime.strftime("%d/%m %H:%M")
+    link = f"/kalender/{event.id}"
+
+    # Determine recipients: subgroup subscribers or all users
+    if event.subgroup_id:
+        from apps.forum.models import SubgroupSubscription
+
+        subscriber_ids = SubgroupSubscription.objects.filter(
+            subgroup_id=event.subgroup_id,
+        ).values_list("user_id", flat=True)
+        recipients = User.objects.filter(id__in=subscriber_ids).exclude(id=author.id)
+    else:
+        recipients = User.objects.exclude(id=author.id)
+
+    count = 0
+    for user in recipients:
+        notification = create_notification(
+            user=user,
+            notification_type=NotificationType.EVENT_CREATED,
+            title=title_text,
+            message=message,
+            link=link,
+            related_user=author,
+        )
+        if notification:
+            count += 1
+    return count
+
+
+def notify_event_updated(
+    event_id: int,
+    updater: User,
+) -> int:
+    """Notify users about a community event update (time/location change).
+
+    If the event has RSVP enabled, only notify users with status "attending" or
+    "not_answered" (skip "not_attending"). Otherwise, use the same logic as create
+    (subgroup subscribers or all users). Always skip the updater.
+
+    Returns the count of notifications created.
+    """
+    from apps.events.models import Event, EventAttendance
+
+    event = Event.objects.select_related("room", "subgroup").get(id=event_id)
+    location = event.resolved_location
+    title_text = f"Arrangement opdateret: {event.title}"
+    message = f"Ny tid/sted: {event.start_datetime.strftime('%d/%m %H:%M')}"
+    if location:
+        message += f" – {location}"
+    link = f"/kalender/{event.id}"
+
+    # Determine recipients based on RSVP status or subgroup
+    if event.rsvp_enabled:
+        # Only notify users who are attending or haven't answered
+        attendee_user_ids = EventAttendance.objects.filter(
+            event=event,
+            user__isnull=False,
+            status__in=[EventAttendance.Status.ATTENDING, EventAttendance.Status.NOT_ANSWERED],
+        ).values_list("user_id", flat=True)
+        recipients = User.objects.filter(id__in=attendee_user_ids).exclude(id=updater.id)
+    elif event.subgroup_id:
+        from apps.forum.models import SubgroupSubscription
+
+        subscriber_ids = SubgroupSubscription.objects.filter(
+            subgroup_id=event.subgroup_id,
+        ).values_list("user_id", flat=True)
+        recipients = User.objects.filter(id__in=subscriber_ids).exclude(id=updater.id)
+    else:
+        recipients = User.objects.exclude(id=updater.id)
+
+    count = 0
+    for user in recipients:
+        notification = create_notification(
+            user=user,
+            notification_type=NotificationType.EVENT_UPDATED,
+            title=title_text,
+            message=message,
+            link=link,
+            related_user=updater,
+        )
+        if notification:
+            count += 1
+    return count
 
 
 def notify_post_reaction(

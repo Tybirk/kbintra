@@ -1,5 +1,5 @@
 """
-Views for Bookings app.
+Views for Bookings app — rooms, recurring bookings, calendar display.
 """
 
 from datetime import datetime
@@ -11,11 +11,9 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Booking, RecurringBooking, RecurringBookingException, Room
+from .models import RecurringBooking, RecurringBookingException, Room
 from .serializers import (
     AvailabilityCheckSerializer,
-    BookingCreateUpdateSerializer,
-    BookingSerializer,
     CalendarBookingSerializer,
     RecurringBookingCreateUpdateSerializer,
     RecurringBookingExceptionSerializer,
@@ -33,15 +31,6 @@ class IsAdminOrReadOnly(permissions.BasePermission):
         if request.method in permissions.SAFE_METHODS:
             return True
         return request.user.is_staff
-
-
-class IsOwnerOrReadOnly(permissions.BasePermission):
-    """Allow owners to edit/delete their own objects."""
-
-    def has_object_permission(self, request: Request, view: Any, obj: Booking) -> bool:
-        if request.method in permissions.SAFE_METHODS:
-            return True
-        return obj.user == request.user
 
 
 # Room views
@@ -76,70 +65,6 @@ class RoomDetailView(generics.RetrieveUpdateDestroyAPIView):
         if self.request.method in ["PUT", "PATCH"]:
             return RoomCreateUpdateSerializer
         return RoomSerializer
-
-
-# Booking views
-
-
-class BookingListCreateView(generics.ListCreateAPIView):
-    """List bookings or create a new one."""
-
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_serializer_class(self) -> type:
-        if self.request.method == "POST":
-            return BookingCreateUpdateSerializer
-        return BookingSerializer
-
-    def get_queryset(self) -> QuerySet[Booking]:
-        queryset = Booking.objects.select_related("room", "user")
-
-        # Filter by room
-        room_id = self.request.query_params.get("room")
-        if room_id:
-            queryset = queryset.filter(room_id=room_id)
-
-        # Filter by date range
-        start = self.request.query_params.get("start")
-        end = self.request.query_params.get("end")
-
-        if start:
-            try:
-                start_date = datetime.fromisoformat(start.replace("Z", "+00:00"))
-                queryset = queryset.filter(end_datetime__gt=start_date)
-            except ValueError:
-                pass
-
-        if end:
-            try:
-                end_date = datetime.fromisoformat(end.replace("Z", "+00:00"))
-                queryset = queryset.filter(start_datetime__lt=end_date)
-            except ValueError:
-                pass
-
-        return queryset
-
-
-class BookingDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """Retrieve, update, or delete a booking."""
-
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
-    queryset = Booking.objects.select_related("room", "user")
-
-    def get_serializer_class(self) -> type:
-        if self.request.method in ["PUT", "PATCH"]:
-            return BookingCreateUpdateSerializer
-        return BookingSerializer
-
-
-class MyBookingsView(generics.ListAPIView):
-    """List current user's bookings."""
-
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = BookingSerializer
-
-    def get_queryset(self) -> QuerySet[Booking]:
-        return Booking.objects.filter(user=self.request.user).select_related("room", "user")
 
 
 # Recurring booking views (admin only)
@@ -236,12 +161,14 @@ class RecurringBookingExceptionView(APIView):
 class CalendarBookingsView(APIView):
     """
     Get bookings for calendar display.
-    Returns unified list of one-time bookings and expanded recurring occurrences.
+    Returns unified list of one-time events (with rooms) and expanded recurring occurrences.
     """
 
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request: Request) -> Response:
+        from apps.events.models import Event
+
         start_str = request.query_params.get("start")
         end_str = request.query_params.get("end")
         room_id = request.query_params.get("room")
@@ -261,40 +188,41 @@ class CalendarBookingsView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Get one-time bookings
-        bookings_query = Booking.objects.filter(
+        # Get one-time events with rooms
+        events_query = Event.objects.filter(
+            room__isnull=False,
             start_datetime__lt=end_date,
             end_datetime__gt=start_date,
-        ).select_related("room", "user")
+        ).select_related("room", "created_by")
 
         if room_id:
-            bookings_query = bookings_query.filter(room_id=room_id)
+            events_query = events_query.filter(room_id=room_id)
 
         # Convert to list of dicts
         calendar_items = []
-        for booking in bookings_query:
+        for event in events_query:
             calendar_items.append(
                 {
-                    "id": str(booking.id),
+                    "id": str(event.id),
                     "room": {
-                        "id": booking.room.id,
-                        "name": booking.room.name,
-                        "color": booking.room.color,
+                        "id": event.room.id,
+                        "name": event.room.name,
+                        "color": event.room.color,
                     },
                     "user": {
-                        "id": booking.user.id,
-                        "first_name": booking.user.first_name,
-                        "last_name": booking.user.last_name,
+                        "id": event.created_by.id,
+                        "first_name": event.created_by.first_name,
+                        "last_name": event.created_by.last_name,
                         "profile_picture": (
-                            booking.user.profile_picture.url
-                            if booking.user.profile_picture
+                            event.created_by.profile_picture.url
+                            if event.created_by.profile_picture
                             else None
                         ),
                     },
-                    "title": booking.title,
-                    "description": booking.description,
-                    "start_datetime": booking.start_datetime.isoformat(),
-                    "end_datetime": booking.end_datetime.isoformat(),
+                    "title": event.title,
+                    "description": event.description,
+                    "start_datetime": event.start_datetime.isoformat(),
+                    "end_datetime": event.end_datetime.isoformat(),
                     "is_recurring": False,
                     "recurring_booking_id": None,
                 }
@@ -332,7 +260,7 @@ class CheckAvailabilityView(APIView):
             room_ids=data["room_ids"],
             start=data["start_datetime"],
             end=data["end_datetime"],
-            exclude_booking_id=data.get("exclude_booking_id"),
+            exclude_event_id=data.get("exclude_event_id"),
         )
 
         return Response(result)

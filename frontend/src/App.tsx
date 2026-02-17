@@ -30,6 +30,8 @@ import FoodPreferencesPage from "./pages/FoodPreferencesPage"
 import FoodTicketsPage from "./pages/FoodTicketsPage"
 import FoodTeamsPage from "./pages/FoodTeamsPage"
 import CalendarPage from "./pages/CalendarPage"
+import EventDetailPage from "./pages/EventDetailPage"
+import EventFormPage from "./pages/EventFormPage"
 import BookingsPage from "./pages/BookingsPage"
 import LinksPage from "./pages/LinksPage"
 import MessagesPage from "./pages/MessagesPage"
@@ -367,6 +369,36 @@ function App() {
                 <ProtectedRoute>
                   <PageErrorBoundary>
                     <CalendarPage />
+                  </PageErrorBoundary>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/kalender/opret"
+              element={
+                <ProtectedRoute>
+                  <PageErrorBoundary>
+                    <EventFormPage />
+                  </PageErrorBoundary>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/kalender/:id"
+              element={
+                <ProtectedRoute>
+                  <PageErrorBoundary>
+                    <EventDetailPage />
+                  </PageErrorBoundary>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/kalender/:id/rediger"
+              element={
+                <ProtectedRoute>
+                  <PageErrorBoundary>
+                    <EventFormPage />
                   </PageErrorBoundary>
                 </ProtectedRoute>
               }

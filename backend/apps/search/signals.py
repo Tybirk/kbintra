@@ -247,7 +247,7 @@ def deindex_announcement(sender, instance, **kwargs):
 # -- Event signals --
 
 
-@receiver(post_save, sender="calendar_app.Event")
+@receiver(post_save, sender="events.Event")
 def index_event(sender, instance, **kwargs):
     try:
         index_object(
@@ -271,7 +271,7 @@ def index_event(sender, instance, **kwargs):
         logger.exception("Failed to index event %s", instance.id)
 
 
-@receiver(post_delete, sender="calendar_app.Event")
+@receiver(post_delete, sender="events.Event")
 def deindex_event(sender, instance, **kwargs):
     try:
         remove_object("event", instance.id)

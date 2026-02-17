@@ -29,8 +29,8 @@ vi.mock("../api/announcements", () => ({
   },
 }))
 
-vi.mock("../api/calendar", () => ({
-  calendarApi: {
+vi.mock("../api/events", () => ({
+  eventsApi: {
     getUpcomingEvents: vi.fn().mockResolvedValue([]),
   },
 }))

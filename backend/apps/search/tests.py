@@ -8,7 +8,7 @@ import pytest
 from django.db import connection
 
 from apps.announcements.models import Announcement
-from apps.calendar_app.models import Event
+from apps.events.models import Event
 from apps.search.services import (
     build_fts_query,
     create_excerpt,

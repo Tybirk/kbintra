@@ -33,14 +33,14 @@ import isoWeek from "dayjs/plugin/isoWeek"
 
 import { useAuthStore } from "../store/authStore"
 import { announcementsApi } from "../api/announcements"
-import { calendarApi } from "../api/calendar"
+import { eventsApi } from "../api/events"
 import { foodApi } from "../api/food"
 import { forumApi } from "../api/forum"
 import { notificationsApi } from "../api/notifications"
 import { usersApi } from "../api/users"
 import type {
   Announcement,
-  CalendarEvent,
+  Event,
   Notification,
   RecentActivity,
   User,
@@ -73,7 +73,7 @@ export default function DashboardPage() {
     isError: eventsError,
   } = useQuery({
     queryKey: ["calendar", "upcoming"],
-    queryFn: () => calendarApi.getUpcomingEvents(),
+    queryFn: () => eventsApi.getUpcomingEvents(),
   })
 
   const { data: notifications } = useQuery({
@@ -528,7 +528,7 @@ function AnnouncementPreview({ announcement }: AnnouncementPreviewProps) {
 }
 
 interface EventPreviewProps {
-  event: CalendarEvent
+  event: Event
 }
 
 function EventPreview({ event }: EventPreviewProps) {
@@ -549,7 +549,7 @@ function EventPreview({ event }: EventPreviewProps) {
       radius="sm"
       bg="var(--mantine-color-default-hover)"
       style={{ cursor: "pointer" }}
-      onClick={() => navigate("/kalender")}
+      onClick={() => navigate(`/kalender/${event.id}`)}
     >
       <Group gap="sm" mb={4}>
         <ThemeIcon size="sm" radius="xl" color={isToday ? "blue" : "gray"}>
@@ -562,12 +562,37 @@ function EventPreview({ event }: EventPreviewProps) {
       <Text size="xs" c="dimmed">
         {dateLabel}
         {!event.is_all_day &&
-          ` at ${dayjs(event.start_datetime).format("HH:mm")}`}
+          ` kl. ${dayjs(event.start_datetime).format("HH:mm")}`}
       </Text>
-      {event.location && (
+      {(event.room || event.location) && (
         <Text size="xs" c="dimmed" lineClamp={1}>
-          {event.location}
+          {[event.room?.name, event.location].filter(Boolean).join(", ")}
         </Text>
+      )}
+      {event.rsvp_enabled && event.rsvp_summary && (
+        <Group gap="xs" mt={4}>
+          <Badge size="xs" variant="light" color="gray">
+            {event.rsvp_summary.attending} deltager
+          </Badge>
+          {event.my_rsvp && (
+            <Badge
+              size="xs"
+              color={
+                event.my_rsvp === "attending"
+                  ? "green"
+                  : event.my_rsvp === "not_attending"
+                    ? "red"
+                    : "yellow"
+              }
+            >
+              {event.my_rsvp === "attending"
+                ? "Deltager"
+                : event.my_rsvp === "not_attending"
+                  ? "Afmeldt"
+                  : "Ikke svaret"}
+            </Badge>
+          )}
+        </Group>
       )}
     </Paper>
   )

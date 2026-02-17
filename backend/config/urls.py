@@ -33,7 +33,7 @@ urlpatterns = [
     path("api/forum/", include("apps.forum.urls")),
     path("api/announcements/", include("apps.announcements.urls")),
     path("api/food/", include("apps.food.urls", namespace="food")),
-    path("api/calendar/", include("apps.calendar_app.urls")),
+    path("api/events/", include("apps.events.urls")),
     path("api/messages/", include("apps.messaging.urls")),
     path("api/notifications/", include("apps.notifications.urls")),
     path("api/search/", include("apps.search.urls")),

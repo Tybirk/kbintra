@@ -1,17 +1,12 @@
 """
-Serializers for Bookings models.
+Serializers for Bookings models (Room, RecurringBooking, calendar display).
 """
 
-from datetime import timedelta
-
-from django.db import transaction
-from django.utils import timezone
 from rest_framework import serializers
 
 from apps.users.models import User
 
-from .models import Booking, RecurringBooking, RecurringBookingException, Room
-from .validators import check_multi_room_booking
+from .models import RecurringBooking, RecurringBookingException, Room
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -62,180 +57,6 @@ class BookingRoomSerializer(serializers.ModelSerializer):
     class Meta:
         model = Room
         fields = ["id", "name", "color"]
-
-
-class BookingSerializer(serializers.ModelSerializer):
-    """Serializer for Booking model."""
-
-    room = BookingRoomSerializer(read_only=True)
-    user = UserSerializer(read_only=True)
-    is_own = serializers.SerializerMethodField()
-    duration_hours = serializers.ReadOnlyField()
-
-    class Meta:
-        model = Booking
-        fields = [
-            "id",
-            "room",
-            "user",
-            "title",
-            "description",
-            "start_datetime",
-            "end_datetime",
-            "duration_hours",
-            "is_own",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = ["id", "room", "user", "created_at", "updated_at"]
-
-    def get_is_own(self, obj: Booking) -> bool:
-        request = self.context.get("request")
-        if request and request.user.is_authenticated:
-            return obj.user_id == request.user.id
-        return False
-
-
-class BookingCreateUpdateSerializer(serializers.ModelSerializer):
-    """Serializer for creating/updating bookings."""
-
-    room_id = serializers.IntegerField(write_only=True, required=False)
-    room_ids = serializers.ListField(
-        child=serializers.IntegerField(),
-        write_only=True,
-        required=False,
-        help_text="For creating multiple bookings at once",
-    )
-
-    class Meta:
-        model = Booking
-        fields = [
-            "room_id",
-            "room_ids",
-            "title",
-            "description",
-            "start_datetime",
-            "end_datetime",
-        ]
-
-    def validate(self, data: dict) -> dict:
-        start = data.get("start_datetime")
-        end = data.get("end_datetime")
-        room_id = data.get("room_id")
-        room_ids = data.get("room_ids", [])
-
-        # Require either room_id or room_ids
-        if not room_id and not room_ids:
-            raise serializers.ValidationError({"room_id": "Vælg venligst et lokale."})
-
-        # Use room_id if provided, otherwise use room_ids
-        if room_id:
-            room_ids = [room_id]
-
-        # Validate times
-        if end and start:
-            if end <= start:
-                raise serializers.ValidationError(
-                    {"end_datetime": "Sluttidspunkt skal være efter starttidspunkt."}
-                )
-
-            # Check max duration
-            duration = end - start
-            max_duration = timedelta(hours=Booking.MAX_DURATION_HOURS)
-            if duration > max_duration:
-                raise serializers.ValidationError(
-                    {
-                        "end_datetime": (
-                            f"Booking må maksimalt vare {Booking.MAX_DURATION_HOURS} timer."
-                        )
-                    }
-                )
-
-            # Check not in the past
-            if start < timezone.now():
-                raise serializers.ValidationError(
-                    {"start_datetime": "Starttidspunkt kan ikke være i fortiden."}
-                )
-
-        # Check for overlaps
-        exclude_id = self.instance.id if self.instance else None
-        result = check_multi_room_booking(room_ids, start, end, exclude_id)
-
-        if not result["can_book_all"]:
-            # Build error message with conflicts
-            error_messages = []
-            for rid, conflicts in result["conflicts_by_room"].items():
-                room = Room.objects.get(id=rid)
-                error_messages.append(f"{room.name}: {'; '.join(conflicts)}")
-            raise serializers.ValidationError({"non_field_errors": error_messages})
-
-        # Store validated room_ids for create
-        data["_room_ids"] = room_ids
-        return data
-
-    def create(self, validated_data: dict) -> Booking:
-        room_ids = validated_data.pop("_room_ids")
-        validated_data.pop("room_id", None)
-        validated_data.pop("room_ids", None)
-        start = validated_data.get("start_datetime")
-        end = validated_data.get("end_datetime")
-
-        user = self.context["request"].user
-
-        # Use transaction with re-check to prevent race conditions
-        with transaction.atomic():
-            # Re-check for overlaps inside transaction to prevent race conditions
-            result = check_multi_room_booking(room_ids, start, end, None)
-            if not result["can_book_all"]:
-                error_messages = []
-                for rid, conflicts in result["conflicts_by_room"].items():
-                    room = Room.objects.get(id=rid)
-                    error_messages.append(f"{room.name}: {'; '.join(conflicts)}")
-                raise serializers.ValidationError({"non_field_errors": error_messages})
-
-            # Create booking for first room (or only room)
-            first_room = Room.objects.get(id=room_ids[0])
-            booking = Booking.objects.create(
-                room=first_room,
-                user=user,
-                **validated_data,
-            )
-
-            # Create additional bookings for other rooms
-            for room_id in room_ids[1:]:
-                room = Room.objects.get(id=room_id)
-                Booking.objects.create(
-                    room=room,
-                    user=user,
-                    **validated_data,
-                )
-
-        return booking
-
-    def update(self, instance: Booking, validated_data: dict) -> Booking:
-        validated_data.pop("_room_ids", None)
-        validated_data.pop("room_id", None)
-        validated_data.pop("room_ids", None)
-
-        start = validated_data.get("start_datetime", instance.start_datetime)
-        end = validated_data.get("end_datetime", instance.end_datetime)
-
-        # Use transaction with re-check to prevent race conditions
-        with transaction.atomic():
-            # Re-check for overlaps inside transaction (excluding this booking)
-            result = check_multi_room_booking([instance.room_id], start, end, instance.id)
-            if not result["can_book_all"]:
-                error_messages = []
-                for rid, conflicts in result["conflicts_by_room"].items():
-                    room = Room.objects.get(id=rid)
-                    error_messages.append(f"{room.name}: {'; '.join(conflicts)}")
-                raise serializers.ValidationError({"non_field_errors": error_messages})
-
-            for attr, value in validated_data.items():
-                setattr(instance, attr, value)
-            instance.save()
-
-        return instance
 
 
 class RecurringBookingSerializer(serializers.ModelSerializer):
@@ -333,7 +154,7 @@ class RecurringBookingExceptionSerializer(serializers.ModelSerializer):
 
 
 class CalendarBookingSerializer(serializers.Serializer):
-    """Lightweight serializer for calendar display."""
+    """Lightweight serializer for calendar display (events + recurring occurrences)."""
 
     id = serializers.CharField()
     room = BookingRoomSerializer()
@@ -360,4 +181,4 @@ class AvailabilityCheckSerializer(serializers.Serializer):
     room_ids = serializers.ListField(child=serializers.IntegerField())
     start_datetime = serializers.DateTimeField()
     end_datetime = serializers.DateTimeField()
-    exclude_booking_id = serializers.IntegerField(required=False, allow_null=True)
+    exclude_event_id = serializers.IntegerField(required=False, allow_null=True)

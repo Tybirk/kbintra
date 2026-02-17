@@ -155,7 +155,7 @@ class Command(BaseCommand):
             counts["announcements"] = announcements.count()
 
             # Events
-            from apps.calendar_app.models import Event
+            from apps.events.models import Event
 
             events = Event.objects.all()
             for event in events:

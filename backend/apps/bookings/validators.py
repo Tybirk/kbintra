@@ -6,17 +6,17 @@ from datetime import date, datetime, timedelta
 
 from django.utils import timezone
 
-from .models import Booking, RecurringBooking
+from .models import RecurringBooking
 
 
 def check_booking_overlaps(
     room_id: int,
     start: datetime,
     end: datetime,
-    exclude_booking_id: int | None = None,
+    exclude_event_id: int | None = None,
 ) -> dict:
     """
-    Check if a booking overlaps with existing bookings or recurring bookings.
+    Check if a booking overlaps with existing events or recurring bookings.
 
     Returns:
         {
@@ -24,22 +24,24 @@ def check_booking_overlaps(
             "conflicts": list of conflict descriptions
         }
     """
+    from apps.events.models import Event
+
     conflicts: list[str] = []
 
-    # Check one-time bookings
-    bookings_query = Booking.objects.filter(
+    # Check one-time events with rooms
+    events_query = Event.objects.filter(
         room_id=room_id,
         start_datetime__lt=end,
         end_datetime__gt=start,
     )
-    if exclude_booking_id:
-        bookings_query = bookings_query.exclude(id=exclude_booking_id)
+    if exclude_event_id:
+        events_query = events_query.exclude(id=exclude_event_id)
 
-    for booking in bookings_query:
+    for event in events_query:
         conflicts.append(
-            f"Overlapper med '{booking.title}' "
-            f"({booking.start_datetime.strftime('%d/%m %H:%M')} - "
-            f"{booking.end_datetime.strftime('%H:%M')})"
+            f"Overlapper med '{event.title}' "
+            f"({event.start_datetime.strftime('%d/%m %H:%M')} - "
+            f"{event.end_datetime.strftime('%H:%M')})"
         )
 
     # Check recurring bookings
@@ -109,7 +111,7 @@ def check_multi_room_booking(
     room_ids: list[int],
     start: datetime,
     end: datetime,
-    exclude_booking_id: int | None = None,
+    exclude_event_id: int | None = None,
 ) -> dict:
     """
     Check availability for multiple rooms.
@@ -125,7 +127,7 @@ def check_multi_room_booking(
     conflicts_by_room: dict[int, list[str]] = {}
 
     for room_id in room_ids:
-        result = check_booking_overlaps(room_id, start, end, exclude_booking_id)
+        result = check_booking_overlaps(room_id, start, end, exclude_event_id)
         if result["has_conflict"]:
             conflicts_by_room[room_id] = result["conflicts"]
         else:

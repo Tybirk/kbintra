@@ -40,6 +40,7 @@ import {
   IconEye,
   IconChartBar,
   IconChecks,
+  IconCalendarEvent,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -163,6 +164,13 @@ export default function SubgroupPage() {
             <Text c="dimmed">{subgroup.description}</Text>
           )}
         </div>
+        <Button
+          variant="light"
+          leftSection={<IconCalendarEvent size={16} />}
+          onClick={() => navigate(`/kalender/opret?subgroup=${subgroup.id}`)}
+        >
+          Opret begivenhed
+        </Button>
       </Group>
 
       <Tabs value={activeTab} onChange={setActiveTab} mb="md">

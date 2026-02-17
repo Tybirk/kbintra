@@ -5,9 +5,6 @@
 import { apiClient } from "./client"
 import type {
   Room,
-  Booking,
-  CreateBookingData,
-  UpdateBookingData,
   RecurringBooking,
   CreateRecurringBookingData,
   CalendarBooking,
@@ -40,43 +37,6 @@ export const bookingsApi = {
 
   deleteRoom: async (id: number): Promise<void> => {
     await apiClient.delete(`/bookings/rooms/${id}/`)
-  },
-
-  // Bookings
-  getBookings: async (params?: {
-    room?: number
-    start?: string
-    end?: string
-  }): Promise<Booking[]> => {
-    const response = await apiClient.get("/bookings/", { params })
-    return response.data.results ?? response.data
-  },
-
-  getBooking: async (id: number): Promise<Booking> => {
-    const response = await apiClient.get(`/bookings/${id}/`)
-    return response.data
-  },
-
-  createBooking: async (data: CreateBookingData): Promise<Booking> => {
-    const response = await apiClient.post("/bookings/", data)
-    return response.data
-  },
-
-  updateBooking: async (
-    id: number,
-    data: UpdateBookingData,
-  ): Promise<Booking> => {
-    const response = await apiClient.patch(`/bookings/${id}/`, data)
-    return response.data
-  },
-
-  deleteBooking: async (id: number): Promise<void> => {
-    await apiClient.delete(`/bookings/${id}/`)
-  },
-
-  getMyBookings: async (): Promise<Booking[]> => {
-    const response = await apiClient.get("/bookings/my/")
-    return response.data.results ?? response.data
   },
 
   // Recurring bookings (admin only)

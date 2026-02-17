@@ -44,11 +44,12 @@ import {
 import dayjs from "dayjs"
 
 import { bookingsApi } from "../api/bookings"
+import { eventsApi } from "../api/events"
 import { useAuthStore } from "../store/authStore"
 import type {
   Room,
   CalendarBooking,
-  CreateBookingData,
+  CreateEventData,
   CreateRecurringBookingData,
 } from "../types"
 
@@ -197,7 +198,7 @@ export default function BookingsPage() {
           )
         }
       }
-      return bookingsApi.deleteBooking(parseInt(id))
+      return eventsApi.deleteEvent(parseInt(id))
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bookings"] })
@@ -1294,7 +1295,7 @@ function CreateBookingModal({
   }, [endDate, endTime])
 
   const createMutation = useMutation({
-    mutationFn: (data: CreateBookingData) => bookingsApi.createBooking(data),
+    mutationFn: (data: CreateEventData) => eventsApi.createEvent(data),
     onSuccess: () => {
       notifications.show({
         title: "Booking oprettet",
@@ -1339,6 +1340,7 @@ function CreateBookingModal({
       return
 
     createMutation.mutate({
+      visibility: "private",
       room_ids: selectedRoomIds.map((id) => parseInt(id)),
       title: title.trim(),
       description: description.trim(),
@@ -1527,8 +1529,8 @@ function EditBookingModal({
   }, [endDate, endTime])
 
   const updateMutation = useMutation({
-    mutationFn: (data: CreateBookingData) =>
-      bookingsApi.updateBooking(parseInt(booking.id), data),
+    mutationFn: (data: CreateEventData) =>
+      eventsApi.updateEvent(parseInt(booking.id), data),
     onSuccess: () => {
       notifications.show({
         title: "Booking opdateret",
@@ -1555,7 +1557,6 @@ function EditBookingModal({
     if (!title.trim() || !startDatetime || !endDatetime) return
 
     updateMutation.mutate({
-      room_id: booking.room.id,
       title: title.trim(),
       description: description.trim(),
       start_datetime: startDatetime.toISOString(),

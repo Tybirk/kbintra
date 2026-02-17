@@ -56,7 +56,7 @@ INSTALLED_APPS = [
     "apps.forum",
     "apps.announcements",
     "apps.food",
-    "apps.calendar_app",
+    "apps.events",
     "apps.messaging",
     "apps.notifications",
     "apps.search",
