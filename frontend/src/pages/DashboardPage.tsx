@@ -473,11 +473,14 @@ export default function DashboardPage() {
 
           {eventsLoading ? (
             <Loader size="sm" />
-          ) : upcomingEvents && upcomingEvents.length > 0 ? (
+          ) : upcomingEvents &&
+            upcomingEvents.filter((e) => !e.is_cancelled).length > 0 ? (
             <Stack gap="md">
-              {upcomingEvents.map((event) => (
-                <EventPreview key={event.id} event={event} />
-              ))}
+              {upcomingEvents
+                .filter((e) => !e.is_cancelled)
+                .map((event) => (
+                  <EventPreview key={event.id} event={event} />
+                ))}
             </Stack>
           ) : (
             <Text c="dimmed">Ingen kommende arrangementer.</Text>
@@ -563,9 +566,11 @@ function EventPreview({ event }: EventPreviewProps) {
         {dateLabel}
         {` kl. ${dayjs(event.start_datetime).format("HH:mm")}`}
       </Text>
-      {(event.room || event.location) && (
+      {(event.rooms.length > 0 || event.location) && (
         <Text size="xs" c="dimmed" lineClamp={1}>
-          {[event.room?.name, event.location].filter(Boolean).join(", ")}
+          {[...event.rooms.map((r) => r.name), event.location]
+            .filter(Boolean)
+            .join(", ")}
         </Text>
       )}
       {event.rsvp_enabled && event.rsvp_summary && (

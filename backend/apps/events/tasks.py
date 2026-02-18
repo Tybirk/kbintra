@@ -41,11 +41,12 @@ def send_event_reminders() -> None:
     ]
 
     for reminder_type, start, end in windows:
-        # Only community events that haven't had this reminder sent yet
+        # Only community events that haven't had this reminder sent yet and aren't cancelled
         events = Event.objects.filter(
             start_datetime__gte=start,
             start_datetime__lt=end,
             visibility=Event.Visibility.COMMUNITY,
+            is_cancelled=False,
         ).exclude(
             reminder_logs__reminder_type=reminder_type,
         )

@@ -65,13 +65,15 @@ class EventSerializer(serializers.ModelSerializer):
     """Read serializer for Event model."""
 
     created_by = AuthorSerializer(read_only=True)
-    room = RoomInfoSerializer(read_only=True)
+    rooms = RoomInfoSerializer(many=True, read_only=True)
     subgroup = SubgroupInfoSerializer(read_only=True)
     folder = FolderInfoSerializer(read_only=True)
     is_own = serializers.SerializerMethodField()
     rsvp_summary = serializers.SerializerMethodField()
     my_rsvp = serializers.SerializerMethodField()
     household_rsvps = serializers.SerializerMethodField()
+    thread_id = serializers.IntegerField(read_only=True, allow_null=True)
+    thread_subgroup_slug = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
@@ -83,7 +85,7 @@ class EventSerializer(serializers.ModelSerializer):
             "visibility",
             "start_datetime",
             "end_datetime",
-            "room",
+            "rooms",
             "location",
             "subgroup",
             "folder",
@@ -93,10 +95,28 @@ class EventSerializer(serializers.ModelSerializer):
             "my_rsvp",
             "household_rsvps",
             "is_own",
+            "is_cancelled",
+            "cancellation_message",
+            "thread_id",
+            "thread_subgroup_slug",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_by", "created_at", "updated_at"]
+        read_only_fields = [
+            "id",
+            "created_by",
+            "is_cancelled",
+            "cancellation_message",
+            "thread_id",
+            "thread_subgroup_slug",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_thread_subgroup_slug(self, obj: Event) -> str | None:
+        if obj.thread_id and obj.thread.subgroup_id:
+            return obj.thread.subgroup.slug
+        return None
 
     def get_is_own(self, obj: Event) -> bool:
         request = self.context.get("request")
@@ -146,12 +166,11 @@ class EventSerializer(serializers.ModelSerializer):
 class EventCreateUpdateSerializer(serializers.ModelSerializer):
     """Write serializer for creating/updating events."""
 
-    room_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     room_ids = serializers.ListField(
         child=serializers.IntegerField(),
         write_only=True,
         required=False,
-        help_text="For creating multiple bookings at once (private events only)",
+        default=list,
     )
     subgroup_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
 
@@ -164,7 +183,6 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
             "visibility",
             "start_datetime",
             "end_datetime",
-            "room_id",
             "room_ids",
             "location",
             "subgroup_id",
@@ -210,12 +228,7 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
                 )
 
         # Room overlap validation
-        room_id = data.get("room_id")
         room_ids = data.get("room_ids", [])
-
-        if room_id:
-            room_ids = [room_id]
-
         if room_ids and start and end:
             exclude_id = self.instance.id if self.instance else None
             result = check_multi_room_booking(room_ids, start, end, exclude_id)
@@ -226,13 +239,10 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
                     error_messages.append(f"{room.name}: {'; '.join(conflicts)}")
                 raise serializers.ValidationError({"non_field_errors": error_messages})
 
-        data["_room_ids"] = room_ids
         return data
 
     def create(self, validated_data: dict) -> Event:
-        room_ids = validated_data.pop("_room_ids", [])
-        validated_data.pop("room_id", None)
-        validated_data.pop("room_ids", None)
+        room_ids = validated_data.pop("room_ids", [])
         subgroup_id = validated_data.pop("subgroup_id", None)
 
         user = self.context["request"].user
@@ -252,44 +262,31 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
                         error_messages.append(f"{room.name}: {'; '.join(conflicts)}")
                     raise serializers.ValidationError({"non_field_errors": error_messages})
 
-            # Set subgroup
             if subgroup_id:
                 from apps.forum.models import Subgroup
 
                 validated_data["subgroup"] = Subgroup.objects.get(id=subgroup_id)
 
-            # Set room for first room
-            if room_ids:
-                validated_data["room"] = Room.objects.get(id=room_ids[0])
-
             event = Event.objects.create(**validated_data)
 
-            # Create additional events for multi-room bookings
-            secondary_events = []
-            for room_id in room_ids[1:]:
-                room = Room.objects.get(id=room_id)
-                secondary_event = Event.objects.create(
-                    **{k: v for k, v in validated_data.items() if k not in ("room", "folder")},
-                    room=room,
-                )
-                secondary_events.append(secondary_event)
-            self._secondary_events = secondary_events
+            if room_ids:
+                event.rooms.set(room_ids)
 
         return event
 
     def update(self, instance: Event, validated_data: dict) -> Event:
-        validated_data.pop("_room_ids", None)
-        validated_data.pop("room_id", None)
-        validated_data.pop("room_ids", None)
+        room_ids = validated_data.pop("room_ids", None)  # None = not provided (partial update)
         subgroup_id = validated_data.pop("subgroup_id", None)
 
         start = validated_data.get("start_datetime", instance.start_datetime)
         end = validated_data.get("end_datetime", instance.end_datetime)
 
         with transaction.atomic():
-            # Re-check room overlap if room is set
-            if instance.room_id:
-                result = check_multi_room_booking([instance.room_id], start, end, instance.id)
+            # Re-check room overlap if rooms are being set
+            current_ids = list(instance.rooms.values_list("id", flat=True))
+            ids_to_check = room_ids if room_ids is not None else current_ids
+            if ids_to_check:
+                result = check_multi_room_booking(ids_to_check, start, end, instance.id)
                 if not result["can_book_all"]:
                     error_messages = []
                     for rid, conflicts in result["conflicts_by_room"].items():
@@ -308,6 +305,9 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
             for attr, value in validated_data.items():
                 setattr(instance, attr, value)
             instance.save()
+
+            if room_ids is not None:
+                instance.rooms.set(room_ids)
 
         return instance
 
@@ -340,3 +340,11 @@ class HouseholdMemberSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField()
     current_status = serializers.CharField(allow_null=True)
+
+
+class EventCancelSerializer(serializers.Serializer):
+    """Validates event cancellation payload."""
+
+    cancellation_message = serializers.CharField(
+        max_length=500, required=False, allow_blank=True, default=""
+    )

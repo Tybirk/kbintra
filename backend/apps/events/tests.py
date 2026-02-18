@@ -96,9 +96,9 @@ class TestEventModel:
             created_by=user,
             start_datetime=now + timedelta(days=1),
             end_datetime=now + timedelta(days=1, hours=3),
-            room=room,
             location="1. sal",
         )
+        evt.rooms.add(room)
         assert evt.resolved_location == "Festsalen, 1. sal"
 
 
@@ -171,7 +171,7 @@ class TestEventAPI:
             {
                 "title": "Room Booking",
                 "visibility": "private",
-                "room_id": room.id,
+                "room_ids": [room.id],
                 "start_datetime": (now + timedelta(days=1)).isoformat(),
                 "end_datetime": (now + timedelta(days=1, hours=2)).isoformat(),
             },
@@ -179,7 +179,7 @@ class TestEventAPI:
         )
         assert response.status_code == 201
         evt = Event.objects.get(title="Room Booking")
-        assert evt.room_id == room.id
+        assert evt.rooms.filter(id=room.id).exists()
         assert evt.visibility == "private"
 
     def test_get_event(self, authenticated_client, event):
@@ -217,7 +217,7 @@ class TestEventAPI:
         assert response.status_code == 403
 
     def test_create_multi_room_booking(self, authenticated_client, db):
-        """Creating with room_ids creates one Event per room and returns secondary_event_ids."""
+        """Creating with room_ids books multiple rooms on a single Event."""
         from apps.bookings.models import Room
 
         room1 = Room.objects.create(name="Festsalen")
@@ -235,10 +235,16 @@ class TestEventAPI:
             format="json",
         )
         assert response.status_code == 201
-        assert Event.objects.filter(title="Multi Room").count() == 2
+        # Only one Event created (not one per room)
+        assert Event.objects.filter(title="Multi Room").count() == 1
+        evt = Event.objects.get(title="Multi Room")
+        assert evt.rooms.count() == 2
+        room_ids = set(evt.rooms.values_list("id", flat=True))
+        assert room1.id in room_ids
+        assert room2.id in room_ids
+        # Response includes rooms array
         data = response.json()
-        assert "secondary_event_ids" in data
-        assert len(data["secondary_event_ids"]) == 1
+        assert len(data["rooms"]) == 2
 
     def test_list_mine_filter(self, api_client, db, user, second_user, event):
         """?mine=true returns only the requesting user's events."""
@@ -263,14 +269,14 @@ class TestEventAPI:
 
         room = Room.objects.create(name="Filtreringsrum")
         now = timezone.now()
-        Event.objects.create(
+        e = Event.objects.create(
             title="Room Event",
             created_by=user,
             visibility=Event.Visibility.PRIVATE,
-            room=room,
             start_datetime=now + timedelta(days=1),
             end_datetime=now + timedelta(days=1, hours=1),
         )
+        e.rooms.add(room)
         Event.objects.create(
             title="No Room Event",
             created_by=user,
@@ -326,7 +332,7 @@ class TestEventAPI:
             {
                 "title": "First",
                 "visibility": "private",
-                "room_id": room.id,
+                "room_ids": [room.id],
                 "start_datetime": start.isoformat(),
                 "end_datetime": end.isoformat(),
             },
@@ -338,7 +344,7 @@ class TestEventAPI:
             {
                 "title": "Second",
                 "visibility": "private",
-                "room_id": room.id,
+                "room_ids": [room.id],
                 "start_datetime": start.isoformat(),
                 "end_datetime": end.isoformat(),
             },
@@ -777,6 +783,273 @@ class TestNotifyEventReminderService:
         assert "Om 1 time" in notif.title
 
 
+class TestEventCancellation:
+    """Tests for the event cancellation endpoint."""
+
+    def test_owner_can_cancel_event(self, authenticated_client, event, db, second_user):
+        """Event owner can cancel their event — returns 200 with is_cancelled=True."""
+        from apps.notifications.models import Notification
+
+        response = authenticated_client.post(
+            f"/api/events/{event.id}/cancel/",
+            {"cancellation_message": "Aflyst pga. vejret."},
+            format="json",
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["is_cancelled"] is True
+        assert data["cancellation_message"] == "Aflyst pga. vejret."
+        event.refresh_from_db()
+        assert event.is_cancelled is True
+        # Notification created for second_user (community event)
+        assert Notification.objects.filter(
+            user=second_user, notification_type="event_cancelled"
+        ).exists()
+
+    def test_non_owner_cannot_cancel(self, api_client, second_user, event):
+        """Non-owner gets 403 when attempting cancellation."""
+        api_client.force_authenticate(user=second_user)
+        response = api_client.post(
+            f"/api/events/{event.id}/cancel/",
+            {},
+            format="json",
+        )
+        assert response.status_code == 403
+
+    def test_already_cancelled_returns_400(self, authenticated_client, event):
+        """Cancelling an already-cancelled event returns 400."""
+        event.is_cancelled = True
+        event.save(update_fields=["is_cancelled"])
+        response = authenticated_client.post(
+            f"/api/events/{event.id}/cancel/",
+            {},
+            format="json",
+        )
+        assert response.status_code == 400
+
+    def test_private_event_no_notification(self, api_client, db, user, second_user):
+        """Cancelling a private event does not send notifications."""
+        from apps.notifications.models import Notification
+
+        now = timezone.now()
+        private_event = Event.objects.create(
+            title="Privat Booking",
+            created_by=user,
+            visibility=Event.Visibility.PRIVATE,
+            start_datetime=now + timedelta(days=2),
+            end_datetime=now + timedelta(days=2, hours=1),
+        )
+        api_client.force_authenticate(user=user)
+        response = api_client.post(
+            f"/api/events/{private_event.id}/cancel/",
+            {},
+            format="json",
+        )
+        assert response.status_code == 200
+        assert not Notification.objects.filter(notification_type="event_cancelled").exists()
+
+    def test_cancellation_message_in_notification(self, authenticated_client, event, second_user):
+        """Cancellation message appears in the notification body."""
+        from apps.notifications.models import Notification
+
+        msg = "Ingen lokaler tilgængelige."
+        authenticated_client.post(
+            f"/api/events/{event.id}/cancel/",
+            {"cancellation_message": msg},
+            format="json",
+        )
+        notif = Notification.objects.filter(
+            user=second_user, notification_type="event_cancelled"
+        ).first()
+        assert notif is not None
+        assert notif.message == msg
+
+    def test_cancelled_event_excluded_from_reminders(self, db, user):
+        """Cancelled events are not included in the reminder scan."""
+        from apps.events.models import EventReminderLog
+        from apps.events.tasks import send_event_reminders
+
+        now = timezone.now()
+        cancelled_event = Event.objects.create(
+            title="Cancelled Event",
+            created_by=user,
+            visibility=Event.Visibility.COMMUNITY,
+            start_datetime=now + timedelta(hours=24),
+            end_datetime=now + timedelta(hours=26),
+            is_cancelled=True,
+        )
+        send_event_reminders()
+        assert not EventReminderLog.objects.filter(event=cancelled_event).exists()
+
+
+class TestEventThreadIntegration:
+    """Tests for the automatic forum thread creation on event create/update/delete."""
+
+    def test_community_event_create_via_api_creates_thread(self, authenticated_client, db, user):
+        """Creating a community event via API auto-creates a linked forum thread."""
+        from apps.events.models import Event
+        from apps.forum.models import Thread
+
+        now = timezone.now()
+        response = authenticated_client.post(
+            "/api/events/",
+            {
+                "title": "Sommerfest",
+                "visibility": "community",
+                "start_datetime": (now + timedelta(days=5)).isoformat(),
+                "end_datetime": (now + timedelta(days=5, hours=3)).isoformat(),
+            },
+            format="json",
+        )
+        assert response.status_code == 201
+        event = Event.objects.get(title="Sommerfest")
+        assert event.thread_id is not None
+        thread = Thread.objects.get(id=event.thread_id)
+        assert thread.title == "Sommerfest"
+        assert thread.author == user
+
+    def test_community_event_create_thread_in_correct_subgroup(
+        self, authenticated_client, db, user
+    ):
+        """Community event with subgroup creates thread in that subgroup."""
+        from apps.events.models import Event
+        from apps.forum.models import Subgroup
+
+        subgroup = Subgroup.objects.create(name="Sport", slug="sport")
+        now = timezone.now()
+        response = authenticated_client.post(
+            "/api/events/",
+            {
+                "title": "Volleyball",
+                "visibility": "community",
+                "subgroup_id": subgroup.id,
+                "start_datetime": (now + timedelta(days=3)).isoformat(),
+                "end_datetime": (now + timedelta(days=3, hours=2)).isoformat(),
+            },
+            format="json",
+        )
+        assert response.status_code == 201
+        event = Event.objects.get(title="Volleyball")
+        assert event.thread_id is not None
+        assert event.thread.subgroup_id == subgroup.id
+
+    def test_community_event_without_subgroup_uses_arrangementer(
+        self, authenticated_client, db, user
+    ):
+        """Community event without subgroup creates thread in 'arrangementer' fallback."""
+        from apps.events.models import Event
+        from apps.forum.models import Subgroup
+
+        now = timezone.now()
+        authenticated_client.post(
+            "/api/events/",
+            {
+                "title": "Fællesarrangement",
+                "visibility": "community",
+                "start_datetime": (now + timedelta(days=7)).isoformat(),
+                "end_datetime": (now + timedelta(days=7, hours=2)).isoformat(),
+            },
+            format="json",
+        )
+        event = Event.objects.get(title="Fællesarrangement")
+        assert event.thread_id is not None
+        fallback = Subgroup.objects.get(slug="arrangementer")
+        assert event.thread.subgroup_id == fallback.id
+
+    def test_private_event_no_thread_created(self, authenticated_client, db, user):
+        """Creating a private event does not create a forum thread."""
+        from apps.events.models import Event
+
+        now = timezone.now()
+        authenticated_client.post(
+            "/api/events/",
+            {
+                "title": "Privat Booking",
+                "visibility": "private",
+                "start_datetime": (now + timedelta(days=2)).isoformat(),
+                "end_datetime": (now + timedelta(days=2, hours=1)).isoformat(),
+            },
+            format="json",
+        )
+        event = Event.objects.get(title="Privat Booking")
+        assert event.thread_id is None
+
+    def test_event_title_update_syncs_thread_title(self, authenticated_client, db, user):
+        """Updating event title also updates the linked thread title."""
+        now = timezone.now()
+        create_response = authenticated_client.post(
+            "/api/events/",
+            {
+                "title": "Original Titel",
+                "visibility": "community",
+                "start_datetime": (now + timedelta(days=5)).isoformat(),
+                "end_datetime": (now + timedelta(days=5, hours=2)).isoformat(),
+            },
+            format="json",
+        )
+        assert create_response.status_code == 201
+        event_id = create_response.json()["id"]
+
+        authenticated_client.patch(
+            f"/api/events/{event_id}/",
+            {"title": "Ny Titel"},
+            format="json",
+        )
+
+        from apps.events.models import Event
+
+        event = Event.objects.select_related("thread").get(id=event_id)
+        assert event.title == "Ny Titel"
+        assert event.thread.title == "Ny Titel"
+
+    def test_event_delete_cascades_to_thread(self, authenticated_client, db, user):
+        """Deleting a community event also deletes the linked forum thread."""
+        from apps.forum.models import Thread
+
+        now = timezone.now()
+        create_response = authenticated_client.post(
+            "/api/events/",
+            {
+                "title": "Slet Test",
+                "visibility": "community",
+                "start_datetime": (now + timedelta(days=5)).isoformat(),
+                "end_datetime": (now + timedelta(days=5, hours=2)).isoformat(),
+            },
+            format="json",
+        )
+        assert create_response.status_code == 201
+        event_id = create_response.json()["id"]
+
+        from apps.events.models import Event
+
+        thread_id = Event.objects.get(id=event_id).thread_id
+        assert thread_id is not None
+
+        response = authenticated_client.delete(f"/api/events/{event_id}/")
+        assert response.status_code == 204
+        assert not Thread.objects.filter(id=thread_id).exists()
+
+    def test_thread_id_in_serializer_response(self, authenticated_client, db, user):
+        """EventSerializer includes thread_id and thread_subgroup_slug fields."""
+        now = timezone.now()
+        create_response = authenticated_client.post(
+            "/api/events/",
+            {
+                "title": "Serializer Test",
+                "visibility": "community",
+                "start_datetime": (now + timedelta(days=5)).isoformat(),
+                "end_datetime": (now + timedelta(days=5, hours=2)).isoformat(),
+            },
+            format="json",
+        )
+        assert create_response.status_code == 201
+        data = create_response.json()
+        assert "thread_id" in data
+        assert data["thread_id"] is not None
+        assert "thread_subgroup_slug" in data
+        assert data["thread_subgroup_slug"] == "arrangementer"
+
+
 class TestEventDeletion:
     def test_folder_persists_on_event_delete(self, authenticated_client, db, user):
         """Deleting an event does not cascade to the linked folder."""
@@ -810,10 +1083,10 @@ class TestEventDeletion:
             title="Lokale Booking",
             created_by=user,
             visibility=Event.Visibility.PRIVATE,
-            room=room,
             start_datetime=now + timedelta(days=1),
             end_datetime=now + timedelta(days=1, hours=2),
         )
+        event.rooms.add(room)
         response = authenticated_client.delete(f"/api/events/{event.id}/")
         assert response.status_code == 204
         assert Room.objects.filter(id=room.id).exists()

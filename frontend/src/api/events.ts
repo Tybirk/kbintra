@@ -84,6 +84,17 @@ export const eventsApi = {
   // Download iCal
   getICalUrl: (eventId: number): string => `/api/events/${eventId}/ical/`,
 
+  // Cancel event
+  cancelEvent: async (
+    id: number,
+    cancellationMessage?: string,
+  ): Promise<Event> => {
+    const response = await apiClient.post<Event>(`/events/${id}/cancel/`, {
+      cancellation_message: cancellationMessage ?? "",
+    })
+    return response.data
+  },
+
   // Files
   getFiles: async (eventId: number): Promise<EventFile[]> => {
     const response = await apiClient.get(`/events/${eventId}/files/`)

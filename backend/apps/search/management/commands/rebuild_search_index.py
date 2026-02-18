@@ -157,7 +157,7 @@ class Command(BaseCommand):
             # Events
             from apps.events.models import Event
 
-            events = Event.objects.select_related("room")
+            events = Event.objects.prefetch_related("rooms")
             for event in events:
                 date_str = event.start_datetime.strftime("%d/%m/%Y %H:%M")
                 location = event.resolved_location

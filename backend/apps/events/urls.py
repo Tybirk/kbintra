@@ -6,6 +6,7 @@ from django.urls import path
 
 from .views import (
     EventAttendeesView,
+    EventCancelView,
     EventDetailView,
     EventFilesView,
     EventHouseholdView,
@@ -24,4 +25,5 @@ urlpatterns = [
     path("<int:pk>/household/", EventHouseholdView.as_view(), name="event-household"),
     path("<int:pk>/ical/", EventICalView.as_view(), name="event-ical"),
     path("<int:pk>/files/", EventFilesView.as_view(), name="event-files"),
+    path("<int:pk>/cancel/", EventCancelView.as_view(), name="event-cancel"),
 ]

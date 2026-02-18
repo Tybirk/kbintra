@@ -30,7 +30,7 @@ def check_booking_overlaps(
 
     # Check one-time events with rooms
     events_query = Event.objects.filter(
-        room_id=room_id,
+        rooms=room_id,
         start_datetime__lt=end,
         end_datetime__gt=start,
     )

@@ -32,12 +32,10 @@ class Event(models.Model):
     start_datetime = models.DateTimeField()
     end_datetime = models.DateTimeField()
 
-    # Location — room FK, free text, or both
-    room = models.ForeignKey(
+    # Location — rooms M2M, free text, or both
+    rooms = models.ManyToManyField(
         "bookings.Room",
-        null=True,
         blank=True,
-        on_delete=models.SET_NULL,
         related_name="events",
     )
     location = models.CharField(max_length=255, blank=True)
@@ -57,10 +55,21 @@ class Event(models.Model):
         on_delete=models.SET_NULL,
         related_name="events",
     )
+    thread = models.ForeignKey(
+        "forum.Thread",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="event",
+    )
 
     # RSVP settings
     rsvp_enabled = models.BooleanField(default=False)
     rsvp_deadline = models.DateTimeField(null=True, blank=True)
+
+    # Cancellation
+    is_cancelled = models.BooleanField(default=False)
+    cancellation_message = models.TextField(blank=True, default="")
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
@@ -69,7 +78,6 @@ class Event(models.Model):
     class Meta:
         ordering = ["start_datetime"]
         indexes = [
-            models.Index(fields=["room", "start_datetime", "end_datetime"]),
             models.Index(fields=["visibility", "start_datetime"]),
         ]
 
@@ -78,9 +86,7 @@ class Event(models.Model):
 
     @property
     def resolved_location(self) -> str:
-        parts = []
-        if self.room:
-            parts.append(self.room.name)
+        parts = [r.name for r in self.rooms.all()]
         if self.location:
             parts.append(self.location)
         return ", ".join(parts)

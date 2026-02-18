@@ -45,13 +45,13 @@ class OverlapValidatorTest(TestCase):
         self.start = timezone.now() + datetime.timedelta(days=1)
         self.end = self.start + datetime.timedelta(hours=2)
         self.existing_event = Event.objects.create(
-            room=self.room,
             created_by=self.user,
             title="Existing Booking",
             visibility=Event.Visibility.PRIVATE,
             start_datetime=self.start,
             end_datetime=self.end,
         )
+        self.existing_event.rooms.add(self.room)
 
     def test_no_overlap(self):
         new_start = self.end + datetime.timedelta(hours=1)

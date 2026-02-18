@@ -372,6 +372,29 @@ def notify_event_updated_task(
 
 
 @db_task(retries=1, retry_delay=60)
+def notify_event_cancelled_task(
+    event_id: int,
+    canceller_id: int,
+) -> None:
+    """Send event-cancelled notifications in background."""
+    logger.info(
+        "notify_event_cancelled_task STARTED: event=%d canceller=%d", event_id, canceller_id
+    )
+    from apps.users.models import User
+
+    from .services import notify_event_cancelled
+
+    try:
+        canceller = User.objects.get(id=canceller_id)
+    except User.DoesNotExist:
+        logger.warning("notify_event_cancelled_task: Canceller %d not found", canceller_id)
+        return
+
+    count = notify_event_cancelled(event_id=event_id, canceller=canceller)
+    logger.info("notify_event_cancelled_task COMPLETED: %d notifications created", count)
+
+
+@db_task(retries=1, retry_delay=60)
 def notify_event_reminder_task(
     event_id: int,
     reminder_type: str,

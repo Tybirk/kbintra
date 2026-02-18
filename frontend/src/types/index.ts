@@ -461,7 +461,7 @@ export interface Event {
   visibility: EventVisibility
   start_datetime: string
   end_datetime: string
-  room: RoomInfo | null
+  rooms: RoomInfo[]
   location: string
   subgroup: SubgroupInfo | null
   folder: FolderInfo | null
@@ -471,6 +471,10 @@ export interface Event {
   my_rsvp: string | null
   household_rsvps: EventAttendance[] | null
   is_own: boolean
+  is_cancelled: boolean
+  cancellation_message: string
+  thread_id: number | null
+  thread_subgroup_slug: string | null
   created_at: string
   updated_at: string
 }
@@ -481,7 +485,6 @@ export interface CreateEventData {
   visibility?: EventVisibility
   start_datetime: string
   end_datetime: string
-  room_id?: number | null
   room_ids?: number[]
   location?: string
   subgroup_id?: number | null

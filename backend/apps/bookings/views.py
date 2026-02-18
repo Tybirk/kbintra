@@ -189,44 +189,52 @@ class CalendarBookingsView(APIView):
             )
 
         # Get one-time events with rooms
-        events_query = Event.objects.filter(
-            room__isnull=False,
-            start_datetime__lt=end_date,
-            end_datetime__gt=start_date,
-        ).select_related("room", "created_by")
+        events_query = (
+            Event.objects.filter(
+                rooms__isnull=False,
+                start_datetime__lt=end_date,
+                end_datetime__gt=start_date,
+            )
+            .select_related("created_by")
+            .prefetch_related("rooms")
+            .distinct()
+        )
 
         if room_id:
-            events_query = events_query.filter(room_id=room_id)
+            events_query = events_query.filter(rooms__id=room_id)
 
-        # Convert to list of dicts
+        # Produce one calendar entry per (event, room) pair so each room's
+        # occupancy view shows the booking correctly.
         calendar_items = []
         for event in events_query:
-            calendar_items.append(
-                {
-                    "id": str(event.id),
-                    "room": {
-                        "id": event.room.id,
-                        "name": event.room.name,
-                        "color": event.room.color,
-                    },
-                    "user": {
-                        "id": event.created_by.id,
-                        "first_name": event.created_by.first_name,
-                        "last_name": event.created_by.last_name,
-                        "profile_picture": (
-                            event.created_by.profile_picture.url
-                            if event.created_by.profile_picture
-                            else None
-                        ),
-                    },
-                    "title": event.title,
-                    "description": event.description,
-                    "start_datetime": event.start_datetime.isoformat(),
-                    "end_datetime": event.end_datetime.isoformat(),
-                    "is_recurring": False,
-                    "recurring_booking_id": None,
-                }
-            )
+            user_data = {
+                "id": event.created_by.id,
+                "first_name": event.created_by.first_name,
+                "last_name": event.created_by.last_name,
+                "profile_picture": (
+                    event.created_by.profile_picture.url
+                    if event.created_by.profile_picture
+                    else None
+                ),
+            }
+            for room in event.rooms.all():
+                calendar_items.append(
+                    {
+                        "id": str(event.id),
+                        "room": {
+                            "id": room.id,
+                            "name": room.name,
+                            "color": room.color,
+                        },
+                        "user": user_data,
+                        "title": event.title,
+                        "description": event.description,
+                        "start_datetime": event.start_datetime.isoformat(),
+                        "end_datetime": event.end_datetime.isoformat(),
+                        "is_recurring": False,
+                        "recurring_booking_id": None,
+                    }
+                )
 
         # Get expanded recurring bookings
         room_id_int = int(room_id) if room_id else None

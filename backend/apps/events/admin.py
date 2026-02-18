@@ -14,12 +14,12 @@ class EventAdmin(admin.ModelAdmin):
         "visibility",
         "start_datetime",
         "end_datetime",
-        "room",
         "location",
         "created_by",
         "rsvp_enabled",
+        "is_cancelled",
     ]
-    list_filter = ["visibility", "rsvp_enabled", "room", "start_datetime"]
+    list_filter = ["visibility", "rsvp_enabled", "is_cancelled", "start_datetime"]
     search_fields = ["title", "description", "location"]
     date_hierarchy = "start_datetime"
     ordering = ["start_datetime"]

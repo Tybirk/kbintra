@@ -8,12 +8,7 @@ import {
 import { Box, Group, Text } from "@mantine/core"
 import { IconUpload } from "@tabler/icons-react"
 
-interface FileDropzoneProps {
-  onDrop: (files: File[]) => void
-  children: ReactNode
-}
-
-export default function FileDropzone({ onDrop, children }: FileDropzoneProps) {
+function useDragDrop(onDrop: (files: File[]) => void) {
   const [isDragging, setIsDragging] = useState(false)
   const dragCounter = useRef(0)
 
@@ -21,18 +16,13 @@ export default function FileDropzone({ onDrop, children }: FileDropzoneProps) {
     e.preventDefault()
     e.stopPropagation()
     dragCounter.current++
-    if (e.dataTransfer.types.includes("Files")) {
-      setIsDragging(true)
-    }
+    if (e.dataTransfer.types.includes("Files")) setIsDragging(true)
   }
 
   const handleDragLeave = (e: DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    dragCounter.current--
-    if (dragCounter.current === 0) {
-      setIsDragging(false)
-    }
+    if (--dragCounter.current === 0) setIsDragging(false)
   }
 
   const handleDragOver = (e: DragEvent) => {
@@ -46,10 +36,31 @@ export default function FileDropzone({ onDrop, children }: FileDropzoneProps) {
     dragCounter.current = 0
     setIsDragging(false)
     const files = Array.from(e.dataTransfer.files)
-    if (files.length > 0) {
-      onDrop(files)
-    }
+    if (files.length > 0) onDrop(files)
   }
+
+  return {
+    isDragging,
+    handleDragEnter,
+    handleDragLeave,
+    handleDragOver,
+    handleDrop,
+  }
+}
+
+interface FileDropzoneProps {
+  onDrop: (files: File[]) => void
+  children: ReactNode
+}
+
+export default function FileDropzone({ onDrop, children }: FileDropzoneProps) {
+  const {
+    isDragging,
+    handleDragEnter,
+    handleDragLeave,
+    handleDragOver,
+    handleDrop,
+  } = useDragDrop(onDrop)
 
   return (
     <Box
@@ -95,6 +106,13 @@ interface AttachmentAreaProps {
 export function AttachmentArea({ onAddFiles, children }: AttachmentAreaProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const hasChildren = !!children
+  const {
+    isDragging,
+    handleDragEnter,
+    handleDragLeave,
+    handleDragOver,
+    handleDrop,
+  } = useDragDrop(onAddFiles)
 
   const handleClick = () => fileInputRef.current?.click()
 
@@ -107,13 +125,22 @@ export function AttachmentArea({ onAddFiles, children }: AttachmentAreaProps) {
 
   return (
     <Box
+      pos="relative"
       onClick={handleClick}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
       py="sm"
       px="md"
       style={{
-        border: "1px dashed var(--mantine-color-gray-4)",
+        border: isDragging
+          ? "2px dashed var(--mantine-color-blue-5)"
+          : "1px dashed var(--mantine-color-gray-4)",
         borderRadius: "var(--mantine-radius-sm)",
+        backgroundColor: isDragging ? "rgba(34, 139, 230, 0.06)" : undefined,
         cursor: "pointer",
+        transition: "border-color 0.15s, background-color 0.15s",
       }}
     >
       <input

@@ -317,7 +317,10 @@ function EventCard({ event }: { event: Event }) {
       withBorder
       p="sm"
       radius="md"
-      style={{ opacity: isPast ? 0.6 : 1, cursor: "pointer" }}
+      style={{
+        opacity: event.is_cancelled ? 0.5 : isPast ? 0.6 : 1,
+        cursor: "pointer",
+      }}
       onClick={() => navigate(`/kalender/${event.id}`)}
     >
       <Group gap="sm" wrap="nowrap" style={{ flex: 1 }}>
@@ -326,21 +329,36 @@ function EventCard({ event }: { event: Event }) {
             width: 4,
             alignSelf: "stretch",
             borderRadius: 2,
-            backgroundColor: event.room?.color
-              ? event.room.color
-              : isToday
-                ? "var(--mantine-color-blue-6)"
-                : event.visibility === "private"
-                  ? "var(--mantine-color-gray-4)"
-                  : "var(--mantine-color-blue-4)",
+            backgroundColor: event.is_cancelled
+              ? "var(--mantine-color-red-4)"
+              : event.rooms[0]?.color
+                ? event.rooms[0].color
+                : isToday
+                  ? "var(--mantine-color-blue-6)"
+                  : event.visibility === "private"
+                    ? "var(--mantine-color-gray-4)"
+                    : "var(--mantine-color-blue-4)",
           }}
         />
         <div style={{ flex: 1, minWidth: 0 }}>
           <Group gap="xs" mb={4}>
-            <Text fw={500} truncate>
+            <Text
+              fw={500}
+              truncate
+              style={
+                event.is_cancelled
+                  ? { textDecoration: "line-through" }
+                  : undefined
+              }
+            >
               {event.title}
             </Text>
-            {isToday && (
+            {event.is_cancelled && (
+              <Badge size="xs" color="red">
+                Aflyst
+              </Badge>
+            )}
+            {isToday && !event.is_cancelled && (
               <Badge size="xs" color="blue">
                 I dag
               </Badge>
@@ -350,20 +368,24 @@ function EventCard({ event }: { event: Event }) {
                 Privat
               </Badge>
             )}
-            {event.rsvp_enabled && event.rsvp_summary && (
-              <Badge size="xs" variant="light" color="grape">
-                {event.rsvp_summary.attending} deltager
-              </Badge>
-            )}
+            {event.rsvp_enabled &&
+              event.rsvp_summary &&
+              !event.is_cancelled && (
+                <Badge size="xs" variant="light" color="grape">
+                  {event.rsvp_summary.attending} deltager
+                </Badge>
+              )}
           </Group>
           <Text size="sm" c="dimmed">
             {`${dayjs(event.start_datetime).format("ddd, MMM D")} kl. ${dayjs(event.start_datetime).format("HH:mm")} – ${dayjs(event.end_datetime).format("HH:mm")}`}
           </Text>
-          {(event.room || event.location) && (
+          {(event.rooms.length > 0 || event.location) && (
             <Group gap={4} mt={4}>
               <IconMapPin size={14} color="gray" />
               <Text size="sm" c="dimmed" truncate>
-                {[event.room?.name, event.location].filter(Boolean).join(", ")}
+                {[...event.rooms.map((r) => r.name), event.location]
+                  .filter(Boolean)
+                  .join(", ")}
               </Text>
             </Group>
           )}

@@ -17,6 +17,7 @@ class NotificationType(models.TextChoices):
     POST_REACTION = "post_reaction", "Reaktion på dit opslag"
     EVENT_CREATED = "event_created", "Nyt arrangement"
     EVENT_UPDATED = "event_updated", "Arrangement opdateret"
+    EVENT_CANCELLED = "event_cancelled", "Arrangement aflyst"
     EVENT_REMINDER = "event_reminder", "Begivenhedsreminder"
     FOOD_TICKET = "food_ticket", "Madbillet tilgængelig"
 

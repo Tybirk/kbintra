@@ -74,6 +74,7 @@ def get_user_preference(user: User, notification_type: NotificationType) -> bool
         NotificationType.POST_REACTION: prefs.notify_post_reactions,
         NotificationType.EVENT_CREATED: prefs.notify_events,
         NotificationType.EVENT_UPDATED: prefs.notify_events,
+        NotificationType.EVENT_CANCELLED: prefs.notify_events,
         NotificationType.EVENT_REMINDER: prefs.notify_event_reminders,
         NotificationType.FOOD_TICKET: prefs.notify_food_tickets,
     }
@@ -98,6 +99,7 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
         NotificationType.POST_REACTION: prefs.push_post_reactions,
         NotificationType.EVENT_CREATED: prefs.push_events,
         NotificationType.EVENT_UPDATED: prefs.push_events,
+        NotificationType.EVENT_CANCELLED: prefs.push_events,
         NotificationType.EVENT_REMINDER: prefs.push_event_reminders,
         NotificationType.FOOD_TICKET: prefs.push_food_tickets,
     }
@@ -540,7 +542,7 @@ def notify_event_created(
     """
     from apps.events.models import Event
 
-    event = Event.objects.select_related("room", "subgroup").get(id=event_id)
+    event = Event.objects.prefetch_related("rooms").select_related("subgroup").get(id=event_id)
     location = event.resolved_location
     title_text = f"Nyt arrangement: {event.title}"
     message = location or event.start_datetime.strftime("%d/%m %H:%M")
@@ -586,7 +588,7 @@ def notify_event_updated(
     """
     from apps.events.models import Event, EventAttendance
 
-    event = Event.objects.select_related("room", "subgroup").get(id=event_id)
+    event = Event.objects.prefetch_related("rooms").select_related("subgroup").get(id=event_id)
     location = event.resolved_location
     title_text = f"Arrangement opdateret: {event.title}"
     message = f"Ny tid/sted: {event.start_datetime.strftime('%d/%m %H:%M')}"
@@ -628,6 +630,63 @@ def notify_event_updated(
     return count
 
 
+def notify_event_cancelled(
+    event_id: int,
+    canceller: User,
+) -> int:
+    """Notify users that a community event has been cancelled.
+
+    Uses the same recipient priority chain as notify_event_updated:
+    - RSVP enabled → attending + not_answered users, exclude canceller
+    - Else if subgroup → subgroup subscribers, exclude canceller
+    - Else → all users, exclude canceller
+
+    Returns the count of notifications created.
+    """
+    from apps.events.models import Event, EventAttendance
+
+    event = Event.objects.prefetch_related("rooms").select_related("subgroup").get(id=event_id)
+    title_text = f"Aflyst: {event.title}"
+    message = (
+        event.cancellation_message
+        if event.cancellation_message
+        else "Arrangementet er desværre aflyst."
+    )
+    link = f"/kalender/{event.id}"
+
+    # Determine recipients based on RSVP status or subgroup
+    if event.rsvp_enabled:
+        attendee_user_ids = EventAttendance.objects.filter(
+            event=event,
+            user__isnull=False,
+            status__in=[EventAttendance.Status.ATTENDING, EventAttendance.Status.NOT_ANSWERED],
+        ).values_list("user_id", flat=True)
+        recipients = User.objects.filter(id__in=attendee_user_ids).exclude(id=canceller.id)
+    elif event.subgroup_id:
+        from apps.forum.models import SubgroupSubscription
+
+        subscriber_ids = SubgroupSubscription.objects.filter(
+            subgroup_id=event.subgroup_id,
+        ).values_list("user_id", flat=True)
+        recipients = User.objects.filter(id__in=subscriber_ids).exclude(id=canceller.id)
+    else:
+        recipients = User.objects.exclude(id=canceller.id)
+
+    count = 0
+    for user in recipients:
+        notification = create_notification(
+            user=user,
+            notification_type=NotificationType.EVENT_CANCELLED,
+            title=title_text,
+            message=message,
+            link=link,
+            related_user=canceller,
+        )
+        if notification:
+            count += 1
+    return count
+
+
 def notify_event_reminder(
     event_id: int,
     reminder_type: str,
@@ -647,7 +706,7 @@ def notify_event_reminder(
     """
     from apps.events.models import Event, EventAttendance
 
-    event = Event.objects.select_related("room", "subgroup").get(id=event_id)
+    event = Event.objects.prefetch_related("rooms").select_related("subgroup").get(id=event_id)
     location = event.resolved_location
     start_str = event.start_datetime.strftime("%d/%m kl. %H:%M")
 

@@ -201,7 +201,7 @@ export default function EventFormPage() {
       setEndDate(new Date(existingEvent.end_datetime))
       setEndTime(dayjs(existingEvent.end_datetime).format("HH:mm"))
       const tags: string[] = []
-      if (existingEvent.room) tags.push(existingEvent.room.name)
+      existingEvent.rooms.forEach((r) => tags.push(r.name))
       if (existingEvent.location) tags.push(existingEvent.location)
       setStedTags(tags)
       setSubgroupId(
@@ -496,7 +496,6 @@ export default function EventFormPage() {
               />
               <TimePicker
                 label="Starttid"
-                description="Skriv eller vælg tid"
                 value={startTime}
                 onChange={handleStartTimeChange}
                 error={errors.start_datetime}
@@ -521,7 +520,6 @@ export default function EventFormPage() {
               />
               <TimePicker
                 label="Sluttid"
-                description="Skriv eller vælg tid"
                 value={endTime}
                 onChange={(value) => {
                   clearErrors()
@@ -544,7 +542,7 @@ export default function EventFormPage() {
                 clearErrors()
                 setStedTags(value)
               }}
-              error={errors.room_ids || errors.room_id || errors.location}
+              error={errors.room_ids || errors.location}
               clearable
             />
 

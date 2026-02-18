@@ -5,7 +5,7 @@ Django signals to keep the FTS5 search index in sync with model changes.
 import json
 import logging
 
-from django.db.models.signals import post_delete, post_save
+from django.db.models.signals import m2m_changed, post_delete, post_save
 from django.db.utils import OperationalError
 from django.dispatch import receiver
 
@@ -247,31 +247,48 @@ def deindex_announcement(sender, instance, **kwargs):
 # -- Event signals --
 
 
+def _index_event(instance) -> None:
+    """Index a single event into the FTS table. Extracted so both post_save and
+    m2m_changed can call it without duplicating logic."""
+    date_str = instance.start_datetime.strftime("%d/%m/%Y %H:%M")
+    location = instance.resolved_location
+    subtitle = f"{date_str} – {location}" if location else date_str
+    index_object(
+        obj_type="event",
+        object_id=instance.id,
+        title=instance.title,
+        body=" ".join(
+            filter(
+                None,
+                [
+                    strip_html(instance.description) if instance.description else "",
+                    location,
+                ],
+            )
+        ),
+        url=f"/kalender/{instance.id}",
+        subtitle=subtitle,
+        created_at=_isoformat(instance.created_at),
+    )
+
+
 @receiver(post_save, sender="events.Event")
 def index_event(sender, instance, **kwargs):
     try:
-        date_str = instance.start_datetime.strftime("%d/%m/%Y %H:%M")
-        location = instance.resolved_location
-        subtitle = f"{date_str} – {location}" if location else date_str
-        index_object(
-            obj_type="event",
-            object_id=instance.id,
-            title=instance.title,
-            body=" ".join(
-                filter(
-                    None,
-                    [
-                        strip_html(instance.description) if instance.description else "",
-                        location,
-                    ],
-                )
-            ),
-            url=f"/kalender/{instance.id}",
-            subtitle=subtitle,
-            created_at=_isoformat(instance.created_at),
-        )
+        _index_event(instance)
     except OperationalError:
         logger.exception("Failed to index event %s", instance.id)
+
+
+@receiver(m2m_changed, sender="events.Event_rooms")
+def index_event_on_rooms_change(sender, instance, action, **kwargs):
+    """Re-index the event after rooms are added/removed so room names appear in search."""
+    if action not in ("post_add", "post_remove", "post_clear"):
+        return
+    try:
+        _index_event(instance)
+    except OperationalError:
+        logger.exception("Failed to re-index event %s after rooms change", instance.id)
 
 
 @receiver(post_delete, sender="events.Event")

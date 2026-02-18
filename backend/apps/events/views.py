@@ -17,6 +17,7 @@ from rest_framework.views import APIView
 from .models import Event, EventAttendance
 from .serializers import (
     AttendanceSerializer,
+    EventCancelSerializer,
     EventCreateUpdateSerializer,
     EventSerializer,
     HouseholdMemberSerializer,
@@ -44,7 +45,9 @@ class EventListCreateView(generics.ListCreateAPIView):
         return EventSerializer
 
     def get_queryset(self) -> QuerySet[Event]:
-        queryset = Event.objects.select_related("created_by", "room", "subgroup", "folder")
+        queryset = Event.objects.select_related(
+            "created_by", "subgroup", "folder", "thread", "thread__subgroup"
+        ).prefetch_related("rooms")
 
         # Filter by date range
         start = self.request.query_params.get("start")
@@ -72,7 +75,7 @@ class EventListCreateView(generics.ListCreateAPIView):
         # Filter by room
         room_id = self.request.query_params.get("room")
         if room_id:
-            queryset = queryset.filter(room_id=room_id)
+            queryset = queryset.filter(rooms__id=room_id).distinct()
 
         # Filter by subgroup
         subgroup_id = self.request.query_params.get("subgroup")
@@ -91,17 +94,25 @@ class EventListCreateView(generics.ListCreateAPIView):
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         headers = self.get_success_headers(serializer.data)
-        data = dict(serializer.data)
-        secondary_events = getattr(serializer, "_secondary_events", [])
-        if secondary_events:
-            data["secondary_event_ids"] = [e.id for e in secondary_events]
-        return Response(data, status=status.HTTP_201_CREATED, headers=headers)
+        event = (
+            Event.objects.select_related("created_by", "subgroup", "folder")
+            .prefetch_related("rooms")
+            .get(id=serializer.instance.id)
+        )
+        read_data = EventSerializer(event, context={"request": request}).data
+        return Response(read_data, status=status.HTTP_201_CREATED, headers=headers)
 
     def perform_create(self, serializer: EventCreateUpdateSerializer) -> None:
         event = serializer.save()
-        # Enqueue notification task if community event
+        # Create discussion thread and enqueue notification task for community events
         if event.visibility == Event.Visibility.COMMUNITY:
+            from apps.events.services import create_event_thread
             from apps.notifications.tasks import notify_event_created_task
+
+            thread = create_event_thread(event)
+            if thread:
+                event.thread = thread
+                event.save(update_fields=["thread"])
 
             notify_event_created_task(event.id, event.created_by_id)
 
@@ -110,7 +121,9 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
     """Retrieve, update, or delete an event."""
 
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
-    queryset = Event.objects.select_related("created_by", "room", "subgroup", "folder")
+    queryset = Event.objects.select_related(
+        "created_by", "subgroup", "folder", "thread", "thread__subgroup"
+    ).prefetch_related("rooms")
 
     def get_serializer_class(self) -> type:
         if self.request.method in ["PUT", "PATCH"]:
@@ -118,16 +131,25 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
         return EventSerializer
 
     def perform_update(self, serializer: EventCreateUpdateSerializer) -> None:
-        # Use serializer.instance (already fetched by DRF's update()) to avoid a second DB query
+        # Capture pre-update state before serializer.save() modifies the instance
+        old_title = serializer.instance.title
         old_start = serializer.instance.start_datetime
         old_location = serializer.instance.location
-        old_room_id = serializer.instance.room_id
+        old_room_ids = set(serializer.instance.rooms.values_list("id", flat=True))
 
         event = serializer.save()
 
+        # Sync thread title if title changed
+        if event.thread_id and event.title != old_title:
+            event.thread.title = event.title
+            event.thread.save(update_fields=["title"])
+
         # Notify if time/location changed
         time_changed = event.start_datetime != old_start
-        location_changed = event.location != old_location or event.room_id != old_room_id
+        location_changed = (
+            event.location != old_location
+            or set(event.rooms.values_list("id", flat=True)) != old_room_ids
+        )
         if (time_changed or location_changed) and event.visibility == Event.Visibility.COMMUNITY:
             try:
                 from apps.notifications.tasks import notify_event_updated_task
@@ -135,6 +157,11 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
                 notify_event_updated_task(event.id, self.request.user.id)
             except ImportError:
                 pass
+
+    def perform_destroy(self, instance: Event) -> None:
+        if instance.thread_id:
+            instance.thread.delete()
+        instance.delete()
 
 
 class UpcomingEventsView(generics.ListAPIView):
@@ -145,10 +172,14 @@ class UpcomingEventsView(generics.ListAPIView):
 
     def get_queryset(self) -> QuerySet[Event]:
         now = timezone.now()
-        return Event.objects.filter(
-            start_datetime__gte=now,
-            visibility=Event.Visibility.COMMUNITY,
-        ).select_related("created_by", "room", "subgroup", "folder")[:5]
+        return (
+            Event.objects.filter(
+                start_datetime__gte=now,
+                visibility=Event.Visibility.COMMUNITY,
+            )
+            .select_related("created_by", "subgroup", "folder", "thread", "thread__subgroup")
+            .prefetch_related("rooms")[:5]
+        )
 
 
 class EventRsvpView(APIView):
@@ -327,7 +358,7 @@ class EventICalView(APIView):
 
     def get(self, request: Request, pk: int) -> HttpResponse:
         try:
-            event = Event.objects.select_related("room").get(pk=pk)
+            event = Event.objects.prefetch_related("rooms").get(pk=pk)
         except Event.DoesNotExist:
             return Response({"error": "Begivenhed ikke fundet."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -375,6 +406,49 @@ class EventICalView(APIView):
         safe_filename = slugify(event.title) or f"event-{event.id}"
         response["Content-Disposition"] = f'attachment; filename="{safe_filename}.ics"'
         return response
+
+
+class EventCancelView(APIView):
+    """Soft-cancel a community event. POST /api/events/<pk>/cancel/"""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request, pk: int) -> Response:
+        from django.shortcuts import get_object_or_404
+
+        event = get_object_or_404(
+            Event.objects.select_related("created_by", "subgroup", "folder").prefetch_related(
+                "rooms"
+            ),
+            pk=pk,
+        )
+
+        if event.created_by != request.user:
+            return Response(
+                {"error": "Kun arrangørens kan aflyse dette arrangement."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if event.is_cancelled:
+            return Response(
+                {"error": "Arrangementet er allerede aflyst."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = EventCancelSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        event.is_cancelled = True
+        event.cancellation_message = serializer.validated_data["cancellation_message"]
+        event.save(update_fields=["is_cancelled", "cancellation_message", "updated_at"])
+
+        if event.visibility == Event.Visibility.COMMUNITY:
+            from apps.notifications.tasks import notify_event_cancelled_task
+
+            notify_event_cancelled_task(event.id, request.user.id)
+
+        return Response(EventSerializer(event, context={"request": request}).data)
 
 
 class EventFilesView(APIView):

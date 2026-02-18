@@ -1417,7 +1417,6 @@ function CreateBookingModal({
             />
             <TimePicker
               label="Starttid"
-              description="Skriv eller vælg tid"
               value={startTime}
               onChange={(value) => setStartTime(value)}
               withDropdown
@@ -1437,7 +1436,7 @@ function CreateBookingModal({
             />
             <TimePicker
               label="Sluttid"
-              description="Skriv eller vælg tid"
+              description=" tid"
               value={endTime}
               onChange={(value) => setEndTime(value)}
               withDropdown
@@ -1606,7 +1605,6 @@ function EditBookingModal({
             />
             <TimePicker
               label="Starttid"
-              description="Skriv eller vælg tid"
               value={startTime}
               onChange={(value) => setStartTime(value)}
               withDropdown
@@ -1625,7 +1623,6 @@ function EditBookingModal({
             />
             <TimePicker
               label="Sluttid"
-              description="Skriv eller vælg tid"
               value={endTime}
               onChange={(value) => setEndTime(value)}
               withDropdown
@@ -2242,7 +2239,6 @@ function CreateRecurringBookingModal({
           <Group grow>
             <TimePicker
               label="Start"
-              description="Skriv eller vælg tid"
               value={startTime}
               onChange={(value) => setStartTime(value)}
               withDropdown
@@ -2251,7 +2247,6 @@ function CreateRecurringBookingModal({
             />
             <TimePicker
               label="Slut"
-              description="Skriv eller vælg tid"
               value={endTime}
               onChange={(value) => setEndTime(value)}
               withDropdown

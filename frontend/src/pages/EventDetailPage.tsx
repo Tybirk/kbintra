@@ -19,6 +19,9 @@ import {
   Divider,
   Tooltip,
   TypographyStylesProvider,
+  Textarea,
+  Alert,
+  Anchor,
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -32,15 +35,23 @@ import {
   IconUsers,
   IconDownload,
   IconFolder,
+  IconBan,
+  IconAlertCircle,
+  IconExternalLink,
+  IconMessage,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 
 import { eventsApi } from "../api/events"
+import { forumApi } from "../api/forum"
+import RichTextEditor from "../components/RichTextEditor"
+import Reactions from "../components/Reactions"
 import type {
   Event,
   EventAttendance,
   EventFile,
   HouseholdMember,
+  Post,
   RsvpItem,
 } from "../types"
 
@@ -68,9 +79,16 @@ export default function EventDetailPage() {
   ] = useDisclosure(false)
 
   const [
+    cancelModalOpened,
+    { open: openCancelModal, close: closeCancelModal },
+  ] = useDisclosure(false)
+
+  const [
     attendeesModalOpened,
     { open: openAttendeesModal, close: closeAttendeesModal },
   ] = useDisclosure(false)
+
+  const [cancelMessage, setCancelMessage] = useState("")
 
   const deleteMutation = useMutation({
     mutationFn: () => eventsApi.deleteEvent(eventId),
@@ -88,6 +106,29 @@ export default function EventDetailPage() {
       notifications.show({
         title: "Fejl",
         message: "Kunne ikke slette begivenhed. Prøv igen.",
+        color: "red",
+      })
+    },
+  })
+
+  const cancelMutation = useMutation({
+    mutationFn: () => eventsApi.cancelEvent(eventId, cancelMessage),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["event", eventId] })
+      queryClient.invalidateQueries({ queryKey: ["events"] })
+      queryClient.invalidateQueries({ queryKey: ["calendar"] })
+      closeCancelModal()
+      notifications.show({
+        title: "Arrangement aflyst",
+        message:
+          "Arrangementet er blevet aflyst og berørte brugere er notificeret.",
+        color: "orange",
+      })
+    },
+    onError: () => {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke aflyse arrangementet. Prøv igen.",
         color: "red",
       })
     },
@@ -147,7 +188,12 @@ export default function EventDetailPage() {
           <div style={{ flex: 1, minWidth: 0 }}>
             <Group gap="xs" mb="xs">
               <Title order={2}>{event.title}</Title>
-              {event.rsvp_enabled && (
+              {event.is_cancelled && (
+                <Badge variant="filled" color="red" size="lg">
+                  AFLYST
+                </Badge>
+              )}
+              {event.rsvp_enabled && !event.is_cancelled && (
                 <Badge variant="light" color="grape">
                   RSVP
                 </Badge>
@@ -157,12 +203,22 @@ export default function EventDetailPage() {
                   Privat
                 </Badge>
               )}
-              {isPast && (
+              {isPast && !event.is_cancelled && (
                 <Badge variant="light" color="gray">
                   Afsluttet
                 </Badge>
               )}
             </Group>
+            {event.is_cancelled && event.cancellation_message && (
+              <Alert
+                icon={<IconAlertCircle size={16} />}
+                color="red"
+                variant="light"
+                mt="xs"
+              >
+                {event.cancellation_message}
+              </Alert>
+            )}
           </div>
 
           {event.is_own && (
@@ -179,6 +235,15 @@ export default function EventDetailPage() {
                 >
                   Rediger
                 </Menu.Item>
+                {!event.is_cancelled && (
+                  <Menu.Item
+                    color="orange"
+                    leftSection={<IconBan size={14} />}
+                    onClick={openCancelModal}
+                  >
+                    Aflys
+                  </Menu.Item>
+                )}
                 <Menu.Item
                   color="red"
                   leftSection={<IconTrash size={14} />}
@@ -200,11 +265,13 @@ export default function EventDetailPage() {
             </Text>
           </Group>
 
-          {(event.room || event.location) && (
+          {(event.rooms.length > 0 || event.location) && (
             <Group gap="xs">
               <IconMapPin size={16} color="gray" />
               <Text size="sm">
-                {[event.room?.name, event.location].filter(Boolean).join(", ")}
+                {[...event.rooms.map((r) => r.name), event.location]
+                  .filter(Boolean)
+                  .join(", ")}
               </Text>
             </Group>
           )}
@@ -305,7 +372,24 @@ export default function EventDetailPage() {
       </Paper>
 
       {/* RSVP Section — auto-save on click */}
-      {event.rsvp_enabled && <RsvpSection event={event} />}
+      {event.rsvp_enabled && !event.is_cancelled && (
+        <RsvpSection event={event} />
+      )}
+      {event.rsvp_enabled && event.is_cancelled && (
+        <Paper withBorder p="lg" radius="md" mb="md">
+          <Text c="dimmed">
+            Arrangementet er aflyst — tilmelding er ikke mulig.
+          </Text>
+        </Paper>
+      )}
+
+      {/* Discussion thread */}
+      {event.thread_id && (
+        <DiscussionSection
+          threadId={event.thread_id}
+          subgroupSlug={event.thread_subgroup_slug}
+        />
+      )}
 
       {/* Attendees modal */}
       <AttendeesModal
@@ -315,6 +399,40 @@ export default function EventDetailPage() {
         notAttending={notAttendingList}
         notAnswered={notAnsweredList}
       />
+
+      {/* Cancel confirmation modal */}
+      <Modal
+        opened={cancelModalOpened}
+        onClose={closeCancelModal}
+        title="Aflys arrangement"
+        centered
+      >
+        <Text mb="sm">
+          Alle berørte brugere vil modtage en notifikation om aflysningen.
+        </Text>
+        <Textarea
+          label="Begrundelse (valgfri)"
+          placeholder="Fortæl hvorfor arrangementet er aflyst..."
+          value={cancelMessage}
+          onChange={(e) => setCancelMessage(e.currentTarget.value)}
+          mb="lg"
+          maxLength={500}
+          autosize
+          minRows={2}
+        />
+        <Group justify="flex-end">
+          <Button variant="light" onClick={closeCancelModal}>
+            Annuller
+          </Button>
+          <Button
+            color="red"
+            onClick={() => cancelMutation.mutate()}
+            loading={cancelMutation.isPending}
+          >
+            Bekræft aflysning
+          </Button>
+        </Group>
+      </Modal>
 
       {/* Delete confirmation modal */}
       <Modal
@@ -621,5 +739,241 @@ function HouseholdRsvpForm({
         )
       })}
     </Stack>
+  )
+}
+
+interface DiscussionSectionProps {
+  threadId: number
+  subgroupSlug: string | null
+}
+
+interface UpdatePostMutationProps {
+  postId: number
+  content: string
+}
+
+function DiscussionSection({ threadId, subgroupSlug }: DiscussionSectionProps) {
+  const queryClient = useQueryClient()
+  const [content, setContent] = useState("")
+  const [editingPostId, setEditingPostId] = useState<number | null>(null)
+  const [editContent, setEditContent] = useState("")
+
+  const { data: thread, isLoading } = useQuery({
+    queryKey: ["thread", threadId],
+    queryFn: () => forumApi.getThread(threadId),
+  })
+
+  const createPostMutation = useMutation({
+    mutationFn: () => forumApi.createPost(threadId, { content }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
+      setContent("")
+    },
+    onError: () => {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke sende indlæg. Prøv igen.",
+        color: "red",
+      })
+    },
+  })
+
+  const updatePostMutation = useMutation({
+    mutationFn: ({ postId, content }: UpdatePostMutationProps) =>
+      forumApi.updatePost(postId, { content: content }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
+      setEditingPostId(null)
+      setEditContent("")
+    },
+    onError: () => {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke opdatere indlæg. Prøv igen.",
+        color: "red",
+      })
+    },
+  })
+
+  const deletePostMutation = useMutation({
+    mutationFn: (postId: number) => forumApi.deletePost(postId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
+    },
+    onError: () => {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke slette indlæg. Prøv igen.",
+        color: "red",
+      })
+    },
+  })
+
+  const handleSubmit = () => {
+    const stripped = content.replace(/<[^>]+>/g, "").trim()
+    if (!stripped) return
+    createPostMutation.mutate()
+  }
+
+  const handleStartEdit = (post: Post) => {
+    setEditingPostId(post.id)
+    setEditContent(post.content)
+  }
+
+  const handleCancelEdit = () => {
+    setEditingPostId(null)
+    setEditContent("")
+  }
+
+  const handleSaveEdit = (postId: number) => {
+    updatePostMutation.mutate({ postId, content: editContent })
+  }
+
+  return (
+    <Paper withBorder p="lg" radius="md" mb="md">
+      <Divider
+        label={
+          <Group gap="xs">
+            <IconMessage size={14} />
+            <Text size="sm" fw={500}>
+              Diskussion
+            </Text>
+          </Group>
+        }
+        labelPosition="left"
+        mb="md"
+      />
+
+      <Group justify="space-between" mb="md">
+        <Text size="sm" c="dimmed">
+          {thread ? `${thread.posts.length} indlæg` : ""}
+        </Text>
+        {subgroupSlug && (
+          <Anchor
+            href={`/forum/${subgroupSlug}/${threadId}`}
+            target="_blank"
+            size="sm"
+          >
+            <Group gap={4}>
+              Se i forum
+              <IconExternalLink size={12} />
+            </Group>
+          </Anchor>
+        )}
+      </Group>
+
+      {isLoading ? (
+        <Center h={80}>
+          <Loader size="sm" />
+        </Center>
+      ) : (
+        <Stack gap="md">
+          {thread?.posts.map((post) => (
+            <Paper key={post.id} withBorder p="md" radius="sm">
+              <Group justify="space-between" mb="xs" wrap="nowrap">
+                <Group gap="xs">
+                  <Avatar
+                    src={post.author.profile_picture}
+                    size="sm"
+                    radius="xl"
+                  >
+                    {post.author.first_name?.[0]}
+                  </Avatar>
+                  <div>
+                    <Text size="sm" fw={500}>
+                      {post.author.first_name} {post.author.last_name}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      {dayjs(post.created_at).format("D. MMM YYYY HH:mm")}
+                    </Text>
+                  </div>
+                </Group>
+                {post.is_own && editingPostId !== post.id && (
+                  <Menu shadow="md" width={160}>
+                    <Menu.Target>
+                      <ActionIcon variant="subtle" size="sm">
+                        <IconDotsVertical size={14} />
+                      </ActionIcon>
+                    </Menu.Target>
+                    <Menu.Dropdown>
+                      <Menu.Item
+                        leftSection={<IconEdit size={13} />}
+                        onClick={() => handleStartEdit(post)}
+                      >
+                        Rediger
+                      </Menu.Item>
+                      <Menu.Item
+                        color="red"
+                        leftSection={<IconTrash size={13} />}
+                        onClick={() => deletePostMutation.mutate(post.id)}
+                        disabled={deletePostMutation.isPending}
+                      >
+                        Slet
+                      </Menu.Item>
+                    </Menu.Dropdown>
+                  </Menu>
+                )}
+              </Group>
+
+              {editingPostId === post.id ? (
+                <Stack gap="xs">
+                  <RichTextEditor
+                    content={editContent}
+                    onChange={setEditContent}
+                    minHeight={100}
+                  />
+                  <Group gap="xs" justify="flex-end">
+                    <Button
+                      variant="light"
+                      size="xs"
+                      onClick={handleCancelEdit}
+                    >
+                      Annuller
+                    </Button>
+                    <Button
+                      size="xs"
+                      onClick={() => handleSaveEdit(post.id)}
+                      loading={updatePostMutation.isPending}
+                    >
+                      Gem
+                    </Button>
+                  </Group>
+                </Stack>
+              ) : (
+                <>
+                  <TypographyStylesProvider>
+                    <div dangerouslySetInnerHTML={{ __html: post.content }} />
+                  </TypographyStylesProvider>
+                  <Reactions
+                    postId={post.id}
+                    threadId={threadId}
+                    reactions={post.reactions}
+                  />
+                </>
+              )}
+            </Paper>
+          ))}
+
+          {/* Reply form */}
+          <Paper withBorder p="md" radius="sm">
+            <RichTextEditor
+              content={content}
+              onChange={setContent}
+              placeholder="Skriv et svar..."
+              minHeight={100}
+            />
+            <Group justify="flex-end" mt="xs">
+              <Button
+                size="sm"
+                onClick={handleSubmit}
+                loading={createPostMutation.isPending}
+              >
+                Send
+              </Button>
+            </Group>
+          </Paper>
+        </Stack>
+      )}
+    </Paper>
   )
 }
