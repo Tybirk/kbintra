@@ -2,7 +2,7 @@
 Views for Events app — CRUD, RSVP, attendees, iCal.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from django.db.models import QuerySet
@@ -86,16 +86,24 @@ class EventListCreateView(generics.ListCreateAPIView):
 
         return queryset
 
+    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        data = dict(serializer.data)
+        secondary_events = getattr(serializer, "_secondary_events", [])
+        if secondary_events:
+            data["secondary_event_ids"] = [e.id for e in secondary_events]
+        return Response(data, status=status.HTTP_201_CREATED, headers=headers)
+
     def perform_create(self, serializer: EventCreateUpdateSerializer) -> None:
         event = serializer.save()
         # Enqueue notification task if community event
         if event.visibility == Event.Visibility.COMMUNITY:
-            try:
-                from apps.notifications.tasks import notify_event_created_task
+            from apps.notifications.tasks import notify_event_created_task
 
-                notify_event_created_task(event.id, event.created_by_id)
-            except ImportError:
-                pass
+            notify_event_created_task(event.id, event.created_by_id)
 
 
 class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -110,10 +118,10 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
         return EventSerializer
 
     def perform_update(self, serializer: EventCreateUpdateSerializer) -> None:
-        old_event = self.get_object()
-        old_start = old_event.start_datetime
-        old_location = old_event.location
-        old_room_id = old_event.room_id
+        # Use serializer.instance (already fetched by DRF's update()) to avoid a second DB query
+        old_start = serializer.instance.start_datetime
+        old_location = serializer.instance.location
+        old_room_id = serializer.instance.room_id
 
         event = serializer.save()
 
@@ -324,17 +332,25 @@ class EventICalView(APIView):
             return Response({"error": "Begivenhed ikke fundet."}, status=status.HTTP_404_NOT_FOUND)
 
         # Build iCal manually (no icalendar dependency needed for simple events)
-        location = event.resolved_location
-        uid = f"event-{event.id}@kbintra"
-        dtstart = event.start_datetime.strftime("%Y%m%dT%H%M%SZ")
-        dtend = event.end_datetime.strftime("%Y%m%dT%H%M%SZ")
-        dtstamp = timezone.now().strftime("%Y%m%dT%H%M%SZ")
-        summary = event.title.replace(",", "\\,").replace(";", "\\;")
 
-        # Strip HTML from description for plain text
         from django.utils.html import strip_tags
 
-        description = strip_tags(event.description).replace(",", "\\,").replace(";", "\\;")
+        location = event.resolved_location
+        uid = f"event-{event.id}@kbintra"
+        # Always output UTC timestamps (Z suffix requires UTC per RFC 5545)
+        dtstart = event.start_datetime.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
+        dtend = event.end_datetime.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
+        dtstamp = timezone.now().astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
+        summary = event.title.replace(",", "\\,").replace(";", "\\;")
+
+        # Strip HTML and escape special chars (RFC 5545: commas, semicolons, newlines)
+        description = (
+            strip_tags(event.description)
+            .replace(",", "\\,")
+            .replace(";", "\\;")
+            .replace("\n", "\\n")
+            .replace("\r", "")
+        )
 
         ical = (
             "BEGIN:VCALENDAR\r\n"
@@ -354,7 +370,10 @@ class EventICalView(APIView):
         ical += "END:VEVENT\r\nEND:VCALENDAR\r\n"
 
         response = HttpResponse(ical, content_type="text/calendar; charset=utf-8")
-        response["Content-Disposition"] = f'attachment; filename="{event.title}.ics"'
+        from django.utils.text import slugify
+
+        safe_filename = slugify(event.title) or f"event-{event.id}"
+        response["Content-Disposition"] = f'attachment; filename="{safe_filename}.ics"'
         return response
 
 

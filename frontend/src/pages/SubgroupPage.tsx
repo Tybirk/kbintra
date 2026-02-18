@@ -113,8 +113,9 @@ export default function SubgroupPage() {
       eventsApi.getEvents({
         subgroup: subgroup!.id,
         start: dayjs().toISOString(),
+        end: dayjs().add(30, "day").toISOString(),
       }),
-    enabled: !!subgroup?.is_committee,
+    enabled: !!subgroup,
   })
 
   const markReadMutation = useMutation({

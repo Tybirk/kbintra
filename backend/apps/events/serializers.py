@@ -188,13 +188,18 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
                 {"end_datetime": "Sluttidspunkt skal være efter starttidspunkt."}
             )
 
-        # Prevent creating events in the past (allow edits)
-        if not self.instance and start and start < timezone.now():
+        visibility = data.get("visibility", getattr(self.instance, "visibility", "community"))
+
+        # Prevent creating private bookings in the past (allow edits; community events may be any time)
+        if (
+            not self.instance
+            and visibility == Event.Visibility.PRIVATE
+            and start
+            and start < timezone.now()
+        ):
             raise serializers.ValidationError(
                 {"start_datetime": "Starttidspunkt kan ikke være i fortiden."}
             )
-
-        visibility = data.get("visibility", getattr(self.instance, "visibility", "community"))
 
         # Private booking validations
         if visibility == Event.Visibility.PRIVATE and start and end:
@@ -260,16 +265,15 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
             event = Event.objects.create(**validated_data)
 
             # Create additional events for multi-room bookings
+            secondary_events = []
             for room_id in room_ids[1:]:
                 room = Room.objects.get(id=room_id)
-                Event.objects.create(
-                    **{
-                        k: v
-                        for k, v in validated_data.items()
-                        if k not in ("room", "subgroup", "folder")
-                    },
+                secondary_event = Event.objects.create(
+                    **{k: v for k, v in validated_data.items() if k not in ("room", "folder")},
                     room=room,
                 )
+                secondary_events.append(secondary_event)
+            self._secondary_events = secondary_events
 
         return event
 

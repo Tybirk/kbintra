@@ -27,7 +27,7 @@ import { forumApi } from "../api/forum"
 import RichTextEditor from "../components/RichTextEditor"
 import { AttachmentArea } from "../components/FileDropzone"
 import { AttachmentBadge } from "../components/AttachmentBadge"
-import type { CreateEventData, EventVisibility } from "../types"
+import type { CreateEventData, EventFile, EventVisibility } from "../types"
 
 type FormErrors = Partial<Record<string, string>>
 
@@ -158,6 +158,13 @@ export default function EventFormPage() {
   const { data: existingEvent, isLoading: eventLoading } = useQuery({
     queryKey: ["event", eventId],
     queryFn: () => eventsApi.getEvent(eventId),
+    enabled: isEditMode,
+  })
+
+  // Fetch existing files in edit mode
+  const { data: existingFiles } = useQuery({
+    queryKey: ["event-files", eventId],
+    queryFn: () => eventsApi.getFiles(eventId),
     enabled: isEditMode,
   })
 
@@ -447,6 +454,21 @@ export default function EventFormPage() {
               <Text size="sm" fw={500} mb={4}>
                 Dokumenter
               </Text>
+              {isEditMode && existingFiles && existingFiles.length > 0 && (
+                <Stack gap="xs" mb="xs">
+                  {existingFiles.map((file: EventFile) => (
+                    <Text
+                      key={file.id}
+                      size="sm"
+                      c="blue"
+                      style={{ cursor: "pointer" }}
+                      onClick={() => window.open(file.file_url, "_blank")}
+                    >
+                      {file.name}
+                    </Text>
+                  ))}
+                </Stack>
+              )}
               <AttachmentArea onAddFiles={handleAddFiles}>
                 {attachments.length > 0 && (
                   <Group gap="xs" wrap="wrap">
@@ -564,9 +586,15 @@ export default function EventFormPage() {
                 label="Svarfrist"
                 placeholder="Vælg svarfrist (valgfrit)"
                 value={rsvpDeadline}
-                onChange={(value) =>
-                  setRsvpDeadline(value ? new Date(value) : null)
-                }
+                onChange={(value) => {
+                  if (value) {
+                    // Default deadline to end of selected day (23:59:59)
+                    const eod = dayjs(value).endOf("day").toDate()
+                    setRsvpDeadline(eod)
+                  } else {
+                    setRsvpDeadline(null)
+                  }
+                }}
                 clearable
               />
             )}

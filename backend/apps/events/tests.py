@@ -216,6 +216,103 @@ class TestEventAPI:
         response = api_client.delete(f"/api/events/{event.id}/")
         assert response.status_code == 403
 
+    def test_create_multi_room_booking(self, authenticated_client, db):
+        """Creating with room_ids creates one Event per room and returns secondary_event_ids."""
+        from apps.bookings.models import Room
+
+        room1 = Room.objects.create(name="Festsalen")
+        room2 = Room.objects.create(name="Klublokalet")
+        now = timezone.now()
+        response = authenticated_client.post(
+            "/api/events/",
+            {
+                "title": "Multi Room",
+                "visibility": "private",
+                "room_ids": [room1.id, room2.id],
+                "start_datetime": (now + timedelta(days=1)).isoformat(),
+                "end_datetime": (now + timedelta(days=1, hours=2)).isoformat(),
+            },
+            format="json",
+        )
+        assert response.status_code == 201
+        assert Event.objects.filter(title="Multi Room").count() == 2
+        data = response.json()
+        assert "secondary_event_ids" in data
+        assert len(data["secondary_event_ids"]) == 1
+
+    def test_list_mine_filter(self, api_client, db, user, second_user, event):
+        """?mine=true returns only the requesting user's events."""
+        now = timezone.now()
+        Event.objects.create(
+            title="Other User Event",
+            created_by=second_user,
+            visibility=Event.Visibility.COMMUNITY,
+            start_datetime=now + timedelta(days=2),
+            end_datetime=now + timedelta(days=2, hours=1),
+        )
+        api_client.force_authenticate(user=user)
+        response = api_client.get("/api/events/?mine=true")
+        assert response.status_code == 200
+        data = response.json()
+        results = data if isinstance(data, list) else data.get("results", data)
+        assert all(e["created_by"]["id"] == user.id for e in results)
+
+    def test_list_room_filter(self, authenticated_client, db, user):
+        """?room=<id> returns only events for that room."""
+        from apps.bookings.models import Room
+
+        room = Room.objects.create(name="Filtreringsrum")
+        now = timezone.now()
+        Event.objects.create(
+            title="Room Event",
+            created_by=user,
+            visibility=Event.Visibility.PRIVATE,
+            room=room,
+            start_datetime=now + timedelta(days=1),
+            end_datetime=now + timedelta(days=1, hours=1),
+        )
+        Event.objects.create(
+            title="No Room Event",
+            created_by=user,
+            visibility=Event.Visibility.COMMUNITY,
+            start_datetime=now + timedelta(days=2),
+            end_datetime=now + timedelta(days=2, hours=1),
+        )
+        response = authenticated_client.get(f"/api/events/?room={room.id}")
+        assert response.status_code == 200
+        data = response.json()
+        results = data if isinstance(data, list) else data.get("results", data)
+        assert len(results) == 1
+        assert results[0]["title"] == "Room Event"
+
+    def test_list_subgroup_filter(self, authenticated_client, db, user):
+        """?subgroup=<id> returns only events linked to that subgroup."""
+        from apps.forum.models import Subgroup
+
+        sg = Subgroup.objects.create(name="Filtrer Gruppe", slug="filtrer-gruppe")
+        now = timezone.now()
+        Event.objects.create(
+            title="Subgroup Event",
+            created_by=user,
+            visibility=Event.Visibility.COMMUNITY,
+            subgroup=sg,
+            start_datetime=now + timedelta(days=1),
+            end_datetime=now + timedelta(days=1, hours=1),
+        )
+        Event.objects.create(
+            title="No Subgroup Event",
+            created_by=user,
+            visibility=Event.Visibility.COMMUNITY,
+            start_datetime=now + timedelta(days=2),
+            end_datetime=now + timedelta(days=2, hours=1),
+        )
+        response = authenticated_client.get(f"/api/events/?subgroup={sg.id}")
+        assert response.status_code == 200
+        data = response.json()
+        results = data if isinstance(data, list) else data.get("results", data)
+        assert len(results) == 1
+        assert results[0]["title"] == "Subgroup Event"
+
     def test_room_overlap_rejected(self, authenticated_client, db):
         from apps.bookings.models import Room
 
@@ -302,3 +399,207 @@ class TestRsvpAPI:
         assert response.status_code == 200
         assert response["Content-Type"] == "text/calendar; charset=utf-8"
         assert b"BEGIN:VCALENDAR" in response.content
+
+
+class TestRsvpValidation:
+    def test_rsvp_rejected_for_user_in_different_house(self, api_client, db, rsvp_event):
+        """User cannot RSVP on behalf of a user in a different house."""
+        from apps.houses.models import House
+        from apps.users.models import User
+
+        house_a = House.objects.create(name="House A")
+        house_b = House.objects.create(name="House B")
+        user_a = User.objects.create_user(
+            email="a@rsvptest.com",
+            password="pass",
+            first_name="A",
+            last_name="Test",
+            house=house_a,
+        )
+        user_b = User.objects.create_user(
+            email="b@rsvptest.com",
+            password="pass",
+            first_name="B",
+            last_name="Test",
+            house=house_b,
+        )
+        api_client.force_authenticate(user=user_a)
+        response = api_client.patch(
+            f"/api/events/{rsvp_event.id}/rsvp/",
+            {"attendances": [{"user_id": user_b.id, "status": "attending"}]},
+            format="json",
+        )
+        assert response.status_code == 403
+
+    def test_rsvp_deadline_enforcement(self, authenticated_client, db, user):
+        """RSVP after deadline returns 400."""
+        now = timezone.now()
+        event = Event.objects.create(
+            title="Deadline Event",
+            created_by=user,
+            visibility=Event.Visibility.COMMUNITY,
+            start_datetime=now + timedelta(days=5),
+            end_datetime=now + timedelta(days=5, hours=2),
+            rsvp_enabled=True,
+            rsvp_deadline=now - timedelta(hours=1),
+        )
+        response = authenticated_client.patch(
+            f"/api/events/{event.id}/rsvp/",
+            {"attendances": [{"user_id": user.id, "status": "attending"}]},
+            format="json",
+        )
+        assert response.status_code == 400
+
+    def test_rsvp_upsert_updates_existing(self, authenticated_client, rsvp_event, user):
+        """Submitting RSVP twice updates the existing record, not creates a duplicate."""
+        authenticated_client.patch(
+            f"/api/events/{rsvp_event.id}/rsvp/",
+            {"attendances": [{"user_id": user.id, "status": "attending"}]},
+            format="json",
+        )
+        authenticated_client.patch(
+            f"/api/events/{rsvp_event.id}/rsvp/",
+            {"attendances": [{"user_id": user.id, "status": "not_attending"}]},
+            format="json",
+        )
+        attendances = EventAttendance.objects.filter(event=rsvp_event, user=user)
+        assert attendances.count() == 1
+        assert attendances.first().status == "not_attending"
+
+
+class TestEventNotifications:
+    def test_notify_on_community_event_create(self, api_client, db, second_user, user):
+        """Creating a community event enqueues notifications for other users."""
+        from apps.notifications.models import Notification
+
+        api_client.force_authenticate(user=user)
+        now = timezone.now()
+        api_client.post(
+            "/api/events/",
+            {
+                "title": "Fællesarrangement",
+                "visibility": "community",
+                "start_datetime": (now + timedelta(days=5)).isoformat(),
+                "end_datetime": (now + timedelta(days=5, hours=2)).isoformat(),
+            },
+            format="json",
+        )
+        # second_user should have received a notification (Huey runs immediately in tests)
+        assert Notification.objects.filter(user=second_user).exists()
+
+    def test_no_notify_for_private_event(self, api_client, db, second_user, user):
+        """Creating a private event does not notify other users."""
+        from apps.notifications.models import Notification
+
+        api_client.force_authenticate(user=user)
+        now = timezone.now()
+        api_client.post(
+            "/api/events/",
+            {
+                "title": "Privat booking",
+                "visibility": "private",
+                "start_datetime": (now + timedelta(days=5)).isoformat(),
+                "end_datetime": (now + timedelta(days=5, hours=2)).isoformat(),
+            },
+            format="json",
+        )
+        assert not Notification.objects.filter(user=second_user).exists()
+
+
+class TestICalContent:
+    def test_ical_contains_event_details(self, authenticated_client, db, user):
+        """iCal response includes required fields with correct values."""
+        now = timezone.now()
+        event = Event.objects.create(
+            title="Julefest",
+            description="En stor julefest",
+            created_by=user,
+            visibility=Event.Visibility.COMMUNITY,
+            start_datetime=now + timedelta(days=10),
+            end_datetime=now + timedelta(days=10, hours=3),
+            location="Fælleshuset",
+        )
+        response = authenticated_client.get(f"/api/events/{event.id}/ical/")
+        assert response.status_code == 200
+        content = response.content.decode()
+        assert "BEGIN:VCALENDAR" in content
+        assert "END:VCALENDAR" in content
+        assert "SUMMARY:Julefest" in content
+        assert "LOCATION:Fælleshuset" in content
+        assert f"UID:event-{event.id}@kbintra" in content
+        assert "DTSTART:" in content
+        assert "DTEND:" in content
+
+
+class TestEventFilesView:
+    def test_auto_folder_created_on_first_upload(self, authenticated_client, db, user):
+        """Uploading a file to a subgroup-linked event creates a folder on demand."""
+        from io import BytesIO
+
+        from apps.forum.models import Folder, Subgroup
+
+        subgroup = Subgroup.objects.create(name="Files Group", slug="files-group")
+        now = timezone.now()
+        event = Event.objects.create(
+            title="Files Event",
+            created_by=user,
+            visibility=Event.Visibility.COMMUNITY,
+            start_datetime=now + timedelta(days=1),
+            end_datetime=now + timedelta(days=1, hours=2),
+            subgroup=subgroup,
+        )
+        assert event.folder is None
+
+        upload = BytesIO(b"hello world")
+        upload.name = "test.txt"
+        response = authenticated_client.post(
+            f"/api/events/{event.id}/files/",
+            {"files": upload},
+            format="multipart",
+        )
+        assert response.status_code == 201
+        event.refresh_from_db()
+        assert event.folder is not None
+        assert Folder.objects.filter(id=event.folder_id).exists()
+
+
+class TestEventDeletion:
+    def test_folder_persists_on_event_delete(self, authenticated_client, db, user):
+        """Deleting an event does not cascade to the linked folder."""
+        from apps.forum.models import Folder, Subgroup
+
+        subgroup = Subgroup.objects.create(name="Del Group", slug="del-group")
+        folder = Folder.objects.create(subgroup=subgroup, name="Event Folder")
+        now = timezone.now()
+        event = Event.objects.create(
+            title="Event With Folder",
+            created_by=user,
+            visibility=Event.Visibility.COMMUNITY,
+            start_datetime=now + timedelta(days=1),
+            end_datetime=now + timedelta(days=1, hours=2),
+            subgroup=subgroup,
+            folder=folder,
+        )
+        response = authenticated_client.delete(f"/api/events/{event.id}/")
+        assert response.status_code == 204
+        assert not Event.objects.filter(id=event.id).exists()
+        # Folder must survive the event deletion (SET_NULL, not CASCADE)
+        assert Folder.objects.filter(id=folder.id).exists()
+
+    def test_room_not_deleted_on_event_delete(self, authenticated_client, db, user):
+        """Deleting an event with a room frees the booking but keeps the room record."""
+        from apps.bookings.models import Room
+
+        room = Room.objects.create(name="Festsal")
+        now = timezone.now()
+        event = Event.objects.create(
+            title="Lokale Booking",
+            created_by=user,
+            visibility=Event.Visibility.PRIVATE,
+            room=room,
+            start_datetime=now + timedelta(days=1),
+            end_datetime=now + timedelta(days=1, hours=2),
+        )
+        response = authenticated_client.delete(f"/api/events/{event.id}/")
+        assert response.status_code == 204
+        assert Room.objects.filter(id=room.id).exists()

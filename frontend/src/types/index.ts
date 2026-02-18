@@ -516,9 +516,6 @@ export interface EventFile {
   uploaded_at: string
 }
 
-// Legacy alias for backward compatibility in DashboardPage
-export type CalendarEvent = Event
-
 // Messaging Types
 export interface Participant {
   id: number

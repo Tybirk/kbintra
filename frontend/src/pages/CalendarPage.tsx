@@ -27,6 +27,9 @@ import {
   IconMapPin,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
+import "dayjs/locale/da"
+
+dayjs.locale("da")
 
 import { eventsApi } from "../api/events"
 import { forumApi } from "../api/forum"
@@ -50,7 +53,7 @@ export default function CalendarPage() {
     .add(7, "day")
     .toISOString()
 
-  // Fetch events (all visibility — shows both community + private)
+  // Fetch community events only — private bookings are managed in the bookings page
   const {
     data: events,
     isLoading,
@@ -61,6 +64,7 @@ export default function CalendarPage() {
       eventsApi.getEvents({
         start: startDate,
         end: endDate,
+        visibility: "community",
         subgroup: subgroupFilter ? Number(subgroupFilter) : undefined,
       }),
   })
@@ -71,13 +75,18 @@ export default function CalendarPage() {
     queryFn: () => forumApi.getSubgroups(),
   })
 
-  // Group events by date for calendar indicators
+  // Group events by date for calendar indicators (includes all days of multi-day events)
   const eventsByDate = useMemo(() => {
     const map: Record<string, Event[]> = {}
     events?.forEach((event) => {
-      const dateKey = dayjs(event.start_datetime).format("YYYY-MM-DD")
-      if (!map[dateKey]) map[dateKey] = []
-      map[dateKey].push(event)
+      let current = dayjs(event.start_datetime).startOf("day")
+      const end = dayjs(event.end_datetime).startOf("day")
+      while (!current.isAfter(end)) {
+        const dateKey = current.format("YYYY-MM-DD")
+        if (!map[dateKey]) map[dateKey] = []
+        map[dateKey].push(event)
+        current = current.add(1, "day")
+      }
     })
     return map
   }, [events])

@@ -37,6 +37,7 @@ import dayjs from "dayjs"
 
 import { eventsApi } from "../api/events"
 import type {
+  Event,
   EventAttendance,
   EventFile,
   HouseholdMember,
@@ -75,6 +76,7 @@ export default function EventDetailPage() {
     mutationFn: () => eventsApi.deleteEvent(eventId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["events"] })
+      queryClient.invalidateQueries({ queryKey: ["bookings"] })
       notifications.show({
         title: "Begivenhed slettet",
         message: "Begivenheden er blevet slettet.",
@@ -303,7 +305,7 @@ export default function EventDetailPage() {
       </Paper>
 
       {/* RSVP Section — auto-save on click */}
-      {event.rsvp_enabled && <RsvpSection eventId={event.id} />}
+      {event.rsvp_enabled && <RsvpSection event={event} />}
 
       {/* Attendees modal */}
       <AttendeesModal
@@ -498,13 +500,9 @@ function EventFilesSection({ eventId, subgroup }: EventFilesSectionProps) {
   )
 }
 
-function RsvpSection({ eventId }: { eventId: number }) {
+function RsvpSection({ event }: { event: Event }) {
+  const eventId = event.id
   const queryClient = useQueryClient()
-
-  const { data: event } = useQuery({
-    queryKey: ["event", eventId],
-    queryFn: () => eventsApi.getEvent(eventId),
-  })
 
   const { data: householdMembers, isLoading: householdLoading } = useQuery({
     queryKey: ["event-household", eventId],
@@ -535,7 +533,7 @@ function RsvpSection({ eventId }: { eventId: number }) {
       </Title>
 
       {/* RSVP deadline */}
-      {event?.rsvp_deadline && (
+      {event.rsvp_deadline && (
         <Text size="sm" c="dimmed" mb="sm">
           Svarfrist:{" "}
           {dayjs(event.rsvp_deadline).format("D. MMMM YYYY kl. HH:mm")}

@@ -202,6 +202,7 @@ export default function BookingsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bookings"] })
+      queryClient.invalidateQueries({ queryKey: ["events"] })
       closeDeleteModal()
       setBookingToDelete(null)
       setDeleteMode("all")
@@ -554,6 +555,7 @@ export default function BookingsPage() {
         initialHour={initialCreateTime}
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ["bookings"] })
+          queryClient.invalidateQueries({ queryKey: ["events"] })
           closeCreateModal()
           setInitialCreateTime(null)
         }}
@@ -566,6 +568,7 @@ export default function BookingsPage() {
           booking={editingBooking}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ["bookings"] })
+            queryClient.invalidateQueries({ queryKey: ["events"] })
             setEditingBooking(null)
           }}
         />

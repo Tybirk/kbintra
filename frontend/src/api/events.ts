@@ -93,13 +93,7 @@ export const eventsApi = {
   uploadFiles: async (eventId: number, files: File[]): Promise<EventFile[]> => {
     const formData = new FormData()
     files.forEach((file) => formData.append("files", file))
-    const response = await apiClient.post(
-      `/events/${eventId}/files/`,
-      formData,
-      {
-        headers: { "Content-Type": undefined },
-      },
-    )
+    const response = await apiClient.post(`/events/${eventId}/files/`, formData)
     return response.data
   },
 }
