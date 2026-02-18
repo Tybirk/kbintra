@@ -203,7 +203,9 @@ export default function CalendarPage() {
   }
 
   const goToToday = () => {
-    setSelectedMonth(new Date())
+    const today = new Date()
+    setSelectedMonth(today)
+    setSelectedDate(today)
   }
 
   if (error) {
