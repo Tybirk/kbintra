@@ -1,8 +1,13 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
+import dayjs from "dayjs"
+import "dayjs/locale/da"
+
+dayjs.locale("da")
 import { BrowserRouter } from "react-router-dom"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { MantineProvider, createTheme } from "@mantine/core"
+import { DatesProvider } from "@mantine/dates"
 import { Notifications } from "@mantine/notifications"
 
 import "@mantine/core/styles.css"
@@ -41,10 +46,12 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <MantineProvider theme={theme} defaultColorScheme="auto">
-        <Notifications position="top-right" />
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
+        <DatesProvider settings={{ locale: "da" }}>
+          <Notifications position="top-right" />
+          <BrowserRouter>
+            <App />
+          </BrowserRouter>
+        </DatesProvider>
       </MantineProvider>
     </QueryClientProvider>
   </StrictMode>,
