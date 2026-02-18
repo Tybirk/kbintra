@@ -253,17 +253,26 @@ export default function CalendarPage() {
               date={selectedMonth}
               onDateChange={(date) => setSelectedMonth(new Date(date))}
               size="md"
-              getDayProps={(date) => ({
-                onClick: () => setSelectedDate(new Date(date)),
-                style:
+              getDayProps={(date) => {
+                const isSelected =
                   selectedDate && dayjs(date).isSame(dayjs(selectedDate), "day")
+                const isToday = dayjs(date).isSame(dayjs(), "day")
+                return {
+                  onClick: () => setSelectedDate(new Date(date)),
+                  style: isSelected
                     ? {
                         backgroundColor: "var(--mantine-color-blue-filled)",
                         color: "white",
                         borderRadius: "var(--mantine-radius-default)",
                       }
-                    : undefined,
-              })}
+                    : isToday
+                      ? {
+                          backgroundColor: "var(--mantine-color-blue-1)",
+                          borderRadius: "var(--mantine-radius-default)",
+                        }
+                      : undefined,
+                }
+              }}
               renderDay={(date) => {
                 const dateValue = new Date(date)
                 const dateKey = dayjs(dateValue).format("YYYY-MM-DD")
