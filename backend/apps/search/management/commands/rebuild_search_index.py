@@ -157,8 +157,11 @@ class Command(BaseCommand):
             # Events
             from apps.events.models import Event
 
-            events = Event.objects.all()
+            events = Event.objects.select_related("room")
             for event in events:
+                date_str = event.start_datetime.strftime("%d/%m/%Y %H:%M")
+                location = event.resolved_location
+                subtitle = f"{date_str} – {location}" if location else date_str
                 index_object(
                     obj_type="event",
                     object_id=event.id,
@@ -168,20 +171,20 @@ class Command(BaseCommand):
                             None,
                             [
                                 strip_html(event.description) if event.description else "",
-                                event.location or "",
+                                location,
                             ],
                         )
                     ),
-                    url="/kalender",
-                    subtitle=event.location or create_excerpt(event.description, 80),
+                    url=f"/kalender/{event.id}",
+                    subtitle=subtitle,
                     created_at=_isoformat(event.created_at),
                 )
             counts["events"] = events.count()
 
-            # Files
+            # Files (only those attached to a subgroup; event-only files are skipped)
             from apps.forum.models import File
 
-            files = File.objects.select_related("subgroup")
+            files = File.objects.filter(subgroup__isnull=False).select_related("subgroup")
             for file in files:
                 try:
                     file_url = file.file.url

@@ -446,7 +446,7 @@ class TestGlobalSearchAPI:
         assert len(announcements) >= 1
 
     def test_search_finds_event(self, authenticated_client, user):
-        """Test search finds calendar events."""
+        """Test search finds calendar events and URL points to the detail page."""
         from django.utils import timezone
 
         event = Event.objects.create(
@@ -456,13 +456,14 @@ class TestGlobalSearchAPI:
             start_datetime=timezone.now(),
             end_datetime=timezone.now(),
         )
-        index_object("event", event.id, event.title, event.description, "/kalender")
+        # The post_save signal indexes automatically — no manual index_object needed
 
         response = authenticated_client.get("/api/search/?q=Community Meeting")
         assert response.status_code == 200
 
         events = response.data["results"]["events"]
         assert len(events) >= 1
+        assert events[0]["url"] == f"/kalender/{event.id}"
 
     def test_search_finds_house(self, authenticated_client, house):
         """Test search finds houses."""

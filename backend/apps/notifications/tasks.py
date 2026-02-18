@@ -371,6 +371,28 @@ def notify_event_updated_task(
     logger.info("notify_event_updated_task COMPLETED: %d notifications created", count)
 
 
+@db_task(retries=1, retry_delay=60)
+def notify_event_reminder_task(
+    event_id: int,
+    reminder_type: str,
+) -> None:
+    """Send reminder notifications for an upcoming event and record in the log."""
+    logger.info("notify_event_reminder_task STARTED: event=%d type=%s", event_id, reminder_type)
+    from apps.events.models import EventReminderLog
+
+    from .services import notify_event_reminder
+
+    count = notify_event_reminder(event_id=event_id, reminder_type=reminder_type)
+    # Upsert the log — update_or_create handles the race condition where two
+    # workers might attempt the same reminder simultaneously.
+    EventReminderLog.objects.update_or_create(
+        event_id=event_id,
+        reminder_type=reminder_type,
+        defaults={"recipients_count": count},
+    )
+    logger.info("notify_event_reminder_task COMPLETED: %d notifications sent", count)
+
+
 # ---------------------------------------------------------------------------
 # Drive menu refresh
 # ---------------------------------------------------------------------------

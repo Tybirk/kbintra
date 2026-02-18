@@ -563,6 +563,220 @@ class TestEventFilesView:
         assert Folder.objects.filter(id=event.folder_id).exists()
 
 
+class TestEventReminderLog:
+    """Tests for the EventReminderLog model."""
+
+    def test_reminder_log_created(self, db, event):
+        """ReminderLog can be created for an event."""
+        from apps.events.models import EventReminderLog
+
+        log = EventReminderLog.objects.create(
+            event=event,
+            reminder_type=EventReminderLog.ReminderType.H24,
+            recipients_count=5,
+        )
+        assert log.id is not None
+        assert log.reminder_type == "24h"
+        assert log.recipients_count == 5
+
+    def test_reminder_log_unique_per_type(self, db, event):
+        """Only one log entry per (event, reminder_type) is allowed."""
+        from django.db import IntegrityError
+
+        from apps.events.models import EventReminderLog
+
+        EventReminderLog.objects.create(
+            event=event,
+            reminder_type=EventReminderLog.ReminderType.H24,
+        )
+        with pytest.raises(IntegrityError):
+            EventReminderLog.objects.create(
+                event=event,
+                reminder_type=EventReminderLog.ReminderType.H24,
+            )
+
+    def test_both_reminder_types_allowed_for_same_event(self, db, event):
+        """24h and 1h reminders can coexist for the same event."""
+        from apps.events.models import EventReminderLog
+
+        EventReminderLog.objects.create(
+            event=event, reminder_type=EventReminderLog.ReminderType.H24
+        )
+        EventReminderLog.objects.create(event=event, reminder_type=EventReminderLog.ReminderType.H1)
+        assert EventReminderLog.objects.filter(event=event).count() == 2
+
+    def test_reminder_log_deleted_with_event(self, db, event):
+        """ReminderLog is cascade-deleted when the event is deleted."""
+        from apps.events.models import EventReminderLog
+
+        EventReminderLog.objects.create(
+            event=event, reminder_type=EventReminderLog.ReminderType.H24
+        )
+        event_id = event.id
+        event.delete()
+        assert EventReminderLog.objects.filter(event_id=event_id).count() == 0
+
+
+class TestSendEventRemindersTask:
+    """Tests for the periodic send_event_reminders task."""
+
+    def _make_event(
+        self, db, user, start_offset_hours: float, visibility=Event.Visibility.COMMUNITY
+    ):
+        """Helper to create an event starting offset_hours from now."""
+        now = timezone.now()
+        start = now + timedelta(hours=start_offset_hours)
+        return Event.objects.create(
+            title=f"Event in {start_offset_hours}h",
+            created_by=user,
+            visibility=visibility,
+            start_datetime=start,
+            end_datetime=start + timedelta(hours=1),
+        )
+
+    def test_24h_window_event_gets_enqueued(self, db, user):
+        """An event 24 hours away triggers the 24h reminder."""
+        from apps.events.models import EventReminderLog
+        from apps.events.tasks import send_event_reminders
+
+        event = self._make_event(db, user, 24)
+        send_event_reminders()
+        assert EventReminderLog.objects.filter(
+            event=event, reminder_type=EventReminderLog.ReminderType.H24
+        ).exists()
+
+    def test_1h_window_event_gets_enqueued(self, db, user):
+        """An event 1 hour away triggers the 1h reminder."""
+        from apps.events.models import EventReminderLog
+        from apps.events.tasks import send_event_reminders
+
+        event = self._make_event(db, user, 1)
+        send_event_reminders()
+        assert EventReminderLog.objects.filter(
+            event=event, reminder_type=EventReminderLog.ReminderType.H1
+        ).exists()
+
+    def test_event_outside_window_not_enqueued(self, db, user):
+        """Events more than 25h away do not get a 24h reminder."""
+        from apps.events.models import EventReminderLog
+        from apps.events.tasks import send_event_reminders
+
+        event = self._make_event(db, user, 48)
+        send_event_reminders()
+        assert not EventReminderLog.objects.filter(event=event).exists()
+
+    def test_already_reminded_event_skipped(self, db, user):
+        """An event that already has a 24h log entry is not enqueued again."""
+        from apps.events.models import EventReminderLog
+        from apps.events.tasks import send_event_reminders
+
+        event = self._make_event(db, user, 24)
+        # Pre-create the log entry as if reminder was already sent
+        EventReminderLog.objects.create(
+            event=event, reminder_type=EventReminderLog.ReminderType.H24, recipients_count=10
+        )
+        send_event_reminders()
+        # Count should still be 1 (no second entry created)
+        assert (
+            EventReminderLog.objects.filter(
+                event=event, reminder_type=EventReminderLog.ReminderType.H24
+            ).count()
+            == 1
+        )
+
+    def test_private_event_not_reminded(self, db, user):
+        """Private events (room bookings) do not get reminder notifications."""
+        from apps.events.models import EventReminderLog
+        from apps.events.tasks import send_event_reminders
+
+        event = self._make_event(db, user, 24, visibility=Event.Visibility.PRIVATE)
+        send_event_reminders()
+        assert not EventReminderLog.objects.filter(event=event).exists()
+
+
+class TestNotifyEventReminderService:
+    """Tests for the notify_event_reminder notification service."""
+
+    def _make_recipients(self, db, count: int):
+        """Create active users to act as notification recipients."""
+        from apps.users.models import User
+
+        users = []
+        for i in range(count):
+            users.append(
+                User.objects.create_user(
+                    email=f"reminder_user_{i}@example.com",
+                    password="pass",
+                    first_name=f"User{i}",
+                    last_name="Test",
+                    is_active=True,
+                )
+            )
+        return users
+
+    def test_reminder_notifies_all_active_users(self, db, user, event):
+        """For a plain community event, all active users are notified."""
+        from apps.notifications.models import Notification
+        from apps.notifications.services import notify_event_reminder
+
+        extra_users = self._make_recipients(db, 3)
+        count = notify_event_reminder(event.id, "24h")
+        # At least the extra users + the event creator
+        assert count >= 3
+        # Notifications are created in the DB
+        notifs = Notification.objects.filter(notification_type="event_reminder")
+        notif_user_ids = set(notifs.values_list("user_id", flat=True))
+        for u in extra_users:
+            assert u.id in notif_user_ids
+
+    def test_rsvp_event_only_notifies_attending(self, db, user, rsvp_event, second_user):
+        """For RSVP-enabled events, only attending users receive reminders."""
+        from apps.events.models import EventAttendance
+        from apps.notifications.models import Notification
+        from apps.notifications.services import notify_event_reminder
+
+        # Mark second_user as attending, creator as not attending
+        EventAttendance.objects.create(
+            event=rsvp_event,
+            responded_by=second_user,
+            user=second_user,
+            status=EventAttendance.Status.ATTENDING,
+        )
+        EventAttendance.objects.create(
+            event=rsvp_event,
+            responded_by=user,
+            user=user,
+            status=EventAttendance.Status.NOT_ATTENDING,
+        )
+        count = notify_event_reminder(rsvp_event.id, "1h")
+        assert count == 1
+        notif = Notification.objects.filter(
+            notification_type="event_reminder", user=second_user
+        ).first()
+        assert notif is not None
+        assert "Om 1 time" in notif.title
+
+    def test_24h_reminder_title_says_i_morgen(self, db, user, event):
+        """The 24h reminder uses 'I morgen' in the title."""
+        from apps.notifications.models import Notification
+        from apps.notifications.services import notify_event_reminder
+
+        notify_event_reminder(event.id, "24h")
+        notif = Notification.objects.filter(notification_type="event_reminder", user=user).first()
+        assert notif is not None
+        assert "I morgen" in notif.title
+
+    def test_1h_reminder_title_says_om_1_time(self, db, user, event):
+        """The 1h reminder uses 'Om 1 time' in the title."""
+        from apps.notifications.models import Notification
+        from apps.notifications.services import notify_event_reminder
+
+        notify_event_reminder(event.id, "1h")
+        notif = Notification.objects.filter(notification_type="event_reminder", user=user).first()
+        assert notif is not None
+        assert "Om 1 time" in notif.title
+
+
 class TestEventDeletion:
     def test_folder_persists_on_event_delete(self, authenticated_client, db, user):
         """Deleting an event does not cascade to the linked folder."""

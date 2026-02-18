@@ -149,3 +149,31 @@ class EventAttendance(models.Model):
     def __str__(self) -> str:
         person = self.user or self.child
         return f"{person} → {self.event.title}: {self.get_status_display()}"
+
+
+class EventReminderLog(models.Model):
+    """Records reminders that have been sent for an event.
+
+    Used by the periodic reminder task to ensure each reminder type
+    (24h, 1h) is sent at most once per event, even if the task runs
+    multiple times within the same window.
+    """
+
+    class ReminderType(models.TextChoices):
+        H24 = "24h", "24 timer før"
+        H1 = "1h", "1 time før"
+
+    event = models.ForeignKey(
+        Event,
+        on_delete=models.CASCADE,
+        related_name="reminder_logs",
+    )
+    reminder_type = models.CharField(max_length=10, choices=ReminderType.choices)
+    sent_at = models.DateTimeField(auto_now_add=True)
+    recipients_count = models.IntegerField(default=0)
+
+    class Meta:
+        unique_together = [("event", "reminder_type")]
+
+    def __str__(self) -> str:
+        return f"{self.event.title} – {self.reminder_type} reminder"

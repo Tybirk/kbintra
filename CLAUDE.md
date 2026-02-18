@@ -218,7 +218,7 @@ npm run format:check  # Formatting check (oxfmt)
 npm run test:run      # Tests
 ```
 
-Also ensure that ALL user facing text is in danish!
+Also ensure that ALL user facing text in the app is in danish! (Not in our conversations!)
 
 ## Adding New Models or Columns
 

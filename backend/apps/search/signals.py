@@ -250,6 +250,9 @@ def deindex_announcement(sender, instance, **kwargs):
 @receiver(post_save, sender="events.Event")
 def index_event(sender, instance, **kwargs):
     try:
+        date_str = instance.start_datetime.strftime("%d/%m/%Y %H:%M")
+        location = instance.resolved_location
+        subtitle = f"{date_str} – {location}" if location else date_str
         index_object(
             obj_type="event",
             object_id=instance.id,
@@ -259,12 +262,12 @@ def index_event(sender, instance, **kwargs):
                     None,
                     [
                         strip_html(instance.description) if instance.description else "",
-                        instance.location or "",
+                        location,
                     ],
                 )
             ),
-            url="/kalender",
-            subtitle=instance.location or create_excerpt(instance.description, 80),
+            url=f"/kalender/{instance.id}",
+            subtitle=subtitle,
             created_at=_isoformat(instance.created_at),
         )
     except OperationalError:
@@ -285,6 +288,9 @@ def deindex_event(sender, instance, **kwargs):
 @receiver(post_save, sender="forum.File")
 def index_file(sender, instance, **kwargs):
     try:
+        # Files without a subgroup are event attachments — skip search indexing
+        if not instance.subgroup_id:
+            return
         try:
             file_url = instance.file.url
         except ValueError:

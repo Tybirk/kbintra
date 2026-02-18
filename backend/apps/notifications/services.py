@@ -628,6 +628,71 @@ def notify_event_updated(
     return count
 
 
+def notify_event_reminder(
+    event_id: int,
+    reminder_type: str,
+) -> int:
+    """Send reminder notifications for an upcoming community event.
+
+    Recipients:
+    - If RSVP is enabled: only users with status "attending"
+    - If the event has a subgroup: subgroup subscribers
+    - Otherwise: all active users
+
+    Args:
+        event_id: ID of the event to remind about
+        reminder_type: "24h" or "1h"
+
+    Returns the count of notifications created.
+    """
+    from apps.events.models import Event, EventAttendance
+
+    event = Event.objects.select_related("room", "subgroup").get(id=event_id)
+    location = event.resolved_location
+    start_str = event.start_datetime.strftime("%d/%m kl. %H:%M")
+
+    if reminder_type == "24h":
+        title_text = f"I morgen: {event.title}"
+    else:
+        title_text = f"Om 1 time: {event.title}"
+
+    message = start_str
+    if location:
+        message += f" – {location}"
+    link = f"/kalender/{event.id}"
+
+    # Determine recipients
+    if event.rsvp_enabled:
+        attendee_ids = EventAttendance.objects.filter(
+            event=event,
+            user__isnull=False,
+            status=EventAttendance.Status.ATTENDING,
+        ).values_list("user_id", flat=True)
+        recipients = User.objects.filter(id__in=attendee_ids, is_active=True)
+    elif event.subgroup_id:
+        from apps.forum.models import SubgroupSubscription
+
+        subscriber_ids = SubgroupSubscription.objects.filter(
+            subgroup_id=event.subgroup_id,
+        ).values_list("user_id", flat=True)
+        recipients = User.objects.filter(id__in=subscriber_ids, is_active=True)
+    else:
+        recipients = User.objects.filter(is_active=True)
+
+    count = 0
+    for user in recipients:
+        notification = create_notification(
+            user=user,
+            notification_type=NotificationType.EVENT_REMINDER,
+            title=title_text,
+            message=message,
+            link=link,
+        )
+        if notification:
+            count += 1
+    return count
+
+
 def notify_post_reaction(
     post_author: User,
     reactor: User,
