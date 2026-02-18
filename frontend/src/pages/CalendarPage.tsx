@@ -31,8 +31,6 @@ import {
   IconEdit,
   IconTrash,
   IconMapPin,
-  IconChevronLeft,
-  IconChevronRight,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 
@@ -194,20 +192,6 @@ export default function CalendarPage() {
     }
   }
 
-  const goToPrevMonth = () => {
-    setSelectedMonth(dayjs(selectedMonth).subtract(1, "month").toDate())
-  }
-
-  const goToNextMonth = () => {
-    setSelectedMonth(dayjs(selectedMonth).add(1, "month").toDate())
-  }
-
-  const goToToday = () => {
-    const today = new Date()
-    setSelectedMonth(today)
-    setSelectedDate(today)
-  }
-
   if (error) {
     return (
       <Center h={200}>
@@ -231,21 +215,6 @@ export default function CalendarPage() {
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
         {/* Calendar */}
         <Paper withBorder p="md" radius="md">
-          <Group justify="space-between" mb="md">
-            <Group gap="xs">
-              <ActionIcon variant="subtle" onClick={goToPrevMonth}>
-                <IconChevronLeft size={16} />
-              </ActionIcon>
-              <Text fw={500}>{dayjs(selectedMonth).format("MMMM YYYY")}</Text>
-              <ActionIcon variant="subtle" onClick={goToNextMonth}>
-                <IconChevronRight size={16} />
-              </ActionIcon>
-            </Group>
-            <Button variant="subtle" size="xs" onClick={goToToday}>
-              I dag
-            </Button>
-          </Group>
-
           {isLoading ? (
             <Center h={300}>
               <Loader size="lg" />
