@@ -192,6 +192,12 @@ export default function CalendarPage() {
     }
   }
 
+  const goToToday = () => {
+    const today = new Date()
+    setSelectedMonth(today)
+    setSelectedDate(today)
+  }
+
   if (error) {
     return (
       <Center h={200}>
@@ -215,6 +221,11 @@ export default function CalendarPage() {
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
         {/* Calendar */}
         <Paper withBorder p="md" radius="md">
+          <Group justify="flex-end" mb="xs">
+            <Button variant="subtle" size="xs" onClick={goToToday}>
+              I dag
+            </Button>
+          </Group>
           {isLoading ? (
             <Center h={300}>
               <Loader size="lg" />
