@@ -39,6 +39,7 @@ import {
   IconAlertCircle,
   IconExternalLink,
   IconMessage,
+  IconCalendarPlus,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 
@@ -169,6 +170,12 @@ export default function EventDetailPage() {
   const notAnsweredList =
     attendees?.filter((a) => a.status === "not_answered") ?? []
 
+  const hasDescription = !!event.description
+  const hasFiles = !!event.folder
+  const hasRsvp = event.rsvp_enabled
+  const hasAttendeeAvatars =
+    event.rsvp_enabled && attendees && attendees.length > 0
+
   return (
     <>
       {/* Back button */}
@@ -182,8 +189,9 @@ export default function EventDetailPage() {
         Tilbage til kalender
       </Button>
 
-      {/* Header */}
+      {/* Main event card */}
       <Paper withBorder p="lg" radius="md" mb="md">
+        {/* Header: title + badges + menu */}
         <Group justify="space-between" wrap="nowrap">
           <div style={{ flex: 1, minWidth: 0 }}>
             <Group gap="xs" mb="xs">
@@ -261,18 +269,31 @@ export default function EventDetailPage() {
           <Group gap="xs">
             <IconClock size={16} color="gray" />
             <Text size="sm">
-              {`${dayjs(event.start_datetime).format("dddd D. MMMM YYYY")} kl. ${dayjs(event.start_datetime).format("HH:mm")} – ${dayjs(event.end_datetime).format("HH:mm")}`}
+              {dayjs(event.start_datetime).isSame(
+                dayjs(event.end_datetime),
+                "day",
+              )
+                ? `${dayjs(event.start_datetime).format("dddd D. MMMM YYYY")} kl. ${dayjs(event.start_datetime).format("HH:mm")} – ${dayjs(event.end_datetime).format("HH:mm")}`
+                : `${dayjs(event.start_datetime).format("dddd D. MMMM YYYY")} kl. ${dayjs(event.start_datetime).format("HH:mm")} – ${dayjs(event.end_datetime).format("dddd D. MMMM YYYY")} kl. ${dayjs(event.end_datetime).format("HH:mm")}`}
             </Text>
+            <Tooltip label="Tilføj til kalender" withArrow>
+              <ActionIcon
+                variant="subtle"
+                size="sm"
+                color="gray"
+                onClick={() =>
+                  window.open(eventsApi.getICalUrl(event.id), "_blank")
+                }
+              >
+                <IconCalendarPlus size={16} />
+              </ActionIcon>
+            </Tooltip>
           </Group>
 
-          {(event.rooms.length > 0 || event.location) && (
+          {event.resolved_location && (
             <Group gap="xs">
               <IconMapPin size={16} color="gray" />
-              <Text size="sm">
-                {[...event.rooms.map((r) => r.name), event.location]
-                  .filter(Boolean)
-                  .join(", ")}
-              </Text>
+              <Text size="sm">{event.resolved_location}</Text>
             </Group>
           )}
 
@@ -305,8 +326,8 @@ export default function EventDetailPage() {
           </Group>
         </Stack>
 
-        {/* Attendee avatar row (Facebook-style) */}
-        {event.rsvp_enabled && attendees && attendees.length > 0 && (
+        {/* Attendee avatar row */}
+        {hasAttendeeAvatars && (
           <>
             <Divider my="md" />
             <Group
@@ -341,49 +362,43 @@ export default function EventDetailPage() {
             </Group>
           </>
         )}
+
+        {/* Description */}
+        {hasDescription && (
+          <>
+            <Divider my="md" />
+            <TypographyStylesProvider>
+              <div dangerouslySetInnerHTML={{ __html: event.description }} />
+            </TypographyStylesProvider>
+          </>
+        )}
+
+        {/* Files */}
+        {hasFiles && (
+          <>
+            <Divider my="md" />
+            <EventFilesSection eventId={event.id} subgroup={event.subgroup} />
+          </>
+        )}
+
+        {/* RSVP */}
+        {hasRsvp && !event.is_cancelled && (
+          <>
+            <Divider my="md" />
+            <RsvpSection event={event} />
+          </>
+        )}
+        {hasRsvp && event.is_cancelled && (
+          <>
+            <Divider my="md" />
+            <Alert icon={<IconBan size={16} />} color="gray" variant="light">
+              Arrangementet er aflyst — tilmelding er ikke længere mulig.
+            </Alert>
+          </>
+        )}
       </Paper>
 
-      {/* Description */}
-      {event.description && (
-        <Paper withBorder p="lg" radius="md" mb="md">
-          <Title order={4} mb="sm">
-            Beskrivelse
-          </Title>
-          <TypographyStylesProvider>
-            <div dangerouslySetInnerHTML={{ __html: event.description }} />
-          </TypographyStylesProvider>
-        </Paper>
-      )}
-
-      {/* Documents */}
-      {event.folder && (
-        <EventFilesSection eventId={event.id} subgroup={event.subgroup} />
-      )}
-
-      {/* iCal download */}
-      <Paper withBorder p="lg" radius="md" mb="md">
-        <Button
-          variant="light"
-          leftSection={<IconDownload size={16} />}
-          onClick={() => window.open(eventsApi.getICalUrl(event.id), "_blank")}
-        >
-          Tilføj til kalender
-        </Button>
-      </Paper>
-
-      {/* RSVP Section — auto-save on click */}
-      {event.rsvp_enabled && !event.is_cancelled && (
-        <RsvpSection event={event} />
-      )}
-      {event.rsvp_enabled && event.is_cancelled && (
-        <Paper withBorder p="lg" radius="md" mb="md">
-          <Text c="dimmed">
-            Arrangementet er aflyst — tilmelding er ikke mulig.
-          </Text>
-        </Paper>
-      )}
-
-      {/* Discussion thread */}
+      {/* Discussion thread — separate card */}
       {event.thread_id && (
         <DiscussionSection
           threadId={event.thread_id}
@@ -569,10 +584,12 @@ function EventFilesSection({ eventId, subgroup }: EventFilesSectionProps) {
   })
 
   return (
-    <Paper withBorder p="lg" radius="md" mb="md">
+    <div>
       <Group gap="xs" mb="sm">
         <IconFolder size={18} />
-        <Title order={4}>Dokumenter</Title>
+        <Text size="sm" fw={600}>
+          Dokumenter
+        </Text>
       </Group>
 
       {isLoading ? (
@@ -614,7 +631,7 @@ function EventFilesSection({ eventId, subgroup }: EventFilesSectionProps) {
           Åbn dokumentmappe i {subgroup.name}
         </Button>
       )}
-    </Paper>
+    </div>
   )
 }
 
@@ -634,6 +651,10 @@ function RsvpSection({ event }: { event: Event }) {
       queryClient.invalidateQueries({ queryKey: ["event", eventId] })
       queryClient.invalidateQueries({ queryKey: ["event-household", eventId] })
       queryClient.invalidateQueries({ queryKey: ["event-attendees", eventId] })
+      notifications.show({
+        message: "Tilmelding gemt",
+        color: "green",
+      })
     },
     onError: () => {
       notifications.show({
@@ -645,10 +666,10 @@ function RsvpSection({ event }: { event: Event }) {
   })
 
   return (
-    <Paper withBorder p="lg" radius="md" mb="md">
-      <Title order={4} mb="sm">
+    <div>
+      <Text size="sm" fw={600} mb="sm">
         Tilmelding
-      </Title>
+      </Text>
 
       {/* RSVP deadline */}
       {event.rsvp_deadline && (
@@ -670,7 +691,7 @@ function RsvpSection({ event }: { event: Event }) {
           isPending={rsvpMutation.isPending}
         />
       ) : null}
-    </Paper>
+    </div>
   )
 }
 
@@ -716,7 +737,7 @@ function HouseholdRsvpForm({
 
   return (
     <Stack gap="sm">
-      <Text size="sm" fw={600}>
+      <Text size="sm" fw={500}>
         Din husstand
       </Text>
       {members.map((member) => {
@@ -831,23 +852,18 @@ function DiscussionSection({ threadId, subgroupSlug }: DiscussionSectionProps) {
 
   return (
     <Paper withBorder p="lg" radius="md" mb="md">
-      <Divider
-        label={
-          <Group gap="xs">
-            <IconMessage size={14} />
-            <Text size="sm" fw={500}>
-              Diskussion
-            </Text>
-          </Group>
-        }
-        labelPosition="left"
-        mb="md"
-      />
-
       <Group justify="space-between" mb="md">
-        <Text size="sm" c="dimmed">
-          {thread ? `${thread.posts.length} indlæg` : ""}
-        </Text>
+        <Group gap="xs">
+          <IconMessage size={16} />
+          <Text size="sm" fw={600}>
+            Diskussion
+          </Text>
+          {thread && (
+            <Text size="sm" c="dimmed">
+              ({thread.posts.length})
+            </Text>
+          )}
+        </Group>
         {subgroupSlug && (
           <Anchor
             href={`/forum/${subgroupSlug}/${threadId}`}

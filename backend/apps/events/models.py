@@ -55,7 +55,7 @@ class Event(models.Model):
         on_delete=models.SET_NULL,
         related_name="events",
     )
-    thread = models.ForeignKey(
+    thread = models.OneToOneField(
         "forum.Thread",
         null=True,
         blank=True,

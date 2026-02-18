@@ -51,6 +51,7 @@ const notificationIcons: Record<NotificationType, React.ReactNode> = {
   event_reminder: <IconCalendar size={20} />,
   event_created: <IconCalendar size={20} />,
   event_updated: <IconCalendar size={20} />,
+  event_cancelled: <IconCalendar size={20} />,
   food_ticket: <IconToolsKitchen2 size={20} />,
 }
 
@@ -64,6 +65,7 @@ const notificationColors: Record<NotificationType, string> = {
   event_reminder: "violet",
   event_created: "violet",
   event_updated: "violet",
+  event_cancelled: "red",
   food_ticket: "teal",
 }
 

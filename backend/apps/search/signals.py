@@ -275,6 +275,9 @@ def _index_event(instance) -> None:
 @receiver(post_save, sender="events.Event")
 def index_event(sender, instance, **kwargs):
     try:
+        if instance.is_cancelled:
+            remove_object("event", instance.id)
+            return
         _index_event(instance)
     except OperationalError:
         logger.exception("Failed to index event %s", instance.id)
@@ -286,6 +289,8 @@ def index_event_on_rooms_change(sender, instance, action, **kwargs):
     if action not in ("post_add", "post_remove", "post_clear"):
         return
     try:
+        if instance.is_cancelled:
+            return
         _index_event(instance)
     except OperationalError:
         logger.exception("Failed to re-index event %s after rooms change", instance.id)

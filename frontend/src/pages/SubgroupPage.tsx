@@ -42,7 +42,6 @@ import {
   IconChartBar,
   IconChecks,
   IconCalendarEvent,
-  IconMapPin,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -55,6 +54,7 @@ import {
   validateFileSize,
   MAX_UPLOAD_FILE_SIZE_MB,
 } from "../config"
+import { CompactEventCard } from "../components/CompactEventCard"
 import RichTextEditor from "../components/RichTextEditor"
 import FileDropzone, { AttachmentArea } from "../components/FileDropzone"
 import PollCreator from "../components/PollCreator"
@@ -68,7 +68,6 @@ import {
 import { AttachmentBadge } from "../components/AttachmentBadge"
 import { useAuthStore } from "../store/authStore"
 import type {
-  Event,
   Thread,
   CreateThreadData,
   CreatePollData,
@@ -268,57 +267,6 @@ export default function SubgroupPage() {
         }}
       />
     </>
-  )
-}
-
-function CompactEventCard({ event }: { event: Event }) {
-  const navigate = useNavigate()
-
-  return (
-    <Paper
-      withBorder
-      p="sm"
-      radius="md"
-      style={{ cursor: "pointer" }}
-      onClick={() => navigate(`/kalender/${event.id}`)}
-    >
-      <Group gap="sm" wrap="nowrap">
-        <Box
-          style={{
-            width: 4,
-            alignSelf: "stretch",
-            borderRadius: 2,
-            backgroundColor:
-              event.rooms[0]?.color || "var(--mantine-color-blue-4)",
-          }}
-        />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <Group gap="xs" mb={4}>
-            <Text fw={500} truncate>
-              {event.title}
-            </Text>
-            {event.rsvp_enabled && event.rsvp_summary && (
-              <Badge size="xs" variant="light" color="grape">
-                {event.rsvp_summary.attending} deltager
-              </Badge>
-            )}
-          </Group>
-          <Text size="sm" c="dimmed">
-            {`${dayjs(event.start_datetime).format("ddd, MMM D")} kl. ${dayjs(event.start_datetime).format("HH:mm")} – ${dayjs(event.end_datetime).format("HH:mm")}`}
-          </Text>
-          {(event.rooms.length > 0 || event.location) && (
-            <Group gap={4} mt={4}>
-              <IconMapPin size={14} color="gray" />
-              <Text size="sm" c="dimmed" truncate>
-                {[...event.rooms.map((r) => r.name), event.location]
-                  .filter(Boolean)
-                  .join(", ")}
-              </Text>
-            </Group>
-          )}
-        </div>
-      </Group>
-    </Paper>
   )
 }
 

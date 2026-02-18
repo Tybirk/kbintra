@@ -5,7 +5,7 @@ Views for Events app — CRUD, RSVP, attendees, iCal.
 from datetime import UTC, datetime
 from typing import Any
 
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -25,11 +25,23 @@ from .serializers import (
 )
 
 
+def _check_private_event_access(event: Event, user: Any) -> Response | None:
+    """Return a 403 Response if the user is not allowed to view a private event, else None."""
+    if event.visibility == Event.Visibility.PRIVATE and event.created_by_id != user.id:
+        return Response(
+            {"error": "Ingen adgang til denne begivenhed."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    return None
+
+
 class IsOwnerOrReadOnly(permissions.BasePermission):
-    """Custom permission to only allow owners to edit/delete."""
+    """Custom permission to only allow owners to edit/delete.  Private events are owner-only."""
 
     def has_object_permission(self, request: Request, view: Any, obj: Event) -> bool:
         if request.method in permissions.SAFE_METHODS:
+            if obj.visibility == Event.Visibility.PRIVATE:
+                return obj.created_by == request.user
             return True
         return obj.created_by == request.user
 
@@ -48,6 +60,11 @@ class EventListCreateView(generics.ListCreateAPIView):
         queryset = Event.objects.select_related(
             "created_by", "subgroup", "folder", "thread", "thread__subgroup"
         ).prefetch_related("rooms")
+
+        # Only show private events to their creator
+        queryset = queryset.filter(
+            Q(visibility=Event.Visibility.COMMUNITY) | Q(created_by=self.request.user)
+        )
 
         # Filter by date range
         start = self.request.query_params.get("start")
@@ -103,16 +120,23 @@ class EventListCreateView(generics.ListCreateAPIView):
         return Response(read_data, status=status.HTTP_201_CREATED, headers=headers)
 
     def perform_create(self, serializer: EventCreateUpdateSerializer) -> None:
+        import logging
+
         event = serializer.save()
         # Create discussion thread and enqueue notification task for community events
         if event.visibility == Event.Visibility.COMMUNITY:
             from apps.events.services import create_event_thread
             from apps.notifications.tasks import notify_event_created_task
 
-            thread = create_event_thread(event)
-            if thread:
-                event.thread = thread
-                event.save(update_fields=["thread"])
+            try:
+                thread = create_event_thread(event)
+                if thread:
+                    event.thread = thread
+                    event.save(update_fields=["thread"])
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "Failed to create discussion thread for event %s", event.id
+                )
 
             notify_event_created_task(event.id, event.created_by_id)
 
@@ -151,12 +175,9 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
             or set(event.rooms.values_list("id", flat=True)) != old_room_ids
         )
         if (time_changed or location_changed) and event.visibility == Event.Visibility.COMMUNITY:
-            try:
-                from apps.notifications.tasks import notify_event_updated_task
+            from apps.notifications.tasks import notify_event_updated_task
 
-                notify_event_updated_task(event.id, self.request.user.id)
-            except ImportError:
-                pass
+            notify_event_updated_task(event.id, self.request.user.id)
 
     def perform_destroy(self, instance: Event) -> None:
         if instance.thread_id:
@@ -192,6 +213,10 @@ class EventRsvpView(APIView):
             event = Event.objects.get(pk=pk)
         except Event.DoesNotExist:
             return Response({"error": "Begivenhed ikke fundet."}, status=status.HTTP_404_NOT_FOUND)
+
+        denied = _check_private_event_access(event, request.user)
+        if denied:
+            return denied
 
         if not event.rsvp_enabled:
             return Response(
@@ -282,6 +307,10 @@ class EventAttendeesView(APIView):
         except Event.DoesNotExist:
             return Response({"error": "Begivenhed ikke fundet."}, status=status.HTTP_404_NOT_FOUND)
 
+        denied = _check_private_event_access(event, request.user)
+        if denied:
+            return denied
+
         attendances = event.attendances.select_related("user", "child").order_by(
             "status", "user__first_name", "child__name"
         )
@@ -300,17 +329,26 @@ class EventHouseholdView(APIView):
         except Event.DoesNotExist:
             return Response({"error": "Begivenhed ikke fundet."}, status=status.HTTP_404_NOT_FOUND)
 
+        denied = _check_private_event_access(event, request.user)
+        if denied:
+            return denied
+
         user = request.user
         members = []
 
+        # Prefetch all attendances for this event to avoid N+1 queries
+        all_attendances = event.attendances.select_related("user", "child").all()
+        user_att_map = {a.user_id: a for a in all_attendances if a.user_id}
+        child_att_map = {a.child_id: a for a in all_attendances if a.child_id}
+
         # Current user always included
-        own_attendance = event.attendances.filter(user=user).first()
+        own_att = user_att_map.get(user.id)
         members.append(
             {
                 "type": "adult",
                 "id": user.id,
                 "name": f"{user.first_name} {user.last_name}",
-                "current_status": own_attendance.status if own_attendance else None,
+                "current_status": own_att.status if own_att else None,
             }
         )
 
@@ -322,7 +360,7 @@ class EventHouseholdView(APIView):
                 id=user.id
             )
             for housemate in housemates:
-                att = event.attendances.filter(user=housemate).first()
+                att = user_att_map.get(housemate.id)
                 members.append(
                     {
                         "type": "adult",
@@ -337,7 +375,7 @@ class EventHouseholdView(APIView):
 
             children = Child.objects.filter(house_id=user.house_id)
             for child in children:
-                att = event.attendances.filter(child=child).first()
+                att = child_att_map.get(child.id)
                 members.append(
                     {
                         "type": "child",
@@ -361,6 +399,10 @@ class EventICalView(APIView):
             event = Event.objects.prefetch_related("rooms").get(pk=pk)
         except Event.DoesNotExist:
             return Response({"error": "Begivenhed ikke fundet."}, status=status.HTTP_404_NOT_FOUND)
+
+        denied = _check_private_event_access(event, request.user)
+        if denied:
+            return denied
 
         # Build iCal manually (no icalendar dependency needed for simple events)
 
@@ -425,7 +467,7 @@ class EventCancelView(APIView):
 
         if event.created_by != request.user:
             return Response(
-                {"error": "Kun arrangørens kan aflyse dette arrangement."},
+                {"error": "Kun arrangøren kan aflyse dette arrangement."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -467,6 +509,10 @@ class EventFilesView(APIView):
         except Event.DoesNotExist:
             return Response({"error": "Begivenhed ikke fundet."}, status=status.HTTP_404_NOT_FOUND)
 
+        denied = _check_private_event_access(event, request.user)
+        if denied:
+            return denied
+
         if not event.folder:
             return Response([])
 
@@ -497,6 +543,12 @@ class EventFilesView(APIView):
             event = Event.objects.select_related("folder", "subgroup").get(pk=pk)
         except Event.DoesNotExist:
             return Response({"error": "Begivenhed ikke fundet."}, status=status.HTTP_404_NOT_FOUND)
+
+        if event.created_by_id != request.user.id:
+            return Response(
+                {"error": "Kun arrangøren kan uploade filer."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         files = request.FILES.getlist("files")
         if not files:

@@ -463,6 +463,7 @@ export interface Event {
   end_datetime: string
   rooms: RoomInfo[]
   location: string
+  resolved_location: string
   subgroup: SubgroupInfo | null
   folder: FolderInfo | null
   rsvp_enabled: boolean
@@ -606,7 +607,7 @@ export interface WsNewNotification {
 export type WsMessage = WsNewMessage | WsMessagesRead | WsTyping | WsNewConversation | WsNewNotification
 
 // Notification Types
-export type NotificationType = "new_message" | "new_announcement" | "new_thread" | "thread_reply" | "post_reply" | "post_reaction" | "event_created" | "event_updated" | "event_reminder" | "food_ticket"
+export type NotificationType = "new_message" | "new_announcement" | "new_thread" | "thread_reply" | "post_reply" | "post_reaction" | "event_created" | "event_updated" | "event_cancelled" | "event_reminder" | "food_ticket"
 
 export interface RelatedUser {
   id: number

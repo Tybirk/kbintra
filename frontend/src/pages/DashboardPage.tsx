@@ -473,14 +473,11 @@ export default function DashboardPage() {
 
           {eventsLoading ? (
             <Loader size="sm" />
-          ) : upcomingEvents &&
-            upcomingEvents.filter((e) => !e.is_cancelled).length > 0 ? (
+          ) : upcomingEvents && upcomingEvents.length > 0 ? (
             <Stack gap="md">
-              {upcomingEvents
-                .filter((e) => !e.is_cancelled)
-                .map((event) => (
-                  <EventPreview key={event.id} event={event} />
-                ))}
+              {upcomingEvents.map((event) => (
+                <EventPreview key={event.id} event={event} />
+              ))}
             </Stack>
           ) : (
             <Text c="dimmed">Ingen kommende arrangementer.</Text>
@@ -551,29 +548,44 @@ function EventPreview({ event }: EventPreviewProps) {
       p="sm"
       radius="sm"
       bg="var(--mantine-color-default-hover)"
-      style={{ cursor: "pointer" }}
+      style={{
+        cursor: "pointer",
+        opacity: event.is_cancelled ? 0.5 : 1,
+      }}
       onClick={() => navigate(`/kalender/${event.id}`)}
     >
       <Group gap="sm" mb={4}>
-        <ThemeIcon size="sm" radius="xl" color={isToday ? "blue" : "gray"}>
+        <ThemeIcon
+          size="sm"
+          radius="xl"
+          color={event.is_cancelled ? "red" : isToday ? "blue" : "gray"}
+        >
           <IconCalendar size={12} />
         </ThemeIcon>
-        <Text size="sm" fw={500} lineClamp={1}>
+        <Text
+          size="sm"
+          fw={500}
+          lineClamp={1}
+          td={event.is_cancelled ? "line-through" : undefined}
+        >
           {event.title}
         </Text>
+        {event.is_cancelled && (
+          <Badge size="xs" color="red">
+            Aflyst
+          </Badge>
+        )}
       </Group>
       <Text size="xs" c="dimmed">
         {dateLabel}
         {` kl. ${dayjs(event.start_datetime).format("HH:mm")}`}
       </Text>
-      {(event.rooms.length > 0 || event.location) && (
+      {event.resolved_location && (
         <Text size="xs" c="dimmed" lineClamp={1}>
-          {[...event.rooms.map((r) => r.name), event.location]
-            .filter(Boolean)
-            .join(", ")}
+          {event.resolved_location}
         </Text>
       )}
-      {event.rsvp_enabled && event.rsvp_summary && (
+      {event.rsvp_enabled && event.rsvp_summary && !event.is_cancelled && (
         <Group gap="xs" mt={4}>
           <Badge size="xs" variant="light" color="gray">
             {event.rsvp_summary.attending} deltager

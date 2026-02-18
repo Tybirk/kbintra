@@ -389,7 +389,10 @@ export default function EventFormPage() {
   }
 
   const isPending = createMutation.isPending || updateMutation.isPending
-  const isFormValid = !!title.trim() && !!startDatetime && !!endDatetime
+  const endBeforeStart =
+    !!startDatetime && !!endDatetime && endDatetime <= startDatetime
+  const isFormValid =
+    !!title.trim() && !!startDatetime && !!endDatetime && !endBeforeStart
 
   if (isEditMode && eventLoading) {
     return (
@@ -532,6 +535,16 @@ export default function EventFormPage() {
               />
             </Group>
 
+            {endBeforeStart && (
+              <Alert
+                icon={<IconAlertCircle size={16} />}
+                color="orange"
+                variant="light"
+              >
+                Sluttidspunkt skal være efter starttidspunkt.
+              </Alert>
+            )}
+
             <TagsInput
               label="Sted"
               placeholder="Vælg lokale eller skriv sted"
@@ -583,6 +596,7 @@ export default function EventFormPage() {
               <DateInput
                 label="Svarfrist"
                 placeholder="Vælg svarfrist (valgfrit)"
+                description="Deadline sættes til kl. 23:59 på den valgte dato"
                 value={rsvpDeadline}
                 onChange={(value) => {
                   if (value) {
@@ -593,6 +607,9 @@ export default function EventFormPage() {
                     setRsvpDeadline(null)
                   }
                 }}
+                minDate={isEditMode ? undefined : new Date()}
+                maxDate={startDate || undefined}
+                error={errors.rsvp_deadline}
                 clearable
               />
             )}

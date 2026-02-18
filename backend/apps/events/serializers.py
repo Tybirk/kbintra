@@ -72,6 +72,7 @@ class EventSerializer(serializers.ModelSerializer):
     rsvp_summary = serializers.SerializerMethodField()
     my_rsvp = serializers.SerializerMethodField()
     household_rsvps = serializers.SerializerMethodField()
+    resolved_location = serializers.CharField(read_only=True)
     thread_id = serializers.IntegerField(read_only=True, allow_null=True)
     thread_subgroup_slug = serializers.SerializerMethodField()
 
@@ -87,6 +88,7 @@ class EventSerializer(serializers.ModelSerializer):
             "end_datetime",
             "rooms",
             "location",
+            "resolved_location",
             "subgroup",
             "folder",
             "rsvp_enabled",
@@ -97,6 +99,7 @@ class EventSerializer(serializers.ModelSerializer):
             "is_own",
             "is_cancelled",
             "cancellation_message",
+            "resolved_location",
             "thread_id",
             "thread_subgroup_slug",
             "created_at",
@@ -107,6 +110,7 @@ class EventSerializer(serializers.ModelSerializer):
             "created_by",
             "is_cancelled",
             "cancellation_message",
+            "resolved_location",
             "thread_id",
             "thread_subgroup_slug",
             "created_at",
@@ -225,6 +229,19 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
             if duration > timedelta(hours=MAX_DURATION_HOURS):
                 raise serializers.ValidationError(
                     {"end_datetime": f"Booking må maksimalt vare {MAX_DURATION_HOURS} timer."}
+                )
+
+        # RSVP deadline validation
+        rsvp_deadline = data.get("rsvp_deadline")
+        rsvp_enabled = data.get("rsvp_enabled", getattr(self.instance, "rsvp_enabled", False))
+        if rsvp_enabled and rsvp_deadline:
+            if not self.instance and rsvp_deadline < timezone.now():
+                raise serializers.ValidationError(
+                    {"rsvp_deadline": "Svarfristen kan ikke være i fortiden."}
+                )
+            if start and rsvp_deadline > start:
+                raise serializers.ValidationError(
+                    {"rsvp_deadline": "Svarfristen skal være før begivenhedens start."}
                 )
 
         # Room overlap validation

@@ -10,11 +10,8 @@ import {
   Loader,
   Center,
   Stack,
-  Avatar,
   ActionIcon,
-  Badge,
   SimpleGrid,
-  Box,
   Indicator,
   Select,
 } from "@mantine/core"
@@ -24,7 +21,6 @@ import {
   IconCalendarEvent,
   IconChevronLeft,
   IconChevronRight,
-  IconMapPin,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import "dayjs/locale/da"
@@ -33,6 +29,7 @@ dayjs.locale("da")
 
 import { eventsApi } from "../api/events"
 import { forumApi } from "../api/forum"
+import { CompactEventCard } from "../components/CompactEventCard"
 import type { Event } from "../types"
 
 export default function CalendarPage() {
@@ -91,20 +88,23 @@ export default function CalendarPage() {
     return map
   }, [events])
 
-  // Events for the selected date or current month
+  // Events for the selected date or current month (includes multi-day events spanning the period)
   const displayEvents = useMemo(() => {
     if (selectedDate) {
-      return events?.filter((event) =>
-        dayjs(event.start_datetime).isSame(dayjs(selectedDate), "day"),
-      )
+      const day = dayjs(selectedDate)
+      return events?.filter((event) => {
+        const start = dayjs(event.start_datetime).startOf("day")
+        const end = dayjs(event.end_datetime).startOf("day")
+        return !day.isBefore(start) && !day.isAfter(end)
+      })
     }
+    const monthStart = dayjs(selectedMonth).startOf("month")
+    const monthEnd = dayjs(selectedMonth).endOf("month")
     return events
       ?.filter((event) => {
-        const eventDate = dayjs(event.start_datetime)
-        return (
-          eventDate.month() === dayjs(selectedMonth).month() &&
-          eventDate.year() === dayjs(selectedMonth).year()
-        )
+        const start = dayjs(event.start_datetime)
+        const end = dayjs(event.end_datetime)
+        return !end.isBefore(monthStart) && !start.isAfter(monthEnd)
       })
       .sort(
         (a, b) =>
@@ -287,6 +287,9 @@ export default function CalendarPage() {
                   <Stack align="center" gap="xs">
                     <IconCalendarEvent size={48} color="gray" />
                     <Text c="dimmed">Ingen begivenheder denne måned.</Text>
+                    <Text size="xs" c="dimmed">
+                      Klik på en dato for at oprette en begivenhed
+                    </Text>
                     <Button onClick={() => navigate("/kalender/opret")} mt="sm">
                       Opret begivenhed
                     </Button>
@@ -308,101 +311,5 @@ export default function CalendarPage() {
 }
 
 function EventCard({ event }: { event: Event }) {
-  const navigate = useNavigate()
-  const isToday = dayjs(event.start_datetime).isSame(dayjs(), "day")
-  const isPast = dayjs(event.end_datetime).isBefore(dayjs())
-
-  return (
-    <Paper
-      withBorder
-      p="sm"
-      radius="md"
-      style={{
-        opacity: event.is_cancelled ? 0.5 : isPast ? 0.6 : 1,
-        cursor: "pointer",
-      }}
-      onClick={() => navigate(`/kalender/${event.id}`)}
-    >
-      <Group gap="sm" wrap="nowrap" style={{ flex: 1 }}>
-        <Box
-          style={{
-            width: 4,
-            alignSelf: "stretch",
-            borderRadius: 2,
-            backgroundColor: event.is_cancelled
-              ? "var(--mantine-color-red-4)"
-              : event.rooms[0]?.color
-                ? event.rooms[0].color
-                : isToday
-                  ? "var(--mantine-color-blue-6)"
-                  : event.visibility === "private"
-                    ? "var(--mantine-color-gray-4)"
-                    : "var(--mantine-color-blue-4)",
-          }}
-        />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <Group gap="xs" mb={4}>
-            <Text
-              fw={500}
-              truncate
-              style={
-                event.is_cancelled
-                  ? { textDecoration: "line-through" }
-                  : undefined
-              }
-            >
-              {event.title}
-            </Text>
-            {event.is_cancelled && (
-              <Badge size="xs" color="red">
-                Aflyst
-              </Badge>
-            )}
-            {isToday && !event.is_cancelled && (
-              <Badge size="xs" color="blue">
-                I dag
-              </Badge>
-            )}
-            {event.visibility === "private" && (
-              <Badge size="xs" variant="light" color="gray">
-                Privat
-              </Badge>
-            )}
-            {event.rsvp_enabled &&
-              event.rsvp_summary &&
-              !event.is_cancelled && (
-                <Badge size="xs" variant="light" color="grape">
-                  {event.rsvp_summary.attending} deltager
-                </Badge>
-              )}
-          </Group>
-          <Text size="sm" c="dimmed">
-            {`${dayjs(event.start_datetime).format("ddd, MMM D")} kl. ${dayjs(event.start_datetime).format("HH:mm")} – ${dayjs(event.end_datetime).format("HH:mm")}`}
-          </Text>
-          {(event.rooms.length > 0 || event.location) && (
-            <Group gap={4} mt={4}>
-              <IconMapPin size={14} color="gray" />
-              <Text size="sm" c="dimmed" truncate>
-                {[...event.rooms.map((r) => r.name), event.location]
-                  .filter(Boolean)
-                  .join(", ")}
-              </Text>
-            </Group>
-          )}
-          <Group gap="xs" mt={4}>
-            <Avatar
-              src={event.created_by.profile_picture}
-              size="xs"
-              radius="xl"
-            >
-              {event.created_by.first_name?.[0]}
-            </Avatar>
-            <Text size="xs" c="dimmed">
-              {event.created_by.first_name} {event.created_by.last_name}
-            </Text>
-          </Group>
-        </div>
-      </Group>
-    </Paper>
-  )
+  return <CompactEventCard event={event} showCreator />
 }

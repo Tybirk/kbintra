@@ -5,6 +5,7 @@ Notification services for creating notifications.
 import json
 import logging
 import time
+from typing import Any
 from urllib.parse import urlparse
 
 from asgiref.sync import async_to_sync
@@ -529,6 +530,46 @@ def notify_ticket_claimed(
     )
 
 
+def _get_event_recipients(
+    event: Any,
+    exclude_user_id: int,
+    *,
+    rsvp_statuses: list[str] | None = None,
+) -> QuerySet[User]:
+    """Return the recipients for an event notification.
+
+    Priority chain:
+    1. If the event has RSVP enabled, return users matching *rsvp_statuses*.
+    2. Else if the event belongs to a subgroup, return subgroup subscribers.
+    3. Else return all active users.
+
+    The *exclude_user_id* (typically the actor) is always excluded.
+    """
+    from apps.events.models import EventAttendance
+
+    if event.rsvp_enabled and rsvp_statuses:
+        attendee_user_ids = EventAttendance.objects.filter(
+            event=event,
+            user__isnull=False,
+            status__in=rsvp_statuses,
+        ).values_list("user_id", flat=True)
+        return User.objects.filter(id__in=attendee_user_ids, is_active=True).exclude(
+            id=exclude_user_id
+        )
+
+    if event.subgroup_id:
+        from apps.forum.models import SubgroupSubscription
+
+        subscriber_ids = SubgroupSubscription.objects.filter(
+            subgroup_id=event.subgroup_id,
+        ).values_list("user_id", flat=True)
+        return User.objects.filter(id__in=subscriber_ids, is_active=True).exclude(
+            id=exclude_user_id
+        )
+
+    return User.objects.filter(is_active=True).exclude(id=exclude_user_id)
+
+
 def notify_event_created(
     event_id: int,
     author: User,
@@ -548,16 +589,7 @@ def notify_event_created(
     message = location or event.start_datetime.strftime("%d/%m %H:%M")
     link = f"/kalender/{event.id}"
 
-    # Determine recipients: subgroup subscribers or all users
-    if event.subgroup_id:
-        from apps.forum.models import SubgroupSubscription
-
-        subscriber_ids = SubgroupSubscription.objects.filter(
-            subgroup_id=event.subgroup_id,
-        ).values_list("user_id", flat=True)
-        recipients = User.objects.filter(id__in=subscriber_ids).exclude(id=author.id)
-    else:
-        recipients = User.objects.exclude(id=author.id)
+    recipients = _get_event_recipients(event, exclude_user_id=author.id)
 
     count = 0
     for user in recipients:
@@ -596,24 +628,11 @@ def notify_event_updated(
         message += f" – {location}"
     link = f"/kalender/{event.id}"
 
-    # Determine recipients based on RSVP status or subgroup
-    if event.rsvp_enabled:
-        # Only notify users who are attending or haven't answered
-        attendee_user_ids = EventAttendance.objects.filter(
-            event=event,
-            user__isnull=False,
-            status__in=[EventAttendance.Status.ATTENDING, EventAttendance.Status.NOT_ANSWERED],
-        ).values_list("user_id", flat=True)
-        recipients = User.objects.filter(id__in=attendee_user_ids).exclude(id=updater.id)
-    elif event.subgroup_id:
-        from apps.forum.models import SubgroupSubscription
-
-        subscriber_ids = SubgroupSubscription.objects.filter(
-            subgroup_id=event.subgroup_id,
-        ).values_list("user_id", flat=True)
-        recipients = User.objects.filter(id__in=subscriber_ids).exclude(id=updater.id)
-    else:
-        recipients = User.objects.exclude(id=updater.id)
+    recipients = _get_event_recipients(
+        event,
+        exclude_user_id=updater.id,
+        rsvp_statuses=[EventAttendance.Status.ATTENDING, EventAttendance.Status.NOT_ANSWERED],
+    )
 
     count = 0
     for user in recipients:
@@ -654,23 +673,11 @@ def notify_event_cancelled(
     )
     link = f"/kalender/{event.id}"
 
-    # Determine recipients based on RSVP status or subgroup
-    if event.rsvp_enabled:
-        attendee_user_ids = EventAttendance.objects.filter(
-            event=event,
-            user__isnull=False,
-            status__in=[EventAttendance.Status.ATTENDING, EventAttendance.Status.NOT_ANSWERED],
-        ).values_list("user_id", flat=True)
-        recipients = User.objects.filter(id__in=attendee_user_ids).exclude(id=canceller.id)
-    elif event.subgroup_id:
-        from apps.forum.models import SubgroupSubscription
-
-        subscriber_ids = SubgroupSubscription.objects.filter(
-            subgroup_id=event.subgroup_id,
-        ).values_list("user_id", flat=True)
-        recipients = User.objects.filter(id__in=subscriber_ids).exclude(id=canceller.id)
-    else:
-        recipients = User.objects.exclude(id=canceller.id)
+    recipients = _get_event_recipients(
+        event,
+        exclude_user_id=canceller.id,
+        rsvp_statuses=[EventAttendance.Status.ATTENDING, EventAttendance.Status.NOT_ANSWERED],
+    )
 
     count = 0
     for user in recipients:
@@ -720,23 +727,12 @@ def notify_event_reminder(
         message += f" – {location}"
     link = f"/kalender/{event.id}"
 
-    # Determine recipients
-    if event.rsvp_enabled:
-        attendee_ids = EventAttendance.objects.filter(
-            event=event,
-            user__isnull=False,
-            status=EventAttendance.Status.ATTENDING,
-        ).values_list("user_id", flat=True)
-        recipients = User.objects.filter(id__in=attendee_ids, is_active=True)
-    elif event.subgroup_id:
-        from apps.forum.models import SubgroupSubscription
-
-        subscriber_ids = SubgroupSubscription.objects.filter(
-            subgroup_id=event.subgroup_id,
-        ).values_list("user_id", flat=True)
-        recipients = User.objects.filter(id__in=subscriber_ids, is_active=True)
-    else:
-        recipients = User.objects.filter(is_active=True)
+    # Reminders only go to attending users (not "not_answered")
+    recipients = _get_event_recipients(
+        event,
+        exclude_user_id=0,  # no actor to exclude for reminders
+        rsvp_statuses=[EventAttendance.Status.ATTENDING],
+    )
 
     count = 0
     for user in recipients:
