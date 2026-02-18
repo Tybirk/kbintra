@@ -240,7 +240,13 @@ export default function CalendarPage() {
                   selectedDate && dayjs(date).isSame(dayjs(selectedDate), "day")
                 const isToday = dayjs(date).isSame(dayjs(), "day")
                 return {
-                  onClick: () => setSelectedDate(new Date(date)),
+                  onClick: () => {
+                    const d = new Date(date)
+                    setSelectedDate(d)
+                    if (!dayjs(d).isSame(dayjs(selectedMonth), "month")) {
+                      setSelectedMonth(d)
+                    }
+                  },
                   style: isSelected
                     ? {
                         backgroundColor: "var(--mantine-color-blue-filled)",
