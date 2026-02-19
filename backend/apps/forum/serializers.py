@@ -507,7 +507,8 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Thread
-        fields = ["id", "title", "content", "attachments", "poll_data"]
+        fields = ["id", "title", "slug", "content", "attachments", "poll_data"]
+        read_only_fields = ["slug"]
 
     def validate_attachments(self, value: list) -> list:
         from .utils import validate_file_size
