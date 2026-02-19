@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { useParams, useNavigate } from "react-router-dom"
+import { useParams, useNavigate, useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
@@ -414,6 +414,7 @@ export default function EventDetailPage() {
         <DiscussionSection
           threadId={event.thread_id}
           subgroupSlug={event.thread_subgroup_slug}
+          threadSlug={event.thread_slug}
         />
       )}
 
@@ -758,6 +759,7 @@ function HouseholdRsvpForm({
 interface DiscussionSectionProps {
   threadId: number
   subgroupSlug: string | null
+  threadSlug: string | null
 }
 
 interface UpdatePostMutationProps {
@@ -765,8 +767,13 @@ interface UpdatePostMutationProps {
   content: string
 }
 
-function DiscussionSection({ threadId, subgroupSlug }: DiscussionSectionProps) {
+function DiscussionSection({
+  threadId,
+  subgroupSlug,
+  threadSlug,
+}: DiscussionSectionProps) {
   const queryClient = useQueryClient()
+  const location = useLocation()
   const [content, setContent] = useState("")
   const [editingPostId, setEditingPostId] = useState<number | null>(null)
   const [editContent, setEditContent] = useState("")
@@ -775,6 +782,22 @@ function DiscussionSection({ threadId, subgroupSlug }: DiscussionSectionProps) {
     queryKey: ["thread", threadId],
     queryFn: () => forumApi.getThread(threadId),
   })
+
+  // Scroll to and highlight a specific post when navigating from a notification
+  useEffect(() => {
+    if (!thread || !location.hash) return
+    const el = document.getElementById(location.hash.slice(1))
+    if (!el) return
+    const timer = setTimeout(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "center" })
+      el.style.transition = "box-shadow 0.3s ease"
+      el.style.boxShadow = "0 0 0 3px var(--mantine-color-blue-4)"
+      setTimeout(() => {
+        el.style.boxShadow = ""
+      }, 2000)
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [thread, location.hash])
 
   const createPostMutation = useMutation({
     mutationFn: () => forumApi.createPost(threadId, { content }),
@@ -857,9 +880,9 @@ function DiscussionSection({ threadId, subgroupSlug }: DiscussionSectionProps) {
             </Text>
           )}
         </Group>
-        {subgroupSlug && (
+        {subgroupSlug && threadSlug && (
           <Anchor
-            href={`/forum/${subgroupSlug}/${threadId}`}
+            href={`/forum/${subgroupSlug}/traad/${threadSlug}`}
             target="_blank"
             size="sm"
           >
@@ -878,7 +901,13 @@ function DiscussionSection({ threadId, subgroupSlug }: DiscussionSectionProps) {
       ) : (
         <Stack gap="md">
           {thread?.posts.map((post) => (
-            <Paper key={post.id} withBorder p="md" radius="sm">
+            <Paper
+              key={post.id}
+              id={`post-${post.id}`}
+              withBorder
+              p="md"
+              radius="sm"
+            >
               <Group justify="space-between" mb="xs" wrap="nowrap">
                 <Group gap="xs">
                   <Avatar

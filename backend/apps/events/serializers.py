@@ -75,6 +75,7 @@ class EventSerializer(serializers.ModelSerializer):
     resolved_location = serializers.CharField(read_only=True)
     thread_id = serializers.IntegerField(read_only=True, allow_null=True)
     thread_subgroup_slug = serializers.SerializerMethodField()
+    thread_slug = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
@@ -102,6 +103,7 @@ class EventSerializer(serializers.ModelSerializer):
             "resolved_location",
             "thread_id",
             "thread_subgroup_slug",
+            "thread_slug",
             "created_at",
             "updated_at",
         ]
@@ -113,6 +115,7 @@ class EventSerializer(serializers.ModelSerializer):
             "resolved_location",
             "thread_id",
             "thread_subgroup_slug",
+            "thread_slug",
             "created_at",
             "updated_at",
         ]
@@ -120,6 +123,11 @@ class EventSerializer(serializers.ModelSerializer):
     def get_thread_subgroup_slug(self, obj: Event) -> str | None:
         if obj.thread_id and obj.thread.subgroup_id:
             return obj.thread.subgroup.slug
+        return None
+
+    def get_thread_slug(self, obj: Event) -> str | None:
+        if obj.thread_id:
+            return obj.thread.slug
         return None
 
     def get_is_own(self, obj: Event) -> bool:
@@ -279,10 +287,18 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
                         error_messages.append(f"{room.name}: {'; '.join(conflicts)}")
                     raise serializers.ValidationError({"non_field_errors": error_messages})
 
-            if subgroup_id:
-                from apps.forum.models import Subgroup
+            from apps.forum.models import Subgroup
 
+            if subgroup_id:
                 validated_data["subgroup"] = Subgroup.objects.get(id=subgroup_id)
+            else:
+                validated_data["subgroup"], _ = Subgroup.objects.get_or_create(
+                    slug="arrangementer",
+                    defaults={
+                        "name": "Arrangementer",
+                        "description": "Diskussioner om arrangementer",
+                    },
+                )
 
             event = Event.objects.create(**validated_data)
 

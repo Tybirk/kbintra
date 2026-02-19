@@ -210,6 +210,7 @@ export interface Thread {
   id: number
   subgroup: number
   title: string
+  slug: string
   author: Author
   is_pinned: boolean
   is_closed: boolean
@@ -222,8 +223,10 @@ export interface Thread {
 
 export interface ThreadDetail extends Thread {
   subgroup_name: string
+  subgroup_slug: string
   is_own: boolean
   can_close: boolean
+  event_id: number | null
   posts: Post[]
 }
 
@@ -242,6 +245,7 @@ export interface RecentActivity {
   content: string
   thread_id: number
   thread_title: string
+  thread_slug: string
   subgroup_slug: string
   subgroup_name: string
   created_at: string
@@ -476,6 +480,7 @@ export interface Event {
   cancellation_message: string
   thread_id: number | null
   thread_subgroup_slug: string | null
+  thread_slug: string | null
   created_at: string
   updated_at: string
 }

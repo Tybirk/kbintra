@@ -357,6 +357,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
                 thread_title=thread.title,
                 thread_id=thread.id,
                 subgroup_slug=thread.subgroup.slug,
+                thread_slug=thread.slug,
                 reply_content=post.content,
                 post_id=post.id,
             )
@@ -380,6 +381,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
                     thread_title=thread.title,
                     thread_id=thread.id,
                     subgroup_slug=thread.subgroup.slug,
+                    thread_slug=thread.slug,
                     reply_content=post.content,
                     post_id=post.id,
                 )
@@ -402,6 +404,7 @@ class ThreadSerializer(serializers.ModelSerializer):
             "id",
             "subgroup",
             "title",
+            "slug",
             "author",
             "is_pinned",
             "is_closed",
@@ -434,8 +437,10 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
     author = AuthorSerializer(read_only=True)
     posts = PostSerializer(many=True, read_only=True)
     subgroup_name = serializers.CharField(source="subgroup.name", read_only=True)
+    subgroup_slug = serializers.CharField(source="subgroup.slug", read_only=True)
     is_own = serializers.SerializerMethodField()
     can_close = serializers.SerializerMethodField()
+    event_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Thread
@@ -443,12 +448,15 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
             "id",
             "subgroup",
             "subgroup_name",
+            "subgroup_slug",
             "title",
+            "slug",
             "author",
             "is_pinned",
             "is_closed",
             "is_own",
             "can_close",
+            "event_id",
             "posts",
             "created_at",
             "updated_at",
@@ -466,6 +474,12 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             return obj.author_id == request.user.id or request.user.is_staff
         return False
+
+    def get_event_id(self, obj: Thread) -> int | None:
+        try:
+            return obj.event.id
+        except AttributeError:
+            return None
 
 
 class ThreadCreateSerializer(serializers.ModelSerializer):
@@ -554,6 +568,7 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
             subgroup_name=thread.subgroup.name,
             subgroup_slug=thread.subgroup.slug,
             subgroup_id=thread.subgroup.id,
+            thread_slug=thread.slug,
             initial_post_content=content,
         )
 
@@ -664,6 +679,7 @@ class RecentActivitySerializer(serializers.ModelSerializer):
     author = AuthorSerializer(read_only=True)
     thread_id = serializers.IntegerField(source="thread.id", read_only=True)
     thread_title = serializers.CharField(source="thread.title", read_only=True)
+    thread_slug = serializers.CharField(source="thread.slug", read_only=True)
     subgroup_slug = serializers.CharField(source="thread.subgroup.slug", read_only=True)
     subgroup_name = serializers.CharField(source="thread.subgroup.name", read_only=True)
 
@@ -675,6 +691,7 @@ class RecentActivitySerializer(serializers.ModelSerializer):
             "content",
             "thread_id",
             "thread_title",
+            "thread_slug",
             "subgroup_slug",
             "subgroup_name",
             "created_at",

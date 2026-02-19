@@ -286,7 +286,7 @@ function App() {
               }
             />
             <Route
-              path="/forum/:slug/:threadId"
+              path="/forum/:slug/traad/:threadSlug"
               element={
                 <ProtectedRoute>
                   <PageErrorBoundary>

@@ -213,6 +213,32 @@ class ThreadDetailView(generics.RetrieveAPIView):
         return response
 
 
+class ThreadDetailBySlugView(generics.RetrieveAPIView):
+    """Get thread details by subgroup slug + thread slug."""
+
+    serializer_class = ThreadDetailSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self) -> Thread:
+        subgroup = get_object_or_404(Subgroup, slug=self.kwargs["subgroup_slug"])
+        thread = get_object_or_404(
+            Thread.objects.prefetch_related(
+                "posts__author",
+                "posts__attachments__uploaded_by",
+                "posts__reactions",
+                "posts__poll__options__votes__user",
+            ).select_related("author", "subgroup"),
+            subgroup=subgroup,
+            slug=self.kwargs["thread_slug"],
+        )
+        ThreadReadStatus.objects.update_or_create(
+            user=self.request.user,
+            thread=thread,
+            defaults={"last_read_at": timezone.now()},
+        )
+        return thread
+
+
 class ThreadDeleteView(generics.DestroyAPIView):
     """Delete a thread (owner or admin)."""
 
@@ -502,6 +528,7 @@ class ReactionToggleView(APIView):
                     thread_title=post.thread.title,
                     thread_id=post.thread.id,
                     subgroup_slug=post.thread.subgroup.slug,
+                    thread_slug=post.thread.slug,
                     reaction_emoji=emoji_map.get(reaction_type, ""),
                     post_id=post.id,
                 )

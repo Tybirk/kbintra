@@ -740,7 +740,7 @@ function ActivityPreview({ activity }: ActivityPreviewProps) {
       }}
       onClick={() =>
         navigate(
-          `/forum/${activity.subgroup_slug}/${activity.thread_id}#post-${activity.id}`,
+          `/forum/${activity.subgroup_slug}/traad/${activity.thread_slug}#post-${activity.id}`,
         )
       }
     >

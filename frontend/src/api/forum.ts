@@ -67,6 +67,16 @@ export const forumApi = {
     return response.data
   },
 
+  getThreadBySlug: async (
+    subgroupSlug: string,
+    threadSlug: string,
+  ): Promise<ThreadDetail> => {
+    const response = await apiClient.get(
+      `/forum/subgroups/${subgroupSlug}/threads/${threadSlug}/`,
+    )
+    return response.data
+  },
+
   createThread: async (
     subgroupSlug: string,
     data: CreateThreadData,

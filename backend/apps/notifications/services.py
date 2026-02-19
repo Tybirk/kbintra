@@ -366,6 +366,7 @@ def notify_new_thread(
     thread_id: int,
     subgroup_name: str,
     subgroup_slug: str,
+    thread_slug: str,
     initial_post_content: str = "",
 ) -> int:
     """Create notifications for a new thread in a subgroup.
@@ -377,6 +378,7 @@ def notify_new_thread(
         thread_id: ID of the thread
         subgroup_name: Name of the subgroup
         subgroup_slug: Slug of the subgroup for URL
+        thread_slug: Slug of the thread for URL
         initial_post_content: Full HTML content of the initial post
 
     Returns the count of notifications created.
@@ -388,7 +390,7 @@ def notify_new_thread(
             notification_type=NotificationType.NEW_THREAD,
             title=f"Ny tråd i {subgroup_name}",
             message=thread_title,
-            link=f"/forum/{subgroup_slug}/{thread_id}",
+            link=f"/forum/{subgroup_slug}/traad/{thread_slug}",
             related_user=author,
             html_content=f"<h3>{thread_title}</h3>{initial_post_content}"
             if initial_post_content
@@ -405,6 +407,7 @@ def notify_thread_reply(
     thread_title: str,
     thread_id: int,
     subgroup_slug: str,
+    thread_slug: str,
     reply_content: str,
     post_id: int = 0,
 ) -> Notification | None:
@@ -416,6 +419,7 @@ def notify_thread_reply(
         thread_title: Title of the thread
         thread_id: ID of the thread
         subgroup_slug: Slug of the subgroup for URL
+        thread_slug: Slug of the thread for URL
         reply_content: Full HTML content of the reply
         post_id: ID of the reply post (for scroll-to link)
     """
@@ -428,9 +432,17 @@ def notify_thread_reply(
     plain_text = strip_tags(reply_content)
     preview = plain_text[:80] + "..." if len(plain_text) > 80 else plain_text
 
-    link = f"/forum/{subgroup_slug}/{thread_id}"
-    if post_id:
-        link += f"#post-{post_id}"
+    from apps.forum.models import Thread as ForumThread
+
+    try:
+        event_id = ForumThread.objects.get(id=thread_id).event.id
+        link = f"/kalender/{event_id}"
+        if post_id:
+            link += f"#post-{post_id}"
+    except (ForumThread.DoesNotExist, AttributeError):
+        link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
+        if post_id:
+            link += f"#post-{post_id}"
 
     return create_notification(
         user=thread_author,
@@ -449,6 +461,7 @@ def notify_post_reply(
     thread_title: str,
     thread_id: int,
     subgroup_slug: str,
+    thread_slug: str,
     reply_content: str,
     post_id: int = 0,
 ) -> Notification | None:
@@ -460,6 +473,7 @@ def notify_post_reply(
         thread_title: Title of the thread
         thread_id: ID of the thread
         subgroup_slug: Slug of the subgroup for URL
+        thread_slug: Slug of the thread for URL
         reply_content: Full HTML content of the reply
         post_id: ID of the reply post (for scroll-to link)
     """
@@ -472,9 +486,17 @@ def notify_post_reply(
     plain_text = strip_tags(reply_content)
     preview = plain_text[:80] + "..." if len(plain_text) > 80 else plain_text
 
-    link = f"/forum/{subgroup_slug}/{thread_id}"
-    if post_id:
-        link += f"#post-{post_id}"
+    from apps.forum.models import Thread as ForumThread
+
+    try:
+        event_id = ForumThread.objects.get(id=thread_id).event.id
+        link = f"/kalender/{event_id}"
+        if post_id:
+            link += f"#post-{post_id}"
+    except (ForumThread.DoesNotExist, AttributeError):
+        link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
+        if post_id:
+            link += f"#post-{post_id}"
 
     return create_notification(
         user=post_author,
@@ -754,6 +776,7 @@ def notify_post_reaction(
     thread_title: str,
     thread_id: int,
     subgroup_slug: str,
+    thread_slug: str,
     reaction_emoji: str,
     post_id: int = 0,
 ) -> Notification | None:
@@ -765,13 +788,14 @@ def notify_post_reaction(
         thread_title: Title of the thread containing the post
         thread_id: ID of the thread
         subgroup_slug: Slug of the subgroup for URL
+        thread_slug: Slug of the thread for URL
         reaction_emoji: The emoji used for the reaction
         post_id: ID of the reacted post (for scroll-to link)
     """
     if post_author.id == reactor.id:
         return None
 
-    link = f"/forum/{subgroup_slug}/{thread_id}"
+    link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
     if post_id:
         link += f"#post-{post_id}"
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { useParams, useNavigate, useLocation, Navigate } from "react-router-dom"
+import { useParams, useNavigate, useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
@@ -72,20 +72,23 @@ interface UpdatePostParams {
 dayjs.extend(relativeTime)
 
 export default function ThreadPage() {
-  const { id, threadId: threadIdParam } = useParams<{
+  const {
+    id,
+    threadSlug,
+    slug: subgroupSlug,
+  } = useParams<{
     id?: string
-    threadId?: string
+    threadSlug?: string
+    slug?: string
   }>()
   const navigate = useNavigate()
   const location = useLocation()
   const queryClient = useQueryClient()
-  const threadId = parseInt(threadIdParam || id || "0", 10)
-
-  // If threadId is not numeric, this URL was meant for another route (e.g. /dokumenter).
-  // Redirect to the subgroup page so React Router route ranking issues don't leave us stuck.
-  if (isNaN(threadId)) {
-    return <Navigate to="/forum" replace />
-  }
+  const isSlugRoute = !!threadSlug
+  const numericId = parseInt(id || "0", 10)
+  const threadQueryKey = isSlugRoute
+    ? ["thread", subgroupSlug, threadSlug]
+    : ["thread", numericId]
 
   const [newPostContent, setNewPostContent] = useState("")
   const [attachments, setAttachments] = useState<File[]>([])
@@ -103,10 +106,24 @@ export default function ThreadPage() {
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["thread", threadId],
-    queryFn: () => forumApi.getThread(threadId),
-    enabled: !isNaN(threadId),
+    queryKey: isSlugRoute
+      ? ["thread", subgroupSlug, threadSlug]
+      : ["thread", numericId],
+    queryFn: () =>
+      isSlugRoute
+        ? forumApi.getThreadBySlug(subgroupSlug!, threadSlug!)
+        : forumApi.getThread(numericId),
+    enabled: isSlugRoute || !isNaN(numericId),
   })
+
+  // Redirect to event page if this thread is an event discussion thread
+  useEffect(() => {
+    if (thread?.event_id) {
+      navigate(`/kalender/${thread.event_id}${location.hash}`, {
+        replace: true,
+      })
+    }
+  }, [thread?.event_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // After thread loads (backend marks it as read), invalidate unread counts
   // and auto-mark any notification pointing to this thread as read
@@ -143,17 +160,17 @@ export default function ThreadPage() {
   const createPostMutation = useMutation({
     mutationFn: ({ data, files, pollData: pd }: CreatePostParams) =>
       forumApi.createPost(
-        threadId,
+        thread!.id,
         data,
         files.length > 0 ? files : undefined,
         pd || undefined,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
+      queryClient.invalidateQueries({ queryKey: threadQueryKey })
       setNewPostContent("")
       setAttachments([])
       setPollData(null)
-      clearDraft("reply-" + threadId)
+      clearDraft("reply-" + thread!.id)
       notifications.show({
         title: "Reply posted",
         message: "Your reply has been added.",
@@ -173,7 +190,7 @@ export default function ThreadPage() {
     mutationFn: ({ postId, data }: UpdatePostParams) =>
       forumApi.updatePost(postId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
+      queryClient.invalidateQueries({ queryKey: threadQueryKey })
       setEditingPost(null)
       setEditContent("")
       notifications.show({
@@ -194,7 +211,7 @@ export default function ThreadPage() {
   const deletePostMutation = useMutation({
     mutationFn: forumApi.deletePost,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
+      queryClient.invalidateQueries({ queryKey: threadQueryKey })
       closeDeleteModal()
       setPostToDelete(null)
       notifications.show({
@@ -232,9 +249,10 @@ export default function ThreadPage() {
   })
 
   const closeThreadMutation = useMutation({
-    mutationFn: (isClosed: boolean) => forumApi.closeThread(threadId, isClosed),
+    mutationFn: (isClosed: boolean) =>
+      forumApi.closeThread(thread!.id, isClosed),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
+      queryClient.invalidateQueries({ queryKey: threadQueryKey })
       notifications.show({
         title: data.is_closed ? "Tråd lukket" : "Tråd genåbnet",
         message: data.is_closed
@@ -376,7 +394,7 @@ export default function ThreadPage() {
                   <Menu.Item
                     color="red"
                     leftSection={<IconTrash size={14} />}
-                    onClick={() => deleteThreadMutation.mutate(threadId)}
+                    onClick={() => deleteThreadMutation.mutate(thread.id)}
                   >
                     Slet tråd
                   </Menu.Item>
@@ -409,7 +427,7 @@ export default function ThreadPage() {
           <PostCard
             key={post.id}
             post={post}
-            threadId={threadId}
+            threadId={thread.id}
             isFirst={index === 0}
             isEditing={editingPost?.id === post.id}
             editContent={editContent}
@@ -454,7 +472,7 @@ export default function ThreadPage() {
                   placeholder="Write your reply..."
                   minHeight={150}
                   onFilePaste={handleAddFiles}
-                  draftKey={"reply-" + threadId}
+                  draftKey={"reply-" + thread.id}
                 />
 
                 {pollData && (

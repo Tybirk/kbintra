@@ -87,6 +87,7 @@ class Thread(models.Model):
         related_name="threads",
     )
     title = models.CharField(max_length=200)
+    slug = models.SlugField(max_length=200, allow_unicode=True, blank=True, db_index=True)
     author = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -103,9 +104,24 @@ class Thread(models.Model):
 
     class Meta:
         ordering = ["-is_pinned", "-updated_at"]
+        unique_together = [["subgroup", "slug"]]
 
     def __str__(self) -> str:
         return self.title
+
+    def save(self, *args: object, **kwargs: object) -> None:
+        if not self.slug:
+            self.slug = self._generate_slug()
+        super().save(*args, **kwargs)
+
+    def _generate_slug(self) -> str:
+        base = slugify(self.title, allow_unicode=True) or "traad"
+        slug = base
+        n = 2
+        while Thread.objects.filter(subgroup=self.subgroup, slug=slug).exists():
+            slug = f"{base}-{n}"
+            n += 1
+        return slug
 
 
 class Post(models.Model):

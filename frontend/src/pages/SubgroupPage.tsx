@@ -259,7 +259,9 @@ export default function SubgroupPage() {
                 <ThreadRow
                   key={thread.id}
                   thread={thread}
-                  onClick={() => navigate(`/forum/${slug}/${thread.id}`)}
+                  onClick={() =>
+                    navigate(`/forum/${slug}/traad/${thread.slug}`)
+                  }
                 />
               ))
             )}
@@ -285,7 +287,7 @@ export default function SubgroupPage() {
         onSuccess={(thread) => {
           queryClient.invalidateQueries({ queryKey: ["threads", slug] })
           closeCreateThreadModal()
-          navigate(`/forum/${slug}/${thread.id}`)
+          navigate(`/forum/${slug}/traad/${thread.slug}`)
         }}
       />
     </>

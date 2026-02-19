@@ -169,6 +169,7 @@ def notify_new_thread_task(
     subgroup_name: str,
     subgroup_slug: str,
     subgroup_id: int,
+    thread_slug: str,
     initial_post_content: str,
 ) -> None:
     """Send new-thread notifications to subscribers in background."""
@@ -194,6 +195,7 @@ def notify_new_thread_task(
         thread_id=thread_id,
         subgroup_name=subgroup_name,
         subgroup_slug=subgroup_slug,
+        thread_slug=thread_slug,
         initial_post_content=initial_post_content,
     )
     logger.info("notify_new_thread_task COMPLETED: %d notifications created", count)
@@ -244,6 +246,7 @@ def notify_thread_reply_task(
     thread_title: str,
     thread_id: int,
     subgroup_slug: str,
+    thread_slug: str,
     reply_content: str,
     post_id: int = 0,
 ) -> None:
@@ -275,6 +278,7 @@ def notify_thread_reply_task(
         thread_title=thread_title,
         thread_id=thread_id,
         subgroup_slug=subgroup_slug,
+        thread_slug=thread_slug,
         reply_content=reply_content,
         post_id=post_id,
     )
@@ -292,6 +296,7 @@ def notify_post_reply_task(
     thread_title: str,
     thread_id: int,
     subgroup_slug: str,
+    thread_slug: str,
     reply_content: str,
     post_id: int = 0,
 ) -> None:
@@ -321,6 +326,7 @@ def notify_post_reply_task(
         thread_title=thread_title,
         thread_id=thread_id,
         subgroup_slug=subgroup_slug,
+        thread_slug=thread_slug,
         reply_content=reply_content,
         post_id=post_id,
     )

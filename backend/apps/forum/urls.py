@@ -27,6 +27,7 @@ from .views import (
     SubscribeView,
     ThreadCloseView,
     ThreadDeleteView,
+    ThreadDetailBySlugView,
     ThreadDetailView,
     ThreadListCreateView,
     UnsubscribeView,
@@ -51,6 +52,11 @@ urlpatterns = [
     path("subscriptions/", MySubscriptionsView.as_view(), name="my-subscriptions"),
     # Threads
     path("subgroups/<slug:slug>/threads/", ThreadListCreateView.as_view(), name="thread-list"),
+    path(
+        "subgroups/<slug:subgroup_slug>/threads/<str:thread_slug>/",
+        ThreadDetailBySlugView.as_view(),
+        name="thread-detail-by-slug",
+    ),
     path("threads/<int:pk>/", ThreadDetailView.as_view(), name="thread-detail"),
     path("threads/<int:pk>/close/", ThreadCloseView.as_view(), name="thread-close"),
     path("threads/<int:pk>/delete/", ThreadDeleteView.as_view(), name="thread-delete"),
