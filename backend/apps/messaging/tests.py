@@ -214,3 +214,124 @@ class TestUnreadCountAPI:
         response = api_client.get("/api/messages/unread-count/")
         assert response.status_code == 200
         assert response.json()["unread_count"] == 0
+
+
+class TestMessageEditAPI:
+    """Tests for the message edit endpoint (PATCH /api/messages/messages/<id>/edit/)."""
+
+    def test_sender_can_edit_own_message(self, authenticated_client, message):
+        """Sender can edit their own message; content and edited_at are updated."""
+        response = authenticated_client.patch(
+            f"/api/messages/messages/{message.id}/edit/",
+            {"content": "Edited content"},
+            format="json",
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["content"] == "Edited content"
+        assert data["edited_at"] is not None
+        message.refresh_from_db()
+        assert message.content == "Edited content"
+        assert message.edited_at is not None
+
+    def test_non_sender_cannot_edit_message(self, api_client, second_user, message):
+        """Non-sender gets 404 (message filtered by sender in lookup)."""
+        api_client.force_authenticate(user=second_user)
+        response = api_client.patch(
+            f"/api/messages/messages/{message.id}/edit/",
+            {"content": "Should not work"},
+            format="json",
+        )
+        assert response.status_code == 404
+
+    def test_edit_system_message_rejected(self, authenticated_client, conversation, user):
+        """System messages cannot be edited."""
+        from apps.messaging.models import Message
+
+        system_msg = Message.objects.create(
+            conversation=conversation,
+            sender=user,
+            content="System notification",
+            is_system_message=True,
+        )
+        response = authenticated_client.patch(
+            f"/api/messages/messages/{system_msg.id}/edit/",
+            {"content": "New content"},
+            format="json",
+        )
+        assert response.status_code == 400
+
+    def test_edit_deleted_message_rejected(self, authenticated_client, conversation, user):
+        """Already-deleted messages cannot be edited."""
+        from apps.messaging.models import Message
+
+        deleted_msg = Message.objects.create(
+            conversation=conversation,
+            sender=user,
+            content="",
+            is_deleted=True,
+        )
+        response = authenticated_client.patch(
+            f"/api/messages/messages/{deleted_msg.id}/edit/",
+            {"content": "New content"},
+            format="json",
+        )
+        assert response.status_code == 400
+
+    def test_edit_with_empty_content_rejected(self, authenticated_client, message):
+        """Empty content string is rejected."""
+        response = authenticated_client.patch(
+            f"/api/messages/messages/{message.id}/edit/",
+            {"content": "   "},
+            format="json",
+        )
+        assert response.status_code == 400
+
+    def test_unauthenticated_edit_rejected(self, api_client, message):
+        """Unauthenticated request is rejected."""
+        response = api_client.patch(
+            f"/api/messages/messages/{message.id}/edit/",
+            {"content": "New content"},
+            format="json",
+        )
+        assert response.status_code == 401
+
+
+class TestMessageUnsendAPI:
+    """Tests for the message unsend endpoint (DELETE /api/messages/messages/<id>/unsend/)."""
+
+    def test_sender_can_unsend_own_message(self, authenticated_client, message):
+        """Sender can unsend their own message; message is soft-deleted."""
+        response = authenticated_client.delete(f"/api/messages/messages/{message.id}/unsend/")
+        assert response.status_code == 204
+        message.refresh_from_db()
+        assert message.is_deleted is True
+        assert message.content == ""
+
+    def test_non_sender_cannot_unsend_message(self, api_client, second_user, message):
+        """Non-sender gets 404 (message filtered by sender in lookup)."""
+        api_client.force_authenticate(user=second_user)
+        response = api_client.delete(f"/api/messages/messages/{message.id}/unsend/")
+        assert response.status_code == 404
+        message.refresh_from_db()
+        assert message.is_deleted is False
+
+    def test_unsend_system_message_rejected(self, authenticated_client, conversation, user):
+        """System messages cannot be unsent."""
+        from apps.messaging.models import Message
+
+        system_msg = Message.objects.create(
+            conversation=conversation,
+            sender=user,
+            content="System notification",
+            is_system_message=True,
+        )
+        response = authenticated_client.delete(f"/api/messages/messages/{system_msg.id}/unsend/")
+        assert response.status_code == 400
+        system_msg.refresh_from_db()
+        assert system_msg.is_deleted is False
+
+    def test_unauthenticated_unsend_rejected(self, api_client, message):
+        """Unauthenticated request is rejected."""
+        response = api_client.delete(f"/api/messages/messages/{message.id}/unsend/")
+        assert response.status_code == 401

@@ -1178,3 +1178,50 @@ class TestPollInThreadDetail:
         poll_data = response.data["posts"][0]["poll"]
         assert len(poll_data["options"][0]["voters"]) == 1
         assert poll_data["options"][0]["voters"][0]["id"] == user.id
+
+
+# =============================================================================
+# Admin Rights Tests
+# =============================================================================
+
+
+class TestForumAdminRights:
+    """Admin (is_staff) can moderate forum content they did not author."""
+
+    def test_admin_can_delete_others_thread(self, admin_client, thread):
+        """Admin can DELETE a thread authored by another user."""
+        thread_id = thread.id
+        response = admin_client.delete(f"/api/forum/threads/{thread_id}/delete/")
+        assert response.status_code == 204
+        assert not Thread.objects.filter(id=thread_id).exists()
+
+    def test_admin_can_update_others_post(self, admin_client, post):
+        """Admin can PATCH a post authored by another user."""
+        response = admin_client.patch(
+            f"/api/forum/posts/{post.id}/",
+            {"content": "Admin corrected content"},
+            format="json",
+        )
+        assert response.status_code == 200
+        post.refresh_from_db()
+        assert post.content == "Admin corrected content"
+
+    def test_admin_can_delete_others_post(self, admin_client, post):
+        """Admin can DELETE a post authored by another user."""
+        post_id = post.id
+        response = admin_client.delete(f"/api/forum/posts/{post_id}/")
+        assert response.status_code == 204
+        assert not Post.objects.filter(id=post_id).exists()
+
+    def test_admin_sees_is_own_true_on_others_thread(self, admin_client, thread, post):
+        """is_own is True for admin on any thread, enabling moderation controls in the UI."""
+        response = admin_client.get(f"/api/forum/threads/{thread.id}/")
+        assert response.status_code == 200
+        assert response.data["is_own"] is True
+
+    def test_admin_sees_is_own_true_on_others_post(self, admin_client, thread, post):
+        """is_own is True for admin on any post, enabling edit/delete controls in the UI."""
+        response = admin_client.get(f"/api/forum/threads/{thread.id}/")
+        assert response.status_code == 200
+        post_data = next(p for p in response.data["posts"] if p["id"] == post.id)
+        assert post_data["is_own"] is True

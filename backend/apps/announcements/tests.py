@@ -142,3 +142,30 @@ class TestAnnouncementAPI:
         api_client.force_authenticate(user=second_user)
         response = api_client.delete(f"/api/announcements/{announcement.id}/")
         assert response.status_code == 403
+
+
+# =============================================================================
+# Admin Rights Tests
+# =============================================================================
+
+
+class TestAnnouncementAdminRights:
+    """Admin (is_staff) can manage announcements they did not author."""
+
+    def test_admin_can_update_others_announcement(self, admin_client, announcement):
+        """Admin can PATCH an announcement authored by another user."""
+        response = admin_client.patch(
+            f"/api/announcements/{announcement.id}/",
+            {"title": "Admin Updated Title"},
+            format="json",
+        )
+        assert response.status_code == 200
+        announcement.refresh_from_db()
+        assert announcement.title == "Admin Updated Title"
+
+    def test_admin_can_delete_others_announcement(self, admin_client, announcement):
+        """Admin can DELETE an announcement authored by another user."""
+        announcement_id = announcement.id
+        response = admin_client.delete(f"/api/announcements/{announcement_id}/")
+        assert response.status_code == 204
+        assert not Announcement.objects.filter(id=announcement_id).exists()

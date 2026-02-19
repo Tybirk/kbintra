@@ -1090,3 +1090,47 @@ class TestEventDeletion:
         response = authenticated_client.delete(f"/api/events/{event.id}/")
         assert response.status_code == 204
         assert Room.objects.filter(id=room.id).exists()
+
+
+# =============================================================================
+# Admin Rights Tests
+# =============================================================================
+
+
+class TestEventAdminRights:
+    """Admin (is_staff) can manage events they did not create."""
+
+    def test_admin_can_update_others_event(self, admin_client, event):
+        """Admin can PATCH an event created by another user."""
+        response = admin_client.patch(
+            f"/api/events/{event.id}/",
+            {"title": "Admin Updated Title"},
+            format="json",
+        )
+        assert response.status_code == 200
+        event.refresh_from_db()
+        assert event.title == "Admin Updated Title"
+
+    def test_admin_can_delete_others_event(self, admin_client, event):
+        """Admin can DELETE an event created by another user."""
+        event_id = event.id
+        response = admin_client.delete(f"/api/events/{event_id}/")
+        assert response.status_code == 204
+        assert not Event.objects.filter(id=event_id).exists()
+
+    def test_admin_can_cancel_others_event(self, admin_client, event):
+        """Admin can cancel a community event created by another user."""
+        response = admin_client.post(
+            f"/api/events/{event.id}/cancel/",
+            {"cancellation_message": "Aflyst af admin."},
+            format="json",
+        )
+        assert response.status_code == 200
+        event.refresh_from_db()
+        assert event.is_cancelled is True
+
+    def test_admin_sees_is_own_true_on_others_event(self, admin_client, event):
+        """is_own is True for admin on any event, enabling edit controls in the UI."""
+        response = admin_client.get(f"/api/events/{event.id}/")
+        assert response.status_code == 200
+        assert response.json()["is_own"] is True
