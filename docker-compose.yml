@@ -155,6 +155,12 @@ services:
       - web
     restart: unless-stopped
     mem_limit: 128m
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     logging:
       driver: "json-file"
       options:
