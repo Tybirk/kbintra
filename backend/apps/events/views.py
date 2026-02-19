@@ -557,33 +557,41 @@ class EventFilesView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        from apps.forum.models import File, Folder
+        from apps.forum.models import File, Folder, Subgroup
+
+        # Resolve effective subgroup — fall back to the "arrangementer" subgroup
+        # (same pattern as create_event_thread in services.py)
+        if event.subgroup:
+            file_subgroup = event.subgroup
+        else:
+            file_subgroup, _ = Subgroup.objects.get_or_create(
+                slug="arrangementer",
+                defaults={
+                    "name": "Arrangementer",
+                    "description": "Diskussioner om arrangementer",
+                },
+            )
 
         # Create folder on demand
         if not event.folder:
-            if event.subgroup:
-                year = str(event.start_datetime.year)
-                year_folder, _ = Folder.objects.get_or_create(
-                    subgroup=event.subgroup,
-                    name=year,
-                    parent=None,
-                )
-                event_folder = Folder.objects.create(
-                    subgroup=event.subgroup,
-                    name=event.title[:100],
-                    parent=year_folder,
-                )
-            else:
-                event_folder = Folder.objects.create(
-                    name=event.title[:100],
-                )
+            year = str(event.start_datetime.year)
+            year_folder, _ = Folder.objects.get_or_create(
+                subgroup=file_subgroup,
+                name=year,
+                parent=None,
+            )
+            event_folder = Folder.objects.create(
+                subgroup=file_subgroup,
+                name=event.title[:100],
+                parent=year_folder,
+            )
             event.folder = event_folder
             event.save(update_fields=["folder"])
 
         created_files = []
         for uploaded_file in files:
             f = File.objects.create(
-                subgroup=event.subgroup,
+                subgroup=file_subgroup,
                 folder=event.folder,
                 name=uploaded_file.name,
                 file=uploaded_file,
