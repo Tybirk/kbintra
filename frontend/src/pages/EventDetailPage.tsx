@@ -294,9 +294,7 @@ export default function EventDetailPage() {
                 variant="subtle"
                 size="sm"
                 color="gray"
-                onClick={() =>
-                  window.open(eventsApi.getICalUrl(event.id), "_blank")
-                }
+                onClick={() => void eventsApi.downloadICal(event.id)}
               >
                 <IconCalendarPlus size={16} />
               </ActionIcon>
@@ -390,7 +388,7 @@ export default function EventDetailPage() {
         {hasFiles && (
           <>
             <Divider my="md" />
-            <EventFilesSection eventId={event.id} subgroup={event.subgroup} />
+            <EventFilesSection eventId={event.id} />
           </>
         )}
 
@@ -578,19 +576,11 @@ function AttendeeRow({ attendance }: { attendance: EventAttendance }) {
   )
 }
 
-interface SubgroupRef {
-  slug: string
-  name: string
-}
-
 interface EventFilesSectionProps {
   eventId: number
-  subgroup: SubgroupRef | null
 }
 
-function EventFilesSection({ eventId, subgroup }: EventFilesSectionProps) {
-  const navigate = useNavigate()
-
+function EventFilesSection({ eventId }: EventFilesSectionProps) {
   const { data: files, isLoading } = useQuery({
     queryKey: ["event-files", eventId],
     queryFn: () => eventsApi.getFiles(eventId),

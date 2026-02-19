@@ -81,8 +81,23 @@ export const eventsApi = {
     return response.data
   },
 
-  // Download iCal
-  getICalUrl: (eventId: number): string => `/api/events/${eventId}/ical/`,
+  // Download iCal file via authenticated request
+  downloadICal: async (eventId: number): Promise<void> => {
+    const response = await apiClient.get(`/events/${eventId}/ical/`, {
+      responseType: "blob",
+    })
+    const blob = new Blob([response.data], { type: "text/calendar" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download =
+      response.headers["content-disposition"]?.match(/filename="(.+)"/)?.[1] ??
+      `event-${eventId}.ics`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  },
 
   // Cancel event
   cancelEvent: async (
