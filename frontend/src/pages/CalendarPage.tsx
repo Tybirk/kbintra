@@ -1,6 +1,6 @@
-import { useState, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback, useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, keepPreviousData } from "@tanstack/react-query"
 import {
   Title,
   Text,
@@ -9,10 +9,16 @@ import {
   Loader,
   Center,
   Select,
+  ActionIcon,
 } from "@mantine/core"
 import { Schedule } from "@mantine/schedule"
 import type { ScheduleEventData, ScheduleViewLevel } from "@mantine/schedule"
-import { IconPlus, IconMapPin } from "@tabler/icons-react"
+import {
+  IconPlus,
+  IconMapPin,
+  IconChevronLeft,
+  IconChevronRight,
+} from "@tabler/icons-react"
 import dayjs from "dayjs"
 import "dayjs/locale/da"
 
@@ -55,6 +61,7 @@ export default function CalendarPage() {
         visibility: "community",
         subgroup: subgroupFilter ? Number(subgroupFilter) : undefined,
       }),
+    placeholderData: keepPreviousData,
   })
 
   const { data: subgroups } = useQuery({
@@ -90,6 +97,32 @@ export default function CalendarPage() {
     setCurrentDate(date)
     setCurrentView("day")
   }, [])
+
+  const touchStartX = useRef<number | null>(null)
+  const touchStartY = useRef<number | null>(null)
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX
+    touchStartY.current = e.touches[0].clientY
+  }, [])
+
+  const handleTouchEnd = useCallback(
+    (e: React.TouchEvent) => {
+      if (touchStartX.current === null || touchStartY.current === null) return
+      const deltaX = e.changedTouches[0].clientX - touchStartX.current
+      const deltaY = e.changedTouches[0].clientY - touchStartY.current
+      touchStartX.current = null
+      touchStartY.current = null
+      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
+        setCurrentDate(
+          dayjs(currentDate)
+            .add(deltaX < 0 ? 1 : -1, "month")
+            .format("YYYY-MM-DD"),
+        )
+      }
+    },
+    [currentDate],
+  )
 
   const subgroupOptions = (subgroups || []).map((s) => ({
     value: String(s.id),
@@ -148,6 +181,8 @@ export default function CalendarPage() {
         locale="da"
         labels={DA_SCHEDULE_LABELS}
         layout="responsive"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
         onEventClick={handleEventClick}
         onTimeSlotClick={handleTimeSlotClick}
         onDayClick={handleDayClick}
@@ -184,6 +219,40 @@ export default function CalendarPage() {
         monthViewProps={{
           firstDayOfWeek: 1,
           withWeekNumbers: true,
+        }}
+        mobileMonthViewProps={{
+          firstDayOfWeek: 1,
+          renderHeader: () => (
+            <Group justify="space-between" align="center" w="100%">
+              <ActionIcon
+                variant="subtle"
+                aria-label="Forrige måned"
+                onClick={() =>
+                  setCurrentDate(
+                    dayjs(currentDate)
+                      .subtract(1, "month")
+                      .format("YYYY-MM-DD"),
+                  )
+                }
+              >
+                <IconChevronLeft size={18} />
+              </ActionIcon>
+              <Text fw={600} tt="capitalize" style={{ userSelect: "none" }}>
+                {dayjs(currentDate).format("MMMM YYYY")}
+              </Text>
+              <ActionIcon
+                variant="subtle"
+                aria-label="Næste måned"
+                onClick={() =>
+                  setCurrentDate(
+                    dayjs(currentDate).add(1, "month").format("YYYY-MM-DD"),
+                  )
+                }
+              >
+                <IconChevronRight size={18} />
+              </ActionIcon>
+            </Group>
+          ),
         }}
         dayViewProps={{
           withCurrentTimeIndicator: true,

@@ -1,5 +1,10 @@
-import { useState, useMemo, useCallback } from "react"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useState, useMemo, useCallback, useRef } from "react"
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  keepPreviousData,
+} from "@tanstack/react-query"
 import {
   Title,
   Text,
@@ -10,12 +15,18 @@ import {
   Box,
   Select,
   UnstyledButton,
+  ActionIcon,
 } from "@mantine/core"
 import { Schedule } from "@mantine/schedule"
 import type { ScheduleEventData, ScheduleViewLevel } from "@mantine/schedule"
 import { useDisclosure, useMediaQuery } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
-import { IconPlus, IconSettings } from "@tabler/icons-react"
+import {
+  IconPlus,
+  IconSettings,
+  IconChevronLeft,
+  IconChevronRight,
+} from "@tabler/icons-react"
 import dayjs from "dayjs"
 
 import { bookingsApi } from "../api/bookings"
@@ -104,6 +115,7 @@ export default function BookingsPage() {
         selectedRoomId ? parseInt(selectedRoomId) : undefined,
       ),
     enabled: !roomsLoading,
+    placeholderData: keepPreviousData,
   })
 
   // Convert bookings → Schedule events
@@ -226,6 +238,32 @@ export default function BookingsPage() {
     setCurrentView("day")
   }, [])
 
+  const touchStartX = useRef<number | null>(null)
+  const touchStartY = useRef<number | null>(null)
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX
+    touchStartY.current = e.touches[0].clientY
+  }, [])
+
+  const handleTouchEnd = useCallback(
+    (e: React.TouchEvent) => {
+      if (touchStartX.current === null || touchStartY.current === null) return
+      const deltaX = e.changedTouches[0].clientX - touchStartX.current
+      const deltaY = e.changedTouches[0].clientY - touchStartY.current
+      touchStartX.current = null
+      touchStartY.current = null
+      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
+        setCurrentDate(
+          dayjs(currentDate)
+            .add(deltaX < 0 ? 1 : -1, "month")
+            .format("YYYY-MM-DD"),
+        )
+      }
+    },
+    [currentDate],
+  )
+
   const isLoading = roomsLoading || bookingsLoading
   const roomOptions = [
     { value: "", label: "Alle lokaler" },
@@ -346,6 +384,8 @@ export default function BookingsPage() {
         locale="da"
         labels={DA_SCHEDULE_LABELS}
         layout="responsive"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
         onEventClick={handleEventClick}
         onTimeSlotClick={handleTimeSlotClick}
         onDayClick={handleDayClick}
@@ -386,6 +426,37 @@ export default function BookingsPage() {
           withWeekNumbers: true,
         }}
         mobileMonthViewProps={{
+          renderHeader: () => (
+            <Group justify="space-between" align="center" w="100%">
+              <ActionIcon
+                variant="subtle"
+                aria-label="Forrige måned"
+                onClick={() =>
+                  setCurrentDate(
+                    dayjs(currentDate)
+                      .subtract(1, "month")
+                      .format("YYYY-MM-DD"),
+                  )
+                }
+              >
+                <IconChevronLeft size={18} />
+              </ActionIcon>
+              <Text fw={600} tt="capitalize" style={{ userSelect: "none" }}>
+                {dayjs(currentDate).format("MMMM YYYY")}
+              </Text>
+              <ActionIcon
+                variant="subtle"
+                aria-label="Næste måned"
+                onClick={() =>
+                  setCurrentDate(
+                    dayjs(currentDate).add(1, "month").format("YYYY-MM-DD"),
+                  )
+                }
+              >
+                <IconChevronRight size={18} />
+              </ActionIcon>
+            </Group>
+          ),
           renderEvent: (
             event: ScheduleEventData,
             { children: _children, ...buttonProps },
