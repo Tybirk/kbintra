@@ -31,8 +31,6 @@ services:
       - "traefik.http.routers.backend.rule=PathPrefix(`/api`) || PathPrefix(`/admin`) || PathPrefix(`/media`) || PathPrefix(`/ws`) || PathPrefix(`/static`)"
       - "traefik.http.routers.backend.entrypoints=web"
       - "traefik.http.services.backend.loadbalancer.server.port=8000"
-      - "traefik.http.services.backend.loadbalancer.healthcheck.path=/api/health/"
-      - "traefik.http.services.backend.loadbalancer.healthcheck.interval=5s"
     volumes:
       - ./data:/app/data
     env_file:
@@ -60,8 +58,6 @@ services:
       - "traefik.http.routers.frontend.entrypoints=web"
       - "traefik.http.routers.frontend.priority=1"
       - "traefik.http.services.frontend.loadbalancer.server.port=80"
-      - "traefik.http.services.frontend.loadbalancer.healthcheck.path=/"
-      - "traefik.http.services.frontend.loadbalancer.healthcheck.interval=5s"
     networks:
       - web
     restart: unless-stopped
