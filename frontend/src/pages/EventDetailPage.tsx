@@ -633,17 +633,6 @@ function EventFilesSection({ eventId, subgroup }: EventFilesSectionProps) {
           Ingen dokumenter.
         </Text>
       )}
-
-      {subgroup && (
-        <Button
-          variant="light"
-          size="sm"
-          mt="sm"
-          onClick={() => navigate(`/forum/${subgroup.slug}`)}
-        >
-          Åbn dokumentmappe i {subgroup.name}
-        </Button>
-      )}
     </div>
   )
 }
