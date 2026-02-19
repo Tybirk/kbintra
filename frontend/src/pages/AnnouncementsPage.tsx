@@ -32,6 +32,7 @@ import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
 
 import { announcementsApi } from "../api/announcements"
+import { notificationsApi } from "../api/notifications"
 import { filterFilesBySize } from "../config"
 import { clearDraft } from "../utils/draftStorage"
 import RichTextEditor from "../components/RichTextEditor"
@@ -77,6 +78,15 @@ export default function AnnouncementsPage() {
     queryKey: ["announcements"],
     queryFn: () => announcementsApi.getAnnouncements(),
   })
+
+  // Auto-mark announcement notifications as read when visiting the page
+  useEffect(() => {
+    void notificationsApi.markReadByLink("/opslag").then(() => {
+      queryClient.invalidateQueries({
+        queryKey: ["notifications", "unread-count"],
+      })
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scroll to and highlight a specific announcement when navigating from search
   useEffect(() => {

@@ -11,12 +11,12 @@ from .serializers import AnnouncementCreateSerializer, AnnouncementSerializer
 
 
 class IsOwnerOrReadOnly(permissions.BasePermission):
-    """Custom permission to only allow owners to edit/delete."""
+    """Custom permission to only allow owners or admins to edit/delete."""
 
     def has_object_permission(self, request: Any, view: Any, obj: Announcement) -> bool:
         if request.method in permissions.SAFE_METHODS:
             return True
-        return obj.author == request.user
+        return obj.author == request.user or request.user.is_staff
 
 
 class AnnouncementListCreateView(generics.ListCreateAPIView):

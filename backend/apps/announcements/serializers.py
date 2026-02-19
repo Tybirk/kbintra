@@ -66,7 +66,7 @@ class AnnouncementSerializer(serializers.ModelSerializer):
     def get_is_own(self, obj: Announcement) -> bool:
         request = self.context.get("request")
         if request and request.user.is_authenticated:
-            return obj.author_id == request.user.id
+            return obj.author_id == request.user.id or request.user.is_staff
         return False
 
 

@@ -97,6 +97,11 @@ export default function AppHeader({
           invalidateCacheForLink(queryClient, notificationLink)
         }
 
+        // If already on the destination page, mark the notification as read immediately
+        if (isAlreadyViewing && notificationPathname) {
+          void notificationsApi.markReadByLink(notificationPathname)
+        }
+
         if (!isAlreadyViewing) {
           notifications.show({
             title: wsData.notification.title,

@@ -36,6 +36,7 @@ import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
 
 import { forumApi } from "../api/forum"
+import { notificationsApi } from "../api/notifications"
 import { filterFilesBySize } from "../config"
 import { clearDraft } from "../utils/draftStorage"
 import RichTextEditor from "../components/RichTextEditor"
@@ -102,11 +103,17 @@ export default function ThreadPage() {
   })
 
   // After thread loads (backend marks it as read), invalidate unread counts
+  // and auto-mark any notification pointing to this thread as read
   useEffect(() => {
     if (thread) {
       queryClient.invalidateQueries({ queryKey: ["forum", "unread-count"] })
       queryClient.invalidateQueries({ queryKey: ["subgroups"] })
       queryClient.invalidateQueries({ queryKey: ["threads"] })
+      void notificationsApi.markReadByLink(location.pathname).then(() => {
+        queryClient.invalidateQueries({
+          queryKey: ["notifications", "unread-count"],
+        })
+      })
     }
   }, [thread?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 

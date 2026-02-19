@@ -247,7 +247,7 @@ class PostSerializer(serializers.ModelSerializer):
     def get_is_own(self, obj: Post) -> bool:
         request = self.context.get("request")
         if request and request.user.is_authenticated:
-            return obj.author_id == request.user.id
+            return obj.author_id == request.user.id or request.user.is_staff
         return False
 
     def get_reactions(self, obj: Post) -> list[dict]:
@@ -457,7 +457,7 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
     def get_is_own(self, obj: Thread) -> bool:
         request = self.context.get("request")
         if request and request.user.is_authenticated:
-            return obj.author_id == request.user.id
+            return obj.author_id == request.user.id or request.user.is_staff
         return False
 
     def get_can_close(self, obj: Thread) -> bool:

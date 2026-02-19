@@ -26,7 +26,11 @@ import dayjs from "dayjs"
 
 import { bookingsApi } from "../../api/bookings"
 import { extractErrorMessage, TIME_PRESETS } from "./BookingModals"
-import type { Room, CreateRecurringBookingData } from "../../types"
+import type {
+  Room,
+  RecurringBooking,
+  CreateRecurringBookingData,
+} from "../../types"
 
 const DAYS_OF_WEEK = [
   { value: "0", label: "Mandag" },
@@ -355,6 +359,9 @@ function RecurringBookingsAdmin({
     createModalOpened,
     { open: openCreateModal, close: closeCreateModal },
   ] = useDisclosure(false)
+  const [editingBooking, setEditingBooking] = useState<RecurringBooking | null>(
+    null,
+  )
 
   const { data: recurringBookings, isLoading } = useQuery({
     queryKey: ["bookings", "recurring"],
@@ -437,15 +444,24 @@ function RecurringBookingsAdmin({
                     )}
                   </div>
                 </Group>
-                <Button
-                  size="xs"
-                  variant="subtle"
-                  color="red"
-                  onClick={() => deleteMutation.mutate(booking.id)}
-                  loading={deleteMutation.isPending}
-                >
-                  Slet
-                </Button>
+                <Group gap="xs">
+                  <Button
+                    size="xs"
+                    variant="subtle"
+                    onClick={() => setEditingBooking(booking)}
+                  >
+                    Rediger
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="subtle"
+                    color="red"
+                    onClick={() => deleteMutation.mutate(booking.id)}
+                    loading={deleteMutation.isPending}
+                  >
+                    Slet
+                  </Button>
+                </Group>
               </Group>
             </Paper>
           ))}
@@ -460,7 +476,202 @@ function RecurringBookingsAdmin({
           closeCreateModal()
         }}
       />
+      {editingBooking && (
+        <EditRecurringBookingModal
+          opened={!!editingBooking}
+          onClose={() => setEditingBooking(null)}
+          booking={editingBooking}
+          rooms={rooms}
+          onSuccess={() => {
+            onUpdate()
+            setEditingBooking(null)
+          }}
+        />
+      )}
     </Stack>
+  )
+}
+
+function EditRecurringBookingModal({
+  opened,
+  onClose,
+  booking,
+  rooms,
+  onSuccess,
+}: {
+  opened: boolean
+  onClose: () => void
+  booking: RecurringBooking
+  rooms: Room[]
+  onSuccess: () => void
+}) {
+  const [roomId, setRoomId] = useState<string | null>(String(booking.room.id))
+  const [title, setTitle] = useState(booking.title)
+  const [description, setDescription] = useState(booking.description)
+  const [daysOfWeek, setDaysOfWeek] = useState<string[]>(
+    booking.days_of_week.map(String),
+  )
+  const [startTime, setStartTime] = useState(booking.start_time.slice(0, 5))
+  const [endTime, setEndTime] = useState(booking.end_time.slice(0, 5))
+  const [effectiveFrom, setEffectiveFrom] = useState<Date | null>(
+    booking.effective_from ? new Date(booking.effective_from) : null,
+  )
+  const [effectiveUntil, setEffectiveUntil] = useState<Date | null>(
+    booking.effective_until ? new Date(booking.effective_until) : null,
+  )
+
+  const updateMutation = useMutation({
+    mutationFn: (data: Partial<CreateRecurringBookingData>) =>
+      bookingsApi.updateRecurringBooking(booking.id, data),
+    onSuccess: () => {
+      notifications.show({
+        title: "Tilbagevendende booking opdateret",
+        message: "Bookingen er blevet opdateret.",
+        color: "green",
+      })
+      onSuccess()
+    },
+    onError: (error: any) => {
+      notifications.show({
+        title: "Fejl",
+        message: extractErrorMessage(
+          error,
+          "Kunne ikke opdatere booking. Prøv igen.",
+        ),
+        color: "red",
+      })
+    },
+  })
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (
+      !roomId ||
+      !title.trim() ||
+      daysOfWeek.length === 0 ||
+      !startTime ||
+      !endTime
+    )
+      return
+    updateMutation.mutate({
+      room_id: parseInt(roomId),
+      title: title.trim(),
+      description: description.trim(),
+      days_of_week: daysOfWeek.map((d) => parseInt(d)),
+      start_time: startTime,
+      end_time: endTime,
+      effective_from: effectiveFrom
+        ? dayjs(effectiveFrom).format("YYYY-MM-DD")
+        : null,
+      effective_until: effectiveUntil
+        ? dayjs(effectiveUntil).format("YYYY-MM-DD")
+        : null,
+    })
+  }
+
+  const roomOptions = rooms.map((room) => ({
+    value: String(room.id),
+    label: room.name,
+  }))
+
+  return (
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title="Rediger tilbagevendende booking"
+      size="md"
+    >
+      <form onSubmit={handleSubmit}>
+        <Stack gap="md">
+          <Select
+            label="Lokale"
+            placeholder="Vælg lokale"
+            data={roomOptions}
+            value={roomId}
+            onChange={setRoomId}
+            required
+          />
+          <TextInput
+            label="Titel"
+            placeholder="Beskrivelse af booking"
+            value={title}
+            onChange={(e) => setTitle(e.currentTarget.value)}
+            required
+          />
+          <Textarea
+            label="Beskrivelse"
+            placeholder="Yderligere information (valgfrit)"
+            value={description}
+            onChange={(e) => setDescription(e.currentTarget.value)}
+          />
+          <MultiSelect
+            label="Ugedage"
+            placeholder="Vælg en eller flere ugedage"
+            data={DAYS_OF_WEEK}
+            value={daysOfWeek}
+            onChange={setDaysOfWeek}
+            required
+          />
+          <Group grow>
+            <TimePicker
+              label="Start"
+              value={startTime}
+              onChange={(value) => setStartTime(value)}
+              withDropdown
+              maxDropdownContentHeight={200}
+              presets={TIME_PRESETS}
+            />
+            <TimePicker
+              label="Slut"
+              value={endTime}
+              onChange={(value) => setEndTime(value)}
+              withDropdown
+              maxDropdownContentHeight={200}
+              presets={TIME_PRESETS}
+            />
+          </Group>
+          <Group grow>
+            <DateInput
+              label="Gyldig fra"
+              placeholder="Vælg startdato (valgfrit)"
+              value={effectiveFrom}
+              onChange={(value) =>
+                setEffectiveFrom(value ? new Date(value) : null)
+              }
+              clearable
+            />
+            <DateInput
+              label="Gyldig til"
+              placeholder="Vælg slutdato (valgfrit)"
+              value={effectiveUntil}
+              onChange={(value) =>
+                setEffectiveUntil(value ? new Date(value) : null)
+              }
+              minDate={effectiveFrom || undefined}
+              clearable
+            />
+          </Group>
+          <Group justify="flex-end">
+            <Button variant="light" onClick={onClose}>
+              Annuller
+            </Button>
+            <Button
+              type="submit"
+              loading={updateMutation.isPending}
+              disabled={
+                !roomId ||
+                !title.trim() ||
+                daysOfWeek.length === 0 ||
+                !startTime ||
+                !endTime
+              }
+            >
+              Gem
+            </Button>
+          </Group>
+        </Stack>
+      </form>
+    </Modal>
   )
 }
 

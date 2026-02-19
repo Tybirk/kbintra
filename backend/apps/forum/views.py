@@ -214,9 +214,9 @@ class ThreadDetailView(generics.RetrieveAPIView):
 
 
 class ThreadDeleteView(generics.DestroyAPIView):
-    """Delete a thread (owner only)."""
+    """Delete a thread (owner or admin)."""
 
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrAdmin]
     queryset = Thread.objects.all()
 
 
@@ -298,10 +298,10 @@ class PostListCreateView(generics.ListCreateAPIView):
 
 
 class PostUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
-    """Update or delete a post (owner only)."""
+    """Update or delete a post (owner or admin)."""
 
     serializer_class = PostSerializer
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrAdmin]
     queryset = Post.objects.prefetch_related("attachments__uploaded_by").all()
 
     def get_serializer_class(self) -> type:

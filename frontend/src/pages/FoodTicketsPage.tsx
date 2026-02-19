@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
@@ -35,6 +35,7 @@ import {
 import dayjs from "dayjs"
 
 import { foodApi } from "../api/food"
+import { notificationsApi } from "../api/notifications"
 import type { FoodTicket, CreateFoodTicketData } from "../types"
 
 export default function FoodTicketsPage() {
@@ -44,6 +45,15 @@ export default function FoodTicketsPage() {
     createModalOpened,
     { open: openCreateModal, close: closeCreateModal },
   ] = useDisclosure(false)
+
+  // Auto-mark food ticket notifications as read when visiting the page
+  useEffect(() => {
+    void notificationsApi.markReadByLink("/mad/billetter").then(() => {
+      queryClient.invalidateQueries({
+        queryKey: ["notifications", "unread-count"],
+      })
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: availableTickets, isLoading: ticketsLoading } = useQuery({
     queryKey: ["food", "tickets", "available"],

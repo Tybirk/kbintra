@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
@@ -44,6 +44,7 @@ import {
 import dayjs from "dayjs"
 
 import { eventsApi } from "../api/events"
+import { notificationsApi } from "../api/notifications"
 import { forumApi } from "../api/forum"
 import { clearDraft } from "../utils/draftStorage"
 import RichTextEditor from "../components/RichTextEditor"
@@ -74,6 +75,17 @@ export default function EventDetailPage() {
     queryFn: () => eventsApi.getEvent(eventId),
     enabled: !!eventId,
   })
+
+  // Auto-mark event notifications as read when visiting the event page
+  useEffect(() => {
+    if (eventId) {
+      void notificationsApi.markReadByLink(`/kalender/${eventId}`).then(() => {
+        queryClient.invalidateQueries({
+          queryKey: ["notifications", "unread-count"],
+        })
+      })
+    }
+  }, [eventId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [
     deleteModalOpened,

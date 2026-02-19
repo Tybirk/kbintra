@@ -739,7 +739,9 @@ function ActivityPreview({ activity }: ActivityPreviewProps) {
         transition: "background-color 150ms ease",
       }}
       onClick={() =>
-        navigate(`/forum/${activity.subgroup_slug}/${activity.thread_id}`)
+        navigate(
+          `/forum/${activity.subgroup_slug}/${activity.thread_id}#post-${activity.id}`,
+        )
       }
     >
       <Group gap="sm" wrap="nowrap" mb={4}>

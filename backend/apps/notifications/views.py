@@ -65,6 +65,26 @@ class MarkNotificationsReadView(APIView):
         return Response({"marked_read": updated_count})
 
 
+class MarkNotificationsByLinkView(APIView):
+    """Mark unread notifications for a specific link path as read."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request) -> Response:
+        from django.db.models import Q
+
+        link = request.data.get("link", "")
+        if not link:
+            return Response({"marked_read": 0})
+
+        updated_count = (
+            Notification.objects.filter(user=request.user, is_read=False)
+            .filter(Q(link=link) | Q(link__startswith=f"{link}#"))
+            .update(is_read=True)
+        )
+        return Response({"marked_read": updated_count})
+
+
 class UnreadNotificationCountView(APIView):
     """Get total unread notification count for current user."""
 

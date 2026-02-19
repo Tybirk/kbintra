@@ -36,14 +36,14 @@ def _check_private_event_access(event: Event, user: Any) -> Response | None:
 
 
 class IsOwnerOrReadOnly(permissions.BasePermission):
-    """Custom permission to only allow owners to edit/delete.  Private events are owner-only."""
+    """Custom permission to only allow owners or admins to edit/delete.  Private events are owner-only."""
 
     def has_object_permission(self, request: Request, view: Any, obj: Event) -> bool:
         if request.method in permissions.SAFE_METHODS:
             if obj.visibility == Event.Visibility.PRIVATE:
-                return obj.created_by == request.user
+                return obj.created_by == request.user or request.user.is_staff
             return True
-        return obj.created_by == request.user
+        return obj.created_by == request.user or request.user.is_staff
 
 
 class EventListCreateView(generics.ListCreateAPIView):
@@ -465,7 +465,7 @@ class EventCancelView(APIView):
             pk=pk,
         )
 
-        if event.created_by != request.user:
+        if event.created_by != request.user and not request.user.is_staff:
             return Response(
                 {"error": "Kun arrangøren kan aflyse dette arrangement."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -544,7 +544,7 @@ class EventFilesView(APIView):
         except Event.DoesNotExist:
             return Response({"error": "Begivenhed ikke fundet."}, status=status.HTTP_404_NOT_FOUND)
 
-        if event.created_by_id != request.user.id:
+        if event.created_by_id != request.user.id and not request.user.is_staff:
             return Response(
                 {"error": "Kun arrangøren kan uploade filer."},
                 status=status.HTTP_403_FORBIDDEN,

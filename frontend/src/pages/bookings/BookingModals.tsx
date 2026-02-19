@@ -280,7 +280,6 @@ export function CreateBookingModal({
             />
             <TimePicker
               label="Sluttid"
-              description=" tid"
               value={endTime}
               onChange={(value) => setEndTime(value)}
               withDropdown
