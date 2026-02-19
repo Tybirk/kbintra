@@ -289,6 +289,17 @@ class PostCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
         fields = ["content", "attachments", "poll_data"]
+        extra_kwargs = {"content": {"allow_blank": True}}
+
+    def validate(self, attrs: dict) -> dict:
+        content = attrs.get("content", "").strip()
+        attachments = attrs.get("attachments", [])
+        poll_data = attrs.get("poll_data")
+        if not content and not attachments and poll_data is None:
+            raise serializers.ValidationError(
+                "Et indlæg skal have indhold, en fil eller en afstemning."
+            )
+        return attrs
 
     def validate_attachments(self, value: list) -> list:
         from .utils import validate_file_size

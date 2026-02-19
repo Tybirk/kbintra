@@ -580,14 +580,18 @@ def _get_event_recipients(
         )
 
     if event.subgroup_id:
-        from apps.forum.models import SubgroupSubscription
+        from apps.forum.models import Subgroup, SubgroupSubscription
 
-        subscriber_ids = SubgroupSubscription.objects.filter(
-            subgroup_id=event.subgroup_id,
-        ).values_list("user_id", flat=True)
-        return User.objects.filter(id__in=subscriber_ids, is_active=True).exclude(
-            id=exclude_user_id
-        )
+        subgroup = Subgroup.objects.get(id=event.subgroup_id)
+        # "arrangementer" is the default catch-all for community events — notify everyone.
+        # Only filter by subgroup subscribers for explicitly chosen specialised subgroups.
+        if subgroup.slug != "arrangementer":
+            subscriber_ids = SubgroupSubscription.objects.filter(
+                subgroup_id=event.subgroup_id,
+            ).values_list("user_id", flat=True)
+            return User.objects.filter(id__in=subscriber_ids, is_active=True).exclude(
+                id=exclude_user_id
+            )
 
     return User.objects.filter(is_active=True).exclude(id=exclude_user_id)
 

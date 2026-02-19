@@ -140,7 +140,7 @@ class Post(models.Model):
         null=True,
         related_name="posts",
     )
-    content = models.TextField()
+    content = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

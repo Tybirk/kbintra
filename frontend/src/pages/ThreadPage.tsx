@@ -270,9 +270,14 @@ export default function ThreadPage() {
     },
   })
 
+  const isPostEmpty =
+    (!newPostContent.trim() || newPostContent === "<p></p>") &&
+    attachments.length === 0 &&
+    !pollData
+
   const handleSubmitPost = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newPostContent.trim()) return
+    if (isPostEmpty) return
     createPostMutation.mutate({
       data: { content: newPostContent.trim() },
       files: attachments,
@@ -516,9 +521,7 @@ export default function ThreadPage() {
                     type="submit"
                     leftSection={<IconSend size={16} />}
                     loading={createPostMutation.isPending}
-                    disabled={
-                      !newPostContent.trim() || newPostContent === "<p></p>"
-                    }
+                    disabled={isPostEmpty}
                   >
                     Post Reply
                   </Button>
