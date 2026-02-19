@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, lazy, Suspense } from "react"
 import { useEditor } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import Link from "@tiptap/extension-link"
 import Placeholder from "@tiptap/extension-placeholder"
 import { RichTextEditor as MantineRTE } from "@mantine/tiptap"
 import { Anchor, Group, Text } from "@mantine/core"
-import EmojiPicker from "./EmojiPicker"
+const EmojiPicker = lazy(() => import("./EmojiPicker"))
 import { saveDraft, loadDraft, clearDraft } from "../utils/draftStorage"
 
 interface RichTextEditorProps {
@@ -164,7 +164,13 @@ export default function RichTextEditor({
           </MantineRTE.ControlsGroup>
 
           <MantineRTE.ControlsGroup>
-            <EmojiPicker onSelect={handleEmojiSelect} size="sm" iconSize={16} />
+            <Suspense fallback={null}>
+              <EmojiPicker
+                onSelect={handleEmojiSelect}
+                size="sm"
+                iconSize={16}
+              />
+            </Suspense>
           </MantineRTE.ControlsGroup>
 
           <MantineRTE.ControlsGroup>

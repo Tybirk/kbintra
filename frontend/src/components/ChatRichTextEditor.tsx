@@ -23,11 +23,13 @@ import {
   useRef,
   useEffect,
   useState,
+  lazy,
+  Suspense,
   type KeyboardEvent,
   type ClipboardEvent,
 } from "react"
 import { filterFilesBySize } from "../config"
-import EmojiPicker from "./EmojiPicker"
+const EmojiPicker = lazy(() => import("./EmojiPicker"))
 import { saveDraft, loadDraft, clearDraft } from "../utils/draftStorage"
 
 interface ChatRichTextEditorProps {
@@ -322,7 +324,9 @@ export default function ChatRichTextEditor({
             )}
           </FileButton>
           {/* Emoji picker */}
-          <EmojiPicker onSelect={handleEmojiSelect} disabled={disabled} />
+          <Suspense fallback={null}>
+            <EmojiPicker onSelect={handleEmojiSelect} disabled={disabled} />
+          </Suspense>
         </Group>
 
         {/* Message input */}
