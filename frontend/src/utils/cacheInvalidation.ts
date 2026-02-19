@@ -2,11 +2,13 @@ import type { QueryClient } from "@tanstack/react-query"
 
 /** Invalidate cached queries relevant to a notification link so navigating shows fresh data. */
 export function invalidateCacheForLink(queryClient: QueryClient, link: string) {
-  const forumMatch = link.match(/^\/forum\/([^/]+)\/(\d+)/)
+  const forumMatch = link.match(/^\/forum\/([^/]+)\/traad\/([^/]+)/)
   if (forumMatch) {
-    const [, slug, threadId] = forumMatch
-    queryClient.invalidateQueries({ queryKey: ["thread", Number(threadId)] })
-    queryClient.invalidateQueries({ queryKey: ["threads", slug] })
+    const [, subgroupSlug, threadSlug] = forumMatch
+    queryClient.invalidateQueries({
+      queryKey: ["thread", subgroupSlug, threadSlug],
+    })
+    queryClient.invalidateQueries({ queryKey: ["threads", subgroupSlug] })
     return
   }
   if (link.startsWith("/opslag")) {
