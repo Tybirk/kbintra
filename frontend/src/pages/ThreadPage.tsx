@@ -15,7 +15,7 @@ import {
   Menu,
   Modal,
   Divider,
-  TypographyStylesProvider,
+  Typography,
   Badge,
   Image,
   SimpleGrid,
@@ -641,9 +641,9 @@ function PostCard({
           </Stack>
         ) : (
           <>
-            <TypographyStylesProvider>
+            <Typography>
               <div dangerouslySetInnerHTML={{ __html: post.content }} />
-            </TypographyStylesProvider>
+            </Typography>
 
             {imageAttachments.length > 0 && (
               <SimpleGrid cols={{ base: 2, sm: 3, md: 4 }} mt="md" spacing="sm">

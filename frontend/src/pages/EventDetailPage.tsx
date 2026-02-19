@@ -18,7 +18,7 @@ import {
   SegmentedControl,
   Divider,
   Tooltip,
-  TypographyStylesProvider,
+  Typography,
   Textarea,
   Alert,
   Anchor,
@@ -367,9 +367,9 @@ export default function EventDetailPage() {
         {hasDescription && (
           <>
             <Divider my="md" />
-            <TypographyStylesProvider>
+            <Typography>
               <div dangerouslySetInnerHTML={{ __html: event.description }} />
-            </TypographyStylesProvider>
+            </Typography>
           </>
         )}
 
@@ -957,9 +957,9 @@ function DiscussionSection({ threadId, subgroupSlug }: DiscussionSectionProps) {
                 </Stack>
               ) : (
                 <>
-                  <TypographyStylesProvider>
+                  <Typography>
                     <div dangerouslySetInnerHTML={{ __html: post.content }} />
-                  </TypographyStylesProvider>
+                  </Typography>
                   <Reactions
                     postId={post.id}
                     threadId={threadId}

@@ -16,7 +16,7 @@ import {
   ActionIcon,
   Menu,
   Badge,
-  TypographyStylesProvider,
+  Typography,
   Box,
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
@@ -308,9 +308,9 @@ function AnnouncementCard({
         </Group>
       </Group>
 
-      <TypographyStylesProvider>
+      <Typography>
         <div dangerouslySetInnerHTML={{ __html: announcement.content }} />
-      </TypographyStylesProvider>
+      </Typography>
 
       {/* Attachments */}
       {announcement.attachments && announcement.attachments.length > 0 && (

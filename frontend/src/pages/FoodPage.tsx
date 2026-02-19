@@ -714,7 +714,7 @@ function DriveMenuDayCard({
         </ActionIcon>
       </Group>
 
-      <Collapse in={expanded}>
+      <Collapse expanded={expanded}>
         <Table.ScrollContainer minWidth={300}>
           <Table mt="xs">
             <Table.Thead>

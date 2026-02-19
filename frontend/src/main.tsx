@@ -12,6 +12,7 @@ import "@mantine/dates/styles.css"
 import "@mantine/dropzone/styles.css"
 import "@mantine/tiptap/styles.css"
 import "@mantine/spotlight/styles.css"
+import "@mantine/schedule/styles.css"
 
 import App from "./App"
 

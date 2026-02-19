@@ -1,27 +1,18 @@
-import { useState, useMemo } from "react"
+import { useState, useMemo, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import {
   Title,
   Text,
-  Paper,
   Group,
   Button,
   Loader,
   Center,
-  Stack,
-  ActionIcon,
-  SimpleGrid,
-  Indicator,
   Select,
 } from "@mantine/core"
-import { Calendar } from "@mantine/dates"
-import {
-  IconPlus,
-  IconCalendarEvent,
-  IconChevronLeft,
-  IconChevronRight,
-} from "@tabler/icons-react"
+import { Schedule } from "@mantine/schedule"
+import type { ScheduleEventData, ScheduleViewLevel } from "@mantine/schedule"
+import { IconPlus, IconMapPin } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import "dayjs/locale/da"
 
@@ -29,28 +20,28 @@ dayjs.locale("da")
 
 import { eventsApi } from "../api/events"
 import { forumApi } from "../api/forum"
-import { CompactEventCard } from "../components/CompactEventCard"
+import {
+  eventToScheduleData,
+  DA_SCHEDULE_LABELS,
+} from "../utils/scheduleHelpers"
 import type { Event } from "../types"
 
 export default function CalendarPage() {
   const navigate = useNavigate()
-  const [selectedMonth, setSelectedMonth] = useState(new Date())
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null)
-
-  // Filter
   const [subgroupFilter, setSubgroupFilter] = useState<string | null>(null)
+  const [currentDate, setCurrentDate] = useState(dayjs().format("YYYY-MM-DD"))
+  const [currentView, setCurrentView] = useState<ScheduleViewLevel>("month")
 
-  // Date range for queries
-  const startDate = dayjs(selectedMonth)
+  // Wide date range for schedule views
+  const startDate = dayjs(currentDate)
+    .subtract(2, "month")
     .startOf("month")
-    .subtract(7, "day")
     .toISOString()
-  const endDate = dayjs(selectedMonth)
+  const endDate = dayjs(currentDate)
+    .add(2, "month")
     .endOf("month")
-    .add(7, "day")
     .toISOString()
 
-  // Fetch community events only — private bookings are managed in the bookings page
   const {
     data: events,
     isLoading,
@@ -66,64 +57,39 @@ export default function CalendarPage() {
       }),
   })
 
-  // Fetch subgroups for filter dropdown
   const { data: subgroups } = useQuery({
     queryKey: ["subgroups"],
     queryFn: () => forumApi.getSubgroups(),
   })
 
-  // Group events by date for calendar indicators (includes all days of multi-day events)
-  const eventsByDate = useMemo(() => {
-    const map: Record<string, Event[]> = {}
-    events?.forEach((event) => {
-      let current = dayjs(event.start_datetime).startOf("day")
-      const end = dayjs(event.end_datetime).startOf("day")
-      while (!current.isAfter(end)) {
-        const dateKey = current.format("YYYY-MM-DD")
-        if (!map[dateKey]) map[dateKey] = []
-        map[dateKey].push(event)
-        current = current.add(1, "day")
+  const scheduleEvents = useMemo(
+    () => (events || []).map(eventToScheduleData),
+    [events],
+  )
+
+  const handleEventClick = useCallback(
+    (event: ScheduleEventData) => {
+      const payload = event.payload as { event: Event } | undefined
+      if (payload?.event) {
+        navigate(`/kalender/${payload.event.id}`)
       }
-    })
-    return map
-  }, [events])
+    },
+    [navigate],
+  )
 
-  // Events for the selected date or current month (includes multi-day events spanning the period)
-  const displayEvents = useMemo(() => {
-    if (selectedDate) {
-      const day = dayjs(selectedDate)
-      return events?.filter((event) => {
-        const start = dayjs(event.start_datetime).startOf("day")
-        const end = dayjs(event.end_datetime).startOf("day")
-        return !day.isBefore(start) && !day.isAfter(end)
-      })
-    }
-    const monthStart = dayjs(selectedMonth).startOf("month")
-    const monthEnd = dayjs(selectedMonth).endOf("month")
-    return events
-      ?.filter((event) => {
-        const start = dayjs(event.start_datetime)
-        const end = dayjs(event.end_datetime)
-        return !end.isBefore(monthStart) && !start.isAfter(monthEnd)
-      })
-      .sort(
-        (a, b) =>
-          new Date(a.start_datetime).getTime() -
-          new Date(b.start_datetime).getTime(),
-      )
-  }, [events, selectedDate, selectedMonth])
+  const handleTimeSlotClick = useCallback(
+    (slotStart: string) => {
+      const date = dayjs(slotStart).format("YYYY-MM-DD")
+      const time = dayjs(slotStart).format("HH:mm")
+      navigate(`/kalender/opret?date=${date}&time=${time}`)
+    },
+    [navigate],
+  )
 
-  const goToPrevMonth = () => {
-    setSelectedMonth(dayjs(selectedMonth).subtract(1, "month").toDate())
-  }
-
-  const goToNextMonth = () => {
-    setSelectedMonth(dayjs(selectedMonth).add(1, "month").toDate())
-  }
-
-  const goToToday = () => {
-    setSelectedMonth(new Date())
-  }
+  const handleDayClick = useCallback((date: string) => {
+    setCurrentDate(date)
+    setCurrentView("day")
+  }, [])
 
   const subgroupOptions = (subgroups || []).map((s) => ({
     value: String(s.id),
@@ -134,6 +100,14 @@ export default function CalendarPage() {
     return (
       <Center h={200}>
         <Text c="red">Kunne ikke indlæse begivenheder. Prøv igen.</Text>
+      </Center>
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <Center h={400}>
+        <Loader size="lg" />
       </Center>
     )
   }
@@ -153,7 +127,6 @@ export default function CalendarPage() {
         </Button>
       </Group>
 
-      {/* Subgroup filter */}
       <Group gap="sm" mb="md">
         <Select
           placeholder="Filtrer efter gruppe"
@@ -166,150 +139,57 @@ export default function CalendarPage() {
         />
       </Group>
 
-      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
-        {/* Calendar */}
-        <Paper withBorder p="md" radius="md">
-          <Group justify="space-between" mb="md">
-            <Group gap="xs">
-              <ActionIcon variant="subtle" onClick={goToPrevMonth}>
-                <IconChevronLeft size={16} />
-              </ActionIcon>
-              <Text fw={500}>{dayjs(selectedMonth).format("MMMM YYYY")}</Text>
-              <ActionIcon variant="subtle" onClick={goToNextMonth}>
-                <IconChevronRight size={16} />
-              </ActionIcon>
-            </Group>
-            <Button variant="subtle" size="xs" onClick={goToToday}>
-              I dag
-            </Button>
-          </Group>
-
-          {isLoading ? (
-            <Center h={300}>
-              <Loader size="lg" />
-            </Center>
-          ) : (
-            <Calendar
-              date={selectedMonth}
-              onDateChange={(date) => setSelectedMonth(new Date(date))}
-              size="md"
-              getDayProps={(date) => ({
-                onClick: () => setSelectedDate(new Date(date)),
-                style:
-                  selectedDate && dayjs(date).isSame(dayjs(selectedDate), "day")
-                    ? {
-                        backgroundColor: "var(--mantine-color-blue-filled)",
-                        color: "white",
-                        borderRadius: "var(--mantine-radius-default)",
-                      }
-                    : undefined,
-              })}
-              renderDay={(date) => {
-                const dateValue = new Date(date)
-                const dateKey = dayjs(dateValue).format("YYYY-MM-DD")
-                const dayEvents = eventsByDate[dateKey]
-                const day = dateValue.getDate()
-                return (
-                  <Indicator
-                    size={6}
-                    color="blue"
-                    offset={-2}
-                    disabled={!dayEvents?.length}
-                    zIndex={1}
-                  >
-                    <div>{day}</div>
-                  </Indicator>
-                )
-              }}
-            />
-          )}
-        </Paper>
-
-        {/* Events List */}
-        <Paper withBorder p="md" radius="md">
-          {selectedDate ? (
-            <>
-              <Group justify="space-between" mb="md">
-                <Text fw={500}>
-                  {dayjs(selectedDate).format("ddd D. MMMM YYYY")}
-                </Text>
-                <Button
-                  variant="subtle"
-                  size="xs"
-                  onClick={() => setSelectedDate(null)}
-                >
-                  Vis hele måneden
-                </Button>
-              </Group>
-
-              {isLoading ? (
-                <Center h={200}>
-                  <Loader size="md" />
-                </Center>
-              ) : displayEvents?.length ? (
-                <Stack gap="sm">
-                  {displayEvents.map((event) => (
-                    <EventCard key={event.id} event={event} />
-                  ))}
-                </Stack>
-              ) : (
-                <Center h={100}>
-                  <Text c="dimmed">Ingen begivenheder på denne dato.</Text>
-                </Center>
-              )}
-
-              <Button
-                leftSection={<IconPlus size={16} />}
-                variant="light"
-                fullWidth
-                mt="md"
-                onClick={() =>
-                  navigate(
-                    `/kalender/opret?date=${dayjs(selectedDate).format("YYYY-MM-DD")}`,
-                  )
-                }
-              >
-                Opret begivenhed d. {dayjs(selectedDate).format("D. MMMM")}
-              </Button>
-            </>
-          ) : (
-            <>
-              <Text fw={500} mb="md">
-                Begivenheder i {dayjs(selectedMonth).format("MMMM YYYY")}
+      <Schedule
+        events={scheduleEvents}
+        view={currentView}
+        onViewChange={setCurrentView}
+        date={currentDate}
+        onDateChange={setCurrentDate}
+        locale="da"
+        labels={DA_SCHEDULE_LABELS}
+        layout="responsive"
+        onEventClick={handleEventClick}
+        onTimeSlotClick={handleTimeSlotClick}
+        onDayClick={handleDayClick}
+        renderEventBody={(event) => {
+          const payload = event.payload as { event: Event } | undefined
+          const ev = payload?.event
+          return (
+            <div>
+              <Text size="xs" fw={500} lineClamp={1}>
+                {event.title}
               </Text>
-
-              {isLoading ? (
-                <Center h={200}>
-                  <Loader size="md" />
-                </Center>
-              ) : displayEvents?.length === 0 ? (
-                <Center h={200}>
-                  <Stack align="center" gap="xs">
-                    <IconCalendarEvent size={48} color="gray" />
-                    <Text c="dimmed">Ingen begivenheder denne måned.</Text>
-                    <Text size="xs" c="dimmed">
-                      Klik på en dato for at oprette en begivenhed
-                    </Text>
-                    <Button onClick={() => navigate("/kalender/opret")} mt="sm">
-                      Opret begivenhed
-                    </Button>
-                  </Stack>
-                </Center>
-              ) : (
-                <Stack gap="sm">
-                  {displayEvents?.map((event) => (
-                    <EventCard key={event.id} event={event} />
-                  ))}
-                </Stack>
+              {ev?.resolved_location && (
+                <Group gap={2} wrap="nowrap">
+                  <IconMapPin size={10} />
+                  <Text size="xs" c="dimmed" lineClamp={1}>
+                    {ev.resolved_location}
+                  </Text>
+                </Group>
               )}
-            </>
-          )}
-        </Paper>
-      </SimpleGrid>
+              {ev?.rsvp_enabled && ev.rsvp_summary && (
+                <Text size="xs" c="dimmed">
+                  {ev.rsvp_summary.attending} deltager
+                </Text>
+              )}
+            </div>
+          )
+        }}
+        weekViewProps={{
+          firstDayOfWeek: 1,
+          withWeekNumber: true,
+          withCurrentTimeIndicator: true,
+          intervalMinutes: 60,
+        }}
+        monthViewProps={{
+          firstDayOfWeek: 1,
+          withWeekNumbers: true,
+        }}
+        dayViewProps={{
+          withCurrentTimeIndicator: true,
+          intervalMinutes: 30,
+        }}
+      />
     </>
   )
-}
-
-function EventCard({ event }: { event: Event }) {
-  return <CompactEventCard event={event} showCreator />
 }

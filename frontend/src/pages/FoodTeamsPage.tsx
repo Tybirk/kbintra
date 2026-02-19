@@ -1096,7 +1096,7 @@ function MyTeamCard({
           </ActionIcon>
         </Group>
 
-        <Collapse in={expanded}>
+        <Collapse expanded={expanded}>
           <Stack gap="xs">
             {team.members.map((member) => (
               <TeamMemberRow key={member.id} member={member} />

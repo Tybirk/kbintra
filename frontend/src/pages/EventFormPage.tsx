@@ -151,6 +151,11 @@ export default function EventFormPage() {
           setEndDate(parsed)
         }
       }
+      const timeParam = searchParams.get("time")
+      if (timeParam && /^\d{2}:\d{2}$/.test(timeParam)) {
+        setStartTime(timeParam)
+        setEndTime(addOneHour(timeParam))
+      }
     }
   }, [searchParams, isEditMode])
 

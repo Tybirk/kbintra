@@ -9,7 +9,7 @@ import {
   Loader,
   Center,
   Stack,
-  TypographyStylesProvider,
+  Typography,
 } from "@mantine/core"
 import { notifications } from "@mantine/notifications"
 import { IconEdit, IconLink } from "@tabler/icons-react"
@@ -116,9 +116,9 @@ export default function LinksPage() {
         </Stack>
       ) : links?.content && links.content !== "<p></p>" ? (
         <Paper withBorder p="lg" radius="md">
-          <TypographyStylesProvider>
+          <Typography>
             <div dangerouslySetInnerHTML={{ __html: links.content }} />
-          </TypographyStylesProvider>
+          </Typography>
         </Paper>
       ) : (
         <Paper withBorder p="xl" radius="md">
