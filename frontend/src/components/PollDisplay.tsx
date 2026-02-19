@@ -19,7 +19,7 @@ import type { Poll, PollOption } from "../types"
 
 interface PollDisplayProps {
   poll: Poll
-  threadId: number
+  threadQueryKey: (string | number)[]
 }
 
 function RadioIndicator({ checked }: { checked: boolean }) {
@@ -190,13 +190,16 @@ function OptionBar({
   )
 }
 
-export default function PollDisplay({ poll, threadId }: PollDisplayProps) {
+export default function PollDisplay({
+  poll,
+  threadQueryKey,
+}: PollDisplayProps) {
   const queryClient = useQueryClient()
 
   const voteMutation = useMutation({
     mutationFn: (optionId: number) => forumApi.votePoll(poll.id, optionId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
+      queryClient.invalidateQueries({ queryKey: threadQueryKey })
     },
     onError: () => {
       notifications.show({
@@ -210,7 +213,7 @@ export default function PollDisplay({ poll, threadId }: PollDisplayProps) {
   const deleteMutation = useMutation({
     mutationFn: () => forumApi.deletePoll(poll.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
+      queryClient.invalidateQueries({ queryKey: threadQueryKey })
       notifications.show({
         title: "Afstemning slettet",
         message: "Afstemningen er blevet fjernet.",

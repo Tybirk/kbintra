@@ -86,8 +86,8 @@ export default function ThreadPage() {
   const queryClient = useQueryClient()
   const isSlugRoute = !!threadSlug
   const numericId = parseInt(id || "0", 10)
-  const threadQueryKey = isSlugRoute
-    ? ["thread", subgroupSlug, threadSlug]
+  const threadQueryKey: (string | number)[] = isSlugRoute
+    ? ["thread", subgroupSlug!, threadSlug!]
     : ["thread", numericId]
 
   const [newPostContent, setNewPostContent] = useState("")
@@ -432,7 +432,7 @@ export default function ThreadPage() {
           <PostCard
             key={post.id}
             post={post}
-            threadId={thread.id}
+            threadQueryKey={threadQueryKey}
             isFirst={index === 0}
             isEditing={editingPost?.id === post.id}
             editContent={editContent}
@@ -561,7 +561,7 @@ export default function ThreadPage() {
 
 interface PostCardProps {
   post: Post
-  threadId: number
+  threadQueryKey: (string | number)[]
   isFirst: boolean
   isEditing: boolean
   editContent: string
@@ -575,7 +575,7 @@ interface PostCardProps {
 
 function PostCard({
   post,
-  threadId,
+  threadQueryKey,
   isFirst,
   isEditing,
   editContent,
@@ -723,12 +723,14 @@ function PostCard({
               </Group>
             )}
 
-            {post.poll && <PollDisplay poll={post.poll} threadId={threadId} />}
+            {post.poll && (
+              <PollDisplay poll={post.poll} threadQueryKey={threadQueryKey} />
+            )}
 
             <Divider my="sm" />
             <Reactions
               postId={post.id}
-              threadId={threadId}
+              threadQueryKey={threadQueryKey}
               reactions={post.reactions || []}
             />
           </>

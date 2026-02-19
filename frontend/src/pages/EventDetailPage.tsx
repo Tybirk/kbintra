@@ -984,7 +984,7 @@ function DiscussionSection({
                   </Typography>
                   <Reactions
                     postId={post.id}
-                    threadId={threadId}
+                    threadQueryKey={["thread", threadId]}
                     reactions={post.reactions}
                   />
                 </>

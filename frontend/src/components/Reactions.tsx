@@ -36,13 +36,13 @@ const REACTION_LABELS: Record<ReactionType, string> = {
 
 interface ReactionsProps {
   postId: number
-  threadId: number
+  threadQueryKey: (string | number)[]
   reactions: ReactionSummary[]
 }
 
 export default function Reactions({
   postId,
-  threadId,
+  threadQueryKey,
   reactions,
 }: ReactionsProps) {
   const queryClient = useQueryClient()
@@ -52,7 +52,7 @@ export default function Reactions({
     mutationFn: (reactionType: ReactionType) =>
       forumApi.toggleReaction(postId, reactionType),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
+      queryClient.invalidateQueries({ queryKey: threadQueryKey })
       setPopoverOpened(false)
     },
   })
