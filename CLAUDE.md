@@ -196,6 +196,21 @@ uv run python manage.py rebuild_search_index --if-empty  # Only if index is empt
 - TypeScript: oxlint (linting), oxfmt (formatting), tsgo (type checking)
 - Tests: pytest-django (backend), Vitest + Testing Library (frontend)
 
+### TypeScript: avoid inline object types inside generics
+
+oxlint removes semicolons from inline object types inside generics, producing invalid syntax. Always extract to a named interface instead:
+
+```typescript
+// BAD — oxlint strips the semicolon, breaking the build:
+const items: Array<{ id: number; name: string }> = []
+useState<Array<{ id: number | null; name: string }>>([])
+
+// GOOD — extract to a named interface:
+interface FolderPathEntry { id: number | null; name: string }
+const items: FolderPathEntry[] = []
+useState<FolderPathEntry[]>([])
+```
+
 ## Required Checks (Backend)
 
 Before committing, ensure all checks pass:

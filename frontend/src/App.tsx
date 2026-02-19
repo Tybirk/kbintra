@@ -256,6 +256,26 @@ function App() {
               }
             />
             <Route
+              path="/forum/:slug/dokumenter/:folderId"
+              element={
+                <ProtectedRoute>
+                  <PageErrorBoundary>
+                    <SubgroupPage />
+                  </PageErrorBoundary>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/forum/:slug/dokumenter"
+              element={
+                <ProtectedRoute>
+                  <PageErrorBoundary>
+                    <SubgroupPage />
+                  </PageErrorBoundary>
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/forum/:slug"
               element={
                 <ProtectedRoute>

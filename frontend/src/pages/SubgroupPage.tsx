@@ -1,5 +1,5 @@
-import { useState } from "react"
-import { useParams, useNavigate } from "react-router-dom"
+import { useState, useRef, useEffect } from "react"
+import { useParams, useNavigate, useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
@@ -86,10 +86,17 @@ dayjs.extend(relativeTime)
 dayjs.locale("da")
 
 export default function SubgroupPage() {
-  const { slug } = useParams<{ slug: string }>()
+  const { slug, folderId: folderIdParam } = useParams<{
+    slug: string
+    folderId?: string
+  }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const queryClient = useQueryClient()
-  const [activeTab, setActiveTab] = useState<string | null>("threads")
+  const initialFolderId = folderIdParam ? parseInt(folderIdParam, 10) : null
+  const activeTab = location.pathname.includes("/dokumenter")
+    ? "documents"
+    : "threads"
   const [
     createThreadModalOpened,
     { open: openCreateThreadModal, close: closeCreateThreadModal },
@@ -196,7 +203,14 @@ export default function SubgroupPage() {
         </SimpleGrid>
       )}
 
-      <Tabs value={activeTab} onChange={setActiveTab} mb="md">
+      <Tabs
+        value={activeTab}
+        onChange={(tab) => {
+          if (tab === "documents") navigate(`/forum/${slug}/dokumenter`)
+          else navigate(`/forum/${slug}`)
+        }}
+        mb="md"
+      >
         <Tabs.List>
           <Tabs.Tab value="threads" leftSection={<IconMessage size={16} />}>
             Diskussioner
@@ -253,7 +267,14 @@ export default function SubgroupPage() {
         </Tabs.Panel>
 
         <Tabs.Panel value="documents" pt="md">
-          <DocumentsTab subgroupSlug={slug!} />
+          <DocumentsTab
+            subgroupSlug={slug!}
+            initialFolderId={initialFolderId}
+            onFolderChange={(folderId) => {
+              if (folderId === null) navigate(`/forum/${slug}/dokumenter`)
+              else navigate(`/forum/${slug}/dokumenter/${folderId}`)
+            }}
+          />
         </Tabs.Panel>
       </Tabs>
 
@@ -506,18 +527,65 @@ function CreateThreadModal({
 // Documents Tab Components
 // =============================================================================
 
-interface DocumentsTabProps {
-  subgroupSlug: string
+interface FolderPathEntry {
+  id: number | null
+  name: string
 }
 
-function DocumentsTab({ subgroupSlug }: DocumentsTabProps) {
+interface FolderAncestor {
+  id: number
+  name: string
+}
+
+interface DocumentsTabProps {
+  subgroupSlug: string
+  initialFolderId?: number | null
+  onFolderChange?: (folderId: number | null) => void
+}
+
+function DocumentsTab({
+  subgroupSlug,
+  initialFolderId,
+  onFolderChange,
+}: DocumentsTabProps) {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
-  const [currentFolderId, setCurrentFolderId] = useState<number | null>(null)
-  const [folderPath, setFolderPath] = useState<Array<{
-    id: number | null
-    name: string
-  }>>([{ id: null, name: "Dokumenter" }])
+  const [currentFolderId, setCurrentFolderId] = useState<number | null>(
+    initialFolderId ?? null,
+  )
+  const [folderPath, setFolderPath] = useState<FolderPathEntry[]>([
+    { id: null, name: "Dokumenter" },
+  ])
+  // Track which folderId we've already processed to avoid re-fetching on our own navigations
+  const processedFolderIdRef = useRef<number | null | undefined>(undefined)
+
+  useEffect(() => {
+    const targetId = initialFolderId ?? null
+    if (processedFolderIdRef.current === targetId) return
+    processedFolderIdRef.current = targetId
+
+    if (targetId === null) {
+      setCurrentFolderId(null)
+      setFolderPath([{ id: null, name: "Dokumenter" }])
+      return
+    }
+
+    // Reconstruct breadcrumb path by walking up through ancestors
+    const buildPath = async () => {
+      const ancestors: FolderAncestor[] = []
+      let currentId: number | null = targetId
+      while (currentId !== null) {
+        const folder = await forumApi.getFolder(currentId)
+        ancestors.unshift({ id: folder.id, name: folder.name })
+        currentId = folder.parent
+      }
+      setCurrentFolderId(targetId)
+      setFolderPath([{ id: null, name: "Dokumenter" }, ...ancestors])
+    }
+
+    buildPath()
+  }, [initialFolderId])
+
   const [
     createFolderModalOpened,
     { open: openCreateFolderModal, close: closeCreateFolderModal },
@@ -547,13 +615,13 @@ function DocumentsTab({ subgroupSlug }: DocumentsTabProps) {
   })
 
   const navigateToFolder = (folderId: number | null, folderName: string) => {
+    // Mark as processed so the effect doesn't re-fetch for this navigation
+    processedFolderIdRef.current = folderId
     if (folderId === null) {
-      // Going back to root
       setCurrentFolderId(null)
       setFolderPath([{ id: null, name: "Dokumenter" }])
     } else {
       setCurrentFolderId(folderId)
-      // Check if we're going back in the path
       const existingIndex = folderPath.findIndex((f) => f.id === folderId)
       if (existingIndex >= 0) {
         setFolderPath(folderPath.slice(0, existingIndex + 1))
@@ -561,6 +629,7 @@ function DocumentsTab({ subgroupSlug }: DocumentsTabProps) {
         setFolderPath([...folderPath, { id: folderId, name: folderName }])
       }
     }
+    onFolderChange?.(folderId)
   }
 
   const isLoading = foldersLoading || filesLoading

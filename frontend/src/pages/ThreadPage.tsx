@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { useParams, useNavigate, useLocation } from "react-router-dom"
+import { useParams, useNavigate, useLocation, Navigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
@@ -80,6 +80,12 @@ export default function ThreadPage() {
   const location = useLocation()
   const queryClient = useQueryClient()
   const threadId = parseInt(threadIdParam || id || "0", 10)
+
+  // If threadId is not numeric, this URL was meant for another route (e.g. /dokumenter).
+  // Redirect to the subgroup page so React Router route ranking issues don't leave us stuck.
+  if (isNaN(threadId)) {
+    return <Navigate to="/forum" replace />
+  }
 
   const [newPostContent, setNewPostContent] = useState("")
   const [attachments, setAttachments] = useState<File[]>([])
