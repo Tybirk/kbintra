@@ -40,7 +40,7 @@ export default function BookingsPage() {
   const { user } = useAuthStore()
   const isMobile = useMediaQuery("(max-width: 768px)")
   const [currentDate, setCurrentDate] = useState(dayjs().format("YYYY-MM-DD"))
-  const [currentView, setCurrentView] = useState<ScheduleViewLevel>("week")
+  const [currentView, setCurrentView] = useState<ScheduleViewLevel>("month")
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null)
 
   // Modal states
