@@ -25,27 +25,22 @@ if [ -f ./data/db.sqlite3 ]; then
     fi
 fi
 
-echo "Building and restarting services..."
-docker compose up -d --build
+echo "Building images..."
+docker compose build
+
+echo "Updating infrastructure services..."
+docker compose up -d traefik cloudflared redis
+
+echo "Rolling out backend (zero-downtime)..."
+docker rollout -t 120 backend
+
+echo "Rolling out frontend (zero-downtime)..."
+docker rollout -t 60 frontend
+
+echo "Updating huey worker..."
+docker compose up -d huey
 
 echo "Cleaning up old images..."
 docker image prune -f
 
-echo "Waiting for backend health check..."
-timeout=60
-elapsed=0
-while [ $elapsed -lt $timeout ]; do
-    if docker compose exec -T backend uv run python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/')" 2>/dev/null; then
-        echo "Backend is healthy."
-        echo ""
-        echo "Deploy complete. To rollback: git checkout $DEPLOY_TAG && docker compose up -d --build"
-        exit 0
-    fi
-    sleep 2
-    elapsed=$((elapsed + 2))
-done
-
-echo "WARNING: Backend did not become healthy within ${timeout}s."
-echo "Check logs with: docker compose logs backend"
-echo "To rollback: git checkout $DEPLOY_TAG && docker compose up -d --build"
-exit 1
+echo "Deploy complete. To rollback: git checkout $DEPLOY_TAG && docker compose up -d --build"

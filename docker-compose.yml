@@ -78,6 +78,9 @@ services:
       - "traefik.http.routers.backend-static.service=backend"
       # Service
       - "traefik.http.services.backend.loadbalancer.server.port=8000"
+      # Traefik health check — only route to healthy containers
+      - "traefik.http.services.backend.loadbalancer.healthcheck.path=/api/health/"
+      - "traefik.http.services.backend.loadbalancer.healthcheck.interval=5s"
     volumes:
       - ./data:/app/data
     env_file:
@@ -151,10 +154,19 @@ services:
       - "traefik.http.routers.frontend.entrypoints=web"
       - "traefik.http.routers.frontend.priority=1"
       - "traefik.http.services.frontend.loadbalancer.server.port=80"
+      # Traefik health check — only route to healthy containers
+      - "traefik.http.services.frontend.loadbalancer.healthcheck.path=/"
+      - "traefik.http.services.frontend.loadbalancer.healthcheck.interval=5s"
     networks:
       - web
     restart: unless-stopped
     mem_limit: 128m
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     logging:
       driver: "json-file"
       options:
