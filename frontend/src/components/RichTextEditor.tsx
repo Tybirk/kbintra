@@ -1,10 +1,12 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useEditor } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import Link from "@tiptap/extension-link"
 import Placeholder from "@tiptap/extension-placeholder"
 import { RichTextEditor as MantineRTE } from "@mantine/tiptap"
+import { Anchor, Group, Text } from "@mantine/core"
 import EmojiPicker from "./EmojiPicker"
+import { saveDraft, loadDraft, clearDraft } from "../utils/draftStorage"
 
 interface RichTextEditorProps {
   content: string
@@ -12,6 +14,8 @@ interface RichTextEditorProps {
   placeholder?: string
   minHeight?: number
   onFilePaste?: (files: File[]) => void
+  /** Unique key for persisting a draft across refreshes. Omit for edit forms. */
+  draftKey?: string
 }
 
 export default function RichTextEditor({
@@ -20,9 +24,21 @@ export default function RichTextEditor({
   placeholder = "Write something...",
   minHeight = 150,
   onFilePaste,
+  draftKey,
 }: RichTextEditorProps) {
   const onFilePasteRef = useRef(onFilePaste)
   onFilePasteRef.current = onFilePaste
+
+  // Use refs so the onUpdate callback always sees the latest values
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
+  const draftKeyRef = useRef(draftKey)
+  draftKeyRef.current = draftKey
+
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [draftRestored, setDraftRestored] = useState(false)
+  // Track which draftKey we've already loaded to avoid re-running on re-renders
+  const loadedForKeyRef = useRef<string | null>(null)
 
   const editor = useEditor({
     extensions: [
@@ -36,7 +52,15 @@ export default function RichTextEditor({
     ],
     content,
     onUpdate: ({ editor }) => {
-      onChange(editor.getHTML())
+      const html = editor.getHTML()
+      onChangeRef.current(html)
+      const key = draftKeyRef.current
+      if (key) {
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = setTimeout(() => {
+          saveDraft(key, html)
+        }, 1500)
+      }
     },
     editorProps: {
       handlePaste(_view, event) {
@@ -76,48 +100,91 @@ export default function RichTextEditor({
     }
   }, [content, editor])
 
+  // Load draft once the editor is ready, or when draftKey changes
+  useEffect(() => {
+    if (!draftKey || !editor || editor.isDestroyed) return
+    if (loadedForKeyRef.current === draftKey) return
+    loadedForKeyRef.current = draftKey
+
+    loadDraft(draftKey).then((draft) => {
+      if (!draft || editor.isDestroyed) return
+      const currentHtml = editor.getHTML()
+      const isEmpty =
+        !currentHtml || currentHtml === "<p></p>" || currentHtml === ""
+      if (isEmpty) {
+        onChangeRef.current(draft)
+        setDraftRestored(true)
+      }
+    })
+  }, [draftKey, editor])
+
+  // Cancel any pending save on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    }
+  }, [])
+
   const handleEmojiSelect = (emoji: string) => {
     editor?.chain().focus().insertContent(emoji).run()
   }
 
+  const handleClearDraft = () => {
+    if (draftKey) clearDraft(draftKey)
+    setDraftRestored(false)
+    onChange("")
+  }
+
   return (
-    <MantineRTE editor={editor} style={{ minHeight }}>
-      <MantineRTE.Toolbar sticky stickyOffset={60}>
-        <MantineRTE.ControlsGroup>
-          <MantineRTE.Bold />
-          <MantineRTE.Italic />
-          <MantineRTE.Strikethrough />
-          <MantineRTE.ClearFormatting />
-        </MantineRTE.ControlsGroup>
+    <>
+      <MantineRTE editor={editor} style={{ minHeight }}>
+        <MantineRTE.Toolbar sticky stickyOffset={60}>
+          <MantineRTE.ControlsGroup>
+            <MantineRTE.Bold />
+            <MantineRTE.Italic />
+            <MantineRTE.Strikethrough />
+            <MantineRTE.ClearFormatting />
+          </MantineRTE.ControlsGroup>
 
-        <MantineRTE.ControlsGroup>
-          <MantineRTE.H2 />
-          <MantineRTE.H3 />
-          <MantineRTE.H4 />
-        </MantineRTE.ControlsGroup>
+          <MantineRTE.ControlsGroup>
+            <MantineRTE.H2 />
+            <MantineRTE.H3 />
+            <MantineRTE.H4 />
+          </MantineRTE.ControlsGroup>
 
-        <MantineRTE.ControlsGroup>
-          <MantineRTE.Blockquote />
-          <MantineRTE.BulletList />
-          <MantineRTE.OrderedList />
-        </MantineRTE.ControlsGroup>
+          <MantineRTE.ControlsGroup>
+            <MantineRTE.Blockquote />
+            <MantineRTE.BulletList />
+            <MantineRTE.OrderedList />
+          </MantineRTE.ControlsGroup>
 
-        <MantineRTE.ControlsGroup>
-          <MantineRTE.Link />
-          <MantineRTE.Unlink />
-        </MantineRTE.ControlsGroup>
+          <MantineRTE.ControlsGroup>
+            <MantineRTE.Link />
+            <MantineRTE.Unlink />
+          </MantineRTE.ControlsGroup>
 
-        <MantineRTE.ControlsGroup>
-          <EmojiPicker onSelect={handleEmojiSelect} size="sm" iconSize={16} />
-        </MantineRTE.ControlsGroup>
+          <MantineRTE.ControlsGroup>
+            <EmojiPicker onSelect={handleEmojiSelect} size="sm" iconSize={16} />
+          </MantineRTE.ControlsGroup>
 
-        <MantineRTE.ControlsGroup>
-          <MantineRTE.Undo />
-          <MantineRTE.Redo />
-        </MantineRTE.ControlsGroup>
-      </MantineRTE.Toolbar>
+          <MantineRTE.ControlsGroup>
+            <MantineRTE.Undo />
+            <MantineRTE.Redo />
+          </MantineRTE.ControlsGroup>
+        </MantineRTE.Toolbar>
 
-      <MantineRTE.Content />
-    </MantineRTE>
+        <MantineRTE.Content />
+      </MantineRTE>
+      {draftRestored && (
+        <Group gap={4} mt={4}>
+          <Text size="xs" c="dimmed" fs="italic">
+            Kladde gendannet automatisk
+          </Text>
+          <Anchor size="xs" onClick={handleClearDraft}>
+            (ryd)
+          </Anchor>
+        </Group>
+      )}
+    </>
   )
 }

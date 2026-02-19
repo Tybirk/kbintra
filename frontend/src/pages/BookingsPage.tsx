@@ -9,7 +9,7 @@ import {
   Center,
   Box,
   Select,
-  Tooltip,
+  UnstyledButton,
 } from "@mantine/core"
 import { Schedule } from "@mantine/schedule"
 import type { ScheduleEventData, ScheduleViewLevel } from "@mantine/schedule"
@@ -294,32 +294,45 @@ export default function BookingsPage() {
         />
         {/* Room color legend */}
         {rooms && rooms.length > 0 && (
-          <Group gap="xs">
-            {rooms.map((room) => (
-              <Tooltip key={room.id} label={room.name} withArrow>
-                <Box
-                  w={16}
-                  h={16}
-                  style={{
-                    borderRadius: 4,
-                    backgroundColor: room.color,
-                    cursor: "pointer",
-                    outline:
-                      selectedRoomId === String(room.id)
-                        ? "2px solid var(--mantine-color-dark-4)"
-                        : undefined,
-                    outlineOffset: 1,
-                  }}
+          <Group gap="xs" wrap="wrap">
+            {rooms.map((room) => {
+              const isSelected = selectedRoomId === String(room.id)
+              return (
+                <Group
+                  key={room.id}
+                  gap={6}
+                  align="center"
                   onClick={() =>
-                    setSelectedRoomId(
-                      selectedRoomId === String(room.id)
-                        ? null
-                        : String(room.id),
-                    )
+                    setSelectedRoomId(isSelected ? null : String(room.id))
                   }
-                />
-              </Tooltip>
-            ))}
+                  style={{
+                    cursor: "pointer",
+                    padding: "3px 10px",
+                    borderRadius: 20,
+                    border: `1.5px solid ${
+                      isSelected ? room.color : "var(--mantine-color-gray-3)"
+                    }`,
+                    backgroundColor: isSelected
+                      ? `${room.color}22`
+                      : "transparent",
+                    userSelect: "none",
+                  }}
+                >
+                  <Box
+                    w={10}
+                    h={10}
+                    style={{
+                      borderRadius: "50%",
+                      backgroundColor: room.color,
+                      flexShrink: 0,
+                    }}
+                  />
+                  <Text size="xs" fw={isSelected ? 600 : 400}>
+                    {room.name}
+                  </Text>
+                </Group>
+              )
+            })}
           </Group>
         )}
       </Group>
@@ -371,6 +384,57 @@ export default function BookingsPage() {
         monthViewProps={{
           firstDayOfWeek: 1,
           withWeekNumbers: true,
+        }}
+        mobileMonthViewProps={{
+          renderEvent: (
+            event: ScheduleEventData,
+            { children: _children, ...buttonProps },
+          ) => {
+            const payload = event.payload as {
+              booking: CalendarBooking
+            } | undefined
+            const booking = payload?.booking
+            const startTime = dayjs(event.start).format("HH:mm")
+            const endTime = dayjs(event.end).format("HH:mm")
+            const isAllDay = startTime === "00:00" && endTime === "00:00"
+            return (
+              <UnstyledButton {...buttonProps}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "var(--mantine-spacing-sm)",
+                    padding: "var(--mantine-spacing-xs) 0",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "calc(0.25rem * var(--mantine-scale))",
+                      borderRadius: "calc(0.125rem * var(--mantine-scale))",
+                      flexShrink: 0,
+                      backgroundColor: String(event.color),
+                    }}
+                  />
+                  <div>
+                    <Text>{event.title}</Text>
+                    <Text
+                      size="xs"
+                      c="dimmed"
+                      style={{
+                        marginTop: "calc(0.125rem * var(--mantine-scale))",
+                      }}
+                    >
+                      {isAllDay ? "Hele dagen" : `${startTime} – ${endTime}`}
+                    </Text>
+                    {booking && (
+                      <Text size="xs" c="dimmed">
+                        {booking.room.name}
+                      </Text>
+                    )}
+                  </div>
+                </div>
+              </UnstyledButton>
+            )
+          },
         }}
       />
 

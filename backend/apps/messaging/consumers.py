@@ -228,6 +228,32 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
         )
 
+    async def message_edited(self, event):
+        """Broadcast message edit to all clients in conversation."""
+        await self.send(
+            json.dumps(
+                {
+                    "type": "message_edited",
+                    "message_id": event["message_id"],
+                    "conversation_id": event["conversation_id"],
+                    "content": event["content"],
+                    "edited_at": event["edited_at"],
+                }
+            )
+        )
+
+    async def message_deleted(self, event):
+        """Broadcast message deletion to all clients in conversation."""
+        await self.send(
+            json.dumps(
+                {
+                    "type": "message_deleted",
+                    "message_id": event["message_id"],
+                    "conversation_id": event["conversation_id"],
+                }
+            )
+        )
+
     async def new_notification(self, event):
         """Send notification to user via WebSocket."""
         await self.send(

@@ -49,6 +49,7 @@ import "dayjs/locale/da"
 
 import { eventsApi } from "../api/events"
 import { forumApi } from "../api/forum"
+import { clearDraft } from "../utils/draftStorage"
 import {
   filterFilesBySize,
   validateFileSize,
@@ -371,6 +372,7 @@ function CreateThreadModal({
       setContent("")
       setAttachments([])
       setPollData(null)
+      clearDraft("new-thread-" + subgroupSlug)
       onSuccess(thread)
     },
     onError: () => {
@@ -439,6 +441,7 @@ function CreateThreadModal({
                 placeholder="Skriv dit første indlæg..."
                 minHeight={200}
                 onFilePaste={handleAddFiles}
+                draftKey={"new-thread-" + subgroupSlug}
               />
             </div>
 

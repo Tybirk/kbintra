@@ -4,6 +4,7 @@ Views for Messaging app.
 
 from django.db.models import Max, QuerySet
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -303,6 +304,85 @@ class AddParticipantsView(APIView):
             ConversationDetailSerializer(conversation, context={"request": request}).data,
             status=status.HTTP_200_OK,
         )
+
+
+class MessageEditView(APIView):
+    """Edit a message. Only the sender can edit their own non-system messages."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request: Request, message_id: int) -> Response:
+        message = get_object_or_404(Message, pk=message_id, sender=request.user)
+
+        if message.is_system_message or message.is_deleted:
+            return Response(
+                {"detail": "Kan ikke redigere denne besked"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        content = request.data.get("content", "").strip()
+        if not content:
+            return Response(
+                {"detail": "Besked kan ikke være tom"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        message.content = content
+        message.edited_at = timezone.now()
+        message.save()
+
+        # Broadcast edit via WebSocket
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f"conversation_{message.conversation_id}",
+            {
+                "type": "message_edited",
+                "message_id": message.id,
+                "conversation_id": message.conversation_id,
+                "content": message.content,
+                "edited_at": message.edited_at.isoformat(),
+            },
+        )
+
+        return Response(MessageSerializer(message, context={"request": request}).data)
+
+
+class MessageUnsendView(APIView):
+    """Soft-delete (unsend) a message. Only the sender can unsend their own messages."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request: Request, message_id: int) -> Response:
+        message = get_object_or_404(Message, pk=message_id, sender=request.user)
+
+        if message.is_system_message:
+            return Response(
+                {"detail": "Kan ikke slette denne besked"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        message.is_deleted = True
+        message.content = ""
+        message.save()
+
+        # Broadcast deletion via WebSocket
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f"conversation_{message.conversation_id}",
+            {
+                "type": "message_deleted",
+                "message_id": message.id,
+                "conversation_id": message.conversation_id,
+            },
+        )
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class LeaveConversationView(APIView):

@@ -33,6 +33,7 @@ import relativeTime from "dayjs/plugin/relativeTime"
 
 import { announcementsApi } from "../api/announcements"
 import { filterFilesBySize } from "../config"
+import { clearDraft } from "../utils/draftStorage"
 import RichTextEditor from "../components/RichTextEditor"
 import FileDropzone, { AttachmentArea } from "../components/FileDropzone"
 import { AttachmentBadge } from "../components/AttachmentBadge"
@@ -408,6 +409,7 @@ function CreateAnnouncementModal({
       setTitle("")
       setContent("")
       setAttachments([])
+      clearDraft("new-announcement")
       onSuccess()
     },
     onError: () => {
@@ -470,6 +472,7 @@ function CreateAnnouncementModal({
                 placeholder="Skriv dit opslag..."
                 minHeight={200}
                 onFilePaste={handleAddFiles}
+                draftKey="new-announcement"
               />
             </div>
 

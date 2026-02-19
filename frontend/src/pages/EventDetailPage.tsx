@@ -45,6 +45,7 @@ import dayjs from "dayjs"
 
 import { eventsApi } from "../api/events"
 import { forumApi } from "../api/forum"
+import { clearDraft } from "../utils/draftStorage"
 import RichTextEditor from "../components/RichTextEditor"
 import Reactions from "../components/Reactions"
 import type {
@@ -789,6 +790,7 @@ function DiscussionSection({ threadId, subgroupSlug }: DiscussionSectionProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
       setContent("")
+      clearDraft("event-reply-" + threadId)
     },
     onError: () => {
       notifications.show({
@@ -977,6 +979,7 @@ function DiscussionSection({ threadId, subgroupSlug }: DiscussionSectionProps) {
               onChange={setContent}
               placeholder="Skriv et svar..."
               minHeight={100}
+              draftKey={"event-reply-" + threadId}
             />
             <Group justify="flex-end" mt="xs">
               <Button

@@ -49,10 +49,19 @@ class MessageSerializer(serializers.ModelSerializer):
             "is_own",
             "is_read",
             "is_system_message",
+            "is_deleted",
+            "edited_at",
             "created_at",
             "attachments",
         ]
-        read_only_fields = ["id", "sender", "created_at", "is_system_message"]
+        read_only_fields = [
+            "id",
+            "sender",
+            "created_at",
+            "is_system_message",
+            "is_deleted",
+            "edited_at",
+        ]
 
     def get_is_own(self, obj: Message) -> bool:
         request = self.context.get("request")

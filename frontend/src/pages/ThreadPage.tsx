@@ -37,6 +37,7 @@ import relativeTime from "dayjs/plugin/relativeTime"
 
 import { forumApi } from "../api/forum"
 import { filterFilesBySize } from "../config"
+import { clearDraft } from "../utils/draftStorage"
 import RichTextEditor from "../components/RichTextEditor"
 import FileDropzone, { AttachmentArea } from "../components/FileDropzone"
 import Reactions from "../components/Reactions"
@@ -139,6 +140,7 @@ export default function ThreadPage() {
       setNewPostContent("")
       setAttachments([])
       setPollData(null)
+      clearDraft("reply-" + threadId)
       notifications.show({
         title: "Reply posted",
         message: "Your reply has been added.",
@@ -439,6 +441,7 @@ export default function ThreadPage() {
                   placeholder="Write your reply..."
                   minHeight={150}
                   onFilePaste={handleAddFiles}
+                  draftKey={"reply-" + threadId}
                 />
 
                 {pollData && (

@@ -12,6 +12,7 @@ import {
   Stack,
   Avatar,
   TextInput,
+  Textarea,
   Modal,
   ScrollArea,
   Badge,
@@ -35,6 +36,9 @@ import {
   IconUserPlus,
   IconDots,
   IconLogout,
+  IconEdit,
+  IconTrash,
+  IconCopy,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -47,10 +51,13 @@ import type {
   ConversationDetail,
   Message,
   WsMessage,
+  WsMessageEdited,
+  WsMessageDeleted,
   User,
   MessageAttachment,
 } from "../types"
 import ChatRichTextEditor from "../components/ChatRichTextEditor"
+import { clearDraft } from "../utils/draftStorage"
 import { getFileIcon, getFileTypeColor } from "../components/FilePreview"
 import { AttachmentCarousel } from "../components/AttachmentCarousel"
 
@@ -148,6 +155,42 @@ export default function MessagesPage() {
         })
       } else if (wsData.type === "new_conversation") {
         queryClient.invalidateQueries({ queryKey: ["conversations"] })
+      } else if (wsData.type === "message_edited") {
+        const editedData = wsData as WsMessageEdited
+        queryClient.setQueryData<ConversationDetail>(
+          ["conversation", editedData.conversation_id],
+          (old) => {
+            if (!old) return old
+            return {
+              ...old,
+              messages: old.messages.map((m) =>
+                m.id === editedData.message_id
+                  ? {
+                      ...m,
+                      content: editedData.content,
+                      edited_at: editedData.edited_at,
+                    }
+                  : m,
+              ),
+            }
+          },
+        )
+      } else if (wsData.type === "message_deleted") {
+        const deletedData = wsData as WsMessageDeleted
+        queryClient.setQueryData<ConversationDetail>(
+          ["conversation", deletedData.conversation_id],
+          (old) => {
+            if (!old) return old
+            return {
+              ...old,
+              messages: old.messages.map((m) =>
+                m.id === deletedData.message_id
+                  ? { ...m, is_deleted: true, content: "" }
+                  : m,
+              ),
+            }
+          },
+        )
       }
     })
 
@@ -346,6 +389,7 @@ export default function MessagesPage() {
               </Center>
             ) : activeConversation ? (
               <ChatArea
+                key={activeConversation.id}
                 conversation={activeConversation}
                 onBack={
                   isMobile
@@ -386,6 +430,38 @@ export default function MessagesPage() {
                   })
                 }}
                 onLeave={handleLeaveConversation}
+                onMessageUpdated={(messageId, content, editedAt) => {
+                  queryClient.setQueryData<ConversationDetail>(
+                    ["conversation", selectedConversation],
+                    (old) => {
+                      if (!old) return old
+                      return {
+                        ...old,
+                        messages: old.messages.map((m) =>
+                          m.id === messageId
+                            ? { ...m, content, edited_at: editedAt }
+                            : m,
+                        ),
+                      }
+                    },
+                  )
+                }}
+                onMessageDeleted={(messageId) => {
+                  queryClient.setQueryData<ConversationDetail>(
+                    ["conversation", selectedConversation],
+                    (old) => {
+                      if (!old) return old
+                      return {
+                        ...old,
+                        messages: old.messages.map((m) =>
+                          m.id === messageId
+                            ? { ...m, is_deleted: true, content: "" }
+                            : m,
+                        ),
+                      }
+                    },
+                  )
+                }}
               />
             ) : null
           ) : (
@@ -507,6 +583,12 @@ interface ChatAreaProps {
   onBack?: () => void
   onParticipantsAdded?: () => void
   onLeave?: () => void
+  onMessageUpdated?: (
+    messageId: number,
+    content: string,
+    editedAt: string,
+  ) => void
+  onMessageDeleted?: (messageId: number) => void
 }
 
 function ChatArea({
@@ -515,6 +597,8 @@ function ChatArea({
   onBack,
   onParticipantsAdded,
   onLeave,
+  onMessageUpdated,
+  onMessageDeleted,
 }: ChatAreaProps) {
   const location = useLocation()
   const [message, setMessage] = useState("")
@@ -579,6 +663,7 @@ function ChatArea({
     const messageAttachments = [...attachments]
     setMessage("") // Clear immediately for better UX
     setAttachments([])
+    clearDraft("msg-" + conversation.id)
 
     try {
       await onSendMessage(messageContent, messageAttachments)
@@ -707,6 +792,8 @@ function ChatArea({
                 message={msg}
                 showAvatar={showAvatar}
                 showTime={showTime}
+                onEdit={onMessageUpdated}
+                onUnsend={onMessageDeleted}
               />
             )
           })}
@@ -725,6 +812,7 @@ function ChatArea({
           placeholder="Skriv en besked..."
           attachments={attachments}
           onAttachmentsChange={setAttachments}
+          draftKey={"msg-" + conversation.id}
         />
       </Box>
     </>
@@ -799,15 +887,88 @@ interface MessageBubbleProps {
   message: Message
   showAvatar: boolean
   showTime: boolean
+  onEdit?: (messageId: number, content: string, editedAt: string) => void
+  onUnsend?: (messageId: number) => void
 }
 
 function isImageFile(filename: string): boolean {
   return /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(filename)
 }
 
-function MessageBubble({ message, showAvatar, showTime }: MessageBubbleProps) {
+function MessageBubble({
+  message,
+  showAvatar,
+  showTime,
+  onEdit,
+  onUnsend,
+}: MessageBubbleProps) {
   const [carouselOpened, setCarouselOpened] = useState(false)
   const [carouselInitialIndex, setCarouselInitialIndex] = useState(0)
+  const [menuOpened, setMenuOpened] = useState(false)
+  const [isHovered, setIsHovered] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editContent, setEditContent] = useState(message.content)
+  const [isSavingEdit, setIsSavingEdit] = useState(false)
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleTouchStart = () => {
+    longPressTimer.current = setTimeout(() => {
+      setMenuOpened(true)
+    }, 500)
+  }
+
+  const handleTouchEnd = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current)
+      longPressTimer.current = null
+    }
+  }
+
+  const handleCopy = () => {
+    const plainText = message.content.replace(/<[^>]*>/g, "")
+    navigator.clipboard.writeText(plainText).catch(() => {})
+  }
+
+  const handleStartEdit = () => {
+    setEditContent(message.content)
+    setIsEditing(true)
+  }
+
+  const handleSaveEdit = async () => {
+    const trimmed = editContent.trim()
+    if (!trimmed || isSavingEdit) return
+    setIsSavingEdit(true)
+    try {
+      const updated = await messagingApi.editMessage(message.id, trimmed)
+      onEdit?.(
+        message.id,
+        updated.content,
+        updated.edited_at ?? new Date().toISOString(),
+      )
+      setIsEditing(false)
+    } catch {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke redigere besked",
+        color: "red",
+      })
+    } finally {
+      setIsSavingEdit(false)
+    }
+  }
+
+  const handleUnsend = async () => {
+    try {
+      await messagingApi.unsendMessage(message.id)
+      onUnsend?.(message.id)
+    } catch {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke fortryde afsendelse",
+        color: "red",
+      })
+    }
+  }
 
   // Render system messages differently
   if (message.is_system_message) {
@@ -817,6 +978,43 @@ function MessageBubble({ message, showAvatar, showTime }: MessageBubbleProps) {
           {message.content}
         </Text>
       </Center>
+    )
+  }
+
+  // Render deleted messages as a placeholder
+  if (message.is_deleted) {
+    const isOwn = message.is_own
+    return (
+      <Group
+        id={`msg-${message.id}`}
+        justify={isOwn ? "flex-end" : "flex-start"}
+        gap="xs"
+        align="flex-end"
+        wrap="nowrap"
+      >
+        {!isOwn && (
+          <Avatar
+            src={message.sender.profile_picture}
+            radius="xl"
+            size="sm"
+            style={{ visibility: showAvatar ? "visible" : "hidden" }}
+          >
+            {message.sender.first_name?.[0]}
+          </Avatar>
+        )}
+        <Paper
+          p="xs"
+          radius="lg"
+          style={{
+            backgroundColor: "var(--mantine-color-default-hover)",
+            border: "1px dashed var(--mantine-color-default-border)",
+          }}
+        >
+          <Text size="sm" c="dimmed" fs="italic">
+            Besked slettet
+          </Text>
+        </Paper>
+      </Group>
     )
   }
 
@@ -837,6 +1035,57 @@ function MessageBubble({ message, showAvatar, showTime }: MessageBubbleProps) {
     setCarouselOpened(true)
   }
 
+  const menuButton = (
+    <Menu
+      opened={menuOpened}
+      onChange={setMenuOpened}
+      position={isOwn ? "left" : "right"}
+      withArrow
+      withinPortal
+    >
+      <Menu.Target>
+        <ActionIcon
+          variant="subtle"
+          size="sm"
+          color="gray"
+          style={{
+            opacity: isHovered || menuOpened ? 1 : 0,
+            transition: "opacity 0.1s",
+            flexShrink: 0,
+          }}
+          aria-label="Beskedindstillinger"
+        >
+          <IconDots size={14} />
+        </ActionIcon>
+      </Menu.Target>
+      <Menu.Dropdown>
+        {isOwn && (
+          <Menu.Item
+            leftSection={<IconEdit size={14} />}
+            onClick={handleStartEdit}
+          >
+            Rediger
+          </Menu.Item>
+        )}
+        <Menu.Item leftSection={<IconCopy size={14} />} onClick={handleCopy}>
+          Kopiér
+        </Menu.Item>
+        {isOwn && (
+          <>
+            <Menu.Divider />
+            <Menu.Item
+              leftSection={<IconTrash size={14} />}
+              color="red"
+              onClick={handleUnsend}
+            >
+              Fortryd afsendelse
+            </Menu.Item>
+          </>
+        )}
+      </Menu.Dropdown>
+    </Menu>
+  )
+
   return (
     <>
       <Group
@@ -845,6 +1094,15 @@ function MessageBubble({ message, showAvatar, showTime }: MessageBubbleProps) {
         gap="xs"
         align="flex-end"
         wrap="nowrap"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          setMenuOpened(true)
+        }}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onTouchMove={handleTouchEnd}
       >
         {!isOwn && (
           <Avatar
@@ -856,8 +1114,12 @@ function MessageBubble({ message, showAvatar, showTime }: MessageBubbleProps) {
             {message.sender.first_name?.[0]}
           </Avatar>
         )}
+
+        {/* Menu button appears to the left for own messages */}
+        {isOwn && menuButton}
+
         <Box style={{ maxWidth: "70%" }}>
-          {hasAttachments && (
+          {hasAttachments && !isEditing && (
             <Stack
               gap="xs"
               mb={hasContent ? "xs" : 0}
@@ -909,40 +1171,83 @@ function MessageBubble({ message, showAvatar, showTime }: MessageBubbleProps) {
               })}
             </Stack>
           )}
-          {hasContent && (
-            <Box
-              style={{
-                display: "flex",
-                justifyContent: isOwn ? "flex-end" : "flex-start",
-              }}
-            >
-              <Paper
-                p="xs"
-                radius="lg"
+          {isEditing ? (
+            <Stack gap="xs" style={{ minWidth: 200 }}>
+              <Textarea
+                value={editContent}
+                onChange={(e) => setEditContent(e.currentTarget.value)}
+                autosize
+                minRows={1}
+                maxRows={6}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault()
+                    void handleSaveEdit()
+                  }
+                  if (e.key === "Escape") {
+                    setIsEditing(false)
+                  }
+                }}
+              />
+              <Group gap="xs" justify="flex-end">
+                <Button
+                  size="xs"
+                  variant="subtle"
+                  onClick={() => setIsEditing(false)}
+                >
+                  Annuller
+                </Button>
+                <Button
+                  size="xs"
+                  loading={isSavingEdit}
+                  onClick={() => void handleSaveEdit()}
+                >
+                  Gem
+                </Button>
+              </Group>
+            </Stack>
+          ) : (
+            hasContent && (
+              <Box
                 style={{
-                  backgroundColor: isOwn
-                    ? "var(--mantine-color-blue-6)"
-                    : "var(--mantine-color-default-hover)",
-                  maxWidth: "100%",
+                  display: "flex",
+                  justifyContent: isOwn ? "flex-end" : "flex-start",
                 }}
               >
-                <Text
-                  size="sm"
+                <Paper
+                  p="xs"
+                  radius="lg"
                   style={{
-                    color: isOwn ? "white" : "inherit",
-                    whiteSpace: "pre-wrap",
-                    overflowWrap: "break-word",
+                    backgroundColor: isOwn
+                      ? "var(--mantine-color-blue-6)"
+                      : "var(--mantine-color-default-hover)",
+                    maxWidth: "100%",
                   }}
                 >
-                  <MessageContent content={message.content} isOwn={isOwn} />
-                </Text>
-              </Paper>
-            </Box>
+                  <Text
+                    size="sm"
+                    style={{
+                      color: isOwn ? "white" : "inherit",
+                      whiteSpace: "pre-wrap",
+                      overflowWrap: "break-word",
+                    }}
+                  >
+                    <MessageContent content={message.content} isOwn={isOwn} />
+                  </Text>
+                </Paper>
+              </Box>
+            )
           )}
-          {showTime && (
+          {showTime && !isEditing && (
             <Group gap={4} justify={isOwn ? "flex-end" : "flex-start"} mt={2}>
               <Text size="xs" c="dimmed">
                 {dayjs(message.created_at).format("HH:mm")}
+                {message.edited_at && (
+                  <Text span size="xs" c="dimmed" ml={4}>
+                    (redigeret)
+                  </Text>
+                )}
               </Text>
               {isOwn &&
                 (message.is_read ? (
@@ -953,6 +1258,9 @@ function MessageBubble({ message, showAvatar, showTime }: MessageBubbleProps) {
             </Group>
           )}
         </Box>
+
+        {/* Menu button appears to the right for others' messages */}
+        {!isOwn && menuButton}
       </Group>
 
       {hasAttachments && (

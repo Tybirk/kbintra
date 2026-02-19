@@ -9,6 +9,7 @@ import {
   Text,
   Stack,
   ScrollArea,
+  Anchor,
 } from "@mantine/core"
 import { useMediaQuery } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -27,6 +28,7 @@ import {
 } from "react"
 import { filterFilesBySize } from "../config"
 import EmojiPicker from "./EmojiPicker"
+import { saveDraft, loadDraft, clearDraft } from "../utils/draftStorage"
 
 interface ChatRichTextEditorProps {
   content: string
@@ -36,6 +38,8 @@ interface ChatRichTextEditorProps {
   disabled?: boolean
   attachments: File[]
   onAttachmentsChange: (files: File[]) => void
+  /** Unique key for persisting a draft across refreshes. */
+  draftKey?: string
 }
 
 function isImageFile(file: File): boolean {
@@ -56,9 +60,13 @@ export default function ChatRichTextEditor({
   disabled = false,
   attachments,
   onAttachmentsChange,
+  draftKey,
 }: ChatRichTextEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const isMobile = useMediaQuery("(max-width: 768px)")
+  const [draftRestored, setDraftRestored] = useState(false)
+  const loadedForKeyRef = useRef<string | null>(null)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Track object URLs to revoke them when files are removed or component unmounts
   const [previewUrls, setPreviewUrls] = useState<Map<File, string>>(new Map())
@@ -101,6 +109,32 @@ export default function ChatRichTextEditor({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attachments])
+
+  // Load draft on mount or when draftKey changes
+  useEffect(() => {
+    if (!draftKey || loadedForKeyRef.current === draftKey) return
+    loadedForKeyRef.current = draftKey
+
+    loadDraft(draftKey).then((draft) => {
+      if (draft && !content) {
+        onChange(draft)
+        setDraftRestored(true)
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey])
+
+  // Save draft with debounce whenever content changes
+  useEffect(() => {
+    if (!draftKey) return
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      saveDraft(draftKey, content)
+    }, 1500)
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    }
+  }, [draftKey, content])
 
   const handlePaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
     const items = event.clipboardData?.items
@@ -168,6 +202,12 @@ export default function ChatRichTextEditor({
     onAttachmentsChange(attachments.filter((_, i) => i !== index))
   }
 
+  const handleClearDraft = () => {
+    if (draftKey) clearDraft(draftKey)
+    setDraftRestored(false)
+    onChange("")
+  }
+
   const isEmpty = !content.trim() && attachments.length === 0
 
   // Add hint about Shift+Enter on desktop
@@ -177,6 +217,16 @@ export default function ChatRichTextEditor({
 
   return (
     <Stack gap="xs">
+      {draftRestored && (
+        <Group gap={4}>
+          <Text size="xs" c="dimmed" fs="italic">
+            Kladde gendannet automatisk
+          </Text>
+          <Anchor size="xs" onClick={handleClearDraft}>
+            (ryd)
+          </Anchor>
+        </Group>
+      )}
       {attachments.length > 0 && (
         <ScrollArea type="auto" offsetScrollbars scrollbarSize={6}>
           <Group gap="xs" wrap="nowrap" pb={4}>

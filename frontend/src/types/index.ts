@@ -544,6 +544,8 @@ export interface Message {
   is_own: boolean
   is_read: boolean
   is_system_message: boolean
+  is_deleted: boolean
+  edited_at: string | null
   created_at: string
   attachments: MessageAttachment[]
 }
@@ -604,7 +606,21 @@ export interface WsNewNotification {
   notification: Notification
 }
 
-export type WsMessage = WsNewMessage | WsMessagesRead | WsTyping | WsNewConversation | WsNewNotification
+export interface WsMessageEdited {
+  type: "message_edited"
+  message_id: number
+  conversation_id: number
+  content: string
+  edited_at: string
+}
+
+export interface WsMessageDeleted {
+  type: "message_deleted"
+  message_id: number
+  conversation_id: number
+}
+
+export type WsMessage = WsNewMessage | WsMessagesRead | WsTyping | WsNewConversation | WsNewNotification | WsMessageEdited | WsMessageDeleted
 
 // Notification Types
 export type NotificationType = "new_message" | "new_announcement" | "new_thread" | "thread_reply" | "post_reply" | "post_reaction" | "event_created" | "event_updated" | "event_cancelled" | "event_reminder" | "food_ticket"

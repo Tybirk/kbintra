@@ -119,6 +119,20 @@ export const messagingApi = {
   leaveConversation: async (conversationId: number): Promise<void> => {
     await apiClient.post(`/messages/conversations/${conversationId}/leave/`)
   },
+
+  // Edit a message
+  editMessage: async (messageId: number, content: string): Promise<Message> => {
+    const response = await apiClient.patch(
+      `/messages/messages/${messageId}/edit/`,
+      { content },
+    )
+    return response.data
+  },
+
+  // Unsend (soft-delete) a message
+  unsendMessage: async (messageId: number): Promise<void> => {
+    await apiClient.delete(`/messages/messages/${messageId}/unsend/`)
+  },
 }
 
 /**

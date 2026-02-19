@@ -10,7 +10,9 @@ from .views import (
     ConversationListCreateView,
     LeaveConversationView,
     MarkMessagesReadView,
+    MessageEditView,
     MessageListCreateView,
+    MessageUnsendView,
     UnreadCountView,
 )
 
@@ -38,4 +40,10 @@ urlpatterns = [
         name="mark-read",
     ),
     path("unread-count/", UnreadCountView.as_view(), name="unread-count"),
+    path("messages/<int:message_id>/edit/", MessageEditView.as_view(), name="message-edit"),
+    path(
+        "messages/<int:message_id>/unsend/",
+        MessageUnsendView.as_view(),
+        name="message-unsend",
+    ),
 ]
