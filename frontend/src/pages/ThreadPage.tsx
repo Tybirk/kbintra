@@ -20,6 +20,7 @@ import {
   Image,
   SimpleGrid,
   Tooltip,
+  Box,
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -254,6 +255,18 @@ export default function ThreadPage() {
     },
   })
 
+  const { user: currentUser } = useAuthStore()
+
+  const threadAuthorDmMutation = useMutation({
+    mutationFn: () =>
+      messagingApi.createConversation({
+        participant_ids: [thread!.author.id],
+      }),
+    onSuccess: (conversation) => {
+      navigate(`/beskeder/${conversation.id}`)
+    },
+  })
+
   const closeThreadMutation = useMutation({
     mutationFn: (isClosed: boolean) =>
       forumApi.closeThread(thread!.id, isClosed),
@@ -429,6 +442,38 @@ export default function ThreadPage() {
           <Text size="sm" c="dimmed">
             {dayjs(thread.created_at).format("MMM D, YYYY [at] h:mm A")}
           </Text>
+          {thread.author.id !== currentUser?.id && (
+            <>
+              <Tooltip label="Svar i privat besked">
+                <Button
+                  variant="subtle"
+                  color="blue"
+                  size="xs"
+                  leftSection={<IconMessage size={14} />}
+                  onClick={() => threadAuthorDmMutation.mutate()}
+                  loading={threadAuthorDmMutation.isPending}
+                >
+                  Svar i privat besked
+                </Button>
+              </Tooltip>
+              {thread.author.phone_number && (
+                <Box hiddenFrom="sm">
+                  <Tooltip label={thread.author.phone_number}>
+                    <Button
+                      variant="subtle"
+                      color="gray"
+                      size="xs"
+                      leftSection={<IconDeviceMobileMessage size={14} />}
+                      component="a"
+                      href={`sms:${thread.author.phone_number}`}
+                    >
+                      SMS
+                    </Button>
+                  </Tooltip>
+                </Box>
+              )}
+            </>
+          )}
         </Group>
       </Paper>
 
@@ -773,18 +818,20 @@ function PostCard({
                     </Button>
                   </Tooltip>
                   {post.author.phone_number && (
-                    <Tooltip label={post.author.phone_number}>
-                      <Button
-                        variant="subtle"
-                        color="gray"
-                        size="xs"
-                        leftSection={<IconDeviceMobileMessage size={14} />}
-                        component="a"
-                        href={`sms:${post.author.phone_number}`}
-                      >
-                        SMS
-                      </Button>
-                    </Tooltip>
+                    <Box hiddenFrom="sm">
+                      <Tooltip label={post.author.phone_number}>
+                        <Button
+                          variant="subtle"
+                          color="gray"
+                          size="xs"
+                          leftSection={<IconDeviceMobileMessage size={14} />}
+                          component="a"
+                          href={`sms:${post.author.phone_number}`}
+                        >
+                          SMS
+                        </Button>
+                      </Tooltip>
+                    </Box>
                   )}
                 </Group>
               )}
