@@ -457,8 +457,8 @@ export default function ThreadPage() {
                 </Button>
               </Tooltip>
               {thread.author.phone_number && (
-                <Box hiddenFrom="sm">
-                  <Tooltip label={thread.author.phone_number}>
+                <>
+                  <Box hiddenFrom="sm">
                     <Button
                       variant="subtle"
                       color="gray"
@@ -469,8 +469,13 @@ export default function ThreadPage() {
                     >
                       SMS
                     </Button>
-                  </Tooltip>
-                </Box>
+                  </Box>
+                  <Box visibleFrom="sm">
+                    <Text size="sm" c="dimmed">
+                      {thread.author.phone_number}
+                    </Text>
+                  </Box>
+                </>
               )}
             </>
           )}
@@ -818,8 +823,8 @@ function PostCard({
                     </Button>
                   </Tooltip>
                   {post.author.phone_number && (
-                    <Box hiddenFrom="sm">
-                      <Tooltip label={post.author.phone_number}>
+                    <>
+                      <Box hiddenFrom="sm">
                         <Button
                           variant="subtle"
                           color="gray"
@@ -830,8 +835,13 @@ function PostCard({
                         >
                           SMS
                         </Button>
-                      </Tooltip>
-                    </Box>
+                      </Box>
+                      <Box visibleFrom="sm">
+                        <Text size="sm" c="dimmed">
+                          {post.author.phone_number}
+                        </Text>
+                      </Box>
+                    </>
                   )}
                 </Group>
               )}
