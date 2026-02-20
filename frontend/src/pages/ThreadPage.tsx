@@ -255,18 +255,6 @@ export default function ThreadPage() {
     },
   })
 
-  const { user: currentUser } = useAuthStore()
-
-  const threadAuthorDmMutation = useMutation({
-    mutationFn: () =>
-      messagingApi.createConversation({
-        participant_ids: [thread!.author.id],
-      }),
-    onSuccess: (conversation) => {
-      navigate(`/beskeder/${conversation.id}`)
-    },
-  })
-
   const closeThreadMutation = useMutation({
     mutationFn: (isClosed: boolean) =>
       forumApi.closeThread(thread!.id, isClosed),
@@ -375,138 +363,106 @@ export default function ThreadPage() {
         Back
       </Button>
 
-      <Paper withBorder p="lg" radius="md" mb="lg">
-        <Group justify="space-between" mb="md">
-          <div>
-            <Text size="sm" c="dimmed" mb={4}>
-              {thread.subgroup_name}
-            </Text>
-            <Group gap="sm">
-              <Title order={2}>{thread.title}</Title>
-              {thread.is_closed && (
-                <Badge color="orange" leftSection={<IconLock size={12} />}>
-                  Lukket
-                </Badge>
+      {thread.posts[0] && (
+        <PostCard
+          key={thread.posts[0].id}
+          post={thread.posts[0]}
+          threadQueryKey={threadQueryKey}
+          threadHeader={
+            <Group justify="space-between">
+              <div>
+                <Text size="sm" c="dimmed" mb={4}>
+                  {thread.subgroup_name}
+                </Text>
+                <Group gap="sm">
+                  <Title order={2}>{thread.title}</Title>
+                  {thread.is_closed && (
+                    <Badge color="orange" leftSection={<IconLock size={12} />}>
+                      Lukket
+                    </Badge>
+                  )}
+                </Group>
+              </div>
+              {(thread.can_edit || thread.can_close) && (
+                <Menu shadow="md" width={200}>
+                  <Menu.Target>
+                    <ActionIcon variant="subtle">
+                      <IconDotsVertical size={16} />
+                    </ActionIcon>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    {thread.can_close && (
+                      <Menu.Item
+                        leftSection={
+                          thread.is_closed ? (
+                            <IconLockOpen size={14} />
+                          ) : (
+                            <IconLock size={14} />
+                          )
+                        }
+                        onClick={() =>
+                          closeThreadMutation.mutate(!thread.is_closed)
+                        }
+                      >
+                        {thread.is_closed ? "Genåbn tråd" : "Luk tråd"}
+                      </Menu.Item>
+                    )}
+                    {thread.can_edit && (
+                      <Menu.Item
+                        color="red"
+                        leftSection={<IconTrash size={14} />}
+                        onClick={() => deleteThreadMutation.mutate(thread.id)}
+                      >
+                        Slet tråd
+                      </Menu.Item>
+                    )}
+                  </Menu.Dropdown>
+                </Menu>
               )}
             </Group>
-          </div>
-          {(thread.can_edit || thread.can_close) && (
-            <Menu shadow="md" width={200}>
-              <Menu.Target>
-                <ActionIcon variant="subtle">
-                  <IconDotsVertical size={16} />
-                </ActionIcon>
-              </Menu.Target>
-              <Menu.Dropdown>
-                {thread.can_close && (
-                  <Menu.Item
-                    leftSection={
-                      thread.is_closed ? (
-                        <IconLockOpen size={14} />
-                      ) : (
-                        <IconLock size={14} />
-                      )
-                    }
-                    onClick={() =>
-                      closeThreadMutation.mutate(!thread.is_closed)
-                    }
-                  >
-                    {thread.is_closed ? "Genåbn tråd" : "Luk tråd"}
-                  </Menu.Item>
-                )}
-                {thread.can_edit && (
-                  <Menu.Item
-                    color="red"
-                    leftSection={<IconTrash size={14} />}
-                    onClick={() => deleteThreadMutation.mutate(thread.id)}
-                  >
-                    Slet tråd
-                  </Menu.Item>
-                )}
-              </Menu.Dropdown>
-            </Menu>
-          )}
-        </Group>
+          }
+          isEditing={editingPost?.id === thread.posts[0].id}
+          editContent={editContent}
+          onEditContentChange={setEditContent}
+          onStartEdit={() => handleStartEdit(thread.posts[0])}
+          onSaveEdit={handleSaveEdit}
+          onCancelEdit={() => {
+            setEditingPost(null)
+            setEditContent("")
+          }}
+          onDelete={() => handleDeleteClick(thread.posts[0].id)}
+          isSaving={updatePostMutation.isPending}
+        />
+      )}
 
-        <Group gap="sm">
-          <Avatar src={thread.author.profile_picture} radius="xl" size="sm">
-            {thread.author.first_name?.[0]}
-            {thread.author.last_name?.[0]}
-          </Avatar>
-          <UserLink
-            id={thread.author.id}
-            firstName={thread.author.first_name}
-            lastName={thread.author.last_name}
-            size="sm"
-          />
-          <Text size="sm" c="dimmed">
-            {dayjs(thread.created_at).format("MMM D, YYYY [at] h:mm A")}
-          </Text>
-          {thread.author.id !== currentUser?.id && (
-            <>
-              <Tooltip label="Svar i privat besked">
-                <Button
-                  variant="subtle"
-                  color="blue"
-                  size="xs"
-                  leftSection={<IconMessage size={14} />}
-                  onClick={() => threadAuthorDmMutation.mutate()}
-                  loading={threadAuthorDmMutation.isPending}
-                >
-                  Svar i privat besked
-                </Button>
-              </Tooltip>
-              {thread.author.phone_number && (
-                <>
-                  <Box hiddenFrom="sm">
-                    <Button
-                      variant="subtle"
-                      color="gray"
-                      size="xs"
-                      leftSection={<IconDeviceMobileMessage size={14} />}
-                      component="a"
-                      href={`sms:${thread.author.phone_number}`}
-                    >
-                      SMS
-                    </Button>
-                  </Box>
-                  <Box visibleFrom="sm">
-                    <Text size="sm" c="dimmed">
-                      {thread.author.phone_number}
-                    </Text>
-                  </Box>
-                </>
-              )}
-            </>
-          )}
-        </Group>
-      </Paper>
-
-      <Title order={4} mb="md">
-        {thread.posts.length} {thread.posts.length === 1 ? "Reply" : "Replies"}
-      </Title>
-
-      <Stack gap="md" mb="xl">
-        {thread.posts.map((post, index) => (
-          <PostCard
-            key={post.id}
-            post={post}
-            threadQueryKey={threadQueryKey}
-            isFirst={index === 0}
-            isEditing={editingPost?.id === post.id}
-            editContent={editContent}
-            onEditContentChange={setEditContent}
-            onStartEdit={() => handleStartEdit(post)}
-            onSaveEdit={handleSaveEdit}
-            onCancelEdit={() => {
-              setEditingPost(null)
-              setEditContent("")
-            }}
-            onDelete={() => handleDeleteClick(post.id)}
-            isSaving={updatePostMutation.isPending}
-          />
-        ))}
-      </Stack>
+      {thread.posts.length > 1 && (
+        <>
+          <Title order={4} mt="xl" mb="md">
+            {thread.posts.length - 1}{" "}
+            {thread.posts.length - 1 === 1 ? "svar" : "svar"}
+          </Title>
+          <Stack gap="md" mb="xl">
+            {thread.posts.slice(1).map((post) => (
+              <PostCard
+                key={post.id}
+                post={post}
+                threadQueryKey={threadQueryKey}
+                isEditing={editingPost?.id === post.id}
+                editContent={editContent}
+                onEditContentChange={setEditContent}
+                onStartEdit={() => handleStartEdit(post)}
+                onSaveEdit={handleSaveEdit}
+                onCancelEdit={() => {
+                  setEditingPost(null)
+                  setEditContent("")
+                }}
+                onDelete={() => handleDeleteClick(post.id)}
+                isSaving={updatePostMutation.isPending}
+              />
+            ))}
+          </Stack>
+        </>
+      )}
 
       <Divider my="lg" />
 
@@ -621,7 +577,7 @@ export default function ThreadPage() {
 interface PostCardProps {
   post: Post
   threadQueryKey: (string | number)[]
-  isFirst: boolean
+  threadHeader?: React.ReactNode
   isEditing: boolean
   editContent: string
   onEditContentChange: (content: string) => void
@@ -635,7 +591,7 @@ interface PostCardProps {
 function PostCard({
   post,
   threadQueryKey,
-  isFirst,
+  threadHeader,
   isEditing,
   editContent,
   onEditContentChange,
@@ -673,13 +629,13 @@ function PostCard({
 
   return (
     <>
-      <Paper
-        id={`post-${post.id}`}
-        withBorder
-        p="md"
-        radius="md"
-        bg={isFirst ? "var(--mantine-color-blue-light)" : undefined}
-      >
+      <Paper id={`post-${post.id}`} withBorder p="md" radius="md">
+        {threadHeader && (
+          <>
+            {threadHeader}
+            <Divider my="md" />
+          </>
+        )}
         <Group justify="space-between" mb="sm">
           <Group gap="sm">
             <Avatar src={post.author.profile_picture} radius="xl" size="md">
@@ -694,11 +650,6 @@ function PostCard({
                   lastName={post.author.last_name}
                   fw={500}
                 />
-                {isFirst && (
-                  <Text span c="blue" size="xs" ml="xs">
-                    (Original Post)
-                  </Text>
-                )}
               </Text>
               <Text size="xs" c="dimmed">
                 {dayjs(post.created_at).format("MMM D, YYYY [at] h:mm A")}
