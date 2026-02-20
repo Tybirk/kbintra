@@ -990,7 +990,9 @@ function DayRegistrationCard({
       <Paper withBorder p="md" radius="md" opacity={isPast ? 0.6 : 1}>
         <Group justify="space-between" mb="xs">
           <div>
-            <Text fw={500}>{dayName}</Text>
+            <Text fw={500} tt="capitalize">
+              {dayName}
+            </Text>
           </div>
           <Badge variant="light" color={isPast ? "gray" : "blue"}>
             {dayjs(date).format("MMM D")}
@@ -998,8 +1000,8 @@ function DayRegistrationCard({
         </Group>
 
         {menuText && (
-          <Text size="xs" c="dimmed" mb="sm" lineClamp={2}>
-            {menuText}
+          <Text size="xs" mb="sm">
+            {menuText.trim()}
           </Text>
         )}
 

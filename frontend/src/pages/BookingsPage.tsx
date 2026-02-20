@@ -439,7 +439,7 @@ export default function BookingsPage() {
                   )
                 }
               >
-                <IconChevronLeft size={18} />
+                <IconChevronLeft size={18} style={{ display: "block" }} />
               </ActionIcon>
               <Text fw={600} tt="capitalize" style={{ userSelect: "none" }}>
                 {dayjs(currentDate).format("MMMM YYYY")}
@@ -453,7 +453,7 @@ export default function BookingsPage() {
                   )
                 }
               >
-                <IconChevronRight size={18} />
+                <IconChevronRight size={18} style={{ display: "block" }} />
               </ActionIcon>
             </Group>
           ),
