@@ -21,6 +21,7 @@ import { notifications } from "@mantine/notifications"
 import { IconArrowLeft, IconMapPin, IconAlertCircle } from "@tabler/icons-react"
 import dayjs from "dayjs"
 
+import { clearDraft, loadDraft, saveDraft } from "../utils/draftStorage"
 import { eventsApi } from "../api/events"
 import { bookingsApi } from "../api/bookings"
 import { forumApi } from "../api/forum"
@@ -133,6 +134,19 @@ export default function EventFormPage() {
   const [attachments, setAttachments] = useState<File[]>([])
   const [errors, setErrors] = useState<FormErrors>({})
   const [roomConflicts, setRoomConflicts] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (isEditMode) return
+    loadDraft("new-event-title").then((draft) => {
+      if (draft) setTitle(draft)
+    })
+  }, [isEditMode])
+
+  useEffect(() => {
+    if (isEditMode) return
+    const t = setTimeout(() => saveDraft("new-event-title", title), 1500)
+    return () => clearTimeout(t)
+  }, [title, isEditMode])
 
   const clearErrors = () => {
     if (Object.keys(errors).length > 0) setErrors({})
@@ -319,6 +333,8 @@ export default function EventFormPage() {
     mutationFn: (data: CreateEventData) => eventsApi.createEvent(data),
     onSuccess: async (result) => {
       await uploadFiles(result.id)
+      clearDraft("new-event-title")
+      clearDraft("new-event-description")
       queryClient.invalidateQueries({ queryKey: ["events"] })
       notifications.show({
         title: "Begivenhed oprettet",
@@ -454,6 +470,7 @@ export default function EventFormPage() {
                 onChange={setDescription}
                 placeholder="Beskrivelse, dagsorden, etc. (valgfrit)"
                 minHeight={120}
+                draftKey={isEditMode ? undefined : "new-event-description"}
               />
             </div>
 

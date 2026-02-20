@@ -49,6 +49,7 @@ import { forumApi } from "../api/forum"
 import { clearDraft } from "../utils/draftStorage"
 import RichTextEditor from "../components/RichTextEditor"
 import Reactions from "../components/Reactions"
+import UserLink from "../components/UserLink"
 import type {
   Event,
   EventAttendance,
@@ -242,7 +243,7 @@ export default function EventDetailPage() {
             )}
           </div>
 
-          {event.is_own && (
+          {event.can_edit && (
             <Menu shadow="md" width={200}>
               <Menu.Target>
                 <ActionIcon variant="subtle" size="lg">
@@ -918,15 +919,19 @@ function DiscussionSection({
                     {post.author.first_name?.[0]}
                   </Avatar>
                   <div>
-                    <Text size="sm" fw={500}>
-                      {post.author.first_name} {post.author.last_name}
-                    </Text>
+                    <UserLink
+                      id={post.author.id}
+                      firstName={post.author.first_name}
+                      lastName={post.author.last_name}
+                      size="sm"
+                      fw={500}
+                    />
                     <Text size="xs" c="dimmed">
                       {dayjs(post.created_at).format("D. MMM YYYY HH:mm")}
                     </Text>
                   </div>
                 </Group>
-                {post.is_own && editingPostId !== post.id && (
+                {post.can_edit && editingPostId !== post.id && (
                   <Menu shadow="md" width={160}>
                     <Menu.Target>
                       <ActionIcon variant="subtle" size="sm">

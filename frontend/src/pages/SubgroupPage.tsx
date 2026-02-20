@@ -49,7 +49,7 @@ import "dayjs/locale/da"
 
 import { eventsApi } from "../api/events"
 import { forumApi } from "../api/forum"
-import { clearDraft } from "../utils/draftStorage"
+import { clearDraft, loadDraft, saveDraft } from "../utils/draftStorage"
 import {
   filterFilesBySize,
   validateFileSize,
@@ -67,6 +67,7 @@ import {
   getFileTypeColor,
 } from "../components/FilePreview"
 import { AttachmentBadge } from "../components/AttachmentBadge"
+import UserLink from "../components/UserLink"
 import { useAuthStore } from "../store/authStore"
 import type {
   Thread,
@@ -346,8 +347,14 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
           </Group>
           <Group gap="xs">
             <Text size="sm" c="dimmed" style={{ whiteSpace: "nowrap" }}>
-              {thread.author.first_name} {thread.author.last_name} •{" "}
-              {dayjs(thread.last_post_at ?? thread.created_at).fromNow()}
+              <UserLink
+                id={thread.author.id}
+                firstName={thread.author.first_name}
+                lastName={thread.author.last_name}
+                size="sm"
+                c="dimmed"
+              />{" "}
+              • {dayjs(thread.last_post_at ?? thread.created_at).fromNow()}
             </Text>
             <Badge variant="light" color="gray" size="sm">
               {thread.post_count} svar
@@ -377,6 +384,19 @@ function CreateThreadModal({
   const [attachments, setAttachments] = useState<File[]>([])
   const [pollData, setPollData] = useState<CreatePollData | null>(null)
 
+  const titleDraftKey = "new-thread-title-" + subgroupSlug
+
+  useEffect(() => {
+    loadDraft(titleDraftKey).then((draft) => {
+      if (draft) setTitle(draft)
+    })
+  }, [titleDraftKey])
+
+  useEffect(() => {
+    const t = setTimeout(() => saveDraft(titleDraftKey, title), 1500)
+    return () => clearTimeout(t)
+  }, [title, titleDraftKey])
+
   const createMutation = useMutation({
     mutationFn: ({ data, files, pollData: pd }: CreateThreadParams) =>
       forumApi.createThread(
@@ -396,6 +416,7 @@ function CreateThreadModal({
       setAttachments([])
       setPollData(null)
       clearDraft("new-thread-" + subgroupSlug)
+      clearDraft("new-thread-title-" + subgroupSlug)
       onSuccess(thread)
     },
     onError: () => {

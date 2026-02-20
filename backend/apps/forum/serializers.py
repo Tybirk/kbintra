@@ -25,7 +25,7 @@ class AuthorSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["id", "first_name", "last_name", "profile_picture"]
+        fields = ["id", "first_name", "last_name", "profile_picture", "phone_number"]
 
 
 class PostAttachmentSerializer(serializers.ModelSerializer):
@@ -217,6 +217,7 @@ class PostSerializer(serializers.ModelSerializer):
 
     author = AuthorSerializer(read_only=True)
     is_own = serializers.SerializerMethodField()
+    can_edit = serializers.SerializerMethodField()
     attachments = PostAttachmentSerializer(many=True, read_only=True)
     reactions = serializers.SerializerMethodField()
     poll = serializers.SerializerMethodField()
@@ -229,6 +230,7 @@ class PostSerializer(serializers.ModelSerializer):
             "author",
             "content",
             "is_own",
+            "can_edit",
             "attachments",
             "reactions",
             "poll",
@@ -245,6 +247,12 @@ class PostSerializer(serializers.ModelSerializer):
         return PollSerializer(poll, context=self.context).data
 
     def get_is_own(self, obj: Post) -> bool:
+        request = self.context.get("request")
+        if request and request.user.is_authenticated:
+            return obj.author_id == request.user.id
+        return False
+
+    def get_can_edit(self, obj: Post) -> bool:
         request = self.context.get("request")
         if request and request.user.is_authenticated:
             return obj.author_id == request.user.id or request.user.is_staff
@@ -450,6 +458,7 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
     subgroup_name = serializers.CharField(source="subgroup.name", read_only=True)
     subgroup_slug = serializers.CharField(source="subgroup.slug", read_only=True)
     is_own = serializers.SerializerMethodField()
+    can_edit = serializers.SerializerMethodField()
     can_close = serializers.SerializerMethodField()
     event_id = serializers.SerializerMethodField()
 
@@ -466,6 +475,7 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
             "is_pinned",
             "is_closed",
             "is_own",
+            "can_edit",
             "can_close",
             "event_id",
             "posts",
@@ -474,6 +484,12 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
         ]
 
     def get_is_own(self, obj: Thread) -> bool:
+        request = self.context.get("request")
+        if request and request.user.is_authenticated:
+            return obj.author_id == request.user.id
+        return False
+
+    def get_can_edit(self, obj: Thread) -> bool:
         request = self.context.get("request")
         if request and request.user.is_authenticated:
             return obj.author_id == request.user.id or request.user.is_staff

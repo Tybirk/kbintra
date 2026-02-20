@@ -17,6 +17,7 @@ import { IconSearch, IconHome } from "@tabler/icons-react"
 import { useNavigate } from "react-router-dom"
 
 import { housesApi } from "../api/houses"
+import UserLink from "../components/UserLink"
 import type { Child, House, UserSummary } from "../types"
 
 export default function DirectoryPage() {
@@ -169,9 +170,12 @@ function ResidentRow({ inhabitant }: ResidentRowProps) {
         {inhabitant.first_name?.[0]}
         {inhabitant.last_name?.[0]}
       </Avatar>
-      <Text size="sm">
-        {inhabitant.first_name} {inhabitant.last_name}
-      </Text>
+      <UserLink
+        id={inhabitant.id}
+        firstName={inhabitant.first_name}
+        lastName={inhabitant.last_name}
+        size="sm"
+      />
     </Group>
   )
 }

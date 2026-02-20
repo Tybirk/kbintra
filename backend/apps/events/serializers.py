@@ -69,6 +69,7 @@ class EventSerializer(serializers.ModelSerializer):
     subgroup = SubgroupInfoSerializer(read_only=True)
     folder = FolderInfoSerializer(read_only=True)
     is_own = serializers.SerializerMethodField()
+    can_edit = serializers.SerializerMethodField()
     rsvp_summary = serializers.SerializerMethodField()
     my_rsvp = serializers.SerializerMethodField()
     household_rsvps = serializers.SerializerMethodField()
@@ -98,6 +99,7 @@ class EventSerializer(serializers.ModelSerializer):
             "my_rsvp",
             "household_rsvps",
             "is_own",
+            "can_edit",
             "is_cancelled",
             "cancellation_message",
             "resolved_location",
@@ -131,6 +133,12 @@ class EventSerializer(serializers.ModelSerializer):
         return None
 
     def get_is_own(self, obj: Event) -> bool:
+        request = self.context.get("request")
+        if request and request.user.is_authenticated:
+            return obj.created_by_id == request.user.id
+        return False
+
+    def get_can_edit(self, obj: Event) -> bool:
         request = self.context.get("request")
         if request and request.user.is_authenticated:
             return obj.created_by_id == request.user.id or request.user.is_staff

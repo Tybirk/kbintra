@@ -1129,8 +1129,9 @@ class TestEventAdminRights:
         event.refresh_from_db()
         assert event.is_cancelled is True
 
-    def test_admin_sees_is_own_true_on_others_event(self, admin_client, event):
-        """is_own is True for admin on any event, enabling edit controls in the UI."""
+    def test_admin_can_edit_others_event(self, admin_client, event):
+        """can_edit is True for admin on any event; is_own is False (admin didn't create it)."""
         response = admin_client.get(f"/api/events/{event.id}/")
         assert response.status_code == 200
-        assert response.json()["is_own"] is True
+        assert response.json()["is_own"] is False
+        assert response.json()["can_edit"] is True

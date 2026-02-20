@@ -1213,15 +1213,17 @@ class TestForumAdminRights:
         assert response.status_code == 204
         assert not Post.objects.filter(id=post_id).exists()
 
-    def test_admin_sees_is_own_true_on_others_thread(self, admin_client, thread, post):
-        """is_own is True for admin on any thread, enabling moderation controls in the UI."""
+    def test_admin_can_edit_others_thread(self, admin_client, thread, post):
+        """can_edit is True for admin on any thread; is_own is False (admin didn't write it)."""
         response = admin_client.get(f"/api/forum/threads/{thread.id}/")
         assert response.status_code == 200
-        assert response.data["is_own"] is True
+        assert response.data["is_own"] is False
+        assert response.data["can_edit"] is True
 
-    def test_admin_sees_is_own_true_on_others_post(self, admin_client, thread, post):
-        """is_own is True for admin on any post, enabling edit/delete controls in the UI."""
+    def test_admin_can_edit_others_post(self, admin_client, thread, post):
+        """can_edit is True for admin on any post; is_own is False (admin didn't write it)."""
         response = admin_client.get(f"/api/forum/threads/{thread.id}/")
         assert response.status_code == 200
         post_data = next(p for p in response.data["posts"] if p["id"] == post.id)
-        assert post_data["is_own"] is True
+        assert post_data["is_own"] is False
+        assert post_data["can_edit"] is True

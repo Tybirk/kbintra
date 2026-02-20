@@ -38,6 +38,7 @@ import { foodApi } from "../api/food"
 import { forumApi } from "../api/forum"
 import { notificationsApi } from "../api/notifications"
 import { usersApi } from "../api/users"
+import UserLink from "../components/UserLink"
 import type {
   Announcement,
   Event,
@@ -750,9 +751,13 @@ function ActivityPreview({ activity }: ActivityPreviewProps) {
           {activity.author.last_name?.[0]}
         </Avatar>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <Text size="sm" fw={500} lineClamp={1}>
-            {activity.author.first_name} {activity.author.last_name}
-          </Text>
+          <UserLink
+            id={activity.author.id}
+            firstName={activity.author.first_name}
+            lastName={activity.author.last_name}
+            size="sm"
+            fw={500}
+          />
           <Text size="xs" c="dimmed" lineClamp={1}>
             i {activity.thread_title}
           </Text>

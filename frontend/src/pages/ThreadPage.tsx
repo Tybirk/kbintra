@@ -19,6 +19,7 @@ import {
   Badge,
   Image,
   SimpleGrid,
+  Tooltip,
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -31,17 +32,22 @@ import {
   IconLock,
   IconLockOpen,
   IconChartBar,
+  IconMessage,
+  IconDeviceMobileMessage,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
 
 import { forumApi } from "../api/forum"
+import { messagingApi } from "../api/messaging"
+import { useAuthStore } from "../store/authStore"
 import { notificationsApi } from "../api/notifications"
 import { filterFilesBySize } from "../config"
 import { clearDraft } from "../utils/draftStorage"
 import RichTextEditor from "../components/RichTextEditor"
 import FileDropzone, { AttachmentArea } from "../components/FileDropzone"
 import Reactions from "../components/Reactions"
+import UserLink from "../components/UserLink"
 import PollDisplay from "../components/PollDisplay"
 import PollCreator from "../components/PollCreator"
 import {
@@ -371,7 +377,7 @@ export default function ThreadPage() {
               )}
             </Group>
           </div>
-          {(thread.is_own || thread.can_close) && (
+          {(thread.can_edit || thread.can_close) && (
             <Menu shadow="md" width={200}>
               <Menu.Target>
                 <ActionIcon variant="subtle">
@@ -395,7 +401,7 @@ export default function ThreadPage() {
                     {thread.is_closed ? "Genåbn tråd" : "Luk tråd"}
                   </Menu.Item>
                 )}
-                {thread.is_own && (
+                {thread.can_edit && (
                   <Menu.Item
                     color="red"
                     leftSection={<IconTrash size={14} />}
@@ -414,9 +420,12 @@ export default function ThreadPage() {
             {thread.author.first_name?.[0]}
             {thread.author.last_name?.[0]}
           </Avatar>
-          <Text size="sm">
-            {thread.author.first_name} {thread.author.last_name}
-          </Text>
+          <UserLink
+            id={thread.author.id}
+            firstName={thread.author.first_name}
+            lastName={thread.author.last_name}
+            size="sm"
+          />
           <Text size="sm" c="dimmed">
             {dayjs(thread.created_at).format("MMM D, YYYY [at] h:mm A")}
           </Text>
@@ -586,6 +595,8 @@ function PostCard({
   onDelete,
   isSaving,
 }: PostCardProps) {
+  const navigate = useNavigate()
+  const { user: currentUser } = useAuthStore()
   const [carouselOpened, setCarouselOpened] = useState(false)
   const [carouselInitialIndex, setCarouselInitialIndex] = useState(0)
 
@@ -601,6 +612,14 @@ function PostCard({
     setCarouselInitialIndex(index >= 0 ? index : 0)
     setCarouselOpened(true)
   }
+
+  const dmMutation = useMutation({
+    mutationFn: () =>
+      messagingApi.createConversation({ participant_ids: [post.author.id] }),
+    onSuccess: (conversation) => {
+      navigate(`/beskeder/${conversation.id}`)
+    },
+  })
 
   return (
     <>
@@ -619,7 +638,12 @@ function PostCard({
             </Avatar>
             <div>
               <Text size="sm" fw={500}>
-                {post.author.first_name} {post.author.last_name}
+                <UserLink
+                  id={post.author.id}
+                  firstName={post.author.first_name}
+                  lastName={post.author.last_name}
+                  fw={500}
+                />
                 {isFirst && (
                   <Text span c="blue" size="xs" ml="xs">
                     (Original Post)
@@ -633,7 +657,7 @@ function PostCard({
             </div>
           </Group>
 
-          {post.is_own && !isEditing && (
+          {post.can_edit && !isEditing && (
             <Menu shadow="md" width={200}>
               <Menu.Target>
                 <ActionIcon variant="subtle">
@@ -728,11 +752,43 @@ function PostCard({
             )}
 
             <Divider my="sm" />
-            <Reactions
-              postId={post.id}
-              threadQueryKey={threadQueryKey}
-              reactions={post.reactions || []}
-            />
+            <Group justify="space-between" wrap="wrap" gap="xs">
+              <Reactions
+                postId={post.id}
+                threadQueryKey={threadQueryKey}
+                reactions={post.reactions || []}
+              />
+              {post.author.id !== currentUser?.id && (
+                <Group gap="xs">
+                  <Tooltip label="Svar i privat besked">
+                    <Button
+                      variant="subtle"
+                      color="blue"
+                      size="xs"
+                      leftSection={<IconMessage size={14} />}
+                      onClick={() => dmMutation.mutate()}
+                      loading={dmMutation.isPending}
+                    >
+                      Svar i privat besked
+                    </Button>
+                  </Tooltip>
+                  {post.author.phone_number && (
+                    <Tooltip label={post.author.phone_number}>
+                      <Button
+                        variant="subtle"
+                        color="gray"
+                        size="xs"
+                        leftSection={<IconDeviceMobileMessage size={14} />}
+                        component="a"
+                        href={`sms:${post.author.phone_number}`}
+                      >
+                        SMS
+                      </Button>
+                    </Tooltip>
+                  )}
+                </Group>
+              )}
+            </Group>
           </>
         )}
       </Paper>

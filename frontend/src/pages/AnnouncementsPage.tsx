@@ -34,10 +34,11 @@ import relativeTime from "dayjs/plugin/relativeTime"
 import { announcementsApi } from "../api/announcements"
 import { notificationsApi } from "../api/notifications"
 import { filterFilesBySize } from "../config"
-import { clearDraft } from "../utils/draftStorage"
+import { clearDraft, loadDraft, saveDraft } from "../utils/draftStorage"
 import RichTextEditor from "../components/RichTextEditor"
 import FileDropzone, { AttachmentArea } from "../components/FileDropzone"
 import { AttachmentBadge } from "../components/AttachmentBadge"
+import UserLink from "../components/UserLink"
 import {
   getFileIcon,
   getFileTypeColor,
@@ -280,8 +281,14 @@ function AnnouncementCard({
           <div>
             <Text fw={500}>{announcement.title}</Text>
             <Text size="sm" c="dimmed">
-              {announcement.author.first_name} {announcement.author.last_name} •{" "}
-              {dayjs(announcement.created_at).fromNow()}
+              <UserLink
+                id={announcement.author.id}
+                firstName={announcement.author.first_name}
+                lastName={announcement.author.last_name}
+                size="sm"
+                c="dimmed"
+              />{" "}
+              • {dayjs(announcement.created_at).fromNow()}
             </Text>
           </div>
         </Group>
@@ -292,7 +299,7 @@ function AnnouncementCard({
               Prioritet
             </Badge>
           )}
-          {announcement.is_own && (
+          {announcement.can_edit && (
             <Menu shadow="md" width={200}>
               <Menu.Target>
                 <ActionIcon variant="subtle">
@@ -398,6 +405,17 @@ function CreateAnnouncementModal({
   const [content, setContent] = useState("")
   const [attachments, setAttachments] = useState<File[]>([])
 
+  useEffect(() => {
+    loadDraft("new-announcement-title").then((draft) => {
+      if (draft) setTitle(draft)
+    })
+  }, [])
+
+  useEffect(() => {
+    const t = setTimeout(() => saveDraft("new-announcement-title", title), 1500)
+    return () => clearTimeout(t)
+  }, [title])
+
   const createMutation = useMutation({
     mutationFn: ({
       data,
@@ -420,6 +438,7 @@ function CreateAnnouncementModal({
       setContent("")
       setAttachments([])
       clearDraft("new-announcement")
+      clearDraft("new-announcement-title")
       onSuccess()
     },
     onError: () => {

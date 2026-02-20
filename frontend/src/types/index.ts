@@ -117,6 +117,7 @@ export interface Author {
   first_name: string
   last_name: string
   profile_picture: string | null
+  phone_number?: string
 }
 
 export interface Subgroup {
@@ -199,6 +200,7 @@ export interface Post {
   author: Author
   content: string
   is_own: boolean
+  can_edit: boolean
   attachments: PostAttachment[]
   reactions: ReactionSummary[]
   poll: Poll | null
@@ -225,6 +227,7 @@ export interface ThreadDetail extends Thread {
   subgroup_name: string
   subgroup_slug: string
   is_own: boolean
+  can_edit: boolean
   can_close: boolean
   event_id: number | null
   posts: Post[]
@@ -289,6 +292,7 @@ export interface Announcement {
   is_active: boolean
   priority: number
   is_own: boolean
+  can_edit: boolean
   attachments: AnnouncementAttachment[]
   created_at: string
   updated_at: string
@@ -476,6 +480,7 @@ export interface Event {
   my_rsvp: string | null
   household_rsvps: EventAttendance[] | null
   is_own: boolean
+  can_edit: boolean
   is_cancelled: boolean
   cancellation_message: string
   thread_id: number | null
