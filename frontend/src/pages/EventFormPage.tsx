@@ -16,7 +16,7 @@ import {
   TagsInput,
   Alert,
 } from "@mantine/core"
-import { DateInput, TimePicker } from "@mantine/dates"
+import { DateInput, DatePickerInput, TimePicker } from "@mantine/dates"
 import { notifications } from "@mantine/notifications"
 import { IconArrowLeft, IconMapPin, IconAlertCircle } from "@tabler/icons-react"
 import dayjs from "dayjs"
@@ -132,6 +132,8 @@ export default function EventFormPage() {
   const [rsvpEnabled, setRsvpEnabled] = useState(false)
   const [rsvpDeadline, setRsvpDeadline] = useState<Date | null>(null)
   const [attachments, setAttachments] = useState<File[]>([])
+  const [multiDate, setMultiDate] = useState(false)
+  const [extraDates, setExtraDates] = useState<Date[]>([])
   const [errors, setErrors] = useState<FormErrors>({})
   const [roomConflicts, setRoomConflicts] = useState<string | null>(null)
 
@@ -248,34 +250,48 @@ export default function EventFormPage() {
     return dayjs(endDate).hour(hours).minute(minutes).second(0).toDate()
   }, [endDate, endTime])
 
-  // Proactive room availability check
+  // Proactive room availability check (primary date + extra dates)
   useEffect(() => {
     if (selectedRoomIds.length === 0 || !startDatetime || !endDatetime) {
       setRoomConflicts(null)
       return
     }
+    const duration = endDatetime.getTime() - startDatetime.getTime()
+    const [h, m] = startTime.split(":").map(Number)
+
+    // Build list of all date ranges to check
+    const datesToCheck: Date[] = [startDatetime]
+    if (multiDate && extraDates.length > 0) {
+      for (const d of extraDates) {
+        datesToCheck.push(dayjs(d).hour(h).minute(m).second(0).toDate())
+      }
+    }
+
     const timeout = setTimeout(async () => {
       try {
-        const result = await bookingsApi.checkAvailability({
-          room_ids: selectedRoomIds,
-          start_datetime: startDatetime.toISOString(),
-          end_datetime: endDatetime.toISOString(),
-          exclude_event_id: isEditMode ? eventId : undefined,
-        })
-        if (!result.can_book_all) {
-          const msgs: string[] = []
-          for (const [rid, conflicts] of Object.entries(
-            result.conflicts_by_room,
-          )) {
-            const room = rooms?.find((r) => r.id === Number(rid))
-            msgs.push(
-              `${room?.name || `Lokale ${rid}`}: ${conflicts.join("; ")}`,
-            )
+        const allMsgs: string[] = []
+        for (const checkStart of datesToCheck) {
+          const checkEnd = new Date(checkStart.getTime() + duration)
+          const result = await bookingsApi.checkAvailability({
+            room_ids: selectedRoomIds,
+            start_datetime: checkStart.toISOString(),
+            end_datetime: checkEnd.toISOString(),
+            exclude_event_id: isEditMode ? eventId : undefined,
+          })
+          if (!result.can_book_all) {
+            const dateLabel = dayjs(checkStart).format("D. MMM")
+            for (const [rid, conflicts] of Object.entries(
+              result.conflicts_by_room,
+            )) {
+              const room = rooms?.find((r) => r.id === Number(rid))
+              const prefix = datesToCheck.length > 1 ? `${dateLabel} — ` : ""
+              allMsgs.push(
+                `${prefix}${room?.name || `Lokale ${rid}`}: ${conflicts.join("; ")}`,
+              )
+            }
           }
-          setRoomConflicts(msgs.join("\n"))
-        } else {
-          setRoomConflicts(null)
         }
+        setRoomConflicts(allMsgs.length > 0 ? allMsgs.join("\n") : null)
       } catch {
         // Silently fail — backend will catch it on submit
       }
@@ -288,6 +304,8 @@ export default function EventFormPage() {
     isEditMode,
     eventId,
     rooms,
+    multiDate,
+    extraDates,
   ])
 
   const handleStartDateChange = (value: string | null) => {
@@ -386,13 +404,96 @@ export default function EventFormPage() {
     },
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const [multiDatePending, setMultiDatePending] = useState(false)
+
+  const submitMultiDate = (trimmedTitle: string) => {
+    setMultiDatePending(true)
+    const allDates = [startDate!, ...extraDates].sort(
+      (a, b) => dayjs(a).valueOf() - dayjs(b).valueOf(),
+    )
+    const duration = endDatetime!.getTime() - startDatetime!.getTime()
+    const [startHours, startMinutes] = startTime.split(":").map(Number)
+
+    const run = async () => {
+      const createdIds: number[] = []
+      try {
+        for (const date of allDates) {
+          const dateLabel = dayjs(date).format("D. MMM")
+          const adjustedStart = dayjs(date)
+            .hour(startHours)
+            .minute(startMinutes)
+            .second(0)
+            .toDate()
+          const adjustedEnd = new Date(adjustedStart.getTime() + duration)
+
+          const data: CreateEventData = {
+            title: `${trimmedTitle} (${dateLabel})`,
+            description: description.trim(),
+            visibility,
+            start_datetime: adjustedStart.toISOString(),
+            end_datetime: adjustedEnd.toISOString(),
+            location: customLocation,
+            room_ids: selectedRoomIds.length > 0 ? selectedRoomIds : undefined,
+            subgroup_id: subgroupId ? Number(subgroupId) : null,
+            rsvp_enabled: rsvpEnabled,
+            rsvp_deadline:
+              rsvpEnabled && rsvpDeadline ? rsvpDeadline.toISOString() : null,
+          }
+
+          const result = await eventsApi.createEvent(data)
+          createdIds.push(result.id)
+
+          if (attachments.length > 0) {
+            try {
+              await eventsApi.uploadFiles(result.id, attachments)
+            } catch {
+              // Ignore file upload errors for individual events
+            }
+          }
+        }
+
+        clearDraft("new-event-title")
+        clearDraft("new-event-description")
+        queryClient.invalidateQueries({ queryKey: ["events"] })
+        notifications.show({
+          title: "Begivenheder oprettet",
+          message: `${createdIds.length} begivenheder blev tilføjet til kalenderen.`,
+          color: "green",
+        })
+        navigate("/kalender")
+      } catch (error) {
+        const fieldErrors = parseDrfErrors(error)
+        setErrors(fieldErrors)
+        if (Object.keys(fieldErrors).length === 0) {
+          notifications.show({
+            title: "Fejl",
+            message: "Kunne ikke oprette alle begivenheder. Prøv igen.",
+            color: "red",
+          })
+        }
+      } finally {
+        setMultiDatePending(false)
+      }
+    }
+
+    run()
+  }
+
+  const handleSubmit = () => {
     setErrors({})
     if (!title.trim() || !startDatetime || !endDatetime) return
 
+    const trimmedTitle = title.trim()
+
+    // Multi-date creation (create mode only)
+    if (!isEditMode && multiDate && extraDates.length > 0) {
+      submitMultiDate(trimmedTitle)
+      return
+    }
+
+    // Single event creation or edit
     const data: CreateEventData = {
-      title: title.trim(),
+      title: trimmedTitle,
       description: description.trim(),
       visibility,
       start_datetime: startDatetime.toISOString(),
@@ -412,11 +513,16 @@ export default function EventFormPage() {
     }
   }
 
-  const isPending = createMutation.isPending || updateMutation.isPending
+  const isPending =
+    createMutation.isPending || updateMutation.isPending || multiDatePending
   const endBeforeStart =
     !!startDatetime && !!endDatetime && endDatetime <= startDatetime
   const isFormValid =
-    !!title.trim() && !!startDatetime && !!endDatetime && !endBeforeStart
+    !!title.trim() &&
+    !!startDatetime &&
+    !!endDatetime &&
+    !endBeforeStart &&
+    !roomConflicts
 
   if (isEditMode && eventLoading) {
     return (
@@ -450,7 +556,7 @@ export default function EventFormPage() {
       </Title>
 
       <Paper withBorder p="lg" radius="md">
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={(e) => e.preventDefault()}>
           <Stack gap="md">
             <TextInput
               label="Titel"
@@ -617,12 +723,44 @@ export default function EventFormPage() {
               onChange={(e) => setRsvpEnabled(e.currentTarget.checked)}
             />
 
+            {!isEditMode && (
+              <Switch
+                label="Opret denne begivenhed på flere datoer"
+                description="Samme begivenhed oprettes for hver valgt dato"
+                checked={multiDate}
+                onChange={(e) => {
+                  setMultiDate(e.currentTarget.checked)
+                  if (!e.currentTarget.checked) setExtraDates([])
+                }}
+              />
+            )}
+
+            {!isEditMode && multiDate && (
+              <DatePickerInput<"multiple">
+                type="multiple"
+                label="Ekstra datoer"
+                placeholder="Klik for at vælge datoer"
+                value={extraDates}
+                onChange={(dates) => setExtraDates(dates as unknown as Date[])}
+                description={`${extraDates.length} ekstra dato${
+                  extraDates.length !== 1 ? "er" : ""
+                } valgt (plus startdatoen ovenfor)`}
+                valueFormat="ddd, D. MMM"
+                minDate={new Date()}
+                clearable
+              />
+            )}
+
             {rsvpEnabled && (
               <DateInput
                 label="Svarfrist"
                 placeholder="Vælg svarfrist (valgfrit)"
-                description="Deadline sættes til kl. 23:59 på den valgte dato"
-                value={rsvpDeadline}
+                description={
+                  multiDate && extraDates.length > 0
+                    ? "Svarfrist kan ikke sættes for begivenheder på flere datoer"
+                    : "Deadline sættes til kl. 23:59 på den valgte dato"
+                }
+                value={multiDate && extraDates.length > 0 ? null : rsvpDeadline}
                 onChange={(value) => {
                   if (value) {
                     // Default deadline to end of selected day (23:59:59)
@@ -636,6 +774,7 @@ export default function EventFormPage() {
                 maxDate={startDate || undefined}
                 error={errors.rsvp_deadline}
                 clearable
+                disabled={multiDate && extraDates.length > 0}
               />
             )}
 
@@ -667,7 +806,12 @@ export default function EventFormPage() {
               >
                 Annuller
               </Button>
-              <Button type="submit" loading={isPending} disabled={!isFormValid}>
+              <Button
+                type="button"
+                onClick={handleSubmit}
+                loading={isPending}
+                disabled={!isFormValid}
+              >
                 {isEditMode ? "Gem ændringer" : "Opret begivenhed"}
               </Button>
             </Group>

@@ -51,7 +51,13 @@ export default function RichTextEditor({
       Placeholder.configure({
         placeholder,
       }),
-      Mention.configure({
+      // Extend Mention so parseHTML matches <a data-type="mention"> in addition
+      // to the default <span data-type="mention">, since our renderHTML outputs <a>.
+      Mention.extend({
+        parseHTML() {
+          return [{ tag: '[data-type="mention"]' }]
+        },
+      }).configure({
         HTMLAttributes: { class: "mention" },
         renderHTML({ node }) {
           return [
