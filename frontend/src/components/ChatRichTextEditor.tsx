@@ -10,6 +10,9 @@ import {
   Stack,
   ScrollArea,
   Anchor,
+  Popover,
+  UnstyledButton,
+  Avatar,
 } from "@mantine/core"
 import { useMediaQuery } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -31,6 +34,8 @@ import {
 import { filterFilesBySize } from "../config"
 const EmojiPicker = lazy(() => import("./EmojiPicker"))
 import { saveDraft, loadDraft, clearDraft } from "../utils/draftStorage"
+import { usersApi } from "../api/users"
+import type { MentionUser } from "../types"
 
 interface ChatRichTextEditorProps {
   content: string
@@ -40,6 +45,10 @@ interface ChatRichTextEditorProps {
   disabled?: boolean
   attachments: File[]
   onAttachmentsChange: (files: File[]) => void
+  /** Called whenever the set of mentioned user IDs changes. */
+  onMentionedUsersChange?: (userIds: number[]) => void
+  /** Restrict mention suggestions to this list (e.g. conversation participants). */
+  mentionableUsers?: MentionUser[]
   /** Unique key for persisting a draft across refreshes. */
   draftKey?: string
 }
@@ -62,6 +71,8 @@ export default function ChatRichTextEditor({
   disabled = false,
   attachments,
   onAttachmentsChange,
+  onMentionedUsersChange,
+  mentionableUsers,
   draftKey,
 }: ChatRichTextEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -69,6 +80,40 @@ export default function ChatRichTextEditor({
   const [draftRestored, setDraftRestored] = useState(false)
   const loadedForKeyRef = useRef<string | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Mention state
+  const [allUsers, setAllUsers] = useState<MentionUser[]>([])
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null)
+  const [mentionSuggestions, setMentionSuggestions] = useState<MentionUser[]>(
+    [],
+  )
+  const [selectedMentionIndex, setSelectedMentionIndex] = useState(0)
+  const mentionedIdsRef = useRef<Set<number>>(new Set())
+  const mentionPopoverOpen =
+    mentionQuery !== null && mentionSuggestions.length > 0
+
+  // Populate the user pool for mention filtering.
+  // When mentionableUsers is provided, use it directly (e.g. conversation participants).
+  // Otherwise fall back to fetching all users from the API.
+  useEffect(() => {
+    if (mentionableUsers) {
+      setAllUsers(mentionableUsers)
+      return
+    }
+    usersApi
+      .mentionSearch("")
+      .then(setAllUsers)
+      .catch(() => {})
+  }, [mentionableUsers])
+
+  // Clear mention state when content is reset to empty (after send)
+  useEffect(() => {
+    if (!content) {
+      mentionedIdsRef.current = new Set()
+      setMentionQuery(null)
+      setMentionSuggestions([])
+    }
+  }, [content])
 
   // Track object URLs to revoke them when files are removed or component unmounts
   const [previewUrls, setPreviewUrls] = useState<Map<File, string>>(new Map())
@@ -154,7 +199,91 @@ export default function ChatRichTextEditor({
     }
   }
 
+  // Extract @query before the cursor
+  const getMentionQuery = (text: string, cursorPos: number): string | null => {
+    const beforeCursor = text.slice(0, cursorPos)
+    const match = beforeCursor.match(/@(\S*)$/)
+    return match ? match[1] : null
+  }
+
+  const handleContentChange = (newContent: string) => {
+    onChange(newContent)
+    const textarea = textareaRef.current
+    if (!textarea) {
+      setMentionQuery(null)
+      setMentionSuggestions([])
+      return
+    }
+    const cursor = textarea.selectionStart ?? newContent.length
+    const query = getMentionQuery(newContent, cursor)
+    if (query !== null) {
+      setMentionQuery(query)
+      const lq = query.toLowerCase()
+      const filtered = allUsers.filter(
+        (u) =>
+          u.first_name.toLowerCase().includes(lq) ||
+          u.last_name.toLowerCase().includes(lq),
+      )
+      setMentionSuggestions(filtered.slice(0, 8))
+      setSelectedMentionIndex(0)
+    } else {
+      setMentionQuery(null)
+      setMentionSuggestions([])
+    }
+  }
+
+  const applyMention = (user: MentionUser) => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    const cursor = textarea.selectionStart ?? content.length
+    const beforeCursor = content.slice(0, cursor)
+    const afterCursor = content.slice(cursor)
+    // Replace the @query with @FirstName LastName
+    const replaced = beforeCursor.replace(
+      /@(\S*)$/,
+      `@${user.first_name} ${user.last_name} `,
+    )
+    const newContent = replaced + afterCursor
+    onChange(newContent)
+    setMentionQuery(null)
+    setMentionSuggestions([])
+    // Track mentioned user
+    mentionedIdsRef.current = new Set([...mentionedIdsRef.current, user.id])
+    onMentionedUsersChange?.([...mentionedIdsRef.current])
+    // Restore focus and move cursor after the mention
+    requestAnimationFrame(() => {
+      textarea.focus()
+      textarea.setSelectionRange(replaced.length, replaced.length)
+    })
+  }
+
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Handle mention popup navigation
+    if (mentionPopoverOpen) {
+      if (event.key === "ArrowUp") {
+        event.preventDefault()
+        setSelectedMentionIndex(
+          (i) =>
+            (i + mentionSuggestions.length - 1) % mentionSuggestions.length,
+        )
+        return
+      }
+      if (event.key === "ArrowDown") {
+        event.preventDefault()
+        setSelectedMentionIndex((i) => (i + 1) % mentionSuggestions.length)
+        return
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault()
+        applyMention(mentionSuggestions[selectedMentionIndex])
+        return
+      }
+      if (event.key === "Escape") {
+        setMentionQuery(null)
+        setMentionSuggestions([])
+        return
+      }
+    }
     // On mobile, Enter creates a newline (more natural for touch keyboards)
     // On desktop, Enter submits (Shift+Enter for newline)
     if (event.key === "Enter" && !event.shiftKey && !isMobile) {
@@ -329,25 +458,63 @@ export default function ChatRichTextEditor({
           </Suspense>
         </Group>
 
-        {/* Message input */}
-        <Textarea
-          ref={textareaRef}
-          value={content}
-          onChange={(e) => onChange(e.currentTarget.value)}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          placeholder={actualPlaceholder}
-          disabled={disabled}
-          autosize
-          minRows={1}
-          maxRows={6}
-          style={{ flex: 1 }}
-          styles={{
-            input: {
-              borderRadius: "var(--mantine-radius-xl)",
-            },
-          }}
-        />
+        {/* Message input with mention popover */}
+        <Popover
+          opened={mentionPopoverOpen}
+          position="top-start"
+          withArrow={false}
+          shadow="md"
+          withinPortal
+        >
+          <Popover.Target>
+            <Textarea
+              ref={textareaRef}
+              value={content}
+              onChange={(e) => handleContentChange(e.currentTarget.value)}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              placeholder={actualPlaceholder}
+              disabled={disabled}
+              autosize
+              minRows={1}
+              maxRows={6}
+              style={{ flex: 1 }}
+              styles={{
+                input: {
+                  borderRadius: "var(--mantine-radius-xl)",
+                },
+              }}
+            />
+          </Popover.Target>
+          <Popover.Dropdown p={4}>
+            <Stack gap={0}>
+              {mentionSuggestions.map((user, index) => (
+                <UnstyledButton
+                  key={user.id}
+                  onClick={() => applyMention(user)}
+                  py={6}
+                  px={8}
+                  style={{
+                    backgroundColor:
+                      index === selectedMentionIndex
+                        ? "var(--mantine-color-blue-1)"
+                        : undefined,
+                    borderRadius: "var(--mantine-radius-sm)",
+                  }}
+                >
+                  <Group gap={8}>
+                    <Avatar src={user.profile_picture} size={24} radius="xl">
+                      {user.first_name[0]}
+                    </Avatar>
+                    <Text size="sm">
+                      {user.first_name} {user.last_name}
+                    </Text>
+                  </Group>
+                </UnstyledButton>
+              ))}
+            </Stack>
+          </Popover.Dropdown>
+        </Popover>
 
         {/* Send button */}
         <ActionIcon

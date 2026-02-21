@@ -31,6 +31,7 @@ import {
   IconToolsKitchen2,
   IconBellOff,
   IconHeart,
+  IconAt,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -53,6 +54,7 @@ const notificationIcons: Record<NotificationType, React.ReactNode> = {
   event_updated: <IconCalendar size={20} />,
   event_cancelled: <IconCalendar size={20} />,
   food_ticket: <IconToolsKitchen2 size={20} />,
+  mention: <IconAt size={20} />,
 }
 
 const notificationColors: Record<NotificationType, string> = {
@@ -67,6 +69,7 @@ const notificationColors: Record<NotificationType, string> = {
   event_updated: "violet",
   event_cancelled: "red",
   food_ticket: "teal",
+  mention: "blue",
 }
 
 export default function NotificationsPage() {

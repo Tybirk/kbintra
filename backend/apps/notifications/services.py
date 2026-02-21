@@ -78,6 +78,7 @@ def get_user_preference(user: User, notification_type: NotificationType) -> bool
         NotificationType.EVENT_CANCELLED: prefs.notify_events,
         NotificationType.EVENT_REMINDER: prefs.notify_event_reminders,
         NotificationType.FOOD_TICKET: prefs.notify_food_tickets,
+        NotificationType.MENTION: prefs.notify_mentions,
     }
 
     return preference_map.get(notification_type, True)
@@ -103,6 +104,7 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
         NotificationType.EVENT_CANCELLED: prefs.push_events,
         NotificationType.EVENT_REMINDER: prefs.push_event_reminders,
         NotificationType.FOOD_TICKET: prefs.push_food_tickets,
+        NotificationType.MENTION: prefs.push_mentions,
     }
 
     return preference_map.get(notification_type, True)
@@ -768,6 +770,43 @@ def notify_event_reminder(
             title=title_text,
             message=message,
             link=link,
+        )
+        if notification:
+            count += 1
+    return count
+
+
+def notify_mentions(
+    author: User,
+    mentioned_user_ids: list[int],
+    context_label: str,
+    link: str,
+) -> int:
+    """Notify mentioned users.
+
+    Args:
+        author: The user who wrote the content with mentions
+        mentioned_user_ids: List of user IDs that were mentioned
+        context_label: Human-readable context, e.g. "indlæg i 'Tråden'"
+        link: URL to the content where the mention occurred
+
+    Returns the count of notifications created.
+    """
+    count = 0
+    for user_id in set(mentioned_user_ids):
+        if user_id == author.id:
+            continue
+        try:
+            user = User.objects.get(id=user_id, is_active=True)
+        except User.DoesNotExist:
+            continue
+        notification = create_notification(
+            user=user,
+            notification_type=NotificationType.MENTION,
+            title="Du er blevet nævnt",
+            message=f"{author.first_name} nævnte dig i {context_label}",
+            link=link,
+            related_user=author,
         )
         if notification:
             count += 1

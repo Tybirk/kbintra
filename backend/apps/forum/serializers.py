@@ -415,6 +415,7 @@ class ThreadSerializer(serializers.ModelSerializer):
     author = AuthorSerializer(read_only=True)
     post_count = serializers.SerializerMethodField()
     last_post_at = serializers.SerializerMethodField()
+    last_post_author = serializers.SerializerMethodField()
     is_unread = serializers.SerializerMethodField()
 
     class Meta:
@@ -429,6 +430,7 @@ class ThreadSerializer(serializers.ModelSerializer):
             "is_closed",
             "post_count",
             "last_post_at",
+            "last_post_author",
             "is_unread",
             "created_at",
             "updated_at",
@@ -437,10 +439,19 @@ class ThreadSerializer(serializers.ModelSerializer):
     def get_post_count(self, obj: Thread) -> int:
         return obj.posts.count()
 
+    def _get_last_post(self, obj: Thread) -> Post | None:
+        return obj.posts.select_related("author").order_by("-created_at").first()
+
     def get_last_post_at(self, obj: Thread) -> str | None:
-        last_post = obj.posts.order_by("-created_at").first()
+        last_post = self._get_last_post(obj)
         if last_post:
             return last_post.created_at.isoformat()
+        return None
+
+    def get_last_post_author(self, obj: Thread) -> dict[str, object] | None:
+        last_post = self._get_last_post(obj)
+        if last_post:
+            return AuthorSerializer(last_post.author).data
         return None
 
     def get_is_unread(self, obj: Thread) -> bool:

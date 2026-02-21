@@ -210,10 +210,16 @@ class CreateMessageSerializer(serializers.ModelSerializer):
         required=False,
         write_only=True,
     )
+    mentioned_user_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        write_only=True,
+        default=list,
+    )
 
     class Meta:
         model = Message
-        fields = ["content", "attachments"]
+        fields = ["content", "attachments", "mentioned_user_ids"]
 
     def validate_attachments(self, value: list) -> list:
         from apps.forum.utils import validate_file_size
@@ -234,6 +240,7 @@ class CreateMessageSerializer(serializers.ModelSerializer):
         from channels.layers import get_channel_layer
 
         attachments = validated_data.pop("attachments", [])
+        mentioned_user_ids = validated_data.pop("mentioned_user_ids", [])
         validated_data["sender"] = self.context["request"].user
         validated_data["conversation"] = self.context["conversation"]
         message = super().create(validated_data)
@@ -297,6 +304,17 @@ class CreateMessageSerializer(serializers.ModelSerializer):
                 message_content=message.content,
                 conversation_id=message.conversation.id,
                 message_id=message.id,
+            )
+
+        # Send mention notifications
+        if mentioned_user_ids:
+            from apps.notifications.tasks import notify_mentions_task
+
+            notify_mentions_task(
+                author_id=sender.id,
+                mentioned_user_ids=mentioned_user_ids,
+                context_label="en besked",
+                link=f"/beskeder/{message.conversation.id}#msg-{message.id}",
             )
 
         return message

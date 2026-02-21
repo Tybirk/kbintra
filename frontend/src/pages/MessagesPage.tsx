@@ -399,11 +399,16 @@ export default function MessagesPage() {
                       }
                     : undefined
                 }
-                onSendMessage={async (content, attachments) => {
+                onSendMessage={async (
+                  content,
+                  attachments,
+                  mentionedUserIds,
+                ) => {
                   const success = await chatWs.sendMessage(
                     selectedConversation,
                     content,
                     attachments,
+                    mentionedUserIds,
                   )
                   if (!success) {
                     notifications.show({
@@ -411,8 +416,12 @@ export default function MessagesPage() {
                       message: "Kunne ikke sende besked. Prøv igen.",
                       color: "red",
                     })
-                  } else if (!chatWs.isConnected || attachments.length > 0) {
-                    // If we used REST fallback or sent attachments, refresh to get the new message
+                  } else if (
+                    !chatWs.isConnected ||
+                    attachments.length > 0 ||
+                    mentionedUserIds.length > 0
+                  ) {
+                    // If we used REST fallback or sent attachments/mentions, refresh to get the new message
                     queryClient.invalidateQueries({
                       queryKey: ["conversation", selectedConversation],
                     })
@@ -579,7 +588,11 @@ function ConversationItem({
 
 interface ChatAreaProps {
   conversation: ConversationDetail
-  onSendMessage: (content: string, attachments: File[]) => Promise<void> | void
+  onSendMessage: (
+    content: string,
+    attachments: File[],
+    mentionedUserIds: number[],
+  ) => Promise<void> | void
   onBack?: () => void
   onParticipantsAdded?: () => void
   onLeave?: () => void
@@ -603,6 +616,7 @@ function ChatArea({
   const location = useLocation()
   const [message, setMessage] = useState("")
   const [attachments, setAttachments] = useState<File[]>([])
+  const [mentionedUserIds, setMentionedUserIds] = useState<number[]>([])
   const [isSending, setIsSending] = useState(false)
   const [
     addParticipantsOpened,
@@ -661,12 +675,14 @@ function ChatArea({
     setIsSending(true)
     const messageContent = message
     const messageAttachments = [...attachments]
+    const messageMentions = [...mentionedUserIds]
     setMessage("") // Clear immediately for better UX
     setAttachments([])
+    setMentionedUserIds([])
     clearDraft("msg-" + conversation.id)
 
     try {
-      await onSendMessage(messageContent, messageAttachments)
+      await onSendMessage(messageContent, messageAttachments, messageMentions)
     } catch (error) {
       // Restore message and attachments if send failed
       setMessage(messageContent)
@@ -812,6 +828,8 @@ function ChatArea({
           placeholder="Skriv en besked..."
           attachments={attachments}
           onAttachmentsChange={setAttachments}
+          onMentionedUsersChange={setMentionedUserIds}
+          mentionableUsers={conversation.other_participants}
           draftKey={"msg-" + conversation.id}
         />
       </Box>

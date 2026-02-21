@@ -375,139 +375,141 @@ export default function BookingsPage() {
         )}
       </Group>
 
-      <Schedule
-        events={scheduleEvents}
-        view={currentView}
-        onViewChange={setCurrentView}
-        date={currentDate}
-        onDateChange={setCurrentDate}
-        locale="da"
-        labels={DA_SCHEDULE_LABELS}
-        layout="responsive"
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-        onEventClick={handleEventClick}
-        onTimeSlotClick={handleTimeSlotClick}
-        onDayClick={handleDayClick}
-        renderEventBody={(event) => {
-          const payload = event.payload as {
-            booking: CalendarBooking
-          } | undefined
-          const booking = payload?.booking
-          return (
-            <div>
-              <Text size="xs" fw={500} lineClamp={1}>
-                {event.title}
-              </Text>
-              {booking && (
-                <Text size="xs" c="dimmed" lineClamp={1}>
-                  {booking.room.name}
-                </Text>
-              )}
-            </div>
-          )
-        }}
-        weekViewProps={{
-          firstDayOfWeek: 1,
-          withWeekNumber: true,
-          withCurrentTimeIndicator: true,
-          startTime: "06:00:00",
-          endTime: "23:59:59",
-          intervalMinutes: 60,
-        }}
-        dayViewProps={{
-          withCurrentTimeIndicator: true,
-          startTime: "06:00:00",
-          endTime: "23:59:59",
-          intervalMinutes: 30,
-        }}
-        monthViewProps={{
-          firstDayOfWeek: 1,
-          withWeekNumbers: true,
-        }}
-        mobileMonthViewProps={{
-          renderHeader: () => (
-            <Group justify="space-between" align="center" w="100%">
-              <ActionIcon
-                variant="subtle"
-                aria-label="Forrige måned"
-                onClick={() =>
-                  setCurrentDate(
-                    dayjs(currentDate)
-                      .subtract(1, "month")
-                      .format("YYYY-MM-DD"),
-                  )
-                }
-              >
-                <IconChevronLeft size={18} style={{ display: "block" }} />
-              </ActionIcon>
-              <Text fw={600} tt="capitalize" style={{ userSelect: "none" }}>
-                {dayjs(currentDate).format("MMMM YYYY")}
-              </Text>
-              <ActionIcon
-                variant="subtle"
-                aria-label="Næste måned"
-                onClick={() =>
-                  setCurrentDate(
-                    dayjs(currentDate).add(1, "month").format("YYYY-MM-DD"),
-                  )
-                }
-              >
-                <IconChevronRight size={18} style={{ display: "block" }} />
-              </ActionIcon>
-            </Group>
-          ),
-          renderEvent: (
-            event: ScheduleEventData,
-            { children: _children, ...buttonProps },
-          ) => {
+      <div className="schedule-wrapper">
+        <Schedule
+          events={scheduleEvents}
+          view={currentView}
+          onViewChange={setCurrentView}
+          date={currentDate}
+          onDateChange={setCurrentDate}
+          locale="da"
+          labels={DA_SCHEDULE_LABELS}
+          layout="responsive"
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          onEventClick={handleEventClick}
+          onTimeSlotClick={handleTimeSlotClick}
+          onDayClick={handleDayClick}
+          renderEventBody={(event) => {
             const payload = event.payload as {
               booking: CalendarBooking
             } | undefined
             const booking = payload?.booking
-            const startTime = dayjs(event.start).format("HH:mm")
-            const endTime = dayjs(event.end).format("HH:mm")
-            const isAllDay = startTime === "00:00" && endTime === "00:00"
             return (
-              <UnstyledButton {...buttonProps}>
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "var(--mantine-spacing-sm)",
-                    padding: "var(--mantine-spacing-xs) 0",
-                  }}
+              <div>
+                <Text size="xs" fw={500} lineClamp={1}>
+                  {event.title}
+                </Text>
+                {booking && (
+                  <Text size="xs" c="dimmed" lineClamp={1}>
+                    {booking.room.name}
+                  </Text>
+                )}
+              </div>
+            )
+          }}
+          weekViewProps={{
+            firstDayOfWeek: 1,
+            withWeekNumber: true,
+            withCurrentTimeIndicator: true,
+            startTime: "06:00:00",
+            endTime: "23:59:59",
+            intervalMinutes: 60,
+          }}
+          dayViewProps={{
+            withCurrentTimeIndicator: true,
+            startTime: "06:00:00",
+            endTime: "23:59:59",
+            intervalMinutes: 30,
+          }}
+          monthViewProps={{
+            firstDayOfWeek: 1,
+            withWeekNumbers: true,
+          }}
+          mobileMonthViewProps={{
+            renderHeader: () => (
+              <Group justify="space-between" align="center" w="100%">
+                <ActionIcon
+                  variant="subtle"
+                  aria-label="Forrige måned"
+                  onClick={() =>
+                    setCurrentDate(
+                      dayjs(currentDate)
+                        .subtract(1, "month")
+                        .format("YYYY-MM-DD"),
+                    )
+                  }
                 >
+                  <IconChevronLeft size={18} style={{ display: "block" }} />
+                </ActionIcon>
+                <Text fw={600} tt="capitalize" style={{ userSelect: "none" }}>
+                  {dayjs(currentDate).format("MMMM YYYY")}
+                </Text>
+                <ActionIcon
+                  variant="subtle"
+                  aria-label="Næste måned"
+                  onClick={() =>
+                    setCurrentDate(
+                      dayjs(currentDate).add(1, "month").format("YYYY-MM-DD"),
+                    )
+                  }
+                >
+                  <IconChevronRight size={18} style={{ display: "block" }} />
+                </ActionIcon>
+              </Group>
+            ),
+            renderEvent: (
+              event: ScheduleEventData,
+              { children: _children, ...buttonProps },
+            ) => {
+              const payload = event.payload as {
+                booking: CalendarBooking
+              } | undefined
+              const booking = payload?.booking
+              const startTime = dayjs(event.start).format("HH:mm")
+              const endTime = dayjs(event.end).format("HH:mm")
+              const isAllDay = startTime === "00:00" && endTime === "00:00"
+              return (
+                <UnstyledButton {...buttonProps}>
                   <div
                     style={{
-                      width: "calc(0.25rem * var(--mantine-scale))",
-                      borderRadius: "calc(0.125rem * var(--mantine-scale))",
-                      flexShrink: 0,
-                      backgroundColor: String(event.color),
+                      display: "flex",
+                      gap: "var(--mantine-spacing-sm)",
+                      padding: "var(--mantine-spacing-xs) 0",
                     }}
-                  />
-                  <div>
-                    <Text>{event.title}</Text>
-                    <Text
-                      size="xs"
-                      c="dimmed"
+                  >
+                    <div
                       style={{
-                        marginTop: "calc(0.125rem * var(--mantine-scale))",
+                        width: "calc(0.25rem * var(--mantine-scale))",
+                        borderRadius: "calc(0.125rem * var(--mantine-scale))",
+                        flexShrink: 0,
+                        backgroundColor: String(event.color),
                       }}
-                    >
-                      {isAllDay ? "Hele dagen" : `${startTime} – ${endTime}`}
-                    </Text>
-                    {booking && (
-                      <Text size="xs" c="dimmed">
-                        {booking.room.name}
+                    />
+                    <div>
+                      <Text>{event.title}</Text>
+                      <Text
+                        size="xs"
+                        c="dimmed"
+                        style={{
+                          marginTop: "calc(0.125rem * var(--mantine-scale))",
+                        }}
+                      >
+                        {isAllDay ? "Hele dagen" : `${startTime} – ${endTime}`}
                       </Text>
-                    )}
+                      {booking && (
+                        <Text size="xs" c="dimmed">
+                          {booking.room.name}
+                        </Text>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </UnstyledButton>
-            )
-          },
-        }}
-      />
+                </UnstyledButton>
+              )
+            },
+          }}
+        />
+      </div>
 
       <CreateBookingModal
         opened={createModalOpened}

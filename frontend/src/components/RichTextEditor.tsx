@@ -2,11 +2,13 @@ import { useEffect, useRef, useState, lazy, Suspense } from "react"
 import { useEditor } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import Link from "@tiptap/extension-link"
+import Mention from "@tiptap/extension-mention"
 import Placeholder from "@tiptap/extension-placeholder"
 import { RichTextEditor as MantineRTE } from "@mantine/tiptap"
 import { Anchor, Group, Text } from "@mantine/core"
 const EmojiPicker = lazy(() => import("./EmojiPicker"))
 import { saveDraft, loadDraft, clearDraft } from "../utils/draftStorage"
+import { mentionSuggestion } from "./mentionSuggestion"
 
 interface RichTextEditorProps {
   content: string
@@ -48,6 +50,23 @@ export default function RichTextEditor({
       }),
       Placeholder.configure({
         placeholder,
+      }),
+      Mention.configure({
+        HTMLAttributes: { class: "mention" },
+        renderHTML({ node }) {
+          return [
+            "a",
+            {
+              href: `/profil/${node.attrs.id}`,
+              class: "mention",
+              "data-type": "mention",
+              "data-id": node.attrs.id,
+              "data-label": node.attrs.label,
+            },
+            `@${node.attrs.label ?? node.attrs.id}`,
+          ]
+        },
+        suggestion: mentionSuggestion,
       }),
     ],
     content,

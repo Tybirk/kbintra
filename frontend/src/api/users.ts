@@ -3,7 +3,7 @@
  */
 
 import { apiClient } from "./client"
-import type { User, PaginatedResponse, Invitation } from "../types"
+import type { User, PaginatedResponse, Invitation, MentionUser } from "../types"
 
 export const usersApi = {
   async getUsers(): Promise<PaginatedResponse<User>> {
@@ -51,6 +51,14 @@ export const usersApi = {
       email,
       house,
     })
+    return response.data
+  },
+
+  async mentionSearch(q: string): Promise<MentionUser[]> {
+    const params = q ? `?q=${encodeURIComponent(q)}` : ""
+    const response = await apiClient.get<MentionUser[]>(
+      `/users/mentions/${params}`,
+    )
     return response.data
   },
 }

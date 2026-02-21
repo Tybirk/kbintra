@@ -66,6 +66,7 @@ export const messagingApi = {
     conversationId: number,
     content: string,
     attachments?: File[],
+    mentionedUserIds?: number[],
   ): Promise<Message> => {
     if (attachments && attachments.length > 0) {
       const formData = new FormData()
@@ -73,6 +74,11 @@ export const messagingApi = {
       attachments.forEach((file) => {
         formData.append("attachments", file)
       })
+      if (mentionedUserIds && mentionedUserIds.length > 0) {
+        mentionedUserIds.forEach((id) => {
+          formData.append("mentioned_user_ids", id.toString())
+        })
+      }
       const response = await apiClient.post(
         `/messages/conversations/${conversationId}/messages/`,
         formData,
@@ -80,9 +86,13 @@ export const messagingApi = {
       )
       return response.data
     }
+    const body: Record<string, unknown> = { content }
+    if (mentionedUserIds && mentionedUserIds.length > 0) {
+      body.mentioned_user_ids = mentionedUserIds
+    }
     const response = await apiClient.post(
       `/messages/conversations/${conversationId}/messages/`,
-      { content },
+      body,
     )
     return response.data
   },
@@ -330,14 +340,21 @@ export class ChatWebSocket {
     conversationId: number,
     content: string,
     attachments?: File[],
+    mentionedUserIds?: number[],
   ): Promise<boolean> {
-    // Always use REST API when attachments are present (WebSocket is text-only)
-    if (attachments && attachments.length > 0) {
+    const hasMentions = mentionedUserIds && mentionedUserIds.length > 0
+    // Always use REST API when attachments or mentions are present
+    if ((attachments && attachments.length > 0) || hasMentions) {
       try {
-        await messagingApi.sendMessage(conversationId, content, attachments)
+        await messagingApi.sendMessage(
+          conversationId,
+          content,
+          attachments,
+          mentionedUserIds,
+        )
         return true
       } catch (error) {
-        console.error("Failed to send message with attachments:", error)
+        console.error("Failed to send message:", error)
         return false
       }
     }

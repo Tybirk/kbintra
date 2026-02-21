@@ -172,93 +172,95 @@ export default function CalendarPage() {
         />
       </Group>
 
-      <Schedule
-        events={scheduleEvents}
-        view={currentView}
-        onViewChange={setCurrentView}
-        date={currentDate}
-        onDateChange={setCurrentDate}
-        locale="da"
-        labels={DA_SCHEDULE_LABELS}
-        layout="responsive"
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-        onEventClick={handleEventClick}
-        onTimeSlotClick={handleTimeSlotClick}
-        onDayClick={handleDayClick}
-        renderEventBody={(event) => {
-          const payload = event.payload as { event: Event } | undefined
-          const ev = payload?.event
-          return (
-            <div>
-              <Text size="xs" fw={500} lineClamp={1}>
-                {event.title}
-              </Text>
-              {ev?.resolved_location && (
-                <Group gap={2} wrap="nowrap">
-                  <IconMapPin size={10} />
-                  <Text size="xs" c="dimmed" lineClamp={1}>
-                    {ev.resolved_location}
-                  </Text>
-                </Group>
-              )}
-              {ev?.rsvp_enabled && ev.rsvp_summary && (
-                <Text size="xs" c="dimmed">
-                  {ev.rsvp_summary.attending} deltager
+      <div className="schedule-wrapper">
+        <Schedule
+          events={scheduleEvents}
+          view={currentView}
+          onViewChange={setCurrentView}
+          date={currentDate}
+          onDateChange={setCurrentDate}
+          locale="da"
+          labels={DA_SCHEDULE_LABELS}
+          layout="responsive"
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          onEventClick={handleEventClick}
+          onTimeSlotClick={handleTimeSlotClick}
+          onDayClick={handleDayClick}
+          renderEventBody={(event) => {
+            const payload = event.payload as { event: Event } | undefined
+            const ev = payload?.event
+            return (
+              <div>
+                <Text size="xs" fw={500} lineClamp={1}>
+                  {event.title}
                 </Text>
-              )}
-            </div>
-          )
-        }}
-        weekViewProps={{
-          firstDayOfWeek: 1,
-          withWeekNumber: true,
-          withCurrentTimeIndicator: true,
-          intervalMinutes: 60,
-        }}
-        monthViewProps={{
-          firstDayOfWeek: 1,
-          withWeekNumbers: true,
-        }}
-        mobileMonthViewProps={{
-          firstDayOfWeek: 1,
-          renderHeader: () => (
-            <Group justify="space-between" align="center" w="100%">
-              <ActionIcon
-                variant="subtle"
-                aria-label="Forrige måned"
-                onClick={() =>
-                  setCurrentDate(
-                    dayjs(currentDate)
-                      .subtract(1, "month")
-                      .format("YYYY-MM-DD"),
-                  )
-                }
-              >
-                <IconChevronLeft size={18} style={{ display: "block" }} />
-              </ActionIcon>
-              <Text fw={600} tt="capitalize" style={{ userSelect: "none" }}>
-                {dayjs(currentDate).format("MMMM YYYY")}
-              </Text>
-              <ActionIcon
-                variant="subtle"
-                aria-label="Næste måned"
-                onClick={() =>
-                  setCurrentDate(
-                    dayjs(currentDate).add(1, "month").format("YYYY-MM-DD"),
-                  )
-                }
-              >
-                <IconChevronRight size={18} style={{ display: "block" }} />
-              </ActionIcon>
-            </Group>
-          ),
-        }}
-        dayViewProps={{
-          withCurrentTimeIndicator: true,
-          intervalMinutes: 30,
-        }}
-      />
+                {ev?.resolved_location && (
+                  <Group gap={2} wrap="nowrap">
+                    <IconMapPin size={10} />
+                    <Text size="xs" c="dimmed" lineClamp={1}>
+                      {ev.resolved_location}
+                    </Text>
+                  </Group>
+                )}
+                {ev?.rsvp_enabled && ev.rsvp_summary && (
+                  <Text size="xs" c="dimmed">
+                    {ev.rsvp_summary.attending} deltager
+                  </Text>
+                )}
+              </div>
+            )
+          }}
+          weekViewProps={{
+            firstDayOfWeek: 1,
+            withWeekNumber: true,
+            withCurrentTimeIndicator: true,
+            intervalMinutes: 60,
+          }}
+          monthViewProps={{
+            firstDayOfWeek: 1,
+            withWeekNumbers: true,
+          }}
+          mobileMonthViewProps={{
+            firstDayOfWeek: 1,
+            renderHeader: () => (
+              <Group justify="space-between" align="center" w="100%">
+                <ActionIcon
+                  variant="subtle"
+                  aria-label="Forrige måned"
+                  onClick={() =>
+                    setCurrentDate(
+                      dayjs(currentDate)
+                        .subtract(1, "month")
+                        .format("YYYY-MM-DD"),
+                    )
+                  }
+                >
+                  <IconChevronLeft size={18} style={{ display: "block" }} />
+                </ActionIcon>
+                <Text fw={600} tt="capitalize" style={{ userSelect: "none" }}>
+                  {dayjs(currentDate).format("MMMM YYYY")}
+                </Text>
+                <ActionIcon
+                  variant="subtle"
+                  aria-label="Næste måned"
+                  onClick={() =>
+                    setCurrentDate(
+                      dayjs(currentDate).add(1, "month").format("YYYY-MM-DD"),
+                    )
+                  }
+                >
+                  <IconChevronRight size={18} style={{ display: "block" }} />
+                </ActionIcon>
+              </Group>
+            ),
+          }}
+          dayViewProps={{
+            withCurrentTimeIndicator: true,
+            intervalMinutes: 30,
+          }}
+        />
+      </div>
     </>
   )
 }

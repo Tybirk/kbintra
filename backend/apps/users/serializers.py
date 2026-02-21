@@ -64,6 +64,14 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
         read_only_fields = ["house"]
 
 
+class MentionUserSerializer(serializers.ModelSerializer):
+    """Minimal serializer for @mention user search."""
+
+    class Meta:
+        model = User
+        fields = ["id", "first_name", "last_name", "profile_picture"]
+
+
 class UserRegistrationSerializer(serializers.Serializer):
     """Serializer for user registration with invitation token."""
 

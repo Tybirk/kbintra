@@ -140,6 +140,20 @@ class EventListCreateView(generics.ListCreateAPIView):
 
             notify_event_created_task(event.id, event.created_by_id)
 
+        # Trigger mention notifications for mentions in description
+        if event.description:
+            from apps.notifications.tasks import notify_mentions_task
+            from apps.notifications.utils import extract_mention_ids
+
+            mention_ids = extract_mention_ids(event.description)
+            if mention_ids:
+                notify_mentions_task(
+                    author_id=event.created_by_id,
+                    mentioned_user_ids=mention_ids,
+                    context_label=f"begivenheden '{event.title}'",
+                    link=f"/kalender/{event.id}",
+                )
+
 
 class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
     """Retrieve, update, or delete an event."""
@@ -155,11 +169,15 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
         return EventSerializer
 
     def perform_update(self, serializer: EventCreateUpdateSerializer) -> None:
+        from apps.notifications.utils import extract_mention_ids
+
         # Capture pre-update state before serializer.save() modifies the instance
         old_title = serializer.instance.title
         old_start = serializer.instance.start_datetime
         old_location = serializer.instance.location
         old_room_ids = set(serializer.instance.rooms.values_list("id", flat=True))
+        old_description = serializer.instance.description or ""
+        old_mention_ids = set(extract_mention_ids(old_description))
 
         event = serializer.save()
 
@@ -178,6 +196,20 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
             from apps.notifications.tasks import notify_event_updated_task
 
             notify_event_updated_task(event.id, self.request.user.id)
+
+        # Notify newly-mentioned users in description
+        new_description = event.description or ""
+        new_mention_ids = set(extract_mention_ids(new_description))
+        new_mentions = list(new_mention_ids - old_mention_ids)
+        if new_mentions:
+            from apps.notifications.tasks import notify_mentions_task
+
+            notify_mentions_task(
+                author_id=self.request.user.id,
+                mentioned_user_ids=new_mentions,
+                context_label=f"begivenheden '{event.title}'",
+                link=f"/kalender/{event.id}",
+            )
 
     def perform_destroy(self, instance: Event) -> None:
         if instance.thread_id:

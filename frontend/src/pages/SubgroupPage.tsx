@@ -345,18 +345,40 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
               {thread.title}
             </Text>
           </Group>
-          <Group gap="xs">
-            <Text size="sm" c="dimmed" style={{ whiteSpace: "nowrap" }}>
-              <UserLink
-                id={thread.author.id}
-                firstName={thread.author.first_name}
-                lastName={thread.author.last_name}
-                size="sm"
-                c="dimmed"
-              />{" "}
-              • {dayjs(thread.last_post_at ?? thread.created_at).fromNow()}
-            </Text>
-            <Badge variant="light" color="gray" size="sm">
+          <Group gap="xs" wrap="nowrap">
+            {thread.last_post_author ? (
+              <Group gap={4} wrap="nowrap" style={{ minWidth: 0 }}>
+                <Text size="sm" c="dimmed" style={{ whiteSpace: "nowrap" }}>
+                  Sidste svar {dayjs(thread.last_post_at).fromNow()} af
+                </Text>
+                <Avatar
+                  src={thread.last_post_author.profile_picture}
+                  radius="xl"
+                  size={18}
+                  style={{ flexShrink: 0 }}
+                >
+                  {thread.last_post_author.first_name?.[0]}
+                  {thread.last_post_author.last_name?.[0]}
+                </Avatar>
+                <UserLink
+                  id={thread.last_post_author.id}
+                  firstName={thread.last_post_author.first_name}
+                  lastName={thread.last_post_author.last_name}
+                  size="sm"
+                  c="dimmed"
+                />
+              </Group>
+            ) : (
+              <Text size="sm" c="dimmed" style={{ whiteSpace: "nowrap" }}>
+                Oprettet {dayjs(thread.created_at).fromNow()}
+              </Text>
+            )}
+            <Badge
+              variant="light"
+              color="gray"
+              size="sm"
+              style={{ flexShrink: 0 }}
+            >
               {thread.post_count} svar
             </Badge>
           </Group>

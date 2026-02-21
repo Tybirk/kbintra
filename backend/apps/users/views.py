@@ -4,6 +4,7 @@ Views for User models.
 
 from typing import Any
 
+from django.db import models
 from django.db.models import Count, QuerySet
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -18,6 +19,7 @@ from .serializers import (
     InvitationCreateSerializer,
     InvitationSerializer,
     InvitationValidateSerializer,
+    MentionUserSerializer,
     ResetPasswordSerializer,
     UserProfileUpdateSerializer,
     UserRegistrationSerializer,
@@ -95,6 +97,27 @@ class UserListView(generics.ListAPIView):
         .select_related("house")
         .annotate(_house_inhabitant_count=Count("house__inhabitants"))
     )
+
+
+class UserMentionListView(generics.ListAPIView):
+    """
+    Return active users for @mention autocomplete.
+    Optionally filter by ?q= (matches first or last name, case-insensitive).
+    No pagination – community has at most ~90 users.
+    """
+
+    serializer_class = MentionUserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self) -> QuerySet[User]:
+        q = self.request.query_params.get("q", "").strip()
+        queryset = User.objects.filter(is_active=True)
+        if q:
+            queryset = queryset.filter(
+                models.Q(first_name__icontains=q) | models.Q(last_name__icontains=q)
+            )
+        return queryset.order_by("first_name", "last_name")
 
 
 class UserDetailView(generics.RetrieveAPIView):

@@ -4,6 +4,17 @@
   box-sizing: border-box;
 }
 
+/* @mention highlight in Tiptap rich text editor and forum post display */
+.mention {
+  background-color: var(--mantine-color-blue-1);
+  color: var(--mantine-color-blue-7);
+  border-radius: 4px;
+  padding: 0 3px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+}
+
 html {
   /* Prevent overscroll/bounce on iOS */
   overflow: hidden;
@@ -68,6 +79,15 @@ a, button, input, select, textarea {
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+}
+
+/* Safari fix: Schedule nav chevrons use SVG transform attribute on the root <svg>
+   element, which Safari ignores. Override with CSS transform (transform-origin: center). */
+.schedule-wrapper [data-type="next"] svg {
+  transform: rotate(-90deg);
+}
+.schedule-wrapper [data-type="previous"] svg {
+  transform: rotate(90deg);
 }
 
 /* Prevent navbar from causing scroll issues when open on mobile */

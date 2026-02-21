@@ -218,6 +218,7 @@ export interface Thread {
   is_closed: boolean
   post_count: number
   last_post_at: string | null
+  last_post_author: Author | null
   is_unread: boolean
   created_at: string
   updated_at: string
@@ -633,7 +634,14 @@ export interface WsMessageDeleted {
 export type WsMessage = WsNewMessage | WsMessagesRead | WsTyping | WsNewConversation | WsNewNotification | WsMessageEdited | WsMessageDeleted
 
 // Notification Types
-export type NotificationType = "new_message" | "new_announcement" | "new_thread" | "thread_reply" | "post_reply" | "post_reaction" | "event_created" | "event_updated" | "event_cancelled" | "event_reminder" | "food_ticket"
+export type NotificationType = "new_message" | "new_announcement" | "new_thread" | "thread_reply" | "post_reply" | "post_reaction" | "event_created" | "event_updated" | "event_cancelled" | "event_reminder" | "food_ticket" | "mention"
+
+export interface MentionUser {
+  id: number
+  first_name: string
+  last_name: string
+  profile_picture: string | null
+}
 
 export interface RelatedUser {
   id: number

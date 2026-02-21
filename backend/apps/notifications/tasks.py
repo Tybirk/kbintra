@@ -422,6 +422,36 @@ def notify_event_reminder_task(
     logger.info("notify_event_reminder_task COMPLETED: %d notifications sent", count)
 
 
+@db_task(retries=1, retry_delay=60)
+def notify_mentions_task(
+    author_id: int,
+    mentioned_user_ids: list[int],
+    context_label: str,
+    link: str,
+) -> None:
+    """Notify mentioned users in background."""
+    logger.info(
+        "notify_mentions_task STARTED: author=%d mentioned=%s", author_id, mentioned_user_ids
+    )
+    from apps.users.models import User
+
+    from .services import notify_mentions
+
+    try:
+        author = User.objects.get(id=author_id)
+    except User.DoesNotExist:
+        logger.warning("notify_mentions_task: Author %d not found", author_id)
+        return
+
+    count = notify_mentions(
+        author=author,
+        mentioned_user_ids=mentioned_user_ids,
+        context_label=context_label,
+        link=link,
+    )
+    logger.info("notify_mentions_task COMPLETED: %d notifications created", count)
+
+
 # ---------------------------------------------------------------------------
 # Drive menu refresh
 # ---------------------------------------------------------------------------

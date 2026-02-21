@@ -20,6 +20,7 @@ class NotificationType(models.TextChoices):
     EVENT_CANCELLED = "event_cancelled", "Arrangement aflyst"
     EVENT_REMINDER = "event_reminder", "Begivenhedsreminder"
     FOOD_TICKET = "food_ticket", "Madbillet tilgængelig"
+    MENTION = "mention", "Omtale"
 
 
 class Notification(models.Model):
@@ -74,6 +75,7 @@ class NotificationPreference(models.Model):
     notify_events = models.BooleanField(default=True)
     notify_event_reminders = models.BooleanField(default=True)
     notify_food_tickets = models.BooleanField(default=True)
+    notify_mentions = models.BooleanField(default=True)
 
     # Email notification preferences (per notification type)
     email_messages = models.BooleanField(default=False)
@@ -84,6 +86,7 @@ class NotificationPreference(models.Model):
     email_events = models.BooleanField(default=False)
     email_event_reminders = models.BooleanField(default=False)
     email_food_tickets = models.BooleanField(default=False)
+    email_mentions = models.BooleanField(default=False)
 
     # Push notification preferences (per notification type)
     push_messages = models.BooleanField(default=True)
@@ -94,6 +97,7 @@ class NotificationPreference(models.Model):
     push_events = models.BooleanField(default=True)
     push_event_reminders = models.BooleanField(default=True)
     push_food_tickets = models.BooleanField(default=True)
+    push_mentions = models.BooleanField(default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

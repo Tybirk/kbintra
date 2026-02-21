@@ -321,6 +321,21 @@ class PostListCreateView(generics.ListCreateAPIView):
         # Update thread's updated_at
         thread = get_object_or_404(Thread, pk=self.kwargs["thread_id"])
         thread.save(update_fields=["updated_at"])
+        # Trigger mention notifications
+        from apps.notifications.tasks import notify_mentions_task
+        from apps.notifications.utils import extract_mention_ids
+
+        post = serializer.instance
+        if post.content and post.author:
+            mention_ids = extract_mention_ids(post.content)
+            if mention_ids:
+                link = f"/forum/{thread.subgroup.slug}/traad/{thread.slug}#post-{post.id}"
+                notify_mentions_task(
+                    author_id=post.author.id,
+                    mentioned_user_ids=mention_ids,
+                    context_label=f"indlæg i '{thread.title}'",
+                    link=link,
+                )
 
 
 class PostUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
@@ -334,6 +349,30 @@ class PostUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
         if self.request.method in ["PUT", "PATCH"]:
             return PostCreateSerializer
         return PostSerializer
+
+    def perform_update(self, serializer: Any) -> None:
+        from apps.notifications.tasks import notify_mentions_task
+        from apps.notifications.utils import extract_mention_ids
+
+        old_content = serializer.instance.content or ""
+        old_mention_ids = set(extract_mention_ids(old_content))
+
+        serializer.save()
+
+        post = serializer.instance
+        new_content = post.content or ""
+        new_mention_ids = set(extract_mention_ids(new_content))
+        new_mentions = list(new_mention_ids - old_mention_ids)
+
+        if new_mentions and post.author:
+            thread = post.thread
+            link = f"/forum/{thread.subgroup.slug}/traad/{thread.slug}#post-{post.id}"
+            notify_mentions_task(
+                author_id=post.author.id,
+                mentioned_user_ids=new_mentions,
+                context_label=f"indlæg i '{thread.title}'",
+                link=link,
+            )
 
 
 # Folder Views
