@@ -450,7 +450,10 @@ function CreateThreadModal({
       })
     }
     if (validFiles.length > 0) {
-      setAttachments((prev) => [...prev, ...validFiles])
+      setAttachments((prev) => [
+        ...prev,
+        ...validFiles.filter((f) => !prev.some((p) => p.name === f.name)),
+      ])
     }
   }
 

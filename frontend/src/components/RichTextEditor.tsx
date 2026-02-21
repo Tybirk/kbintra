@@ -88,6 +88,7 @@ export default function RichTextEditor({
         const files = Array.from(dt.files)
         if (files.length === 0) return false
         event.preventDefault()
+        event.stopPropagation()
         cb(files)
         return true
       },

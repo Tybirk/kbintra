@@ -308,7 +308,10 @@ export default function EventFormPage() {
   }
 
   const handleAddFiles = (files: File[]) => {
-    setAttachments((prev) => [...prev, ...files])
+    setAttachments((prev) => [
+      ...prev,
+      ...files.filter((f) => !prev.some((p) => p.name === f.name)),
+    ])
   }
 
   const handleRemoveFile = (index: number) => {
