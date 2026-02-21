@@ -35,6 +35,7 @@ def should_send_email(user: User, notification_type: NotificationType) -> bool:
         NotificationType.EVENT_CANCELLED: prefs.email_events,
         NotificationType.EVENT_REMINDER: prefs.email_event_reminders,
         NotificationType.FOOD_TICKET: prefs.email_food_tickets,
+        NotificationType.MENTION: prefs.email_mentions,
     }
 
     return preference_map.get(notification_type, False)

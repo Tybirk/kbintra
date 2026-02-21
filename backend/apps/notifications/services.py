@@ -781,6 +781,7 @@ def notify_mentions(
     mentioned_user_ids: list[int],
     context_label: str,
     link: str,
+    exclude_user_ids: list[int] | None = None,
 ) -> int:
     """Notify mentioned users.
 
@@ -789,12 +790,14 @@ def notify_mentions(
         mentioned_user_ids: List of user IDs that were mentioned
         context_label: Human-readable context, e.g. "indlæg i 'Tråden'"
         link: URL to the content where the mention occurred
+        exclude_user_ids: User IDs to skip (already notified via another channel)
 
     Returns the count of notifications created.
     """
+    skip_ids = set(exclude_user_ids) if exclude_user_ids else set()
     count = 0
     for user_id in set(mentioned_user_ids):
-        if user_id == author.id:
+        if user_id == author.id or user_id in skip_ids:
             continue
         try:
             user = User.objects.get(id=user_id, is_active=True)

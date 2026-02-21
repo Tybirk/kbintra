@@ -321,21 +321,20 @@ class PostListCreateView(generics.ListCreateAPIView):
         # Update thread's updated_at
         thread = get_object_or_404(Thread, pk=self.kwargs["thread_id"])
         thread.save(update_fields=["updated_at"])
-        # Trigger mention notifications
+        # Send mention notifications (these take precedence — reply notifications
+        # were already skipped for mentioned users in the serializer)
         from apps.notifications.tasks import notify_mentions_task
-        from apps.notifications.utils import extract_mention_ids
 
         post = serializer.instance
-        if post.content and post.author:
-            mention_ids = extract_mention_ids(post.content)
-            if mention_ids:
-                link = f"/forum/{thread.subgroup.slug}/traad/{thread.slug}#post-{post.id}"
-                notify_mentions_task(
-                    author_id=post.author.id,
-                    mentioned_user_ids=mention_ids,
-                    context_label=f"indlæg i '{thread.title}'",
-                    link=link,
-                )
+        mention_ids = getattr(post, "_mention_ids", [])
+        if mention_ids and post.author:
+            link = f"/forum/{thread.subgroup.slug}/traad/{thread.slug}#post-{post.id}"
+            notify_mentions_task(
+                author_id=post.author.id,
+                mentioned_user_ids=mention_ids,
+                context_label=f"indlæg i '{thread.title}'",
+                link=link,
+            )
 
 
 class PostUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):

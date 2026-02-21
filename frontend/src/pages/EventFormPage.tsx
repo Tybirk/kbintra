@@ -293,7 +293,8 @@ export default function EventFormPage() {
         }
         setRoomConflicts(allMsgs.length > 0 ? allMsgs.join("\n") : null)
       } catch {
-        // Silently fail — backend will catch it on submit
+        // Clear stale conflicts — backend will validate on submit
+        setRoomConflicts(null)
       }
     }, 500)
     return () => clearTimeout(timeout)
@@ -417,7 +418,8 @@ export default function EventFormPage() {
     const run = async () => {
       const createdIds: number[] = []
       try {
-        for (const date of allDates) {
+        for (let i = 0; i < allDates.length; i++) {
+          const date = allDates[i]
           const dateLabel = dayjs(date).format("D. MMM")
           const adjustedStart = dayjs(date)
             .hour(startHours)
@@ -440,7 +442,10 @@ export default function EventFormPage() {
               rsvpEnabled && rsvpDeadline ? rsvpDeadline.toISOString() : null,
           }
 
-          const result = await eventsApi.createEvent(data)
+          // Only send notifications for the first event to avoid duplicate spam
+          const result = await eventsApi.createEvent(data, {
+            skipNotifications: i > 0,
+          })
           createdIds.push(result.id)
 
           if (attachments.length > 0) {
@@ -462,12 +467,25 @@ export default function EventFormPage() {
         })
         navigate("/kalender")
       } catch (error) {
+        // Some events may have been created before the failure
+        queryClient.invalidateQueries({ queryKey: ["events"] })
+        if (createdIds.length > 0) {
+          clearDraft("new-event-title")
+          clearDraft("new-event-description")
+          notifications.show({
+            title: "Delvist oprettet",
+            message: `${createdIds.length} af ${allDates.length} begivenheder blev oprettet. De resterende fejlede.`,
+            color: "yellow",
+          })
+          navigate("/kalender")
+          return
+        }
         const fieldErrors = parseDrfErrors(error)
         setErrors(fieldErrors)
         if (Object.keys(fieldErrors).length === 0) {
           notifications.show({
             title: "Fejl",
-            message: "Kunne ikke oprette alle begivenheder. Prøv igen.",
+            message: "Kunne ikke oprette begivenheder. Prøv igen.",
             color: "red",
           })
         }

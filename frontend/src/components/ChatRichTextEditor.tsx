@@ -88,8 +88,8 @@ export default function ChatRichTextEditor({
     [],
   )
   const [selectedMentionIndex, setSelectedMentionIndex] = useState(0)
-  // Map from "@FirstName LastName" → user ID so we can detect when mention text is deleted
-  const mentionedNamesRef = useRef<Map<string, number>>(new Map())
+  // Map from user ID → "@FirstName LastName" so we can detect when mention text is deleted
+  const mentionedIdsRef = useRef<Map<number, string>>(new Map())
   const mentionPopoverOpen =
     mentionQuery !== null && mentionSuggestions.length > 0
 
@@ -110,7 +110,7 @@ export default function ChatRichTextEditor({
   // Returns the IDs of mentions whose text is still present in the content
   const getActiveMentionIds = (text: string): number[] => {
     const ids: number[] = []
-    for (const [name, id] of mentionedNamesRef.current) {
+    for (const [id, name] of mentionedIdsRef.current) {
       if (text.includes(name)) ids.push(id)
     }
     return ids
@@ -119,7 +119,7 @@ export default function ChatRichTextEditor({
   // Clear mention state when content is reset to empty (after send)
   useEffect(() => {
     if (!content) {
-      mentionedNamesRef.current = new Map()
+      mentionedIdsRef.current = new Map()
       setMentionQuery(null)
       setMentionSuggestions([])
     }
@@ -259,10 +259,10 @@ export default function ChatRichTextEditor({
     onChange(newContent)
     setMentionQuery(null)
     setMentionSuggestions([])
-    // Track mention by its inserted text so we can detect if the user later deletes it
-    mentionedNamesRef.current.set(
-      `@${user.first_name} ${user.last_name}`,
+    // Track mention by user ID so we can detect if the user later deletes it
+    mentionedIdsRef.current.set(
       user.id,
+      `@${user.first_name} ${user.last_name}`,
     )
     onMentionedUsersChange?.(getActiveMentionIds(newContent))
     // Restore focus and move cursor after the mention

@@ -171,6 +171,7 @@ def notify_new_thread_task(
     subgroup_id: int,
     thread_slug: str,
     initial_post_content: str,
+    exclude_user_ids: list[int] | None = None,
 ) -> None:
     """Send new-thread notifications to subscribers in background."""
     logger.info("notify_new_thread_task STARTED: author=%d thread='%s'", author_id, thread_title)
@@ -188,6 +189,8 @@ def notify_new_thread_task(
         subgroup_subscriptions__subgroup_id=subgroup_id,
         subgroup_subscriptions__notify_new_threads=True,
     )
+    if exclude_user_ids:
+        subscribers = subscribers.exclude(id__in=exclude_user_ids)
     count = notify_new_thread(
         subscribers=subscribers,
         author=author,
@@ -428,6 +431,7 @@ def notify_mentions_task(
     mentioned_user_ids: list[int],
     context_label: str,
     link: str,
+    exclude_user_ids: list[int] | None = None,
 ) -> None:
     """Notify mentioned users in background."""
     logger.info(
@@ -448,6 +452,7 @@ def notify_mentions_task(
         mentioned_user_ids=mentioned_user_ids,
         context_label=context_label,
         link=link,
+        exclude_user_ids=exclude_user_ids,
     )
     logger.info("notify_mentions_task COMPLETED: %d notifications created", count)
 

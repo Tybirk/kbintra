@@ -233,6 +233,17 @@ class CreateMessageSerializer(serializers.ModelSerializer):
         attachments = attrs.get("attachments", [])
         if not content and not attachments:
             raise serializers.ValidationError("Message must have content or attachments.")
+
+        # Filter mentioned_user_ids to only include actual conversation participants
+        mentioned_ids = attrs.get("mentioned_user_ids", [])
+        if mentioned_ids:
+            conversation = self.context.get("conversation")
+            if conversation:
+                participant_ids = set(conversation.participants.values_list("id", flat=True))
+                attrs["mentioned_user_ids"] = [
+                    uid for uid in mentioned_ids if uid in participant_ids
+                ]
+
         return attrs
 
     def create(self, validated_data: dict) -> Message:
@@ -293,20 +304,23 @@ class CreateMessageSerializer(serializers.ModelSerializer):
             },
         )
 
-        # Send notifications to other participants in background
+        # Send notifications to other participants in background.
+        # Mentioned users get a mention notification instead (higher priority).
         from apps.notifications.tasks import notify_new_message_task
 
         sender = message.sender
+        mentioned_set = set(mentioned_user_ids)
         for participant in message.conversation.participants.exclude(id=sender.id):
-            notify_new_message_task(
-                recipient_id=participant.id,
-                sender_id=sender.id,
-                message_content=message.content,
-                conversation_id=message.conversation.id,
-                message_id=message.id,
-            )
+            if participant.id not in mentioned_set:
+                notify_new_message_task(
+                    recipient_id=participant.id,
+                    sender_id=sender.id,
+                    message_content=message.content,
+                    conversation_id=message.conversation.id,
+                    message_id=message.id,
+                )
 
-        # Send mention notifications
+        # Send mention notifications (these take precedence over new_message)
         if mentioned_user_ids:
             from apps.notifications.tasks import notify_mentions_task
 

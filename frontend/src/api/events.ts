@@ -47,8 +47,14 @@ export const eventsApi = {
   },
 
   // Create event
-  createEvent: async (data: CreateEventData): Promise<Event> => {
-    const response = await apiClient.post("/events/", data)
+  createEvent: async (
+    data: CreateEventData,
+    options?: { skipNotifications?: boolean },
+  ): Promise<Event> => {
+    const params = options?.skipNotifications
+      ? { skip_notifications: "true" }
+      : undefined
+    const response = await apiClient.post("/events/", data, { params })
     return response.data
   },
 

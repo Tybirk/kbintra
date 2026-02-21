@@ -123,6 +123,14 @@ class EventListCreateView(generics.ListCreateAPIView):
         import logging
 
         event = serializer.save()
+
+        # Allow callers to suppress notifications (e.g. multi-date batch creation)
+        skip_notifications = (
+            self.request.query_params.get("skip_notifications", "").lower() == "true"
+        )
+        if skip_notifications:
+            return
+
         # Create discussion thread and enqueue notification task for community events
         if event.visibility == Event.Visibility.COMMUNITY:
             from apps.events.services import create_event_thread

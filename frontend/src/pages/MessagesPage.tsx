@@ -628,6 +628,7 @@ function ChatArea({
   ] = useDisclosure(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevConversationIdRef = useRef<number | null>(null)
+  const highlightedHashRef = useRef<string | null>(null)
 
   const otherParticipants = conversation.other_participants
   const displayName =
@@ -644,7 +645,8 @@ function ChatArea({
         prevConversationIdRef.current !== conversation.id
 
       // If navigating with a hash fragment, scroll to that message instead
-      if (isNewConversation && location.hash) {
+      if (location.hash && highlightedHashRef.current !== location.hash) {
+        highlightedHashRef.current = location.hash
         const timer = setTimeout(() => {
           const el = document.getElementById(location.hash.slice(1))
           if (el) {
@@ -684,9 +686,10 @@ function ChatArea({
     try {
       await onSendMessage(messageContent, messageAttachments, messageMentions)
     } catch (error) {
-      // Restore message and attachments if send failed
+      // Restore message, attachments, and mentions if send failed
       setMessage(messageContent)
       setAttachments(messageAttachments)
+      setMentionedUserIds(messageMentions)
       console.error("Failed to send message:", error)
     } finally {
       setIsSending(false)

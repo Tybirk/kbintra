@@ -367,9 +367,15 @@ class PostCreateSerializer(serializers.ModelSerializer):
         thread.subgroup.last_activity_at = timezone.now()
         thread.subgroup.save(update_fields=["last_activity_at"])
 
+        # Extract mention IDs — mentioned users get mention notifications (higher priority)
+        # instead of generic reply notifications, so skip them here.
+        from apps.notifications.utils import extract_mention_ids
+
+        mentioned_ids = set(extract_mention_ids(post.content)) if post.content else set()
+
         # Notify thread author in background
         # thread.author can be None if the original author was deleted
-        if thread.author is not None:
+        if thread.author is not None and thread.author.id not in mentioned_ids:
             notify_thread_reply_task(
                 thread_author_id=thread.author.id,
                 replier_id=author.id,
@@ -394,17 +400,21 @@ class PostCreateSerializer(serializers.ModelSerializer):
         )
         for poster_id in previous_posters:
             if poster_id is not None and poster_id not in notified_users:
-                notify_post_reply_task(
-                    post_author_id=poster_id,
-                    replier_id=author.id,
-                    thread_title=thread.title,
-                    thread_id=thread.id,
-                    subgroup_slug=thread.subgroup.slug,
-                    thread_slug=thread.slug,
-                    reply_content=post.content,
-                    post_id=post.id,
-                )
+                if poster_id not in mentioned_ids:
+                    notify_post_reply_task(
+                        post_author_id=poster_id,
+                        replier_id=author.id,
+                        thread_title=thread.title,
+                        thread_id=thread.id,
+                        subgroup_slug=thread.subgroup.slug,
+                        thread_slug=thread.slug,
+                        reply_content=post.content,
+                        post_id=post.id,
+                    )
                 notified_users.add(poster_id)
+
+        # Store mention IDs for the view's perform_create to send mention notifications
+        post._mention_ids = list(mentioned_ids)
 
         return post
 
@@ -440,7 +450,12 @@ class ThreadSerializer(serializers.ModelSerializer):
         return obj.posts.count()
 
     def _get_last_post(self, obj: Thread) -> Post | None:
-        return obj.posts.select_related("author").order_by("-created_at").first()
+        cache = getattr(self, "_last_post_cache", None)
+        if cache is None:
+            self._last_post_cache = cache = {}
+        if obj.id not in cache:
+            cache[obj.id] = obj.posts.select_related("author").order_by("-created_at").first()
+        return cache[obj.id]
 
     def get_last_post_at(self, obj: Thread) -> str | None:
         last_post = self._get_last_post(obj)
@@ -597,8 +612,12 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
         thread.subgroup.last_activity_at = timezone.now()
         thread.subgroup.save(update_fields=["last_activity_at"])
 
-        # Notify subscribers of the subgroup in background
-        from apps.notifications.tasks import notify_new_thread_task
+        # Extract mentions first — mentioned users get a mention notification
+        # (higher priority) instead of the generic new_thread notification.
+        from apps.notifications.tasks import notify_mentions_task, notify_new_thread_task
+        from apps.notifications.utils import extract_mention_ids
+
+        mention_ids = extract_mention_ids(content)
 
         notify_new_thread_task(
             author_id=thread.author.id,
@@ -609,7 +628,16 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
             subgroup_id=thread.subgroup.id,
             thread_slug=thread.slug,
             initial_post_content=content,
+            exclude_user_ids=mention_ids if mention_ids else None,
         )
+
+        if mention_ids:
+            notify_mentions_task(
+                author_id=post.author.id,
+                mentioned_user_ids=mention_ids,
+                context_label=f"indlæg i '{thread.title}'",
+                link=f"/forum/{thread.subgroup.slug}/traad/{thread.slug}#post-{post.id}",
+            )
 
         return thread
 
