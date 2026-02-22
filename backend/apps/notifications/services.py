@@ -841,9 +841,17 @@ def notify_post_reaction(
     if post_author.id == reactor.id:
         return None
 
-    link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
-    if post_id:
-        link += f"#post-{post_id}"
+    from apps.forum.models import Thread as ForumThread
+
+    try:
+        event_id = ForumThread.objects.get(id=thread_id).event.id
+        link = f"/kalender/{event_id}"
+        if post_id:
+            link += f"#post-{post_id}"
+    except (ForumThread.DoesNotExist, AttributeError):
+        link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
+        if post_id:
+            link += f"#post-{post_id}"
 
     return create_notification(
         user=post_author,

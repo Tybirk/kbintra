@@ -247,6 +247,14 @@ export default function NotificationPreferencesPage() {
                 }
               />
               <Switch
+                label="Reaktioner"
+                description="Når nogen reagerer på dit indlæg"
+                checked={preferences.notify_post_reactions}
+                onChange={(e) =>
+                  handleToggle("notify_post_reactions", e.currentTarget.checked)
+                }
+              />
+              <Switch
                 label="Begivenhedspåmindelser"
                 description="Påmindelser om kommende kalenderbegivenheder"
                 checked={preferences.notify_event_reminders}
@@ -315,6 +323,14 @@ export default function NotificationPreferencesPage() {
                 checked={preferences.email_thread_replies}
                 onChange={(e) =>
                   handleToggle("email_thread_replies", e.currentTarget.checked)
+                }
+              />
+              <Switch
+                label="Reaktioner"
+                description="E-mail når nogen reagerer på dit indlæg"
+                checked={preferences.email_post_reactions}
+                onChange={(e) =>
+                  handleToggle("email_post_reactions", e.currentTarget.checked)
                 }
               />
               <Switch
@@ -418,6 +434,17 @@ export default function NotificationPreferencesPage() {
                         onChange={(e) =>
                           handleToggle(
                             "push_thread_replies",
+                            e.currentTarget.checked,
+                          )
+                        }
+                      />
+                      <Switch
+                        label="Reaktioner"
+                        description="Push-notifikation når nogen reagerer på dit indlæg"
+                        checked={preferences.push_post_reactions}
+                        onChange={(e) =>
+                          handleToggle(
+                            "push_post_reactions",
                             e.currentTarget.checked,
                           )
                         }
