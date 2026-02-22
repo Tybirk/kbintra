@@ -14,6 +14,8 @@ from .models import Invitation, PasswordResetToken, User
 class NotificationPreferenceInline(admin.StackedInline):
     model = NotificationPreference
     can_delete = False
+    extra = 0
+    min_num = 1
     fieldsets = [
         (
             "In-app",
