@@ -33,14 +33,75 @@ class NotificationPreferenceAdmin(admin.ModelAdmin):
     list_display = [
         "id",
         "user",
-        "notify_messages",
         "notify_announcements",
-        "email_messages",
-        "email_announcements",
+        "notify_forum_subscriptions",
+        "notify_thread_replies",
+        "notify_events",
+        "notify_event_reminders",
+        "notify_mentions",
     ]
-    list_filter = ["notify_messages", "email_messages", "email_announcements"]
+    list_filter = [
+        "notify_forum_subscriptions",
+        "notify_events",
+        "notify_event_reminders",
+        "notify_mentions",
+        "email_announcements",
+        "push_forum_subscriptions",
+        "push_events",
+    ]
     search_fields = ["user__first_name", "user__last_name", "user__email"]
     raw_id_fields = ["user"]
+    fieldsets = [
+        (None, {"fields": ["user"]}),
+        (
+            "In-app",
+            {
+                "fields": [
+                    "notify_messages",
+                    "notify_announcements",
+                    "notify_forum_subscriptions",
+                    "notify_thread_replies",
+                    "notify_post_reactions",
+                    "notify_events",
+                    "notify_event_reminders",
+                    "notify_food_tickets",
+                    "notify_mentions",
+                ]
+            },
+        ),
+        (
+            "Email",
+            {
+                "fields": [
+                    "email_messages",
+                    "email_announcements",
+                    "email_forum_subscriptions",
+                    "email_thread_replies",
+                    "email_post_reactions",
+                    "email_events",
+                    "email_event_reminders",
+                    "email_food_tickets",
+                    "email_mentions",
+                ]
+            },
+        ),
+        (
+            "Push",
+            {
+                "fields": [
+                    "push_messages",
+                    "push_announcements",
+                    "push_forum_subscriptions",
+                    "push_thread_replies",
+                    "push_post_reactions",
+                    "push_events",
+                    "push_event_reminders",
+                    "push_food_tickets",
+                    "push_mentions",
+                ]
+            },
+        ),
+    ]
 
 
 @admin.register(PushSubscription)

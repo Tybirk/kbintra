@@ -673,6 +673,7 @@ export interface NotificationPreference {
   notify_events: boolean
   notify_event_reminders: boolean
   notify_food_tickets: boolean
+  notify_mentions: boolean
   // Email preferences
   email_messages: boolean
   email_announcements: boolean
@@ -682,6 +683,7 @@ export interface NotificationPreference {
   email_events: boolean
   email_event_reminders: boolean
   email_food_tickets: boolean
+  email_mentions: boolean
   // Push preferences
   push_messages: boolean
   push_announcements: boolean
@@ -691,6 +693,7 @@ export interface NotificationPreference {
   push_events: boolean
   push_event_reminders: boolean
   push_food_tickets: boolean
+  push_mentions: boolean
   created_at: string
   updated_at: string
 }
@@ -704,6 +707,7 @@ export interface UpdateNotificationPreferenceData {
   notify_events?: boolean
   notify_event_reminders?: boolean
   notify_food_tickets?: boolean
+  notify_mentions?: boolean
   email_messages?: boolean
   email_announcements?: boolean
   email_forum_subscriptions?: boolean
@@ -712,6 +716,7 @@ export interface UpdateNotificationPreferenceData {
   email_events?: boolean
   email_event_reminders?: boolean
   email_food_tickets?: boolean
+  email_mentions?: boolean
   push_messages?: boolean
   push_announcements?: boolean
   push_forum_subscriptions?: boolean
@@ -720,6 +725,7 @@ export interface UpdateNotificationPreferenceData {
   push_events?: boolean
   push_event_reminders?: boolean
   push_food_tickets?: boolean
+  push_mentions?: boolean
 }
 
 // Food Team Types

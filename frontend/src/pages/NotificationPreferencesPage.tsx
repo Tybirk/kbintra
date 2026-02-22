@@ -265,6 +265,14 @@ export default function NotificationPreferencesPage() {
                   handleToggle("notify_events", e.currentTarget.checked)
                 }
               />
+              <Switch
+                label="Omtaler"
+                description="Når nogen nævner dig med @"
+                checked={preferences.notify_mentions}
+                onChange={(e) =>
+                  handleToggle("notify_mentions", e.currentTarget.checked)
+                }
+              />
             </Stack>
           </Tabs.Panel>
 
@@ -323,6 +331,14 @@ export default function NotificationPreferencesPage() {
                 checked={preferences.email_events}
                 onChange={(e) =>
                   handleToggle("email_events", e.currentTarget.checked)
+                }
+              />
+              <Switch
+                label="Omtaler"
+                description="E-mail når nogen nævner dig med @"
+                checked={preferences.email_mentions}
+                onChange={(e) =>
+                  handleToggle("email_mentions", e.currentTarget.checked)
                 }
               />
             </Stack>
@@ -423,6 +439,14 @@ export default function NotificationPreferencesPage() {
                         checked={preferences.push_events}
                         onChange={(e) =>
                           handleToggle("push_events", e.currentTarget.checked)
+                        }
+                      />
+                      <Switch
+                        label="Omtaler"
+                        description="Push-notifikation når nogen nævner dig med @"
+                        checked={preferences.push_mentions}
+                        onChange={(e) =>
+                          handleToggle("push_mentions", e.currentTarget.checked)
                         }
                       />
 
