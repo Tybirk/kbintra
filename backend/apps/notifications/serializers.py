@@ -107,11 +107,13 @@ class PushSubscriptionSerializer(serializers.ModelSerializer):
         user = self.context["request"].user
         endpoint = validated_data["endpoint"]
 
-        # Update existing subscription or create new one
+        # Scoped to user so one user's subscription can't overwrite another's.
+        PushSubscription.objects.filter(endpoint=endpoint).exclude(user=user).delete()
+
         subscription, created = PushSubscription.objects.update_or_create(
             endpoint=endpoint,
+            user=user,
             defaults={
-                "user": user,
                 "p256dh_key": validated_data["p256dh_key"],
                 "auth_key": validated_data["auth_key"],
                 "user_agent": validated_data.get("user_agent", ""),
@@ -146,11 +148,15 @@ class PushSubscriptionInputSerializer(serializers.Serializer):
         if request:
             user_agent = request.META.get("HTTP_USER_AGENT", "")[:500]
 
-        # Update existing subscription or create new one
+        # Scoped to user so one user's subscription can't overwrite another's.
+        # Also clean up any other user's subscription on the same endpoint
+        # (an endpoint should never belong to two users simultaneously).
+        PushSubscription.objects.filter(endpoint=endpoint).exclude(user=user).delete()
+
         subscription, created = PushSubscription.objects.update_or_create(
             endpoint=endpoint,
+            user=user,
             defaults={
-                "user": user,
                 "p256dh_key": keys["p256dh"],
                 "auth_key": keys["auth"],
                 "user_agent": user_agent,

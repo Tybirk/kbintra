@@ -30,6 +30,12 @@ self.addEventListener("push", (event: PushEvent) => {
         data: data.data || {},
       }
 
+      // Collapse notifications per type+url so repeated notifications
+      // (e.g. multiple messages in the same conversation) replace each other
+      if (data.data?.notification_type) {
+        options.tag = data.data.notification_type + (data.data.url || "")
+      }
+
       // Only add icon if not on iOS (can cause issues)
       const isIOS = /iPhone|iPad|iPod/.test(self.navigator?.userAgent || "")
       if (!isIOS && data.icon) {
@@ -65,17 +71,28 @@ self.addEventListener("notificationclick", (event: NotificationEvent) => {
   event.waitUntil(
     self.clients
       .matchAll({ type: "window", includeUncontrolled: true })
-      .then((clientList) => {
+      .then(async (clientList) => {
         // Only consider clients within our app's origin, not unrelated browser tabs
         const appClients = clientList.filter((client) =>
           client.url.startsWith(self.location.origin),
         )
 
+        // Post navigate message to ALL existing app clients so the PWA
+        // receives it regardless of which window gets focused (Firefox
+        // may focus a regular browser tab instead of the PWA window).
+        for (const client of appClients) {
+          try {
+            client.postMessage({ type: "NAVIGATE", url: absoluteUrl })
+          } catch {
+            // Client may have been closed since matchAll()
+          }
+        }
+
         if (appClients.length > 0) {
-          const client = appClients[0]
-          client.focus()
-          if ("navigate" in client) {
-            client.navigate(absoluteUrl)
+          try {
+            await appClients[0].focus()
+          } catch {
+            // focus() may be rejected if the browser doesn't allow it
           }
           return
         }

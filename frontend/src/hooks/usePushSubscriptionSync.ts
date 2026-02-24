@@ -1,4 +1,5 @@
 import { useEffect } from "react"
+import { useNavigate } from "react-router-dom"
 
 import { notificationsApi } from "../api/notifications"
 import {
@@ -41,15 +42,27 @@ async function syncPushSubscription() {
  * which fires when the browser rotates the push subscription while the app is open.
  */
 export function usePushSubscriptionSync() {
+  const navigate = useNavigate()
+
   useEffect(() => {
     // Sync on startup (delayed to avoid slowing down app init)
     const timer = setTimeout(syncPushSubscription, 5000)
 
-    // Re-sync when the SW notifies us of a subscription change
+    // Re-sync when the SW notifies us of a subscription change.
+    // Also handle NAVIGATE messages sent by the SW on notification click —
+    // this ensures the PWA navigates to the right page even when Firefox
+    // focuses a regular browser tab instead of the PWA window.
     const handleSwMessage = (event: MessageEvent) => {
       if (event.data?.type === "PUSH_SUBSCRIPTION_CHANGED") {
         console.debug("[PushSync] SW reported subscription change, re-syncing")
         syncPushSubscription()
+      } else if (event.data?.type === "NAVIGATE" && event.data.url) {
+        try {
+          const url = new URL(event.data.url)
+          navigate(url.pathname + url.search + url.hash, { replace: false })
+        } catch {
+          // Malformed URL — ignore
+        }
       }
     }
     navigator.serviceWorker?.addEventListener("message", handleSwMessage)
@@ -58,5 +71,5 @@ export function usePushSubscriptionSync() {
       clearTimeout(timer)
       navigator.serviceWorker?.removeEventListener("message", handleSwMessage)
     }
-  }, [])
+  }, [navigate])
 }
