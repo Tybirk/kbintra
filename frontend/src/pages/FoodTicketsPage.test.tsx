@@ -17,6 +17,13 @@ vi.mock("../api/food", () => ({
   },
 }))
 
+// Mock notifications API (called on mount to mark notifications as read)
+vi.mock("../api/notifications", () => ({
+  notificationsApi: {
+    markReadByLink: vi.fn().mockResolvedValue({ marked_read: 0 }),
+  },
+}))
+
 // Mock navigation
 const mockNavigate = vi.fn()
 vi.mock("react-router-dom", async () => {

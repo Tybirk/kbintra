@@ -187,11 +187,16 @@ export interface Poll {
   created_at: string
 }
 
+export interface PollOptionData {
+  id?: number
+  text: string
+}
+
 export interface CreatePollData {
   question: string
   allow_multiple_votes: boolean
   is_anonymous: boolean
-  options: { id?: number text: string }[]
+  options: PollOptionData[]
 }
 
 export interface Post {
