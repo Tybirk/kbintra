@@ -97,7 +97,9 @@ export default function SubgroupPage() {
   const initialFolderId = folderIdParam ? parseInt(folderIdParam, 10) : null
   const activeTab = location.pathname.includes("/dokumenter")
     ? "documents"
-    : "threads"
+    : location.pathname.includes("/lukkede")
+      ? "closed-threads"
+      : "threads"
   const [
     createThreadModalOpened,
     { open: openCreateThreadModal, close: closeCreateThreadModal },
@@ -161,6 +163,8 @@ export default function SubgroupPage() {
     if (!a.is_pinned && b.is_pinned) return 1
     return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
   })
+  const openThreads = sortedThreads.filter((t) => !t.is_closed)
+  const closedThreads = sortedThreads.filter((t) => t.is_closed)
 
   return (
     <>
@@ -208,6 +212,7 @@ export default function SubgroupPage() {
         value={activeTab}
         onChange={(tab) => {
           if (tab === "documents") navigate(`/forum/${slug}/dokumenter`)
+          else if (tab === "closed-threads") navigate(`/forum/${slug}/lukkede`)
           else navigate(`/forum/${slug}`)
         }}
         mb="md"
@@ -219,6 +224,14 @@ export default function SubgroupPage() {
           <Tabs.Tab value="documents" leftSection={<IconFolder size={16} />}>
             Dokumenter
           </Tabs.Tab>
+          {closedThreads.length > 0 && (
+            <Tabs.Tab
+              value="closed-threads"
+              leftSection={<IconLock size={16} />}
+            >
+              Lukkede diskussioner
+            </Tabs.Tab>
+          )}
         </Tabs.List>
 
         <Tabs.Panel value="threads" pt="md">
@@ -241,7 +254,7 @@ export default function SubgroupPage() {
             </Button>
           </Group>
           <Stack gap="md">
-            {sortedThreads.length === 0 ? (
+            {openThreads.length === 0 ? (
               <Paper withBorder p="xl" radius="md">
                 <Center>
                   <Stack align="center" gap="xs">
@@ -256,7 +269,7 @@ export default function SubgroupPage() {
                 </Center>
               </Paper>
             ) : (
-              sortedThreads.map((thread) => (
+              openThreads.map((thread) => (
                 <ThreadRow
                   key={thread.id}
                   thread={thread}
@@ -266,6 +279,18 @@ export default function SubgroupPage() {
                 />
               ))
             )}
+          </Stack>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="closed-threads" pt="md">
+          <Stack gap="md">
+            {closedThreads.map((thread) => (
+              <ThreadRow
+                key={thread.id}
+                thread={thread}
+                onClick={() => navigate(`/forum/${slug}/traad/${thread.slug}`)}
+              />
+            ))}
           </Stack>
         </Tabs.Panel>
 

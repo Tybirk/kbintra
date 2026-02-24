@@ -265,6 +265,16 @@ function App() {
               }
             />
             <Route
+              path="/forum/:slug/lukkede"
+              element={
+                <ProtectedRoute>
+                  <PageErrorBoundary>
+                    <SubgroupPage />
+                  </PageErrorBoundary>
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/forum/:slug/dokumenter/:folderId"
               element={
                 <ProtectedRoute>
