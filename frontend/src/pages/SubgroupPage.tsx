@@ -219,7 +219,7 @@ export default function SubgroupPage() {
       >
         <Tabs.List>
           <Tabs.Tab value="threads" leftSection={<IconMessage size={16} />}>
-            Diskussioner
+            Tråde
           </Tabs.Tab>
           <Tabs.Tab value="documents" leftSection={<IconFolder size={16} />}>
             Dokumenter
@@ -229,7 +229,7 @@ export default function SubgroupPage() {
               value="closed-threads"
               leftSection={<IconLock size={16} />}
             >
-              Lukkede diskussioner
+              Lukkede tråde
             </Tabs.Tab>
           )}
         </Tabs.List>
