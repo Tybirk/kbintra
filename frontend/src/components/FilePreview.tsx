@@ -122,6 +122,7 @@ export function FilePreviewModal({
   const [error, setError] = useState<string | null>(null)
 
   const fileType = file ? getFileType(file.name) : "other"
+  const isPwa = window.matchMedia("(display-mode: standalone)").matches
 
   // Fetch file content when needed
   useEffect(() => {
@@ -187,12 +188,18 @@ export function FilePreviewModal({
   if (!file) return null
 
   const handleDownload = () => {
-    const a = document.createElement("a")
-    a.href = file.file_url
-    a.download = file.name
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
+    fetch(file.file_url)
+      .then((res) => res.blob())
+      .then((blob) => {
+        const blobUrl = URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = blobUrl
+        a.download = file.name
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(blobUrl)
+      })
   }
 
   const renderPreviewContent = () => {
@@ -250,6 +257,22 @@ export function FilePreviewModal({
             <Center h={300}>
               <Loader />
             </Center>
+          )
+        }
+        if (isPwa) {
+          return (
+            <Stack align="center" gap="lg" py="xl">
+              <IconFileTypePdf size={80} color="var(--mantine-color-red-6)" />
+              <Text ta="center">
+                PDF kan ikke vises i appen — tryk Download for at åbne den.
+              </Text>
+              <Button
+                leftSection={<IconDownload size={16} />}
+                onClick={handleDownload}
+              >
+                Download fil
+              </Button>
+            </Stack>
           )
         }
         return (

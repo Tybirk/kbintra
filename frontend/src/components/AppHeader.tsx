@@ -26,7 +26,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { notifications } from "@mantine/notifications"
 
 import { useAuthStore } from "../store/authStore"
-import { spotlight } from "./GlobalSearch"
+import { spotlight, focusSpotlightSearch } from "./GlobalSearch"
 import { notificationsApi } from "../api/notifications"
 import { chatWs, messagingApi } from "../api/messaging"
 import { invalidateCacheForLink } from "../utils/cacheInvalidation"
@@ -156,7 +156,27 @@ export default function AppHeader({
       {/* Center section: search bar (grows to fill space) */}
       <Box style={{ flex: 1, maxWidth: rem(500) }} mx="auto">
         <UnstyledButton
-          onClick={() => spotlight.open()}
+          onClick={() => {
+            // iOS/PWA: focus() is only allowed synchronously within a gesture handler.
+            // We focus a temporary off-screen input immediately (opens keyboard), open
+            // the spotlight, then transfer focus once its input is in the DOM.
+            // Since focus is never lost, the keyboard stays open throughout.
+            if (navigator.maxTouchPoints > 0) {
+              const tmp = document.createElement("input")
+              tmp.setAttribute("type", "text")
+              tmp.style.cssText =
+                "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0.01;pointer-events:none;"
+              document.body.appendChild(tmp)
+              tmp.focus()
+              spotlight.open()
+              setTimeout(() => {
+                focusSpotlightSearch()
+                tmp.remove()
+              }, 0)
+            } else {
+              spotlight.open()
+            }
+          }}
           w="100%"
           style={{
             display: "flex",

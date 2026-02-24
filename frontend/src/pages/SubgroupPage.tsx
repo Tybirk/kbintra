@@ -340,41 +340,58 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
           {thread.author.last_name?.[0]}
         </Avatar>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <Group gap="xs" mb={4} wrap="nowrap">
-            {thread.is_unread && (
-              <Box
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  backgroundColor: "var(--mantine-color-blue-6)",
-                  flexShrink: 0,
-                }}
-              />
-            )}
-            {thread.is_pinned && (
-              <IconPin
-                size={14}
-                color="var(--mantine-color-blue-6)"
-                style={{ flexShrink: 0 }}
-              />
-            )}
-            {thread.is_closed && (
-              <IconLock
-                size={14}
-                color="var(--mantine-color-orange-6)"
-                style={{ flexShrink: 0 }}
-              />
-            )}
-            <Text fw={thread.is_unread ? 700 : 500} lineClamp={1}>
-              {thread.title}
-            </Text>
+          <Group gap="xs" mb={4} wrap="nowrap" justify="space-between">
+            <Group gap="xs" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+              {thread.is_unread && (
+                <Box
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    backgroundColor: "var(--mantine-color-blue-6)",
+                    flexShrink: 0,
+                  }}
+                />
+              )}
+              {thread.is_pinned && (
+                <IconPin
+                  size={14}
+                  color="var(--mantine-color-blue-6)"
+                  style={{ flexShrink: 0 }}
+                />
+              )}
+              {thread.is_closed && (
+                <IconLock
+                  size={14}
+                  color="var(--mantine-color-orange-6)"
+                  style={{ flexShrink: 0 }}
+                />
+              )}
+              <Text fw={thread.is_unread ? 700 : 500} lineClamp={1}>
+                {thread.title}
+              </Text>
+            </Group>
+            <Badge
+              variant="light"
+              color="gray"
+              size="sm"
+              style={{ flexShrink: 0 }}
+            >
+              {thread.post_count} svar
+            </Badge>
           </Group>
-          <Group gap="xs" wrap="nowrap">
+          <Group gap={4} wrap="nowrap" style={{ overflow: "hidden" }}>
             {thread.last_post_author ? (
-              <Group gap={4} wrap="nowrap" style={{ minWidth: 0 }}>
-                <Text size="sm" c="dimmed" style={{ whiteSpace: "nowrap" }}>
-                  Sidste svar {dayjs(thread.last_post_at).fromNow()} af
+              <>
+                <Text
+                  size="sm"
+                  c="dimmed"
+                  style={{ whiteSpace: "nowrap", flexShrink: 0 }}
+                >
+                  <Text component="span" visibleFrom="sm">
+                    Sidste svar{" "}
+                  </Text>
+                  {dayjs(thread.last_post_at).fromNow()} af
                 </Text>
                 <Avatar
                   src={thread.last_post_author.profile_picture}
@@ -391,21 +408,18 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
                   lastName={thread.last_post_author.last_name}
                   size="sm"
                   c="dimmed"
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
                 />
-              </Group>
+              </>
             ) : (
               <Text size="sm" c="dimmed" style={{ whiteSpace: "nowrap" }}>
                 Oprettet {dayjs(thread.created_at).fromNow()}
               </Text>
             )}
-            <Badge
-              variant="light"
-              color="gray"
-              size="sm"
-              style={{ flexShrink: 0 }}
-            >
-              {thread.post_count} svar
-            </Badge>
           </Group>
         </div>
       </Group>
@@ -919,12 +933,18 @@ function FileRow({
 
   const handleDownload = (e: React.MouseEvent) => {
     e.stopPropagation()
-    const a = document.createElement("a")
-    a.href = file.file_url
-    a.download = file.name
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
+    fetch(file.file_url)
+      .then((res) => res.blob())
+      .then((blob) => {
+        const blobUrl = URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = blobUrl
+        a.download = file.name
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(blobUrl)
+      })
   }
 
   const handleDelete = (e: React.MouseEvent) => {

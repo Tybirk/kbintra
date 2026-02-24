@@ -62,6 +62,12 @@ const RESULT_KEY_TO_TYPE: Record<string, SearchResultType> = {
   files: "file",
 }
 
+// Module-level ref so AppHeader can focus the input after opening the spotlight
+let _searchInputEl: HTMLInputElement | null = null
+export function focusSpotlightSearch() {
+  _searchInputEl?.focus()
+}
+
 export function GlobalSearch() {
   const navigate = useNavigate()
   const [query, setQuery] = useState("")
@@ -175,6 +181,9 @@ export function GlobalSearch() {
         searchProps={{
           leftSection: <IconSearch size={18} style={{ marginRight: rem(8) }} />,
           placeholder: "Søg i KB Intra...",
+          ref: (el) => {
+            _searchInputEl = el
+          },
         }}
         query={query}
         onQueryChange={setQuery}

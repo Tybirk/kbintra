@@ -159,6 +159,7 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
   const [error, setError] = useState<string | null>(null)
 
   const fileType = getFileType(attachment.name)
+  const isPwa = window.matchMedia("(display-mode: standalone)").matches
 
   // Fetch content for text and PDF files
   useEffect(() => {
@@ -222,12 +223,18 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
   }, [pdfBlobUrl])
 
   const handleDownload = () => {
-    const a = document.createElement("a")
-    a.href = attachment.file_url
-    a.download = attachment.name
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
+    fetch(attachment.file_url)
+      .then((res) => res.blob())
+      .then((blob) => {
+        const blobUrl = URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = blobUrl
+        a.download = attachment.name
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(blobUrl)
+      })
   }
 
   // Image preview
@@ -300,6 +307,28 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
         <Center h="100%">
           <Loader />
         </Center>
+      )
+    }
+    if (isPwa) {
+      return (
+        <Stack
+          align="center"
+          justify="center"
+          gap="lg"
+          style={{ height: "100%" }}
+          p="xl"
+        >
+          <IconFileTypePdf size={80} color="var(--mantine-color-red-6)" />
+          <Text ta="center">
+            PDF kan ikke vises i appen — tryk Download for at åbne den.
+          </Text>
+          <Button
+            leftSection={<IconDownload size={16} />}
+            onClick={handleDownload}
+          >
+            Download fil
+          </Button>
+        </Stack>
       )
     }
     return (
