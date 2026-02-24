@@ -222,7 +222,12 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
   }, [pdfBlobUrl])
 
   const handleDownload = () => {
-    window.open(attachment.file_url, "_blank")
+    const a = document.createElement("a")
+    a.href = attachment.file_url
+    a.download = attachment.name
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
   }
 
   // Image preview

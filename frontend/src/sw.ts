@@ -56,26 +56,33 @@ self.addEventListener("push", (event: PushEvent) => {
 self.addEventListener("notificationclick", (event: NotificationEvent) => {
   event.notification.close()
 
-  const url = event.notification.data?.url || "/"
+  const notifUrl = event.notification.data?.url || "/"
+  // Build absolute URL - notifUrl may be relative (e.g. "/forum/thread/123")
+  const absoluteUrl = notifUrl.startsWith("http")
+    ? notifUrl
+    : self.location.origin + notifUrl
 
   event.waitUntil(
     self.clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((clientList) => {
-        // Check if there's already a window/tab open with the app
-        for (const client of clientList) {
-          if ("focus" in client) {
-            client.focus()
-            // Navigate to the notification's URL
-            if ("navigate" in client) {
-              client.navigate(url)
-            }
-            return
+        // Only consider clients within our app's origin, not unrelated browser tabs
+        const appClients = clientList.filter((client) =>
+          client.url.startsWith(self.location.origin),
+        )
+
+        if (appClients.length > 0) {
+          const client = appClients[0]
+          client.focus()
+          if ("navigate" in client) {
+            client.navigate(absoluteUrl)
           }
+          return
         }
+
         // If no existing window, open a new one
         if (self.clients.openWindow) {
-          return self.clients.openWindow(url)
+          return self.clients.openWindow(absoluteUrl)
         }
       }),
   )

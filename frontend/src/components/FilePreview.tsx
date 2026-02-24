@@ -128,7 +128,6 @@ export function FilePreviewModal({
     if (!file || !opened) {
       setTextContent(null)
       setError(null)
-      // Clean up blob URL when closing
       if (pdfBlobUrl) {
         URL.revokeObjectURL(pdfBlobUrl)
         setPdfBlobUrl(null)
@@ -188,7 +187,12 @@ export function FilePreviewModal({
   if (!file) return null
 
   const handleDownload = () => {
-    window.open(file.file_url, "_blank")
+    const a = document.createElement("a")
+    a.href = file.file_url
+    a.download = file.name
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
   }
 
   const renderPreviewContent = () => {

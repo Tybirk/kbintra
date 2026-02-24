@@ -894,7 +894,12 @@ function FileRow({
 
   const handleDownload = (e: React.MouseEvent) => {
     e.stopPropagation()
-    window.open(file.file_url, "_blank")
+    const a = document.createElement("a")
+    a.href = file.file_url
+    a.download = file.name
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
   }
 
   const handleDelete = (e: React.MouseEvent) => {
