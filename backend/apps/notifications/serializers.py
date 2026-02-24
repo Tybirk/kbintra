@@ -162,4 +162,5 @@ class PushSubscriptionInputSerializer(serializers.Serializer):
                 "user_agent": user_agent,
             },
         )
+        subscription._was_created = created
         return subscription

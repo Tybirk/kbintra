@@ -77,13 +77,18 @@ export const notificationsApi = {
     return response.data
   },
 
-  // Subscribe to push notifications
-  subscribePush: async (subscription: PushSubscription): Promise<void> => {
+  // Subscribe to push notifications.
+  // Returns { created: true } when the backend created a new subscription,
+  // { created: false } when it updated an existing one.
+  subscribePush: async (subscription: PushSubscription): Promise<{
+    created: boolean
+  }> => {
     const subscriptionJson = subscription.toJSON()
-    await apiClient.post("/notifications/push/subscribe/", {
+    const response = await apiClient.post("/notifications/push/subscribe/", {
       endpoint: subscriptionJson.endpoint,
       keys: subscriptionJson.keys,
     })
+    return { created: response.status === 201 }
   },
 
   // Unsubscribe from push notifications

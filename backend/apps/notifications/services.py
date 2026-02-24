@@ -19,6 +19,15 @@ from .models import Notification, NotificationPreference, NotificationType, Push
 
 logger = logging.getLogger(__name__)
 
+# TTL (seconds) per notification type — how long the push service should hold undelivered messages.
+PUSH_TTL: dict[str, int] = {
+    NotificationType.EVENT_REMINDER: 2 * 3600,  # 2 hours
+    NotificationType.EVENT_CANCELLED: 12 * 3600,  # 12 hours
+    NotificationType.NEW_MESSAGE: 24 * 3600,  # 24 hours
+    NotificationType.MENTION: 24 * 3600,  # 24 hours
+}
+PUSH_TTL_DEFAULT = 48 * 3600  # 48 hours
+
 
 def send_notification_to_websocket(notification: Notification) -> None:
     """Send notification to user via WebSocket."""
@@ -175,11 +184,19 @@ def send_push_notification(
     expired_ids: list[int] = []
     failed_ids: list[int] = []
 
+    ttl = PUSH_TTL.get(notification_type, PUSH_TTL_DEFAULT)
+
     for subscription in subscriptions:
+        parsed = urlparse(subscription.endpoint)
+        log_ctx = {
+            "sub_id": subscription.id,
+            "user_id": user.id,
+            "endpoint": parsed.netloc,
+            "type": notification_type,
+        }
         try:
             # Build claims with aud (audience) derived from endpoint
             # Apple requires aud to be the push service origin (e.g., https://web.push.apple.com)
-            parsed = urlparse(subscription.endpoint)
             claims = vapid_claims.copy()
             claims["aud"] = f"{parsed.scheme}://{parsed.netloc}"
             claims["exp"] = int(time.time()) + 86400  # 24 hours
@@ -189,27 +206,51 @@ def send_push_notification(
                 data=payload,
                 vapid_private_key=vapid_private_key,
                 vapid_claims=claims,
+                ttl=ttl,
             )
             success_ids.append(subscription.id)
             logger.info(
-                f"Push sent to subscription {subscription.id}: "
-                f"status={response.status_code}, endpoint={parsed.netloc}"
+                "Push sent: sub_id=%(sub_id)s user=%(user_id)s endpoint=%(endpoint)s "
+                "type=%(type)s status=%(status)s ttl=%(ttl)s",
+                {"status": response.status_code, "ttl": ttl, **log_ctx},
             )
         except WebPushException as e:
-            # Handle expired/invalid subscriptions
-            if e.response and e.response.status_code in (404, 410):
-                logger.info(f"Push subscription {subscription.id} is expired, marking for deletion")
+            status_code = e.response.status_code if e.response else None
+            if status_code in (404, 410):
+                logger.warning(
+                    "Push subscription expired (%(status)s): sub_id=%(sub_id)s "
+                    "user=%(user_id)s endpoint=%(endpoint)s type=%(type)s",
+                    {"status": status_code, **log_ctx},
+                )
                 expired_ids.append(subscription.id)
-            else:
-                logger.error(f"Push notification failed for subscription {subscription.id}: {e}")
+            elif status_code == 401:
+                # VAPID credentials rejected — do NOT delete the subscription
+                logger.error(
+                    "VAPID auth rejected (401): sub_id=%(sub_id)s user=%(user_id)s "
+                    "endpoint=%(endpoint)s — check VAPID keys config",
+                    log_ctx,
+                )
                 failed_ids.append(subscription.id)
-        except Exception as e:
-            logger.error(f"Unexpected error sending push notification: {e}")
+            else:
+                logger.error(
+                    "Push failed (%(status)s): sub_id=%(sub_id)s user=%(user_id)s "
+                    "endpoint=%(endpoint)s type=%(type)s error=%(error)s",
+                    {"status": status_code, "error": e, **log_ctx},
+                )
+                failed_ids.append(subscription.id)
+        except Exception:
+            logger.exception(
+                "Unexpected push error: sub_id=%(sub_id)s user=%(user_id)s "
+                "endpoint=%(endpoint)s type=%(type)s",
+                log_ctx,
+            )
             failed_ids.append(subscription.id)
 
     if expired_ids:
         deleted_count, _ = PushSubscription.objects.filter(id__in=expired_ids).delete()
-        logger.info(f"Deleted {deleted_count} expired push subscriptions (IDs: {expired_ids})")
+        logger.warning(
+            "Deleted %d expired push subscriptions (IDs: %s)", deleted_count, expired_ids
+        )
 
     return {
         "total": len(subscriptions),

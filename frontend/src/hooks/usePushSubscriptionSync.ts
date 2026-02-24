@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 
 import { notificationsApi } from "../api/notifications"
@@ -8,7 +8,10 @@ import {
   subscribeToPushNotifications,
 } from "../utils/pushNotifications"
 
-async function syncPushSubscription() {
+/** Minimum interval (ms) between automatic re-syncs to avoid spamming the backend. */
+const DEBOUNCE_MS = 30_000
+
+async function syncPushSubscription(): Promise<void> {
   if (!isPushSupported()) return
   if (Notification.permission !== "granted") return
 
@@ -18,15 +21,25 @@ async function syncPushSubscription() {
     if (subscription) {
       // Subscription exists in browser — re-register with backend
       // to ensure backend has the current endpoint (it may have changed)
-      await notificationsApi.subscribePush(subscription)
+      const { created } = await notificationsApi.subscribePush(subscription)
+      if (created) {
+        console.warn(
+          "[PushSync] Backend created a new subscription — previous one was likely deleted as dead",
+        )
+      }
     } else {
       // Permission granted but no subscription — force-close likely
       // killed it. Re-subscribe from scratch.
-      await subscribeToPushNotifications()
+      const result = await subscribeToPushNotifications()
+      if (!result) {
+        console.warn(
+          "[PushSync] Re-subscribe returned falsy — push may not be working",
+        )
+      }
     }
   } catch (error) {
     // Don't break the app if sync fails
-    console.debug("[PushSync] Failed to sync push subscription:", error)
+    console.warn("[PushSync] Failed to sync push subscription:", error)
   }
 }
 
@@ -38,15 +51,56 @@ async function syncPushSubscription() {
  * subscription endpoint may be dead. This hook detects that and
  * re-subscribes automatically if the user had previously granted permission.
  *
- * Also listens for PUSH_SUBSCRIPTION_CHANGED messages from the service worker,
- * which fires when the browser rotates the push subscription while the app is open.
+ * Re-syncs on:
+ * - Initial mount (delayed 5 s)
+ * - visibilitychange → visible (app returns to foreground)
+ * - pageshow (iOS PWA bfcache resume)
+ * - PUSH_SUBSCRIPTION_CHANGED message from the service worker
+ *
+ * All automatic triggers are debounced to at most once per 30 s;
+ * the SW "subscription changed" event bypasses the debounce because
+ * it represents a known real change.
  */
 export function usePushSubscriptionSync() {
   const navigate = useNavigate()
+  const lastSyncRef = useRef<number>(0)
 
   useEffect(() => {
+    /** Run syncPushSubscription respecting the debounce window. */
+    function debouncedSync() {
+      const now = Date.now()
+      if (now - lastSyncRef.current < DEBOUNCE_MS) return
+      lastSyncRef.current = now
+      syncPushSubscription()
+    }
+
+    /** Unconditional sync (bypasses debounce). */
+    function immediateSync() {
+      lastSyncRef.current = Date.now()
+      syncPushSubscription()
+    }
+
     // Sync on startup (delayed to avoid slowing down app init)
-    const timer = setTimeout(syncPushSubscription, 5000)
+    const timer = setTimeout(() => {
+      lastSyncRef.current = Date.now()
+      syncPushSubscription()
+    }, 5000)
+
+    // Re-sync when the app returns to foreground
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        debouncedSync()
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibility)
+
+    // iOS PWA bfcache resume
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        debouncedSync()
+      }
+    }
+    window.addEventListener("pageshow", handlePageShow)
 
     // Re-sync when the SW notifies us of a subscription change.
     // Also handle NAVIGATE messages sent by the SW on notification click —
@@ -55,7 +109,7 @@ export function usePushSubscriptionSync() {
     const handleSwMessage = (event: MessageEvent) => {
       if (event.data?.type === "PUSH_SUBSCRIPTION_CHANGED") {
         console.debug("[PushSync] SW reported subscription change, re-syncing")
-        syncPushSubscription()
+        immediateSync()
       } else if (event.data?.type === "NAVIGATE" && event.data.url) {
         try {
           const url = new URL(event.data.url)
@@ -69,6 +123,8 @@ export function usePushSubscriptionSync() {
 
     return () => {
       clearTimeout(timer)
+      document.removeEventListener("visibilitychange", handleVisibility)
+      window.removeEventListener("pageshow", handlePageShow)
       navigator.serviceWorker?.removeEventListener("message", handleSwMessage)
     }
   }, [navigate])

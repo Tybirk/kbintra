@@ -151,9 +151,14 @@ class PushSubscriptionView(APIView):
         serializer.is_valid(raise_exception=True)
         subscription = serializer.save()
 
+        response_status = (
+            status.HTTP_201_CREATED
+            if getattr(subscription, "_was_created", False)
+            else status.HTTP_200_OK
+        )
         return Response(
             PushSubscriptionSerializer(subscription).data,
-            status=status.HTTP_201_CREATED,
+            status=response_status,
         )
 
     def delete(self, request: Request) -> Response:
