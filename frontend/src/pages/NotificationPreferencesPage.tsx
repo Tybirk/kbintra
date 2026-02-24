@@ -70,15 +70,31 @@ export default function NotificationPreferencesPage() {
 
   const updateMutation = useMutation({
     mutationFn: notificationsApi.updatePreferences,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["notification-preferences"] })
+    onMutate: async (newData) => {
+      await queryClient.cancelQueries({
+        queryKey: ["notification-preferences"],
+      })
+      const previous = queryClient.getQueryData<NotificationPreference>([
+        "notification-preferences",
+      ])
+      queryClient.setQueryData<NotificationPreference>(
+        ["notification-preferences"],
+        (old) => (old ? { ...old, ...newData } : old),
+      )
+      return { previous }
     },
-    onError: () => {
+    onError: (_err, _newData, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["notification-preferences"], context.previous)
+      }
       notifications.show({
         title: "Fejl",
         message: "Kunne ikke opdatere indstillinger. Prøv igen.",
         color: "red",
       })
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["notification-preferences"] })
     },
   })
 
