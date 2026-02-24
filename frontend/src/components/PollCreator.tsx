@@ -7,17 +7,23 @@ import {
   Group,
   Stack,
   CloseButton,
+  ActionIcon,
 } from "@mantine/core"
-import { IconPlus } from "@tabler/icons-react"
+import { IconPlus, IconChevronUp, IconChevronDown } from "@tabler/icons-react"
 
 import type { CreatePollData } from "../types"
 
 interface PollCreatorProps {
   pollData: CreatePollData
-  onChange: (data: CreatePollData | null) => void
+  onChange: (data: CreatePollData) => void
+  onClose?: () => void
 }
 
-export default function PollCreator({ pollData, onChange }: PollCreatorProps) {
+export default function PollCreator({
+  pollData,
+  onChange,
+  onClose,
+}: PollCreatorProps) {
   const updateField = <K extends keyof CreatePollData,>(
     key: K,
     value: CreatePollData[K],
@@ -27,7 +33,7 @@ export default function PollCreator({ pollData, onChange }: PollCreatorProps) {
 
   const updateOption = (index: number, text: string) => {
     const newOptions = [...pollData.options]
-    newOptions[index] = { text }
+    newOptions[index] = { ...newOptions[index], text }
     onChange({ ...pollData, options: newOptions })
   }
 
@@ -44,6 +50,15 @@ export default function PollCreator({ pollData, onChange }: PollCreatorProps) {
     }
   }
 
+  const moveOption = (index: number, direction: -1 | 1) => {
+    const newOptions = [...pollData.options]
+    const target = index + direction
+    const temp = newOptions[index]
+    newOptions[index] = newOptions[target]
+    newOptions[target] = temp
+    onChange({ ...pollData, options: newOptions })
+  }
+
   return (
     <Paper
       withBorder
@@ -55,11 +70,9 @@ export default function PollCreator({ pollData, onChange }: PollCreatorProps) {
         <Text size="sm" fw={600}>
           Afstemning
         </Text>
-        <CloseButton
-          size="sm"
-          onClick={() => onChange(null)}
-          title="Fjern afstemning"
-        />
+        {onClose && (
+          <CloseButton size="sm" onClick={onClose} title="Fjern afstemning" />
+        )}
       </Group>
 
       <Stack gap="sm">
@@ -71,7 +84,27 @@ export default function PollCreator({ pollData, onChange }: PollCreatorProps) {
         />
 
         {pollData.options.map((option, index) => (
-          <Group key={index} gap="xs">
+          <Group key={option.id ?? index} gap="xs" wrap="nowrap">
+            <Stack gap={0}>
+              <ActionIcon
+                variant="subtle"
+                size="xs"
+                disabled={index === 0}
+                onClick={() => moveOption(index, -1)}
+                aria-label="Flyt op"
+              >
+                <IconChevronUp size={12} />
+              </ActionIcon>
+              <ActionIcon
+                variant="subtle"
+                size="xs"
+                disabled={index === pollData.options.length - 1}
+                onClick={() => moveOption(index, 1)}
+                aria-label="Flyt ned"
+              >
+                <IconChevronDown size={12} />
+              </ActionIcon>
+            </Stack>
             <TextInput
               placeholder={`Valgmulighed ${index + 1}`}
               value={option.text}
@@ -110,6 +143,9 @@ export default function PollCreator({ pollData, onChange }: PollCreatorProps) {
             onChange={(e) =>
               updateField("allow_multiple_votes", e.currentTarget.checked)
             }
+            styles={{
+              track: { border: "1.5px solid var(--mantine-color-gray-5)" },
+            }}
           />
           <Switch
             label="Anonym afstemning"
@@ -118,6 +154,9 @@ export default function PollCreator({ pollData, onChange }: PollCreatorProps) {
             onChange={(e) =>
               updateField("is_anonymous", e.currentTarget.checked)
             }
+            styles={{
+              track: { border: "1.5px solid var(--mantine-color-gray-5)" },
+            }}
           />
         </Group>
       </Stack>

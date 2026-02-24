@@ -182,7 +182,7 @@ export interface Poll {
   allow_multiple_votes: boolean
   is_anonymous: boolean
   options: PollOption[]
-  total_votes: number
+  total_voters: number
   is_own: boolean
   created_at: string
 }
@@ -191,7 +191,7 @@ export interface CreatePollData {
   question: string
   allow_multiple_votes: boolean
   is_anonymous: boolean
-  options: { text: string }[]
+  options: { id?: number text: string }[]
 }
 
 export interface Post {

@@ -37,6 +37,7 @@ import LinksPage from "./pages/LinksPage"
 import MessagesPage from "./pages/MessagesPage"
 import NotificationsPage from "./pages/NotificationsPage"
 import NotificationPreferencesPage from "./pages/NotificationPreferencesPage"
+import ConfirmEmailChangePage from "./pages/ConfirmEmailChangePage"
 import AppHeader from "./components/AppHeader"
 import AppNavbar from "./components/AppNavbar"
 import { GlobalSearch } from "./components/GlobalSearch"
@@ -119,6 +120,14 @@ function App() {
             element={
               <PageErrorBoundary>
                 <ResetPasswordPage />
+              </PageErrorBoundary>
+            }
+          />
+          <Route
+            path="/bekraeft-email"
+            element={
+              <PageErrorBoundary>
+                <ConfirmEmailChangePage />
               </PageErrorBoundary>
             }
           />
@@ -481,6 +490,16 @@ function App() {
                 </ProtectedRoute>
               }
             />
+            {/* Bekræft emailændring */}
+            <Route
+              path="/bekraeft-email"
+              element={
+                <PageErrorBoundary>
+                  <ConfirmEmailChangePage />
+                </PageErrorBoundary>
+              }
+            />
+
             {/* Catch all */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

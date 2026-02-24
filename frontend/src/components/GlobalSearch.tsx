@@ -2,7 +2,7 @@
  * Global search component using Mantine Spotlight.
  */
 
-import { useCallback, useState } from "react"
+import { useCallback, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Spotlight, spotlight } from "@mantine/spotlight"
 import { Center, Loader, rem, Text } from "@mantine/core"
@@ -64,6 +64,7 @@ const RESULT_KEY_TO_TYPE: Record<string, SearchResultType> = {
 
 export function GlobalSearch() {
   const navigate = useNavigate()
+  const searchRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState("")
   const [debouncedQuery] = useDebouncedValue(query, 300)
   const [previewFile, setPreviewFile] = useState<ForumFile | null>(null)
@@ -175,9 +176,11 @@ export function GlobalSearch() {
         searchProps={{
           leftSection: <IconSearch size={18} style={{ marginRight: rem(8) }} />,
           placeholder: "Søg i KB Intra...",
+          ref: searchRef,
         }}
         query={query}
         onQueryChange={setQuery}
+        onSpotlightOpen={() => setTimeout(() => searchRef.current?.focus(), 50)}
         shortcut={["mod + K"]}
         scrollable
         maxHeight={400}

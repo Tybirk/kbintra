@@ -8,7 +8,7 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from apps.forum.models import SubgroupSubscription
 from apps.notifications.models import NotificationPreference, PushSubscription
 
-from .models import Invitation, PasswordResetToken, User
+from .models import EmailChangeToken, Invitation, PasswordResetToken, User
 
 
 class NotificationPreferenceInline(admin.StackedInline):
@@ -180,5 +180,21 @@ class PasswordResetTokenAdmin(admin.ModelAdmin):
 
     @admin.display(boolean=True, description="Valid")
     def is_valid_display(self, obj: PasswordResetToken) -> bool:
+        """Display whether token is still valid."""
+        return obj.is_valid
+
+
+@admin.register(EmailChangeToken)
+class EmailChangeTokenAdmin(admin.ModelAdmin):
+    """Admin configuration for EmailChangeToken model."""
+
+    list_display = ("user", "new_email", "created_at", "used_at", "is_valid_display")
+    list_filter = ("created_at", "used_at")
+    search_fields = ("user__email", "new_email")
+    readonly_fields = ("token", "created_at", "used_at")
+    ordering = ("-created_at",)
+
+    @admin.display(boolean=True, description="Valid")
+    def is_valid_display(self, obj: EmailChangeToken) -> bool:
         """Display whether token is still valid."""
         return obj.is_valid

@@ -11,6 +11,7 @@ from .models import (
     Folder,
     Poll,
     PollOption,
+    PollVote,
     Post,
     PostAttachment,
     Reaction,
@@ -161,7 +162,7 @@ class PollSerializer(serializers.ModelSerializer):
     """Serializer for Poll with options and vote data."""
 
     options = PollOptionSerializer(many=True, read_only=True)
-    total_votes = serializers.SerializerMethodField()
+    total_voters = serializers.SerializerMethodField()
     is_own = serializers.SerializerMethodField()
 
     class Meta:
@@ -172,16 +173,13 @@ class PollSerializer(serializers.ModelSerializer):
             "allow_multiple_votes",
             "is_anonymous",
             "options",
-            "total_votes",
+            "total_voters",
             "is_own",
             "created_at",
         ]
 
-    def get_total_votes(self, obj: Poll) -> int:
-        total = 0
-        for option in obj.options.all():
-            total += option.votes.count()
-        return total
+    def get_total_voters(self, obj: Poll) -> int:
+        return PollVote.objects.filter(option__poll=obj).values("user_id").distinct().count()
 
     def get_is_own(self, obj: Poll) -> bool:
         request = self.context.get("request")
@@ -209,6 +207,29 @@ class PollCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError("A poll must have at least 2 options.")
         if len(value) > 20:
             raise serializers.ValidationError("A poll can have at most 20 options.")
+        return value
+
+
+class PollOptionUpdateSerializer(serializers.Serializer):
+    """Serializer for an option in a poll update request."""
+
+    id = serializers.IntegerField(required=False, allow_null=True)
+    text = serializers.CharField(max_length=200)
+
+
+class PollUpdateSerializer(serializers.Serializer):
+    """Serializer for updating a poll."""
+
+    question = serializers.CharField(max_length=300, required=False)
+    allow_multiple_votes = serializers.BooleanField(required=False)
+    is_anonymous = serializers.BooleanField(required=False)
+    options = PollOptionUpdateSerializer(many=True, required=False)
+
+    def validate_options(self, value: list) -> list:
+        if len(value) < 2:
+            raise serializers.ValidationError("En afstemning skal have mindst 2 valgmuligheder.")
+        if len(value) > 20:
+            raise serializers.ValidationError("En afstemning kan højst have 20 valgmuligheder.")
         return value
 
 
@@ -300,6 +321,11 @@ class PostCreateSerializer(serializers.ModelSerializer):
         extra_kwargs = {"content": {"allow_blank": True}}
 
     def validate(self, attrs: dict) -> dict:
+        # On update the post already exists (self.instance is set), so the
+        # "must have content, file, or poll" constraint does not apply —
+        # the existing poll or attachments continue to satisfy it.
+        if self.instance is not None:
+            return attrs
         content = attrs.get("content", "").strip()
         attachments = attrs.get("attachments", [])
         poll_data = attrs.get("poll_data")

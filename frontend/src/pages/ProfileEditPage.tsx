@@ -9,10 +9,12 @@ import {
   Avatar,
   Button,
   TextInput,
+  PasswordInput,
   Textarea,
   Stack,
   Loader,
   Center,
+  Collapse,
   rem,
 } from "@mantine/core"
 import { DateInput } from "@mantine/dates"
@@ -24,6 +26,7 @@ import {
   IconX,
   IconArrowLeft,
   IconLock,
+  IconMail,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 
@@ -43,6 +46,12 @@ export default function ProfileEditPage() {
     bio: "",
     birthdate: null as Date | null,
     house: null as number | null,
+  })
+
+  const [emailChangeOpen, setEmailChangeOpen] = useState(false)
+  const [emailChangeData, setEmailChangeData] = useState({
+    new_email: "",
+    current_password: "",
   })
 
   const { data: user, isLoading } = useQuery({
@@ -79,6 +88,37 @@ export default function ProfileEditPage() {
       notifications.show({
         title: "Error",
         message: "Failed to update profile. Please try again.",
+        color: "red",
+      })
+    },
+  })
+
+  const requestEmailChangeMutation = useMutation({
+    mutationFn: () =>
+      usersApi.requestEmailChange(
+        emailChangeData.new_email,
+        emailChangeData.current_password,
+      ),
+    onSuccess: () => {
+      setEmailChangeData({ new_email: "", current_password: "" })
+      setEmailChangeOpen(false)
+      notifications.show({
+        title: "Bekræftelsesmail sendt",
+        message: `En bekræftelsesmail er sendt til ${emailChangeData.new_email}. Klik på linket i mailen for at bekræfte ændringen.`,
+        color: "green",
+        autoClose: 8000,
+      })
+    },
+    onError: (error: { response?: { data?: Record<string, string[]> } }) => {
+      const data = error.response?.data
+      const msg =
+        data?.new_email?.[0] ??
+        data?.current_password?.[0] ??
+        data?.non_field_errors?.[0] ??
+        "Noget gik galt. Prøv igen."
+      notifications.show({
+        title: "Fejl",
+        message: msg,
         color: "red",
       })
     },
@@ -292,13 +332,77 @@ export default function ProfileEditPage() {
         <Title order={4} mb="md">
           Sikkerhed
         </Title>
-        <Button
-          variant="light"
-          leftSection={<IconLock size={16} />}
-          onClick={() => navigate("/profil/skift-adgangskode")}
-        >
-          Skift adgangskode
-        </Button>
+        <Stack gap="sm">
+          <Button
+            variant="light"
+            leftSection={<IconLock size={16} />}
+            onClick={() => navigate("/profil/skift-adgangskode")}
+          >
+            Skift adgangskode
+          </Button>
+
+          <Button
+            variant="light"
+            leftSection={<IconMail size={16} />}
+            onClick={() => setEmailChangeOpen((o) => !o)}
+          >
+            Skift emailadresse
+          </Button>
+
+          <Collapse expanded={emailChangeOpen}>
+            <Stack gap="sm" pt="xs">
+              <Text size="sm" c="dimmed">
+                Din nuværende emailadresse er <strong>{user?.email}</strong>. Du
+                vil modtage en bekræftelsesmail på den nye adresse.
+              </Text>
+              <TextInput
+                label="Ny emailadresse"
+                type="email"
+                placeholder="ny@email.dk"
+                value={emailChangeData.new_email}
+                onChange={(e) =>
+                  setEmailChangeData((prev) => ({
+                    ...prev,
+                    new_email: e.target.value,
+                  }))
+                }
+              />
+              <PasswordInput
+                label="Bekræft med din nuværende adgangskode"
+                placeholder="Din nuværende adgangskode"
+                value={emailChangeData.current_password}
+                onChange={(e) =>
+                  setEmailChangeData((prev) => ({
+                    ...prev,
+                    current_password: e.target.value,
+                  }))
+                }
+              />
+              <Group>
+                <Button
+                  variant="filled"
+                  loading={requestEmailChangeMutation.isPending}
+                  disabled={
+                    !emailChangeData.new_email ||
+                    !emailChangeData.current_password
+                  }
+                  onClick={() => requestEmailChangeMutation.mutate()}
+                >
+                  Send bekræftelsesmail
+                </Button>
+                <Button
+                  variant="subtle"
+                  onClick={() => {
+                    setEmailChangeOpen(false)
+                    setEmailChangeData({ new_email: "", current_password: "" })
+                  }}
+                >
+                  Annuller
+                </Button>
+              </Group>
+            </Stack>
+          </Collapse>
+        </Stack>
       </Paper>
     </>
   )

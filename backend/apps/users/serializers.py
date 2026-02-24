@@ -8,7 +8,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.utils import timezone
 from rest_framework import serializers
 
-from .models import Invitation, PasswordResetToken, User
+from .models import EmailChangeToken, Invitation, PasswordResetToken, User
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -267,6 +267,79 @@ class ForgotPasswordSerializer(serializers.Serializer):
         except User.DoesNotExist:
             # Don't reveal that the user doesn't exist
             return None
+
+
+class RequestEmailChangeSerializer(serializers.Serializer):
+    """Serializer for requesting an email change."""
+
+    new_email = serializers.EmailField()
+    current_password = serializers.CharField(write_only=True)
+
+    def validate_current_password(self, value: str) -> str:
+        """Validate that the current password is correct."""
+        user = self.context["request"].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("Adgangskoden er forkert.")
+        return value
+
+    def validate_new_email(self, value: str) -> str:
+        """Validate the new email is not already in use."""
+        value = value.lower()
+        user = self.context["request"].user
+        if value == user.email.lower():
+            raise serializers.ValidationError(
+                "Den nye emailadresse er den samme som din nuværende."
+            )
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError("Denne emailadresse er allerede i brug.")
+        return value
+
+    def save(self) -> EmailChangeToken:
+        """Invalidate old tokens and create a new one."""
+        user = self.context["request"].user
+        new_email = self.validated_data["new_email"]
+        # Invalidate any existing pending tokens for this user
+        EmailChangeToken.objects.filter(user=user, used_at__isnull=True).update(
+            used_at=timezone.now()
+        )
+        return EmailChangeToken.objects.create(user=user, new_email=new_email)
+
+
+class ConfirmEmailChangeSerializer(serializers.Serializer):
+    """Serializer for confirming email change with a token."""
+
+    token = serializers.CharField(write_only=True)
+
+    def validate_token(self, value: str) -> str:
+        """Validate the token exists, is valid, and the new email is still free."""
+        try:
+            email_token = EmailChangeToken.objects.get(token=value)
+        except EmailChangeToken.DoesNotExist as err:
+            raise serializers.ValidationError("Ugyldigt eller udløbet token.") from err
+
+        if not email_token.is_valid:
+            raise serializers.ValidationError("Dette token er udløbet eller allerede brugt.")
+
+        if User.objects.filter(email__iexact=email_token.new_email).exists():
+            raise serializers.ValidationError("Denne emailadresse er ikke længere tilgængelig.")
+
+        return value
+
+    def save(self) -> User:
+        """Update the user's email atomically and mark token as used."""
+        from django.db import transaction
+
+        with transaction.atomic():
+            email_token = EmailChangeToken.objects.select_for_update().get(
+                token=self.validated_data["token"]
+            )
+            if not email_token.is_valid:
+                raise serializers.ValidationError({"token": "Dette token er allerede brugt."})
+            user = email_token.user
+            user.email = email_token.new_email
+            user.save(update_fields=["email"])
+            email_token.mark_used()
+        return user
 
 
 class ResetPasswordSerializer(serializers.Serializer):

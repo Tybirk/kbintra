@@ -29,6 +29,8 @@ from .serializers import (
     FileUploadSerializer,
     FolderCreateSerializer,
     FolderSerializer,
+    PollSerializer,
+    PollUpdateSerializer,
     PostCreateSerializer,
     PostSerializer,
     RecentActivitySerializer,
@@ -630,9 +632,67 @@ class PollVoteView(APIView):
 
 
 class PollDeleteView(APIView):
-    """Delete a poll (creator or admin only)."""
+    """Update or delete a poll (creator or admin only)."""
 
     permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request: Request, poll_id: int) -> Response:
+        poll = get_object_or_404(Poll, pk=poll_id)
+
+        if poll.created_by != request.user and not request.user.is_staff:
+            return Response(
+                {"detail": "You do not have permission to edit this poll."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = PollUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        # Update poll fields
+        update_fields = []
+        if "question" in data:
+            poll.question = data["question"]
+            update_fields.append("question")
+        if "allow_multiple_votes" in data:
+            poll.allow_multiple_votes = data["allow_multiple_votes"]
+            update_fields.append("allow_multiple_votes")
+        if "is_anonymous" in data:
+            poll.is_anonymous = data["is_anonymous"]
+            update_fields.append("is_anonymous")
+        if update_fields:
+            poll.save(update_fields=update_fields)
+
+        # Update options if provided
+        if "options" in data:
+            existing_options = {o.id: o for o in poll.options.all()}
+            submitted_ids = {o["id"] for o in data["options"] if o.get("id")}
+
+            # Check that options being removed have no votes
+            ids_to_delete = set(existing_options.keys()) - submitted_ids
+            for option_id in ids_to_delete:
+                option = existing_options[option_id]
+                if option.votes.count() > 0:
+                    return Response(
+                        {
+                            "detail": f"Kan ikke fjerne valgmulighed '{option.text}' da den har stemmer."
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+            PollOption.objects.filter(id__in=ids_to_delete).delete()
+
+            # Update existing options and create new ones in order
+            for i, option_data in enumerate(data["options"]):
+                option_id = option_data.get("id")
+                if option_id and option_id in existing_options:
+                    PollOption.objects.filter(id=option_id).update(
+                        text=option_data["text"], order=i
+                    )
+                else:
+                    PollOption.objects.create(poll=poll, text=option_data["text"], order=i)
+
+        return Response(PollSerializer(poll, context={"request": request}).data)
 
     def delete(self, request: Request, poll_id: int) -> Response:
         poll = get_object_or_404(Poll, pk=poll_id)

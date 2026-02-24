@@ -7,7 +7,7 @@ from datetime import timedelta
 import pytest
 from django.utils import timezone
 
-from apps.users.models import Invitation, PasswordResetToken, User
+from apps.users.models import EmailChangeToken, Invitation, PasswordResetToken, User
 
 
 @pytest.fixture
@@ -412,6 +412,140 @@ class TestResetPasswordAPI:
                 "new_password": "resetpassword123",
                 "new_password_confirm": "resetpassword123",
             },
+            format="json",
+        )
+        assert response.status_code == 400
+
+
+class TestRequestEmailChangeAPI:
+    """Tests for the Request Email Change API endpoint."""
+
+    def test_request_email_change(self, authenticated_client, user):
+        """Test requesting an email change with valid data."""
+        response = authenticated_client.post(
+            "/api/auth/request-email-change/",
+            {"new_email": "newemail@example.com", "current_password": "testpass123"},
+            format="json",
+        )
+        assert response.status_code == 200
+        assert EmailChangeToken.objects.filter(user=user, new_email="newemail@example.com").exists()
+
+    def test_request_email_change_wrong_password(self, authenticated_client):
+        """Test that wrong current password is rejected."""
+        response = authenticated_client.post(
+            "/api/auth/request-email-change/",
+            {"new_email": "newemail@example.com", "current_password": "wrongpassword"},
+            format="json",
+        )
+        assert response.status_code == 400
+
+    def test_request_email_change_same_email(self, authenticated_client, user):
+        """Test that changing to the same email is rejected."""
+        response = authenticated_client.post(
+            "/api/auth/request-email-change/",
+            {"new_email": user.email, "current_password": "testpass123"},
+            format="json",
+        )
+        assert response.status_code == 400
+
+    def test_request_email_change_already_taken(self, authenticated_client, db, house):
+        """Test that changing to an already registered email is rejected."""
+        other = User.objects.create_user(
+            email="taken@example.com",
+            password="pass",
+            first_name="Other",
+            last_name="User",
+            house=house,
+        )
+        response = authenticated_client.post(
+            "/api/auth/request-email-change/",
+            {"new_email": other.email, "current_password": "testpass123"},
+            format="json",
+        )
+        assert response.status_code == 400
+
+    def test_request_email_change_unauthenticated(self, api_client):
+        """Test that unauthenticated requests are rejected."""
+        response = api_client.post(
+            "/api/auth/request-email-change/",
+            {"new_email": "newemail@example.com", "current_password": "testpass123"},
+            format="json",
+        )
+        assert response.status_code == 401
+
+    def test_request_email_change_invalidates_old_tokens(self, authenticated_client, user):
+        """Test that requesting a new change invalidates previous pending tokens."""
+        old_token = EmailChangeToken.objects.create(
+            user=user,
+            new_email="old@example.com",
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+        authenticated_client.post(
+            "/api/auth/request-email-change/",
+            {"new_email": "newemail@example.com", "current_password": "testpass123"},
+            format="json",
+        )
+        old_token.refresh_from_db()
+        assert old_token.used_at is not None
+
+
+class TestConfirmEmailChangeAPI:
+    """Tests for the Confirm Email Change API endpoint."""
+
+    def test_confirm_email_change(self, api_client, user):
+        """Test confirming email change with a valid token."""
+        token = EmailChangeToken.objects.create(
+            user=user,
+            new_email="confirmed@example.com",
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+        response = api_client.post(
+            "/api/auth/confirm-email-change/",
+            {"token": token.token},
+            format="json",
+        )
+        assert response.status_code == 200
+        user.refresh_from_db()
+        assert user.email == "confirmed@example.com"
+        token.refresh_from_db()
+        assert token.used_at is not None
+
+    def test_confirm_email_change_expired_token(self, api_client, user):
+        """Test that expired tokens are rejected."""
+        token = EmailChangeToken.objects.create(
+            user=user,
+            new_email="confirmed@example.com",
+            expires_at=timezone.now() - timedelta(hours=1),
+        )
+        response = api_client.post(
+            "/api/auth/confirm-email-change/",
+            {"token": token.token},
+            format="json",
+        )
+        assert response.status_code == 400
+        user.refresh_from_db()
+        assert user.email != "confirmed@example.com"
+
+    def test_confirm_email_change_invalid_token(self, api_client, db):
+        """Test that invalid tokens are rejected."""
+        response = api_client.post(
+            "/api/auth/confirm-email-change/",
+            {"token": "notavalidtoken"},
+            format="json",
+        )
+        assert response.status_code == 400
+
+    def test_confirm_email_change_already_used(self, api_client, user):
+        """Test that already-used tokens are rejected."""
+        token = EmailChangeToken.objects.create(
+            user=user,
+            new_email="confirmed@example.com",
+            expires_at=timezone.now() + timedelta(hours=1),
+            used_at=timezone.now(),
+        )
+        response = api_client.post(
+            "/api/auth/confirm-email-change/",
+            {"token": token.token},
             format="json",
         )
         assert response.status_code == 400

@@ -94,8 +94,8 @@ function OptionBar({
   onVote: () => void
 }) {
   const percentage =
-    poll.total_votes > 0
-      ? Math.round((option.vote_count / poll.total_votes) * 100)
+    poll.total_voters > 0
+      ? Math.round((option.vote_count / poll.total_voters) * 100)
       : 0
 
   const Indicator = poll.allow_multiple_votes
@@ -294,7 +294,8 @@ export default function PollDisplay({
       </Stack>
 
       <Text size="xs" c="dimmed" mt="xs">
-        {poll.total_votes} {poll.total_votes === 1 ? "stemme" : "stemmer"} i alt
+        {poll.total_voters} {poll.total_voters === 1 ? "person" : "personer"}{" "}
+        har stemt
       </Text>
     </Paper>
   )

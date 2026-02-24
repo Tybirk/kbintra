@@ -12,6 +12,7 @@ import type {
   Post,
   CreatePostData,
   CreatePollData,
+  Poll,
   Folder,
   ForumFile,
   RecentActivity,
@@ -338,6 +339,11 @@ export const forumApi = {
     const response = await apiClient.post(`/forum/polls/${pollId}/vote/`, {
       option_id: optionId,
     })
+    return response.data
+  },
+
+  updatePoll: async (pollId: number, data: CreatePollData): Promise<Poll> => {
+    const response = await apiClient.patch(`/forum/polls/${pollId}/`, data)
     return response.data
   },
 

@@ -102,6 +102,7 @@ export default function ThreadPage() {
   const [pollData, setPollData] = useState<CreatePollData | null>(null)
   const [editingPost, setEditingPost] = useState<Post | null>(null)
   const [editContent, setEditContent] = useState("")
+  const [editPollData, setEditPollData] = useState<CreatePollData | null>(null)
   const [
     deleteModalOpened,
     { open: openDeleteModal, close: closeDeleteModal },
@@ -194,22 +195,27 @@ export default function ThreadPage() {
   })
 
   const updatePostMutation = useMutation({
-    mutationFn: ({ postId, data }: UpdatePostParams) =>
-      forumApi.updatePost(postId, data),
+    mutationFn: async ({ postId, data }: UpdatePostParams) => {
+      await forumApi.updatePost(postId, data)
+      if (editPollData && editingPost?.poll) {
+        await forumApi.updatePoll(editingPost.poll.id, editPollData)
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: threadQueryKey })
       setEditingPost(null)
       setEditContent("")
+      setEditPollData(null)
       notifications.show({
-        title: "Post updated",
-        message: "Your post has been updated.",
+        title: "Indlæg opdateret",
+        message: "Dit indlæg er blevet opdateret.",
         color: "green",
       })
     },
     onError: () => {
       notifications.show({
-        title: "Error",
-        message: "Failed to update post. Please try again.",
+        title: "Fejl",
+        message: "Kunne ikke opdatere indlægget. Prøv igen.",
         color: "red",
       })
     },
@@ -318,10 +324,20 @@ export default function ThreadPage() {
   const handleStartEdit = (post: Post) => {
     setEditingPost(post)
     setEditContent(post.content)
+    if (post.poll) {
+      setEditPollData({
+        question: post.poll.question,
+        allow_multiple_votes: post.poll.allow_multiple_votes,
+        is_anonymous: post.poll.is_anonymous,
+        options: post.poll.options.map((o) => ({ id: o.id, text: o.text })),
+      })
+    } else {
+      setEditPollData(null)
+    }
   }
 
   const handleSaveEdit = () => {
-    if (!editingPost || !editContent.trim()) return
+    if (!editingPost) return
     updatePostMutation.mutate({
       postId: editingPost.id,
       data: { content: editContent.trim() },
@@ -360,10 +376,10 @@ export default function ThreadPage() {
       <Button
         variant="subtle"
         leftSection={<IconArrowLeft size={16} />}
-        onClick={() => navigate(-1)}
+        onClick={() => navigate(`/forum/${thread.subgroup_slug}`)}
         mb="md"
       >
-        Back
+        Tilbage
       </Button>
 
       {thread.posts[0] && (
@@ -427,11 +443,16 @@ export default function ThreadPage() {
           isEditing={editingPost?.id === thread.posts[0].id}
           editContent={editContent}
           onEditContentChange={setEditContent}
+          editPollData={
+            editingPost?.id === thread.posts[0].id ? editPollData : null
+          }
+          onEditPollDataChange={setEditPollData}
           onStartEdit={() => handleStartEdit(thread.posts[0])}
           onSaveEdit={handleSaveEdit}
           onCancelEdit={() => {
             setEditingPost(null)
             setEditContent("")
+            setEditPollData(null)
           }}
           onDelete={() => handleDeleteClick(thread.posts[0].id)}
           isSaving={updatePostMutation.isPending}
@@ -453,11 +474,14 @@ export default function ThreadPage() {
                 isEditing={editingPost?.id === post.id}
                 editContent={editContent}
                 onEditContentChange={setEditContent}
+                editPollData={editingPost?.id === post.id ? editPollData : null}
+                onEditPollDataChange={setEditPollData}
                 onStartEdit={() => handleStartEdit(post)}
                 onSaveEdit={handleSaveEdit}
                 onCancelEdit={() => {
                   setEditingPost(null)
                   setEditContent("")
+                  setEditPollData(null)
                 }}
                 onDelete={() => handleDeleteClick(post.id)}
                 isSaving={updatePostMutation.isPending}
@@ -499,7 +523,11 @@ export default function ThreadPage() {
                 />
 
                 {pollData && (
-                  <PollCreator pollData={pollData} onChange={setPollData} />
+                  <PollCreator
+                    pollData={pollData}
+                    onChange={setPollData}
+                    onClose={() => setPollData(null)}
+                  />
                 )}
 
                 <AttachmentArea onAddFiles={handleAddFiles}>
@@ -584,6 +612,8 @@ interface PostCardProps {
   isEditing: boolean
   editContent: string
   onEditContentChange: (content: string) => void
+  editPollData: CreatePollData | null
+  onEditPollDataChange: (data: CreatePollData) => void
   onStartEdit: () => void
   onSaveEdit: () => void
   onCancelEdit: () => void
@@ -598,6 +628,8 @@ function PostCard({
   isEditing,
   editContent,
   onEditContentChange,
+  editPollData,
+  onEditPollDataChange,
   onStartEdit,
   onSaveEdit,
   onCancelEdit,
@@ -692,15 +724,21 @@ function PostCard({
             <RichTextEditor
               content={editContent}
               onChange={onEditContentChange}
-              placeholder="Edit your post..."
+              placeholder="Rediger dit indlæg..."
               minHeight={150}
             />
+            {editPollData && (
+              <PollCreator
+                pollData={editPollData}
+                onChange={onEditPollDataChange}
+              />
+            )}
             <Group justify="flex-end">
               <Button variant="light" size="sm" onClick={onCancelEdit}>
-                Cancel
+                Annuller
               </Button>
               <Button size="sm" onClick={onSaveEdit} loading={isSaving}>
-                Save
+                Gem
               </Button>
             </Group>
           </Stack>

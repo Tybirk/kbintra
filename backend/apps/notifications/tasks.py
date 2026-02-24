@@ -125,6 +125,42 @@ KB Intra
 
 
 # ---------------------------------------------------------------------------
+# Email change verification
+# ---------------------------------------------------------------------------
+
+
+@db_task(retries=3, retry_delay=60)
+def send_email_change_verification_task(
+    first_name: str,
+    new_email: str,
+    confirm_url: str,
+) -> None:
+    """Send email change verification email in background."""
+    from django.conf import settings
+    from django.core.mail import send_mail
+
+    send_mail(
+        subject="Bekræft din nye emailadresse - KB Intra",
+        message=f"""Hej {first_name},
+
+Du har anmodet om at ændre din emailadresse på KB Intra.
+
+Klik på linket herunder for at bekræfte din nye emailadresse:
+{confirm_url}
+
+Linket udløber om 1 time.
+
+Hvis du ikke har anmodet om denne ændring, kan du ignorere denne email.
+
+Med venlig hilsen,
+KB Intra
+""",
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[new_email],
+    )
+
+
+# ---------------------------------------------------------------------------
 # Bulk notification tasks (offload loops from request path)
 # ---------------------------------------------------------------------------
 

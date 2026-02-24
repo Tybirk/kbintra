@@ -1120,6 +1120,105 @@ class TestPollDeleteView:
         assert not Poll.objects.filter(id=poll.id).exists()
 
 
+class TestPollUpdateView:
+    """Tests for poll update (PATCH)."""
+
+    def test_creator_can_update_poll_settings(self, authenticated_client, poll):
+        option_ids = list(poll.options.values_list("id", flat=True))
+        response = authenticated_client.patch(
+            f"/api/forum/polls/{poll.id}/",
+            json.dumps(
+                {
+                    "question": "Updated question?",
+                    "allow_multiple_votes": True,
+                    "is_anonymous": True,
+                    "options": [
+                        {"id": option_ids[0], "text": "Red"},
+                        {"id": option_ids[1], "text": "Blue"},
+                        {"id": option_ids[2], "text": "Green"},
+                    ],
+                }
+            ),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+        poll.refresh_from_db()
+        assert poll.question == "Updated question?"
+        assert poll.allow_multiple_votes is True
+        assert poll.is_anonymous is True
+
+    def test_can_reorder_options(self, authenticated_client, poll):
+        option_ids = list(poll.options.values_list("id", flat=True))
+        original_texts = list(poll.options.values_list("text", flat=True))
+        response = authenticated_client.patch(
+            f"/api/forum/polls/{poll.id}/",
+            json.dumps(
+                {
+                    "options": [
+                        {"id": option_ids[2], "text": original_texts[2]},
+                        {"id": option_ids[0], "text": original_texts[0]},
+                        {"id": option_ids[1], "text": original_texts[1]},
+                    ]
+                }
+            ),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+        ordered = list(poll.options.order_by("order").values_list("id", flat=True))
+        assert ordered == [option_ids[2], option_ids[0], option_ids[1]]
+
+    def test_can_add_new_option(self, authenticated_client, poll):
+        option_ids = list(poll.options.values_list("id", flat=True))
+        original_texts = list(poll.options.values_list("text", flat=True))
+        response = authenticated_client.patch(
+            f"/api/forum/polls/{poll.id}/",
+            json.dumps(
+                {
+                    "options": [
+                        {"id": option_ids[0], "text": original_texts[0]},
+                        {"id": option_ids[1], "text": original_texts[1]},
+                        {"id": option_ids[2], "text": original_texts[2]},
+                        {"text": "New option"},
+                    ]
+                }
+            ),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+        assert poll.options.count() == 4
+
+    def test_cannot_remove_option_with_votes(self, authenticated_client, poll, user):
+        from apps.forum.models import PollVote
+
+        option = poll.options.first()
+        PollVote.objects.create(option=option, user=user)
+        remaining_ids = list(poll.options.exclude(id=option.id).values_list("id", flat=True))
+        remaining_texts = list(poll.options.exclude(id=option.id).values_list("text", flat=True))
+        response = authenticated_client.patch(
+            f"/api/forum/polls/{poll.id}/",
+            json.dumps(
+                {
+                    "options": [
+                        {"id": remaining_ids[0], "text": remaining_texts[0]},
+                        {"id": remaining_ids[1], "text": remaining_texts[1]},
+                    ]
+                }
+            ),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+        assert poll.options.count() == 3  # unchanged
+
+    def test_non_creator_cannot_update_poll(self, api_client, second_user, poll):
+        api_client.force_authenticate(user=second_user)
+        response = api_client.patch(
+            f"/api/forum/polls/{poll.id}/",
+            json.dumps({"question": "Hacked?"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 403
+
+
 class TestPollInThreadDetail:
     """Tests for poll data appearing in thread detail."""
 
@@ -1130,7 +1229,7 @@ class TestPollInThreadDetail:
         assert post_data["poll"] is not None
         assert post_data["poll"]["question"] == "What is your favorite color?"
         assert len(post_data["poll"]["options"]) == 3
-        assert post_data["poll"]["total_votes"] == 0
+        assert post_data["poll"]["total_voters"] == 0
         assert post_data["poll"]["is_own"] is True
 
     def test_thread_detail_poll_null_when_no_poll(self, authenticated_client, thread, post):

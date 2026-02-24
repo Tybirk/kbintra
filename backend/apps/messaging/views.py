@@ -56,6 +56,69 @@ class ConversationListCreateView(generics.ListCreateAPIView):
             # Find conversation with exactly these 2 participants
             for conv in existing:
                 if conv.participants.count() == 2:
+                    # Send the initial message into the existing conversation if provided
+                    if initial_message or attachments:
+                        message = Message.objects.create(
+                            conversation=conv,
+                            sender=request.user,
+                            content=initial_message,
+                        )
+                        attachment_objects = []
+                        for attachment_file in attachments:
+                            att = MessageAttachment.objects.create(
+                                message=message,
+                                file=attachment_file,
+                                name=attachment_file.name,
+                                uploaded_by=request.user,
+                            )
+                            attachment_objects.append(att)
+
+                        # Broadcast message via WebSocket so all clients update instantly
+                        from asgiref.sync import async_to_sync
+                        from channels.layers import get_channel_layer
+
+                        channel_layer = get_channel_layer()
+                        user = request.user
+                        message_data = {
+                            "id": message.id,
+                            "conversation": conv.id,
+                            "sender": {
+                                "id": user.id,
+                                "first_name": user.first_name,
+                                "last_name": user.last_name,
+                                "profile_picture": (
+                                    user.profile_picture.url if user.profile_picture else None
+                                ),
+                            },
+                            "content": message.content,
+                            "is_own": False,  # set per-client by the consumer
+                            "is_read": False,
+                            "is_system_message": False,
+                            "created_at": message.created_at.isoformat(),
+                            "attachments": [
+                                {
+                                    "id": att.id,
+                                    "name": att.name,
+                                    "file_url": att.file.url if att.file else "",
+                                }
+                                for att in attachment_objects
+                            ],
+                        }
+                        async_to_sync(channel_layer.group_send)(
+                            f"conversation_{conv.id}",
+                            {"type": "chat_message", "message": message_data},
+                        )
+
+                        from apps.notifications.tasks import notify_new_message_task
+
+                        for participant in conv.participants.exclude(id=request.user.id):
+                            notify_new_message_task(
+                                recipient_id=participant.id,
+                                sender_id=request.user.id,
+                                message_content=initial_message or "(Vedhæftet fil)",
+                                conversation_id=conv.id,
+                                message_id=message.id,
+                            )
                     return Response(
                         ConversationDetailSerializer(conv, context={"request": request}).data,
                         status=status.HTTP_200_OK,

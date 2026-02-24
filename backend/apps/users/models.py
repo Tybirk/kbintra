@@ -218,3 +218,49 @@ class PasswordResetToken(models.Model):
         """Mark the token as used."""
         self.used_at = timezone.now()
         self.save(update_fields=["used_at"])
+
+
+class EmailChangeToken(models.Model):
+    """
+    Token for email change requests.
+    Sent to the new email address for verification.
+    Tokens are single-use and expire after 1 hour.
+    """
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="email_change_tokens",
+    )
+    new_email = models.EmailField()
+    token = models.CharField(max_length=64, unique=True, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        status = "used" if self.used_at else ("expired" if not self.is_valid else "active")
+        return f"Email change for {self.user.email} → {self.new_email} ({status})"
+
+    def save(self, *args: object, **kwargs: object) -> None:
+        """Generate token and set expiry on first save."""
+        if not self.token:
+            self.token = secrets.token_urlsafe(48)
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(hours=1)
+        super().save(*args, **kwargs)
+
+    @property
+    def is_valid(self) -> bool:
+        """Check if token is still valid (not used and not expired)."""
+        if self.used_at:
+            return False
+        return timezone.now() < self.expires_at
+
+    def mark_used(self) -> None:
+        """Mark the token as used."""
+        self.used_at = timezone.now()
+        self.save(update_fields=["used_at"])

@@ -74,6 +74,7 @@ export default function MessagesPage() {
     )
   const [isComposingNew, setIsComposingNew] = useState(false)
   const [isWsConnected, setIsWsConnected] = useState(chatWs.isConnected)
+  const [conversationSearch, setConversationSearch] = useState("")
   const isMobile = useMediaQuery("(max-width: 768px)")
   const selectedConversationRef = useRef(selectedConversation)
 
@@ -98,6 +99,18 @@ export default function MessagesPage() {
     queryKey: ["conversations"],
     queryFn: messagingApi.getConversations,
   })
+
+  const filteredConversations = conversationSearch.trim()
+    ? (conversations ?? []).filter((conv) => {
+        const term = conversationSearch.trim().toLowerCase()
+        return conv.other_participants.some(
+          (p) =>
+            p.first_name.toLowerCase().includes(term) ||
+            p.last_name.toLowerCase().includes(term) ||
+            `${p.first_name} ${p.last_name}`.toLowerCase().includes(term),
+        )
+      })
+    : (conversations ?? [])
 
   // Fetch selected conversation detail
   const { data: activeConversation, isLoading: conversationLoading } = useQuery(
@@ -336,6 +349,8 @@ export default function MessagesPage() {
               placeholder="Søg i samtaler..."
               leftSection={<IconSearch size={16} />}
               size="sm"
+              value={conversationSearch}
+              onChange={(e) => setConversationSearch(e.currentTarget.value)}
             />
           </Box>
           <ScrollArea style={{ flex: 1 }}>
@@ -343,17 +358,19 @@ export default function MessagesPage() {
               <Center h={200}>
                 <Loader size="sm" />
               </Center>
-            ) : conversations?.length === 0 ? (
+            ) : filteredConversations.length === 0 ? (
               <Center h={200}>
                 <Stack align="center" gap="xs">
                   <IconMessage size={48} color="gray" />
                   <Text c="dimmed" size="sm">
-                    Ingen samtaler endnu
+                    {conversationSearch.trim()
+                      ? "Ingen samtaler matcher søgningen"
+                      : "Ingen samtaler endnu"}
                   </Text>
                 </Stack>
               </Center>
             ) : (
-              conversations?.map((conv) => (
+              filteredConversations.map((conv) => (
                 <ConversationItem
                   key={conv.id}
                   conversation={conv}
@@ -1303,6 +1320,7 @@ interface NewConversationAreaProps {
 
 function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
   const { user: currentUser } = useAuthStore()
+  const queryClient = useQueryClient()
   const [search, setSearch] = useState("")
   const [selectedUsers, setSelectedUsers] = useState<User[]>([])
   const [message, setMessage] = useState("")
@@ -1322,6 +1340,14 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
   const createMutation = useMutation({
     mutationFn: messagingApi.createConversation,
     onSuccess: (data) => {
+      // Seed the conversation cache with the full response so messages are
+      // visible immediately when navigating to the conversation, without
+      // waiting for a separate fetch or WebSocket event.
+      queryClient.setQueryData<ConversationDetail>(
+        ["conversation", data.id],
+        data,
+      )
+      queryClient.invalidateQueries({ queryKey: ["conversations"] })
       onSuccess(data.id)
     },
     onError: () => {

@@ -15,11 +15,13 @@ from rest_framework.views import APIView
 from .models import Invitation, User
 from .serializers import (
     ChangePasswordSerializer,
+    ConfirmEmailChangeSerializer,
     ForgotPasswordSerializer,
     InvitationCreateSerializer,
     InvitationSerializer,
     InvitationValidateSerializer,
     MentionUserSerializer,
+    RequestEmailChangeSerializer,
     ResetPasswordSerializer,
     UserProfileUpdateSerializer,
     UserRegistrationSerializer,
@@ -258,3 +260,44 @@ class ResetPasswordView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response({"message": "Password has been reset successfully."})
+
+
+class RequestEmailChangeView(APIView):
+    """
+    Request an email change. Sends a verification link to the new email address.
+    Requires current password confirmation.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request) -> Response:
+        serializer = RequestEmailChangeSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        token = serializer.save()
+
+        from django.conf import settings
+
+        from apps.notifications.tasks import send_email_change_verification_task
+
+        confirm_url = f"{settings.SITE_URL}/bekraeft-email?token={token.token}"
+        send_email_change_verification_task(
+            first_name=request.user.first_name,
+            new_email=token.new_email,
+            confirm_url=confirm_url,
+        )
+
+        return Response({"message": "En bekræftelsesmail er sendt til din nye emailadresse."})
+
+
+class ConfirmEmailChangeView(APIView):
+    """
+    Confirm email change using a token from the verification email.
+    """
+
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request: Request) -> Response:
+        serializer = ConfirmEmailChangeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"message": "Din emailadresse er nu opdateret."})

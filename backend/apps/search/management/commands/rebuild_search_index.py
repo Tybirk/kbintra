@@ -99,7 +99,7 @@ class Command(BaseCommand):
                     object_id=thread.id,
                     title=thread.title,
                     body=strip_html(first_post.content) if first_post else "",
-                    url=f"/forum/{thread.subgroup.slug}/{thread.id}",
+                    url=f"/forum/{thread.subgroup.slug}/traad/{thread.slug}",
                     subtitle=thread.subgroup.name,
                     created_at=_isoformat(thread.created_at),
                 )
@@ -113,7 +113,7 @@ class Command(BaseCommand):
                     object_id=post.id,
                     title=post.thread.title,
                     body=strip_html(post.content),
-                    url=f"/forum/{post.thread.subgroup.slug}/{post.thread.id}",
+                    url=f"/forum/{post.thread.subgroup.slug}/traad/{post.thread.slug}",
                     subtitle=create_excerpt(post.content, 80),
                     extra=json.dumps({"thread_id": post.thread.id}),
                     created_at=_isoformat(post.created_at),

@@ -54,6 +54,20 @@ export const usersApi = {
     return response.data
   },
 
+  async requestEmailChange(
+    newEmail: string,
+    currentPassword: string,
+  ): Promise<void> {
+    await apiClient.post("/auth/request-email-change/", {
+      new_email: newEmail,
+      current_password: currentPassword,
+    })
+  },
+
+  async confirmEmailChange(token: string): Promise<void> {
+    await apiClient.post("/auth/confirm-email-change/", { token })
+  },
+
   async mentionSearch(q: string): Promise<MentionUser[]> {
     const params = q ? `?q=${encodeURIComponent(q)}` : ""
     const response = await apiClient.get<MentionUser[]>(

@@ -94,6 +94,25 @@ class TestConversationAPI:
         assert response.status_code == 200
         assert response.json()["id"] == conversation.id
 
+    def test_create_conversation_existing_sends_initial_message(
+        self, authenticated_client, second_user, conversation
+    ):
+        """When sending to an existing 1-on-1 conversation, the initial_message must be delivered."""
+        response = authenticated_client.post(
+            "/api/messages/conversations/",
+            {
+                "participant_ids": [second_user.id],
+                "initial_message": "Hej igen!",
+            },
+            format="json",
+        )
+        # Should return the existing conversation, not create a new one
+        assert response.status_code == 200
+        assert response.json()["id"] == conversation.id
+        assert Conversation.objects.count() == 1
+        # The initial message must have been created in the existing conversation
+        assert Message.objects.filter(content="Hej igen!", conversation=conversation).exists()
+
     def test_get_conversation_detail(self, authenticated_client, conversation):
         """Test getting conversation details."""
         response = authenticated_client.get(f"/api/messages/conversations/{conversation.id}/")
