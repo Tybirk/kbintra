@@ -106,6 +106,8 @@ function OptionBar({
     ? CheckboxIndicator
     : RadioIndicator
 
+  const showVoters = hasVoted && !poll.is_anonymous && option.voters.length > 0
+
   return (
     <Box
       style={{
@@ -138,45 +140,66 @@ function OptionBar({
         />
       )}
 
-      {/* Vote trigger — only this row casts a vote */}
-      <UnstyledButton
-        onClick={onVote}
-        style={{ width: "100%", display: "block" }}
+      {/* Row 1: vote trigger (left) + percentage (right) */}
+      <Box
+        style={{
+          display: "flex",
+          alignItems: "stretch",
+          position: "relative",
+          zIndex: 1,
+        }}
       >
-        <Group
-          wrap="nowrap"
-          gap="sm"
-          px="sm"
-          py={10}
-          style={{ position: "relative", zIndex: 1 }}
-        >
-          <Indicator checked={option.has_voted} />
-
-          <Text size="sm" fw={option.has_voted ? 600 : 400} style={{ flex: 1 }}>
-            {option.text}
-          </Text>
-
-          {hasVoted && (
-            <Text size="sm" fw={500} c="dimmed" style={{ flexShrink: 0 }}>
-              {percentage}%
+        <UnstyledButton onClick={onVote} style={{ flex: 1, minWidth: 0 }}>
+          <Group wrap="nowrap" gap="sm" px="sm" py={10}>
+            <Indicator checked={option.has_voted} />
+            <Text
+              size="sm"
+              fw={option.has_voted ? 600 : 400}
+              style={{ flex: 1, minWidth: 0 }}
+            >
+              {option.text}
             </Text>
-          )}
-        </Group>
-      </UnstyledButton>
+          </Group>
+        </UnstyledButton>
 
-      {/* Voter avatars — separate button, no nesting */}
-      {!poll.is_anonymous && option.voters.length > 0 && (
+        {hasVoted &&
+          (showVoters ? (
+            <UnstyledButton
+              onClick={onShowVoters}
+              style={{ display: "flex", alignItems: "center" }}
+            >
+              <Text size="sm" fw={500} c="dimmed" px="sm">
+                {percentage}%
+              </Text>
+            </UnstyledButton>
+          ) : (
+            <Box style={{ display: "flex", alignItems: "center" }}>
+              <Text size="sm" fw={500} c="dimmed" px="sm">
+                {percentage}%
+              </Text>
+            </Box>
+          ))}
+      </Box>
+
+      {/* Row 2: Voters — separate button, no nesting */}
+      {showVoters && (
         <Tooltip label="Klik for at se navne" withArrow>
           <UnstyledButton
             onClick={onShowVoters}
-            style={{ display: "block", width: "100%" }}
+            style={{ width: "100%", display: "block" }}
           >
             <Group
               gap={6}
               px="sm"
-              pb={6}
-              style={{ position: "relative", zIndex: 1, cursor: "pointer" }}
+              pb={8}
+              justify="flex-end"
+              style={{ position: "relative", zIndex: 1 }}
             >
+              <Text size="xs" c="dimmed">
+                {option.voters.length === 1
+                  ? "1 stemme"
+                  : `${option.voters.length} stemmer`}
+              </Text>
               <Avatar.Group spacing="xs">
                 {option.voters.slice(0, 5).map((voter) => (
                   <Avatar
@@ -194,11 +217,6 @@ function OptionBar({
                   </Avatar>
                 )}
               </Avatar.Group>
-              <Text size="xs" c="dimmed">
-                {option.voters.length === 1
-                  ? "1 stemme"
-                  : `${option.voters.length} stemmer`}
-              </Text>
             </Group>
           </UnstyledButton>
         </Tooltip>

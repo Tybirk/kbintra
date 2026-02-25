@@ -159,6 +159,176 @@ class TestNotificationPreferenceAPI:
         assert response.json()["email_forum_subscriptions"] is True
 
 
+class TestMarkNotificationsByLinkView:
+    """Tests for MarkNotificationsByLinkView — marks notifications read by their link URL."""
+
+    def test_basic_ascii_link(self, authenticated_client, db, user):
+        """Notification with a plain ASCII link is marked read."""
+        notif = Notification.objects.create(
+            user=user,
+            notification_type=NotificationType.THREAD_REPLY,
+            title="Reply",
+            message="Someone replied",
+            link="/forum/general/traad/some-thread",
+        )
+        response = authenticated_client.post(
+            "/api/notifications/mark-read-by-link/",
+            {"link": "/forum/general/traad/some-thread"},
+            format="json",
+        )
+        assert response.status_code == 200
+        assert response.json()["marked_read"] == 1
+        notif.refresh_from_db()
+        assert notif.is_read
+
+    def test_url_encoded_unicode_slug(self, authenticated_client, db, user):
+        """Percent-encoded path (as sent by browsers) matches notification stored with decoded Unicode.
+
+        Thread slugs can contain Danish characters (æ, ø, å). Links are stored decoded in the DB,
+        but browsers send location.pathname percent-encoded (e.g. æ → %C3%A6). The view must
+        URL-decode the incoming link before matching.
+        """
+        notif = Notification.objects.create(
+            user=user,
+            notification_type=NotificationType.THREAD_REPLY,
+            title="Reply",
+            message="Someone replied",
+            link="/forum/bugs/traad/notifikationer-bliver-hængende",  # stored decoded
+        )
+        # Browser (and React Router location.pathname) sends the percent-encoded form
+        response = authenticated_client.post(
+            "/api/notifications/mark-read-by-link/",
+            {"link": "/forum/bugs/traad/notifikationer-bliver-h%C3%A6ngende"},
+            format="json",
+        )
+        assert response.status_code == 200
+        assert response.json()["marked_read"] == 1
+        notif.refresh_from_db()
+        assert notif.is_read
+
+    def test_decoded_unicode_slug(self, authenticated_client, db, user):
+        """Decoded Unicode path also matches (e.g. when sent directly)."""
+        notif = Notification.objects.create(
+            user=user,
+            notification_type=NotificationType.THREAD_REPLY,
+            title="Reply",
+            message="Someone replied",
+            link="/forum/bugs/traad/notifikationer-bliver-hængende",
+        )
+        response = authenticated_client.post(
+            "/api/notifications/mark-read-by-link/",
+            {"link": "/forum/bugs/traad/notifikationer-bliver-hængende"},
+            format="json",
+        )
+        assert response.status_code == 200
+        assert response.json()["marked_read"] == 1
+        notif.refresh_from_db()
+        assert notif.is_read
+
+    def test_stored_link_with_hash_fragment(self, authenticated_client, db, user):
+        """Stored link containing a #post-N hash is matched by the bare path (no hash)."""
+        notif = Notification.objects.create(
+            user=user,
+            notification_type=NotificationType.THREAD_REPLY,
+            title="Reply",
+            message="Someone replied",
+            link="/forum/general/traad/some-thread#post-42",
+        )
+        response = authenticated_client.post(
+            "/api/notifications/mark-read-by-link/",
+            {"link": "/forum/general/traad/some-thread"},
+            format="json",
+        )
+        assert response.status_code == 200
+        assert response.json()["marked_read"] == 1
+        notif.refresh_from_db()
+        assert notif.is_read
+
+    def test_encoded_unicode_with_hash(self, authenticated_client, db, user):
+        """Percent-encoded path matches stored link that has both a Unicode slug and a hash."""
+        notif = Notification.objects.create(
+            user=user,
+            notification_type=NotificationType.THREAD_REPLY,
+            title="Reply",
+            message="Someone replied",
+            link="/forum/bugs/traad/notifikationer-bliver-hængende#post-42",
+        )
+        response = authenticated_client.post(
+            "/api/notifications/mark-read-by-link/",
+            {"link": "/forum/bugs/traad/notifikationer-bliver-h%C3%A6ngende"},
+            format="json",
+        )
+        assert response.status_code == 200
+        assert response.json()["marked_read"] == 1
+        notif.refresh_from_db()
+        assert notif.is_read
+
+    def test_already_read_not_counted(self, authenticated_client, db, user):
+        """Notifications that are already read are not double-counted."""
+        Notification.objects.create(
+            user=user,
+            notification_type=NotificationType.THREAD_REPLY,
+            title="Old",
+            message="Already read",
+            link="/forum/general/traad/some-thread",
+            is_read=True,
+        )
+        response = authenticated_client.post(
+            "/api/notifications/mark-read-by-link/",
+            {"link": "/forum/general/traad/some-thread"},
+            format="json",
+        )
+        assert response.status_code == 200
+        assert response.json()["marked_read"] == 0
+
+    def test_cannot_mark_other_users_notifications(self, authenticated_client, db, second_user):
+        """A user cannot mark another user's notifications as read."""
+        notif = Notification.objects.create(
+            user=second_user,
+            notification_type=NotificationType.THREAD_REPLY,
+            title="Reply",
+            message="Other user's notification",
+            link="/forum/general/traad/some-thread",
+        )
+        response = authenticated_client.post(
+            "/api/notifications/mark-read-by-link/",
+            {"link": "/forum/general/traad/some-thread"},
+            format="json",
+        )
+        assert response.status_code == 200
+        assert response.json()["marked_read"] == 0
+        notif.refresh_from_db()
+        assert not notif.is_read
+
+    def test_empty_link_returns_zero(self, authenticated_client):
+        """Empty link returns zero without touching the database."""
+        response = authenticated_client.post(
+            "/api/notifications/mark-read-by-link/",
+            {"link": ""},
+            format="json",
+        )
+        assert response.status_code == 200
+        assert response.json()["marked_read"] == 0
+
+    def test_marks_multiple_notifications_for_same_link(self, authenticated_client, db, user):
+        """Multiple unread notifications pointing to the same link are all marked read."""
+        for i in range(3):
+            Notification.objects.create(
+                user=user,
+                notification_type=NotificationType.THREAD_REPLY,
+                title=f"Reply {i}",
+                message="Someone replied",
+                link="/forum/general/traad/busy-thread",
+            )
+        response = authenticated_client.post(
+            "/api/notifications/mark-read-by-link/",
+            {"link": "/forum/general/traad/busy-thread"},
+            format="json",
+        )
+        assert response.status_code == 200
+        assert response.json()["marked_read"] == 3
+
+
 class TestClearAllNotificationsAPI:
     """Tests for the Clear All Notifications API endpoint."""
 

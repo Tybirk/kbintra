@@ -159,4 +159,46 @@ describe("notificationsApi", () => {
       expect(result).toEqual(mockPreferences)
     })
   })
+
+  describe("markReadByLink", () => {
+    it("should post the link to the mark-read-by-link endpoint", async () => {
+      vi.mocked(apiClient.post).mockResolvedValue({ data: { marked_read: 1 } })
+
+      const result = await notificationsApi.markReadByLink(
+        "/forum/general/traad/some-thread",
+      )
+
+      expect(apiClient.post).toHaveBeenCalledWith(
+        "/notifications/mark-read-by-link/",
+        { link: "/forum/general/traad/some-thread" },
+      )
+      expect(result).toEqual({ marked_read: 1 })
+    })
+
+    it("passes a percent-encoded path as-is — the backend is responsible for decoding", async () => {
+      // Browsers expose location.pathname with non-ASCII chars percent-encoded
+      // (e.g. æ → %C3%A6). The frontend sends whatever pathname it has;
+      // MarkNotificationsByLinkView on the backend calls unquote() before matching.
+      vi.mocked(apiClient.post).mockResolvedValue({ data: { marked_read: 1 } })
+
+      await notificationsApi.markReadByLink(
+        "/forum/bugs/traad/notifikationer-bliver-h%C3%A6ngende",
+      )
+
+      expect(apiClient.post).toHaveBeenCalledWith(
+        "/notifications/mark-read-by-link/",
+        {
+          link: "/forum/bugs/traad/notifikationer-bliver-h%C3%A6ngende",
+        },
+      )
+    })
+
+    it("returns zero when no notifications matched", async () => {
+      vi.mocked(apiClient.post).mockResolvedValue({ data: { marked_read: 0 } })
+
+      const result = await notificationsApi.markReadByLink("/forum/general")
+
+      expect(result).toEqual({ marked_read: 0 })
+    })
+  })
 })

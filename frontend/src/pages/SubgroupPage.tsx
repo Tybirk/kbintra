@@ -141,7 +141,8 @@ export default function SubgroupPage() {
     },
   })
 
-  const hasUnread = threads?.some((t) => t.is_unread) ?? false
+  const openUnread = threads?.some((t) => !t.is_closed && t.is_unread) ?? false
+  const closedUnread = threads?.some((t) => t.is_closed && t.is_unread) ?? false
 
   const isLoading = subgroupLoading || threadsLoading
 
@@ -223,7 +224,20 @@ export default function SubgroupPage() {
       >
         <Tabs.List>
           <Tabs.Tab value="threads" leftSection={<IconMessage size={16} />}>
-            Tråde
+            <Group gap={2} wrap="nowrap">
+              Tråde
+              {openUnread && (
+                <Box
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    backgroundColor: "var(--mantine-color-red-6)",
+                    flexShrink: 0,
+                  }}
+                />
+              )}
+            </Group>
           </Tabs.Tab>
           <Tabs.Tab value="documents" leftSection={<IconFolder size={16} />}>
             Dokumenter
@@ -233,14 +247,27 @@ export default function SubgroupPage() {
               value="closed-threads"
               leftSection={<IconLock size={16} />}
             >
-              Lukkede tråde
+              <Group gap={2} wrap="nowrap">
+                Lukkede tråde
+                {closedUnread && (
+                  <Box
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      backgroundColor: "var(--mantine-color-red-6)",
+                      flexShrink: 0,
+                    }}
+                  />
+                )}
+              </Group>
             </Tabs.Tab>
           )}
         </Tabs.List>
 
         <Tabs.Panel value="threads" pt="md">
           <Group justify="flex-end" mb="md">
-            {hasUnread && (
+            {openUnread && (
               <Button
                 variant="light"
                 leftSection={<IconChecks size={16} />}
