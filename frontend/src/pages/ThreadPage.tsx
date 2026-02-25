@@ -154,6 +154,8 @@ export default function ThreadPage() {
     if (!thread || !location.hash) return
     const el = document.getElementById(location.hash.slice(1))
     if (!el) return
+    // Clear the hash immediately so re-renders and navigation away don't re-trigger the highlight
+    navigate(location.pathname, { replace: true })
     // Small delay to ensure layout is settled
     const timer = setTimeout(() => {
       el.scrollIntoView({ behavior: "smooth", block: "center" })
@@ -161,8 +163,6 @@ export default function ThreadPage() {
       el.style.boxShadow = "0 0 0 3px var(--mantine-color-blue-4)"
       setTimeout(() => {
         el.style.boxShadow = ""
-        // Clear the hash so subsequent re-renders don't re-trigger the highlight
-        navigate(location.pathname, { replace: true })
       }, 2000)
     }, 100)
     return () => clearTimeout(timer)

@@ -65,6 +65,24 @@ class MarkNotificationsReadView(APIView):
         return Response({"marked_read": updated_count})
 
 
+class MarkNotificationsUnreadView(APIView):
+    """Mark notifications as unread."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request) -> Response:
+        notification_ids = request.data.get("notification_ids", [])
+
+        queryset = Notification.objects.filter(user=request.user, is_read=True)
+
+        if notification_ids:
+            queryset = queryset.filter(id__in=notification_ids)
+
+        updated_count = queryset.update(is_read=False)
+
+        return Response({"marked_unread": updated_count})
+
+
 class MarkNotificationsByLinkView(APIView):
     """Mark unread notifications for a specific link path as read."""
 

@@ -37,6 +37,16 @@ export const notificationsApi = {
     return response.data
   },
 
+  // Mark notifications as unread
+  markAsUnread: async (notificationIds: number[]): Promise<{
+    marked_unread: number
+  }> => {
+    const response = await apiClient.post("/notifications/mark-unread/", {
+      notification_ids: notificationIds,
+    })
+    return response.data
+  },
+
   // Mark all unread notifications for a specific link path as read
   markReadByLink: async (link: string): Promise<{ marked_read: number }> => {
     const response = await apiClient.post("/notifications/mark-read-by-link/", {

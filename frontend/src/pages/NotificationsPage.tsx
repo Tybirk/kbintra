@@ -11,10 +11,10 @@ import {
   Stack,
   Avatar,
   ActionIcon,
-  Menu,
   Badge,
   Modal,
   Box,
+  Tooltip,
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -23,7 +23,6 @@ import {
   IconChecks,
   IconTrash,
   IconSettings,
-  IconDotsVertical,
   IconMessage,
   IconSpeakerphone,
   IconMessageCircle,
@@ -32,6 +31,7 @@ import {
   IconBellOff,
   IconHeart,
   IconAt,
+  IconMailOpened,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -104,6 +104,16 @@ export default function NotificationsPage() {
 
   const markOneReadMutation = useMutation({
     mutationFn: (id: number) => notificationsApi.markAsRead([id]),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] })
+      queryClient.invalidateQueries({
+        queryKey: ["notifications", "unread-count"],
+      })
+    },
+  })
+
+  const markOneUnreadMutation = useMutation({
+    mutationFn: (id: number) => notificationsApi.markAsUnread([id]),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] })
       queryClient.invalidateQueries({
@@ -234,6 +244,7 @@ export default function NotificationsPage() {
               notification={notification}
               onClick={() => handleNotificationClick(notification)}
               onMarkRead={() => markOneReadMutation.mutate(notification.id)}
+              onMarkUnread={() => markOneUnreadMutation.mutate(notification.id)}
               onDelete={() => deleteOneMutation.mutate(notification.id)}
             />
           ))
@@ -271,6 +282,7 @@ interface NotificationCardProps {
   notification: Notification
   onClick: () => void
   onMarkRead: () => void
+  onMarkUnread: () => void
   onDelete: () => void
 }
 
@@ -278,6 +290,7 @@ function NotificationCard({
   notification,
   onClick,
   onMarkRead,
+  onMarkUnread,
   onDelete,
 }: NotificationCardProps) {
   const icon = notificationIcons[notification.notification_type]
@@ -295,11 +308,7 @@ function NotificationCard({
           ? undefined
           : "var(--mantine-color-blue-light)",
       }}
-      onClick={(e) => {
-        // Don't trigger click if menu is clicked
-        if ((e.target as HTMLElement).closest("[data-menu-trigger]")) return
-        onClick()
-      }}
+      onClick={onClick}
     >
       <Group justify="space-between" wrap="nowrap">
         <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
@@ -338,36 +347,47 @@ function NotificationCard({
           </Box>
         </Group>
 
-        <Menu shadow="md" width={200}>
-          <Menu.Target>
-            <ActionIcon variant="subtle" data-menu-trigger>
-              <IconDotsVertical size={16} />
-            </ActionIcon>
-          </Menu.Target>
-          <Menu.Dropdown>
-            {!notification.is_read && (
-              <Menu.Item
-                leftSection={<IconCheck size={14} />}
+        <Group gap={4} wrap="nowrap">
+          {!notification.is_read ? (
+            <Tooltip label="Markér som læst">
+              <ActionIcon
+                variant="subtle"
+                color="blue"
                 onClick={(e) => {
                   e.stopPropagation()
                   onMarkRead()
                 }}
               >
-                Markér som læst
-              </Menu.Item>
-            )}
-            <Menu.Item
+                <IconCheck size={16} />
+              </ActionIcon>
+            </Tooltip>
+          ) : (
+            <Tooltip label="Markér som ulæst">
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onMarkUnread()
+                }}
+              >
+                <IconMailOpened size={16} />
+              </ActionIcon>
+            </Tooltip>
+          )}
+          <Tooltip label="Slet">
+            <ActionIcon
+              variant="subtle"
               color="red"
-              leftSection={<IconTrash size={14} />}
               onClick={(e) => {
                 e.stopPropagation()
                 onDelete()
               }}
             >
-              Slet
-            </Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
+              <IconTrash size={16} />
+            </ActionIcon>
+          </Tooltip>
+        </Group>
       </Group>
     </Paper>
   )
