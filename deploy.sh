@@ -1,6 +1,22 @@
 #!/bin/sh
 set -e
 
+# Ensure systemd-resolved uses reliable public DNS (idempotent — safe to run every deploy)
+DNS_CONF=/etc/systemd/resolved.conf.d/dns.conf
+if [ ! -f "$DNS_CONF" ]; then
+    echo "Configuring systemd-resolved to use public DNS (1.1.1.1, 8.8.8.8)..."
+    sudo mkdir -p /etc/systemd/resolved.conf.d
+    printf '[Resolve]\nDNS=1.1.1.1 8.8.8.8\n' | sudo tee "$DNS_CONF" > /dev/null
+    sudo systemctl restart systemd-resolved
+fi
+
+# Check DNS resolution before doing anything
+if ! nslookup github.com > /dev/null 2>&1; then
+    echo "ERROR: DNS resolution is broken (nslookup github.com failed)."
+    echo "Fix with: sudo rm /etc/resolv.conf && echo -e 'nameserver 1.1.1.1\nnameserver 8.8.8.8' | sudo tee /etc/resolv.conf"
+    exit 1
+fi
+
 # Tag current state for rollback
 DEPLOY_TAG="deploy-$(date +%Y%m%d-%H%M%S)"
 echo "Tagging current state as $DEPLOY_TAG (for rollback: git checkout $DEPLOY_TAG)"

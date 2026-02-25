@@ -176,12 +176,10 @@ export default function RegisterPage() {
               placeholder="Dit fornavn"
               required
               value={formData.firstName}
-              onChange={(e) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  firstName: e.currentTarget.value,
-                }))
-              }
+              onChange={(e) => {
+                const value = e.currentTarget.value
+                setFormData((prev) => ({ ...prev, firstName: value }))
+              }}
             />
 
             <TextInput
@@ -189,12 +187,10 @@ export default function RegisterPage() {
               placeholder="Dit efternavn"
               required
               value={formData.lastName}
-              onChange={(e) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  lastName: e.currentTarget.value,
-                }))
-              }
+              onChange={(e) => {
+                const value = e.currentTarget.value
+                setFormData((prev) => ({ ...prev, lastName: value }))
+              }}
             />
 
             <PasswordInput
@@ -202,12 +198,10 @@ export default function RegisterPage() {
               placeholder="Opret en adgangskode"
               required
               value={formData.password}
-              onChange={(e) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  password: e.currentTarget.value,
-                }))
-              }
+              onChange={(e) => {
+                const value = e.currentTarget.value
+                setFormData((prev) => ({ ...prev, password: value }))
+              }}
               description="Mindst 8 tegn"
             />
 
@@ -216,12 +210,10 @@ export default function RegisterPage() {
               placeholder="Bekræft din adgangskode"
               required
               value={formData.passwordConfirm}
-              onChange={(e) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  passwordConfirm: e.currentTarget.value,
-                }))
-              }
+              onChange={(e) => {
+                const value = e.currentTarget.value
+                setFormData((prev) => ({ ...prev, passwordConfirm: value }))
+              }}
             />
 
             <Button type="submit" fullWidth loading={isLoading}>

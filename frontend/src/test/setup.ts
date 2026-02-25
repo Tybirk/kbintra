@@ -40,3 +40,7 @@ class IntersectionObserverMock {
 
 window.IntersectionObserver =
   (IntersectionObserverMock as unknown as typeof IntersectionObserver)
+
+// Define __APP_VERSION__ global used by ProfilePage (normally injected by Vite)
+;(globalThis as Record<string, unknown>).__APP_VERSION__ =
+  new Date().toISOString()

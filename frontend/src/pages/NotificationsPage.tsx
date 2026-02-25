@@ -353,6 +353,7 @@ function NotificationCard({
               <ActionIcon
                 variant="subtle"
                 color="blue"
+                aria-label="Markér som læst"
                 onClick={(e) => {
                   e.stopPropagation()
                   onMarkRead()
@@ -366,6 +367,7 @@ function NotificationCard({
               <ActionIcon
                 variant="subtle"
                 color="gray"
+                aria-label="Markér som ulæst"
                 onClick={(e) => {
                   e.stopPropagation()
                   onMarkUnread()
@@ -379,6 +381,7 @@ function NotificationCard({
             <ActionIcon
               variant="subtle"
               color="red"
+              aria-label="Slet"
               onClick={(e) => {
                 e.stopPropagation()
                 onDelete()
