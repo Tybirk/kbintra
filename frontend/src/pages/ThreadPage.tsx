@@ -161,10 +161,12 @@ export default function ThreadPage() {
       el.style.boxShadow = "0 0 0 3px var(--mantine-color-blue-4)"
       setTimeout(() => {
         el.style.boxShadow = ""
+        // Clear the hash so subsequent re-renders don't re-trigger the highlight
+        navigate(location.pathname, { replace: true })
       }, 2000)
     }, 100)
     return () => clearTimeout(timer)
-  }, [thread, location.hash])
+  }, [thread, location.hash]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const createPostMutation = useMutation({
     mutationFn: ({ data, files, pollData: pd }: CreatePostParams) =>

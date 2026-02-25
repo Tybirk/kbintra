@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Paper,
@@ -10,6 +11,7 @@ import {
   ActionIcon,
   Stack,
   Box,
+  Modal,
 } from "@mantine/core"
 import { notifications } from "@mantine/notifications"
 import { IconTrash, IconCheck } from "@tabler/icons-react"
@@ -87,11 +89,13 @@ function OptionBar({
   poll,
   hasVoted,
   onVote,
+  onShowVoters,
 }: {
   option: PollOption
   poll: Poll
   hasVoted: boolean
   onVote: () => void
+  onShowVoters: () => void
 }) {
   const percentage =
     poll.total_voters > 0
@@ -160,30 +164,49 @@ function OptionBar({
 
         {/* Voter avatars */}
         {!poll.is_anonymous && option.voters.length > 0 && (
-          <Group
-            gap={4}
-            px="sm"
-            pb={6}
-            style={{ position: "relative", zIndex: 1 }}
-          >
-            <Avatar.Group spacing="xs">
-              {option.voters.slice(0, 5).map((voter) => (
-                <Tooltip
-                  key={voter.id}
-                  label={`${voter.first_name} ${voter.last_name}`}
-                >
-                  <Avatar src={voter.profile_picture} size="xs" radius="xl">
-                    {voter.first_name?.[0]}
-                  </Avatar>
-                </Tooltip>
-              ))}
-              {option.voters.length > 5 && (
-                <Avatar size="xs" radius="xl">
-                  +{option.voters.length - 5}
-                </Avatar>
-              )}
-            </Avatar.Group>
-          </Group>
+          <Tooltip label="Klik for at se navne" withArrow>
+            <UnstyledButton
+              onClick={(e) => {
+                e.stopPropagation()
+                onShowVoters()
+              }}
+              style={{ display: "block", width: "100%" }}
+            >
+              <Group
+                gap={6}
+                px="sm"
+                pb={6}
+                style={{
+                  position: "relative",
+                  zIndex: 1,
+                  cursor: "pointer",
+                }}
+              >
+                <Avatar.Group spacing="xs">
+                  {option.voters.slice(0, 5).map((voter) => (
+                    <Avatar
+                      key={voter.id}
+                      src={voter.profile_picture}
+                      size="xs"
+                      radius="xl"
+                    >
+                      {voter.first_name?.[0]}
+                    </Avatar>
+                  ))}
+                  {option.voters.length > 5 && (
+                    <Avatar size="xs" radius="xl">
+                      +{option.voters.length - 5}
+                    </Avatar>
+                  )}
+                </Avatar.Group>
+                <Text size="xs" c="dimmed">
+                  {option.voters.length === 1
+                    ? "1 stemme"
+                    : `${option.voters.length} stemmer`}
+                </Text>
+              </Group>
+            </UnstyledButton>
+          </Tooltip>
         )}
       </Box>
     </UnstyledButton>
@@ -195,6 +218,7 @@ export default function PollDisplay({
   threadQueryKey,
 }: PollDisplayProps) {
   const queryClient = useQueryClient()
+  const [votersOption, setVotersOption] = useState<PollOption | null>(null)
 
   const voteMutation = useMutation({
     mutationFn: (optionId: number) => forumApi.votePoll(poll.id, optionId),
@@ -289,6 +313,7 @@ export default function PollDisplay({
             poll={poll}
             hasVoted={hasVoted}
             onVote={() => handleVote(option.id)}
+            onShowVoters={() => setVotersOption(option)}
           />
         ))}
       </Stack>
@@ -297,6 +322,35 @@ export default function PollDisplay({
         {poll.total_voters} {poll.total_voters === 1 ? "person" : "personer"}{" "}
         har stemt
       </Text>
+
+      <Modal
+        opened={votersOption !== null}
+        onClose={() => setVotersOption(null)}
+        title={
+          votersOption ? (
+            <Text fw={600} size="sm">
+              Stemte på: {votersOption.text}
+            </Text>
+          ) : null
+        }
+        size="sm"
+        centered
+      >
+        {votersOption && (
+          <Stack gap="xs">
+            {votersOption.voters.map((voter) => (
+              <Group key={voter.id} gap="sm">
+                <Avatar src={voter.profile_picture} size="sm" radius="xl">
+                  {voter.first_name?.[0]}
+                </Avatar>
+                <Text size="sm">
+                  {voter.first_name} {voter.last_name}
+                </Text>
+              </Group>
+            ))}
+          </Stack>
+        )}
+      </Modal>
     </Paper>
   )
 }
