@@ -89,8 +89,17 @@ export default function AppHeader({
 
         const notificationLink = wsData.notification.link
         const notificationPathname = notificationLink?.split("#")[0]
+        // Decode location.pathname because browsers percent-encode non-ASCII chars
+        // (e.g. æ → %C3%A6) while notification links are stored decoded.
+        const decodedPathname = (() => {
+          try {
+            return decodeURIComponent(location.pathname)
+          } catch {
+            return location.pathname
+          }
+        })()
         const isAlreadyViewing =
-          notificationPathname && location.pathname === notificationPathname
+          notificationPathname && decodedPathname === notificationPathname
 
         // Invalidate cached data so the destination page shows fresh content
         if (notificationLink) {

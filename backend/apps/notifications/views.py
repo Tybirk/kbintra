@@ -89,9 +89,13 @@ class MarkNotificationsByLinkView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request: Request) -> Response:
+        from urllib.parse import unquote
+
         from django.db.models import Q
 
-        link = request.data.get("link", "")
+        # URL-decode the link: browsers send percent-encoded paths (e.g. %C3%A6 for æ)
+        # but notification links are stored with the decoded Unicode form.
+        link = unquote(request.data.get("link", ""))
         if not link:
             return Response({"marked_read": 0})
 
