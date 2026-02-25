@@ -107,41 +107,42 @@ function OptionBar({
     : RadioIndicator
 
   return (
-    <UnstyledButton onClick={onVote} style={{ width: "100%" }}>
-      <Box
-        style={{
-          position: "relative",
-          border: `1.5px solid ${
-            option.has_voted
-              ? "var(--mantine-color-blue-5)"
-              : "var(--mantine-color-gray-3)"
-          }`,
-          borderRadius: "var(--mantine-radius-md)",
-          overflow: "hidden",
-          transition: "border-color 150ms ease",
-          cursor: "pointer",
-          "&:hover": { borderColor: "var(--mantine-color-blue-3)" },
-        }}
-      >
-        {/* Progress bar background */}
-        {hasVoted && (
-          <Box
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              height: "100%",
-              width: `${percentage}%`,
-              backgroundColor: option.has_voted
-                ? "var(--mantine-color-blue-light)"
-                : "var(--mantine-color-default-hover)",
-              transition: "width 400ms ease",
-              zIndex: 0,
-            }}
-          />
-        )}
+    <Box
+      style={{
+        position: "relative",
+        border: `1.5px solid ${
+          option.has_voted
+            ? "var(--mantine-color-blue-5)"
+            : "var(--mantine-color-gray-3)"
+        }`,
+        borderRadius: "var(--mantine-radius-md)",
+        overflow: "hidden",
+        transition: "border-color 150ms ease",
+      }}
+    >
+      {/* Progress bar background */}
+      {hasVoted && (
+        <Box
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            height: "100%",
+            width: `${percentage}%`,
+            backgroundColor: option.has_voted
+              ? "var(--mantine-color-blue-light)"
+              : "var(--mantine-color-default-hover)",
+            transition: "width 400ms ease",
+            zIndex: 0,
+          }}
+        />
+      )}
 
-        {/* Content */}
+      {/* Vote trigger — only this row casts a vote */}
+      <UnstyledButton
+        onClick={onVote}
+        style={{ width: "100%", display: "block" }}
+      >
         <Group
           wrap="nowrap"
           gap="sm"
@@ -161,55 +162,48 @@ function OptionBar({
             </Text>
           )}
         </Group>
+      </UnstyledButton>
 
-        {/* Voter avatars */}
-        {!poll.is_anonymous && option.voters.length > 0 && (
-          <Tooltip label="Klik for at se navne" withArrow>
-            <UnstyledButton
-              onClick={(e) => {
-                e.stopPropagation()
-                onShowVoters()
-              }}
-              style={{ display: "block", width: "100%" }}
+      {/* Voter avatars — separate button, no nesting */}
+      {!poll.is_anonymous && option.voters.length > 0 && (
+        <Tooltip label="Klik for at se navne" withArrow>
+          <UnstyledButton
+            onClick={onShowVoters}
+            style={{ display: "block", width: "100%" }}
+          >
+            <Group
+              gap={6}
+              px="sm"
+              pb={6}
+              style={{ position: "relative", zIndex: 1, cursor: "pointer" }}
             >
-              <Group
-                gap={6}
-                px="sm"
-                pb={6}
-                style={{
-                  position: "relative",
-                  zIndex: 1,
-                  cursor: "pointer",
-                }}
-              >
-                <Avatar.Group spacing="xs">
-                  {option.voters.slice(0, 5).map((voter) => (
-                    <Avatar
-                      key={voter.id}
-                      src={voter.profile_picture}
-                      size="xs"
-                      radius="xl"
-                    >
-                      {voter.first_name?.[0]}
-                    </Avatar>
-                  ))}
-                  {option.voters.length > 5 && (
-                    <Avatar size="xs" radius="xl">
-                      +{option.voters.length - 5}
-                    </Avatar>
-                  )}
-                </Avatar.Group>
-                <Text size="xs" c="dimmed">
-                  {option.voters.length === 1
-                    ? "1 stemme"
-                    : `${option.voters.length} stemmer`}
-                </Text>
-              </Group>
-            </UnstyledButton>
-          </Tooltip>
-        )}
-      </Box>
-    </UnstyledButton>
+              <Avatar.Group spacing="xs">
+                {option.voters.slice(0, 5).map((voter) => (
+                  <Avatar
+                    key={voter.id}
+                    src={voter.profile_picture}
+                    size="xs"
+                    radius="xl"
+                  >
+                    {voter.first_name?.[0]}
+                  </Avatar>
+                ))}
+                {option.voters.length > 5 && (
+                  <Avatar size="xs" radius="xl">
+                    +{option.voters.length - 5}
+                  </Avatar>
+                )}
+              </Avatar.Group>
+              <Text size="xs" c="dimmed">
+                {option.voters.length === 1
+                  ? "1 stemme"
+                  : `${option.voters.length} stemmer`}
+              </Text>
+            </Group>
+          </UnstyledButton>
+        </Tooltip>
+      )}
+    </Box>
   )
 }
 
