@@ -141,6 +141,7 @@ export default function ThreadPage() {
       queryClient.invalidateQueries({ queryKey: ["subgroups"] })
       queryClient.invalidateQueries({ queryKey: ["threads"] })
       void notificationsApi.markReadByLink(location.pathname).then(() => {
+        queryClient.invalidateQueries({ queryKey: ["notifications"] })
         queryClient.invalidateQueries({
           queryKey: ["notifications", "unread-count"],
         })

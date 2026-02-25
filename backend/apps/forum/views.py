@@ -714,6 +714,8 @@ class MarkAllForumReadView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request: Request) -> Response:
+        from apps.notifications.models import Notification, NotificationType
+
         now = timezone.now()
         threads = Thread.objects.all()
         records = [
@@ -726,6 +728,18 @@ class MarkAllForumReadView(APIView):
             unique_fields=["user", "thread"],
             update_fields=["last_read_at"],
         )
+        Notification.objects.filter(
+            user=request.user,
+            is_read=False,
+            notification_type__in=[
+                NotificationType.NEW_THREAD,
+                NotificationType.THREAD_REPLY,
+                NotificationType.POST_REPLY,
+                NotificationType.POST_REACTION,
+                NotificationType.MENTION,
+            ],
+            link__startswith="/forum/",
+        ).update(is_read=True)
         return Response({"detail": "Alt markeret som læst."}, status=status.HTTP_200_OK)
 
 
@@ -735,6 +749,8 @@ class MarkSubgroupReadView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request: Request, slug: str) -> Response:
+        from apps.notifications.models import Notification
+
         subgroup = get_object_or_404(Subgroup, slug=slug)
         now = timezone.now()
         threads = Thread.objects.filter(subgroup=subgroup)
@@ -748,6 +764,11 @@ class MarkSubgroupReadView(APIView):
             unique_fields=["user", "thread"],
             update_fields=["last_read_at"],
         )
+        Notification.objects.filter(
+            user=request.user,
+            is_read=False,
+            link__startswith=f"/forum/{subgroup.slug}/traad/",
+        ).update(is_read=True)
         return Response({"detail": "Gruppen markeret som læst."}, status=status.HTTP_200_OK)
 
 

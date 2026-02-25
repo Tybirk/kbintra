@@ -134,6 +134,10 @@ export default function SubgroupPage() {
       queryClient.invalidateQueries({ queryKey: ["threads", slug] })
       queryClient.invalidateQueries({ queryKey: ["subgroups"] })
       queryClient.invalidateQueries({ queryKey: ["forum", "unread-count"] })
+      queryClient.invalidateQueries({ queryKey: ["notifications"] })
+      queryClient.invalidateQueries({
+        queryKey: ["notifications", "unread-count"],
+      })
     },
   })
 

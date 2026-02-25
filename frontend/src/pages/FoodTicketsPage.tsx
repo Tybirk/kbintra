@@ -49,6 +49,7 @@ export default function FoodTicketsPage() {
   // Auto-mark food ticket notifications as read when visiting the page
   useEffect(() => {
     void notificationsApi.markReadByLink("/mad/billetter").then(() => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] })
       queryClient.invalidateQueries({
         queryKey: ["notifications", "unread-count"],
       })

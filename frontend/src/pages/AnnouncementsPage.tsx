@@ -83,6 +83,7 @@ export default function AnnouncementsPage() {
   // Auto-mark announcement notifications as read when visiting the page
   useEffect(() => {
     void notificationsApi.markReadByLink("/opslag").then(() => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] })
       queryClient.invalidateQueries({
         queryKey: ["notifications", "unread-count"],
       })

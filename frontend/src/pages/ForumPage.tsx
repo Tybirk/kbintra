@@ -93,6 +93,10 @@ export default function ForumPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["subgroups"] })
       queryClient.invalidateQueries({ queryKey: ["forum", "unread-count"] })
+      queryClient.invalidateQueries({ queryKey: ["notifications"] })
+      queryClient.invalidateQueries({
+        queryKey: ["notifications", "unread-count"],
+      })
     },
   })
 

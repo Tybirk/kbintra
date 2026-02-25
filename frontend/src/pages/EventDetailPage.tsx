@@ -81,6 +81,7 @@ export default function EventDetailPage() {
   useEffect(() => {
     if (eventId) {
       void notificationsApi.markReadByLink(`/kalender/${eventId}`).then(() => {
+        queryClient.invalidateQueries({ queryKey: ["notifications"] })
         queryClient.invalidateQueries({
           queryKey: ["notifications", "unread-count"],
         })
