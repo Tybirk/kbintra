@@ -8,7 +8,9 @@ from .views import (
     FileDeleteView,
     FileListCreateView,
     FileMoveView,
+    FolderBySlugView,
     FolderDetailView,
+    FolderDownloadView,
     FolderListCreateView,
     ForumUnreadCountView,
     MarkAllForumReadView,
@@ -73,6 +75,12 @@ urlpatterns = [
     # Folders
     path("subgroups/<slug:slug>/folders/", FolderListCreateView.as_view(), name="folder-list"),
     path("folders/<int:pk>/", FolderDetailView.as_view(), name="folder-detail"),
+    path("folders/<int:pk>/download/", FolderDownloadView.as_view(), name="folder-download"),
+    path(
+        "subgroups/<slug:slug>/folder/<str:folder_slug>/",
+        FolderBySlugView.as_view(),
+        name="folder-by-slug",
+    ),
     # Files
     path(
         "subgroups/<slug:slug>/files/",

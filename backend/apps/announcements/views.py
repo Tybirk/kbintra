@@ -55,3 +55,19 @@ class AnnouncementDetailView(generics.RetrieveUpdateDestroyAPIView):
         if self.request.method in ["PUT", "PATCH"]:
             return AnnouncementCreateSerializer
         return AnnouncementSerializer
+
+    def perform_update(self, serializer: Any) -> None:
+        # Capture old values before saving so we only notify on real content changes
+        old_title = serializer.instance.title
+        old_content = serializer.instance.content
+        announcement = serializer.save()
+
+        content_changed = announcement.title != old_title or announcement.content != old_content
+        if content_changed:
+            from apps.notifications.tasks import notify_announcement_updated_task
+
+            notify_announcement_updated_task(
+                editor_id=self.request.user.id,
+                announcement_title=announcement.title,
+                announcement_id=announcement.id,
+            )

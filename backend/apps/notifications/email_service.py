@@ -26,9 +26,11 @@ def should_send_email(user: User, notification_type: NotificationType) -> bool:
     preference_map = {
         NotificationType.NEW_MESSAGE: prefs.email_messages,
         NotificationType.NEW_ANNOUNCEMENT: prefs.email_announcements,
+        NotificationType.ANNOUNCEMENT_UPDATED: prefs.email_announcement_updates,
         NotificationType.NEW_THREAD: prefs.email_forum_subscriptions,
         NotificationType.THREAD_REPLY: prefs.email_thread_replies,
         NotificationType.POST_REPLY: prefs.email_thread_replies,
+        NotificationType.SUBGROUP_ACTIVITY: prefs.email_subgroup_activity,
         NotificationType.POST_REACTION: prefs.email_post_reactions,
         NotificationType.EVENT_CREATED: prefs.email_events,
         NotificationType.EVENT_UPDATED: prefs.email_events,

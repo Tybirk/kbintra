@@ -214,6 +214,16 @@ export const forumApi = {
     return response.data
   },
 
+  getFolderBySlug: async (
+    subgroupSlug: string,
+    folderSlug: string,
+  ): Promise<Folder> => {
+    const response = await apiClient.get(
+      `/forum/subgroups/${subgroupSlug}/folder/${folderSlug}/`,
+    )
+    return response.data
+  },
+
   createFolder: async (
     subgroupSlug: string,
     name: string,
@@ -290,6 +300,22 @@ export const forumApi = {
 
   deleteFile: async (fileId: number): Promise<void> => {
     await apiClient.delete(`/forum/files/${fileId}/`)
+  },
+
+  downloadFolder: async (
+    folderId: number,
+    folderName: string,
+  ): Promise<void> => {
+    const response = await apiClient.get(
+      `/forum/folders/${folderId}/download/`,
+      { responseType: "blob" },
+    )
+    const url = URL.createObjectURL(response.data as Blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `${folderName}.zip`
+    a.click()
+    URL.revokeObjectURL(url)
   },
 
   moveFile: async (fileId: number, folderId: number | null): Promise<{

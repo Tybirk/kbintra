@@ -2,8 +2,11 @@
 Views for Forum models.
 """
 
+import io
+import zipfile
 from typing import Any
 
+from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -423,6 +426,17 @@ class FolderDetailView(generics.RetrieveAPIView):
     queryset = Folder.objects.all()
 
 
+class FolderBySlugView(generics.RetrieveAPIView):
+    """Get folder by subgroup slug + folder slug."""
+
+    serializer_class = FolderSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self) -> Folder:
+        subgroup = get_object_or_404(Subgroup, slug=self.kwargs["slug"])
+        return get_object_or_404(Folder, subgroup=subgroup, slug=self.kwargs["folder_slug"])
+
+
 # File Views
 class SubgroupFileListCreateView(generics.ListCreateAPIView):
     """List root-level files in a subgroup or upload a new file."""
@@ -514,6 +528,36 @@ class FileMoveView(APIView):
 
         file.save(update_fields=["folder"])
         return Response({"detail": "File moved successfully."}, status=status.HTTP_200_OK)
+
+
+class FolderDownloadView(APIView):
+    """Download all files in a folder (including subfolders) as a zip."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: Request, pk: int) -> FileResponse:
+        folder = get_object_or_404(Folder, pk=pk)
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            self._add_folder(zf, folder, "")
+
+        buf.seek(0)
+        return FileResponse(
+            buf,
+            as_attachment=True,
+            filename=f"{folder.name}.zip",
+            content_type="application/zip",
+        )
+
+    def _add_folder(self, zf: zipfile.ZipFile, folder: Folder, prefix: str) -> None:
+        path = f"{prefix}{folder.name}/"
+        for file_obj in File.objects.filter(folder=folder):
+            if file_obj.file and file_obj.file.storage.exists(file_obj.file.name):
+                data = file_obj.file.read()
+                zf.writestr(f"{path}{file_obj.name}", data)
+        for subfolder in Folder.objects.filter(parent=folder):
+            self._add_folder(zf, subfolder, path)
 
 
 class RecentActivityView(generics.ListAPIView):

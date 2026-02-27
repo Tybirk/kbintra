@@ -150,7 +150,14 @@ services:
       - "traefik.http.routers.frontend.rule=PathPrefix(`/`)"
       - "traefik.http.routers.frontend.entrypoints=web"
       - "traefik.http.routers.frontend.priority=1"
+      - "traefik.http.routers.frontend.middlewares=secheaders"
       - "traefik.http.services.frontend.loadbalancer.server.port=80"
+      # Security headers middleware (applied to all frontend responses via Traefik,
+      # avoiding nginx add_header inheritance issues)
+      - "traefik.http.middlewares.secheaders.headers.customResponseHeaders.X-Content-Type-Options=nosniff"
+      - "traefik.http.middlewares.secheaders.headers.customResponseHeaders.X-Frame-Options=SAMEORIGIN"
+      - "traefik.http.middlewares.secheaders.headers.customResponseHeaders.Referrer-Policy=strict-origin-when-cross-origin"
+      - "traefik.http.middlewares.secheaders.headers.customResponseHeaders.Permissions-Policy=geolocation=(),camera=(),microphone=()"
     networks:
       - web
     restart: unless-stopped

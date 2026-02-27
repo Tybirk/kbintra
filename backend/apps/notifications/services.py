@@ -78,9 +78,11 @@ def get_user_preference(user: User, notification_type: NotificationType) -> bool
 
     preference_map = {
         NotificationType.NEW_ANNOUNCEMENT: prefs.notify_announcements,
+        NotificationType.ANNOUNCEMENT_UPDATED: prefs.notify_announcement_updates,
         NotificationType.NEW_THREAD: prefs.notify_forum_subscriptions,
         NotificationType.THREAD_REPLY: prefs.notify_thread_replies,
         NotificationType.POST_REPLY: prefs.notify_thread_replies,
+        NotificationType.SUBGROUP_ACTIVITY: prefs.notify_subgroup_activity,
         NotificationType.POST_REACTION: prefs.notify_post_reactions,
         NotificationType.EVENT_CREATED: prefs.notify_events,
         NotificationType.EVENT_UPDATED: prefs.notify_events,
@@ -104,9 +106,11 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
     preference_map = {
         NotificationType.NEW_MESSAGE: prefs.push_messages,
         NotificationType.NEW_ANNOUNCEMENT: prefs.push_announcements,
+        NotificationType.ANNOUNCEMENT_UPDATED: prefs.push_announcement_updates,
         NotificationType.NEW_THREAD: prefs.push_forum_subscriptions,
         NotificationType.THREAD_REPLY: prefs.push_thread_replies,
         NotificationType.POST_REPLY: prefs.push_thread_replies,
+        NotificationType.SUBGROUP_ACTIVITY: prefs.push_subgroup_activity,
         NotificationType.POST_REACTION: prefs.push_post_reactions,
         NotificationType.EVENT_CREATED: prefs.push_events,
         NotificationType.EVENT_UPDATED: prefs.push_events,
@@ -861,6 +865,75 @@ def notify_mentions(
             message=f"{author.first_name} nævnte dig i {context_label}",
             link=link,
             related_user=author,
+        )
+        if notification:
+            count += 1
+    return count
+
+
+def notify_announcement_updated(
+    recipients: QuerySet[User],
+    editor: User,
+    announcement_title: str,
+    announcement_id: int,
+) -> int:
+    """Notify users that a vigtig post has been edited.
+
+    Only sent to users who have opted in (default OFF).
+
+    Returns the count of notifications created.
+    """
+    count = 0
+    for user in recipients.exclude(id=editor.id):
+        notification = create_notification(
+            user=user,
+            notification_type=NotificationType.ANNOUNCEMENT_UPDATED,
+            title="Vigtig post opdateret",
+            message=announcement_title,
+            link="/opslag",
+            related_user=editor,
+        )
+        if notification:
+            count += 1
+    return count
+
+
+def notify_subgroup_activity(
+    subscribers: QuerySet[User],
+    replier: User,
+    thread_title: str,
+    thread_id: int,
+    subgroup_name: str,
+    subgroup_slug: str,
+    thread_slug: str,
+    reply_content: str,
+    post_id: int = 0,
+) -> int:
+    """Notify subgroup subscribers about new activity in a thread they don't participate in.
+
+    Only sent to users who have opted in (default OFF) and have
+    SubgroupSubscription.notify_replies=True for this subgroup.
+
+    Returns the count of notifications created.
+    """
+    from django.utils.html import strip_tags
+
+    plain_text = strip_tags(reply_content)
+    preview = plain_text[:80] + "..." if len(plain_text) > 80 else plain_text
+
+    link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
+    if post_id:
+        link += f"#post-{post_id}"
+
+    count = 0
+    for user in subscribers.exclude(id=replier.id):
+        notification = create_notification(
+            user=user,
+            notification_type=NotificationType.SUBGROUP_ACTIVITY,
+            title=f"{replier.first_name} svarede i {subgroup_name}",
+            message=f'"{thread_title}": {preview}',
+            link=link,
+            related_user=replier,
         )
         if notification:
             count += 1

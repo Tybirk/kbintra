@@ -352,7 +352,11 @@ class PostCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data: dict) -> Post:
         from django.utils import timezone
 
-        from apps.notifications.tasks import notify_post_reply_task, notify_thread_reply_task
+        from apps.notifications.tasks import (
+            notify_post_reply_task,
+            notify_subgroup_activity_task,
+            notify_thread_reply_task,
+        )
 
         from .utils import generate_docx_preview
 
@@ -438,6 +442,22 @@ class PostCreateSerializer(serializers.ModelSerializer):
                         post_id=post.id,
                     )
                 notified_users.add(poster_id)
+
+        # Notify subgroup subscribers who haven't participated in this thread.
+        # notified_users already contains the replier, thread author, and all
+        # previous posters — so they won't receive a duplicate notification.
+        notify_subgroup_activity_task(
+            replier_id=author.id,
+            thread_title=thread.title,
+            thread_id=thread.id,
+            subgroup_id=thread.subgroup.id,
+            subgroup_name=thread.subgroup.name,
+            subgroup_slug=thread.subgroup.slug,
+            thread_slug=thread.slug,
+            reply_content=post.content,
+            post_id=post.id,
+            exclude_user_ids=list(notified_users | mentioned_ids),
+        )
 
         # Store mention IDs for the view's perform_create to send mention notifications
         post._mention_ids = list(mentioned_ids)
@@ -697,6 +717,7 @@ class FolderSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "name",
+            "slug",
             "parent",
             "file_count",
             "subfolder_count",
@@ -715,7 +736,8 @@ class FolderCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Folder
-        fields = ["name", "parent"]
+        fields = ["name", "slug", "parent"]
+        read_only_fields = ["slug"]
 
     def create(self, validated_data: dict) -> Folder:
         validated_data["subgroup"] = self.context["subgroup"]

@@ -244,12 +244,34 @@ export default function NotificationPreferencesPage() {
                 }
               />
               <Switch
+                label="Vigtig post redigeret"
+                description="Når en vigtig post bliver redigeret"
+                checked={preferences.notify_announcement_updates}
+                onChange={(e) =>
+                  handleToggle(
+                    "notify_announcement_updates",
+                    e.currentTarget.checked,
+                  )
+                }
+              />
+              <Switch
                 label="Forum-abonnementer"
                 description="Nye tråde i grupper du abonnerer på"
                 checked={preferences.notify_forum_subscriptions}
                 onChange={(e) =>
                   handleToggle(
                     "notify_forum_subscriptions",
+                    e.currentTarget.checked,
+                  )
+                }
+              />
+              <Switch
+                label="Al aktivitet i grupper"
+                description="Nye svar i alle tråde i grupper du abonnerer på (ikke kun tråde du deltager i)"
+                checked={preferences.notify_subgroup_activity}
+                onChange={(e) =>
+                  handleToggle(
+                    "notify_subgroup_activity",
                     e.currentTarget.checked,
                   )
                 }
@@ -323,12 +345,34 @@ export default function NotificationPreferencesPage() {
                 }
               />
               <Switch
+                label="Vigtig post redigeret"
+                description="E-mail når en vigtig post bliver redigeret"
+                checked={preferences.email_announcement_updates}
+                onChange={(e) =>
+                  handleToggle(
+                    "email_announcement_updates",
+                    e.currentTarget.checked,
+                  )
+                }
+              />
+              <Switch
                 label="Forum-abonnementer"
                 description="E-mail for nye tråde i grupper du abonnerer på"
                 checked={preferences.email_forum_subscriptions}
                 onChange={(e) =>
                   handleToggle(
                     "email_forum_subscriptions",
+                    e.currentTarget.checked,
+                  )
+                }
+              />
+              <Switch
+                label="Al aktivitet i grupper"
+                description="E-mail for nye svar i alle tråde i grupper du abonnerer på"
+                checked={preferences.email_subgroup_activity}
+                onChange={(e) =>
+                  handleToggle(
+                    "email_subgroup_activity",
                     e.currentTarget.checked,
                   )
                 }
@@ -433,12 +477,34 @@ export default function NotificationPreferencesPage() {
                         }
                       />
                       <Switch
+                        label="Vigtig post redigeret"
+                        description="Push-notifikation når en vigtig post bliver redigeret"
+                        checked={preferences.push_announcement_updates}
+                        onChange={(e) =>
+                          handleToggle(
+                            "push_announcement_updates",
+                            e.currentTarget.checked,
+                          )
+                        }
+                      />
+                      <Switch
                         label="Forum-abonnementer"
                         description="Push-notifikation for nye tråde i grupper du abonnerer på"
                         checked={preferences.push_forum_subscriptions}
                         onChange={(e) =>
                           handleToggle(
                             "push_forum_subscriptions",
+                            e.currentTarget.checked,
+                          )
+                        }
+                      />
+                      <Switch
+                        label="Al aktivitet i grupper"
+                        description="Push-notifikation for nye svar i alle tråde i grupper du abonnerer på"
+                        checked={preferences.push_subgroup_activity}
+                        onChange={(e) =>
+                          handleToggle(
+                            "push_subgroup_activity",
                             e.currentTarget.checked,
                           )
                         }

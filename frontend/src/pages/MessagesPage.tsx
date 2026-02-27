@@ -23,6 +23,7 @@ import {
   ActionIcon,
   Menu,
   Anchor,
+  Divider,
 } from "@mantine/core"
 import { useDisclosure, useMediaQuery } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -42,6 +43,7 @@ import {
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
+import "dayjs/locale/da"
 
 import { messagingApi, chatWs } from "../api/messaging"
 import { apiClient } from "../api/client"
@@ -62,6 +64,7 @@ import { getFileIcon, getFileTypeColor } from "../components/FilePreview"
 import { AttachmentCarousel } from "../components/AttachmentCarousel"
 
 dayjs.extend(relativeTime)
+dayjs.locale("da")
 
 export default function MessagesPage() {
   const { user } = useAuthStore()
@@ -456,6 +459,7 @@ export default function MessagesPage() {
                   })
                 }}
                 onLeave={handleLeaveConversation}
+                isMobile={isMobile ?? false}
                 onMessageUpdated={(messageId, content, editedAt) => {
                   queryClient.setQueryData<ConversationDetail>(
                     ["conversation", selectedConversation],
@@ -619,7 +623,24 @@ interface ChatAreaProps {
     editedAt: string,
   ) => void
   onMessageDeleted?: (messageId: number) => void
+  isMobile?: boolean
 }
+
+function getDateLabel(date: dayjs.Dayjs): string {
+  const today = dayjs().startOf("day")
+  const msgDay = date.startOf("day")
+  const diff = today.diff(msgDay, "day")
+  if (diff === 0) return "I dag"
+  if (diff === 1) return "I går"
+  if (diff < 7) {
+    const name = date.format("dddd")
+    return name.charAt(0).toUpperCase() + name.slice(1)
+  }
+  if (date.year() === today.year()) return date.format("D. MMMM")
+  return date.format("D. MMMM YYYY")
+}
+
+const TIME_GAP_MINUTES = 20
 
 function ChatArea({
   conversation,
@@ -629,6 +650,7 @@ function ChatArea({
   onLeave,
   onMessageUpdated,
   onMessageDeleted,
+  isMobile,
 }: ChatAreaProps) {
   const location = useLocation()
   const [message, setMessage] = useState("")
@@ -815,22 +837,66 @@ function ChatArea({
       <ScrollArea style={{ flex: 1 }} p="md" viewportRef={scrollRef}>
         <Stack gap="sm">
           {conversation.messages.map((msg, idx) => {
+            const prevMsg = idx > 0 ? conversation.messages[idx - 1] : null
+            const nextMsg =
+              idx < conversation.messages.length - 1
+                ? conversation.messages[idx + 1]
+                : null
+
+            const sameSenderAsPrev =
+              prevMsg != null && prevMsg.sender.id === msg.sender.id
+            const sameSenderAsNext =
+              nextMsg != null && nextMsg.sender.id === msg.sender.id
+
+            const timeSincePrev = prevMsg
+              ? dayjs(msg.created_at).diff(dayjs(prevMsg.created_at), "minute")
+              : Infinity
+            const timeToNext = nextMsg
+              ? dayjs(nextMsg.created_at).diff(dayjs(msg.created_at), "minute")
+              : Infinity
+
+            const showDateSeparator =
+              !prevMsg ||
+              !dayjs(msg.created_at).isSame(dayjs(prevMsg.created_at), "day")
             const showAvatar =
-              idx === 0 ||
-              conversation.messages[idx - 1].sender.id !== msg.sender.id
+              !sameSenderAsPrev ||
+              timeSincePrev >= TIME_GAP_MINUTES ||
+              showDateSeparator
             const showTime =
-              idx === conversation.messages.length - 1 ||
-              conversation.messages[idx + 1].sender.id !== msg.sender.id
+              !sameSenderAsNext ||
+              timeToNext >= TIME_GAP_MINUTES ||
+              (nextMsg != null &&
+                !dayjs(msg.created_at).isSame(dayjs(nextMsg.created_at), "day"))
+
+            const dateLabel = showDateSeparator
+              ? getDateLabel(dayjs(msg.created_at))
+              : null
 
             return (
-              <MessageBubble
-                key={msg.id}
-                message={msg}
-                showAvatar={showAvatar}
-                showTime={showTime}
-                onEdit={onMessageUpdated}
-                onUnsend={onMessageDeleted}
-              />
+              <Box key={msg.id}>
+                {dateLabel && (
+                  <Divider
+                    label={
+                      <Text size="xs" c="dimmed" fw={500}>
+                        {dateLabel}
+                      </Text>
+                    }
+                    labelPosition="center"
+                    my="sm"
+                  />
+                )}
+                {showAvatar &&
+                  !showDateSeparator &&
+                  timeSincePrev >= TIME_GAP_MINUTES && <Box mt="xs" />}
+                <MessageBubble
+                  message={msg}
+                  showAvatar={showAvatar}
+                  showTime={showTime}
+                  showInlineTime={!isMobile}
+                  onEdit={onMessageUpdated}
+                  onUnsend={onMessageDeleted}
+                />
+              </Box>
             )
           })}
         </Stack>
@@ -925,6 +991,7 @@ interface MessageBubbleProps {
   message: Message
   showAvatar: boolean
   showTime: boolean
+  showInlineTime?: boolean
   onEdit?: (messageId: number, content: string, editedAt: string) => void
   onUnsend?: (messageId: number) => void
 }
@@ -937,6 +1004,7 @@ function MessageBubble({
   message,
   showAvatar,
   showTime,
+  showInlineTime,
   onEdit,
   onUnsend,
 }: MessageBubbleProps) {
@@ -1209,6 +1277,25 @@ function MessageBubble({
               })}
             </Stack>
           )}
+          {showInlineTime && !hasContent && hasAttachments && !isEditing && (
+            <Group gap={4} justify={isOwn ? "flex-end" : "flex-start"} mt={2}>
+              {showTime &&
+                isOwn &&
+                (message.is_read ? (
+                  <IconChecks size={14} color="var(--mantine-color-blue-6)" />
+                ) : (
+                  <IconCheck size={14} color="gray" />
+                ))}
+              <Text size="xs" c="dimmed">
+                {dayjs(message.created_at).format("HH:mm")}
+              </Text>
+              {showTime && message.edited_at && (
+                <Text size="xs" c="dimmed">
+                  (redigeret)
+                </Text>
+              )}
+            </Group>
+          )}
           {isEditing ? (
             <Stack gap="xs" style={{ minWidth: 200 }}>
               <Textarea
@@ -1251,8 +1338,35 @@ function MessageBubble({
                 style={{
                   display: "flex",
                   justifyContent: isOwn ? "flex-end" : "flex-start",
+                  alignItems: "flex-end",
+                  gap: 6,
                 }}
               >
+                {showInlineTime && isOwn && (
+                  <Group
+                    gap={4}
+                    style={{ flexShrink: 0, alignSelf: "flex-end" }}
+                  >
+                    {showTime &&
+                      isOwn &&
+                      (message.is_read ? (
+                        <IconChecks
+                          size={14}
+                          color="var(--mantine-color-blue-6)"
+                        />
+                      ) : (
+                        <IconCheck size={14} color="gray" />
+                      ))}
+                    <Text size="xs" c="dimmed" style={{ lineHeight: "20px" }}>
+                      {dayjs(message.created_at).format("HH:mm")}
+                    </Text>
+                    {showTime && message.edited_at && (
+                      <Text size="xs" c="dimmed" style={{ lineHeight: "20px" }}>
+                        (redigeret)
+                      </Text>
+                    )}
+                  </Group>
+                )}
                 <Paper
                   p="xs"
                   radius="lg"
@@ -1260,7 +1374,7 @@ function MessageBubble({
                     backgroundColor: isOwn
                       ? "var(--mantine-color-blue-6)"
                       : "var(--mantine-color-default-hover)",
-                    maxWidth: "100%",
+                    maxWidth: showInlineTime ? "calc(100% - 40px)" : "100%",
                   }}
                 >
                   <Text
@@ -1274,10 +1388,25 @@ function MessageBubble({
                     <MessageContent content={message.content} isOwn={isOwn} />
                   </Text>
                 </Paper>
+                {showInlineTime && !isOwn && (
+                  <Group
+                    gap={4}
+                    style={{ flexShrink: 0, alignSelf: "flex-end" }}
+                  >
+                    <Text size="xs" c="dimmed" style={{ lineHeight: "20px" }}>
+                      {dayjs(message.created_at).format("HH:mm")}
+                    </Text>
+                    {showTime && message.edited_at && (
+                      <Text size="xs" c="dimmed" style={{ lineHeight: "20px" }}>
+                        (redigeret)
+                      </Text>
+                    )}
+                  </Group>
+                )}
               </Box>
             )
           )}
-          {showTime && !isEditing && (
+          {showTime && !isEditing && !showInlineTime && (
             <Group gap={4} justify={isOwn ? "flex-end" : "flex-start"} mt={2}>
               <Text size="xs" c="dimmed">
                 {dayjs(message.created_at).format("HH:mm")}

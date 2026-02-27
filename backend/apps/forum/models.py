@@ -200,6 +200,7 @@ class Folder(models.Model):
         blank=True,
     )
     name = models.CharField(max_length=100)
+    slug = models.SlugField(max_length=100, allow_unicode=True, blank=True, db_index=True)
     parent = models.ForeignKey(
         "self",
         on_delete=models.CASCADE,
@@ -211,10 +212,27 @@ class Folder(models.Model):
 
     class Meta:
         ordering = ["name"]
-        unique_together = ["subgroup", "parent", "name"]
+        unique_together = [
+            ["subgroup", "parent", "name"],
+            ["subgroup", "slug"],
+        ]
 
     def __str__(self) -> str:
         return self.name
+
+    def save(self, *args: object, **kwargs: object) -> None:
+        if not self.slug:
+            self.slug = self._generate_slug()
+        super().save(*args, **kwargs)
+
+    def _generate_slug(self) -> str:
+        base = slugify(self.name, allow_unicode=True) or "mappe"
+        slug = base
+        n = 2
+        while Folder.objects.filter(subgroup=self.subgroup, slug=slug).exists():
+            slug = f"{base}-{n}"
+            n += 1
+        return slug
 
 
 class Reaction(models.Model):

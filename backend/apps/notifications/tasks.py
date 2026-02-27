@@ -493,6 +493,96 @@ def notify_mentions_task(
     logger.info("notify_mentions_task COMPLETED: %d notifications created", count)
 
 
+@db_task(retries=1, retry_delay=60)
+def notify_announcement_updated_task(
+    editor_id: int,
+    announcement_title: str,
+    announcement_id: int,
+) -> None:
+    """Send announcement-updated notifications to all users in background."""
+    logger.info(
+        "notify_announcement_updated_task STARTED: editor=%d title='%s'",
+        editor_id,
+        announcement_title,
+    )
+    from apps.users.models import User
+
+    from .services import notify_announcement_updated
+
+    try:
+        editor = User.objects.get(id=editor_id)
+    except User.DoesNotExist:
+        logger.warning("notify_announcement_updated_task: Editor %d not found", editor_id)
+        return
+
+    recipients = User.objects.filter(is_active=True).exclude(id=editor_id)
+    count = notify_announcement_updated(
+        recipients=recipients,
+        editor=editor,
+        announcement_title=announcement_title,
+        announcement_id=announcement_id,
+    )
+    logger.info("notify_announcement_updated_task COMPLETED: %d notifications created", count)
+
+
+@db_task(retries=1, retry_delay=60)
+def notify_subgroup_activity_task(
+    replier_id: int,
+    thread_title: str,
+    thread_id: int,
+    subgroup_id: int,
+    subgroup_name: str,
+    subgroup_slug: str,
+    thread_slug: str,
+    reply_content: str,
+    post_id: int,
+    exclude_user_ids: list[int],
+) -> None:
+    """Notify subgroup subscribers about new thread activity in background."""
+    logger.info(
+        "notify_subgroup_activity_task STARTED: replier=%d thread='%s'",
+        replier_id,
+        thread_title,
+    )
+    from apps.users.models import User
+
+    from .services import notify_subgroup_activity
+
+    try:
+        replier = User.objects.get(id=replier_id)
+    except User.DoesNotExist:
+        logger.warning("notify_subgroup_activity_task: Replier %d not found", replier_id)
+        return
+
+    # Subscribers who have notify_replies=True for this subgroup and are not
+    # already being notified via other channels (thread author, previous posters, mentions)
+    from apps.forum.models import ThreadMuteStatus
+
+    subscribers = (
+        User.objects.filter(
+            is_active=True,
+            subgroup_subscriptions__subgroup_id=subgroup_id,
+            subgroup_subscriptions__notify_replies=True,
+        )
+        .exclude(id__in=exclude_user_ids)
+        .exclude(id__in=ThreadMuteStatus.objects.filter(thread_id=thread_id).values("user_id"))
+        .distinct()
+    )
+
+    count = notify_subgroup_activity(
+        subscribers=subscribers,
+        replier=replier,
+        thread_title=thread_title,
+        thread_id=thread_id,
+        subgroup_name=subgroup_name,
+        subgroup_slug=subgroup_slug,
+        thread_slug=thread_slug,
+        reply_content=reply_content,
+        post_id=post_id,
+    )
+    logger.info("notify_subgroup_activity_task COMPLETED: %d notifications created", count)
+
+
 # ---------------------------------------------------------------------------
 # Drive menu refresh
 # ---------------------------------------------------------------------------

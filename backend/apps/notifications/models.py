@@ -11,9 +11,11 @@ class NotificationType(models.TextChoices):
 
     NEW_MESSAGE = "new_message", "Ny besked"
     NEW_ANNOUNCEMENT = "new_announcement", "Ny vigtig post"
+    ANNOUNCEMENT_UPDATED = "announcement_updated", "Vigtig post opdateret"
     NEW_THREAD = "new_thread", "Ny tråd i gruppen"
     THREAD_REPLY = "thread_reply", "Nyt svar i tråden"
     POST_REPLY = "post_reply", "Nyt svar på dit opslag"
+    SUBGROUP_ACTIVITY = "subgroup_activity", "Ny aktivitet i gruppen"
     POST_REACTION = "post_reaction", "Reaktion på dit opslag"
     EVENT_CREATED = "event_created", "Nyt arrangement"
     EVENT_UPDATED = "event_updated", "Arrangement opdateret"
@@ -69,8 +71,10 @@ class NotificationPreference(models.Model):
     # In-app notification preferences
     notify_messages = models.BooleanField(default=True)
     notify_announcements = models.BooleanField(default=True)
+    notify_announcement_updates = models.BooleanField(default=False)
     notify_forum_subscriptions = models.BooleanField(default=True)
     notify_thread_replies = models.BooleanField(default=True)
+    notify_subgroup_activity = models.BooleanField(default=False)
     notify_post_reactions = models.BooleanField(default=True)
     notify_events = models.BooleanField(default=True)
     notify_event_reminders = models.BooleanField(default=True)
@@ -80,8 +84,10 @@ class NotificationPreference(models.Model):
     # Email notification preferences (per notification type)
     email_messages = models.BooleanField(default=False)
     email_announcements = models.BooleanField(default=False)
+    email_announcement_updates = models.BooleanField(default=False)
     email_forum_subscriptions = models.BooleanField(default=False)
     email_thread_replies = models.BooleanField(default=False)
+    email_subgroup_activity = models.BooleanField(default=False)
     email_post_reactions = models.BooleanField(default=False)
     email_events = models.BooleanField(default=False)
     email_event_reminders = models.BooleanField(default=False)
@@ -91,8 +97,10 @@ class NotificationPreference(models.Model):
     # Push notification preferences (per notification type)
     push_messages = models.BooleanField(default=True)
     push_announcements = models.BooleanField(default=True)
+    push_announcement_updates = models.BooleanField(default=False)
     push_forum_subscriptions = models.BooleanField(default=True)
     push_thread_replies = models.BooleanField(default=True)
+    push_subgroup_activity = models.BooleanField(default=False)
     push_post_reactions = models.BooleanField(default=True)
     push_events = models.BooleanField(default=True)
     push_event_reminders = models.BooleanField(default=True)

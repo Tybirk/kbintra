@@ -265,6 +265,7 @@ export interface RecentActivity {
 export interface Folder {
   id: number
   name: string
+  slug: string
   parent: number | null
   file_count: number
   subfolder_count: number
@@ -674,8 +675,10 @@ export interface NotificationPreference {
   // In-app preferences
   notify_messages: boolean
   notify_announcements: boolean
+  notify_announcement_updates: boolean
   notify_forum_subscriptions: boolean
   notify_thread_replies: boolean
+  notify_subgroup_activity: boolean
   notify_post_reactions: boolean
   notify_events: boolean
   notify_event_reminders: boolean
@@ -684,8 +687,10 @@ export interface NotificationPreference {
   // Email preferences
   email_messages: boolean
   email_announcements: boolean
+  email_announcement_updates: boolean
   email_forum_subscriptions: boolean
   email_thread_replies: boolean
+  email_subgroup_activity: boolean
   email_post_reactions: boolean
   email_events: boolean
   email_event_reminders: boolean
@@ -694,8 +699,10 @@ export interface NotificationPreference {
   // Push preferences
   push_messages: boolean
   push_announcements: boolean
+  push_announcement_updates: boolean
   push_forum_subscriptions: boolean
   push_thread_replies: boolean
+  push_subgroup_activity: boolean
   push_post_reactions: boolean
   push_events: boolean
   push_event_reminders: boolean
@@ -708,8 +715,10 @@ export interface NotificationPreference {
 export interface UpdateNotificationPreferenceData {
   notify_messages?: boolean
   notify_announcements?: boolean
+  notify_announcement_updates?: boolean
   notify_forum_subscriptions?: boolean
   notify_thread_replies?: boolean
+  notify_subgroup_activity?: boolean
   notify_post_reactions?: boolean
   notify_events?: boolean
   notify_event_reminders?: boolean
@@ -717,8 +726,10 @@ export interface UpdateNotificationPreferenceData {
   notify_mentions?: boolean
   email_messages?: boolean
   email_announcements?: boolean
+  email_announcement_updates?: boolean
   email_forum_subscriptions?: boolean
   email_thread_replies?: boolean
+  email_subgroup_activity?: boolean
   email_post_reactions?: boolean
   email_events?: boolean
   email_event_reminders?: boolean
@@ -726,8 +737,10 @@ export interface UpdateNotificationPreferenceData {
   email_mentions?: boolean
   push_messages?: boolean
   push_announcements?: boolean
+  push_announcement_updates?: boolean
   push_forum_subscriptions?: boolean
   push_thread_replies?: boolean
+  push_subgroup_activity?: boolean
   push_post_reactions?: boolean
   push_events?: boolean
   push_event_reminders?: boolean

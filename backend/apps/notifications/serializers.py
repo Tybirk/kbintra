@@ -51,8 +51,10 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
             # In-app preferences
             "notify_messages",
             "notify_announcements",
+            "notify_announcement_updates",
             "notify_forum_subscriptions",
             "notify_thread_replies",
+            "notify_subgroup_activity",
             "notify_post_reactions",
             "notify_events",
             "notify_event_reminders",
@@ -61,8 +63,10 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
             # Email preferences
             "email_messages",
             "email_announcements",
+            "email_announcement_updates",
             "email_forum_subscriptions",
             "email_thread_replies",
+            "email_subgroup_activity",
             "email_post_reactions",
             "email_events",
             "email_event_reminders",
@@ -71,8 +75,10 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
             # Push preferences
             "push_messages",
             "push_announcements",
+            "push_announcement_updates",
             "push_forum_subscriptions",
             "push_thread_replies",
+            "push_subgroup_activity",
             "push_post_reactions",
             "push_events",
             "push_event_reminders",

@@ -41,6 +41,7 @@ import {
   IconChartBar,
   IconChecks,
   IconCalendarEvent,
+  IconLink,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -82,14 +83,14 @@ dayjs.extend(relativeTime)
 dayjs.locale("da")
 
 export default function SubgroupPage() {
-  const { slug, folderId: folderIdParam } = useParams<{
+  const { slug, folderSlug: folderSlugParam } = useParams<{
     slug: string
-    folderId?: string
+    folderSlug?: string
   }>()
   const navigate = useNavigate()
   const location = useLocation()
   const queryClient = useQueryClient()
-  const initialFolderId = folderIdParam ? parseInt(folderIdParam, 10) : null
+  const initialFolderSlug = folderSlugParam ?? null
   const activeTab = location.pathname.includes("/dokumenter")
     ? "documents"
     : location.pathname.includes("/lukkede")
@@ -323,10 +324,10 @@ export default function SubgroupPage() {
         <Tabs.Panel value="documents" pt="md">
           <DocumentsTab
             subgroupSlug={slug!}
-            initialFolderId={initialFolderId}
-            onFolderChange={(folderId) => {
-              if (folderId === null) navigate(`/forum/${slug}/dokumenter`)
-              else navigate(`/forum/${slug}/dokumenter/${folderId}`)
+            initialFolderSlug={initialFolderSlug}
+            onFolderChange={(folderSlug) => {
+              if (folderSlug === null) navigate(`/forum/${slug}/dokumenter`)
+              else navigate(`/forum/${slug}/dokumenter/${folderSlug}`)
             }}
           />
         </Tabs.Panel>
@@ -643,64 +644,87 @@ function CreateThreadModal({
 interface FolderPathEntry {
   id: number | null
   name: string
+  slug?: string
 }
 
 interface FolderAncestor {
   id: number
   name: string
+  slug?: string
 }
 
 interface DocumentsTabProps {
   subgroupSlug: string
-  initialFolderId?: number | null
-  onFolderChange?: (folderId: number | null) => void
+  initialFolderSlug?: string | null
+  onFolderChange?: (folderSlug: string | null) => void
 }
 
 function DocumentsTab({
   subgroupSlug,
-  initialFolderId,
+  initialFolderSlug,
   onFolderChange,
 }: DocumentsTabProps) {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [currentFolderId, setCurrentFolderId] = useState<number | null>(
-    initialFolderId ?? null,
-  )
+  const [currentFolderId, setCurrentFolderId] = useState<number | null>(null)
   const [folderPath, setFolderPath] = useState<FolderPathEntry[]>([
     { id: null, name: "Dokumenter" },
   ])
-  // Track which folderId we've already processed to avoid re-fetching on our own navigations
-  const processedFolderIdRef = useRef<number | null | undefined>(undefined)
+  // Track which folderSlug we've already processed to avoid re-fetching on our own navigations
+  const processedFolderSlugRef = useRef<string | null | undefined>(undefined)
+  const [resolvingSlug, setResolvingSlug] = useState(!!initialFolderSlug)
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState("")
 
   useEffect(() => {
-    const targetId = initialFolderId ?? null
-    if (processedFolderIdRef.current === targetId) return
-    processedFolderIdRef.current = targetId
+    const targetSlug = initialFolderSlug ?? null
+    if (processedFolderSlugRef.current === targetSlug) return
+    processedFolderSlugRef.current = targetSlug
 
-    if (targetId === null) {
+    if (targetSlug === null) {
       setCurrentFolderId(null)
       setFolderPath([{ id: null, name: "Dokumenter" }])
+      setResolvingSlug(false)
       return
     }
 
-    // Reconstruct breadcrumb path by walking up through ancestors
+    // Resolve folder slug to folder, then reconstruct breadcrumb path
+    setResolvingSlug(true)
     const buildPath = async () => {
+      const targetFolder = await forumApi.getFolderBySlug(
+        subgroupSlug,
+        targetSlug,
+      )
       const ancestors: FolderAncestor[] = []
-      let currentId: number | null = targetId
+      let currentId: number | null = targetFolder.parent
       while (currentId !== null) {
         const folder = await forumApi.getFolder(currentId)
-        ancestors.unshift({ id: folder.id, name: folder.name })
+        ancestors.unshift({
+          id: folder.id,
+          name: folder.name,
+          slug: folder.slug,
+        })
         currentId = folder.parent
       }
-      setCurrentFolderId(targetId)
+      ancestors.push({
+        id: targetFolder.id,
+        name: targetFolder.name,
+        slug: targetFolder.slug,
+      })
+      setCurrentFolderId(targetFolder.id)
       setFolderPath([{ id: null, name: "Dokumenter" }, ...ancestors])
+      setResolvingSlug(false)
     }
 
-    buildPath()
-  }, [initialFolderId])
+    buildPath().catch(() => {
+      // Folder not found — fall back to root
+      setCurrentFolderId(null)
+      setFolderPath([{ id: null, name: "Dokumenter" }])
+      setResolvingSlug(false)
+      onFolderChange?.(null)
+    })
+  }, [initialFolderSlug, subgroupSlug])
 
   const [
     createFolderModalOpened,
@@ -719,7 +743,11 @@ function DocumentsTab({
     }
   }
 
-  const handleUploadFiles = async (droppedFiles: File[]) => {
+  const handleUploadFiles = async (
+    droppedFiles: File[],
+    targetFolderId?: number,
+  ) => {
+    const folderId = targetFolderId ?? currentFolderId
     const { validFiles, errors } = filterFilesBySize(droppedFiles)
     for (const error of errors) {
       notifications.show({
@@ -730,14 +758,40 @@ function DocumentsTab({
     }
     if (validFiles.length === 0) return
 
+    // Check for duplicate filenames in the target location
+    let existingFiles: ForumFile[] = []
+    try {
+      existingFiles =
+        folderId !== null
+          ? await forumApi.getFiles(folderId)
+          : await forumApi.getRootFiles(subgroupSlug)
+    } catch {
+      // If we can't fetch, just proceed without the check
+    }
+
+    const existingNames = new Set(existingFiles.map((f) => f.name))
+    const duplicates = validFiles.filter((f) => existingNames.has(f.name))
+    let filesToUpload = validFiles
+
+    if (duplicates.length > 0) {
+      const names = duplicates.map((f) => f.name).join(", ")
+      const proceed = window.confirm(
+        `Følgende filer findes allerede: ${names}\n\nVil du uploade dem alligevel?`,
+      )
+      if (!proceed) {
+        filesToUpload = validFiles.filter((f) => !existingNames.has(f.name))
+        if (filesToUpload.length === 0) return
+      }
+    }
+
     setUploading(true)
     let successCount = 0
-    for (let i = 0; i < validFiles.length; i++) {
-      const file = validFiles[i]
-      setUploadProgress(`${i + 1} / ${validFiles.length}`)
+    for (let i = 0; i < filesToUpload.length; i++) {
+      const file = filesToUpload[i]
+      setUploadProgress(`${i + 1} / ${filesToUpload.length}`)
       try {
-        if (currentFolderId !== null) {
-          await forumApi.uploadFile(currentFolderId, file)
+        if (folderId !== null) {
+          await forumApi.uploadFile(folderId, file)
         } else {
           await forumApi.uploadRootFile(subgroupSlug, file)
         }
@@ -753,7 +807,17 @@ function DocumentsTab({
     setUploading(false)
     setUploadProgress("")
     if (successCount > 0) {
+      // Invalidate both current view and the target folder if different
       invalidateFiles()
+      if (targetFolderId !== undefined && targetFolderId !== currentFolderId) {
+        queryClient.invalidateQueries({
+          queryKey: ["files", targetFolderId],
+        })
+        // Also refresh folder counts
+        queryClient.invalidateQueries({
+          queryKey: ["folders", subgroupSlug],
+        })
+      }
       notifications.show({
         title: "Upload fuldført",
         message:
@@ -784,9 +848,13 @@ function DocumentsTab({
         : forumApi.getRootFiles(subgroupSlug),
   })
 
-  const navigateToFolder = (folderId: number | null, folderName: string) => {
+  const navigateToFolder = (
+    folderId: number | null,
+    folderName: string,
+    folderSlug?: string,
+  ) => {
     // Mark as processed so the effect doesn't re-fetch for this navigation
-    processedFolderIdRef.current = folderId
+    processedFolderSlugRef.current = folderSlug ?? null
     if (folderId === null) {
       setCurrentFolderId(null)
       setFolderPath([{ id: null, name: "Dokumenter" }])
@@ -796,13 +864,16 @@ function DocumentsTab({
       if (existingIndex >= 0) {
         setFolderPath(folderPath.slice(0, existingIndex + 1))
       } else {
-        setFolderPath([...folderPath, { id: folderId, name: folderName }])
+        setFolderPath([
+          ...folderPath,
+          { id: folderId, name: folderName, slug: folderSlug },
+        ])
       }
     }
-    onFolderChange?.(folderId)
+    onFolderChange?.(folderSlug ?? null)
   }
 
-  const isLoading = foldersLoading || filesLoading
+  const isLoading = resolvingSlug || foldersLoading || filesLoading
   const hasContent =
     (folders && folders.length > 0) || (files && files.length > 0)
 
@@ -828,7 +899,7 @@ function DocumentsTab({
           {folderPath.map((item, index) => (
             <Anchor
               key={item.id ?? "root"}
-              onClick={() => navigateToFolder(item.id, item.name)}
+              onClick={() => navigateToFolder(item.id, item.name, item.slug)}
               style={{ cursor: "pointer" }}
               fw={index === folderPath.length - 1 ? 500 : undefined}
             >
@@ -867,7 +938,11 @@ function DocumentsTab({
             <FolderRow
               key={folder.id}
               folder={folder}
-              onClick={() => navigateToFolder(folder.id, folder.name)}
+              subgroupSlug={subgroupSlug}
+              onClick={() =>
+                navigateToFolder(folder.id, folder.name, folder.slug)
+              }
+              onDropFiles={(files) => handleUploadFiles(files, folder.id)}
             />
           ))}
 
@@ -949,17 +1024,65 @@ function DocumentsTab({
 
 interface FolderRowProps {
   folder: Folder
+  subgroupSlug: string
   onClick: () => void
+  onDropFiles: (files: File[]) => void
 }
 
-function FolderRow({ folder, onClick }: FolderRowProps) {
+function FolderRow({
+  folder,
+  subgroupSlug,
+  onClick,
+  onDropFiles,
+}: FolderRowProps) {
+  const [isDragOver, setIsDragOver] = useState(false)
+  const dragCounter = useRef(0)
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounter.current++
+    if (e.dataTransfer.types.includes("Files")) setIsDragOver(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (--dragCounter.current === 0) setIsDragOver(false)
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounter.current = 0
+    setIsDragOver(false)
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length > 0) onDropFiles(files)
+  }
+
   return (
     <Paper
       withBorder
       p="md"
       radius="md"
-      style={{ cursor: "pointer" }}
+      style={{
+        cursor: "pointer",
+        backgroundColor: isDragOver
+          ? "var(--mantine-color-blue-light)"
+          : undefined,
+        borderColor: isDragOver ? "var(--mantine-color-blue-5)" : undefined,
+        transition: "background-color 0.15s, border-color 0.15s",
+      }}
       onClick={onClick}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
     >
       <Group justify="space-between">
         <Group gap="md">
@@ -967,11 +1090,52 @@ function FolderRow({ folder, onClick }: FolderRowProps) {
           <div>
             <Text fw={500}>{folder.name}</Text>
             <Text size="xs" c="dimmed">
-              {folder.subfolder_count} mapper, {folder.file_count} filer
+              {isDragOver
+                ? "Slip for at uploade hertil"
+                : `${folder.subfolder_count} mapper, ${folder.file_count} filer`}
             </Text>
           </div>
         </Group>
-        <IconChevronRight size={20} color="gray" />
+        <Group gap="xs">
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            size="sm"
+            title="Kopiér link"
+            onClick={(e: React.MouseEvent) => {
+              e.stopPropagation()
+              const url = `${window.location.origin}/forum/${subgroupSlug}/dokumenter/${folder.slug}`
+              navigator.clipboard.writeText(url)
+              notifications.show({
+                message: "Link kopieret",
+                color: "green",
+              })
+            }}
+          >
+            <IconLink size={16} />
+          </ActionIcon>
+          {folder.file_count > 0 && (
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              size="sm"
+              title="Download mappe som zip"
+              onClick={(e: React.MouseEvent) => {
+                e.stopPropagation()
+                forumApi.downloadFolder(folder.id, folder.name).catch(() => {
+                  notifications.show({
+                    title: "Fejl",
+                    message: "Kunne ikke downloade mappen.",
+                    color: "red",
+                  })
+                })
+              }}
+            >
+              <IconDownload size={16} />
+            </ActionIcon>
+          )}
+          <IconChevronRight size={20} color="gray" />
+        </Group>
       </Group>
     </Paper>
   )
@@ -1084,6 +1248,21 @@ function FileRow({
             </div>
           </Group>
           <Group gap="xs">
+            <ActionIcon
+              variant="light"
+              onClick={(e: React.MouseEvent) => {
+                e.stopPropagation()
+                const url = `${window.location.origin}${file.file_url}`
+                navigator.clipboard.writeText(url)
+                notifications.show({
+                  message: "Link kopieret",
+                  color: "green",
+                })
+              }}
+              title="Kopiér link"
+            >
+              <IconLink size={16} />
+            </ActionIcon>
             <ActionIcon
               variant="light"
               onClick={handleOpenPreview}

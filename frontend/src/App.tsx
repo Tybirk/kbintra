@@ -275,7 +275,7 @@ function App() {
               }
             />
             <Route
-              path="/forum/:slug/dokumenter/:folderId"
+              path="/forum/:slug/dokumenter/:folderSlug"
               element={
                 <ProtectedRoute>
                   <PageErrorBoundary>
