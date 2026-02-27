@@ -12,6 +12,7 @@ import {
   Stack,
   Badge,
   SegmentedControl,
+  Switch,
   useMantineColorScheme,
 } from "@mantine/core"
 import {
@@ -27,27 +28,43 @@ import dayjs from "dayjs"
 import { usersApi } from "../api/users"
 import { messagingApi } from "../api/messaging"
 import { useAuthStore } from "../store/authStore"
+import { useAccessibilityMode } from "../hooks/useAccessibilityMode"
 
 function ThemeSettings() {
   const { colorScheme, setColorScheme } = useMantineColorScheme()
+  const { isAccessibilityMode, setIsAccessibilityMode, isPending } =
+    useAccessibilityMode()
 
   return (
     <Paper withBorder p="xl" radius="md" mt="xl">
       <Title order={4} mb="md">
         Indstillinger
       </Title>
-      <Text size="sm" mb="xs">
-        Udseende
-      </Text>
-      <SegmentedControl
-        value={colorScheme}
-        onChange={(value) => setColorScheme(value as "light" | "dark" | "auto")}
-        data={[
-          { label: "Lys", value: "light" },
-          { label: "Mørk", value: "dark" },
-          { label: "Auto", value: "auto" },
-        ]}
-      />
+      <Stack gap="md">
+        <div>
+          <Text size="sm" mb="xs">
+            Udseende
+          </Text>
+          <SegmentedControl
+            value={colorScheme}
+            onChange={(value) =>
+              setColorScheme(value as "light" | "dark" | "auto")
+            }
+            data={[
+              { label: "Lys", value: "light" },
+              { label: "Mørk", value: "dark" },
+              { label: "Auto", value: "auto" },
+            ]}
+          />
+        </div>
+        <Switch
+          label="Stor skrift og høj kontrast"
+          description="Øger skriftstørrelse og kontrast — anbefalet til svagsynede"
+          checked={isAccessibilityMode}
+          onChange={(e) => setIsAccessibilityMode(e.currentTarget.checked)}
+          disabled={isPending}
+        />
+      </Stack>
     </Paper>
   )
 }

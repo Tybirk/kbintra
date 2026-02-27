@@ -328,17 +328,26 @@ function NotificationCard({
             </Avatar>
           )}
           <Box style={{ flex: 1, minWidth: 0 }}>
-            <Group gap="xs" wrap="nowrap">
-              <Text fw={notification.is_read ? 400 : 600} truncate>
+            <Group gap="xs" wrap="nowrap" align="flex-start">
+              <Text
+                fw={notification.is_read ? 400 : 600}
+                lineClamp={3}
+                style={{ flex: 1 }}
+              >
                 {notification.title}
               </Text>
               {!notification.is_read && (
-                <Badge size="xs" color="blue" variant="filled">
+                <Badge
+                  size="xs"
+                  color="blue"
+                  variant="filled"
+                  style={{ flexShrink: 0 }}
+                >
                   Ny
                 </Badge>
               )}
             </Group>
-            <Text size="sm" c="dimmed" lineClamp={2}>
+            <Text size="sm" c="dimmed" lineClamp={3}>
               {notification.message}
             </Text>
             <Text size="xs" c="dimmed" mt={4}>

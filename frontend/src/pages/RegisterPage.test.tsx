@@ -66,25 +66,22 @@ describe("RegisterPage", () => {
   })
 
   it("shows validation error on password mismatch", async () => {
-    const user = userEvent.setup()
     render(<RegisterPage />)
 
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText(/opret en adgangskode/i),
-      ).toBeInTheDocument()
+      expect(screen.getByLabelText(/^adgangskode/i)).toBeInTheDocument()
     })
 
-    // Use placeholder to get the actual <input> elements inside Mantine's PasswordInput
-    await user.type(
-      screen.getByPlaceholderText(/opret en adgangskode/i),
-      "password123",
-    )
-    await user.type(
-      screen.getByPlaceholderText(/bekræft din adgangskode/i),
-      "differentpassword",
-    )
-    await user.click(screen.getByRole("button", { name: /opret konto/i }))
+    fireEvent.change(screen.getByLabelText(/^adgangskode/i), {
+      target: { value: "password123" },
+    })
+    fireEvent.change(screen.getByLabelText(/bekræft adgangskode/i), {
+      target: { value: "differentpassword" },
+    })
+    // Use fireEvent.submit on the form directly as fireEvent.click on submit button
+    // may not trigger form submission in jsdom when the form has no previously-changed TextInput
+    const form = document.querySelector("form")!
+    fireEvent.submit(form)
 
     await waitFor(() => {
       expect(

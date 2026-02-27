@@ -513,6 +513,7 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
     can_edit = serializers.SerializerMethodField()
     can_close = serializers.SerializerMethodField()
     event_id = serializers.SerializerMethodField()
+    is_muted = serializers.SerializerMethodField()
 
     class Meta:
         model = Thread
@@ -529,6 +530,7 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
             "is_own",
             "can_edit",
             "can_close",
+            "is_muted",
             "event_id",
             "posts",
             "created_at",
@@ -554,11 +556,27 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
             return obj.author_id == request.user.id or request.user.is_staff
         return False
 
+    def get_is_muted(self, obj: Thread) -> bool:
+        request = self.context.get("request")
+        if request and request.user.is_authenticated:
+            from .models import ThreadMuteStatus
+
+            return ThreadMuteStatus.objects.filter(user=request.user, thread=obj).exists()
+        return False
+
     def get_event_id(self, obj: Thread) -> int | None:
         try:
             return obj.event.id
         except AttributeError:
             return None
+
+
+class ThreadUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating a thread title."""
+
+    class Meta:
+        model = Thread
+        fields = ["title"]
 
 
 class ThreadCreateSerializer(serializers.ModelSerializer):

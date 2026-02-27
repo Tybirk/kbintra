@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useParams, useNavigate, useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
@@ -21,6 +21,7 @@ import {
   SimpleGrid,
   Tooltip,
   Box,
+  TextInput,
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -35,6 +36,8 @@ import {
   IconChartBar,
   IconMessage,
   IconDeviceMobileMessage,
+  IconBell,
+  IconBellOff,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -74,6 +77,8 @@ interface CreatePostParams {
 interface UpdatePostParams {
   postId: number
   data: CreatePostData
+  threadId?: number
+  newTitle?: string
 }
 
 dayjs.extend(relativeTime)
@@ -102,12 +107,14 @@ export default function ThreadPage() {
   const [pollData, setPollData] = useState<CreatePollData | null>(null)
   const [editingPost, setEditingPost] = useState<Post | null>(null)
   const [editContent, setEditContent] = useState("")
+  const [editTitle, setEditTitle] = useState("")
   const [editPollData, setEditPollData] = useState<CreatePollData | null>(null)
   const [
     deleteModalOpened,
     { open: openDeleteModal, close: closeDeleteModal },
   ] = useDisclosure(false)
   const [postToDelete, setPostToDelete] = useState<number | null>(null)
+  const highlightedHashRef = useRef("")
 
   const {
     data: thread,
@@ -151,13 +158,21 @@ export default function ThreadPage() {
 
   // Scroll to and highlight a specific post when navigating from a notification
   useEffect(() => {
-    if (!thread || !location.hash) return
+    if (
+      !thread ||
+      !location.hash ||
+      highlightedHashRef.current === location.hash
+    )
+      return
     const el = document.getElementById(location.hash.slice(1))
     if (!el) return
-    // Clear the hash immediately so re-renders and navigation away don't re-trigger the highlight
-    navigate(location.pathname, { replace: true })
-    // Small delay to ensure layout is settled
+    const hash = location.hash
+    window.history.replaceState(null, "", location.pathname)
+    // Small delay to ensure layout is settled. The ref is set inside the timer
+    // so strict mode's cleanup+re-run cycle doesn't prevent the highlight from firing.
     const timer = setTimeout(() => {
+      if (highlightedHashRef.current === hash) return
+      highlightedHashRef.current = hash
       el.scrollIntoView({ behavior: "smooth", block: "center" })
       el.style.transition = "box-shadow 0.3s ease"
       el.style.boxShadow = "0 0 0 3px var(--mantine-color-blue-4)"
@@ -198,16 +213,25 @@ export default function ThreadPage() {
   })
 
   const updatePostMutation = useMutation({
-    mutationFn: async ({ postId, data }: UpdatePostParams) => {
+    mutationFn: async ({
+      postId,
+      data,
+      threadId,
+      newTitle,
+    }: UpdatePostParams) => {
       await forumApi.updatePost(postId, data)
       if (editPollData && editingPost?.poll) {
         await forumApi.updatePoll(editingPost.poll.id, editPollData)
+      }
+      if (threadId !== undefined && newTitle !== undefined) {
+        await forumApi.updateThread(threadId, { title: newTitle })
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: threadQueryKey })
       setEditingPost(null)
       setEditContent("")
+      setEditTitle("")
       setEditPollData(null)
       notifications.show({
         title: "Indlæg opdateret",
@@ -259,6 +283,29 @@ export default function ThreadPage() {
       notifications.show({
         title: "Error",
         message: "Failed to delete thread. Please try again.",
+        color: "red",
+      })
+    },
+  })
+
+  const muteThreadMutation = useMutation({
+    mutationFn: () => forumApi.muteThread(thread!.id),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: threadQueryKey })
+      notifications.show({
+        title: data.is_muted
+          ? "Notifikationer slået fra"
+          : "Notifikationer slået til",
+        message: data.is_muted
+          ? "Du modtager ikke længere notifikationer fra denne tråd."
+          : "Du modtager igen notifikationer fra denne tråd.",
+        color: data.is_muted ? "gray" : "green",
+      })
+    },
+    onError: () => {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke opdatere notifikationsindstillingen. Prøv igen.",
         color: "red",
       })
     },
@@ -327,6 +374,11 @@ export default function ThreadPage() {
   const handleStartEdit = (post: Post) => {
     setEditingPost(post)
     setEditContent(post.content)
+    if (thread && post.id === thread.posts[0]?.id) {
+      setEditTitle(thread.title)
+    } else {
+      setEditTitle("")
+    }
     if (post.poll) {
       setEditPollData({
         question: post.poll.question,
@@ -341,9 +393,14 @@ export default function ThreadPage() {
 
   const handleSaveEdit = () => {
     if (!editingPost) return
+    const isFirstPost = thread && editingPost.id === thread.posts[0]?.id
+    if (isFirstPost && !editTitle.trim()) return
     updatePostMutation.mutate({
       postId: editingPost.id,
       data: { content: editContent.trim() },
+      ...(isFirstPost && thread
+        ? { threadId: thread.id, newTitle: editTitle.trim() }
+        : {}),
     })
   }
 
@@ -405,47 +462,73 @@ export default function ThreadPage() {
                   )}
                 </Group>
               </div>
-              {(thread.can_edit || thread.can_close) && (
-                <Menu shadow="md" width={200}>
-                  <Menu.Target>
-                    <ActionIcon variant="subtle">
-                      <IconDotsVertical size={16} />
-                    </ActionIcon>
-                  </Menu.Target>
-                  <Menu.Dropdown>
-                    {thread.can_close && (
-                      <Menu.Item
-                        leftSection={
-                          thread.is_closed ? (
-                            <IconLockOpen size={14} />
-                          ) : (
-                            <IconLock size={14} />
-                          )
-                        }
-                        onClick={() =>
-                          closeThreadMutation.mutate(!thread.is_closed)
-                        }
-                      >
-                        {thread.is_closed ? "Genåbn tråd" : "Luk tråd"}
-                      </Menu.Item>
+              <Group gap="xs">
+                <Tooltip
+                  label={
+                    thread.is_muted
+                      ? "Slå notifikationer til"
+                      : "Slå notifikationer fra"
+                  }
+                >
+                  <ActionIcon
+                    variant="subtle"
+                    color={thread.is_muted ? "gray" : undefined}
+                    onClick={() => muteThreadMutation.mutate()}
+                    loading={muteThreadMutation.isPending}
+                  >
+                    {thread.is_muted ? (
+                      <IconBellOff size={16} />
+                    ) : (
+                      <IconBell size={16} />
                     )}
-                    {thread.can_edit && (
-                      <Menu.Item
-                        color="red"
-                        leftSection={<IconTrash size={14} />}
-                        onClick={() => deleteThreadMutation.mutate(thread.id)}
-                      >
-                        Slet tråd
-                      </Menu.Item>
-                    )}
-                  </Menu.Dropdown>
-                </Menu>
-              )}
+                  </ActionIcon>
+                </Tooltip>
+                {(thread.can_edit || thread.can_close) && (
+                  <Menu shadow="md" width={200}>
+                    <Menu.Target>
+                      <ActionIcon variant="subtle">
+                        <IconDotsVertical size={16} />
+                      </ActionIcon>
+                    </Menu.Target>
+                    <Menu.Dropdown>
+                      {thread.can_close && (
+                        <Menu.Item
+                          leftSection={
+                            thread.is_closed ? (
+                              <IconLockOpen size={14} />
+                            ) : (
+                              <IconLock size={14} />
+                            )
+                          }
+                          onClick={() =>
+                            closeThreadMutation.mutate(!thread.is_closed)
+                          }
+                        >
+                          {thread.is_closed ? "Genåbn tråd" : "Luk tråd"}
+                        </Menu.Item>
+                      )}
+                      {thread.can_edit && (
+                        <Menu.Item
+                          color="red"
+                          leftSection={<IconTrash size={14} />}
+                          onClick={() => deleteThreadMutation.mutate(thread.id)}
+                        >
+                          Slet tråd
+                        </Menu.Item>
+                      )}
+                    </Menu.Dropdown>
+                  </Menu>
+                )}
+              </Group>
             </Group>
           }
           isEditing={editingPost?.id === thread.posts[0].id}
           editContent={editContent}
           onEditContentChange={setEditContent}
+          editTitle={
+            editingPost?.id === thread.posts[0].id ? editTitle : undefined
+          }
+          onEditTitleChange={setEditTitle}
           editPollData={
             editingPost?.id === thread.posts[0].id ? editPollData : null
           }
@@ -455,6 +538,7 @@ export default function ThreadPage() {
           onCancelEdit={() => {
             setEditingPost(null)
             setEditContent("")
+            setEditTitle("")
             setEditPollData(null)
           }}
           onDelete={() => handleDeleteClick(thread.posts[0].id)}
@@ -484,6 +568,7 @@ export default function ThreadPage() {
                 onCancelEdit={() => {
                   setEditingPost(null)
                   setEditContent("")
+                  setEditTitle("")
                   setEditPollData(null)
                 }}
                 onDelete={() => handleDeleteClick(post.id)}
@@ -615,6 +700,8 @@ interface PostCardProps {
   isEditing: boolean
   editContent: string
   onEditContentChange: (content: string) => void
+  editTitle?: string
+  onEditTitleChange?: (title: string) => void
   editPollData: CreatePollData | null
   onEditPollDataChange: (data: CreatePollData) => void
   onStartEdit: () => void
@@ -631,6 +718,8 @@ function PostCard({
   isEditing,
   editContent,
   onEditContentChange,
+  editTitle,
+  onEditTitleChange,
   editPollData,
   onEditPollDataChange,
   onStartEdit,
@@ -724,6 +813,14 @@ function PostCard({
 
         {isEditing ? (
           <Stack gap="sm">
+            {editTitle !== undefined && onEditTitleChange && (
+              <TextInput
+                label="Titel"
+                value={editTitle}
+                onChange={(e) => onEditTitleChange(e.currentTarget.value)}
+                required
+              />
+            )}
             <RichTextEditor
               content={editContent}
               onChange={onEditContentChange}
@@ -740,7 +837,12 @@ function PostCard({
               <Button variant="light" size="sm" onClick={onCancelEdit}>
                 Annuller
               </Button>
-              <Button size="sm" onClick={onSaveEdit} loading={isSaving}>
+              <Button
+                size="sm"
+                onClick={onSaveEdit}
+                loading={isSaving}
+                disabled={editTitle !== undefined && !editTitle.trim()}
+              >
                 Gem
               </Button>
             </Group>

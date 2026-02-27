@@ -469,6 +469,11 @@ def notify_thread_reply(
     if thread_author.id == replier.id:
         return None
 
+    from apps.forum.models import ThreadMuteStatus
+
+    if ThreadMuteStatus.objects.filter(user=thread_author, thread_id=thread_id).exists():
+        return None
+
     # Create preview for in-app notification (strip HTML for preview)
     from django.utils.html import strip_tags
 
@@ -521,6 +526,11 @@ def notify_post_reply(
         post_id: ID of the reply post (for scroll-to link)
     """
     if post_author.id == replier.id:
+        return None
+
+    from apps.forum.models import ThreadMuteStatus
+
+    if ThreadMuteStatus.objects.filter(user=post_author, thread_id=thread_id).exists():
         return None
 
     # Create preview for in-app notification (strip HTML for preview)

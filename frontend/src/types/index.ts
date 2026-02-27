@@ -16,6 +16,7 @@ export interface User {
   house_inhabitant_count: number
   is_staff: boolean
   date_joined: string
+  accessibility_mode: boolean
 }
 
 export interface Child {
@@ -235,6 +236,7 @@ export interface ThreadDetail extends Thread {
   is_own: boolean
   can_edit: boolean
   can_close: boolean
+  is_muted: boolean
   event_id: number | null
   posts: Post[]
 }

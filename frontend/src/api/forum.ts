@@ -131,6 +131,11 @@ export const forumApi = {
     return response.data
   },
 
+  muteThread: async (threadId: number): Promise<{ is_muted: boolean }> => {
+    const response = await apiClient.post(`/forum/threads/${threadId}/mute/`)
+    return response.data
+  },
+
   // Posts
   getPosts: async (threadId: number): Promise<Post[]> => {
     const response = await apiClient.get(`/forum/threads/${threadId}/posts/`)
@@ -173,6 +178,13 @@ export const forumApi = {
       payload,
     )
     return response.data
+  },
+
+  updateThread: async (
+    threadId: number,
+    data: { title: string },
+  ): Promise<void> => {
+    await apiClient.patch(`/forum/threads/${threadId}/update/`, data)
   },
 
   updatePost: async (postId: number, data: CreatePostData): Promise<Post> => {

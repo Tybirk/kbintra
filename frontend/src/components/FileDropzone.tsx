@@ -51,9 +51,14 @@ function useDragDrop(onDrop: (files: File[]) => void) {
 interface FileDropzoneProps {
   onDrop: (files: File[]) => void
   children: ReactNode
+  label?: string
 }
 
-export default function FileDropzone({ onDrop, children }: FileDropzoneProps) {
+export default function FileDropzone({
+  onDrop,
+  children,
+  label,
+}: FileDropzoneProps) {
   const {
     isDragging,
     handleDragEnter,
@@ -90,7 +95,7 @@ export default function FileDropzone({ onDrop, children }: FileDropzoneProps) {
           }}
         >
           <Text size="sm" fw={500} c="blue">
-            Slip filer her for at vedhæfte
+            {label ?? "Slip filer her for at vedhæfte"}
           </Text>
         </Box>
       )}

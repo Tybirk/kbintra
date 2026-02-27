@@ -107,6 +107,12 @@ class User(AbstractUser):
         help_text="Special notes about food team participation",
     )
 
+    # Accessibility preference
+    accessibility_mode = models.BooleanField(
+        default=False,
+        help_text="User prefers larger text and higher contrast (for visually impaired)",
+    )
+
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS: list[str] = []
 

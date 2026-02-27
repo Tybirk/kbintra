@@ -13,8 +13,13 @@ import "@mantine/dropzone/styles.css"
 import "@mantine/tiptap/styles.css"
 import "@mantine/spotlight/styles.css"
 import "@mantine/schedule/styles.css"
+import "./accessibility.css"
 
 import App from "./App"
+import { initAccessibilityMode } from "./hooks/useAccessibilityMode"
+
+// Apply stored accessibility preference before first render to avoid flash
+initAccessibilityMode()
 
 const queryClient = new QueryClient({
   defaultOptions: {

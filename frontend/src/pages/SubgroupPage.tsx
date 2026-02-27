@@ -19,7 +19,6 @@ import {
   ActionIcon,
   Breadcrumbs,
   Anchor,
-  FileInput,
   Select,
   SimpleGrid,
 } from "@mantine/core"
@@ -50,11 +49,7 @@ import "dayjs/locale/da"
 import { eventsApi } from "../api/events"
 import { forumApi } from "../api/forum"
 import { clearDraft, loadDraft, saveDraft } from "../utils/draftStorage"
-import {
-  filterFilesBySize,
-  validateFileSize,
-  MAX_UPLOAD_FILE_SIZE_MB,
-} from "../config"
+import { filterFilesBySize } from "../config"
 import { CompactEventCard } from "../components/CompactEventCard"
 import RichTextEditor from "../components/RichTextEditor"
 import FileDropzone, { AttachmentArea } from "../components/FileDropzone"
@@ -668,6 +663,7 @@ function DocumentsTab({
 }: DocumentsTabProps) {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(
     initialFolderId ?? null,
   )
@@ -676,6 +672,8 @@ function DocumentsTab({
   ])
   // Track which folderId we've already processed to avoid re-fetching on our own navigations
   const processedFolderIdRef = useRef<number | null | undefined>(undefined)
+  const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState("")
 
   useEffect(() => {
     const targetId = initialFolderId ?? null
@@ -708,10 +706,64 @@ function DocumentsTab({
     createFolderModalOpened,
     { open: openCreateFolderModal, close: closeCreateFolderModal },
   ] = useDisclosure(false)
-  const [
-    uploadModalOpened,
-    { open: openUploadModal, close: closeUploadModal },
-  ] = useDisclosure(false)
+
+  const invalidateFiles = () => {
+    if (currentFolderId !== null) {
+      queryClient.invalidateQueries({
+        queryKey: ["files", currentFolderId],
+      })
+    } else {
+      queryClient.invalidateQueries({
+        queryKey: ["rootFiles", subgroupSlug],
+      })
+    }
+  }
+
+  const handleUploadFiles = async (droppedFiles: File[]) => {
+    const { validFiles, errors } = filterFilesBySize(droppedFiles)
+    for (const error of errors) {
+      notifications.show({
+        title: "Filen er for stor",
+        message: error,
+        color: "red",
+      })
+    }
+    if (validFiles.length === 0) return
+
+    setUploading(true)
+    let successCount = 0
+    for (let i = 0; i < validFiles.length; i++) {
+      const file = validFiles[i]
+      setUploadProgress(`${i + 1} / ${validFiles.length}`)
+      try {
+        if (currentFolderId !== null) {
+          await forumApi.uploadFile(currentFolderId, file)
+        } else {
+          await forumApi.uploadRootFile(subgroupSlug, file)
+        }
+        successCount++
+      } catch {
+        notifications.show({
+          title: "Fejl",
+          message: `Kunne ikke uploade "${file.name}". Prøv igen.`,
+          color: "red",
+        })
+      }
+    }
+    setUploading(false)
+    setUploadProgress("")
+    if (successCount > 0) {
+      invalidateFiles()
+      notifications.show({
+        title: "Upload fuldført",
+        message:
+          successCount === 1
+            ? "1 fil uploadet."
+            : `${successCount} filer uploadet.`,
+        color: "green",
+      })
+    }
+  }
 
   // Fetch folders for current location
   const { data: folders, isLoading: foldersLoading } = useQuery({
@@ -751,9 +803,25 @@ function DocumentsTab({
   }
 
   const isLoading = foldersLoading || filesLoading
+  const hasContent =
+    (folders && folders.length > 0) || (files && files.length > 0)
 
   return (
-    <>
+    <FileDropzone onDrop={handleUploadFiles} label="Slip for at uploade">
+      {/* Hidden file input for button click */}
+      <input
+        type="file"
+        multiple
+        ref={fileInputRef}
+        style={{ display: "none" }}
+        onChange={(e) => {
+          if (e.target.files?.length) {
+            handleUploadFiles(Array.from(e.target.files))
+            e.target.value = ""
+          }
+        }}
+      />
+
       {/* Breadcrumbs */}
       <Group justify="space-between" mb="md">
         <Breadcrumbs>
@@ -779,10 +847,11 @@ function DocumentsTab({
           </Button>
           <Button
             leftSection={<IconUpload size={16} />}
-            onClick={openUploadModal}
+            onClick={() => fileInputRef.current?.click()}
             size="sm"
+            loading={uploading}
           >
-            Upload fil
+            {uploading ? `Uploader ${uploadProgress}` : "Upload filer"}
           </Button>
         </Group>
       </Group>
@@ -805,17 +874,6 @@ function DocumentsTab({
           {/* Files */}
           {files?.map((file: ForumFile) => {
             const canModify = file.is_own || user?.is_staff === true
-            const invalidateFiles = () => {
-              if (currentFolderId !== null) {
-                queryClient.invalidateQueries({
-                  queryKey: ["files", currentFolderId],
-                })
-              } else {
-                queryClient.invalidateQueries({
-                  queryKey: ["rootFiles", subgroupSlug],
-                })
-              }
-            }
             return (
               <FileRow
                 key={file.id}
@@ -828,28 +886,48 @@ function DocumentsTab({
             )
           })}
 
-          {/* Empty state */}
-          {(!folders || folders.length === 0) &&
-            (!files || files.length === 0) && (
-              <Paper withBorder p="xl" radius="md">
-                <Center>
-                  <Stack align="center" gap="xs">
-                    <IconFolder size={48} color="gray" />
-                    <Text c="dimmed">
-                      {currentFolderId === null
-                        ? "Ingen dokumenter endnu."
-                        : "Denne mappe er tom."}
-                    </Text>
-                    <Group gap="xs" mt="sm">
-                      <Button variant="light" onClick={openCreateFolderModal}>
-                        Opret mappe
-                      </Button>
-                      <Button onClick={openUploadModal}>Upload fil</Button>
-                    </Group>
-                  </Stack>
-                </Center>
-              </Paper>
-            )}
+          {/* Drop zone hint / empty state */}
+          <Paper
+            withBorder
+            p={hasContent ? "md" : "xl"}
+            radius="md"
+            style={{
+              borderStyle: "dashed",
+              cursor: "pointer",
+            }}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Center>
+              <Stack align="center" gap="xs">
+                {!hasContent && <IconFolder size={48} color="gray" />}
+                {!hasContent && (
+                  <Text c="dimmed">
+                    {currentFolderId === null
+                      ? "Ingen dokumenter endnu."
+                      : "Denne mappe er tom."}
+                  </Text>
+                )}
+                <Group gap="xs">
+                  <IconUpload size={16} color="var(--mantine-color-dimmed)" />
+                  <Text size="sm" c="dimmed">
+                    Træk filer hertil eller klik for at uploade
+                  </Text>
+                </Group>
+                {!hasContent && (
+                  <Button
+                    variant="light"
+                    onClick={(e: React.MouseEvent) => {
+                      e.stopPropagation()
+                      openCreateFolderModal()
+                    }}
+                    mt="xs"
+                  >
+                    Opret mappe
+                  </Button>
+                )}
+              </Stack>
+            </Center>
+          </Paper>
         </Stack>
       )}
 
@@ -865,26 +943,7 @@ function DocumentsTab({
           closeCreateFolderModal()
         }}
       />
-
-      <UploadFileModal
-        opened={uploadModalOpened}
-        onClose={closeUploadModal}
-        subgroupSlug={subgroupSlug}
-        folderId={currentFolderId}
-        onSuccess={() => {
-          if (currentFolderId !== null) {
-            queryClient.invalidateQueries({
-              queryKey: ["files", currentFolderId],
-            })
-          } else {
-            queryClient.invalidateQueries({
-              queryKey: ["rootFiles", subgroupSlug],
-            })
-          }
-          closeUploadModal()
-        }}
-      />
-    </>
+    </FileDropzone>
   )
 }
 
@@ -1149,105 +1208,6 @@ function CreateFolderModal({
               disabled={!name.trim()}
             >
               Opret mappe
-            </Button>
-          </Group>
-        </Stack>
-      </form>
-    </Modal>
-  )
-}
-
-interface UploadFileModalProps {
-  opened: boolean
-  onClose: () => void
-  subgroupSlug: string
-  folderId: number | null
-  onSuccess: () => void
-}
-
-function UploadFileModal({
-  opened,
-  onClose,
-  subgroupSlug,
-  folderId,
-  onSuccess,
-}: UploadFileModalProps) {
-  const [file, setFile] = useState<File | null>(null)
-  const [name, setName] = useState("")
-
-  const uploadMutation = useMutation({
-    mutationFn: () => {
-      if (folderId !== null) {
-        return forumApi.uploadFile(folderId, file!, name || undefined)
-      }
-      return forumApi.uploadRootFile(subgroupSlug, file!, name || undefined)
-    },
-    onSuccess: () => {
-      notifications.show({
-        title: "Fil uploadet",
-        message: "Filen er blevet uploadet.",
-        color: "green",
-      })
-      setFile(null)
-      setName("")
-      onSuccess()
-    },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke uploade filen. Prøv igen.",
-        color: "red",
-      })
-    },
-  })
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!file) return
-    uploadMutation.mutate()
-  }
-
-  return (
-    <Modal opened={opened} onClose={onClose} title="Upload fil">
-      <form onSubmit={handleSubmit}>
-        <Stack gap="md">
-          <FileInput
-            label="Vælg fil"
-            placeholder="Klik for at vælge fil..."
-            description={`Max ${MAX_UPLOAD_FILE_SIZE_MB}MB`}
-            value={file}
-            onChange={(newFile) => {
-              if (newFile) {
-                const error = validateFileSize(newFile)
-                if (error) {
-                  notifications.show({
-                    title: "Filen er for stor",
-                    message: error,
-                    color: "red",
-                  })
-                  return
-                }
-              }
-              setFile(newFile)
-            }}
-            required
-          />
-          <TextInput
-            label="Filnavn (valgfrit)"
-            placeholder="Lad være tom for at bruge originalt navn"
-            value={name}
-            onChange={(e) => setName(e.currentTarget.value)}
-          />
-          <Group justify="flex-end">
-            <Button variant="light" onClick={onClose}>
-              Annuller
-            </Button>
-            <Button
-              type="submit"
-              loading={uploadMutation.isPending}
-              disabled={!file}
-            >
-              Upload
             </Button>
           </Group>
         </Stack>

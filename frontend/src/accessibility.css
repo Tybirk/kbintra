@@ -1,0 +1,55 @@
+/*
+ * Accessibility mode — stor skrift og høj kontrast
+ *
+ * Applied when <html data-accessibility="on"> is set.
+ * Designed for elderly users who need larger text and better contrast.
+ *
+ * Approach: increase html font-size so all Mantine rem-based sizes
+ * scale up proportionally (25% larger than the 16px default).
+ * Override CSS variables for dimmed text and card backgrounds.
+ *
+ * NOTE: We intentionally rely only on CSS variable overrides and do NOT
+ * use direct background-color rules on nested Paper elements. The
+ * MessagesPage sets message bubble backgrounds via inline `style.backgroundColor`
+ * which is immune to CSS variable changes — direct !important overrides
+ * would break those bubbles (white text on light gray = unreadable).
+ */
+
+html[data-accessibility="on"] {
+  /* 20px base (125% of default 16px) — scales all rem units */
+  font-size: 20px;
+}
+
+/* ── Light mode + accessibility ────────────────────────────────────── */
+html[data-mantine-color-scheme="light"][data-accessibility="on"] {
+  /*
+   * Dimmed text: Mantine default ≈ #868e96 (contrast ~3.6:1 on white).
+   * Accessibility value: #343a40 (contrast ~10.7:1 on white, WCAG AAA).
+   */
+  --mantine-color-dimmed: #343a40;
+
+  /*
+   * Dashboard card backgrounds and hover states.
+   * Cards on e.g. "Seneste forumaktivitet" use bg="var(--mantine-color-default-hover)".
+   * Very light gray — clearly off-white without being a heavy gray block.
+   */
+  --mantine-color-default-hover: #f8f9fa;
+
+  /* Stronger border color so Paper, Input etc. edges are clearly defined */
+  --mantine-color-default-border: #adb5bd;
+}
+
+/* ── Dark mode + accessibility ─────────────────────────────────────── */
+html[data-mantine-color-scheme="dark"][data-accessibility="on"] {
+  /*
+   * Dimmed text on dark background: default ≈ #909296 (low contrast).
+   * Accessibility value: #dee2e6 (much lighter, high contrast on dark).
+   */
+  --mantine-color-dimmed: #dee2e6;
+
+  /* Card backgrounds in dark mode: slightly more opaque than default */
+  --mantine-color-default-hover: rgba(255, 255, 255, 0.12);
+
+  /* Lighter border so dividers are clearly visible on dark backgrounds */
+  --mantine-color-default-border: #868e96;
+}

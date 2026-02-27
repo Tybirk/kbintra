@@ -343,6 +343,28 @@ class ThreadReadStatus(models.Model):
         return f"{self.user} read {self.thread} at {self.last_read_at}"
 
 
+class ThreadMuteStatus(models.Model):
+    """Tracks when a user has muted notifications for a specific thread."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="thread_mutes",
+    )
+    thread = models.ForeignKey(
+        Thread,
+        on_delete=models.CASCADE,
+        related_name="mute_statuses",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ["user", "thread"]
+
+    def __str__(self) -> str:
+        return f"{self.user} muted {self.thread}"
+
+
 class File(models.Model):
     """
     A file uploaded to a subgroup, either in a folder or at root level.

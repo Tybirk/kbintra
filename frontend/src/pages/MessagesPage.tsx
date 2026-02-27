@@ -1393,7 +1393,8 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
     })
   }
 
-  const showDropdown = isSearchFocused && (search || selectedUsers.length === 0)
+  const showDropdown =
+    search.trim().length > 0 || (isSearchFocused && selectedUsers.length === 0)
 
   return (
     <>

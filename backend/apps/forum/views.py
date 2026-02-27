@@ -22,6 +22,7 @@ from .models import (
     Subgroup,
     SubgroupSubscription,
     Thread,
+    ThreadMuteStatus,
     ThreadReadStatus,
 )
 from .serializers import (
@@ -39,6 +40,7 @@ from .serializers import (
     ThreadCreateSerializer,
     ThreadDetailSerializer,
     ThreadSerializer,
+    ThreadUpdateSerializer,
 )
 
 
@@ -239,6 +241,15 @@ class ThreadDetailBySlugView(generics.RetrieveAPIView):
             defaults={"last_read_at": timezone.now()},
         )
         return thread
+
+
+class ThreadUpdateView(generics.UpdateAPIView):
+    """Update a thread title (owner or admin)."""
+
+    serializer_class = ThreadUpdateSerializer
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrAdmin]
+    queryset = Thread.objects.all()
+    http_method_names = ["patch"]
 
 
 class ThreadDeleteView(generics.DestroyAPIView):
@@ -794,3 +805,17 @@ class ForumUnreadCountView(APIView):
             if last_read is None or thread.updated_at > last_read:
                 count += 1
         return Response({"unread_count": count})
+
+
+class ThreadMuteToggleView(APIView):
+    """Mute or unmute notifications for a specific thread."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request, pk: int) -> Response:
+        thread = get_object_or_404(Thread, pk=pk)
+        mute, created = ThreadMuteStatus.objects.get_or_create(user=request.user, thread=thread)
+        if not created:
+            mute.delete()
+            return Response({"is_muted": False})
+        return Response({"is_muted": True})
