@@ -59,7 +59,7 @@ function ThemeSettings() {
         </div>
         <Switch
           label="Stor skrift og høj kontrast"
-          description="Øger skriftstørrelse og kontrast — anbefalet til svagsynede"
+          description="Øger skriftstørrelse og kontrast"
           checked={isAccessibilityMode}
           onChange={(e) => setIsAccessibilityMode(e.currentTarget.checked)}
           disabled={isPending}
