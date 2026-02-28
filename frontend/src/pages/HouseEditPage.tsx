@@ -643,7 +643,9 @@ export default function HouseEditPage() {
                           Elbil
                         </Badge>
                       ) : (
-                        "-"
+                        <Badge size="sm" variant="light" color="gray">
+                          Fossilbil
+                        </Badge>
                       )}
                     </Table.Td>
                     <Table.Td>
