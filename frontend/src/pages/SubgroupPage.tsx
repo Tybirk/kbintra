@@ -362,9 +362,9 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
       onClick={onClick}
     >
       <Group gap="md" wrap="nowrap">
-        <Avatar src={thread.author.profile_picture} radius="xl" size="md">
-          {thread.author.first_name?.[0]}
-          {thread.author.last_name?.[0]}
+        <Avatar src={thread.author?.profile_picture} radius="xl" size="md">
+          {thread.author?.first_name?.[0]}
+          {thread.author?.last_name?.[0]}
         </Avatar>
         <div style={{ flex: 1, minWidth: 0 }}>
           <Group gap="xs" mb={4} wrap="nowrap" justify="space-between">
@@ -1250,9 +1250,11 @@ function FileRow({
                 {file.name}
               </Text>
               <Text size="xs" c="dimmed">
-                Uploadet af {file.uploaded_by.first_name}{" "}
-                {file.uploaded_by.last_name} •{" "}
-                {dayjs(file.uploaded_at).fromNow()}
+                Uploadet af{" "}
+                {file.uploaded_by
+                  ? `${file.uploaded_by.first_name} ${file.uploaded_by.last_name}`
+                  : "slettet bruger"}{" "}
+                • {dayjs(file.uploaded_at).fromNow()}
               </Text>
             </div>
           </Group>

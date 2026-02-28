@@ -44,6 +44,7 @@ import NotificationsPage from "./pages/NotificationsPage"
 import NotificationPreferencesPage from "./pages/NotificationPreferencesPage"
 import AdminPage from "./pages/AdminPage"
 import ConfirmEmailChangePage from "./pages/ConfirmEmailChangePage"
+import PrivacyPolicyPage from "./pages/PrivacyPolicyPage"
 import AppHeader from "./components/AppHeader"
 import AppNavbar from "./components/AppNavbar"
 import { GlobalSearch } from "./components/GlobalSearch"
@@ -134,6 +135,14 @@ function App() {
             element={
               <PageErrorBoundary>
                 <ConfirmEmailChangePage />
+              </PageErrorBoundary>
+            }
+          />
+          <Route
+            path="/privatlivspolitik"
+            element={
+              <PageErrorBoundary>
+                <PrivacyPolicyPage />
               </PageErrorBoundary>
             }
           />
@@ -525,6 +534,16 @@ function App() {
                     <AdminPage />
                   </PageErrorBoundary>
                 </ProtectedRoute>
+              }
+            />
+
+            {/* Privatlivspolitik */}
+            <Route
+              path="/privatlivspolitik"
+              element={
+                <PageErrorBoundary>
+                  <PrivacyPolicyPage />
+                </PageErrorBoundary>
               }
             />
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, Link } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
@@ -15,6 +15,8 @@ import {
   Loader,
   Center,
   Collapse,
+  Modal,
+  Anchor,
   rem,
 } from "@mantine/core"
 import { DateInput } from "@mantine/dates"
@@ -27,6 +29,8 @@ import {
   IconArrowLeft,
   IconLock,
   IconMail,
+  IconDownload,
+  IconTrash,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 
@@ -37,7 +41,7 @@ import type { User } from "../types"
 export default function ProfileEditPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { updateUser } = useAuthStore()
+  const { updateUser, logout } = useAuthStore()
 
   const [formData, setFormData] = useState({
     first_name: "",
@@ -53,6 +57,9 @@ export default function ProfileEditPage() {
     new_email: "",
     current_password: "",
   })
+
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [deletePassword, setDeletePassword] = useState("")
 
   const { data: user, isLoading } = useQuery({
     queryKey: ["user", "me"],
@@ -119,6 +126,35 @@ export default function ProfileEditPage() {
       notifications.show({
         title: "Fejl",
         message: msg,
+        color: "red",
+      })
+    },
+  })
+
+  const deleteAccountMutation = useMutation({
+    mutationFn: () => usersApi.deleteAccount(deletePassword),
+    onSuccess: () => {
+      logout()
+    },
+    onError: (error: { response?: { data?: Record<string, string[]> } }) => {
+      const msg =
+        error.response?.data?.password?.[0] ??
+        error.response?.data?.non_field_errors?.[0] ??
+        "Noget gik galt. Prøv igen."
+      notifications.show({
+        title: "Fejl",
+        message: msg,
+        color: "red",
+      })
+    },
+  })
+
+  const exportDataMutation = useMutation({
+    mutationFn: () => usersApi.exportData(),
+    onError: () => {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke eksportere data. Prøv igen.",
         color: "red",
       })
     },
@@ -404,6 +440,80 @@ export default function ProfileEditPage() {
           </Collapse>
         </Stack>
       </Paper>
+
+      <Paper withBorder p="xl" radius="md" mt="xl">
+        <Title order={4} mb="xs">
+          Mine data
+        </Title>
+        <Text size="sm" c="dimmed" mb="md">
+          Du kan til enhver tid downloade alle dine data eller slette din konto.
+          Læs vores{" "}
+          <Anchor component={Link} to="/privatlivspolitik" size="sm">
+            privatlivspolitik
+          </Anchor>
+          .
+        </Text>
+        <Stack gap="sm">
+          <Button
+            variant="light"
+            leftSection={<IconDownload size={16} />}
+            loading={exportDataMutation.isPending}
+            onClick={() => exportDataMutation.mutate()}
+          >
+            Download mine data (JSON)
+          </Button>
+          <Button
+            variant="light"
+            color="red"
+            leftSection={<IconTrash size={16} />}
+            onClick={() => setDeleteModalOpen(true)}
+          >
+            Slet min konto
+          </Button>
+        </Stack>
+      </Paper>
+
+      <Modal
+        opened={deleteModalOpen}
+        onClose={() => {
+          setDeleteModalOpen(false)
+          setDeletePassword("")
+        }}
+        title="Slet konto"
+        centered
+      >
+        <Stack>
+          <Text size="sm">
+            Er du sikker på, at du vil slette din konto? Denne handling kan ikke
+            fortrydes. Alle dine personlige data vil blive slettet.
+          </Text>
+          <PasswordInput
+            label="Bekræft med din adgangskode"
+            placeholder="Din adgangskode"
+            value={deletePassword}
+            onChange={(e) => setDeletePassword(e.target.value)}
+          />
+          <Group justify="flex-end">
+            <Button
+              variant="subtle"
+              onClick={() => {
+                setDeleteModalOpen(false)
+                setDeletePassword("")
+              }}
+            >
+              Annuller
+            </Button>
+            <Button
+              color="red"
+              loading={deleteAccountMutation.isPending}
+              disabled={!deletePassword}
+              onClick={() => deleteAccountMutation.mutate()}
+            >
+              Slet konto permanent
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </>
   )
 }

@@ -2,6 +2,8 @@
 Views for User models.
 """
 
+import contextlib
+import json
 import os
 import shutil
 import sqlite3
@@ -12,7 +14,7 @@ from typing import Any
 from django.conf import settings
 from django.db import connection, models
 from django.db.models import Count, QuerySet
-from django.http import FileResponse
+from django.http import FileResponse, HttpResponse
 from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.request import Request
@@ -308,6 +310,94 @@ class ConfirmEmailChangeView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response({"message": "Din emailadresse er nu opdateret."})
+
+
+class DeleteAccountView(APIView):
+    """
+    Delete the authenticated user's account.
+    Requires current password for confirmation.
+    Cascades to all related data per model definitions.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request) -> Response:
+        password = request.data.get("password", "")
+        if not request.user.check_password(password):
+            return Response(
+                {"password": ["Forkert adgangskode."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = request.user
+
+        # Delete profile picture file from disk before deleting the user
+        if user.profile_picture:
+            with contextlib.suppress(Exception):
+                user.profile_picture.delete(save=False)
+
+        user.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class DataExportView(APIView):
+    """
+    Export all personal data for the authenticated user as a JSON file.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: Request) -> HttpResponse:
+        user = request.user
+
+        from apps.forum.models import Post, Thread
+        from apps.messaging.models import Message
+
+        threads = list(
+            Thread.objects.filter(author=user).values("title", "created_at", "subgroup__name")
+        )
+        posts = list(
+            Post.objects.filter(author=user).values("content", "created_at", "thread__title")
+        )
+        messages = list(Message.objects.filter(sender=user).values("content", "created_at"))
+
+        # Food registrations (optional – app may not have MealRegistration)
+        meal_registrations: list[Any] = []
+        try:
+            from apps.food.models import MealRegistration
+
+            meal_registrations = list(
+                MealRegistration.objects.filter(user=user).values(
+                    "daily_menu__date", "eaters", "created_at"
+                )
+            )
+        except Exception:
+            pass
+
+        data = {
+            "eksporteret": timezone.now().isoformat(),
+            "profil": {
+                "fornavn": user.first_name,
+                "efternavn": user.last_name,
+                "email": user.email,
+                "telefonnummer": user.phone_number,
+                "fødselsdato": str(user.birthdate) if user.birthdate else None,
+                "bio": user.bio,
+                "oprettet": user.date_joined.isoformat(),
+                "sidst_aktiv": user.last_login.isoformat() if user.last_login else None,
+            },
+            "forumtraade": threads,
+            "forumindlaeg": posts,
+            "beskeder_sendt": messages,
+            "madregistreringer": meal_registrations,
+        }
+
+        response = HttpResponse(
+            json.dumps(data, ensure_ascii=False, default=str, indent=2),
+            content_type="application/json; charset=utf-8",
+        )
+        response["Content-Disposition"] = 'attachment; filename="mine-data.json"'
+        return response
 
 
 class IsStaff(permissions.BasePermission):

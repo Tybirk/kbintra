@@ -21,6 +21,7 @@ import {
   IconPaperclip,
   IconFile,
   IconPhoto,
+  IconChevronRight,
 } from "@tabler/icons-react"
 import {
   useRef,
@@ -77,6 +78,7 @@ export default function ChatRichTextEditor({
 }: ChatRichTextEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const isMobile = useMediaQuery("(max-width: 768px)")
+  const [attachExpanded, setAttachExpanded] = useState(false)
   const [draftRestored, setDraftRestored] = useState(false)
   const loadedForKeyRef = useRef<string | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -434,44 +436,96 @@ export default function ChatRichTextEditor({
           </Group>
         </ScrollArea>
       )}
-      <Group gap="xs" align="flex-end" wrap="nowrap">
-        {/* Action icons group */}
-        <Group gap={4} wrap="nowrap" mb={1}>
-          {/* Image picker - opens photo gallery on mobile */}
-          <FileButton onChange={handleFilesSelected} multiple accept="image/*">
-            {(props) => (
-              <ActionIcon
-                {...props}
-                variant="subtle"
-                color="gray"
-                size="lg"
-                disabled={disabled}
-                title="Vælg billeder"
+      <Group gap={isMobile ? 4 : "xs"} align="flex-end" wrap="nowrap">
+        {isMobile ? (
+          /* Mobile: chevron to reveal attachment buttons, or the buttons themselves */
+          attachExpanded ? (
+            <Group gap={2} wrap="nowrap" mb={1}>
+              <FileButton
+                onChange={handleFilesSelected}
+                multiple
+                accept="image/*"
               >
-                <IconPhoto size={20} />
-              </ActionIcon>
-            )}
-          </FileButton>
-          {/* General file picker */}
-          <FileButton onChange={handleFilesSelected} multiple>
-            {(props) => (
-              <ActionIcon
-                {...props}
-                variant="subtle"
-                color="gray"
-                size="lg"
-                disabled={disabled}
-                title="Vedhæft fil"
-              >
-                <IconPaperclip size={20} />
-              </ActionIcon>
-            )}
-          </FileButton>
-          {/* Emoji picker */}
-          <Suspense fallback={null}>
-            <EmojiPicker onSelect={handleEmojiSelect} disabled={disabled} />
-          </Suspense>
-        </Group>
+                {(props) => (
+                  <ActionIcon
+                    {...props}
+                    variant="subtle"
+                    color="gray"
+                    size="md"
+                    disabled={disabled}
+                    title="Vælg billeder"
+                  >
+                    <IconPhoto size={18} />
+                  </ActionIcon>
+                )}
+              </FileButton>
+              <FileButton onChange={handleFilesSelected} multiple>
+                {(props) => (
+                  <ActionIcon
+                    {...props}
+                    variant="subtle"
+                    color="gray"
+                    size="md"
+                    disabled={disabled}
+                    title="Vedhæft fil"
+                  >
+                    <IconPaperclip size={18} />
+                  </ActionIcon>
+                )}
+              </FileButton>
+            </Group>
+          ) : (
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              size="md"
+              mb={1}
+              onClick={() => setAttachExpanded(true)}
+              title="Vis vedhæftninger"
+            >
+              <IconChevronRight size={18} />
+            </ActionIcon>
+          )
+        ) : (
+          /* Desktop: always show all action icons */
+          <Group gap={4} wrap="nowrap" mb={1}>
+            <FileButton
+              onChange={handleFilesSelected}
+              multiple
+              accept="image/*"
+            >
+              {(props) => (
+                <ActionIcon
+                  {...props}
+                  variant="subtle"
+                  color="gray"
+                  size="lg"
+                  disabled={disabled}
+                  title="Vælg billeder"
+                >
+                  <IconPhoto size={20} />
+                </ActionIcon>
+              )}
+            </FileButton>
+            <FileButton onChange={handleFilesSelected} multiple>
+              {(props) => (
+                <ActionIcon
+                  {...props}
+                  variant="subtle"
+                  color="gray"
+                  size="lg"
+                  disabled={disabled}
+                  title="Vedhæft fil"
+                >
+                  <IconPaperclip size={20} />
+                </ActionIcon>
+              )}
+            </FileButton>
+            <Suspense fallback={null}>
+              <EmojiPicker onSelect={handleEmojiSelect} disabled={disabled} />
+            </Suspense>
+          </Group>
+        )}
 
         {/* Message input with mention popover */}
         <Popover
@@ -488,6 +542,9 @@ export default function ChatRichTextEditor({
               onChange={(e) => handleContentChange(e.currentTarget.value)}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
+              onFocus={() => {
+                if (isMobile) setAttachExpanded(false)
+              }}
               placeholder={actualPlaceholder}
               disabled={disabled}
               autosize
@@ -496,7 +553,11 @@ export default function ChatRichTextEditor({
               style={{ flex: 1 }}
               styles={{
                 input: {
-                  borderRadius: "var(--mantine-radius-xl)",
+                  borderRadius: "var(--mantine-radius-md)",
+                  paddingTop: 6,
+                  paddingBottom: 6,
+                  paddingLeft: 10,
+                  paddingRight: 10,
                 },
               }}
             />
@@ -531,16 +592,30 @@ export default function ChatRichTextEditor({
           </Popover.Dropdown>
         </Popover>
 
+        {/* Emoji picker — always visible on mobile, part of desktop action group above */}
+        {isMobile && (
+          <Box mb={1}>
+            <Suspense fallback={null}>
+              <EmojiPicker
+                onSelect={handleEmojiSelect}
+                disabled={disabled}
+                size="md"
+                iconSize={18}
+              />
+            </Suspense>
+          </Box>
+        )}
+
         {/* Send button */}
         <ActionIcon
-          size="lg"
-          radius="xl"
+          size={isMobile ? "md" : "lg"}
+          radius="md"
           variant="filled"
           onClick={onSend}
           disabled={disabled || isEmpty}
           mb={1}
         >
-          <IconSend size={18} />
+          <IconSend size={isMobile ? 16 : 18} />
         </ActionIcon>
       </Group>
     </Stack>

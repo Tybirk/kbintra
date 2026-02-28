@@ -746,18 +746,24 @@ function ActivityPreview({ activity }: ActivityPreviewProps) {
       }
     >
       <Group gap="sm" wrap="nowrap" mb={4}>
-        <Avatar src={activity.author.profile_picture} radius="xl" size="sm">
-          {activity.author.first_name?.[0]}
-          {activity.author.last_name?.[0]}
+        <Avatar src={activity.author?.profile_picture} radius="xl" size="sm">
+          {activity.author?.first_name?.[0]}
+          {activity.author?.last_name?.[0]}
         </Avatar>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <UserLink
-            id={activity.author.id}
-            firstName={activity.author.first_name}
-            lastName={activity.author.last_name}
-            size="sm"
-            fw={500}
-          />
+          {activity.author ? (
+            <UserLink
+              id={activity.author.id}
+              firstName={activity.author.first_name}
+              lastName={activity.author.last_name}
+              size="sm"
+              fw={500}
+            />
+          ) : (
+            <Text size="sm" c="dimmed" fw={500}>
+              Slettet bruger
+            </Text>
+          )}
           <Text size="xs" c="dimmed" lineClamp={1}>
             i {activity.thread_title}
           </Text>

@@ -799,6 +799,12 @@ function DayRegistrationCard({
   // Default to house inhabitant count if no registration exists
   const defaultAdults =
     registration?.adults_count ?? (user?.house_inhabitant_count || 1)
+  // Display state: allows empty string while user is editing
+  const [adultsInput, setAdultsInput] = useState<number | string>(defaultAdults)
+  const [childrenInput, setChildrenInput] = useState<number | string>(
+    registration?.children_count ?? 0,
+  )
+  // Committed state: always a number, only updated on blur — triggers auto-save
   const [adults, setAdults] = useState(defaultAdults)
   const [children, setChildren] = useState(registration?.children_count ?? 0)
   const [mealType, setMealType] = useState<"meat" | "vegetarian">(
@@ -1022,16 +1028,26 @@ function DayRegistrationCard({
               <Group grow>
                 <NumberInput
                   label="Voksne"
-                  value={adults}
-                  onChange={(val) => setAdults(Number(val) || 0)}
+                  value={adultsInput}
+                  onChange={setAdultsInput}
+                  onBlur={() => {
+                    const val = adultsInput === "" ? 0 : Number(adultsInput)
+                    setAdultsInput(val)
+                    setAdults(val)
+                  }}
                   min={0}
                   max={10}
                   disabled={isPast}
                 />
                 <NumberInput
                   label="Børn"
-                  value={children}
-                  onChange={(val) => setChildren(Number(val) || 0)}
+                  value={childrenInput}
+                  onChange={setChildrenInput}
+                  onBlur={() => {
+                    const val = childrenInput === "" ? 0 : Number(childrenInput)
+                    setChildrenInput(val)
+                    setChildren(val)
+                  }}
                   min={0}
                   max={10}
                   disabled={isPast}

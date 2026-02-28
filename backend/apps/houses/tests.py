@@ -266,3 +266,18 @@ class TestCarAPI:
         assert response.status_code == 200
         assert len(response.json()["cars"]) == 1
         assert response.json()["cars"][0]["license_plate"] == "AB12345"
+
+    def test_update_car_electric_flag(self, api_client, user_with_house, car):
+        """Test updating is_electric flag from False to True."""
+        api_client.force_authenticate(user=user_with_house)
+        assert car.is_electric is False
+        response = api_client.patch(
+            f"/api/houses/my/cars/{car.id}/",
+            {"license_plate": car.license_plate, "is_electric": True},
+            format="json",
+        )
+        print(f"Response status: {response.status_code}")
+        print(f"Response data: {response.json()}")
+        assert response.status_code == 200
+        car.refresh_from_db()
+        assert car.is_electric is True

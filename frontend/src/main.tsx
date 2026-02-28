@@ -75,6 +75,7 @@ const queryClient = new QueryClient({
 
 const theme = createTheme({
   primaryColor: "blue",
+  autoContrast: true,
   fontFamily: "Inter, system-ui, sans-serif",
   headings: {
     fontFamily: "Inter, system-ui, sans-serif",

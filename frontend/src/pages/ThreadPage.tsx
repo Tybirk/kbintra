@@ -754,7 +754,7 @@ function PostCard({
 
   const dmMutation = useMutation({
     mutationFn: () =>
-      messagingApi.createConversation({ participant_ids: [post.author.id] }),
+      messagingApi.createConversation({ participant_ids: [post.author!.id] }),
     onSuccess: (conversation) => {
       navigate(`/beskeder/${conversation.id}`)
     },
@@ -771,18 +771,24 @@ function PostCard({
         )}
         <Group justify="space-between" mb="sm">
           <Group gap="sm">
-            <Avatar src={post.author.profile_picture} radius="xl" size="md">
-              {post.author.first_name?.[0]}
-              {post.author.last_name?.[0]}
+            <Avatar src={post.author?.profile_picture} radius="xl" size="md">
+              {post.author?.first_name?.[0]}
+              {post.author?.last_name?.[0]}
             </Avatar>
             <div>
               <Text size="sm" fw={500}>
-                <UserLink
-                  id={post.author.id}
-                  firstName={post.author.first_name}
-                  lastName={post.author.last_name}
-                  fw={500}
-                />
+                {post.author ? (
+                  <UserLink
+                    id={post.author.id}
+                    firstName={post.author.first_name}
+                    lastName={post.author.last_name}
+                    fw={500}
+                  />
+                ) : (
+                  <Text component="span" size="sm" c="dimmed" fw={500}>
+                    Slettet bruger
+                  </Text>
+                )}
               </Text>
               <PostDate
                 createdAt={post.created_at}
@@ -911,7 +917,7 @@ function PostCard({
                 threadQueryKey={threadQueryKey}
                 reactions={post.reactions || []}
               />
-              {post.author.id !== currentUser?.id && (
+              {post.author && post.author.id !== currentUser?.id && (
                 <Group gap="xs">
                   <Tooltip label="Svar i privat besked">
                     <Button

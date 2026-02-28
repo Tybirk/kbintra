@@ -796,12 +796,13 @@ export default function HouseEditPage() {
           <Switch
             label="Elbil"
             checked={carForm.is_electric}
-            onChange={(e) =>
+            onChange={(e) => {
+              const checked = e.currentTarget.checked
               setCarForm((prev) => ({
                 ...prev,
-                is_electric: e.currentTarget.checked,
+                is_electric: checked,
               }))
-            }
+            }}
           />
 
           <Group justify="flex-end" mt="md">

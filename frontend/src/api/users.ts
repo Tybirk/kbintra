@@ -75,4 +75,22 @@ export const usersApi = {
     )
     return response.data
   },
+
+  async deleteAccount(password: string): Promise<void> {
+    await apiClient.post("/auth/delete-account/", { password })
+  },
+
+  async exportData(): Promise<void> {
+    const response = await apiClient.get("/auth/me/export/", {
+      responseType: "blob",
+    })
+    const url = URL.createObjectURL(
+      new Blob([response.data], { type: "application/json" }),
+    )
+    const a = document.createElement("a")
+    a.href = url
+    a.download = "mine-data.json"
+    a.click()
+    URL.revokeObjectURL(url)
+  },
 }

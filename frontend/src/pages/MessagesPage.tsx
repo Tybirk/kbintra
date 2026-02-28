@@ -834,8 +834,13 @@ function ChatArea({
       </Modal>
 
       {/* Messages */}
-      <ScrollArea style={{ flex: 1 }} p="md" viewportRef={scrollRef}>
-        <Stack gap="sm">
+      <ScrollArea
+        style={{ flex: 1 }}
+        p="md"
+        viewportRef={scrollRef}
+        scrollbars="y"
+      >
+        <Stack gap="sm" style={{ width: "100%" }}>
           {conversation.messages.map((msg, idx) => {
             const prevMsg = idx > 0 ? conversation.messages[idx - 1] : null
             const nextMsg =
@@ -904,7 +909,8 @@ function ChatArea({
 
       {/* Input */}
       <Box
-        p="md"
+        py="sm"
+        px={isMobile ? 4 : "md"}
         style={{ borderTop: "1px solid var(--mantine-color-default-border)" }}
       >
         <ChatRichTextEditor
@@ -1224,7 +1230,7 @@ function MessageBubble({
         {/* Menu button appears to the left for own messages */}
         {isOwn && menuButton}
 
-        <Box style={{ maxWidth: "70%" }}>
+        <Box style={{ maxWidth: "70%", minWidth: 0 }}>
           {hasAttachments && !isEditing && (
             <Stack
               gap="xs"
@@ -1340,6 +1346,7 @@ function MessageBubble({
                   justifyContent: isOwn ? "flex-end" : "flex-start",
                   alignItems: "flex-end",
                   gap: 6,
+                  width: "100%",
                 }}
               >
                 {showInlineTime && isOwn && (
@@ -1382,7 +1389,7 @@ function MessageBubble({
                     style={{
                       color: isOwn ? "white" : "inherit",
                       whiteSpace: "pre-wrap",
-                      overflowWrap: "break-word",
+                      overflowWrap: "anywhere",
                     }}
                   >
                     <MessageContent content={message.content} isOwn={isOwn} />

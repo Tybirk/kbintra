@@ -914,20 +914,26 @@ function DiscussionSection({
               <Group justify="space-between" mb="xs" wrap="nowrap">
                 <Group gap="xs">
                   <Avatar
-                    src={post.author.profile_picture}
+                    src={post.author?.profile_picture}
                     size="sm"
                     radius="xl"
                   >
-                    {post.author.first_name?.[0]}
+                    {post.author?.first_name?.[0]}
                   </Avatar>
                   <div>
-                    <UserLink
-                      id={post.author.id}
-                      firstName={post.author.first_name}
-                      lastName={post.author.last_name}
-                      size="sm"
-                      fw={500}
-                    />
+                    {post.author ? (
+                      <UserLink
+                        id={post.author.id}
+                        firstName={post.author.first_name}
+                        lastName={post.author.last_name}
+                        size="sm"
+                        fw={500}
+                      />
+                    ) : (
+                      <Text size="sm" c="dimmed" fw={500}>
+                        Slettet bruger
+                      </Text>
+                    )}
                     <PostDate
                       createdAt={post.created_at}
                       shortFormat="D. MMM YYYY HH:mm"

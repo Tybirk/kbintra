@@ -87,6 +87,11 @@ export default function LoginPage() {
         <Text c="dimmed" size="sm" ta="center" mt={15}>
           Ny bruger? Brug registreringslinket fra din invitationsmail.
         </Text>
+        <Text c="dimmed" size="xs" ta="center" mt={10}>
+          <Anchor component={Link} to="/privatlivspolitik" c="dimmed">
+            Privatlivspolitik
+          </Anchor>
+        </Text>
       </Paper>
     </Container>
   )

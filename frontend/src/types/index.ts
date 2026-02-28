@@ -150,7 +150,7 @@ export interface PostAttachment {
   file: string
   file_url: string
   preview_html?: string
-  uploaded_by: Author
+  uploaded_by: Author | null
   uploaded_at: string
 }
 
@@ -211,7 +211,7 @@ export interface CreatePollData {
 export interface Post {
   id: number
   thread: number
-  author: Author
+  author: Author | null
   content: string
   is_own: boolean
   can_edit: boolean
@@ -227,7 +227,7 @@ export interface Thread {
   subgroup: number
   title: string
   slug: string
-  author: Author
+  author: Author | null
   is_pinned: boolean
   is_closed: boolean
   post_count: number
@@ -260,7 +260,7 @@ export interface CreatePostData {
 
 export interface RecentActivity {
   id: number
-  author: Author
+  author: Author | null
   content: string
   thread_id: number
   thread_title: string
@@ -286,7 +286,7 @@ export interface ForumFile {
   file: string
   file_url: string
   preview_html?: string
-  uploaded_by: Author
+  uploaded_by: Author | null
   is_own: boolean
   uploaded_at: string
 }
@@ -297,7 +297,7 @@ export interface AnnouncementAttachment {
   name: string
   file: string
   file_url: string
-  uploaded_by: Author
+  uploaded_by: Author | null
   uploaded_at: string
 }
 
