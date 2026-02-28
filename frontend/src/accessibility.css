@@ -20,6 +20,14 @@ html[data-accessibility="on"] {
   font-size: 20px;
 }
 
+/* ── Light mode base ────────────────────────────────────────────────── */
+/* default-hover is used as the background for inner item cards (forum,
+   announcements, events). Mantine's default (gray.0 = #f8f9fa) is nearly
+   invisible on a white card background — gray.2 makes them clearly distinct. */
+html[data-mantine-color-scheme="light"] {
+  --mantine-color-default-hover: var(--mantine-color-gray-2);
+}
+
 /* ── Light mode + accessibility ────────────────────────────────────── */
 html[data-mantine-color-scheme="light"][data-accessibility="on"] {
   /*
@@ -37,6 +45,13 @@ html[data-mantine-color-scheme="light"][data-accessibility="on"] {
 
   /* Stronger border color so Paper, Input etc. edges are clearly defined */
   --mantine-color-default-border: #adb5bd;
+}
+
+/* ── Dark mode base ─────────────────────────────────────────────────── */
+/* Inner item cards use default-hover (dark[5] = #383C48) which is quite
+   light against the section card. Pull it darker for a subtler elevation. */
+html[data-mantine-color-scheme="dark"] {
+  --mantine-color-default-hover: #2a2d38;
 }
 
 /* ── Dark mode + accessibility ─────────────────────────────────────── */

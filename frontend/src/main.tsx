@@ -75,10 +75,28 @@ const queryClient = new QueryClient({
 
 const theme = createTheme({
   primaryColor: "blue",
+  // Automatically flip button/badge text to black or white based on background luminance
   autoContrast: true,
   fontFamily: "Inter, system-ui, sans-serif",
   headings: {
     fontFamily: "Inter, system-ui, sans-serif",
+  },
+  // Higher contrast dark palette:
+  //   dark[0] → text color in dark mode (brighter, toward white)
+  //   dark[7] → page body background (deeper, toward black)
+  colors: {
+    dark: [
+      "#E8EAED", // [0] primary text — near-white (default ~#C9C9C9)
+      "#C9CDD6", // [1]
+      "#A0A5B0", // [2] dimmed text
+      "#696E7B", // [3]
+      "#4A4F5C", // [4] borders
+      "#383C48", // [5] inner item card hover backgrounds
+      "#232630", // [6] section card backgrounds (Paper) — elevated above body
+      "#0C0D12", // [7] body background — near black (default ~#242424)
+      "#08090D", // [8]
+      "#050507", // [9] darkest
+    ],
   },
   components: {
     Typography: Typography.extend({

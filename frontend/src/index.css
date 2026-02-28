@@ -96,26 +96,3 @@ a, button, input, select, textarea {
   /* Account for safe area at top when navbar is open */
   top: env(safe-area-inset-top) !important;
 }
-
-/* ── Increased dark mode contrast ────────────────────────────────── */
-/*
- * Mantine v8 dark defaults are fairly low-contrast (dark gray text on
- * dark gray background). Override key CSS variables to push backgrounds
- * darker and text brighter for a cleaner dark experience.
- */
-html[data-mantine-color-scheme="dark"] {
-  /* Page background: deeper black (default ≈ #1A1B1E) */
-  --mantine-color-body: #111214;
-
-  /* Primary text: near-white (default ≈ #C1C2C5) */
-  --mantine-color-text: #E8E9EC;
-
-  /* Dimmed/secondary text: clearly readable on dark bg (default ≈ #909296) */
-  --mantine-color-dimmed: #A0A3A8;
-
-  /* Component backgrounds (Paper, Card, Input, etc.) slightly darker */
-  --mantine-color-default: #1C1D22;
-
-  /* Borders more visible against the darker background (default ≈ #373A40) */
-  --mantine-color-default-border: #4A4D55;
-}
