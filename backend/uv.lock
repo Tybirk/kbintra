@@ -869,6 +869,7 @@ dependencies = [
     { name = "python-docx" },
     { name = "python-dotenv" },
     { name = "pywebpush" },
+    { name = "sentry-sdk", extra = ["django"] },
     { name = "whitenoise" },
 ]
 
@@ -895,6 +896,7 @@ requires-dist = [
     { name = "python-docx", specifier = ">=1.2.0" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "pywebpush", specifier = ">=2.1.2" },
+    { name = "sentry-sdk", extras = ["django"], specifier = ">=2.0.0" },
     { name = "whitenoise", specifier = ">=6.7.0" },
 ]
 
@@ -1638,6 +1640,25 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/12/0d/15cc82da5d83f27a3c6b04f3a232d61bc8c50d38a6cd8da79228e5f8b8d6/ruff-0.14.9-py3-none-win32.whl", hash = "sha256:df0937f30aaabe83da172adaf8937003ff28172f59ca9f17883b4213783df197", size = 13202651 },
     { url = "https://files.pythonhosted.org/packages/32/f7/c78b060388eefe0304d9d42e68fab8cffd049128ec466456cef9b8d4f06f/ruff-0.14.9-py3-none-win_amd64.whl", hash = "sha256:c0b53a10e61df15a42ed711ec0bda0c582039cf6c754c49c020084c55b5b0bc2", size = 14702079 },
     { url = "https://files.pythonhosted.org/packages/26/09/7a9520315decd2334afa65ed258fed438f070e31f05a2e43dd480a5e5911/ruff-0.14.9-py3-none-win_arm64.whl", hash = "sha256:8e821c366517a074046d92f0e9213ed1c13dbc5b37a7fc20b07f79b64d62cc84", size = 13744730 },
+]
+
+[[package]]
+name = "sentry-sdk"
+version = "2.53.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d3/06/66c8b705179bc54087845f28fd1b72f83751b6e9a195628e2e9af9926505/sentry_sdk-2.53.0.tar.gz", hash = "sha256:6520ef2c4acd823f28efc55e43eb6ce2e6d9f954a95a3aa96b6fd14871e92b77", size = 412369 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/47/d4/2fdf854bc3b9c7f55219678f812600a20a138af2dd847d99004994eada8f/sentry_sdk-2.53.0-py2.py3-none-any.whl", hash = "sha256:46e1ed8d84355ae54406c924f6b290c3d61f4048625989a723fd622aab838899", size = 437908 },
+]
+
+[package.optional-dependencies]
+django = [
+    { name = "django", version = "5.2.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "django", version = "6.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
 
 [[package]]

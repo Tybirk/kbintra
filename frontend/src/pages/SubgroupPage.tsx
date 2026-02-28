@@ -1105,11 +1105,18 @@ function FolderRow({
             onClick={(e: React.MouseEvent) => {
               e.stopPropagation()
               const url = `${window.location.origin}/forum/${subgroupSlug}/dokumenter/${folder.slug}`
-              navigator.clipboard.writeText(url)
-              notifications.show({
-                message: "Link kopieret",
-                color: "green",
-              })
+              navigator.clipboard.writeText(url).then(
+                () =>
+                  notifications.show({
+                    message: "Link kopieret",
+                    color: "green",
+                  }),
+                () =>
+                  notifications.show({
+                    message: "Kunne ikke kopiere link",
+                    color: "red",
+                  }),
+              )
             }}
           >
             <IconLink size={16} />
@@ -1160,6 +1167,10 @@ function FileRow({
     useDisclosure(false)
   const [previewOpened, { open: openPreview, close: closePreview }] =
     useDisclosure(false)
+  const [
+    deleteConfirmOpened,
+    { open: openDeleteConfirm, close: closeDeleteConfirm },
+  ] = useDisclosure(false)
 
   const fileType = getFileType(file.name)
   const FileIcon = getFileIcon(file.name)
@@ -1203,9 +1214,7 @@ function FileRow({
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation()
-    if (window.confirm("Er du sikker på, at du vil slette denne fil?")) {
-      deleteMutation.mutate()
-    }
+    openDeleteConfirm()
   }
 
   const handleOpenMoveModal = (e: React.MouseEvent) => {
@@ -1253,11 +1262,18 @@ function FileRow({
               onClick={(e: React.MouseEvent) => {
                 e.stopPropagation()
                 const url = `${window.location.origin}${file.file_url}`
-                navigator.clipboard.writeText(url)
-                notifications.show({
-                  message: "Link kopieret",
-                  color: "green",
-                })
+                navigator.clipboard.writeText(url).then(
+                  () =>
+                    notifications.show({
+                      message: "Link kopieret",
+                      color: "green",
+                    }),
+                  () =>
+                    notifications.show({
+                      message: "Kunne ikke kopiere link",
+                      color: "red",
+                    }),
+                )
               }}
               title="Kopiér link"
             >
@@ -1318,6 +1334,31 @@ function FileRow({
           onMove()
         }}
       />
+
+      <Modal
+        opened={deleteConfirmOpened}
+        onClose={closeDeleteConfirm}
+        title="Slet fil"
+        centered
+        size="sm"
+      >
+        <Text mb="lg">Er du sikker på, at du vil slette denne fil?</Text>
+        <Group justify="flex-end">
+          <Button variant="light" onClick={closeDeleteConfirm}>
+            Annuller
+          </Button>
+          <Button
+            color="red"
+            onClick={() => {
+              closeDeleteConfirm()
+              deleteMutation.mutate()
+            }}
+            loading={deleteMutation.isPending}
+          >
+            Slet
+          </Button>
+        </Group>
+      </Modal>
     </>
   )
 }

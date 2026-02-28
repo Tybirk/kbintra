@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { writeFileSync } from 'fs';
 
 // Generate version based on build timestamp
@@ -12,6 +13,9 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(appVersion),
   },
   build: {
+    // Only generate source maps when SENTRY_AUTH_TOKEN is present so they get uploaded and deleted.
+    // Without the token the .map files would be committed to the dist and served publicly.
+    sourcemap: !!process.env.SENTRY_AUTH_TOKEN,
     // Generate version.json file after build
     rollupOptions: {
       plugins: [
@@ -29,6 +33,19 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    // Upload source maps to Sentry at build time (only when auth token is provided, e.g. in CI/CD)
+    ...(process.env.SENTRY_AUTH_TOKEN
+      ? [
+          sentryVitePlugin({
+            org: process.env.SENTRY_ORG,
+            project: process.env.SENTRY_PROJECT,
+            authToken: process.env.SENTRY_AUTH_TOKEN,
+            release: { name: `kb-intra@${appVersion}` },
+            // Source maps are deleted from the dist after upload so they're not publicly served
+            sourcemaps: { filesToDeleteAfterUpload: ['./dist/**/*.map'] },
+          }),
+        ]
+      : []),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],

@@ -10,6 +10,7 @@ import {
   Code,
 } from "@mantine/core"
 import { IconAlertTriangle } from "@tabler/icons-react"
+import * as Sentry from "@sentry/react"
 
 interface Props {
   children: ReactNode
@@ -32,11 +33,10 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // Log error to console in development
     console.error("ErrorBoundary caught an error:", error, errorInfo)
-
-    // In production, you could send this to an error tracking service
-    // e.g., Sentry.captureException(error, { extra: errorInfo });
+    Sentry.captureException(error, {
+      extra: { componentStack: errorInfo.componentStack },
+    })
   }
 
   handleReload = () => {

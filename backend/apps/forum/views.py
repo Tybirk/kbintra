@@ -534,13 +534,21 @@ class FolderDownloadView(APIView):
     """Download all files in a folder (including subfolders) as a zip."""
 
     permission_classes = [permissions.IsAuthenticated]
+    MAX_ZIP_SIZE = 100 * 1024 * 1024  # 100 MB
 
-    def get(self, request: Request, pk: int) -> FileResponse:
+    def get(self, request: Request, pk: int) -> FileResponse | Response:
         folder = get_object_or_404(Folder, pk=pk)
 
         buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            self._add_folder(zf, folder, "")
+        total_size = 0
+        try:
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                total_size = self._add_folder(zf, folder, "", total_size)
+        except _ZipSizeLimitError:
+            return Response(
+                {"detail": "Mappen er for stor til at downloade som zip (maks 100 MB)."},
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
 
         buf.seek(0)
         return FileResponse(
@@ -550,14 +558,23 @@ class FolderDownloadView(APIView):
             content_type="application/zip",
         )
 
-    def _add_folder(self, zf: zipfile.ZipFile, folder: Folder, prefix: str) -> None:
+    def _add_folder(self, zf: zipfile.ZipFile, folder: Folder, prefix: str, total_size: int) -> int:
         path = f"{prefix}{folder.name}/"
         for file_obj in File.objects.filter(folder=folder):
             if file_obj.file and file_obj.file.storage.exists(file_obj.file.name):
-                data = file_obj.file.read()
+                with file_obj.file.open("rb") as f:
+                    data = f.read()
+                total_size += len(data)
+                if total_size > self.MAX_ZIP_SIZE:
+                    raise _ZipSizeLimitError
                 zf.writestr(f"{path}{file_obj.name}", data)
         for subfolder in Folder.objects.filter(parent=folder):
-            self._add_folder(zf, subfolder, path)
+            total_size = self._add_folder(zf, subfolder, path, total_size)
+        return total_size
+
+
+class _ZipSizeLimitError(Exception):
+    """Raised when cumulative zip content exceeds the size limit."""
 
 
 class RecentActivityView(generics.ListAPIView):
@@ -792,6 +809,7 @@ class MarkAllForumReadView(APIView):
                 NotificationType.POST_REPLY,
                 NotificationType.POST_REACTION,
                 NotificationType.MENTION,
+                NotificationType.SUBGROUP_ACTIVITY,
             ],
             link__startswith="/forum/",
         ).update(is_read=True)

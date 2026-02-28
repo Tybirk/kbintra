@@ -549,3 +549,49 @@ class TestConfirmEmailChangeAPI:
             format="json",
         )
         assert response.status_code == 400
+
+
+class TestAdminDownloadAPI:
+    """Tests for admin download endpoints (staff-only)."""
+
+    def test_download_db_requires_auth(self, api_client, db):
+        """Test that unauthenticated requests are rejected."""
+        response = api_client.get("/api/auth/admin/download-db/")
+        assert response.status_code == 401
+
+    def test_download_db_requires_staff(self, authenticated_client):
+        """Test that non-staff users are rejected."""
+        response = authenticated_client.get("/api/auth/admin/download-db/")
+        assert response.status_code == 403
+
+    def test_download_db_staff_ok(self, admin_client, settings, tmp_path):
+        """Test that staff users can download the database."""
+        # Point DATABASE NAME to a real file so FileResponse can open it
+        db_file = tmp_path / "db.sqlite3"
+        db_file.write_bytes(b"SQLite format 3\x00" + b"\x00" * 84)
+        settings.DATABASES = {"default": {**settings.DATABASES["default"], "NAME": str(db_file)}}
+        response = admin_client.get("/api/auth/admin/download-db/")
+        assert response.status_code == 200
+        assert response["Content-Type"] == "application/x-sqlite3"
+
+    def test_download_media_requires_auth(self, api_client, db):
+        """Test that unauthenticated requests are rejected."""
+        response = api_client.get("/api/auth/admin/download-media/")
+        assert response.status_code == 401
+
+    def test_download_media_requires_staff(self, authenticated_client):
+        """Test that non-staff users are rejected."""
+        response = authenticated_client.get("/api/auth/admin/download-media/")
+        assert response.status_code == 403
+
+    def test_download_media_staff_ok(self, admin_client, settings, tmp_path):
+        """Test that staff users can download media as zip."""
+        # Create a temp media directory with a file
+        media_dir = tmp_path / "media"
+        media_dir.mkdir()
+        (media_dir / "test.txt").write_text("hello")
+        settings.MEDIA_ROOT = media_dir
+
+        response = admin_client.get("/api/auth/admin/download-media/")
+        assert response.status_code == 200
+        assert response["Content-Type"] == "application/zip"

@@ -306,6 +306,55 @@ LOGGING = {
     },
 }
 
+# Sentry error monitoring
+# Configure by setting SENTRY_DSN in the environment; all other settings are optional.
+SENTRY_DSN = os.getenv("SENTRY_DSN", "")
+if SENTRY_DSN:
+    import logging as _logging
+
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+    from sentry_sdk.integrations.huey import HueyIntegration
+    from sentry_sdk.integrations.logging import LoggingIntegration
+    from sentry_sdk.integrations.redis import RedisIntegration
+
+    def _sentry_before_send(event: dict, hint: dict) -> dict | None:
+        """Drop known non-actionable exceptions so they don't create noise in Sentry."""
+        exc_info = hint.get("exc_info")
+        if exc_info:
+            exc_type = exc_info[0]
+            # simplejwt token errors are user-facing (expired/invalid tokens), not server bugs
+            if exc_type.__name__ in ("TokenError", "InvalidToken", "TokenExpiredError"):
+                return None
+        return event
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=os.getenv("SENTRY_ENVIRONMENT", "development" if DEBUG else "production"),
+        release=os.getenv("SENTRY_RELEASE") or None,
+        integrations=[
+            DjangoIntegration(
+                transaction_style="url",  # Group transactions by URL pattern, not function name
+                middleware_spans=True,  # Track time spent in each middleware
+                signals_spans=False,  # Skip Django signal spans (too noisy for small app)
+                cache_spans=False,  # Skip cache spans (not using Django cache framework)
+            ),
+            LoggingIntegration(
+                level=_logging.INFO,  # Capture INFO+ as breadcrumbs (gives context before error)
+                event_level=_logging.ERROR,  # Send ERROR+ log records as Sentry events
+            ),
+            RedisIntegration(),  # Redis commands as breadcrumbs (channel layer operations)
+            HueyIntegration(),  # Track Huey background task errors and performance
+        ],
+        # Performance: capture 10% of requests as traces in production
+        traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+        # Profiling: sample 10% of traced requests for CPU profiling
+        profiles_sample_rate=float(os.getenv("SENTRY_PROFILES_SAMPLE_RATE", "0.1")),
+        # Include authenticated user email/name in error reports
+        send_default_pii=True,
+        before_send=_sentry_before_send,
+    )
+
 # Production security settings
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

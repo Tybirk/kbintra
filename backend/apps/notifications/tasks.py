@@ -186,7 +186,7 @@ def notify_new_announcement_task(
         logger.warning("notify_new_announcement_task: Author %d not found", author_id)
         return
 
-    recipients = User.objects.exclude(id=author_id)
+    recipients = User.objects.filter(is_active=True).exclude(id=author_id)
     count = notify_new_announcement(
         recipients=recipients,
         author=author,

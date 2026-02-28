@@ -31,6 +31,14 @@ export function useAccessibilityMode() {
     onSuccess: (updatedUser) => {
       updateUser(updatedUser)
     },
+    onError: () => {
+      // Re-sync DOM with the unchanged store value
+      if (isEnabled) {
+        document.documentElement.setAttribute(ATTR, "on")
+      } else {
+        document.documentElement.removeAttribute(ATTR)
+      }
+    },
   })
 
   return {

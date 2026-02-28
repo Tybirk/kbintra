@@ -16,6 +16,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@sentry/react": "^9.0.0",
     "@emoji-mart/data": "^1.2.1",
     "@emoji-mart/react": "^1.1.1",
     "@mantine/carousel": "9.0.0-alpha.1",
@@ -51,6 +52,7 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
+    "@sentry/vite-plugin": "^3.0.0",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",

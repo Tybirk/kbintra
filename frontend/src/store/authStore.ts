@@ -4,9 +4,22 @@
 
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
+import * as Sentry from "@sentry/react"
 import type { User } from "../types"
 import { authApi } from "../api/auth"
 import { getAccessToken } from "../api/client"
+
+function setSentryUser(user: User | null) {
+  if (user) {
+    Sentry.setUser({
+      id: String(user.id),
+      email: user.email,
+      username: `${user.first_name} ${user.last_name}`.trim(),
+    })
+  } else {
+    Sentry.setUser(null)
+  }
+}
 
 interface AuthState {
   user: User | null
@@ -37,6 +50,7 @@ export const useAuthStore = create<AuthState>()(
           await authApi.login({ email, password })
           const user = await authApi.getCurrentUser()
           set({ user, isAuthenticated: true, isLoading: false })
+          setSentryUser(user)
         } catch (error: unknown) {
           const message =
             error instanceof Error ? error.message : "Login failed"
@@ -48,6 +62,7 @@ export const useAuthStore = create<AuthState>()(
       logout: () => {
         authApi.logout()
         set({ user: null, isAuthenticated: false, error: null })
+        setSentryUser(null)
       },
 
       fetchCurrentUser: async () => {
@@ -55,8 +70,10 @@ export const useAuthStore = create<AuthState>()(
         try {
           const user = await authApi.getCurrentUser()
           set({ user, isAuthenticated: true, isLoading: false })
+          setSentryUser(user)
         } catch {
           set({ user: null, isAuthenticated: false, isLoading: false })
+          setSentryUser(null)
         }
       },
 
@@ -79,9 +96,11 @@ export const useAuthStore = create<AuthState>()(
         try {
           const user = await authApi.getCurrentUser()
           set({ user, isAuthenticated: true })
+          setSentryUser(user)
           return true
         } catch {
           set({ isAuthenticated: false, user: null })
+          setSentryUser(null)
           return false
         }
       },

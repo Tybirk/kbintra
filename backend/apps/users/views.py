@@ -2,10 +2,14 @@
 Views for User models.
 """
 
+import os
+import zipfile
 from typing import Any
 
-from django.db import models
+from django.conf import settings
+from django.db import connection, models
 from django.db.models import Count, QuerySet
+from django.http import FileResponse, StreamingHttpResponse
 from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.request import Request
@@ -301,3 +305,65 @@ class ConfirmEmailChangeView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response({"message": "Din emailadresse er nu opdateret."})
+
+
+class IsStaff(permissions.BasePermission):
+    def has_permission(self, request: Request, view: Any) -> bool:
+        return bool(request.user and request.user.is_staff)
+
+
+class DownloadDatabaseView(APIView):
+    """Download the SQLite database file. Staff only."""
+
+    permission_classes = [permissions.IsAuthenticated, IsStaff]
+
+    def get(self, request: Request) -> FileResponse:
+        db_path = settings.DATABASES["default"]["NAME"]
+
+        # Checkpoint WAL into main db for a consistent snapshot
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except Exception:
+            pass  # In-memory or non-WAL databases don't support this
+        return FileResponse(
+            open(db_path, "rb"),  # noqa: SIM115
+            content_type="application/x-sqlite3",
+            as_attachment=True,
+            filename="db.sqlite3",
+        )
+
+
+def _stream_zip(media_root: str) -> Any:
+    """Yield chunks of a zip archive containing all files under media_root."""
+    import io
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for dirpath, _dirnames, filenames in os.walk(media_root):
+            for filename in filenames:
+                filepath = os.path.join(dirpath, filename)
+                arcname = os.path.relpath(filepath, media_root)
+                zf.write(filepath, arcname)
+
+    buffer.seek(0)
+    while True:
+        chunk = buffer.read(8192)
+        if not chunk:
+            break
+        yield chunk
+
+
+class DownloadMediaView(APIView):
+    """Download all media files as a zip archive. Staff only."""
+
+    permission_classes = [permissions.IsAuthenticated, IsStaff]
+
+    def get(self, request: Request) -> StreamingHttpResponse:
+        media_root = str(settings.MEDIA_ROOT)
+        response = StreamingHttpResponse(
+            _stream_zip(media_root),
+            content_type="application/zip",
+        )
+        response["Content-Disposition"] = 'attachment; filename="media.zip"'
+        return response

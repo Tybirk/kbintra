@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react"
 import { Routes, Route, Navigate, useLocation } from "react-router-dom"
 import { LoadingOverlay, AppShell } from "@mantine/core"
+import * as Sentry from "@sentry/react"
+
+// Wrapping Routes enables Sentry to name transactions by route pattern (e.g. /forum/:slug)
+// instead of the raw URL, which makes the Performance dashboard far more useful.
+const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes)
 
 import { useAuthStore } from "./store/authStore"
 import { getAccessToken } from "./api/client"
@@ -37,6 +42,7 @@ import LinksPage from "./pages/LinksPage"
 import MessagesPage from "./pages/MessagesPage"
 import NotificationsPage from "./pages/NotificationsPage"
 import NotificationPreferencesPage from "./pages/NotificationPreferencesPage"
+import AdminPage from "./pages/AdminPage"
 import ConfirmEmailChangePage from "./pages/ConfirmEmailChangePage"
 import AppHeader from "./components/AppHeader"
 import AppNavbar from "./components/AppNavbar"
@@ -90,7 +96,7 @@ function App() {
   if (!isAuthenticated) {
     return (
       <ErrorBoundary>
-        <Routes>
+        <SentryRoutes>
           <Route
             path="/login"
             element={
@@ -132,7 +138,7 @@ function App() {
             }
           />
           <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
+        </SentryRoutes>
       </ErrorBoundary>
     )
   }
@@ -164,7 +170,7 @@ function App() {
         </AppShell.Navbar>
 
         <AppShell.Main>
-          <Routes>
+          <SentryRoutes>
             {/* Forside */}
             <Route
               path="/"
@@ -510,9 +516,21 @@ function App() {
               }
             />
 
+            {/* Drift */}
+            <Route
+              path="/drift"
+              element={
+                <ProtectedRoute>
+                  <PageErrorBoundary>
+                    <AdminPage />
+                  </PageErrorBoundary>
+                </ProtectedRoute>
+              }
+            />
+
             {/* Catch all */}
             <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+          </SentryRoutes>
         </AppShell.Main>
       </AppShell>
     </ErrorBoundary>

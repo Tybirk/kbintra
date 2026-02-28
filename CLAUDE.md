@@ -238,3 +238,5 @@ Also ensure that ALL user facing text in the app is in danish! (Not in our conve
 ## Adding New Models or Columns
 
 When adding a new major database model or a significant column to an existing model, consider whether it should be included in the full-text search index. See `backend/apps/search/SEARCH.md` for details on how to add a new searchable model (signals, rebuild command, type mapping).
+
+Also in general prefer slugs to IDs for use in URLs

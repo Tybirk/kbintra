@@ -89,6 +89,9 @@ services:
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost}
       - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS:-http://localhost}
       - REDIS_URL=redis://redis:6379/0
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}
+      - SENTRY_RELEASE=${SENTRY_RELEASE:-}
     networks:
       - web
     restart: unless-stopped
@@ -122,6 +125,9 @@ services:
       - DATA_DIR=/app/data
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost}
       - REDIS_URL=redis://redis:6379/0
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}
+      - SENTRY_RELEASE=${SENTRY_RELEASE:-}
     networks:
       - web
     restart: unless-stopped
@@ -144,7 +150,17 @@ services:
         max-file: "3"
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        # DSN is embedded at build time (public key, safe to include in JS bundle).
+        # Reuses the same SENTRY_DSN that the backend reads — no separate var needed.
+        VITE_SENTRY_DSN: ${SENTRY_DSN:-}
+        VITE_SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+        # Source map upload credentials (only needed when SENTRY_AUTH_TOKEN is set)
+        SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN:-}
+        SENTRY_ORG: ${SENTRY_ORG:-}
+        SENTRY_PROJECT: ${SENTRY_PROJECT:-}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.frontend.rule=PathPrefix(`/`)"

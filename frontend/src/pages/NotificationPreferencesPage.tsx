@@ -182,8 +182,8 @@ export default function NotificationPreferencesPage() {
       setTestPushResult(result)
       if (result.scheduled) {
         notifications.show({
-          title: "Push notification scheduled",
-          message: `Test push will be sent in ${result.delay} seconds. You can close the app now.`,
+          title: "Push-notifikation planlagt",
+          message: `Test push sendes om ${result.delay} sekunder. Du kan lukke appen nu.`,
           color: "blue",
         })
       }
@@ -567,7 +567,7 @@ export default function NotificationPreferencesPage() {
                         onClick={handleTestPush}
                         loading={testPushLoading}
                       >
-                        Send Test Push Notification
+                        Send test push-notifikation
                       </Button>
 
                       <Button
@@ -576,7 +576,7 @@ export default function NotificationPreferencesPage() {
                         onClick={handleTestPushDelayed}
                         loading={testPushDelayedLoading}
                       >
-                        Send Test Push (10s delay)
+                        Send test push (10s forsinkelse)
                       </Button>
 
                       {testPushError && (

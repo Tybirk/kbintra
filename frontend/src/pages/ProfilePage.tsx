@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useMutation } from "@tanstack/react-query"
 import { useParams, useNavigate } from "react-router-dom"
 import {
   Title,
@@ -29,6 +29,7 @@ import { usersApi } from "../api/users"
 import { messagingApi } from "../api/messaging"
 import { useAuthStore } from "../store/authStore"
 import { useAccessibilityMode } from "../hooks/useAccessibilityMode"
+import { notifications } from "@mantine/notifications"
 
 function ThemeSettings() {
   const { colorScheme, setColorScheme } = useMantineColorScheme()
@@ -76,6 +77,21 @@ export default function ProfilePage() {
 
   // If no userId, show current user's profile
   const isOwnProfile = !userId || Number(userId) === currentUser?.id
+
+  const sendMessageMutation = useMutation({
+    mutationFn: (participantId: number) =>
+      messagingApi.createConversation({ participant_ids: [participantId] }),
+    onSuccess: (conversation) => {
+      navigate(`/beskeder/${conversation.id}`)
+    },
+    onError: () => {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke oprette samtale. Prøv igen.",
+        color: "red",
+      })
+    },
+  })
 
   const {
     data: user,
@@ -148,12 +164,8 @@ export default function ProfilePage() {
             <Button
               variant="light"
               leftSection={<IconMessage size={16} />}
-              onClick={async () => {
-                const conversation = await messagingApi.createConversation({
-                  participant_ids: [user.id],
-                })
-                navigate(`/beskeder/${conversation.id}`)
-              }}
+              onClick={() => sendMessageMutation.mutate(user.id)}
+              loading={sendMessageMutation.isPending}
             >
               Send besked
             </Button>

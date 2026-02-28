@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
 import { ErrorBoundary } from "react-error-boundary"
 import { Alert, Button, Stack } from "@mantine/core"
+import * as Sentry from "@sentry/react"
 
 function ErrorFallback({
   resetErrorBoundary,
@@ -25,6 +26,9 @@ export function PageErrorBoundary({ children }: { children: ReactNode }) {
       FallbackComponent={ErrorFallback}
       onError={(error, info) => {
         console.error("Page error:", error, info)
+        Sentry.captureException(error, {
+          extra: { componentStack: info.componentStack },
+        })
       }}
     >
       {children}

@@ -13,10 +13,12 @@ import {
   IconUsersGroup,
   IconDoor,
   IconLink,
+  IconSettings,
 } from "@tabler/icons-react"
 import { forumApi } from "../api/forum"
 import { messagingApi } from "../api/messaging"
 import { notificationsApi } from "../api/notifications"
+import { useAuthStore } from "../store/authStore"
 
 interface NavItem {
   icon: typeof IconHome
@@ -58,6 +60,7 @@ interface AppNavbarProps {
 export default function AppNavbar({ onNavigate }: AppNavbarProps) {
   const location = useLocation()
   const navigate = useNavigate()
+  const user = useAuthStore((s) => s.user)
 
   // Fetch unread message count
   const { data: unreadMessagesData } = useQuery({
@@ -129,6 +132,14 @@ export default function AppNavbar({ onNavigate }: AppNavbarProps) {
             onClick={() => handleNavigate(item.path)}
           />
         ))}
+        {user?.is_staff && (
+          <NavLink
+            label="Admin"
+            leftSection={<IconSettings size={20} />}
+            active={location.pathname === "/drift"}
+            onClick={() => handleNavigate("/drift")}
+          />
+        )}
       </Stack>
     </ScrollArea>
   )

@@ -198,15 +198,15 @@ export default function ThreadPage() {
       setPollData(null)
       clearDraft("reply-" + thread!.id)
       notifications.show({
-        title: "Reply posted",
-        message: "Your reply has been added.",
+        title: "Svar oprettet",
+        message: "Dit svar er blevet tilføjet.",
         color: "green",
       })
     },
     onError: () => {
       notifications.show({
-        title: "Error",
-        message: "Failed to post reply. Please try again.",
+        title: "Fejl",
+        message: "Kunne ikke oprette svar. Prøv igen.",
         color: "red",
       })
     },
@@ -220,8 +220,14 @@ export default function ThreadPage() {
       newTitle,
     }: UpdatePostParams) => {
       await forumApi.updatePost(postId, data)
-      if (editPollData && editingPost?.poll) {
-        await forumApi.updatePoll(editingPost.poll.id, editPollData)
+      // Read current values from state at call time (not closure time)
+      const currentEditPollData = editPollData
+      const currentEditingPost = editingPost
+      if (currentEditPollData && currentEditingPost?.poll) {
+        await forumApi.updatePoll(
+          currentEditingPost.poll.id,
+          currentEditPollData,
+        )
       }
       if (threadId !== undefined && newTitle !== undefined) {
         await forumApi.updateThread(threadId, { title: newTitle })
@@ -255,15 +261,15 @@ export default function ThreadPage() {
       closeDeleteModal()
       setPostToDelete(null)
       notifications.show({
-        title: "Post deleted",
-        message: "Your post has been deleted.",
+        title: "Indlæg slettet",
+        message: "Dit indlæg er blevet slettet.",
         color: "blue",
       })
     },
     onError: () => {
       notifications.show({
-        title: "Error",
-        message: "Failed to delete post. Please try again.",
+        title: "Fejl",
+        message: "Kunne ikke slette indlægget. Prøv igen.",
         color: "red",
       })
     },
@@ -273,16 +279,16 @@ export default function ThreadPage() {
     mutationFn: forumApi.deleteThread,
     onSuccess: () => {
       notifications.show({
-        title: "Thread deleted",
-        message: "The thread has been deleted.",
+        title: "Tråd slettet",
+        message: "Tråden er blevet slettet.",
         color: "blue",
       })
       navigate("/forum")
     },
     onError: () => {
       notifications.show({
-        title: "Error",
-        message: "Failed to delete thread. Please try again.",
+        title: "Fejl",
+        message: "Kunne ikke slette tråden. Prøv igen.",
         color: "red",
       })
     },
@@ -353,7 +359,7 @@ export default function ThreadPage() {
     if (errors.length > 0) {
       errors.forEach((error) => {
         notifications.show({
-          title: "File too large",
+          title: "Fil for stor",
           message: error,
           color: "red",
         })
@@ -426,7 +432,7 @@ export default function ThreadPage() {
   if (error || !thread) {
     return (
       <Center h={200}>
-        <Text c="red">Thread not found.</Text>
+        <Text c="red">Tråden blev ikke fundet.</Text>
       </Center>
     )
   }
@@ -549,8 +555,7 @@ export default function ThreadPage() {
       {thread.posts.length > 1 && (
         <>
           <Title order={4} mt="xl" mb="md">
-            {thread.posts.length - 1}{" "}
-            {thread.posts.length - 1 === 1 ? "svar" : "svar"}
+            {thread.posts.length - 1} svar
           </Title>
           <Stack gap="md" mb="xl">
             {thread.posts.slice(1).map((post) => (
@@ -600,11 +605,11 @@ export default function ThreadPage() {
           <FileDropzone onDrop={handleAddFiles}>
             <form onSubmit={handleSubmitPost}>
               <Stack gap="md">
-                <Text fw={500}>Add a Reply</Text>
+                <Text fw={500}>Skriv et svar</Text>
                 <RichTextEditor
                   content={newPostContent}
                   onChange={setNewPostContent}
-                  placeholder="Write your reply..."
+                  placeholder="Skriv dit svar..."
                   minHeight={150}
                   onFilePaste={handleAddFiles}
                   draftKey={"reply-" + thread.id}
@@ -657,7 +662,7 @@ export default function ThreadPage() {
                     loading={createPostMutation.isPending}
                     disabled={isPostEmpty}
                   >
-                    Post Reply
+                    Send svar
                   </Button>
                 </Group>
               </Stack>
@@ -669,23 +674,23 @@ export default function ThreadPage() {
       <Modal
         opened={deleteModalOpened}
         onClose={closeDeleteModal}
-        title="Delete Post"
+        title="Slet indlæg"
         centered
       >
         <Text mb="lg">
-          Are you sure you want to delete this post? This action cannot be
-          undone.
+          Er du sikker på, at du vil slette dette indlæg? Handlingen kan ikke
+          fortrydes.
         </Text>
         <Group justify="flex-end">
           <Button variant="light" onClick={closeDeleteModal}>
-            Cancel
+            Annuller
           </Button>
           <Button
             color="red"
             onClick={handleConfirmDelete}
             loading={deletePostMutation.isPending}
           >
-            Delete
+            Slet
           </Button>
         </Group>
       </Modal>
@@ -779,8 +784,8 @@ function PostCard({
                 />
               </Text>
               <Text size="xs" c="dimmed">
-                {dayjs(post.created_at).format("MMM D, YYYY [at] h:mm A")}
-                {post.updated_at !== post.created_at && " (edited)"}
+                {dayjs(post.created_at).format("D. MMM YYYY [kl.] HH:mm")}
+                {post.updated_at !== post.created_at && " (redigeret)"}
               </Text>
             </div>
           </Group>
@@ -797,14 +802,14 @@ function PostCard({
                   leftSection={<IconEdit size={14} />}
                   onClick={onStartEdit}
                 >
-                  Edit
+                  Rediger
                 </Menu.Item>
                 <Menu.Item
                   color="red"
                   leftSection={<IconTrash size={14} />}
                   onClick={onDelete}
                 >
-                  Delete
+                  Slet
                 </Menu.Item>
               </Menu.Dropdown>
             </Menu>

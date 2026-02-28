@@ -69,7 +69,9 @@ class SubgroupSubscription(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ["user", "subgroup"]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "subgroup"], name="unique_user_subgroup"),
+        ]
         ordering = ["-created_at"]
 
     def __str__(self) -> str:
@@ -104,7 +106,11 @@ class Thread(models.Model):
 
     class Meta:
         ordering = ["-is_pinned", "-updated_at"]
-        unique_together = [["subgroup", "slug"]]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["subgroup", "slug"], name="unique_thread_subgroup_slug"
+            ),
+        ]
 
     def __str__(self) -> str:
         return self.title
@@ -212,9 +218,13 @@ class Folder(models.Model):
 
     class Meta:
         ordering = ["name"]
-        unique_together = [
-            ["subgroup", "parent", "name"],
-            ["subgroup", "slug"],
+        constraints = [
+            models.UniqueConstraint(
+                fields=["subgroup", "parent", "name"], name="unique_folder_subgroup_parent_name"
+            ),
+            models.UniqueConstraint(
+                fields=["subgroup", "slug"], name="unique_folder_subgroup_slug"
+            ),
         ]
 
     def __str__(self) -> str:
@@ -263,7 +273,11 @@ class Reaction(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ["post", "user", "reaction_type"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["post", "user", "reaction_type"], name="unique_reaction_per_user"
+            ),
+        ]
         ordering = ["created_at"]
 
     def __str__(self) -> str:
@@ -333,7 +347,9 @@ class PollVote(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ["option", "user"]
+        constraints = [
+            models.UniqueConstraint(fields=["option", "user"], name="unique_poll_vote_per_user"),
+        ]
 
     def __str__(self) -> str:
         return f"{self.user} voted for {self.option}"
@@ -355,7 +371,9 @@ class ThreadReadStatus(models.Model):
     last_read_at = models.DateTimeField()
 
     class Meta:
-        unique_together = ["user", "thread"]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "thread"], name="unique_thread_read_status"),
+        ]
 
     def __str__(self) -> str:
         return f"{self.user} read {self.thread} at {self.last_read_at}"
@@ -377,7 +395,9 @@ class ThreadMuteStatus(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ["user", "thread"]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "thread"], name="unique_thread_mute_status"),
+        ]
 
     def __str__(self) -> str:
         return f"{self.user} muted {self.thread}"

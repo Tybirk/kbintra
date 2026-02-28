@@ -133,12 +133,11 @@ class TestFolderModel:
         """Test subfolder has parent."""
         assert subfolder.parent == folder
 
-    def test_folder_unique_together_prevents_duplicate(self, db, subgroup, folder):
+    def test_folder_unique_constraint_prevents_duplicate(self, db, subgroup, folder):
         """Test folder name uniqueness within parent (model-level validation)."""
-        # The unique_together constraint is enforced at database level
-        # We can verify the constraint exists by checking the model meta
-        unique_together = Folder._meta.unique_together
-        assert ("subgroup", "parent", "name") in unique_together
+        # The UniqueConstraint is enforced at database level
+        constraint_names = [c.name for c in Folder._meta.constraints]
+        assert "unique_folder_subgroup_parent_name" in constraint_names
 
 
 class TestFileModel:

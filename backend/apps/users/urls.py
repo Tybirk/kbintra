@@ -7,6 +7,8 @@ from django.urls import path
 from .views import (
     ChangePasswordView,
     ConfirmEmailChangeView,
+    DownloadDatabaseView,
+    DownloadMediaView,
     ForgotPasswordView,
     InvitationListCreateView,
     RegisterView,
@@ -24,4 +26,6 @@ urlpatterns = [
     path("reset-password/", ResetPasswordView.as_view(), name="reset-password"),
     path("request-email-change/", RequestEmailChangeView.as_view(), name="request-email-change"),
     path("confirm-email-change/", ConfirmEmailChangeView.as_view(), name="confirm-email-change"),
+    path("admin/download-db/", DownloadDatabaseView.as_view(), name="admin-download-db"),
+    path("admin/download-media/", DownloadMediaView.as_view(), name="admin-download-media"),
 ]
