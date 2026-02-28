@@ -8,7 +8,7 @@ import {
   useNavigationType,
 } from "react-router-dom"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { MantineProvider, createTheme } from "@mantine/core"
+import { MantineProvider, Typography, createTheme } from "@mantine/core"
 import { Notifications } from "@mantine/notifications"
 import * as Sentry from "@sentry/react"
 
@@ -78,6 +78,13 @@ const theme = createTheme({
   fontFamily: "Inter, system-ui, sans-serif",
   headings: {
     fontFamily: "Inter, system-ui, sans-serif",
+  },
+  components: {
+    Typography: Typography.extend({
+      styles: {
+        root: { overflowWrap: "break-word" },
+      },
+    }),
   },
 })
 

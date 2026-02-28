@@ -205,7 +205,7 @@ class ThreadDetailView(generics.RetrieveAPIView):
     queryset = Thread.objects.prefetch_related(
         "posts__author",
         "posts__attachments__uploaded_by",
-        "posts__reactions",
+        "posts__reactions__user",
         "posts__poll__options__votes__user",
     ).select_related("author", "subgroup")
 
@@ -232,7 +232,7 @@ class ThreadDetailBySlugView(generics.RetrieveAPIView):
             Thread.objects.prefetch_related(
                 "posts__author",
                 "posts__attachments__uploaded_by",
-                "posts__reactions",
+                "posts__reactions__user",
                 "posts__poll__options__votes__user",
             ).select_related("author", "subgroup"),
             subgroup=subgroup,
@@ -313,7 +313,9 @@ class PostListCreateView(generics.ListCreateAPIView):
         return (
             Post.objects.filter(thread=thread)
             .select_related("author")
-            .prefetch_related("attachments__uploaded_by", "reactions", "poll__options__votes__user")
+            .prefetch_related(
+                "attachments__uploaded_by", "reactions__user", "poll__options__votes__user"
+            )
         )
 
     def get_serializer_context(self) -> dict:

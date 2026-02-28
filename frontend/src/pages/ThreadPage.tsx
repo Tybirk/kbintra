@@ -51,6 +51,7 @@ import { clearDraft } from "../utils/draftStorage"
 import RichTextEditor from "../components/RichTextEditor"
 import FileDropzone, { AttachmentArea } from "../components/FileDropzone"
 import Reactions from "../components/Reactions"
+import PostDate from "../components/PostDate"
 import UserLink from "../components/UserLink"
 import PollDisplay from "../components/PollDisplay"
 import PollCreator from "../components/PollCreator"
@@ -783,10 +784,10 @@ function PostCard({
                   fw={500}
                 />
               </Text>
-              <Text size="xs" c="dimmed">
-                {dayjs(post.created_at).format("D. MMM YYYY [kl.] HH:mm")}
-                {post.updated_at !== post.created_at && " (redigeret)"}
-              </Text>
+              <PostDate
+                createdAt={post.created_at}
+                updatedAt={post.updated_at}
+              />
             </div>
           </Group>
 

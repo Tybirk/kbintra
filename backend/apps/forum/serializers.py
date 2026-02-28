@@ -121,6 +121,7 @@ class ReactionSummarySerializer(serializers.Serializer):
     emoji = serializers.CharField()
     count = serializers.IntegerField()
     has_reacted = serializers.BooleanField()
+    users = serializers.ListField(child=serializers.DictField())
 
 
 class PollVoterSerializer(serializers.ModelSerializer):
@@ -296,10 +297,21 @@ class PostSerializer(serializers.ModelSerializer):
                     "emoji": emoji_map.get(r_type, ""),
                     "count": 0,
                     "has_reacted": False,
+                    "users": [],
                 }
             reaction_counts[r_type]["count"] += 1
             if user_id and reaction.user_id == user_id:
                 reaction_counts[r_type]["has_reacted"] = True
+            reaction_counts[r_type]["users"].append(
+                {
+                    "id": reaction.user.id,
+                    "first_name": reaction.user.first_name,
+                    "last_name": reaction.user.last_name,
+                    "profile_picture": reaction.user.profile_picture.url
+                    if reaction.user.profile_picture
+                    else None,
+                }
+            )
 
         return list(reaction_counts.values())
 

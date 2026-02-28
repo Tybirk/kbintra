@@ -410,6 +410,7 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
               style={{
                 backgroundColor: "var(--mantine-color-default-hover)",
                 borderRadius: "var(--mantine-radius-md)",
+                overflowWrap: "break-word",
               }}
               dangerouslySetInnerHTML={{ __html: attachment.preview_html }}
             />

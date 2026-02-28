@@ -49,6 +49,7 @@ import { forumApi } from "../api/forum"
 import { clearDraft } from "../utils/draftStorage"
 import RichTextEditor from "../components/RichTextEditor"
 import Reactions from "../components/Reactions"
+import PostDate from "../components/PostDate"
 import UserLink from "../components/UserLink"
 import type {
   Event,
@@ -927,9 +928,10 @@ function DiscussionSection({
                       size="sm"
                       fw={500}
                     />
-                    <Text size="xs" c="dimmed">
-                      {dayjs(post.created_at).format("D. MMM YYYY HH:mm")}
-                    </Text>
+                    <PostDate
+                      createdAt={post.created_at}
+                      shortFormat="D. MMM YYYY HH:mm"
+                    />
                   </div>
                 </Group>
                 {post.can_edit && editingPostId !== post.id && (

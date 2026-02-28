@@ -156,11 +156,19 @@ export interface PostAttachment {
 
 export type ReactionType = "like" | "heart" | "laugh" | "surprised" | "sad" | "celebrate"
 
+export interface ReactionUser {
+  id: number
+  first_name: string
+  last_name: string
+  profile_picture: string | null
+}
+
 export interface ReactionSummary {
   reaction_type: ReactionType
   emoji: string
   count: number
   has_reacted: boolean
+  users: ReactionUser[]
 }
 
 export interface ReactionTypeInfo {

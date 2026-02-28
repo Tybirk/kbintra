@@ -348,6 +348,7 @@ export function FilePreviewModal({
                   style={{
                     backgroundColor: "var(--mantine-color-default-hover)",
                     borderRadius: "var(--mantine-radius-md)",
+                    overflowWrap: "break-word",
                   }}
                   dangerouslySetInnerHTML={{ __html: file.preview_html }}
                 />
