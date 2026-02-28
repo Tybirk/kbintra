@@ -3,13 +3,16 @@ Views for User models.
 """
 
 import os
+import shutil
+import sqlite3
+import tempfile
 import zipfile
 from typing import Any
 
 from django.conf import settings
 from django.db import connection, models
 from django.db.models import Count, QuerySet
-from django.http import FileResponse, StreamingHttpResponse
+from django.http import FileResponse
 from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.request import Request
@@ -312,8 +315,76 @@ class IsStaff(permissions.BasePermission):
         return bool(request.user and request.user.is_staff)
 
 
+def _scrub_private_messages(db_copy_path: str, user_id: int) -> None:
+    """Remove private messages from conversations the user is not part of."""
+    conn = sqlite3.connect(db_copy_path)
+    try:
+        # Find conversation IDs the requesting user participates in
+        other_convos_sql = """
+            SELECT id FROM messaging_conversation
+            WHERE id NOT IN (
+                SELECT conversation_id FROM messaging_conversation_participants
+                WHERE user_id = ?
+            )
+        """
+        cur = conn.execute(other_convos_sql, (user_id,))
+        other_ids = [row[0] for row in cur.fetchall()]
+
+        if not other_ids:
+            return
+
+        placeholders = ",".join("?" * len(other_ids))
+
+        # Delete attachments for messages in those conversations
+        conn.execute(
+            f"""
+            DELETE FROM messaging_messageattachment
+            WHERE message_id IN (
+                SELECT id FROM messaging_message WHERE conversation_id IN ({placeholders})
+            )
+            """,
+            other_ids,
+        )
+        # Delete read statuses
+        conn.execute(
+            f"""
+            DELETE FROM messaging_messagereadstatus
+            WHERE message_id IN (
+                SELECT id FROM messaging_message WHERE conversation_id IN ({placeholders})
+            )
+            """,
+            other_ids,
+        )
+        # Delete messages
+        conn.execute(
+            f"DELETE FROM messaging_message WHERE conversation_id IN ({placeholders})",
+            other_ids,
+        )
+        # Delete conversation participants
+        conn.execute(
+            f"""
+            DELETE FROM messaging_conversation_participants
+            WHERE conversation_id IN ({placeholders})
+            """,
+            other_ids,
+        )
+        # Delete conversations themselves
+        conn.execute(
+            f"DELETE FROM messaging_conversation WHERE id IN ({placeholders})",
+            other_ids,
+        )
+        conn.commit()
+        conn.execute("VACUUM")
+    finally:
+        conn.close()
+
+
 class DownloadDatabaseView(APIView):
-    """Download the SQLite database file. Staff only."""
+    """Download a scrubbed copy of the SQLite database. Staff only.
+
+    Private messages from conversations the requesting user is not part of
+    are removed before serving the file.
+    """
 
     permission_classes = [permissions.IsAuthenticated, IsStaff]
 
@@ -326,32 +397,25 @@ class DownloadDatabaseView(APIView):
                 cursor.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         except Exception:
             pass  # In-memory or non-WAL databases don't support this
+
+        # Copy to a temp file so we can scrub without touching the original
+        with tempfile.NamedTemporaryFile(suffix=".sqlite3", delete=False) as tmp:
+            tmp_name = tmp.name
+        shutil.copy2(str(db_path), tmp_name)
+
+        _scrub_private_messages(tmp_name, request.user.id)
+
+        # Open then unlink: on Linux the file stays alive until the fd is closed,
+        # so FileResponse can stream it and the file is cleaned up automatically.
+        f = open(tmp_name, "rb")  # noqa: SIM115
+        os.unlink(tmp_name)
+
         return FileResponse(
-            open(db_path, "rb"),  # noqa: SIM115
+            f,
             content_type="application/x-sqlite3",
             as_attachment=True,
             filename="db.sqlite3",
         )
-
-
-def _stream_zip(media_root: str) -> Any:
-    """Yield chunks of a zip archive containing all files under media_root."""
-    import io
-
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for dirpath, _dirnames, filenames in os.walk(media_root):
-            for filename in filenames:
-                filepath = os.path.join(dirpath, filename)
-                arcname = os.path.relpath(filepath, media_root)
-                zf.write(filepath, arcname)
-
-    buffer.seek(0)
-    while True:
-        chunk = buffer.read(8192)
-        if not chunk:
-            break
-        yield chunk
 
 
 class DownloadMediaView(APIView):
@@ -359,11 +423,26 @@ class DownloadMediaView(APIView):
 
     permission_classes = [permissions.IsAuthenticated, IsStaff]
 
-    def get(self, request: Request) -> StreamingHttpResponse:
+    def get(self, request: Request) -> FileResponse:
         media_root = str(settings.MEDIA_ROOT)
-        response = StreamingHttpResponse(
-            _stream_zip(media_root),
+
+        # Build zip into a temp file to avoid buffering in memory
+        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+            tmp_name = tmp.name
+        with zipfile.ZipFile(tmp_name, "w", zipfile.ZIP_DEFLATED) as zf:
+            for dirpath, _dirnames, filenames in os.walk(media_root):
+                for filename in filenames:
+                    filepath = os.path.join(dirpath, filename)
+                    arcname = os.path.relpath(filepath, media_root)
+                    zf.write(filepath, arcname)
+
+        # Open then unlink so the file is cleaned up after streaming
+        f = open(tmp_name, "rb")  # noqa: SIM115
+        os.unlink(tmp_name)
+
+        return FileResponse(
+            f,
             content_type="application/zip",
+            as_attachment=True,
+            filename="media.zip",
         )
-        response["Content-Disposition"] = 'attachment; filename="media.zip"'
-        return response
