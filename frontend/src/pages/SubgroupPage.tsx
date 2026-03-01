@@ -277,7 +277,7 @@ export default function SubgroupPage() {
               leftSection={<IconPlus size={16} />}
               onClick={openCreateThreadModal}
             >
-              Ny diskussion
+              Ny tråd
             </Button>
           </Group>
           <Stack gap="md">
@@ -553,7 +553,7 @@ function CreateThreadModal({
     <Modal
       opened={opened}
       onClose={onClose}
-      title="Opret ny diskussion"
+      title="Opret ny tråd"
       size="lg"
     >
       <FileDropzone onDrop={handleAddFiles}>

@@ -10,16 +10,14 @@ import {
   Loader,
   Center,
   Stack,
-  NumberInput,
-  Switch,
   SimpleGrid,
-  SegmentedControl,
-  Divider,
 } from "@mantine/core"
+import { useDebouncedCallback } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
 import { IconArrowLeft } from "@tabler/icons-react"
 
 import { foodApi } from "../api/food"
+import { MealFormFields } from "../components/MealFormFields"
 import type {
   MealPreference,
   CreateMealPreferenceData,
@@ -78,7 +76,7 @@ export default function FoodPreferencesPage() {
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
         {DAYS.map((day) => (
           <PreferenceCard
-            key={day.value}
+            key={prefsByDay.get(day.value)?.id ?? `new-${day.value}`}
             dayOfWeek={day.value}
             dayName={day.label}
             preference={prefsByDay.get(day.value)}
@@ -106,8 +104,8 @@ function PreferenceCard({
   const queryClient = useQueryClient()
   const [adults, setAdults] = useState(preference?.adults_count ?? 1)
   const [children, setChildren] = useState(preference?.children_count ?? 0)
-  const [prefersMeat, setPrefersMeat] = useState(
-    preference?.prefers_meat ?? true,
+  const [mealType, setMealType] = useState<"meat" | "vegetarian">(
+    preference?.prefers_meat !== false ? "meat" : "vegetarian",
   )
   const [diningOption, setDiningOption] = useState<DiningOption>(
     preference?.dining_option ?? "eat_in",
@@ -116,22 +114,17 @@ function PreferenceCard({
     preference?.seating_time ?? "17:30",
   )
 
-  // Update local state when preference data changes
-  useEffect(() => {
-    if (preference) {
-      setAdults(preference.adults_count)
-      setChildren(preference.children_count)
-      setPrefersMeat(preference.prefers_meat)
-      setDiningOption(preference.dining_option)
-      setSeatingTime(preference.seating_time)
-    }
-  }, [preference])
+  const [isSaving, setIsSaving] = useState(false)
+  const [lastSaved, setLastSaved] = useState<Date | null>(null)
+  const [hasInitialized, setHasInitialized] = useState(false)
 
   const createMutation = useMutation({
     mutationFn: (data: CreateMealPreferenceData) =>
       foodApi.createPreference(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "preferences"] })
+      setLastSaved(new Date())
+      setIsSaving(false)
     },
     onError: () => {
       notifications.show({
@@ -139,6 +132,7 @@ function PreferenceCard({
         message: "Kunne ikke gemme præferencer.",
         color: "red",
       })
+      setIsSaving(false)
     },
   })
 
@@ -147,6 +141,8 @@ function PreferenceCard({
       foodApi.updatePreference(preference!.id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "preferences"] })
+      setLastSaved(new Date())
+      setIsSaving(false)
     },
     onError: () => {
       notifications.show({
@@ -154,6 +150,7 @@ function PreferenceCard({
         message: "Kunne ikke opdatere præferencer.",
         color: "red",
       })
+      setIsSaving(false)
     },
   })
 
@@ -176,119 +173,88 @@ function PreferenceCard({
     },
   })
 
-  const handleSave = () => {
-    const data: CreateMealPreferenceData = {
-      day_of_week: dayOfWeek,
-      adults_count: adults,
-      children_count: children,
-      prefers_meat: prefersMeat,
-      dining_option: diningOption,
-      seating_time: seatingTime,
+  const debouncedSave = useDebouncedCallback(
+    (
+      data: CreateMealPreferenceData,
+      prefId: number | undefined,
+    ) => {
+      setIsSaving(true)
+      if (prefId) {
+        updateMutation.mutate(data)
+      } else {
+        createMutation.mutate(data)
+      }
+    },
+    500,
+  )
+
+  useEffect(() => {
+    if (!hasInitialized) {
+      setHasInitialized(true)
+      return
     }
 
-    if (preference) {
-      updateMutation.mutate(data)
-    } else {
-      createMutation.mutate(data)
-    }
-  }
-
-  const hasChanges =
-    !preference ||
-    preference.adults_count !== adults ||
-    preference.children_count !== children ||
-    preference.prefers_meat !== prefersMeat ||
-    preference.dining_option !== diningOption ||
-    preference.seating_time !== seatingTime
+    debouncedSave(
+      {
+        day_of_week: dayOfWeek,
+        adults_count: adults,
+        children_count: children,
+        prefers_meat: mealType === "meat",
+        dining_option: diningOption,
+        seating_time: seatingTime,
+      },
+      preference?.id,
+    )
+  }, [adults, children, mealType, diningOption, seatingTime])
 
   return (
     <Paper withBorder p="md" radius="md">
-      <Text fw={500} mb="md">
-        {dayName}
-      </Text>
+      <Group justify="space-between" mb="md">
+        <Text fw={500}>{dayName}</Text>
+        {preference && (
+          <Button
+            variant="subtle"
+            color="red"
+            size="compact-sm"
+            onClick={() => deleteMutation.mutate()}
+            loading={deleteMutation.isPending}
+          >
+            Fjern
+          </Button>
+        )}
+      </Group>
 
       <Stack gap="sm">
-        <Group grow>
-          <NumberInput
-            label="Voksne"
-            value={adults}
-            onChange={(val) => setAdults(Number(val) || 0)}
-            min={0}
-            max={10}
-          />
-          <NumberInput
-            label="Børn"
-            value={children}
-            onChange={(val) => setChildren(Number(val) || 0)}
-            min={0}
-            max={10}
-          />
-        </Group>
+        <MealFormFields
+          adults={adults}
+          children={children}
+          mealType={mealType}
+          diningOption={diningOption}
+          seatingTime={seatingTime}
+          isWednesday={isWednesday}
+          onAdultsChange={setAdults}
+          onChildrenChange={setChildren}
+          onMealTypeChange={setMealType}
+          onDiningOptionChange={setDiningOption}
+          onSeatingTimeChange={setSeatingTime}
+        />
 
-        {isWednesday && (
-          <Switch
-            label="Foretrækker kød"
-            checked={prefersMeat}
-            onChange={(e) => setPrefersMeat(e.currentTarget.checked)}
-          />
-        )}
-
-        <Divider />
-
-        <div>
-          <Text size="sm" fw={500} mb={4}>
-            Spisemulighed
-          </Text>
-          <SegmentedControl
-            value={diningOption}
-            onChange={(val) => setDiningOption(val as DiningOption)}
-            data={[
-              { label: "Spis i fælleshuset", value: "eat_in" },
-              { label: "Tag med", value: "take_away" },
-            ]}
-            fullWidth
-          />
-        </div>
-
-        {diningOption === "eat_in" && (
-          <div>
-            <Text size="sm" fw={500} mb={4}>
-              Spisetid
-            </Text>
-            <SegmentedControl
-              value={seatingTime}
-              onChange={(val) => setSeatingTime(val as SeatingTime)}
-              data={[
-                { label: "17:30", value: "17:30" },
-                { label: "18:30", value: "18:30" },
-              ]}
-              fullWidth
-            />
-          </div>
-        )}
-
-        <Divider />
-
-        <Group>
-          <Button
-            onClick={handleSave}
-            disabled={!hasChanges}
-            loading={createMutation.isPending || updateMutation.isPending}
-            style={{ flex: 1 }}
-          >
-            {preference ? "Opdater" : "Gem"}
-          </Button>
-          {preference && (
-            <Button
-              variant="light"
-              color="red"
-              onClick={() => deleteMutation.mutate()}
-              loading={deleteMutation.isPending}
-            >
-              Fjern
-            </Button>
+        <Text
+          size="xs"
+          c={isSaving ? "blue" : lastSaved ? "green" : "dimmed"}
+          ta="center"
+        >
+          {isSaving ? (
+            <Group gap={4} justify="center">
+              <Loader size={12} />
+              Gemmer...
+            </Group>
+          ) : lastSaved ? (
+            "Gemt"
+          ) : (
+            "Gemmes automatisk ved ændringer"
           )}
-        </Group>
+        </Text>
       </Stack>
     </Paper>
   )

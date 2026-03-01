@@ -47,6 +47,7 @@ import isoWeek from "dayjs/plugin/isoWeek"
 dayjs.extend(isoWeek)
 
 import { foodApi } from "../api/food"
+import { MealFormFields } from "../components/MealFormFields"
 import { useAuthStore } from "../store/authStore"
 import { calculateDefaultTicketPrice } from "../utils/priceCalculation"
 import type {
@@ -423,8 +424,8 @@ export default function FoodPage() {
 
                 <Stack gap={0} align="center">
                   <Text fw={500}>
-                    {regWeekStart.format("MMMM D")} -{" "}
-                    {regWeekStart.add(3, "day").format("MMMM D, YYYY")}
+                    {regWeekStart.format("D. MMMM")} -{" "}
+                    {regWeekStart.add(3, "day").format("D. MMMM YYYY")}
                   </Text>
                   <Badge
                     color={
@@ -799,11 +800,6 @@ function DayRegistrationCard({
   // Default to house inhabitant count if no registration exists
   const defaultAdults =
     registration?.adults_count ?? (user?.house_inhabitant_count || 1)
-  // Display state: allows empty string while user is editing
-  const [adultsInput, setAdultsInput] = useState<number | string>(defaultAdults)
-  const [childrenInput, setChildrenInput] = useState<number | string>(
-    registration?.children_count ?? 0,
-  )
   // Committed state: always a number, only updated on blur — triggers auto-save
   const [adults, setAdults] = useState(defaultAdults)
   const [children, setChildren] = useState(registration?.children_count ?? 0)
@@ -1001,7 +997,7 @@ function DayRegistrationCard({
             </Text>
           </div>
           <Badge variant="light" color={isPast ? "gray" : "blue"}>
-            {dayjs(date).format("MMM D")}
+            {dayjs(date).format("D. MMM")}
           </Badge>
         </Group>
 
@@ -1025,90 +1021,20 @@ function DayRegistrationCard({
 
           {isActive && (
             <>
-              <Group grow>
-                <NumberInput
-                  label="Voksne"
-                  value={adultsInput}
-                  onChange={setAdultsInput}
-                  onBlur={() => {
-                    const val = adultsInput === "" ? 0 : Number(adultsInput)
-                    setAdultsInput(val)
-                    setAdults(val)
-                  }}
-                  min={0}
-                  max={10}
-                  disabled={isPast}
-                />
-                <NumberInput
-                  label="Børn"
-                  value={childrenInput}
-                  onChange={setChildrenInput}
-                  onBlur={() => {
-                    const val = childrenInput === "" ? 0 : Number(childrenInput)
-                    setChildrenInput(val)
-                    setChildren(val)
-                  }}
-                  min={0}
-                  max={10}
-                  disabled={isPast}
-                />
-              </Group>
-
-              {isWednesday && (
-                <div>
-                  <Text size="sm" fw={500} mb={4}>
-                    Måltidstype
-                  </Text>
-                  <SegmentedControl
-                    value={mealType}
-                    onChange={(val) =>
-                      setMealType(val as "meat" | "vegetarian")
-                    }
-                    data={[
-                      { label: "Kød", value: "meat" },
-                      { label: "Vegetar", value: "vegetarian" },
-                    ]}
-                    fullWidth
-                    disabled={isPast}
-                  />
-                </div>
-              )}
-
-              <Divider />
-
-              <div>
-                <Text size="sm" fw={500} mb={4}>
-                  Spisested
-                </Text>
-                <SegmentedControl
-                  value={diningOption}
-                  onChange={(val) => setDiningOption(val as DiningOption)}
-                  data={[
-                    { label: "Spise i fælleshuset", value: "eat_in" },
-                    { label: "Take Away", value: "take_away" },
-                  ]}
-                  fullWidth
-                  disabled={isPast}
-                />
-              </div>
-
-              {diningOption === "eat_in" && (
-                <div>
-                  <Text size="sm" fw={500} mb={4}>
-                    Spisetid
-                  </Text>
-                  <SegmentedControl
-                    value={seatingTime}
-                    onChange={(val) => setSeatingTime(val as SeatingTime)}
-                    data={[
-                      { label: "17:30", value: "17:30" },
-                      { label: "18:30", value: "18:30" },
-                    ]}
-                    fullWidth
-                    disabled={isPast}
-                  />
-                </div>
-              )}
+              <MealFormFields
+                adults={adults}
+                children={children}
+                mealType={mealType}
+                diningOption={diningOption}
+                seatingTime={seatingTime}
+                isWednesday={isWednesday}
+                disabled={isPast}
+                onAdultsChange={setAdults}
+                onChildrenChange={setChildren}
+                onMealTypeChange={setMealType}
+                onDiningOptionChange={setDiningOption}
+                onSeatingTimeChange={setSeatingTime}
+              />
 
               {user?.house && (
                 <Text size="xs" c="blue" ta="center">

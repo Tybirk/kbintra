@@ -23,7 +23,9 @@ class NotificationPreferenceInline(admin.StackedInline):
                 "fields": [
                     "notify_messages",
                     "notify_announcements",
+                    "notify_announcement_updates",
                     "notify_forum_subscriptions",
+                    "notify_subgroup_activity",
                     "notify_thread_replies",
                     "notify_post_reactions",
                     "notify_events",
@@ -39,7 +41,9 @@ class NotificationPreferenceInline(admin.StackedInline):
                 "fields": [
                     "email_messages",
                     "email_announcements",
+                    "email_announcement_updates",
                     "email_forum_subscriptions",
+                    "email_subgroup_activity",
                     "email_thread_replies",
                     "email_post_reactions",
                     "email_events",
@@ -55,7 +59,9 @@ class NotificationPreferenceInline(admin.StackedInline):
                 "fields": [
                     "push_messages",
                     "push_announcements",
+                    "push_announcement_updates",
                     "push_forum_subscriptions",
+                    "push_subgroup_activity",
                     "push_thread_replies",
                     "push_post_reactions",
                     "push_events",

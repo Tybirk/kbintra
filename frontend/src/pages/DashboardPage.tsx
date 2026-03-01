@@ -207,8 +207,8 @@ export default function DashboardPage() {
   const todayRegistration = allRegistrations.find((r) => r.date === todayStr)
   const nextFoodDayRegistration = nextFoodDay
     ? allRegistrations.find(
-        (r) => r.date === nextFoodDay.date.format("YYYY-MM-DD"),
-      )
+      (r) => r.date === nextFoodDay.date.format("YYYY-MM-DD"),
+    )
     : undefined
 
   // Calculate birthday info for each user
@@ -745,6 +745,17 @@ function ActivityPreview({ activity }: ActivityPreviewProps) {
         )
       }
     >
+      <Group justify="space-between" wrap="nowrap" mb={4} gap="xs">
+        <Badge variant="outline" color="blue">
+          {activity.subgroup_name}
+        </Badge>
+        <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap", flexShrink: 0 }}>
+          {dayjs(activity.created_at).fromNow()}
+        </Text>
+      </Group>
+      <Text size="sm" fw={600} mb={4}>
+        {activity.thread_title}
+      </Text>
       <Group gap="sm" wrap="nowrap" mb={4}>
         <Avatar src={activity.author?.profile_picture} radius="xl" size="sm">
           {activity.author?.first_name?.[0]}
@@ -764,20 +775,11 @@ function ActivityPreview({ activity }: ActivityPreviewProps) {
               Slettet bruger
             </Text>
           )}
-          <Text size="xs" c="dimmed" lineClamp={1}>
-            i {activity.thread_title}
-          </Text>
         </div>
-        <Text size="xs" c="dimmed">
-          {dayjs(activity.created_at).fromNow()}
-        </Text>
       </Group>
       <Text size="xs" c="dimmed" lineClamp={2} ml={40}>
         {preview}
       </Text>
-      <Badge size="xs" variant="light" color="blue" mt={4} ml={40}>
-        {activity.subgroup_name}
-      </Badge>
     </Paper>
   )
 }
@@ -969,10 +971,9 @@ function FoodDayWidget({
               Gemmer...
             </Group>
           ) : registration?.is_active ? (
-            `${registration.total_portions} port. • ${
-              registration.dining_option === "eat_in"
-                ? `kl. ${registration.seating_time}`
-                : "Take away"
+            `${registration.total_portions} port. • ${registration.dining_option === "eat_in"
+              ? `kl. ${registration.seating_time}`
+              : "Take away"
             }`
           ) : registration ? (
             "Spiser ikke"

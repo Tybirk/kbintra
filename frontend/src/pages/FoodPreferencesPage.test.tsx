@@ -73,23 +73,21 @@ describe("FoodPreferencesPage", () => {
     render(<FoodPreferencesPage />)
 
     await waitFor(() => {
-      expect(screen.getAllByText("Spis i fælleshuset").length).toBeGreaterThan(
-        0,
-      )
+      expect(
+        screen.getAllByText("Spise i fælleshuset").length,
+      ).toBeGreaterThan(0)
     })
   })
 
-  it("shows save/update button for each day", async () => {
+  it("shows auto-save indicator and delete button for days with preferences", async () => {
     render(<FoodPreferencesPage />)
 
     await waitFor(() => {
-      // Monday has a preference → shows "Opdater"
-      expect(
-        screen.getByRole("button", { name: /opdater/i }),
-      ).toBeInTheDocument()
-      // Other days without preferences → shows "Gem"
-      const gemButtons = screen.getAllByRole("button", { name: /^gem$/i })
-      expect(gemButtons.length).toBeGreaterThan(0)
+      // Days with preferences show a "Fjern" button
+      expect(screen.getByRole("button", { name: /fjern/i })).toBeInTheDocument()
+      // All cards show the auto-save indicator
+      const indicators = screen.getAllByText("Gemmes automatisk ved ændringer")
+      expect(indicators.length).toBeGreaterThan(0)
     })
   })
 
