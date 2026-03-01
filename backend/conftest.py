@@ -20,7 +20,6 @@ from apps.food.models import (
     FoodTicket,
     MealPreference,
     MealRegistration,
-    MealType,
     SeatingTime,
 )
 from apps.forum.models import Folder, Post, Subgroup, SubgroupSubscription, Thread
@@ -122,9 +121,9 @@ def meal_preference(db, user):
     return MealPreference.objects.create(
         user=user,
         day_of_week=DayOfWeek.MONDAY,
-        adults_count=2,
+        adults_meat=0,
+        adults_veg=2,
         children_count=1,
-        prefers_meat=True,
         dining_option=DiningOption.EAT_IN,
         seating_time=SeatingTime.FIRST,
     )
@@ -136,9 +135,9 @@ def meal_registration(db, user, monday_date):
     return MealRegistration.objects.create(
         user=user,
         date=monday_date,
-        adults_count=2,
+        adults_meat=0,
+        adults_veg=2,
         children_count=1,
-        meal_type=MealType.MEAT,
         dining_option=DiningOption.EAT_IN,
         seating_time=SeatingTime.FIRST,
         is_active=True,
@@ -151,9 +150,9 @@ def food_ticket(db, user, monday_date):
     return FoodTicket.objects.create(
         owner=user,
         date=monday_date,
-        adults_count=1,
+        adults_meat=0,
+        adults_veg=1,
         children_count=0,
-        meal_type=MealType.MEAT,
         price=Decimal("50.00"),
         description="Can't make it, ticket available!",
         is_available=True,
@@ -166,9 +165,9 @@ def food_ticket_free(db, user, monday_date):
     return FoodTicket.objects.create(
         owner=user,
         date=monday_date + timedelta(days=1),
-        adults_count=2,
+        adults_meat=0,
+        adults_veg=2,
         children_count=0,
-        meal_type=MealType.VEGETARIAN,
         price=None,
         is_available=True,
     )

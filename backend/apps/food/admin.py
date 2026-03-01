@@ -19,16 +19,16 @@ from .models import (
 
 @admin.register(MealPreference)
 class MealPreferenceAdmin(admin.ModelAdmin):
-    list_display = ["user", "day_of_week", "adults_count", "children_count", "prefers_meat"]
-    list_filter = ["day_of_week", "prefers_meat"]
+    list_display = ["user", "day_of_week", "adults_meat", "adults_veg", "children_count"]
+    list_filter = ["day_of_week"]
     search_fields = ["user__email"]
     raw_id_fields = ["user"]
 
 
 @admin.register(MealRegistration)
 class MealRegistrationAdmin(admin.ModelAdmin):
-    list_display = ["user", "date", "adults_count", "children_count", "meal_type", "is_active"]
-    list_filter = ["date", "meal_type", "is_active"]
+    list_display = ["user", "date", "adults_meat", "adults_veg", "children_count", "is_active"]
+    list_filter = ["date", "is_active"]
     search_fields = ["user__email"]
     raw_id_fields = ["user"]
     date_hierarchy = "date"
@@ -39,13 +39,14 @@ class FoodTicketAdmin(admin.ModelAdmin):
     list_display = [
         "owner",
         "date",
-        "adults_count",
+        "adults_meat",
+        "adults_veg",
         "children_count",
         "price",
         "is_available",
         "claimed_by",
     ]
-    list_filter = ["date", "is_available", "meal_type"]
+    list_filter = ["date", "is_available"]
     search_fields = ["owner__email", "claimed_by__email"]
     raw_id_fields = ["owner", "claimed_by"]
     date_hierarchy = "date"

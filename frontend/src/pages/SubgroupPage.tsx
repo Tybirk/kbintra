@@ -550,12 +550,7 @@ function CreateThreadModal({
   }
 
   return (
-    <Modal
-      opened={opened}
-      onClose={onClose}
-      title="Opret ny tråd"
-      size="lg"
-    >
+    <Modal opened={opened} onClose={onClose} title="Opret ny tråd" size="lg">
       <FileDropzone onDrop={handleAddFiles}>
         <form onSubmit={handleSubmit}>
           <Stack gap="md">

@@ -33,9 +33,9 @@ const mockPreferences = [
   {
     id: 1,
     day_of_week: 0,
-    adults_count: 2,
+    adults_meat: 0,
+    adults_veg: 2,
     children_count: 0,
-    prefers_meat: true,
     dining_option: "eat_in" as const,
     seating_time: "17:30" as const,
   },
@@ -73,9 +73,9 @@ describe("FoodPreferencesPage", () => {
     render(<FoodPreferencesPage />)
 
     await waitFor(() => {
-      expect(
-        screen.getAllByText("Spise i fælleshuset").length,
-      ).toBeGreaterThan(0)
+      expect(screen.getAllByText("Spise i fælleshuset").length).toBeGreaterThan(
+        0,
+      )
     })
   })
 

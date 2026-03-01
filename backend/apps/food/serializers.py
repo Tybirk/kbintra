@@ -20,7 +20,6 @@ from .models import (
     FoodTicket,
     MealPreference,
     MealRegistration,
-    MealType,
     SwapRequestStatus,
     TeamSwapRequest,
 )
@@ -45,9 +44,9 @@ class MealPreferenceSerializer(serializers.ModelSerializer):
             "id",
             "day_of_week",
             "day_name",
-            "adults_count",
+            "adults_meat",
+            "adults_veg",
             "children_count",
-            "prefers_meat",
             "dining_option",
             "seating_time",
         ]
@@ -60,12 +59,30 @@ class MealPreferenceCreateUpdateSerializer(serializers.ModelSerializer):
         model = MealPreference
         fields = [
             "day_of_week",
-            "adults_count",
+            "adults_meat",
+            "adults_veg",
             "children_count",
-            "prefers_meat",
             "dining_option",
             "seating_time",
         ]
+
+    def validate(self, attrs: dict) -> dict:
+        day_of_week = attrs.get("day_of_week") or (
+            self.instance.day_of_week if self.instance else None
+        )
+        adults_meat = attrs.get("adults_meat", 0)
+        adults_veg = attrs.get("adults_veg", 0)
+        children_count = attrs.get("children_count", 0)
+
+        if day_of_week is not None and day_of_week != 2 and adults_meat > 0:
+            raise serializers.ValidationError(
+                {"adults_meat": "Kød serveres kun om onsdagen."}
+            )
+
+        if adults_meat + adults_veg + children_count == 0:
+            raise serializers.ValidationError("Der skal være mindst én portion.")
+
+        return attrs
 
     def create(self, validated_data: dict) -> MealPreference:
         validated_data["user"] = self.context["request"].user
@@ -94,9 +111,9 @@ class MealRegistrationSerializer(serializers.ModelSerializer):
             "date",
             "day_of_week",
             "day_name",
-            "adults_count",
+            "adults_meat",
+            "adults_veg",
             "children_count",
-            "meal_type",
             "dining_option",
             "seating_time",
             "house",
@@ -123,9 +140,9 @@ class MealRegistrationCreateUpdateSerializer(serializers.ModelSerializer):
         model = MealRegistration
         fields = [
             "date",
-            "adults_count",
+            "adults_meat",
+            "adults_veg",
             "children_count",
-            "meal_type",
             "dining_option",
             "seating_time",
             "house_id",
@@ -152,32 +169,20 @@ class MealRegistrationCreateUpdateSerializer(serializers.ModelSerializer):
                 )
         return value
 
-    def _user_has_active_ticket(self, user, reg_date: date) -> bool:
-        """Check if user has an active ticket for the given date.
-
-        A user has an active ticket if they:
-        - Own a ticket that is still available (not claimed)
-        """
-        return FoodTicket.objects.filter(
-            owner=user,
-            date=reg_date,
-            is_available=True,
-        ).exists()
-
     def validate(self, attrs: dict) -> dict:
-        """Validate that user doesn't have an active ticket for this date."""
-        user = self.context["request"].user
         reg_date = attrs.get("date") or (self.instance.date if self.instance else None)
         is_active = attrs.get("is_active", True)
+        adults_meat = attrs.get("adults_meat", 0)
+        adults_veg = attrs.get("adults_veg", 0)
+        children_count = attrs.get("children_count", 0)
 
-        # Only check if trying to create or activate a registration
-        if is_active and reg_date and self._user_has_active_ticket(user, reg_date):
+        if reg_date and reg_date.weekday() != 2 and adults_meat > 0:
             raise serializers.ValidationError(
-                {
-                    "date": "You have an active food ticket for this date. "
-                    "Cancel your ticket or wait for it to be claimed before registering for this meal."
-                }
+                {"adults_meat": "Kød serveres kun om onsdagen."}
             )
+
+        if is_active and adults_meat + adults_veg + children_count == 0:
+            raise serializers.ValidationError("Der skal være mindst én portion.")
 
         return attrs
 
@@ -218,9 +223,9 @@ class FoodTicketSerializer(serializers.ModelSerializer):
             "date",
             "day_of_week",
             "day_name",
-            "adults_count",
+            "adults_meat",
+            "adults_veg",
             "children_count",
-            "meal_type",
             "price",
             "is_free",
             "description",
@@ -256,7 +261,7 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = FoodTicket
-        fields = ["date", "adults_count", "children_count", "meal_type", "price", "description"]
+        fields = ["date", "adults_meat", "adults_veg", "children_count", "price", "description"]
 
     def get_registration_deadline(self, meal_date: date) -> datetime:
         """Get the registration deadline for a meal date.
@@ -295,32 +300,88 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
         return value
 
     def calculate_default_price(
-        self, meal_type: str, adults_count: int, children_count: int
+        self, adults_meat: int, adults_veg: int, children_count: int
     ) -> Decimal:
-        """Calculate default price based on meal type and portion counts."""
-        adult_price = self.PRICE_ADULT_MEAT if meal_type == MealType.MEAT else self.PRICE_ADULT_VEG
-        return (adult_price * adults_count) + (self.PRICE_CHILD * children_count)
+        """Calculate default price based on portion counts."""
+        return (
+            (self.PRICE_ADULT_MEAT * adults_meat)
+            + (self.PRICE_ADULT_VEG * adults_veg)
+            + (self.PRICE_CHILD * children_count)
+        )
+
+    def validate(self, attrs: dict) -> dict:
+        reg_date = attrs.get("date")
+        adults_meat = attrs.get("adults_meat", 0)
+        adults_veg = attrs.get("adults_veg", 0)
+        children_count = attrs.get("children_count", 0)
+
+        if reg_date and reg_date.weekday() != 2 and adults_meat > 0:
+            raise serializers.ValidationError(
+                {"adults_meat": "Kød serveres kun om onsdagen."}
+            )
+
+        if adults_meat + adults_veg + children_count == 0:
+            raise serializers.ValidationError("Der skal være mindst én portion.")
+
+        # Validate portions don't exceed registration
+        if reg_date:
+            user = self.context["request"].user
+            reg = MealRegistration.objects.filter(
+                user=user, date=reg_date, is_active=True
+            ).first()
+            if reg:
+                if adults_meat > reg.adults_meat:
+                    raise serializers.ValidationError(
+                        {"adults_meat": "Du kan ikke sælge flere kød-portioner end du er tilmeldt."}
+                    )
+                if adults_veg > reg.adults_veg:
+                    raise serializers.ValidationError(
+                        {
+                            "adults_veg": "Du kan ikke sælge flere vegetar-portioner end du er tilmeldt."
+                        }
+                    )
+                if children_count > reg.children_count:
+                    raise serializers.ValidationError(
+                        {
+                            "children_count": "Du kan ikke sælge flere børne-portioner end du er tilmeldt."
+                        }
+                    )
+
+        return attrs
 
     def create(self, validated_data: dict) -> FoodTicket:
+        from django.db import transaction
+
         user = self.context["request"].user
         validated_data["owner"] = user
+
+        # Extract portion values BEFORE super().create() consumes validated_data
+        ticket_adults_meat = validated_data.get("adults_meat", 0)
+        ticket_adults_veg = validated_data.get("adults_veg", 0)
+        ticket_children = validated_data.get("children_count", 0)
 
         # Set default price if not provided
         if validated_data.get("price") is None:
             validated_data["price"] = self.calculate_default_price(
-                validated_data.get("meal_type", MealType.MEAT),
-                validated_data.get("adults_count", 1),
-                validated_data.get("children_count", 0),
+                ticket_adults_meat, ticket_adults_veg, ticket_children
             )
 
         ticket = super().create(validated_data)
 
-        # Deactivate the user's meal registration for this date
-        MealRegistration.objects.filter(
-            user=user,
-            date=ticket.date,
-            is_active=True,
-        ).update(is_active=False)
+        # Partial deactivation of the user's meal registration
+        with transaction.atomic():
+            try:
+                reg = MealRegistration.objects.select_for_update().get(
+                    user=user, date=ticket.date, is_active=True
+                )
+                reg.adults_meat = max(0, reg.adults_meat - ticket_adults_meat)
+                reg.adults_veg = max(0, reg.adults_veg - ticket_adults_veg)
+                reg.children_count = max(0, reg.children_count - ticket_children)
+                if reg.adults_meat == 0 and reg.adults_veg == 0 and reg.children_count == 0:
+                    reg.is_active = False
+                reg.save()
+            except MealRegistration.DoesNotExist:
+                pass
 
         return ticket
 

@@ -54,10 +54,10 @@ const mockAvailableTicket = {
   date: "2025-01-15",
   day_name: "Wednesday",
   day_of_week: 2,
-  adults_count: 2,
+  adults_meat: 2,
+  adults_veg: 0,
   children_count: 0,
   total_portions: 2,
-  meal_type: "meat",
   price: "50.00",
   is_free: false,
   description: "Test ticket",
@@ -137,7 +137,7 @@ describe("FoodTicketsPage", () => {
       expect(screen.getByText("John Doe")).toBeInTheDocument()
     })
     expect(screen.getByText("50.00 DKK")).toBeInTheDocument()
-    expect(screen.getByText(/2 portioner/i)).toBeInTheDocument()
+    expect(screen.getByText(/2 voksen kød/i)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /køb/i })).toBeInTheDocument()
   })
 

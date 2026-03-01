@@ -15,7 +15,6 @@ import {
   Textarea,
   Modal,
   Avatar,
-  SegmentedControl,
   Tabs,
   ActionIcon,
   Menu,
@@ -276,10 +275,25 @@ function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
               </Group>
               <Text size="sm" c="dimmed">
                 {ticket.day_name}, {dayjs(ticket.date).format("D. MMM")} •{" "}
-                {ticket.total_portions}{" "}
-                {ticket.total_portions === 1 ? "portion" : "portioner"}
-                {ticket.day_of_week === 2 &&
-                  ` • ${ticket.meal_type === "meat" ? "Kød" : "Vegetar"}`}
+                {[
+                  ticket.adults_meat > 0
+                    ? `${ticket.adults_meat} voksen kød`
+                    : null,
+                  ticket.adults_veg > 0
+                    ? ticket.adults_meat > 0
+                      ? `${ticket.adults_veg} vegetar`
+                      : `${ticket.adults_veg} ${
+                          ticket.adults_veg === 1 ? "voksen" : "voksne"
+                        }`
+                    : null,
+                  ticket.children_count > 0
+                    ? `${ticket.children_count} ${
+                        ticket.children_count === 1 ? "barn" : "børn"
+                      }`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(", ")}
               </Text>
               {ticket.description && (
                 <Text size="sm" mt={4}>
@@ -414,10 +428,25 @@ function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
             </Text>
             <Text>
               {ticket.day_name}, {dayjs(ticket.date).format("D. MMM")} •{" "}
-              {ticket.total_portions}{" "}
-              {ticket.total_portions === 1 ? "portion" : "portioner"}
-              {ticket.day_of_week === 2 &&
-                ` • ${ticket.meal_type === "meat" ? "Kød" : "Vegetar"}`}
+              {[
+                ticket.adults_meat > 0
+                  ? `${ticket.adults_meat} voksen kød`
+                  : null,
+                ticket.adults_veg > 0
+                  ? ticket.adults_meat > 0
+                    ? `${ticket.adults_veg} vegetar`
+                    : `${ticket.adults_veg} ${
+                        ticket.adults_veg === 1 ? "voksen" : "voksne"
+                      }`
+                  : null,
+                ticket.children_count > 0
+                  ? `${ticket.children_count} ${
+                      ticket.children_count === 1 ? "barn" : "børn"
+                    }`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(", ")}
             </Text>
           </div>
 
@@ -492,10 +521,12 @@ function CreateTicketModal({
   onSuccess,
 }: CreateTicketModalProps) {
   const [date, setDate] = useState<Date | null>(null)
-  const [adults, setAdults] = useState(1)
+  const [adultsMeat, setAdultsMeat] = useState(0)
+  const [adultsVeg, setAdultsVeg] = useState(1)
   const [children, setChildren] = useState(0)
-  const [mealType, setMealType] = useState<"meat" | "vegetarian">("meat")
   const [description, setDescription] = useState("")
+
+  const isWednesday = date ? date.getDay() === 3 : false
 
   const createMutation = useMutation({
     mutationFn: (data: CreateFoodTicketData) => foodApi.createTicket(data),
@@ -507,9 +538,9 @@ function CreateTicketModal({
       })
       // Reset form
       setDate(null)
-      setAdults(1)
+      setAdultsMeat(0)
+      setAdultsVeg(1)
       setChildren(0)
-      setMealType("meat")
       setDescription("")
       onSuccess()
     },
@@ -528,20 +559,20 @@ function CreateTicketModal({
 
     createMutation.mutate({
       date: dayjs(date).format("YYYY-MM-DD"),
-      adults_count: adults,
+      adults_meat: isWednesday ? adultsMeat : 0,
+      adults_veg: adultsVeg,
       children_count: children,
-      meal_type: mealType,
       description,
     })
   }
-
-  const isWednesday = date ? date.getDay() === 3 : false
 
   // Filter to only allow Mon-Thu
   const excludeDate = (d: Date) => {
     const day = d.getDay()
     return day === 0 || day === 5 || day === 6 // Exclude Sun, Fri, Sat
   }
+
+  const totalAdults = isWednesday ? adultsMeat + adultsVeg : adultsVeg
 
   return (
     <Modal
@@ -566,13 +597,32 @@ function CreateTicketModal({
           />
 
           <Group grow>
-            <NumberInput
-              label="Voksne"
-              value={adults}
-              onChange={(val) => setAdults(Number(val) || 0)}
-              min={0}
-              max={10}
-            />
+            {isWednesday ? (
+              <>
+                <NumberInput
+                  label="Voksne (kød)"
+                  value={adultsMeat}
+                  onChange={(val) => setAdultsMeat(Number(val) || 0)}
+                  min={0}
+                  max={10}
+                />
+                <NumberInput
+                  label="Voksne (vegetar)"
+                  value={adultsVeg}
+                  onChange={(val) => setAdultsVeg(Number(val) || 0)}
+                  min={0}
+                  max={10}
+                />
+              </>
+            ) : (
+              <NumberInput
+                label="Voksne"
+                value={adultsVeg}
+                onChange={(val) => setAdultsVeg(Number(val) || 0)}
+                min={0}
+                max={10}
+              />
+            )}
             <NumberInput
               label="Børn"
               value={children}
@@ -581,23 +631,6 @@ function CreateTicketModal({
               max={10}
             />
           </Group>
-
-          {isWednesday && (
-            <div>
-              <Text size="sm" fw={500} mb={4}>
-                Måltidstype
-              </Text>
-              <SegmentedControl
-                value={mealType}
-                onChange={(val) => setMealType(val as "meat" | "vegetarian")}
-                data={[
-                  { label: "Kød", value: "meat" },
-                  { label: "Vegetar", value: "vegetarian" },
-                ]}
-                fullWidth
-              />
-            </div>
-          )}
 
           <Textarea
             label="Note (valgfrit)"
@@ -613,7 +646,7 @@ function CreateTicketModal({
             <Button
               type="submit"
               loading={createMutation.isPending}
-              disabled={!date || (adults === 0 && children === 0)}
+              disabled={!date || (totalAdults === 0 && children === 0)}
             >
               Opret billet
             </Button>

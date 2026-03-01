@@ -330,18 +330,18 @@ export interface MealPreference {
   id: number
   day_of_week: number
   day_name: string
-  adults_count: number
+  adults_meat: number
+  adults_veg: number
   children_count: number
-  prefers_meat: boolean
   dining_option: DiningOption
   seating_time: SeatingTime
 }
 
 export interface CreateMealPreferenceData {
   day_of_week: number
-  adults_count: number
+  adults_meat: number
+  adults_veg: number
   children_count: number
-  prefers_meat: boolean
   dining_option: DiningOption
   seating_time: SeatingTime
 }
@@ -356,9 +356,9 @@ export interface MealRegistration {
   date: string
   day_of_week: number
   day_name: string
-  adults_count: number
+  adults_meat: number
+  adults_veg: number
   children_count: number
-  meal_type: "meat" | "vegetarian"
   dining_option: DiningOption
   seating_time: SeatingTime
   house: HouseSimple | null
@@ -370,9 +370,9 @@ export interface MealRegistration {
 
 export interface CreateMealRegistrationData {
   date: string
-  adults_count: number
+  adults_meat: number
+  adults_veg: number
   children_count: number
-  meal_type: "meat" | "vegetarian"
   dining_option: DiningOption
   seating_time: SeatingTime
   house_id?: number | null
@@ -384,12 +384,17 @@ export interface RegistrationCount {
   children: number
 }
 
+export interface TotalRegistrationCount extends RegistrationCount {
+  adults_meat: number
+  adults_veg: number
+}
+
 export interface DailyRegistrationStats {
   date: string
   takeaway: RegistrationCount
   eat_in_1730: RegistrationCount
   eat_in_1830: RegistrationCount
-  total: RegistrationCount
+  total: TotalRegistrationCount
 }
 
 export interface WeeklyRegistrationStats {
@@ -406,9 +411,9 @@ export interface FoodTicket {
   date: string
   day_of_week: number
   day_name: string
-  adults_count: number
+  adults_meat: number
+  adults_veg: number
   children_count: number
-  meal_type: "meat" | "vegetarian"
   price: string | null
   is_free: boolean
   description: string
@@ -422,9 +427,9 @@ export interface FoodTicket {
 
 export interface CreateFoodTicketData {
   date: string
-  adults_count: number
+  adults_meat: number
+  adults_veg: number
   children_count: number
-  meal_type: "meat" | "vegetarian"
   price?: number | null
   description?: string
 }

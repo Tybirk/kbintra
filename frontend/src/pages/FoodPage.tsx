@@ -673,6 +673,9 @@ function DriveMenuDayCard({
   const totalAdults = stats?.total.adults ?? 0
   const totalChildren = stats?.total.children ?? 0
   const totalPortions = totalAdults + totalChildren
+  const totalMeat = stats?.total.adults_meat ?? 0
+  const totalVeg = stats?.total.adults_veg ?? 0
+  const hasMeatVegSplit = totalMeat > 0 && totalVeg > 0
 
   return (
     <Paper withBorder p="md" radius="md">
@@ -702,7 +705,11 @@ function DriveMenuDayCard({
         <Group gap="xs">
           <IconUsers size={16} />
           <Text size="sm" fw={500}>
-            Total: {totalAdults} voksne, {totalChildren} børn ({totalPortions})
+            Total:{" "}
+            {hasMeatVegSplit
+              ? `${totalMeat} kød + ${totalVeg} vegetar`
+              : `${totalAdults} voksne`}
+            , {totalChildren} børn ({totalPortions})
           </Text>
         </Group>
         <ActionIcon variant="subtle" size="sm">
@@ -747,7 +754,9 @@ function DriveMenuDayCard({
               <Table.Tr>
                 <Table.Td fw={600}>Total</Table.Td>
                 <Table.Td ta="right" fw={600}>
-                  {totalAdults}
+                  {hasMeatVegSplit
+                    ? `${totalMeat} kød + ${totalVeg} veg`
+                    : totalAdults}
                 </Table.Td>
                 <Table.Td ta="right" fw={600}>
                   {totalChildren}
@@ -797,14 +806,15 @@ function DayRegistrationCard({
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
 
   // Default to house inhabitant count if no registration exists
-  const defaultAdults =
-    registration?.adults_count ?? (user?.house_inhabitant_count || 1)
+  const houseCount = user?.house_inhabitant_count || 1
   // Committed state: always a number, only updated on blur — triggers auto-save
-  const [adults, setAdults] = useState(defaultAdults)
-  const [children, setChildren] = useState(registration?.children_count ?? 0)
-  const [mealType, setMealType] = useState<"meat" | "vegetarian">(
-    registration?.meal_type ?? "meat",
+  const [adultsMeat, setAdultsMeat] = useState(
+    registration?.adults_meat ?? (isWednesday ? houseCount : 0),
   )
+  const [adultsVeg, setAdultsVeg] = useState(
+    registration?.adults_veg ?? (isWednesday ? 0 : houseCount),
+  )
+  const [children, setChildren] = useState(registration?.children_count ?? 0)
   const [diningOption, setDiningOption] = useState<DiningOption>(
     registration?.dining_option ?? "eat_in",
   )
@@ -816,14 +826,15 @@ function DayRegistrationCard({
   // Ticket creation state
   const [ticketDescription, setTicketDescription] = useState("")
 
-  // Meat is only available on Wednesdays; all other days are vegetarian.
-  const effectiveTicketMealType =
-    isWednesday ? (registration?.meal_type ?? mealType) : "vegetarian"
-
   const calculateDefaultPrice = () => {
-    const portionCount = registration?.adults_count ?? adults
+    const ticketAdultsMeat = registration?.adults_meat ?? adultsMeat
+    const ticketAdultsVeg = registration?.adults_veg ?? adultsVeg
     const childCount = registration?.children_count ?? children
-    return calculateDefaultTicketPrice(effectiveTicketMealType, portionCount, childCount)
+    return calculateDefaultTicketPrice(
+      ticketAdultsMeat,
+      ticketAdultsVeg,
+      childCount,
+    )
   }
 
   // Track if initial mount to prevent auto-save on mount
@@ -875,6 +886,9 @@ function DayRegistrationCard({
     mutationFn: (data: CreateFoodTicketData) => foodApi.createTicket(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "tickets"] })
+      queryClient.invalidateQueries({
+        queryKey: ["food", "registrations", weekStart],
+      })
       notifications.show({
         title: "Billet oprettet",
         message: "Din madbillet er nu tilgængelig for andre.",
@@ -936,9 +950,9 @@ function DayRegistrationCard({
 
     const data: CreateMealRegistrationData = {
       date,
-      adults_count: adults,
+      adults_meat: adultsMeat,
+      adults_veg: adultsVeg,
       children_count: children,
-      meal_type: mealType,
       dining_option: diningOption,
       seating_time: seatingTime,
       house_id: user?.house ?? null,
@@ -946,7 +960,7 @@ function DayRegistrationCard({
     }
 
     debouncedSave(data, registration?.id)
-  }, [adults, children, mealType, diningOption, seatingTime, isActive])
+  }, [adultsMeat, adultsVeg, children, diningOption, seatingTime, isActive])
 
   const handleEatingChange = (val: string) => {
     if (val === "no" && isActive) {
@@ -964,9 +978,9 @@ function DayRegistrationCard({
   const handleCreateTicketAndSave = () => {
     const ticketData: CreateFoodTicketData = {
       date,
-      adults_count: registration?.adults_count ?? adults,
+      adults_meat: registration?.adults_meat ?? adultsMeat,
+      adults_veg: registration?.adults_veg ?? adultsVeg,
       children_count: registration?.children_count ?? children,
-      meal_type: effectiveTicketMealType,
       price: calculateDefaultPrice(),
       description: ticketDescription,
     }
@@ -1019,16 +1033,16 @@ function DayRegistrationCard({
           {isActive && (
             <>
               <MealFormFields
-                adults={adults}
+                adultsMeat={adultsMeat}
+                adultsVeg={adultsVeg}
                 children={children}
-                mealType={mealType}
                 diningOption={diningOption}
                 seatingTime={seatingTime}
                 isWednesday={isWednesday}
                 disabled={isPast}
-                onAdultsChange={setAdults}
+                onAdultsMeatChange={setAdultsMeat}
+                onAdultsVegChange={setAdultsVeg}
                 onChildrenChange={setChildren}
-                onMealTypeChange={setMealType}
                 onDiningOptionChange={setDiningOption}
                 onSeatingTimeChange={setSeatingTime}
               />
@@ -1101,7 +1115,7 @@ function DayRegistrationCard({
               {calculateDefaultPrice()} kr
             </Text>
             <Text size="xs" c="dimmed">
-              {effectiveTicketMealType === "meat" ? "37" : "26"}/voksen + 18/barn
+              37/voksen (kød) + 26/voksen (vegetar) + 18/barn
             </Text>
           </Stack>
 

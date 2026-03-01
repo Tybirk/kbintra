@@ -81,14 +81,19 @@ describe("foodApi", () => {
     })
 
     it("should create registration", async () => {
-      const mockRegistration = { id: 1, date: "2025-01-13", adults_count: 2 }
+      const mockRegistration = {
+        id: 1,
+        date: "2025-01-13",
+        adults_meat: 0,
+        adults_veg: 2,
+      }
       vi.mocked(apiClient.post).mockResolvedValue({ data: mockRegistration })
 
       const result = await foodApi.createRegistration({
         date: "2025-01-13",
-        adults_count: 2,
+        adults_meat: 0,
+        adults_veg: 2,
         children_count: 0,
-        meal_type: "meat",
         dining_option: "eat_in",
         seating_time: "17:30",
         house_id: null,
@@ -128,9 +133,9 @@ describe("foodApi", () => {
 
       const result = await foodApi.createTicket({
         date: "2025-01-15",
-        adults_count: 2,
+        adults_meat: 2,
+        adults_veg: 0,
         children_count: 0,
-        meal_type: "meat",
         price: 50,
         description: "Test",
       })

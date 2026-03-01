@@ -9,6 +9,7 @@ from typing import Any
 
 from django.db import transaction
 from django.db.models import Q, QuerySet, Sum
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.request import Request
@@ -22,7 +23,6 @@ from .models import (
     FoodTicket,
     MealPreference,
     MealRegistration,
-    MealType,
     SwapRequestStatus,
     TeamSwapRequest,
 )
@@ -111,46 +111,39 @@ class DailyRegistrationStatsView(APIView):
         )
 
         # Aggregate by category
-        takeaway = registrations.filter(dining_option="take_away").aggregate(
-            adults=Sum("adults_count"),
-            children=Sum("children_count"),
-        )
-        eat_in_1730 = registrations.filter(
-            dining_option="eat_in",
-            seating_time="17:30",
-        ).aggregate(
-            adults=Sum("adults_count"),
-            children=Sum("children_count"),
-        )
-        eat_in_1830 = registrations.filter(
-            dining_option="eat_in",
-            seating_time="18:30",
-        ).aggregate(
-            adults=Sum("adults_count"),
-            children=Sum("children_count"),
-        )
-        total = registrations.aggregate(
-            adults=Sum("adults_count"),
-            children=Sum("children_count"),
-        )
+        def _agg(qs: QuerySet) -> dict[str, int]:
+            result = qs.aggregate(
+                adults_meat=Coalesce(Sum("adults_meat"), 0),
+                adults_veg=Coalesce(Sum("adults_veg"), 0),
+                children=Coalesce(Sum("children_count"), 0),
+            )
+            result["adults"] = result["adults_meat"] + result["adults_veg"]
+            return result
+
+        takeaway = _agg(registrations.filter(dining_option="take_away"))
+        eat_in_1730 = _agg(registrations.filter(dining_option="eat_in", seating_time="17:30"))
+        eat_in_1830 = _agg(registrations.filter(dining_option="eat_in", seating_time="18:30"))
+        total_agg = _agg(registrations)
 
         return {
             "date": target_date.isoformat(),
             "takeaway": {
-                "adults": takeaway["adults"] or 0,
-                "children": takeaway["children"] or 0,
+                "adults": takeaway["adults"],
+                "children": takeaway["children"],
             },
             "eat_in_1730": {
-                "adults": eat_in_1730["adults"] or 0,
-                "children": eat_in_1730["children"] or 0,
+                "adults": eat_in_1730["adults"],
+                "children": eat_in_1730["children"],
             },
             "eat_in_1830": {
-                "adults": eat_in_1830["adults"] or 0,
-                "children": eat_in_1830["children"] or 0,
+                "adults": eat_in_1830["adults"],
+                "children": eat_in_1830["children"],
             },
             "total": {
-                "adults": total["adults"] or 0,
-                "children": total["children"] or 0,
+                "adults": total_agg["adults"],
+                "adults_meat": total_agg["adults_meat"],
+                "adults_veg": total_agg["adults_veg"],
+                "children": total_agg["children"],
             },
         }
 
@@ -267,11 +260,9 @@ class ApplyDefaultsView(APIView):
                         date=reg_date,
                         defaults={
                             "house": house,
-                            "adults_count": pref.adults_count,
+                            "adults_meat": pref.adults_meat,
+                            "adults_veg": pref.adults_veg,
                             "children_count": pref.children_count,
-                            "meal_type": MealType.MEAT
-                            if pref.prefers_meat
-                            else MealType.VEGETARIAN,
                             "dining_option": pref.dining_option,
                             "seating_time": pref.seating_time,
                             "is_active": True,
@@ -296,9 +287,9 @@ class ApplyDefaultsView(APIView):
                         date=reg_date,
                         defaults={
                             "house": house,
-                            "adults_count": house_inhabitant_count,
+                            "adults_meat": house_inhabitant_count if is_wednesday else 0,
+                            "adults_veg": 0 if is_wednesday else house_inhabitant_count,
                             "children_count": 0,
-                            "meal_type": MealType.MEAT if is_wednesday else MealType.VEGETARIAN,
                             "dining_option": "eat_in",
                             "seating_time": "17:30",
                             "is_active": True,
@@ -357,7 +348,21 @@ class FoodTicketDetailView(generics.RetrieveDestroyAPIView):
                 {"detail": "Cannot delete a claimed ticket."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        return super().destroy(request, *args, **kwargs)
+        with transaction.atomic():
+            # Restore portions to registration (if one exists)
+            try:
+                reg = MealRegistration.objects.select_for_update().get(
+                    user=request.user, date=ticket.date
+                )
+                reg.adults_meat += ticket.adults_meat
+                reg.adults_veg += ticket.adults_veg
+                reg.children_count += ticket.children_count
+                reg.is_active = True
+                reg.save()
+            except MealRegistration.DoesNotExist:
+                pass  # No registration to restore to — just delete the ticket
+            ticket.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class ClaimTicketView(APIView):
@@ -930,12 +935,14 @@ class MonthlyFoodCostView(APIView):
             )
 
             for reg in active_registrations:
-                # Calculate cost based on meal type and portions
-                adult_price = price_adult_meat if reg.meal_type == "meat" else price_adult_veg
-                cost = (adult_price * reg.adults_count) + (price_child * reg.children_count)
+                cost = (
+                    (price_adult_meat * reg.adults_meat)
+                    + (price_adult_veg * reg.adults_veg)
+                    + (price_child * reg.children_count)
+                )
                 house_total += cost
                 registration_count += 1
-                adult_portions += reg.adults_count
+                adult_portions += reg.adults_meat + reg.adults_veg
                 child_portions += reg.children_count
 
             # 2. Count ALL food tickets owned by this house (regardless of is_available)
@@ -948,12 +955,14 @@ class MonthlyFoodCostView(APIView):
             )
 
             for ticket in all_tickets:
-                # Calculate cost based on meal type and portions (not the ticket sale price)
-                adult_price = price_adult_meat if ticket.meal_type == "meat" else price_adult_veg
-                cost = (adult_price * ticket.adults_count) + (price_child * ticket.children_count)
+                cost = (
+                    (price_adult_meat * ticket.adults_meat)
+                    + (price_adult_veg * ticket.adults_veg)
+                    + (price_child * ticket.children_count)
+                )
                 house_total += cost
                 ticket_count += 1
-                adult_portions += ticket.adults_count
+                adult_portions += ticket.adults_meat + ticket.adults_veg
                 child_portions += ticket.children_count
 
             house_costs.append(

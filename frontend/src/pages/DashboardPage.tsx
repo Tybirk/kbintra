@@ -207,8 +207,8 @@ export default function DashboardPage() {
   const todayRegistration = allRegistrations.find((r) => r.date === todayStr)
   const nextFoodDayRegistration = nextFoodDay
     ? allRegistrations.find(
-      (r) => r.date === nextFoodDay.date.format("YYYY-MM-DD"),
-    )
+        (r) => r.date === nextFoodDay.date.format("YYYY-MM-DD"),
+      )
     : undefined
 
   // Calculate birthday info for each user
@@ -749,7 +749,11 @@ function ActivityPreview({ activity }: ActivityPreviewProps) {
         <Badge variant="outline" color="blue">
           {activity.subgroup_name}
         </Badge>
-        <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap", flexShrink: 0 }}>
+        <Text
+          size="xs"
+          c="dimmed"
+          style={{ whiteSpace: "nowrap", flexShrink: 0 }}
+        >
           {dayjs(activity.created_at).fromNow()}
         </Text>
       </Group>
@@ -887,9 +891,9 @@ function FoodDayWidget({
     const defaultAdults = user?.house_inhabitant_count || 1
     const data: CreateMealRegistrationData = {
       date,
-      adults_count: registration?.adults_count ?? defaultAdults,
+      adults_meat: registration?.adults_meat ?? 0,
+      adults_veg: registration?.adults_veg ?? defaultAdults,
       children_count: registration?.children_count ?? 0,
-      meal_type: registration?.meal_type ?? "meat",
       dining_option: diningOption,
       seating_time: seatingTime,
       house_id: user?.house ?? null,
@@ -971,9 +975,10 @@ function FoodDayWidget({
               Gemmer...
             </Group>
           ) : registration?.is_active ? (
-            `${registration.total_portions} port. • ${registration.dining_option === "eat_in"
-              ? `kl. ${registration.seating_time}`
-              : "Take away"
+            `${registration.total_portions} port. • ${
+              registration.dining_option === "eat_in"
+                ? `kl. ${registration.seating_time}`
+                : "Take away"
             }`
           ) : registration ? (
             "Spiser ikke"

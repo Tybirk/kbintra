@@ -24,13 +24,6 @@ class DayOfWeek(models.IntegerChoices):
     THURSDAY = 3, "Torsdag"
 
 
-class MealType(models.TextChoices):
-    """Meal type options (mainly for Wednesday)."""
-
-    MEAT = "meat", "Kød"
-    VEGETARIAN = "vegetarian", "Vegetar"
-
-
 class DiningOption(models.TextChoices):
     """Dining options for meal registration."""
 
@@ -54,17 +47,11 @@ class MealPreference(models.Model):
         related_name="meal_preferences",
     )
     day_of_week = models.IntegerField(choices=DayOfWeek.choices)
-    adults_count = models.PositiveIntegerField(
-        default=1,
-        validators=[MinValueValidator(0)],
-    )
+    adults_meat = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)])
+    adults_veg = models.PositiveIntegerField(default=1, validators=[MinValueValidator(0)])
     children_count = models.PositiveIntegerField(
         default=0,
         validators=[MinValueValidator(0)],
-    )
-    prefers_meat = models.BooleanField(
-        default=True,
-        help_text="Preference for Wednesday meat/vegetarian option",
     )
     dining_option = models.CharField(
         max_length=20,
@@ -81,6 +68,10 @@ class MealPreference(models.Model):
 
     class Meta:
         unique_together = ["user", "day_of_week"]
+
+    @property
+    def adults_count(self) -> int:
+        return self.adults_meat + self.adults_veg
 
     def __str__(self) -> str:
         return f"{self.user.email} - {self.get_day_of_week_display()}"
@@ -104,19 +95,11 @@ class MealRegistration(models.Model):
         help_text="If set, this is a registration on behalf of the house",
     )
     date = models.DateField()
-    adults_count = models.PositiveIntegerField(
-        default=1,
-        validators=[MinValueValidator(0)],
-    )
+    adults_meat = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)])
+    adults_veg = models.PositiveIntegerField(default=1, validators=[MinValueValidator(0)])
     children_count = models.PositiveIntegerField(
         default=0,
         validators=[MinValueValidator(0)],
-    )
-    meal_type = models.CharField(
-        max_length=20,
-        choices=MealType.choices,
-        default=MealType.MEAT,
-        help_text="Only relevant for Wednesday",
     )
     dining_option = models.CharField(
         max_length=20,
@@ -147,9 +130,13 @@ class MealRegistration(models.Model):
         return f"{self.user.email} - {self.date}"
 
     @property
+    def adults_count(self) -> int:
+        return self.adults_meat + self.adults_veg
+
+    @property
     def total_portions(self) -> int:
         """Total number of portions (adults + children)."""
-        return self.adults_count + self.children_count
+        return self.adults_meat + self.adults_veg + self.children_count
 
 
 class FoodTicket(models.Model):
@@ -166,19 +153,11 @@ class FoodTicket(models.Model):
         related_name="food_tickets",
     )
     date = models.DateField()
-    adults_count = models.PositiveIntegerField(
-        default=1,
-        validators=[MinValueValidator(0)],
-    )
+    adults_meat = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)])
+    adults_veg = models.PositiveIntegerField(default=1, validators=[MinValueValidator(0)])
     children_count = models.PositiveIntegerField(
         default=0,
         validators=[MinValueValidator(0)],
-    )
-    meal_type = models.CharField(
-        max_length=20,
-        choices=MealType.choices,
-        default=MealType.MEAT,
-        help_text="Only relevant for Wednesday",
     )
     price = models.DecimalField(
         max_digits=6,
@@ -216,9 +195,13 @@ class FoodTicket(models.Model):
         return self.price is None or self.price == 0
 
     @property
+    def adults_count(self) -> int:
+        return self.adults_meat + self.adults_veg
+
+    @property
     def total_portions(self) -> int:
         """Total number of portions being offered."""
-        return self.adults_count + self.children_count
+        return self.adults_meat + self.adults_veg + self.children_count
 
 
 class SwapRequestStatus(models.TextChoices):

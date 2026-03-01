@@ -102,11 +102,9 @@ function PreferenceCard({
   isWednesday,
 }: PreferenceCardProps) {
   const queryClient = useQueryClient()
-  const [adults, setAdults] = useState(preference?.adults_count ?? 1)
+  const [adultsMeat, setAdultsMeat] = useState(preference?.adults_meat ?? 0)
+  const [adultsVeg, setAdultsVeg] = useState(preference?.adults_veg ?? 1)
   const [children, setChildren] = useState(preference?.children_count ?? 0)
-  const [mealType, setMealType] = useState<"meat" | "vegetarian">(
-    preference?.prefers_meat !== false ? "meat" : "vegetarian",
-  )
   const [diningOption, setDiningOption] = useState<DiningOption>(
     preference?.dining_option ?? "eat_in",
   )
@@ -174,10 +172,7 @@ function PreferenceCard({
   })
 
   const debouncedSave = useDebouncedCallback(
-    (
-      data: CreateMealPreferenceData,
-      prefId: number | undefined,
-    ) => {
+    (data: CreateMealPreferenceData, prefId: number | undefined) => {
       setIsSaving(true)
       if (prefId) {
         updateMutation.mutate(data)
@@ -197,15 +192,15 @@ function PreferenceCard({
     debouncedSave(
       {
         day_of_week: dayOfWeek,
-        adults_count: adults,
+        adults_meat: adultsMeat,
+        adults_veg: adultsVeg,
         children_count: children,
-        prefers_meat: mealType === "meat",
         dining_option: diningOption,
         seating_time: seatingTime,
       },
       preference?.id,
     )
-  }, [adults, children, mealType, diningOption, seatingTime])
+  }, [adultsMeat, adultsVeg, children, diningOption, seatingTime])
 
   return (
     <Paper withBorder p="md" radius="md">
@@ -226,15 +221,15 @@ function PreferenceCard({
 
       <Stack gap="sm">
         <MealFormFields
-          adults={adults}
+          adultsMeat={adultsMeat}
+          adultsVeg={adultsVeg}
           children={children}
-          mealType={mealType}
           diningOption={diningOption}
           seatingTime={seatingTime}
           isWednesday={isWednesday}
-          onAdultsChange={setAdults}
+          onAdultsMeatChange={setAdultsMeat}
+          onAdultsVegChange={setAdultsVeg}
           onChildrenChange={setChildren}
-          onMealTypeChange={setMealType}
           onDiningOptionChange={setDiningOption}
           onSeatingTimeChange={setSeatingTime}
         />
