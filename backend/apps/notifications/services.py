@@ -908,6 +908,7 @@ def notify_subgroup_activity(
     thread_slug: str,
     reply_content: str,
     post_id: int = 0,
+    title: str = "",
 ) -> int:
     """Notify subgroup subscribers about new activity in a thread they don't participate in.
 
@@ -925,12 +926,14 @@ def notify_subgroup_activity(
     if post_id:
         link += f"#post-{post_id}"
 
+    notification_title = title or f"{replier.first_name} svarede i {subgroup_name}"
+
     count = 0
     for user in subscribers.exclude(id=replier.id):
         notification = create_notification(
             user=user,
             notification_type=NotificationType.SUBGROUP_ACTIVITY,
-            title=f"{replier.first_name} svarede i {subgroup_name}",
+            title=notification_title,
             message=f'"{thread_title}": {preview}',
             link=link,
             related_user=replier,

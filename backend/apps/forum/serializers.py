@@ -415,9 +415,20 @@ class PostCreateSerializer(serializers.ModelSerializer):
 
         mentioned_ids = set(extract_mention_ids(post.content)) if post.content else set()
 
+        # Only exclude mentioned users who will actually receive MENTION.
+        # Users with notify_mentions=False won't get MENTION, so they should fall back
+        # to lower-priority notifications (thread_reply, post_reply, subgroup_activity).
+        mentioned_who_opt_out = set(
+            User.objects.filter(
+                id__in=mentioned_ids,
+                notification_preferences__notify_mentions=False,
+            ).values_list("id", flat=True)
+        )
+        effective_mentioned_ids = mentioned_ids - mentioned_who_opt_out
+
         # Notify thread author in background
         # thread.author can be None if the original author was deleted
-        if thread.author is not None and thread.author.id not in mentioned_ids:
+        if thread.author is not None and thread.author.id not in effective_mentioned_ids:
             notify_thread_reply_task(
                 thread_author_id=thread.author.id,
                 replier_id=author.id,
@@ -442,7 +453,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
         )
         for poster_id in previous_posters:
             if poster_id is not None and poster_id not in notified_users:
-                if poster_id not in mentioned_ids:
+                if poster_id not in effective_mentioned_ids:
                     notify_post_reply_task(
                         post_author_id=poster_id,
                         replier_id=author.id,
@@ -456,8 +467,9 @@ class PostCreateSerializer(serializers.ModelSerializer):
                 notified_users.add(poster_id)
 
         # Notify subgroup subscribers who haven't participated in this thread.
-        # notified_users already contains the replier, thread author, and all
-        # previous posters — so they won't receive a duplicate notification.
+        # Pass participant_ids separately so the task can determine which participants
+        # will actually receive THREAD_REPLY/POST_REPLY (those with notify_thread_replies=True
+        # or no prefs). Participants who opted out of thread_replies will fall back here.
         notify_subgroup_activity_task(
             replier_id=author.id,
             thread_title=thread.title,
@@ -468,7 +480,8 @@ class PostCreateSerializer(serializers.ModelSerializer):
             thread_slug=thread.slug,
             reply_content=post.content,
             post_id=post.id,
-            exclude_user_ids=list(notified_users | mentioned_ids),
+            participant_ids=list(notified_users),
+            mentioned_ids=list(effective_mentioned_ids),
         )
 
         # Store mention IDs for the view's perform_create to send mention notifications
@@ -690,10 +703,28 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
 
         # Extract mentions first — mentioned users get a mention notification
         # (higher priority) instead of the generic new_thread notification.
-        from apps.notifications.tasks import notify_mentions_task, notify_new_thread_task
+        from apps.notifications.tasks import (
+            notify_mentions_task,
+            notify_new_thread_task,
+            notify_subgroup_activity_new_thread_task,
+        )
         from apps.notifications.utils import extract_mention_ids
 
         mention_ids = extract_mention_ids(content)
+
+        # Only exclude mentioned users who will actually receive MENTION.
+        # Users with notify_mentions=False won't get MENTION, so they should fall back
+        # to lower-priority notifications (new_thread, subgroup_activity).
+        if mention_ids:
+            mentioned_who_opt_out = set(
+                User.objects.filter(
+                    id__in=mention_ids,
+                    notification_preferences__notify_mentions=False,
+                ).values_list("id", flat=True)
+            )
+            effective_mention_ids = [mid for mid in mention_ids if mid not in mentioned_who_opt_out]
+        else:
+            effective_mention_ids = []
 
         notify_new_thread_task(
             author_id=thread.author.id,
@@ -704,7 +735,22 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
             subgroup_id=thread.subgroup.id,
             thread_slug=thread.slug,
             initial_post_content=content,
-            exclude_user_ids=mention_ids if mention_ids else None,
+            exclude_user_ids=effective_mention_ids if effective_mention_ids else None,
+        )
+
+        # Notify subgroup subscribers with subgroup_activity but not forum_subscriptions.
+        # These users won't receive NEW_THREAD but still want to know about new threads.
+        notify_subgroup_activity_new_thread_task(
+            author_id=thread.author.id,
+            thread_title=thread.title,
+            thread_id=thread.id,
+            subgroup_id=thread.subgroup.id,
+            subgroup_name=thread.subgroup.name,
+            subgroup_slug=thread.subgroup.slug,
+            thread_slug=thread.slug,
+            initial_post_content=content,
+            post_id=post.id,
+            exclude_user_ids=[thread.author.id] + list(effective_mention_ids),
         )
 
         if mention_ids:

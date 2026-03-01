@@ -11,7 +11,6 @@ import {
   Center,
   Stack,
   Badge,
-  NumberInput,
   SegmentedControl,
   SimpleGrid,
   Alert,
@@ -817,13 +816,15 @@ function DayRegistrationCard({
   // Ticket creation state
   const [ticketDescription, setTicketDescription] = useState("")
 
-  // Calculate default ticket price using shared utility
+  // Meat is only available on Wednesdays; all other days are vegetarian.
+  const effectiveTicketMealType =
+    isWednesday ? (registration?.meal_type ?? mealType) : "vegetarian"
+
   const calculateDefaultPrice = () => {
     const portionCount = registration?.adults_count ?? adults
     const childCount = registration?.children_count ?? children
-    return calculateDefaultTicketPrice(mealType, portionCount, childCount)
+    return calculateDefaultTicketPrice(effectiveTicketMealType, portionCount, childCount)
   }
-  const [ticketPrice, setTicketPrice] = useState<number | null>(null)
 
   // Track if initial mount to prevent auto-save on mount
   const [hasInitialized, setHasInitialized] = useState(false)
@@ -961,14 +962,12 @@ function DayRegistrationCard({
   }
 
   const handleCreateTicketAndSave = () => {
-    // Create the ticket - use explicit price or calculated default
-    const finalPrice = ticketPrice ?? calculateDefaultPrice()
     const ticketData: CreateFoodTicketData = {
       date,
       adults_count: registration?.adults_count ?? adults,
       children_count: registration?.children_count ?? children,
-      meal_type: mealType,
-      price: finalPrice,
+      meal_type: effectiveTicketMealType,
+      price: calculateDefaultPrice(),
       description: ticketDescription,
     }
     createTicketMutation.mutate(ticketData)
@@ -976,14 +975,12 @@ function DayRegistrationCard({
     // Update registration to not active
     setIsActive(false)
     closeTicketModal()
-    setTicketPrice(null)
     setTicketDescription("")
   }
 
   const handleSkipTicket = () => {
     setIsActive(false)
     closeTicketModal()
-    setTicketPrice(null)
     setTicketDescription("")
   }
 
@@ -1096,17 +1093,17 @@ function DayRegistrationCard({
             Vil du gøre din madbillet tilgængelig for andre?
           </Text>
 
-          <NumberInput
-            label="Pris (DKK)"
-            description={`Foreslået pris: ${calculateDefaultPrice()} kr (${
-              mealType === "meat" ? "37" : "26"
-            }/voksen + 18/barn)`}
-            value={ticketPrice ?? calculateDefaultPrice()}
-            onChange={(val) => setTicketPrice(Number(val) || 0)}
-            min={0}
-            max={500}
-            decimalScale={0}
-          />
+          <Stack gap={4}>
+            <Text size="sm" fw={500}>
+              Pris
+            </Text>
+            <Text size="xl" fw={700}>
+              {calculateDefaultPrice()} kr
+            </Text>
+            <Text size="xs" c="dimmed">
+              {effectiveTicketMealType === "meat" ? "37" : "26"}/voksen + 18/barn
+            </Text>
+          </Stack>
 
           <Textarea
             label="Note (valgfrit)"

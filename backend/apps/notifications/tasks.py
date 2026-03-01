@@ -536,9 +536,16 @@ def notify_subgroup_activity_task(
     thread_slug: str,
     reply_content: str,
     post_id: int,
-    exclude_user_ids: list[int],
+    participant_ids: list[int],
+    mentioned_ids: list[int],
 ) -> None:
-    """Notify subgroup subscribers about new thread activity in background."""
+    """Notify subgroup subscribers about new thread activity in background.
+
+    participant_ids: replier + thread author + previous posters (routed to THREAD_REPLY/POST_REPLY)
+    mentioned_ids: effective mentioned users (who will actually receive MENTION)
+
+    Only participants who opted OUT of thread_replies fall back to SUBGROUP_ACTIVITY here.
+    """
     logger.info(
         "notify_subgroup_activity_task STARTED: replier=%d thread='%s'",
         replier_id,
@@ -554,9 +561,22 @@ def notify_subgroup_activity_task(
         logger.warning("notify_subgroup_activity_task: Replier %d not found", replier_id)
         return
 
-    # Subscribers who have notify_replies=True for this subgroup and are not
-    # already being notified via other channels (thread author, previous posters, mentions)
     from apps.forum.models import ThreadMuteStatus
+    from apps.notifications.models import NotificationPreference
+
+    # Among participants, only exclude those who will ACTUALLY receive THREAD_REPLY/POST_REPLY.
+    # A participant with notify_thread_replies=False won't get that notification, so they
+    # should fall through to SUBGROUP_ACTIVITY instead.
+    participants_opting_out = set(
+        NotificationPreference.objects.filter(
+            user_id__in=participant_ids,
+            notify_thread_replies=False,
+        ).values_list("user_id", flat=True)
+    )
+    # Exclude participants who WILL get thread_reply (True or no prefs row → default True)
+    participants_to_exclude = set(participant_ids) - participants_opting_out
+
+    final_exclude = participants_to_exclude | set(mentioned_ids)
 
     subscribers = (
         User.objects.filter(
@@ -564,7 +584,7 @@ def notify_subgroup_activity_task(
             subgroup_subscriptions__subgroup_id=subgroup_id,
             subgroup_subscriptions__notify_replies=True,
         )
-        .exclude(id__in=exclude_user_ids)
+        .exclude(id__in=final_exclude)
         .exclude(id__in=ThreadMuteStatus.objects.filter(thread_id=thread_id).values("user_id"))
         .distinct()
     )
@@ -581,6 +601,85 @@ def notify_subgroup_activity_task(
         post_id=post_id,
     )
     logger.info("notify_subgroup_activity_task COMPLETED: %d notifications created", count)
+
+
+@db_task(retries=1, retry_delay=60)
+def notify_subgroup_activity_new_thread_task(
+    author_id: int,
+    thread_title: str,
+    thread_id: int,
+    subgroup_id: int,
+    subgroup_name: str,
+    subgroup_slug: str,
+    thread_slug: str,
+    initial_post_content: str,
+    post_id: int,
+    exclude_user_ids: list[int],
+) -> None:
+    """Notify subgroup subscribers with notify_subgroup_activity about a new thread.
+
+    This catches users who have subgroup_activity enabled but NOT forum_subscriptions —
+    i.e., they won't receive NEW_THREAD but still want to know about activity.
+
+    exclude_user_ids: author + effective mentioned users (who will receive MENTION)
+    """
+    logger.info(
+        "notify_subgroup_activity_new_thread_task STARTED: author=%d thread='%s'",
+        author_id,
+        thread_title,
+    )
+    from apps.users.models import User
+
+    from .services import notify_subgroup_activity
+
+    try:
+        author = User.objects.get(id=author_id)
+    except User.DoesNotExist:
+        logger.warning("notify_subgroup_activity_new_thread_task: Author %d not found", author_id)
+        return
+
+    from apps.notifications.models import NotificationPreference
+
+    # Users who WILL receive NEW_THREAD (notify_forum_subscriptions=True or no prefs row).
+    # Those with explicit False are NOT getting NEW_THREAD, so they should get SUBGROUP_ACTIVITY.
+    users_with_prefs_off = set(
+        NotificationPreference.objects.filter(
+            notify_forum_subscriptions=False,
+        ).values_list("user_id", flat=True)
+    )
+    all_users_with_prefs = set(NotificationPreference.objects.values_list("user_id", flat=True))
+    # will_get_new_thread = has prefs with True, OR has no prefs at all (default True)
+    will_get_new_thread = (all_users_with_prefs - users_with_prefs_off) | set(
+        User.objects.exclude(pk__in=all_users_with_prefs).values_list("pk", flat=True)
+    )
+
+    final_exclude = set(exclude_user_ids) | will_get_new_thread
+
+    subscribers = (
+        User.objects.filter(
+            is_active=True,
+            subgroup_subscriptions__subgroup_id=subgroup_id,
+            subgroup_subscriptions__notify_new_threads=True,
+        )
+        .exclude(id__in=final_exclude)
+        .distinct()
+    )
+
+    count = notify_subgroup_activity(
+        subscribers=subscribers,
+        replier=author,
+        thread_title=thread_title,
+        thread_id=thread_id,
+        subgroup_name=subgroup_name,
+        subgroup_slug=subgroup_slug,
+        thread_slug=thread_slug,
+        reply_content=initial_post_content,
+        post_id=post_id,
+        title=f"{author.first_name} oprettede en ny tråd i {subgroup_name}",
+    )
+    logger.info(
+        "notify_subgroup_activity_new_thread_task COMPLETED: %d notifications created", count
+    )
 
 
 # ---------------------------------------------------------------------------
