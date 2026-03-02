@@ -49,8 +49,8 @@ kbintra/
 ## Quick Start
 
 ### Prerequisites
-- [uv](https://docs.astral.sh/uv/) (Python and package manager — automatically installs the right Python version)
-- [Node.js](https://nodejs.org/) 18+ (20+ recommended)
+- [uv](https://docs.astral.sh/uv/#installation) (Python and package manager — automatically installs the right Python version)
+- [Node.js](https://nodejs.org/en/download) 18+ (20+ recommended)
 
 ### One-command setup
 
