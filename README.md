@@ -55,7 +55,7 @@ kbintra/
 ### One-command setup
 
 ```bash
-uv run setup.py    # Install deps, run migrations, build search index
+uv run setup.py    # Install deps, run migrations, build search index, set up pre-commit hooks
 uv run dev.py      # Start backend + frontend dev servers
 ```
 
@@ -67,15 +67,6 @@ Then open http://localhost:5173.
 cd backend
 uv run python manage.py createsuperuser        # Admin access at /admin/
 uv run python manage.py seed_forum_subgroups   # Seed forum data
-```
-
-### Pre-commit Hooks
-
-Install pre-commit hooks to run linting automatically before each commit:
-
-```bash
-uv tool install prek
-prek install -f .
 ```
 
 ### Manual Setup (alternative)

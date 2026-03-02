@@ -67,6 +67,10 @@ def main() -> None:
         cwd=BACKEND,
     )
 
+    step("Installing pre-commit hooks")
+    run(["uv", "tool", "install", "prek"], cwd=ROOT)
+    run(["prek", "install", "-f", "."], cwd=ROOT)
+
     print(f"\n{GREEN}{BOLD}Setup complete!{RESET}\n")
     print("Next steps:")
     print(f"  {BOLD}uv run dev.py{RESET}    — start backend + frontend dev servers")
