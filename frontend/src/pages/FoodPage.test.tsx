@@ -19,17 +19,23 @@ vi.mock("@mantine/notifications", () => ({
   Notifications: () => null,
 }))
 
+vi.mock("../api/notifications", () => ({
+  notificationsApi: {
+    markReadByLink: vi.fn().mockResolvedValue(undefined),
+  },
+}))
+
 const mockGetDriveMenu = vi.fn()
 const mockGetRegistrations = vi.fn()
 const mockGetMyTickets = vi.fn()
-const mockGetRegistrationStats = vi.fn()
+const mockGetTickets = vi.fn()
 vi.mock("../api/food", () => ({
   foodApi: {
     getDriveMenu: (...args: unknown[]) => mockGetDriveMenu(...args),
     refreshDriveMenu: vi.fn().mockResolvedValue({}),
     getRegistrations: () => mockGetRegistrations(),
-    getRegistrationStats: () => mockGetRegistrationStats(),
     getMyTickets: () => mockGetMyTickets(),
+    getTickets: () => mockGetTickets(),
     applyDefaults: vi.fn().mockResolvedValue({ detail: "OK" }),
     createRegistration: vi.fn().mockResolvedValue({}),
     updateRegistration: vi.fn().mockResolvedValue({}),
@@ -49,7 +55,7 @@ describe("FoodPage", () => {
     mockGetDriveMenu.mockResolvedValue(null)
     mockGetRegistrations.mockResolvedValue([])
     mockGetMyTickets.mockResolvedValue([])
-    mockGetRegistrationStats.mockResolvedValue(null)
+    mockGetTickets.mockResolvedValue([])
   })
 
   it("renders page title 'Mad'", async () => {
@@ -60,13 +66,15 @@ describe("FoodPage", () => {
     })
   })
 
-  it("renders Menu and Min tilmelding tabs", async () => {
+  it("renders Menu og Tilmelding and Billetter tabs", async () => {
     render(<FoodPage />)
 
     await waitFor(() => {
-      expect(screen.getByRole("tab", { name: /menu/i })).toBeInTheDocument()
       expect(
-        screen.getByRole("tab", { name: /min tilmelding/i }),
+        screen.getByRole("tab", { name: /menu og tilmelding/i }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole("tab", { name: /billetter/i }),
       ).toBeInTheDocument()
     })
   })
@@ -75,7 +83,9 @@ describe("FoodPage", () => {
     render(<FoodPage />)
 
     await waitFor(() => {
-      expect(screen.getByRole("tab", { name: /menu/i })).toBeInTheDocument()
+      expect(
+        screen.getByRole("tab", { name: /menu og tilmelding/i }),
+      ).toBeInTheDocument()
     })
 
     expect(
@@ -97,15 +107,12 @@ describe("FoodPage", () => {
     })
   })
 
-  it("shows preferences and tickets navigation buttons", async () => {
+  it("shows preferences navigation button", async () => {
     render(<FoodPage />)
 
     await waitFor(() => {
       expect(
         screen.getByRole("button", { name: /^præferencer$/i }),
-      ).toBeInTheDocument()
-      expect(
-        screen.getByRole("button", { name: /billetter/i }),
       ).toBeInTheDocument()
     })
   })

@@ -13,35 +13,32 @@ import {
   Badge,
   SegmentedControl,
   SimpleGrid,
-  Alert,
   Tabs,
-  Divider,
   Modal,
   Textarea,
   ActionIcon,
-  Collapse,
   Table,
   Card,
   Select,
   NumberInput,
+  Avatar,
+  Menu,
 } from "@mantine/core"
+import { DateInput } from "@mantine/dates"
 import { useDisclosure, useDebouncedCallback } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
 import {
-  IconSoup,
   IconCalendar,
   IconTicket,
   IconSettings,
-  IconAlertCircle,
   IconChevronLeft,
   IconChevronRight,
-  IconUsers,
-  IconChevronDown,
-  IconChevronUp,
-  IconRefresh,
   IconReceipt,
   IconLock,
   IconTrash,
+  IconPlus,
+  IconDotsVertical,
+  IconWallet,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import isoWeek from "dayjs/plugin/isoWeek"
@@ -49,6 +46,7 @@ import isoWeek from "dayjs/plugin/isoWeek"
 dayjs.extend(isoWeek)
 
 import { foodApi } from "../api/food"
+import { notificationsApi } from "../api/notifications"
 import { MealFormFields } from "../components/MealFormFields"
 import { useAuthStore } from "../store/authStore"
 import { calculateDefaultTicketPrice } from "../utils/priceCalculation"
@@ -59,9 +57,17 @@ import type {
   CreateFoodTicketData,
   DiningOption,
   SeatingTime,
-  DailyRegistrationStats,
+  DriveMenu,
   FoodTicket,
 } from "../types"
+
+function mobilepayPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, "")
+  if (digits.startsWith("45") && digits.length === 10) return digits
+  if (digits.startsWith("45") && digits.length > 10) return digits
+  if (digits.length === 8) return `45${digits}`
+  return digits
+}
 
 export default function FoodPage() {
   const navigate = useNavigate()
@@ -70,7 +76,7 @@ export default function FoodPage() {
   const { user } = useAuthStore()
 
   // Path-based tab state
-  const validTabs = ["menu", "tilmelding", "admin"]
+  const validTabs = ["tilmelding", "billetter", "admin"]
   const activeTab = tab && validTabs.includes(tab) ? tab : "tilmelding"
   const setActiveTab = (newTab: string | null) => {
     if (newTab && newTab !== "tilmelding") {
@@ -84,50 +90,19 @@ export default function FoodPage() {
   const today = dayjs()
   const currentWeekStart = today.startOf("isoWeek") // Monday
 
-  // Week offset state for menu view (0 = current, 1 = next, etc.)
-  const [menuWeekOffset, setMenuWeekOffset] = useState(0)
   // Week offset state for registration view - defaults to next week (1)
   const [regWeekOffset, setRegWeekOffset] = useState(1)
 
-  const menuWeekStart = currentWeekStart.add(menuWeekOffset, "week")
   const regWeekStart = currentWeekStart.add(regWeekOffset, "week")
 
   // Calculate week number and year for drive menus
-  const menuWeekNumber = menuWeekStart.isoWeek()
-  const menuYear = menuWeekStart.isoWeekYear()
   const regWeekNumber = regWeekStart.isoWeek()
   const regYear = regWeekStart.isoWeekYear()
 
-  // Fetch drive menu for the selected menu week
-  const {
-    data: driveMenu,
-    isLoading: driveMenuLoading,
-    error: driveMenuError,
-  } = useQuery({
-    queryKey: ["food", "drive-menu", menuWeekNumber, menuYear],
-    queryFn: () => foodApi.getDriveMenu(menuWeekNumber, menuYear),
-  })
-
-  // Mutation to refresh drive menu
-  const refreshDriveMenuMutation = useMutation({
-    mutationFn: () => foodApi.refreshDriveMenu(menuWeekNumber, menuYear),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["food", "drive-menu", menuWeekNumber, menuYear],
-      })
-      notifications.show({
-        title: "Menu opdateret",
-        message: "Menuen er blevet opdateret fra Google Drive.",
-        color: "green",
-      })
-    },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke opdatere menuen fra Google Drive.",
-        color: "red",
-      })
-    },
+  // Fetch drive menu for the registration week
+  const { data: regDriveMenu } = useQuery({
+    queryKey: ["food", "drive-menu", regWeekNumber, regYear],
+    queryFn: () => foodApi.getDriveMenu(regWeekNumber, regYear),
   })
 
   // Fetch registrations for the selected registration week
@@ -136,31 +111,16 @@ export default function FoodPage() {
     queryFn: () => foodApi.getRegistrations(regWeekStart.format("YYYY-MM-DD")),
   })
 
-  // Fetch registrations for the menu week (to show registration status)
-  const { data: menuWeekRegistrations } = useQuery({
-    queryKey: ["food", "registrations", menuWeekStart.format("YYYY-MM-DD")],
-    queryFn: () => foodApi.getRegistrations(menuWeekStart.format("YYYY-MM-DD")),
-    enabled: menuWeekOffset !== regWeekOffset, // Only fetch if different from reg week
-  })
-
-  // Fetch registration stats for the menu week
-  const { data: menuWeekStats } = useQuery({
-    queryKey: ["food", "stats", menuWeekStart.format("YYYY-MM-DD")],
-    queryFn: () =>
-      foodApi.getRegistrationStats(menuWeekStart.format("YYYY-MM-DD")),
-  })
-
-  // Fetch drive menu for the registration week
-  const { data: regDriveMenu } = useQuery({
-    queryKey: ["food", "drive-menu", regWeekNumber, regYear],
-    queryFn: () => foodApi.getDriveMenu(regWeekNumber, regYear),
-    enabled: regWeekNumber !== menuWeekNumber || regYear !== menuYear, // Only fetch if different from menu week
-  })
-
   // Fetch user's tickets to check for active tickets when switching eating status
   const { data: myTickets } = useQuery({
     queryKey: ["food", "tickets", "my"],
     queryFn: foodApi.getMyTickets,
+  })
+
+  // Fetch available tickets for the billetter tab
+  const { data: availableTickets } = useQuery({
+    queryKey: ["food", "tickets", "available"],
+    queryFn: () => foodApi.getTickets(),
   })
 
   // Create a map of my tickets (owned) by date
@@ -172,9 +132,15 @@ export default function FoodPage() {
     }
   })
 
+  // Filter tickets for billetter tab sections
+  const myTicketsForSale =
+    myTickets?.filter((t) => t.is_own && t.is_available) ?? []
+  const othersAvailableTickets =
+    availableTickets?.filter((t) => !t.is_own && t.is_available) ?? []
+
   // Helper to get menu text for a specific day offset (0=Mon, 1=Tue, 2=Wed, 3=Thu)
   const getMenuTextForDay = (
-    menu: typeof driveMenu,
+    menu: DriveMenu | undefined,
     dayOffset: number,
   ): string => {
     if (!menu) return ""
@@ -192,11 +158,17 @@ export default function FoodPage() {
     }
   }
 
-  // Get the appropriate drive menu for registration week
-  const regWeekDriveMenu =
-    regWeekNumber === menuWeekNumber && regYear === menuYear
-      ? driveMenu
-      : regDriveMenu
+  // Auto-mark food-ticket notifications as read when billetter tab is active
+  useEffect(() => {
+    if (activeTab === "billetter") {
+      void notificationsApi.markReadByLink("/mad/billetter").then(() => {
+        queryClient.invalidateQueries({ queryKey: ["notifications"] })
+        queryClient.invalidateQueries({
+          queryKey: ["notifications", "unread-count"],
+        })
+      })
+    }
+  }, [activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const applyDefaultsMutation = useMutation({
     mutationFn: () => foodApi.applyDefaults(regWeekStart.format("YYYY-MM-DD")),
@@ -226,14 +198,6 @@ export default function FoodPage() {
     registrationsByDate.set(reg.date, reg)
   })
 
-  // Create a map of registrations by date for menu view
-  const menuRegistrationsByDate = new Map<string, MealRegistration>()
-  const menuRegs =
-    menuWeekOffset === regWeekOffset ? registrations : menuWeekRegistrations
-  menuRegs?.forEach((reg) => {
-    menuRegistrationsByDate.set(reg.date, reg)
-  })
-
   // Helper to get week label
   const getWeekLabel = (offset: number) => {
     if (offset === 0) return "Denne uge"
@@ -241,6 +205,11 @@ export default function FoodPage() {
     if (offset === -1) return "Sidste uge"
     return `${offset > 0 ? "+" : ""}${offset} uger`
   }
+
+  const [
+    createTicketModalOpened,
+    { open: openCreateTicketModal, close: closeCreateTicketModal },
+  ] = useDisclosure(false)
 
   return (
     <>
@@ -260,23 +229,16 @@ export default function FoodPage() {
           >
             Præferencer
           </Button>
-          <Button
-            variant="light"
-            leftSection={<IconTicket size={16} />}
-            onClick={() => navigate("/mad/billetter")}
-          >
-            Billetter
-          </Button>
         </Group>
       </Group>
 
       <Tabs value={activeTab} onChange={setActiveTab}>
         <Tabs.List mb="md">
-          <Tabs.Tab value="menu" leftSection={<IconSoup size={16} />}>
-            Menu
-          </Tabs.Tab>
           <Tabs.Tab value="tilmelding" leftSection={<IconCalendar size={16} />}>
-            Min tilmelding
+            Menu og Tilmelding
+          </Tabs.Tab>
+          <Tabs.Tab value="billetter" leftSection={<IconTicket size={16} />}>
+            Billetter
           </Tabs.Tab>
           {user?.is_staff && (
             <Tabs.Tab value="admin" leftSection={<IconSettings size={16} />}>
@@ -284,136 +246,6 @@ export default function FoodPage() {
             </Tabs.Tab>
           )}
         </Tabs.List>
-
-        <Tabs.Panel value="menu">
-          <Stack gap="md">
-            {/* Week Navigation */}
-            <Paper withBorder p="sm" radius="md">
-              <Group justify="space-between">
-                <ActionIcon
-                  variant="light"
-                  size="lg"
-                  onClick={() => setMenuWeekOffset(menuWeekOffset - 1)}
-                >
-                  <IconChevronLeft size={20} />
-                </ActionIcon>
-
-                <Stack gap={0} align="center">
-                  <Text fw={500}>
-                    Uge {menuWeekNumber}: {menuWeekStart.format("D. MMM")} -{" "}
-                    {menuWeekStart.add(3, "day").format("D. MMM YYYY")}
-                  </Text>
-                  <Badge
-                    color={
-                      menuWeekOffset === 0
-                        ? "blue"
-                        : menuWeekOffset === 1
-                          ? "green"
-                          : "gray"
-                    }
-                    variant="light"
-                    size="sm"
-                  >
-                    {getWeekLabel(menuWeekOffset)}
-                  </Badge>
-                </Stack>
-
-                <ActionIcon
-                  variant="light"
-                  size="lg"
-                  onClick={() => setMenuWeekOffset(menuWeekOffset + 1)}
-                >
-                  <IconChevronRight size={20} />
-                </ActionIcon>
-              </Group>
-            </Paper>
-
-            {/* Refresh button and stale indicator */}
-            {user?.is_staff && (
-              <Group justify="flex-end" gap="xs">
-                {driveMenu?.is_stale && (
-                  <Badge color="yellow" variant="light" size="sm">
-                    Menu kan være forældet
-                  </Badge>
-                )}
-                <Button
-                  variant="light"
-                  size="xs"
-                  leftSection={<IconRefresh size={14} />}
-                  onClick={() => refreshDriveMenuMutation.mutate()}
-                  loading={refreshDriveMenuMutation.isPending}
-                >
-                  Opdater fra Google Drive
-                </Button>
-              </Group>
-            )}
-
-            {driveMenuLoading ? (
-              <Center h={200}>
-                <Loader size="lg" />
-              </Center>
-            ) : driveMenuError ? (
-              <Alert icon={<IconAlertCircle size={16} />} color="red">
-                Kunne ikke hente menu fra Google Drive. Prøv igen senere.
-              </Alert>
-            ) : !driveMenu ? (
-              <Alert icon={<IconAlertCircle size={16} />} color="yellow">
-                Ingen menu tilgængelig for uge {menuWeekNumber} endnu.
-              </Alert>
-            ) : (
-              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-                <DriveMenuDayCard
-                  dayName="Mandag"
-                  date={menuWeekStart.format("D. MMM")}
-                  menu={driveMenu.monday_menu}
-                  registration={menuRegistrationsByDate.get(
-                    menuWeekStart.format("YYYY-MM-DD"),
-                  )}
-                  stats={menuWeekStats?.[menuWeekStart.format("YYYY-MM-DD")]}
-                />
-                <DriveMenuDayCard
-                  dayName="Tirsdag"
-                  date={menuWeekStart.add(1, "day").format("D. MMM")}
-                  menu={driveMenu.tuesday_menu}
-                  registration={menuRegistrationsByDate.get(
-                    menuWeekStart.add(1, "day").format("YYYY-MM-DD"),
-                  )}
-                  stats={
-                    menuWeekStats?.[
-                      menuWeekStart.add(1, "day").format("YYYY-MM-DD")
-                    ]
-                  }
-                />
-                <DriveMenuDayCard
-                  dayName="Onsdag"
-                  date={menuWeekStart.add(2, "day").format("D. MMM")}
-                  menu={driveMenu.wednesday_menu}
-                  registration={menuRegistrationsByDate.get(
-                    menuWeekStart.add(2, "day").format("YYYY-MM-DD"),
-                  )}
-                  stats={
-                    menuWeekStats?.[
-                      menuWeekStart.add(2, "day").format("YYYY-MM-DD")
-                    ]
-                  }
-                />
-                <DriveMenuDayCard
-                  dayName="Torsdag"
-                  date={menuWeekStart.add(3, "day").format("D. MMM")}
-                  menu={driveMenu.thursday_menu}
-                  registration={menuRegistrationsByDate.get(
-                    menuWeekStart.add(3, "day").format("YYYY-MM-DD"),
-                  )}
-                  stats={
-                    menuWeekStats?.[
-                      menuWeekStart.add(3, "day").format("YYYY-MM-DD")
-                    ]
-                  }
-                />
-              </SimpleGrid>
-            )}
-          </Stack>
-        </Tabs.Panel>
 
         <Tabs.Panel value="tilmelding">
           <Stack gap="md">
@@ -480,10 +312,7 @@ export default function FoodPage() {
                   const date = regWeekStart.add(dayOffset, "day")
                   const dateStr = date.format("YYYY-MM-DD")
                   const registration = registrationsByDate.get(dateStr)
-                  const menuText = getMenuTextForDay(
-                    regWeekDriveMenu,
-                    dayOffset,
-                  )
+                  const menuText = getMenuTextForDay(regDriveMenu, dayOffset)
                   const isWednesday = dayOffset === 2
                   const isPast = date.isBefore(dayjs(), "day")
 
@@ -506,12 +335,68 @@ export default function FoodPage() {
           </Stack>
         </Tabs.Panel>
 
+        <Tabs.Panel value="billetter">
+          <Stack gap="md">
+            <Group justify="flex-end">
+              <Button
+                leftSection={<IconPlus size={16} />}
+                onClick={openCreateTicketModal}
+              >
+                Tilbyd billet
+              </Button>
+            </Group>
+
+            <div>
+              <Text fw={500} mb="xs">
+                Mine til salg
+              </Text>
+              {myTicketsForSale.length === 0 ? (
+                <Text c="dimmed" size="sm">
+                  Du har ingen billetter til salg
+                </Text>
+              ) : (
+                <Stack gap="sm">
+                  {myTicketsForSale.map((ticket) => (
+                    <TicketCard key={ticket.id} ticket={ticket} />
+                  ))}
+                </Stack>
+              )}
+            </div>
+
+            <div>
+              <Text fw={500} mb="xs">
+                Tilgængelige fra andre
+              </Text>
+              {othersAvailableTickets.length === 0 ? (
+                <Text c="dimmed" size="sm">
+                  Ingen billetter tilgængelige fra andre
+                </Text>
+              ) : (
+                <Stack gap="sm">
+                  {othersAvailableTickets.map((ticket) => (
+                    <TicketCard key={ticket.id} ticket={ticket} />
+                  ))}
+                </Stack>
+              )}
+            </div>
+          </Stack>
+        </Tabs.Panel>
+
         {user?.is_staff && (
           <Tabs.Panel value="admin">
             <MonthlyCostReport />
           </Tabs.Panel>
         )}
       </Tabs>
+
+      <CreateTicketModal
+        opened={createTicketModalOpened}
+        onClose={closeCreateTicketModal}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["food", "tickets"] })
+          closeCreateTicketModal()
+        }}
+      />
     </>
   )
 }
@@ -657,124 +542,6 @@ function MonthlyCostReport() {
         </Card>
       ) : null}
     </Stack>
-  )
-}
-
-// Drive Menu Day Card - displays menu from Google Drive
-interface DriveMenuDayCardProps {
-  dayName: string
-  date: string
-  menu: string
-  registration?: MealRegistration
-  stats?: DailyRegistrationStats
-}
-
-function DriveMenuDayCard({
-  dayName,
-  date,
-  menu,
-  registration,
-  stats,
-}: DriveMenuDayCardProps) {
-  const [expanded, setExpanded] = useState(false)
-
-  const totalAdults = stats?.total.adults ?? 0
-  const totalChildren = stats?.total.children ?? 0
-  const totalPortions = totalAdults + totalChildren
-  const totalMeat = stats?.total.adults_meat ?? 0
-  const totalVeg = stats?.total.adults_veg ?? 0
-  const hasMeatVegSplit = totalMeat > 0 && totalVeg > 0
-
-  return (
-    <Paper withBorder p="md" radius="md">
-      <Group justify="space-between" mb="sm">
-        <Text fw={500}>{dayName}</Text>
-        <Stack gap={4} align="flex-end">
-          <Badge variant="light">{date}</Badge>
-          {registration && registration.is_active && (
-            <Badge color="green" variant="light" size="sm">
-              Dig: {registration.total_portions}
-            </Badge>
-          )}
-        </Stack>
-      </Group>
-
-      <Text size="sm" mb="sm">
-        {menu || "Menu kommer snart"}
-      </Text>
-
-      {/* Total signups */}
-      <Divider my="xs" />
-      <Group
-        justify="space-between"
-        style={{ cursor: "pointer" }}
-        onClick={() => setExpanded(!expanded)}
-      >
-        <Group gap="xs">
-          <IconUsers size={16} />
-          <Text size="sm" fw={500}>
-            Total:{" "}
-            {hasMeatVegSplit
-              ? `${totalMeat} kød + ${totalVeg} vegetar`
-              : `${totalAdults} voksne`}
-            , {totalChildren} børn ({totalPortions})
-          </Text>
-        </Group>
-        <ActionIcon variant="subtle" size="sm">
-          {expanded ? (
-            <IconChevronUp size={16} />
-          ) : (
-            <IconChevronDown size={16} />
-          )}
-        </ActionIcon>
-      </Group>
-
-      <Collapse expanded={expanded}>
-        <Table.ScrollContainer minWidth={300}>
-          <Table mt="xs">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th></Table.Th>
-                <Table.Th ta="right">Voksne</Table.Th>
-                <Table.Th ta="right">Børn</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              <Table.Tr>
-                <Table.Td>Take Away</Table.Td>
-                <Table.Td ta="right">{stats?.takeaway.adults ?? 0}</Table.Td>
-                <Table.Td ta="right">{stats?.takeaway.children ?? 0}</Table.Td>
-              </Table.Tr>
-              <Table.Tr>
-                <Table.Td>Spise i fælleshuset 17:30</Table.Td>
-                <Table.Td ta="right">{stats?.eat_in_1730.adults ?? 0}</Table.Td>
-                <Table.Td ta="right">
-                  {stats?.eat_in_1730.children ?? 0}
-                </Table.Td>
-              </Table.Tr>
-              <Table.Tr>
-                <Table.Td>Spise i fælleshuset 18:30</Table.Td>
-                <Table.Td ta="right">{stats?.eat_in_1830.adults ?? 0}</Table.Td>
-                <Table.Td ta="right">
-                  {stats?.eat_in_1830.children ?? 0}
-                </Table.Td>
-              </Table.Tr>
-              <Table.Tr>
-                <Table.Td fw={600}>Total</Table.Td>
-                <Table.Td ta="right" fw={600}>
-                  {hasMeatVegSplit
-                    ? `${totalMeat} kød + ${totalVeg} veg`
-                    : totalAdults}
-                </Table.Td>
-                <Table.Td ta="right" fw={600}>
-                  {totalChildren}
-                </Table.Td>
-              </Table.Tr>
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
-      </Collapse>
-    </Paper>
   )
 }
 
@@ -1289,5 +1056,474 @@ function DayRegistrationCard({
         </Stack>
       </Modal>
     </>
+  )
+}
+
+interface TicketCardProps {
+  ticket: FoodTicket
+}
+
+function TicketCard({ ticket }: TicketCardProps) {
+  const queryClient = useQueryClient()
+  const [buyModalOpened, { open: openBuyModal, close: closeBuyModal }] =
+    useDisclosure(false)
+
+  const claimMutation = useMutation({
+    mutationFn: () => foodApi.claimTicket(ticket.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["food", "tickets"] })
+      closeBuyModal()
+      if (ticket.is_own) {
+        notifications.show({
+          title: "Billet tilbagekaldt",
+          message: "Du har tilbagekaldt din billet.",
+          color: "green",
+        })
+      } else {
+        notifications.show({
+          title: "Billet købt",
+          message: "Husk at betale ejeren via MobilePay eller kontant.",
+          color: "green",
+        })
+      }
+    },
+    onError: () => {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke købe billet.",
+        color: "red",
+      })
+    },
+  })
+
+  const releaseMutation = useMutation({
+    mutationFn: () => foodApi.releaseTicket(ticket.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["food", "tickets"] })
+      notifications.show({
+        title: "Billet frigivet",
+        message: "Billetten er nu tilgængelig igen.",
+        color: "blue",
+      })
+    },
+    onError: () => {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke frigive billet.",
+        color: "red",
+      })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: () => foodApi.deleteTicket(ticket.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["food", "tickets"] })
+      notifications.show({
+        title: "Billet slettet",
+        message: "Din billet er blevet fjernet.",
+        color: "blue",
+      })
+    },
+    onError: () => {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke slette billet.",
+        color: "red",
+      })
+    },
+  })
+
+  const isClaimed = !ticket.is_available
+  const isOwner = ticket.is_own
+  const isClaimedByMe = ticket.claimed_by && !isOwner
+
+  return (
+    <>
+      <Paper withBorder p="md" radius="md">
+        <Group justify="space-between" wrap="nowrap">
+          <Group gap="md" wrap="nowrap" style={{ flex: 1 }}>
+            <Avatar src={ticket.owner.profile_picture} radius="xl" size="lg">
+              {ticket.owner.first_name?.[0]}
+              {ticket.owner.last_name?.[0]}
+            </Avatar>
+            <div style={{ flex: 1 }}>
+              <Group gap="xs" mb={4}>
+                <Text fw={500}>
+                  {ticket.owner.first_name} {ticket.owner.last_name}
+                </Text>
+                {ticket.is_free ? (
+                  <Badge color="green" variant="light">
+                    Gratis
+                  </Badge>
+                ) : (
+                  <Badge color="blue" variant="light">
+                    {ticket.price} DKK
+                  </Badge>
+                )}
+                {isClaimed && (
+                  <Badge color="gray" variant="light">
+                    {isOwner ? "Solgt" : "Reserveret"}
+                  </Badge>
+                )}
+              </Group>
+              <Text size="sm" c="dimmed">
+                {ticket.day_name}, {dayjs(ticket.date).format("D. MMM")} •{" "}
+                {[
+                  ticket.adults_meat > 0
+                    ? `${ticket.adults_meat} voksen kød`
+                    : null,
+                  ticket.adults_veg > 0
+                    ? ticket.adults_meat > 0
+                      ? `${ticket.adults_veg} vegetar`
+                      : `${ticket.adults_veg} ${
+                          ticket.adults_veg === 1 ? "voksen" : "voksne"
+                        }`
+                    : null,
+                  ticket.children_count > 0
+                    ? `${ticket.children_count} ${
+                        ticket.children_count === 1 ? "barn" : "børn"
+                      }`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(", ")}
+              </Text>
+              {ticket.description && (
+                <Text size="sm" mt={4}>
+                  {ticket.description}
+                </Text>
+              )}
+              {isClaimed && ticket.claimed_by && (
+                <Text size="sm" c="dimmed" mt={4}>
+                  {isOwner ? "Købt" : "Reserveret"} af{" "}
+                  {ticket.claimed_by.first_name} {ticket.claimed_by.last_name}
+                </Text>
+              )}
+            </div>
+          </Group>
+
+          <Group gap="xs">
+            {/* MobilePay button for claimed tickets with a price */}
+            {isClaimed &&
+              isClaimedByMe &&
+              !ticket.is_free &&
+              ticket.owner.phone_number && (
+                <Button
+                  variant="filled"
+                  color="indigo"
+                  size="sm"
+                  leftSection={<IconWallet size={14} />}
+                  component="a"
+                  href={`mobilepay://send?phone=${mobilepayPhone(ticket.owner.phone_number)}&amount=${ticket.price}&comment=${encodeURIComponent(`Madbillet ${dayjs(ticket.date).format("D/M")}`)}&lock=1`}
+                >
+                  Betal {ticket.price} kr
+                </Button>
+              )}
+
+            {/* Phone number as text for claimed tickets */}
+            {isClaimed && isClaimedByMe && ticket.owner.phone_number && (
+              <Text size="sm" c="dimmed">
+                Tlf: {ticket.owner.phone_number}
+              </Text>
+            )}
+
+            {/* Buy button for available tickets not owned by user */}
+            {!ticket.is_own && ticket.is_available && (
+              <Button onClick={openBuyModal}>Køb</Button>
+            )}
+
+            {/* Owner actions */}
+            {isOwner && (
+              <>
+                {ticket.is_available && (
+                  <Button
+                    variant="light"
+                    size="sm"
+                    onClick={() => claimMutation.mutate()}
+                    loading={claimMutation.isPending}
+                  >
+                    Tilbagekald
+                  </Button>
+                )}
+                <Menu shadow="md" width={200}>
+                  <Menu.Target>
+                    <ActionIcon variant="subtle">
+                      <IconDotsVertical size={16} />
+                    </ActionIcon>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    {!ticket.is_available && (
+                      <Menu.Item onClick={() => releaseMutation.mutate()}>
+                        Frigiv billet
+                      </Menu.Item>
+                    )}
+                    {ticket.is_available && (
+                      <Menu.Item
+                        color="red"
+                        leftSection={<IconTrash size={14} />}
+                        onClick={() => deleteMutation.mutate()}
+                      >
+                        Slet
+                      </Menu.Item>
+                    )}
+                  </Menu.Dropdown>
+                </Menu>
+              </>
+            )}
+          </Group>
+        </Group>
+      </Paper>
+
+      {/* Buy Modal */}
+      <Modal
+        opened={buyModalOpened}
+        onClose={closeBuyModal}
+        title="Køb madbillet"
+        centered
+      >
+        <Stack gap="md">
+          <div>
+            <Text size="sm" c="dimmed">
+              Sælger
+            </Text>
+            <Group gap="sm">
+              <Avatar src={ticket.owner.profile_picture} radius="xl" size="sm">
+                {ticket.owner.first_name?.[0]}
+                {ticket.owner.last_name?.[0]}
+              </Avatar>
+              <Text fw={500}>
+                {ticket.owner.first_name} {ticket.owner.last_name}
+              </Text>
+            </Group>
+            {ticket.owner.phone_number && (
+              <Text size="sm" c="dimmed">
+                Tlf: {ticket.owner.phone_number}
+              </Text>
+            )}
+          </div>
+
+          <div>
+            <Text size="sm" c="dimmed">
+              Billet
+            </Text>
+            <Text>
+              {ticket.day_name}, {dayjs(ticket.date).format("D. MMM")} •{" "}
+              {[
+                ticket.adults_meat > 0
+                  ? `${ticket.adults_meat} voksen kød`
+                  : null,
+                ticket.adults_veg > 0
+                  ? ticket.adults_meat > 0
+                    ? `${ticket.adults_veg} vegetar`
+                    : `${ticket.adults_veg} ${
+                        ticket.adults_veg === 1 ? "voksen" : "voksne"
+                      }`
+                  : null,
+                ticket.children_count > 0
+                  ? `${ticket.children_count} ${
+                      ticket.children_count === 1 ? "barn" : "børn"
+                    }`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(", ")}
+            </Text>
+          </div>
+
+          <div>
+            <Text size="sm" c="dimmed">
+              Pris
+            </Text>
+            <Text fw={500} size="lg">
+              {ticket.is_free ? "Gratis" : `${ticket.price} kr`}
+            </Text>
+          </div>
+
+          {!ticket.is_free && (
+            <Stack gap="xs">
+              <Text size="sm" fw={500}>
+                Betal med MobilePay
+              </Text>
+              {ticket.owner.phone_number ? (
+                <Button
+                  variant="filled"
+                  color="indigo"
+                  leftSection={<IconWallet size={16} />}
+                  component="a"
+                  href={`mobilepay://send?phone=${mobilepayPhone(ticket.owner.phone_number)}&amount=${ticket.price}&comment=${encodeURIComponent(`Madbillet ${dayjs(ticket.date).format("D/M")}`)}&lock=1`}
+                >
+                  Åbn MobilePay ({ticket.price} kr)
+                </Button>
+              ) : (
+                <Text size="sm" c="dimmed">
+                  Sælger har ikke registreret telefonnummer
+                </Text>
+              )}
+            </Stack>
+          )}
+
+          <Group justify="flex-end" mt="md">
+            <Button variant="light" onClick={closeBuyModal}>
+              Annuller
+            </Button>
+            <Button
+              onClick={() => claimMutation.mutate()}
+              loading={claimMutation.isPending}
+            >
+              Bekræft køb
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+    </>
+  )
+}
+
+interface CreateTicketModalProps {
+  opened: boolean
+  onClose: () => void
+  onSuccess: () => void
+}
+
+function CreateTicketModal({
+  opened,
+  onClose,
+  onSuccess,
+}: CreateTicketModalProps) {
+  const [date, setDate] = useState<Date | null>(null)
+  const [adultsMeat, setAdultsMeat] = useState(0)
+  const [adultsVeg, setAdultsVeg] = useState(1)
+  const [children, setChildren] = useState(0)
+  const [description, setDescription] = useState("")
+
+  const isWednesday = date ? date.getDay() === 3 : false
+
+  const createMutation = useMutation({
+    mutationFn: (data: CreateFoodTicketData) => foodApi.createTicket(data),
+    onSuccess: () => {
+      notifications.show({
+        title: "Billet oprettet",
+        message: "Din billet er nu tilgængelig for andre.",
+        color: "green",
+      })
+      // Reset form
+      setDate(null)
+      setAdultsMeat(0)
+      setAdultsVeg(1)
+      setChildren(0)
+      setDescription("")
+      onSuccess()
+    },
+    onError: () => {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke oprette billet.",
+        color: "red",
+      })
+    },
+  })
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!date) return
+
+    createMutation.mutate({
+      date: dayjs(date).format("YYYY-MM-DD"),
+      adults_meat: isWednesday ? adultsMeat : 0,
+      adults_veg: adultsVeg,
+      children_count: children,
+      description,
+    })
+  }
+
+  // Filter to only allow Mon-Thu
+  const excludeDate = (d: Date) => {
+    const day = d.getDay()
+    return day === 0 || day === 5 || day === 6 // Exclude Sun, Fri, Sat
+  }
+
+  const totalAdults = isWednesday ? adultsMeat + adultsVeg : adultsVeg
+
+  return (
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title="Tilbyd en madbillet"
+      size="md"
+    >
+      <form onSubmit={handleSubmit}>
+        <Stack gap="md">
+          <DateInput
+            label="Dato"
+            placeholder="Vælg dato"
+            value={date}
+            onChange={(value) => {
+              const dateValue = value ? new Date(value) : null
+              setDate(dateValue)
+            }}
+            excludeDate={(dateStr) => excludeDate(new Date(dateStr))}
+            minDate={new Date()}
+            required
+          />
+
+          <Group grow>
+            {isWednesday ? (
+              <>
+                <NumberInput
+                  label="Voksne (kød)"
+                  value={adultsMeat}
+                  onChange={(val) => setAdultsMeat(Number(val) || 0)}
+                  min={0}
+                  max={10}
+                />
+                <NumberInput
+                  label="Voksne (vegetar)"
+                  value={adultsVeg}
+                  onChange={(val) => setAdultsVeg(Number(val) || 0)}
+                  min={0}
+                  max={10}
+                />
+              </>
+            ) : (
+              <NumberInput
+                label="Voksne"
+                value={adultsVeg}
+                onChange={(val) => setAdultsVeg(Number(val) || 0)}
+                min={0}
+                max={10}
+              />
+            )}
+            <NumberInput
+              label="Børn"
+              value={children}
+              onChange={(val) => setChildren(Number(val) || 0)}
+              min={0}
+              max={10}
+            />
+          </Group>
+
+          <Textarea
+            label="Note (valgfrit)"
+            placeholder="Yderligere information..."
+            value={description}
+            onChange={(e) => setDescription(e.currentTarget.value)}
+          />
+
+          <Group justify="flex-end">
+            <Button variant="light" onClick={onClose}>
+              Annuller
+            </Button>
+            <Button
+              type="submit"
+              loading={createMutation.isPending}
+              disabled={!date || (totalAdults === 0 && children === 0)}
+            >
+              Opret billet
+            </Button>
+          </Group>
+        </Stack>
+      </form>
+    </Modal>
   )
 }

@@ -5,7 +5,7 @@
 import { useCallback, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Spotlight, spotlight } from "@mantine/spotlight"
-import { Center, Loader, rem, Text } from "@mantine/core"
+import { ActionIcon, Center, Loader, rem, Text } from "@mantine/core"
 import {
   IconSearch,
   IconUser,
@@ -16,6 +16,7 @@ import {
   IconHome,
   IconMessages,
   IconCar,
+  IconX,
 } from "@tabler/icons-react"
 import { useDebouncedValue } from "@mantine/hooks"
 import { useQuery } from "@tanstack/react-query"
@@ -68,7 +69,11 @@ export function focusSpotlightSearch() {
   _searchInputEl?.focus()
 }
 
-export function GlobalSearch() {
+interface GlobalSearchProps {
+  onAction?: () => void
+}
+
+export function GlobalSearch({ onAction }: GlobalSearchProps) {
   const navigate = useNavigate()
   const [query, setQuery] = useState("")
   const [debouncedQuery] = useDebouncedValue(query, 300)
@@ -110,8 +115,9 @@ export function GlobalSearch() {
         navigate(item.url)
         spotlight.close()
       }
+      onAction?.()
     },
-    [navigate],
+    [navigate, onAction],
   )
 
   // Build group priority from backend ordering
@@ -181,6 +187,16 @@ export function GlobalSearch() {
         searchProps={{
           leftSection: <IconSearch size={18} style={{ marginRight: rem(8) }} />,
           placeholder: "Søg i KB Intra...",
+          rightSection: (
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              onClick={() => spotlight.close()}
+              aria-label="Luk søgning"
+            >
+              <IconX size={16} />
+            </ActionIcon>
+          ),
           ref: (el) => {
             _searchInputEl = el
           },

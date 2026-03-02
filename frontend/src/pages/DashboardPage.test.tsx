@@ -132,6 +132,7 @@ describe("DashboardPage", () => {
         },
         content: "<p>This is a test forum post</p>",
         thread_id: 10,
+        thread_slug: "test-thread-title",
         thread_title: "Test Thread Title",
         subgroup_slug: "general",
         subgroup_name: "General Discussion",
@@ -146,7 +147,7 @@ describe("DashboardPage", () => {
       expect(screen.getByText("Forum Poster")).toBeInTheDocument()
     })
 
-    expect(screen.getByText(/i test thread title/i)).toBeInTheDocument()
+    expect(screen.getByText(/test thread title/i)).toBeInTheDocument()
     expect(screen.getByText("General Discussion")).toBeInTheDocument()
     // Content should be displayed (without HTML)
     expect(screen.getByText(/this is a test forum post/i)).toBeInTheDocument()

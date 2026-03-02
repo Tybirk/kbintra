@@ -32,7 +32,6 @@ import ThreadPage from "./pages/ThreadPage"
 import AnnouncementsPage from "./pages/AnnouncementsPage"
 import FoodPage from "./pages/FoodPage"
 import FoodPreferencesPage from "./pages/FoodPreferencesPage"
-import FoodTicketsPage from "./pages/FoodTicketsPage"
 import FoodTeamsPage from "./pages/FoodTeamsPage"
 import CalendarPage from "./pages/CalendarPage"
 import EventDetailPage from "./pages/EventDetailPage"
@@ -155,7 +154,7 @@ function App() {
   // Authenticated routes with app shell
   return (
     <ErrorBoundary>
-      <GlobalSearch />
+      <GlobalSearch onAction={() => setNavbarOpened(false)} />
       <InstallPrompt />
       <PushNotificationPrompt />
       <AppShell
@@ -369,16 +368,6 @@ function App() {
                 <ProtectedRoute>
                   <PageErrorBoundary>
                     <FoodPreferencesPage />
-                  </PageErrorBoundary>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/mad/billetter"
-              element={
-                <ProtectedRoute>
-                  <PageErrorBoundary>
-                    <FoodTicketsPage />
                   </PageErrorBoundary>
                 </ProtectedRoute>
               }

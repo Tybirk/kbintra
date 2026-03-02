@@ -18,18 +18,19 @@ import {
   Tabs,
   ActionIcon,
   Menu,
+  Box,
 } from "@mantine/core"
 import { DateInput } from "@mantine/dates"
-import { useDisclosure } from "@mantine/hooks"
+import { useDisclosure, useClipboard } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
 import {
   IconArrowLeft,
   IconPlus,
   IconTicket,
-  IconPhone,
   IconDotsVertical,
   IconTrash,
   IconWallet,
+  IconCopy,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 
@@ -170,6 +171,7 @@ interface TicketCardProps {
 
 function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
   const queryClient = useQueryClient()
+  const clipboard = useClipboard({ timeout: 2000 })
   const [buyModalOpened, { open: openBuyModal, close: closeBuyModal }] =
     useDisclosure(false)
 
@@ -181,8 +183,7 @@ function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
       if (ticket.is_own) {
         notifications.show({
           title: "Billet tilbagekaldt",
-          message:
-            "Du har tilbagekaldt din billet og kan nu tilmelde dig måltidet igen.",
+          message: "Du har tilbagekaldt din billet.",
           color: "green",
         })
       } else {
@@ -310,34 +311,42 @@ function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
           </Group>
 
           <Group gap="xs">
-            {/* Show MobilePay button for claimed tickets with a price */}
-            {isClaimed &&
-              isClaimedByMe &&
-              !ticket.is_free &&
-              ticket.owner.phone_number && (
-                <Button
-                  variant="filled"
-                  color="indigo"
-                  size="sm"
-                  leftSection={<IconWallet size={14} />}
-                  component="a"
-                  href={`mobilepay://send?phone=${encodeURIComponent(ticket.owner.phone_number)}&amount=${ticket.price}&comment=${encodeURIComponent(`Madbillet ${dayjs(ticket.date).format("D/M")}`)}&lock=1`}
-                >
-                  Betal {ticket.price} kr
-                </Button>
-              )}
-
-            {/* Show phone number for claimed tickets */}
+            {/* Mobile: copy + open MobilePay; Desktop: plain phone number */}
             {isClaimed && isClaimedByMe && ticket.owner.phone_number && (
-              <Button
-                variant="light"
-                size="sm"
-                leftSection={<IconPhone size={14} />}
-                component="a"
-                href={`tel:${ticket.owner.phone_number}`}
-              >
-                {ticket.owner.phone_number}
-              </Button>
+              <>
+                <Box hiddenFrom="sm">
+                  {!ticket.is_free && (
+                    <Group gap="xs">
+                      <Button
+                        variant="filled"
+                        color={clipboard.copied ? "green" : "indigo"}
+                        size="sm"
+                        leftSection={<IconCopy size={14} />}
+                        onClick={() =>
+                          clipboard.copy(ticket.owner.phone_number)
+                        }
+                      >
+                        {clipboard.copied ? "Kopieret!" : "Kopiér nr."}
+                      </Button>
+                      <Button
+                        variant="light"
+                        color="indigo"
+                        size="sm"
+                        leftSection={<IconWallet size={14} />}
+                        component="a"
+                        href="mobilepay://"
+                      >
+                        Åbn MobilePay
+                      </Button>
+                    </Group>
+                  )}
+                </Box>
+                <Box visibleFrom="sm">
+                  <Text size="sm" c="dimmed">
+                    {ticket.owner.phone_number}
+                  </Text>
+                </Box>
+              </>
             )}
 
             {/* Buy button for available tickets */}
@@ -465,29 +474,42 @@ function TicketCard({ ticket, showClaim, showActions }: TicketCardProps) {
                 Betal med MobilePay
               </Text>
               {ticket.owner.phone_number ? (
-                <Button
-                  variant="filled"
-                  color="indigo"
-                  leftSection={<IconWallet size={16} />}
-                  component="a"
-                  href={`mobilepay://send?phone=${encodeURIComponent(ticket.owner.phone_number)}&amount=${ticket.price}&comment=${encodeURIComponent(`Madbillet ${dayjs(ticket.date).format("D/M")}`)}&lock=1`}
-                >
-                  Åbn MobilePay ({ticket.price} kr)
-                </Button>
+                <>
+                  <Box hiddenFrom="sm">
+                    <Group gap="xs">
+                      <Button
+                        variant="filled"
+                        color={clipboard.copied ? "green" : "indigo"}
+                        leftSection={<IconCopy size={16} />}
+                        onClick={() =>
+                          clipboard.copy(ticket.owner.phone_number)
+                        }
+                        flex={1}
+                      >
+                        {clipboard.copied
+                          ? "Kopieret!"
+                          : `Kopiér nr. (${ticket.owner.phone_number})`}
+                      </Button>
+                      <Button
+                        variant="light"
+                        color="indigo"
+                        leftSection={<IconWallet size={16} />}
+                        component="a"
+                        href="mobilepay://"
+                        flex={1}
+                      >
+                        Åbn MobilePay
+                      </Button>
+                    </Group>
+                  </Box>
+                  <Box visibleFrom="sm">
+                    <Text size="sm">{ticket.owner.phone_number}</Text>
+                  </Box>
+                </>
               ) : (
                 <Text size="sm" c="dimmed">
                   Sælger har ikke registreret telefonnummer
                 </Text>
-              )}
-              {ticket.owner.phone_number && (
-                <Button
-                  variant="light"
-                  leftSection={<IconPhone size={16} />}
-                  component="a"
-                  href={`tel:${ticket.owner.phone_number}`}
-                >
-                  Ring til {ticket.owner.phone_number}
-                </Button>
               )}
             </Stack>
           )}

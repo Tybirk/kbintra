@@ -57,6 +57,7 @@ import type {
   SeatingTime,
   CreateMealRegistrationData,
   CreateFoodTicketData,
+  FoodTicket,
 } from "../types"
 
 dayjs.extend(relativeTime)
@@ -141,6 +142,20 @@ export default function DashboardPage() {
   const { data: nextWeekRegistrations } = useQuery({
     queryKey: ["food", "registrations", nextWeekStart.format("YYYY-MM-DD")],
     queryFn: () => foodApi.getRegistrations(nextWeekStart.format("YYYY-MM-DD")),
+  })
+
+  const { data: myTickets } = useQuery({
+    queryKey: ["food", "tickets", "my"],
+    queryFn: foodApi.getMyTickets,
+  })
+
+  // Build map of own available-for-sale tickets by date
+  const ticketsForSaleByDate = new Map<string, FoodTicket[]>()
+  myTickets?.forEach((t) => {
+    if (t.is_own && t.is_available) {
+      const existing = ticketsForSaleByDate.get(t.date) ?? []
+      ticketsForSaleByDate.set(t.date, [...existing, t])
+    }
   })
 
   // Helper to get menu text for a specific day from drive menu
@@ -354,6 +369,7 @@ export default function DashboardPage() {
                   registration={todayRegistration}
                   label="I dag"
                   isToday
+                  ticketsForSale={ticketsForSaleByDate.get(todayStr) ?? []}
                 />
               )}
               {nextFoodDay && (
@@ -368,6 +384,11 @@ export default function DashboardPage() {
                       : nextFoodDay.date.format("dddd")
                   }
                   isToday={false}
+                  ticketsForSale={
+                    ticketsForSaleByDate.get(
+                      nextFoodDay.date.format("YYYY-MM-DD"),
+                    ) ?? []
+                  }
                 />
               )}
             </Stack>
@@ -802,6 +823,7 @@ interface FoodDayWidgetProps {
   registration?: MealRegistration
   label: string
   isToday: boolean
+  ticketsForSale?: FoodTicket[]
 }
 
 function FoodDayWidget({
@@ -811,6 +833,7 @@ function FoodDayWidget({
   registration,
   label,
   isToday,
+  ticketsForSale,
 }: FoodDayWidgetProps) {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
@@ -1066,6 +1089,17 @@ function FoodDayWidget({
                     >
                       Sælg billet
                     </Button>
+                  )}
+
+                  {ticketsForSale && ticketsForSale.length > 0 && (
+                    <Stack gap={2} mt="xs">
+                      {ticketsForSale.map((t) => (
+                        <Text key={t.id} size="xs" c="orange">
+                          Billet til salg: {t.total_portions} port.{" "}
+                          {t.price ? `• ${t.price} kr` : "• Gratis"}
+                        </Text>
+                      ))}
+                    </Stack>
                   )}
                 </>
               )}
