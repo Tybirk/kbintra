@@ -214,6 +214,4 @@ data/
 # Server config
 .server
 
-seed.data.md# pixi environments
-.pixi/*
-!.pixi/config.toml
+seed.data.md
