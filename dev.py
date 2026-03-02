@@ -1,3 +1,6 @@
+# /// script
+# requires-python = ">=3.11"
+# ///
 """
 Start backend and frontend dev servers for KB Intra.
 

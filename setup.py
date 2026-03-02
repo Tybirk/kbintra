@@ -1,3 +1,6 @@
+# /// script
+# requires-python = ">=3.11"
+# ///
 """
 Single-command dev setup for KB Intra.
 
