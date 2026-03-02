@@ -50,7 +50,7 @@ kbintra/
 
 ### Prerequisites
 - [uv](https://docs.astral.sh/uv/) (Python and package manager — automatically installs the right Python version)
-- Node.js 18+ (20+ recommended)
+- [Node.js](https://nodejs.org/) 18+ (20+ recommended)
 
 ### One-command setup
 
