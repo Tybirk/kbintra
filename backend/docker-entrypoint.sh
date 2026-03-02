@@ -4,8 +4,11 @@ set -e
 echo "Running database migrations..."
 uv run python manage.py migrate --noinput
 
-echo "Checking search index..."
-uv run python manage.py rebuild_search_index --if-empty
+echo "Rebuilding search index..."
+_search_start=$(date +%s%3N)
+uv run python manage.py rebuild_search_index
+_search_end=$(date +%s%3N)
+echo "Search index rebuilt in $((_search_end - _search_start))ms"
 
 # If a command was passed (e.g. from docker-compose `command:`), run it
 if [ $# -gt 0 ]; then
