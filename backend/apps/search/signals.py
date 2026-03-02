@@ -266,7 +266,7 @@ def _index_event(instance) -> None:
                 ],
             )
         ),
-        url=f"/kalender/{instance.id}",
+        url=f"/kalender/{instance.slug}",
         subtitle=subtitle,
         created_at=_isoformat(instance.created_at),
     )

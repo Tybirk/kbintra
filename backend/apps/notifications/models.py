@@ -41,7 +41,10 @@ class Notification(models.Model):
     message = models.TextField()
     link = models.CharField(max_length=500, blank=True)
     is_read = models.BooleanField(default=False)
+    aggregate_count = models.IntegerField(default=1)
+    group_key = models.CharField(max_length=500, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     # Optional references to related objects
     related_user = models.ForeignKey(
@@ -53,7 +56,7 @@ class Notification(models.Model):
     )
 
     class Meta:
-        ordering = ["-created_at"]
+        ordering = ["-updated_at"]
 
     def __str__(self) -> str:
         return f"{self.user.first_name}: {self.title}"

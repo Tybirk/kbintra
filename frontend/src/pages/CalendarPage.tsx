@@ -78,7 +78,7 @@ export default function CalendarPage() {
     (event: ScheduleEventData) => {
       const payload = event.payload as { event: Event } | undefined
       if (payload?.event) {
-        navigate(`/kalender/${payload.event.id}`)
+        navigate(`/kalender/${payload.event.slug}`)
       }
     },
     [navigate],

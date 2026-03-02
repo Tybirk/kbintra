@@ -221,6 +221,7 @@ class CalendarBookingsView(APIView):
                 calendar_items.append(
                     {
                         "id": f"{event.id}-r{room.id}",
+                        "event_slug": event.slug,
                         "room": {
                             "id": room.id,
                             "name": room.name,

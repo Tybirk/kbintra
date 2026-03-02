@@ -246,6 +246,7 @@ export interface ThreadDetail extends Thread {
   can_close: boolean
   is_muted: boolean
   event_id: number | null
+  event_slug: string | null
   posts: Post[]
 }
 
@@ -485,6 +486,7 @@ export interface RsvpSummary {
 
 export interface Event {
   id: number
+  slug: string
   title: string
   description: string
   created_by: Author
@@ -679,8 +681,10 @@ export interface Notification {
   message: string
   link: string
   is_read: boolean
+  aggregate_count: number
   related_user: RelatedUser | null
   created_at: string
+  updated_at: string
 }
 
 export interface NotificationPreference {
@@ -938,6 +942,7 @@ export interface CreateRecurringBookingData {
 
 export interface CalendarBooking {
   id: string
+  event_slug: string | null
   room: BookingRoom
   user: BookingUser
   title: string

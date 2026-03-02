@@ -12,6 +12,7 @@ interface BookingDetailsModalProps {
   onEdit: (booking: CalendarBooking) => void
   onDelete: (
     id: string,
+    event_slug: string | null,
     isRecurring: boolean,
     recurringBookingId?: number,
     occurrenceDate?: string,
@@ -107,6 +108,7 @@ export function BookingDetailsModal({
                   onClose()
                   onDelete(
                     booking.id,
+                    booking.event_slug,
                     booking.is_recurring,
                     booking.recurring_booking_id || undefined,
                     dayjs(booking.start_datetime).format("YYYY-MM-DD"),

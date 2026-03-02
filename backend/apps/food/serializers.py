@@ -75,9 +75,7 @@ class MealPreferenceCreateUpdateSerializer(serializers.ModelSerializer):
         children_count = attrs.get("children_count", 0)
 
         if day_of_week is not None and day_of_week != 2 and adults_meat > 0:
-            raise serializers.ValidationError(
-                {"adults_meat": "Kød serveres kun om onsdagen."}
-            )
+            raise serializers.ValidationError({"adults_meat": "Kød serveres kun om onsdagen."})
 
         if adults_meat + adults_veg + children_count == 0:
             raise serializers.ValidationError("Der skal være mindst én portion.")
@@ -177,9 +175,7 @@ class MealRegistrationCreateUpdateSerializer(serializers.ModelSerializer):
         children_count = attrs.get("children_count", 0)
 
         if reg_date and reg_date.weekday() != 2 and adults_meat > 0:
-            raise serializers.ValidationError(
-                {"adults_meat": "Kød serveres kun om onsdagen."}
-            )
+            raise serializers.ValidationError({"adults_meat": "Kød serveres kun om onsdagen."})
 
         if is_active and adults_meat + adults_veg + children_count == 0:
             raise serializers.ValidationError("Der skal være mindst én portion.")
@@ -316,9 +312,7 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
         children_count = attrs.get("children_count", 0)
 
         if reg_date and reg_date.weekday() != 2 and adults_meat > 0:
-            raise serializers.ValidationError(
-                {"adults_meat": "Kød serveres kun om onsdagen."}
-            )
+            raise serializers.ValidationError({"adults_meat": "Kød serveres kun om onsdagen."})
 
         if adults_meat + adults_veg + children_count == 0:
             raise serializers.ValidationError("Der skal være mindst én portion.")
@@ -326,9 +320,7 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
         # Validate portions don't exceed registration
         if reg_date:
             user = self.context["request"].user
-            reg = MealRegistration.objects.filter(
-                user=user, date=reg_date, is_active=True
-            ).first()
+            reg = MealRegistration.objects.filter(user=user, date=reg_date, is_active=True).first()
             if reg:
                 if adults_meat > reg.adults_meat:
                     raise serializers.ValidationError(

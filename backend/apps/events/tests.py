@@ -183,13 +183,13 @@ class TestEventAPI:
         assert evt.visibility == "private"
 
     def test_get_event(self, authenticated_client, event):
-        response = authenticated_client.get(f"/api/events/{event.id}/")
+        response = authenticated_client.get(f"/api/events/{event.slug}/")
         assert response.status_code == 200
         assert response.json()["title"] == "Test Event"
 
     def test_update_own_event(self, authenticated_client, event):
         response = authenticated_client.patch(
-            f"/api/events/{event.id}/",
+            f"/api/events/{event.slug}/",
             {"title": "Updated Event"},
             format="json",
         )
@@ -200,20 +200,20 @@ class TestEventAPI:
     def test_cannot_update_others_event(self, api_client, second_user, event):
         api_client.force_authenticate(user=second_user)
         response = api_client.patch(
-            f"/api/events/{event.id}/",
+            f"/api/events/{event.slug}/",
             {"title": "Hacked Title"},
             format="json",
         )
         assert response.status_code == 403
 
     def test_delete_own_event(self, authenticated_client, event):
-        response = authenticated_client.delete(f"/api/events/{event.id}/")
+        response = authenticated_client.delete(f"/api/events/{event.slug}/")
         assert response.status_code == 204
         assert not Event.objects.filter(id=event.id).exists()
 
     def test_cannot_delete_others_event(self, api_client, second_user, event):
         api_client.force_authenticate(user=second_user)
-        response = api_client.delete(f"/api/events/{event.id}/")
+        response = api_client.delete(f"/api/events/{event.slug}/")
         assert response.status_code == 403
 
     def test_create_multi_room_booking(self, authenticated_client, db):
@@ -368,7 +368,7 @@ class TestUpcomingEventsAPI:
 class TestRsvpAPI:
     def test_submit_rsvp(self, authenticated_client, rsvp_event, user):
         response = authenticated_client.patch(
-            f"/api/events/{rsvp_event.id}/rsvp/",
+            f"/api/events/{rsvp_event.slug}/rsvp/",
             {
                 "attendances": [
                     {"user_id": user.id, "status": "attending"},
@@ -383,7 +383,7 @@ class TestRsvpAPI:
 
     def test_rsvp_disabled_event(self, authenticated_client, event, user):
         response = authenticated_client.patch(
-            f"/api/events/{event.id}/rsvp/",
+            f"/api/events/{event.slug}/rsvp/",
             {"attendances": [{"user_id": user.id, "status": "attending"}]},
             format="json",
         )
@@ -396,12 +396,12 @@ class TestRsvpAPI:
             responded_by=user,
             status=EventAttendance.Status.ATTENDING,
         )
-        response = authenticated_client.get(f"/api/events/{rsvp_event.id}/attendees/")
+        response = authenticated_client.get(f"/api/events/{rsvp_event.slug}/attendees/")
         assert response.status_code == 200
         assert len(response.json()) == 1
 
     def test_ical_download(self, authenticated_client, event):
-        response = authenticated_client.get(f"/api/events/{event.id}/ical/")
+        response = authenticated_client.get(f"/api/events/{event.slug}/ical/")
         assert response.status_code == 200
         assert response["Content-Type"] == "text/calendar; charset=utf-8"
         assert b"BEGIN:VCALENDAR" in response.content
@@ -431,7 +431,7 @@ class TestRsvpValidation:
         )
         api_client.force_authenticate(user=user_a)
         response = api_client.patch(
-            f"/api/events/{rsvp_event.id}/rsvp/",
+            f"/api/events/{rsvp_event.slug}/rsvp/",
             {"attendances": [{"user_id": user_b.id, "status": "attending"}]},
             format="json",
         )
@@ -450,7 +450,7 @@ class TestRsvpValidation:
             rsvp_deadline=now - timedelta(hours=1),
         )
         response = authenticated_client.patch(
-            f"/api/events/{event.id}/rsvp/",
+            f"/api/events/{event.slug}/rsvp/",
             {"attendances": [{"user_id": user.id, "status": "attending"}]},
             format="json",
         )
@@ -459,12 +459,12 @@ class TestRsvpValidation:
     def test_rsvp_upsert_updates_existing(self, authenticated_client, rsvp_event, user):
         """Submitting RSVP twice updates the existing record, not creates a duplicate."""
         authenticated_client.patch(
-            f"/api/events/{rsvp_event.id}/rsvp/",
+            f"/api/events/{rsvp_event.slug}/rsvp/",
             {"attendances": [{"user_id": user.id, "status": "attending"}]},
             format="json",
         )
         authenticated_client.patch(
-            f"/api/events/{rsvp_event.id}/rsvp/",
+            f"/api/events/{rsvp_event.slug}/rsvp/",
             {"attendances": [{"user_id": user.id, "status": "not_attending"}]},
             format="json",
         )
@@ -525,7 +525,7 @@ class TestICalContent:
             end_datetime=now + timedelta(days=10, hours=3),
             location="Fælleshuset",
         )
-        response = authenticated_client.get(f"/api/events/{event.id}/ical/")
+        response = authenticated_client.get(f"/api/events/{event.slug}/ical/")
         assert response.status_code == 200
         content = response.content.decode()
         assert "BEGIN:VCALENDAR" in content
@@ -535,6 +535,7 @@ class TestICalContent:
         assert f"UID:event-{event.id}@kbintra" in content
         assert "DTSTART:" in content
         assert "DTEND:" in content
+        assert f"URL:http://localhost:5173/kalender/{event.slug}" in content
 
 
 class TestEventFilesView:
@@ -559,7 +560,7 @@ class TestEventFilesView:
         upload = BytesIO(b"hello world")
         upload.name = "test.txt"
         response = authenticated_client.post(
-            f"/api/events/{event.id}/files/",
+            f"/api/events/{event.slug}/files/",
             {"files": upload},
             format="multipart",
         )
@@ -791,7 +792,7 @@ class TestEventCancellation:
         from apps.notifications.models import Notification
 
         response = authenticated_client.post(
-            f"/api/events/{event.id}/cancel/",
+            f"/api/events/{event.slug}/cancel/",
             {"cancellation_message": "Aflyst pga. vejret."},
             format="json",
         )
@@ -810,7 +811,7 @@ class TestEventCancellation:
         """Non-owner gets 403 when attempting cancellation."""
         api_client.force_authenticate(user=second_user)
         response = api_client.post(
-            f"/api/events/{event.id}/cancel/",
+            f"/api/events/{event.slug}/cancel/",
             {},
             format="json",
         )
@@ -821,7 +822,7 @@ class TestEventCancellation:
         event.is_cancelled = True
         event.save(update_fields=["is_cancelled"])
         response = authenticated_client.post(
-            f"/api/events/{event.id}/cancel/",
+            f"/api/events/{event.slug}/cancel/",
             {},
             format="json",
         )
@@ -841,7 +842,7 @@ class TestEventCancellation:
         )
         api_client.force_authenticate(user=user)
         response = api_client.post(
-            f"/api/events/{private_event.id}/cancel/",
+            f"/api/events/{private_event.slug}/cancel/",
             {},
             format="json",
         )
@@ -854,7 +855,7 @@ class TestEventCancellation:
 
         msg = "Ingen lokaler tilgængelige."
         authenticated_client.post(
-            f"/api/events/{event.id}/cancel/",
+            f"/api/events/{event.slug}/cancel/",
             {"cancellation_message": msg},
             format="json",
         )
@@ -988,17 +989,17 @@ class TestEventThreadIntegration:
             format="json",
         )
         assert create_response.status_code == 201
-        event_id = create_response.json()["id"]
+        event_slug = create_response.json()["slug"]
 
         authenticated_client.patch(
-            f"/api/events/{event_id}/",
+            f"/api/events/{event_slug}/",
             {"title": "Ny Titel"},
             format="json",
         )
 
         from apps.events.models import Event
 
-        event = Event.objects.select_related("thread").get(id=event_id)
+        event = Event.objects.select_related("thread").get(slug=event_slug)
         assert event.title == "Ny Titel"
         assert event.thread.title == "Ny Titel"
 
@@ -1018,14 +1019,14 @@ class TestEventThreadIntegration:
             format="json",
         )
         assert create_response.status_code == 201
-        event_id = create_response.json()["id"]
+        event_slug = create_response.json()["slug"]
 
         from apps.events.models import Event
 
-        thread_id = Event.objects.get(id=event_id).thread_id
+        thread_id = Event.objects.get(slug=event_slug).thread_id
         assert thread_id is not None
 
-        response = authenticated_client.delete(f"/api/events/{event_id}/")
+        response = authenticated_client.delete(f"/api/events/{event_slug}/")
         assert response.status_code == 204
         assert not Thread.objects.filter(id=thread_id).exists()
 
@@ -1067,7 +1068,7 @@ class TestEventDeletion:
             subgroup=subgroup,
             folder=folder,
         )
-        response = authenticated_client.delete(f"/api/events/{event.id}/")
+        response = authenticated_client.delete(f"/api/events/{event.slug}/")
         assert response.status_code == 204
         assert not Event.objects.filter(id=event.id).exists()
         # Folder must survive the event deletion (SET_NULL, not CASCADE)
@@ -1087,7 +1088,7 @@ class TestEventDeletion:
             end_datetime=now + timedelta(days=1, hours=2),
         )
         event.rooms.add(room)
-        response = authenticated_client.delete(f"/api/events/{event.id}/")
+        response = authenticated_client.delete(f"/api/events/{event.slug}/")
         assert response.status_code == 204
         assert Room.objects.filter(id=room.id).exists()
 
@@ -1103,7 +1104,7 @@ class TestEventAdminRights:
     def test_admin_can_update_others_event(self, admin_client, event):
         """Admin can PATCH an event created by another user."""
         response = admin_client.patch(
-            f"/api/events/{event.id}/",
+            f"/api/events/{event.slug}/",
             {"title": "Admin Updated Title"},
             format="json",
         )
@@ -1114,14 +1115,15 @@ class TestEventAdminRights:
     def test_admin_can_delete_others_event(self, admin_client, event):
         """Admin can DELETE an event created by another user."""
         event_id = event.id
-        response = admin_client.delete(f"/api/events/{event_id}/")
+        event_slug = event.slug
+        response = admin_client.delete(f"/api/events/{event_slug}/")
         assert response.status_code == 204
         assert not Event.objects.filter(id=event_id).exists()
 
     def test_admin_can_cancel_others_event(self, admin_client, event):
         """Admin can cancel a community event created by another user."""
         response = admin_client.post(
-            f"/api/events/{event.id}/cancel/",
+            f"/api/events/{event.slug}/cancel/",
             {"cancellation_message": "Aflyst af admin."},
             format="json",
         )
@@ -1131,7 +1133,7 @@ class TestEventAdminRights:
 
     def test_admin_can_edit_others_event(self, admin_client, event):
         """can_edit is True for admin on any event; is_own is False (admin didn't create it)."""
-        response = admin_client.get(f"/api/events/{event.id}/")
+        response = admin_client.get(f"/api/events/{event.slug}/")
         assert response.status_code == 200
         assert response.json()["is_own"] is False
         assert response.json()["can_edit"] is True

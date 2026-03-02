@@ -35,10 +35,12 @@ class NotificationSerializer(serializers.ModelSerializer):
             "message",
             "link",
             "is_read",
+            "aggregate_count",
             "related_user",
             "created_at",
+            "updated_at",
         ]
-        read_only_fields = ["id", "created_at"]
+        read_only_fields = ["id", "aggregate_count", "created_at", "updated_at"]
 
 
 class NotificationPreferenceSerializer(serializers.ModelSerializer):

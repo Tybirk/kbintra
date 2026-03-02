@@ -5,6 +5,7 @@ Views for Events app — CRUD, RSVP, attendees, iCal.
 from datetime import UTC, datetime
 from typing import Any
 
+from django.conf import settings
 from django.db.models import Q, QuerySet
 from django.http import HttpResponse
 from django.utils import timezone
@@ -159,7 +160,7 @@ class EventListCreateView(generics.ListCreateAPIView):
                     author_id=event.created_by_id,
                     mentioned_user_ids=mention_ids,
                     context_label=f"begivenheden '{event.title}'",
-                    link=f"/kalender/{event.id}",
+                    link=f"/kalender/{event.slug}",
                 )
 
 
@@ -170,6 +171,7 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Event.objects.select_related(
         "created_by", "subgroup", "folder", "thread", "thread__subgroup"
     ).prefetch_related("rooms")
+    lookup_field = "slug"
 
     def get_serializer_class(self) -> type:
         if self.request.method in ["PUT", "PATCH"]:
@@ -216,7 +218,7 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
                 author_id=self.request.user.id,
                 mentioned_user_ids=new_mentions,
                 context_label=f"begivenheden '{event.title}'",
-                link=f"/kalender/{event.id}",
+                link=f"/kalender/{event.slug}",
             )
 
     def perform_destroy(self, instance: Event) -> None:
@@ -248,9 +250,9 @@ class EventRsvpView(APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
-    def patch(self, request: Request, pk: int) -> Response:
+    def patch(self, request: Request, slug: str) -> Response:
         try:
-            event = Event.objects.get(pk=pk)
+            event = Event.objects.get(slug=slug)
         except Event.DoesNotExist:
             return Response({"error": "Begivenhed ikke fundet."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -341,9 +343,9 @@ class EventAttendeesView(APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request: Request, pk: int) -> Response:
+    def get(self, request: Request, slug: str) -> Response:
         try:
-            event = Event.objects.get(pk=pk)
+            event = Event.objects.get(slug=slug)
         except Event.DoesNotExist:
             return Response({"error": "Begivenhed ikke fundet."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -363,9 +365,9 @@ class EventHouseholdView(APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request: Request, pk: int) -> Response:
+    def get(self, request: Request, slug: str) -> Response:
         try:
-            event = Event.objects.get(pk=pk)
+            event = Event.objects.get(slug=slug)
         except Event.DoesNotExist:
             return Response({"error": "Begivenhed ikke fundet."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -434,9 +436,9 @@ class EventICalView(APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request: Request, pk: int) -> HttpResponse:
+    def get(self, request: Request, slug: str) -> HttpResponse:
         try:
-            event = Event.objects.prefetch_related("rooms").get(pk=pk)
+            event = Event.objects.prefetch_related("rooms").get(slug=slug)
         except Event.DoesNotExist:
             return Response({"error": "Begivenhed ikke fundet."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -465,6 +467,8 @@ class EventICalView(APIView):
             .replace("\r", "")
         )
 
+        event_url = f"{settings.SITE_URL}/kalender/{event.slug}"
+
         ical = (
             "BEGIN:VCALENDAR\r\n"
             "VERSION:2.0\r\n"
@@ -475,6 +479,7 @@ class EventICalView(APIView):
             f"DTSTART:{dtstart}\r\n"
             f"DTEND:{dtend}\r\n"
             f"SUMMARY:{summary}\r\n"
+            f"URL:{event_url}\r\n"
         )
         if description:
             ical += f"DESCRIPTION:{description}\r\n"
@@ -495,14 +500,14 @@ class EventCancelView(APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
-    def post(self, request: Request, pk: int) -> Response:
+    def post(self, request: Request, slug: str) -> Response:
         from django.shortcuts import get_object_or_404
 
         event = get_object_or_404(
             Event.objects.select_related("created_by", "subgroup", "folder").prefetch_related(
                 "rooms"
             ),
-            pk=pk,
+            slug=slug,
         )
 
         if event.created_by != request.user and not request.user.is_staff:
@@ -543,9 +548,9 @@ class EventFilesView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
-    def get(self, request: Request, pk: int) -> Response:
+    def get(self, request: Request, slug: str) -> Response:
         try:
-            event = Event.objects.select_related("folder").get(pk=pk)
+            event = Event.objects.select_related("folder").get(slug=slug)
         except Event.DoesNotExist:
             return Response({"error": "Begivenhed ikke fundet."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -578,9 +583,9 @@ class EventFilesView(APIView):
         ]
         return Response(data)
 
-    def post(self, request: Request, pk: int) -> Response:
+    def post(self, request: Request, slug: str) -> Response:
         try:
-            event = Event.objects.select_related("folder", "subgroup").get(pk=pk)
+            event = Event.objects.select_related("folder", "subgroup").get(slug=slug)
         except Event.DoesNotExist:
             return Response({"error": "Begivenhed ikke fundet."}, status=status.HTTP_404_NOT_FOUND)
 

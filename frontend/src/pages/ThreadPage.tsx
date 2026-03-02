@@ -134,12 +134,12 @@ export default function ThreadPage() {
 
   // Redirect to event page if this thread is an event discussion thread
   useEffect(() => {
-    if (thread?.event_id) {
-      navigate(`/kalender/${thread.event_id}${location.hash}`, {
+    if (thread?.event_slug) {
+      navigate(`/kalender/${thread.event_slug}${location.hash}`, {
         replace: true,
       })
     }
-  }, [thread?.event_id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [thread?.event_slug]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // After thread loads (backend marks it as read), invalidate unread counts
   // and auto-mark any notification pointing to this thread as read

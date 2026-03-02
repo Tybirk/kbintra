@@ -558,6 +558,7 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
     can_edit = serializers.SerializerMethodField()
     can_close = serializers.SerializerMethodField()
     event_id = serializers.SerializerMethodField()
+    event_slug = serializers.SerializerMethodField()
     is_muted = serializers.SerializerMethodField()
 
     class Meta:
@@ -577,6 +578,7 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
             "can_close",
             "is_muted",
             "event_id",
+            "event_slug",
             "posts",
             "created_at",
             "updated_at",
@@ -612,6 +614,12 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
     def get_event_id(self, obj: Thread) -> int | None:
         try:
             return obj.event.id
+        except AttributeError:
+            return None
+
+    def get_event_slug(self, obj: Thread) -> str | None:
+        try:
+            return obj.event.slug
         except AttributeError:
             return None
 

@@ -553,7 +553,7 @@ function EventPreview({ event }: EventPreviewProps) {
         cursor: "pointer",
         opacity: event.is_cancelled ? 0.5 : 1,
       }}
-      onClick={() => navigate(`/kalender/${event.id}`)}
+      onClick={() => navigate(`/kalender/${event.slug}`)}
     >
       <Group gap="sm" mb={4}>
         <ThemeIcon

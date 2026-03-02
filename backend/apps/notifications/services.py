@@ -19,6 +19,36 @@ from .models import Notification, NotificationPreference, NotificationType, Push
 
 logger = logging.getLogger(__name__)
 
+# Notification types that support in-app aggregation (collapse multiple events into one notification).
+AGGREGATABLE_TYPES = frozenset(
+    {
+        NotificationType.THREAD_REPLY,
+        NotificationType.POST_REPLY,
+        NotificationType.POST_REACTION,
+        NotificationType.NEW_THREAD,
+        NotificationType.SUBGROUP_ACTIVITY,
+    }
+)
+
+
+def _make_aggregate_title(notification_type: str, count: int, existing_title: str) -> str:
+    """Return an updated notification title reflecting the aggregated count."""
+    if notification_type == NotificationType.THREAD_REPLY:
+        return f"{count} nye svar på din tråd"
+    if notification_type == NotificationType.POST_REPLY:
+        return f"{count} nye svar i en tråd du følger"
+    if notification_type == NotificationType.POST_REACTION:
+        return f"{count} reaktioner på dit indlæg"
+    if notification_type in (NotificationType.NEW_THREAD, NotificationType.SUBGROUP_ACTIVITY):
+        # Extract the subgroup name from the existing title (e.g. "Ny tråd i Fællesrum")
+        parts = existing_title.rsplit(" i ", 1)
+        subgroup_name = parts[-1] if len(parts) > 1 else "gruppen"
+        if notification_type == NotificationType.NEW_THREAD:
+            return f"{count} nye tråde i {subgroup_name}"
+        return f"{count} nye opslag i {subgroup_name}"
+    return existing_title
+
+
 # TTL (seconds) per notification type — how long the push service should hold undelivered messages.
 PUSH_TTL: dict[str, int] = {
     NotificationType.EVENT_REMINDER: 2 * 3600,  # 2 hours
@@ -43,8 +73,10 @@ def send_notification_to_websocket(notification: Notification) -> None:
         "message": notification.message,
         "link": notification.link,
         "is_read": notification.is_read,
+        "aggregate_count": notification.aggregate_count,
         "related_user": None,
         "created_at": notification.created_at.isoformat(),
+        "updated_at": notification.updated_at.isoformat(),
     }
 
     if notification.related_user:
@@ -273,6 +305,7 @@ def create_notification(
     related_user: User | None = None,
     check_preferences: bool = True,
     html_content: str | None = None,
+    group_key: str = "",
 ) -> Notification | None:
     """Create a notification for a user.
 
@@ -285,9 +318,12 @@ def create_notification(
         related_user: Optional user who triggered the notification
         check_preferences: Whether to check user preferences before creating
         html_content: Optional rich HTML content for email (announcements, posts, etc.)
+        group_key: Optional key for aggregating related notifications (e.g. thread URL).
+            When set and a matching unread notification exists, it is updated in-place
+            instead of creating a new one.
 
     Returns:
-        The created notification, or None if user opted out of in-app notifications
+        The created (or updated) notification, or None if user opted out of in-app notifications
     """
     notification = None
 
@@ -296,14 +332,37 @@ def create_notification(
 
     # Create in-app notification if user wants it (or if check_preferences is False)
     if not skip_in_app and (not check_preferences or get_user_preference(user, notification_type)):
-        notification = Notification.objects.create(
-            user=user,
-            notification_type=notification_type,
-            title=title,
-            message=message,
-            link=link,
-            related_user=related_user,
-        )
+        # Try to aggregate into an existing unread notification first
+        if notification_type in AGGREGATABLE_TYPES and group_key:
+            try:
+                existing = Notification.objects.get(
+                    user=user,
+                    notification_type=notification_type,
+                    group_key=group_key,
+                    is_read=False,
+                )
+                new_count = existing.aggregate_count + 1
+                existing.aggregate_count = new_count
+                existing.title = _make_aggregate_title(notification_type, new_count, existing.title)
+                existing.message = message  # Show latest reply/reaction preview
+                existing.link = link  # Point to the latest post/item
+                existing.related_user = related_user  # Show the latest actor
+                existing.is_read = False
+                existing.save()  # updated_at refreshes → notification floats to top
+                notification = existing
+            except Notification.DoesNotExist:
+                pass
+
+        if notification is None:
+            notification = Notification.objects.create(
+                user=user,
+                notification_type=notification_type,
+                title=title,
+                message=message,
+                link=link,
+                related_user=related_user,
+                group_key=group_key,
+            )
 
         # Send real-time notification via WebSocket
         try:
@@ -430,6 +489,9 @@ def notify_new_thread(
 
     Returns the count of notifications created.
     """
+    thread_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
+    subgroup_link = f"/forum/{subgroup_slug}"
+
     count = 0
     for user in subscribers.exclude(id=author.id):
         notification = create_notification(
@@ -437,11 +499,12 @@ def notify_new_thread(
             notification_type=NotificationType.NEW_THREAD,
             title=f"Ny tråd i {subgroup_name}",
             message=thread_title,
-            link=f"/forum/{subgroup_slug}/traad/{thread_slug}",
+            link=thread_link,
             related_user=author,
             html_content=f"<h3>{thread_title}</h3>{initial_post_content}"
             if initial_post_content
             else None,
+            group_key=subgroup_link,  # Aggregate new threads in same subgroup
         )
         if notification:
             count += 1
@@ -487,14 +550,12 @@ def notify_thread_reply(
     from apps.forum.models import Thread as ForumThread
 
     try:
-        event_id = ForumThread.objects.get(id=thread_id).event.id
-        link = f"/kalender/{event_id}"
-        if post_id:
-            link += f"#post-{post_id}"
+        event_slug = ForumThread.objects.get(id=thread_id).event.slug
+        base_link = f"/kalender/{event_slug}"
     except (ForumThread.DoesNotExist, AttributeError):
-        link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
-        if post_id:
-            link += f"#post-{post_id}"
+        base_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
+
+    link = base_link + (f"#post-{post_id}" if post_id else "")
 
     return create_notification(
         user=thread_author,
@@ -504,6 +565,7 @@ def notify_thread_reply(
         link=link,
         related_user=replier,
         html_content=f"<p><strong>I tråden: {thread_title}</strong></p>{reply_content}",
+        group_key=base_link,  # Aggregate all replies to same thread
     )
 
 
@@ -546,14 +608,12 @@ def notify_post_reply(
     from apps.forum.models import Thread as ForumThread
 
     try:
-        event_id = ForumThread.objects.get(id=thread_id).event.id
-        link = f"/kalender/{event_id}"
-        if post_id:
-            link += f"#post-{post_id}"
+        event_slug = ForumThread.objects.get(id=thread_id).event.slug
+        base_link = f"/kalender/{event_slug}"
     except (ForumThread.DoesNotExist, AttributeError):
-        link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
-        if post_id:
-            link += f"#post-{post_id}"
+        base_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
+
+    link = base_link + (f"#post-{post_id}" if post_id else "")
 
     return create_notification(
         user=post_author,
@@ -563,6 +623,7 @@ def notify_post_reply(
         link=link,
         related_user=replier,
         html_content=f"<p><strong>I tråden: {thread_title}</strong></p>{reply_content}",
+        group_key=base_link,  # Aggregate all replies to same thread
     )
 
 
@@ -670,7 +731,7 @@ def notify_event_created(
     location = event.resolved_location
     title_text = f"Nyt arrangement: {event.title}"
     message = location or event.start_datetime.strftime("%d/%m %H:%M")
-    link = f"/kalender/{event.id}"
+    link = f"/kalender/{event.slug}"
 
     recipients = _get_event_recipients(event, exclude_user_id=author.id)
 
@@ -709,7 +770,7 @@ def notify_event_updated(
     message = f"Ny tid/sted: {event.start_datetime.strftime('%d/%m %H:%M')}"
     if location:
         message += f" – {location}"
-    link = f"/kalender/{event.id}"
+    link = f"/kalender/{event.slug}"
 
     recipients = _get_event_recipients(
         event,
@@ -754,7 +815,7 @@ def notify_event_cancelled(
         if event.cancellation_message
         else "Arrangementet er desværre aflyst."
     )
-    link = f"/kalender/{event.id}"
+    link = f"/kalender/{event.slug}"
 
     recipients = _get_event_recipients(
         event,
@@ -808,7 +869,7 @@ def notify_event_reminder(
     message = start_str
     if location:
         message += f" – {location}"
-    link = f"/kalender/{event.id}"
+    link = f"/kalender/{event.slug}"
 
     # Reminders only go to attending users (not "not_answered")
     recipients = _get_event_recipients(
@@ -922,9 +983,9 @@ def notify_subgroup_activity(
     plain_text = strip_tags(reply_content)
     preview = plain_text[:80] + "..." if len(plain_text) > 80 else plain_text
 
-    link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
-    if post_id:
-        link += f"#post-{post_id}"
+    thread_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
+    link = thread_link + (f"#post-{post_id}" if post_id else "")
+    subgroup_link = f"/forum/{subgroup_slug}"
 
     notification_title = title or f"{replier.first_name} svarede i {subgroup_name}"
 
@@ -937,6 +998,7 @@ def notify_subgroup_activity(
             message=f'"{thread_title}": {preview}',
             link=link,
             related_user=replier,
+            group_key=subgroup_link,  # Aggregate activity in same subgroup
         )
         if notification:
             count += 1
@@ -971,14 +1033,13 @@ def notify_post_reaction(
     from apps.forum.models import Thread as ForumThread
 
     try:
-        event_id = ForumThread.objects.get(id=thread_id).event.id
-        link = f"/kalender/{event_id}"
-        if post_id:
-            link += f"#post-{post_id}"
+        event_slug = ForumThread.objects.get(id=thread_id).event.slug
+        base_link = f"/kalender/{event_slug}"
     except (ForumThread.DoesNotExist, AttributeError):
-        link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
-        if post_id:
-            link += f"#post-{post_id}"
+        base_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
+
+    post_fragment = f"#post-{post_id}" if post_id else ""
+    link = base_link + post_fragment
 
     return create_notification(
         user=post_author,
@@ -987,4 +1048,5 @@ def notify_post_reaction(
         message=f'{reaction_emoji} i "{thread_title}"',
         link=link,
         related_user=reactor,
+        group_key=link,  # Aggregate all reactions to same specific post
     )

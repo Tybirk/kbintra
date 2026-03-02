@@ -371,7 +371,7 @@ export function EditBookingModal({
 
   const updateMutation = useMutation({
     mutationFn: (data: CreateEventData) =>
-      eventsApi.updateEvent(parseInt(booking.id), data),
+      eventsApi.updateEvent(booking.event_slug!, data),
     onSuccess: () => {
       notifications.show({
         title: "Booking opdateret",

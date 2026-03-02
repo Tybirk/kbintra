@@ -343,7 +343,9 @@ function NotificationCard({
                   variant="filled"
                   style={{ flexShrink: 0 }}
                 >
-                  Ny
+                  {notification.aggregate_count > 1
+                    ? notification.aggregate_count
+                    : "Ny"}
                 </Badge>
               )}
             </Group>
@@ -351,7 +353,7 @@ function NotificationCard({
               {notification.message}
             </Text>
             <Text size="xs" c="dimmed" mt={4}>
-              {dayjs(notification.created_at).fromNow()}
+              {dayjs(notification.updated_at).fromNow()}
             </Text>
           </Box>
         </Group>

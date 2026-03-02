@@ -63,32 +63,31 @@ import type {
 const MAX_VISIBLE_AVATARS = 5
 
 export default function EventDetailPage() {
-  const { id } = useParams<{ id: string }>()
+  const { slug } = useParams<{ slug: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const eventId = Number(id)
 
   const {
     data: event,
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["event", eventId],
-    queryFn: () => eventsApi.getEvent(eventId),
-    enabled: !!eventId,
+    queryKey: ["event", slug],
+    queryFn: () => eventsApi.getEvent(slug!),
+    enabled: !!slug,
   })
 
   // Auto-mark event notifications as read when visiting the event page
   useEffect(() => {
-    if (eventId) {
-      void notificationsApi.markReadByLink(`/kalender/${eventId}`).then(() => {
+    if (slug) {
+      void notificationsApi.markReadByLink(`/kalender/${slug}`).then(() => {
         queryClient.invalidateQueries({ queryKey: ["notifications"] })
         queryClient.invalidateQueries({
           queryKey: ["notifications", "unread-count"],
         })
       })
     }
-  }, [eventId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [slug]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [
     deleteModalOpened,
@@ -108,7 +107,7 @@ export default function EventDetailPage() {
   const [cancelMessage, setCancelMessage] = useState("")
 
   const deleteMutation = useMutation({
-    mutationFn: () => eventsApi.deleteEvent(eventId),
+    mutationFn: () => eventsApi.deleteEvent(event!.slug),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["events"] })
       queryClient.invalidateQueries({ queryKey: ["bookings"] })
@@ -129,9 +128,9 @@ export default function EventDetailPage() {
   })
 
   const cancelMutation = useMutation({
-    mutationFn: () => eventsApi.cancelEvent(eventId, cancelMessage),
+    mutationFn: () => eventsApi.cancelEvent(event!.slug, cancelMessage),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["event", eventId] })
+      queryClient.invalidateQueries({ queryKey: ["event", slug] })
       queryClient.invalidateQueries({ queryKey: ["events"] })
       queryClient.invalidateQueries({ queryKey: ["calendar"] })
       closeCancelModal()
@@ -153,8 +152,8 @@ export default function EventDetailPage() {
 
   // Fetch attendees for the avatar preview + modal
   const { data: attendees } = useQuery({
-    queryKey: ["event-attendees", eventId],
-    queryFn: () => eventsApi.getAttendees(eventId),
+    queryKey: ["event-attendees", slug],
+    queryFn: () => eventsApi.getAttendees(slug!),
     enabled: !!event?.rsvp_enabled,
   })
 
@@ -255,7 +254,7 @@ export default function EventDetailPage() {
               <Menu.Dropdown>
                 <Menu.Item
                   leftSection={<IconEdit size={14} />}
-                  onClick={() => navigate(`/kalender/${event.id}/rediger`)}
+                  onClick={() => navigate(`/kalender/${event.slug}/rediger`)}
                 >
                   Rediger
                 </Menu.Item>
@@ -297,7 +296,7 @@ export default function EventDetailPage() {
                 variant="subtle"
                 size="sm"
                 color="gray"
-                onClick={() => void eventsApi.downloadICal(event.id)}
+                onClick={() => void eventsApi.downloadICal(event.slug)}
               >
                 <IconCalendarPlus size={16} />
               </ActionIcon>
@@ -391,7 +390,7 @@ export default function EventDetailPage() {
         {hasFiles && (
           <>
             <Divider my="md" />
-            <EventFilesSection eventId={event.id} />
+            <EventFilesSection eventSlug={event.slug} />
           </>
         )}
 
@@ -581,13 +580,13 @@ function AttendeeRow({ attendance }: { attendance: EventAttendance }) {
 }
 
 interface EventFilesSectionProps {
-  eventId: number
+  eventSlug: string
 }
 
-function EventFilesSection({ eventId }: EventFilesSectionProps) {
+function EventFilesSection({ eventSlug }: EventFilesSectionProps) {
   const { data: files, isLoading } = useQuery({
-    queryKey: ["event-files", eventId],
-    queryFn: () => eventsApi.getFiles(eventId),
+    queryKey: ["event-files", eventSlug],
+    queryFn: () => eventsApi.getFiles(eventSlug),
   })
 
   return (
@@ -632,21 +631,25 @@ function EventFilesSection({ eventId }: EventFilesSectionProps) {
 }
 
 function RsvpSection({ event }: { event: Event }) {
-  const eventId = event.id
+  const eventSlug = event.slug
   const queryClient = useQueryClient()
 
   const { data: householdMembers, isLoading: householdLoading } = useQuery({
-    queryKey: ["event-household", eventId],
-    queryFn: () => eventsApi.getHouseholdMembers(eventId),
+    queryKey: ["event-household", eventSlug],
+    queryFn: () => eventsApi.getHouseholdMembers(eventSlug),
   })
 
   const rsvpMutation = useMutation({
     mutationFn: (data: { attendances: RsvpItem[] }) =>
-      eventsApi.submitRsvp(eventId, data),
+      eventsApi.submitRsvp(eventSlug, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["event", eventId] })
-      queryClient.invalidateQueries({ queryKey: ["event-household", eventId] })
-      queryClient.invalidateQueries({ queryKey: ["event-attendees", eventId] })
+      queryClient.invalidateQueries({ queryKey: ["event", eventSlug] })
+      queryClient.invalidateQueries({
+        queryKey: ["event-household", eventSlug],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ["event-attendees", eventSlug],
+      })
       notifications.show({
         message: "Tilmelding gemt",
         color: "green",

@@ -68,6 +68,7 @@ export default function BookingsPage() {
   ] = useDisclosure(false)
   const [bookingToDelete, setBookingToDelete] = useState<{
     id: string
+    event_slug: string | null
     isRecurring: boolean
     recurringBookingId?: number
     occurrenceDate?: string
@@ -127,12 +128,14 @@ export default function BookingsPage() {
   const deleteMutation = useMutation({
     mutationFn: async ({
       id,
+      event_slug,
       isRecurring,
       deleteAll,
       recurringBookingId,
       occurrenceDate,
     }: {
       id: string
+      event_slug: string | null
       isRecurring: boolean
       deleteAll: boolean
       recurringBookingId?: number
@@ -152,7 +155,8 @@ export default function BookingsPage() {
           )
         }
       }
-      return eventsApi.deleteEvent(parseInt(id))
+      if (!event_slug) throw new Error("Event slug missing")
+      return eventsApi.deleteEvent(event_slug)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bookings"] })
@@ -184,12 +188,14 @@ export default function BookingsPage() {
   const handleDeleteClick = useCallback(
     (
       id: string,
+      event_slug: string | null,
       isRecurring: boolean,
       recurringBookingId?: number,
       occurrenceDate?: string,
     ) => {
       setBookingToDelete({
         id,
+        event_slug,
         isRecurring,
         recurringBookingId,
         occurrenceDate,
@@ -204,6 +210,7 @@ export default function BookingsPage() {
     if (bookingToDelete) {
       deleteMutation.mutate({
         id: bookingToDelete.id,
+        event_slug: bookingToDelete.event_slug,
         isRecurring: bookingToDelete.isRecurring,
         deleteAll: deleteMode === "all",
         recurringBookingId: bookingToDelete.recurringBookingId,

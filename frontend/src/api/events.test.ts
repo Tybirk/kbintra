@@ -84,20 +84,28 @@ describe("eventsApi", () => {
   })
 
   describe("getEvent", () => {
-    it("calls GET /events/{id}/", async () => {
-      const mockEvent = { id: 7, title: "Fællesspisning" }
+    it("calls GET /events/{slug}/", async () => {
+      const mockEvent = {
+        id: 7,
+        slug: "faellesspisning",
+        title: "Fællesspisning",
+      }
       vi.mocked(apiClient.get).mockResolvedValue({ data: mockEvent })
 
-      const result = await eventsApi.getEvent(7)
+      const result = await eventsApi.getEvent("faellesspisning")
 
-      expect(apiClient.get).toHaveBeenCalledWith("/events/7/")
+      expect(apiClient.get).toHaveBeenCalledWith("/events/faellesspisning/")
       expect(result).toEqual(mockEvent)
     })
   })
 
   describe("createEvent", () => {
     it("posts to /events/", async () => {
-      const mockEvent = { id: 1, title: "Nyt arrangement" }
+      const mockEvent = {
+        id: 1,
+        slug: "nyt-arrangement",
+        title: "Nyt arrangement",
+      }
       vi.mocked(apiClient.post).mockResolvedValue({ data: mockEvent })
 
       const data = {
@@ -113,7 +121,9 @@ describe("eventsApi", () => {
     })
 
     it("passes skip_notifications param when option set", async () => {
-      vi.mocked(apiClient.post).mockResolvedValue({ data: { id: 1 } })
+      vi.mocked(apiClient.post).mockResolvedValue({
+        data: { id: 1, slug: "test" },
+      })
 
       await eventsApi.createEvent({ title: "Test" } as never, {
         skipNotifications: true,
@@ -128,13 +138,15 @@ describe("eventsApi", () => {
   })
 
   describe("updateEvent", () => {
-    it("patches /events/{id}/", async () => {
-      const mockEvent = { id: 1, title: "Opdateret" }
+    it("patches /events/{slug}/", async () => {
+      const mockEvent = { id: 1, slug: "opdateret", title: "Opdateret" }
       vi.mocked(apiClient.patch).mockResolvedValue({ data: mockEvent })
 
-      const result = await eventsApi.updateEvent(1, { title: "Opdateret" })
+      const result = await eventsApi.updateEvent("opdateret", {
+        title: "Opdateret",
+      })
 
-      expect(apiClient.patch).toHaveBeenCalledWith("/events/1/", {
+      expect(apiClient.patch).toHaveBeenCalledWith("/events/opdateret/", {
         title: "Opdateret",
       })
       expect(result).toEqual(mockEvent)
@@ -142,56 +154,56 @@ describe("eventsApi", () => {
   })
 
   describe("deleteEvent", () => {
-    it("calls DELETE /events/{id}/", async () => {
+    it("calls DELETE /events/{slug}/", async () => {
       vi.mocked(apiClient.delete).mockResolvedValue({})
 
-      await eventsApi.deleteEvent(1)
+      await eventsApi.deleteEvent("julefest")
 
-      expect(apiClient.delete).toHaveBeenCalledWith("/events/1/")
+      expect(apiClient.delete).toHaveBeenCalledWith("/events/julefest/")
     })
   })
 
   describe("submitRsvp", () => {
-    it("patches /events/{id}/rsvp/", async () => {
+    it("patches /events/{slug}/rsvp/", async () => {
       const mockEvent = { id: 1 }
       vi.mocked(apiClient.patch).mockResolvedValue({ data: mockEvent })
 
-      await eventsApi.submitRsvp(1, { status: "yes" } as never)
+      await eventsApi.submitRsvp("julefest", { status: "yes" } as never)
 
-      expect(apiClient.patch).toHaveBeenCalledWith("/events/1/rsvp/", {
+      expect(apiClient.patch).toHaveBeenCalledWith("/events/julefest/rsvp/", {
         status: "yes",
       })
     })
   })
 
   describe("getAttendees", () => {
-    it("calls GET /events/{id}/attendees/", async () => {
+    it("calls GET /events/{slug}/attendees/", async () => {
       vi.mocked(apiClient.get).mockResolvedValue({ data: [] })
 
-      await eventsApi.getAttendees(1)
+      await eventsApi.getAttendees("julefest")
 
-      expect(apiClient.get).toHaveBeenCalledWith("/events/1/attendees/")
+      expect(apiClient.get).toHaveBeenCalledWith("/events/julefest/attendees/")
     })
   })
 
   describe("getHouseholdMembers", () => {
-    it("calls GET /events/{id}/household/", async () => {
+    it("calls GET /events/{slug}/household/", async () => {
       vi.mocked(apiClient.get).mockResolvedValue({ data: [] })
 
-      await eventsApi.getHouseholdMembers(1)
+      await eventsApi.getHouseholdMembers("julefest")
 
-      expect(apiClient.get).toHaveBeenCalledWith("/events/1/household/")
+      expect(apiClient.get).toHaveBeenCalledWith("/events/julefest/household/")
     })
   })
 
   describe("cancelEvent", () => {
-    it("posts to /events/{id}/cancel/ with cancellation_message", async () => {
+    it("posts to /events/{slug}/cancel/ with cancellation_message", async () => {
       const mockEvent = { id: 1 }
       vi.mocked(apiClient.post).mockResolvedValue({ data: mockEvent })
 
-      await eventsApi.cancelEvent(1, "Aflyst grundet vejr")
+      await eventsApi.cancelEvent("julefest", "Aflyst grundet vejr")
 
-      expect(apiClient.post).toHaveBeenCalledWith("/events/1/cancel/", {
+      expect(apiClient.post).toHaveBeenCalledWith("/events/julefest/cancel/", {
         cancellation_message: "Aflyst grundet vejr",
       })
     })
@@ -199,40 +211,40 @@ describe("eventsApi", () => {
     it("posts empty string when no cancellation message", async () => {
       vi.mocked(apiClient.post).mockResolvedValue({ data: { id: 1 } })
 
-      await eventsApi.cancelEvent(1)
+      await eventsApi.cancelEvent("julefest")
 
-      expect(apiClient.post).toHaveBeenCalledWith("/events/1/cancel/", {
+      expect(apiClient.post).toHaveBeenCalledWith("/events/julefest/cancel/", {
         cancellation_message: "",
       })
     })
   })
 
   describe("getFiles", () => {
-    it("calls GET /events/{id}/files/", async () => {
+    it("calls GET /events/{slug}/files/", async () => {
       vi.mocked(apiClient.get).mockResolvedValue({ data: [] })
 
-      await eventsApi.getFiles(1)
+      await eventsApi.getFiles("julefest")
 
-      expect(apiClient.get).toHaveBeenCalledWith("/events/1/files/")
+      expect(apiClient.get).toHaveBeenCalledWith("/events/julefest/files/")
     })
   })
 
   describe("uploadFiles", () => {
-    it("posts FormData to /events/{id}/files/", async () => {
+    it("posts FormData to /events/{slug}/files/", async () => {
       vi.mocked(apiClient.post).mockResolvedValue({ data: [] })
 
       const file = new File(["data"], "dokument.pdf")
-      await eventsApi.uploadFiles(1, [file])
+      await eventsApi.uploadFiles("julefest", [file])
 
       expect(apiClient.post).toHaveBeenCalledWith(
-        "/events/1/files/",
+        "/events/julefest/files/",
         expect.any(FormData),
       )
     })
   })
 
   describe("downloadICal", () => {
-    it("calls GET /events/{id}/ical/ with responseType blob", async () => {
+    it("calls GET /events/{slug}/ical/ with responseType blob", async () => {
       // Stub URL methods not available in jsdom
       URL.createObjectURL = vi.fn().mockReturnValue("blob:test")
       URL.revokeObjectURL = vi.fn()
@@ -253,9 +265,9 @@ describe("eventsApi", () => {
         headers: { "content-disposition": 'attachment; filename="event.ics"' },
       })
 
-      await eventsApi.downloadICal(1)
+      await eventsApi.downloadICal("julefest")
 
-      expect(apiClient.get).toHaveBeenCalledWith("/events/1/ical/", {
+      expect(apiClient.get).toHaveBeenCalledWith("/events/julefest/ical/", {
         responseType: "blob",
       })
     })

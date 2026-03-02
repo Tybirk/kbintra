@@ -463,7 +463,7 @@ class TestGlobalSearchAPI:
 
         events = response.data["results"]["events"]
         assert len(events) >= 1
-        assert events[0]["url"] == f"/kalender/{event.id}"
+        assert events[0]["url"] == f"/kalender/{event.slug}"
 
     def test_search_finds_house(self, authenticated_client, house):
         """Test search finds houses."""

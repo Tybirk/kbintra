@@ -5,6 +5,7 @@ Models for Events app — unified model for community events and private room bo
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
+from django.utils.text import slugify
 
 
 class Event(models.Model):
@@ -16,6 +17,7 @@ class Event(models.Model):
 
     # Core
     title = models.CharField(max_length=255)
+    slug = models.SlugField(max_length=255, unique=True, blank=True, allow_unicode=True)
     description = models.TextField(blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -80,6 +82,20 @@ class Event(models.Model):
         indexes = [
             models.Index(fields=["visibility", "start_datetime"]),
         ]
+
+    def save(self, *args: object, **kwargs: object) -> None:
+        if not self.slug:
+            self.slug = self._generate_slug()
+        super().save(*args, **kwargs)
+
+    def _generate_slug(self) -> str:
+        base = slugify(self.title, allow_unicode=True) or "arrangement"
+        slug = base
+        n = 2
+        while Event.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+            slug = f"{base}-{n}"
+            n += 1
+        return slug
 
     def __str__(self) -> str:
         return f"{self.title} ({self.start_datetime.date()})"

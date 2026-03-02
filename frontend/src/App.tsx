@@ -438,7 +438,7 @@ function App() {
               }
             />
             <Route
-              path="/kalender/:id"
+              path="/kalender/:slug"
               element={
                 <ProtectedRoute>
                   <PageErrorBoundary>
@@ -448,7 +448,7 @@ function App() {
               }
             />
             <Route
-              path="/kalender/:id/rediger"
+              path="/kalender/:slug/rediger"
               element={
                 <ProtectedRoute>
                   <PageErrorBoundary>

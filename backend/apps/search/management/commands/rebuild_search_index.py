@@ -175,7 +175,7 @@ class Command(BaseCommand):
                             ],
                         )
                     ),
-                    url=f"/kalender/{event.id}",
+                    url=f"/kalender/{event.slug}",
                     subtitle=subtitle,
                     created_at=_isoformat(event.created_at),
                 )

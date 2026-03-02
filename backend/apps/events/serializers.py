@@ -82,6 +82,7 @@ class EventSerializer(serializers.ModelSerializer):
         model = Event
         fields = [
             "id",
+            "slug",
             "title",
             "description",
             "created_by",
@@ -111,6 +112,7 @@ class EventSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id",
+            "slug",
             "created_by",
             "is_cancelled",
             "cancellation_message",

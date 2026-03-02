@@ -112,12 +112,11 @@ function addOneHour(time: string): string {
 }
 
 export default function EventFormPage() {
-  const { id } = useParams<{ id: string }>()
+  const { slug } = useParams<{ slug: string }>()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const isEditMode = !!id
-  const eventId = Number(id)
+  const isEditMode = !!slug
 
   // Form state
   const [title, setTitle] = useState("")
@@ -177,15 +176,15 @@ export default function EventFormPage() {
 
   // Fetch existing event in edit mode
   const { data: existingEvent, isLoading: eventLoading } = useQuery({
-    queryKey: ["event", eventId],
-    queryFn: () => eventsApi.getEvent(eventId),
+    queryKey: ["event", slug],
+    queryFn: () => eventsApi.getEvent(slug!),
     enabled: isEditMode,
   })
 
   // Fetch existing files in edit mode
   const { data: existingFiles } = useQuery({
-    queryKey: ["event-files", eventId],
-    queryFn: () => eventsApi.getFiles(eventId),
+    queryKey: ["event-files", slug],
+    queryFn: () => eventsApi.getFiles(slug!),
     enabled: isEditMode,
   })
 
@@ -276,7 +275,7 @@ export default function EventFormPage() {
             room_ids: selectedRoomIds,
             start_datetime: checkStart.toISOString(),
             end_datetime: checkEnd.toISOString(),
-            exclude_event_id: isEditMode ? eventId : undefined,
+            exclude_event_id: isEditMode ? existingEvent?.id : undefined,
           })
           if (!result.can_book_all) {
             const dateLabel = dayjs(checkStart).format("D. MMM")
@@ -303,7 +302,7 @@ export default function EventFormPage() {
     startDatetime,
     endDatetime,
     isEditMode,
-    eventId,
+    existingEvent?.id,
     rooms,
     multiDate,
     extraDates,
@@ -338,10 +337,10 @@ export default function EventFormPage() {
   }
 
   // Upload files after event creation/update
-  const uploadFiles = async (targetEventId: number) => {
+  const uploadFiles = async (targetEventSlug: string) => {
     if (attachments.length === 0) return
     try {
-      await eventsApi.uploadFiles(targetEventId, attachments)
+      await eventsApi.uploadFiles(targetEventSlug, attachments)
     } catch {
       notifications.show({
         title: "Advarsel",
@@ -354,7 +353,7 @@ export default function EventFormPage() {
   const createMutation = useMutation({
     mutationFn: (data: CreateEventData) => eventsApi.createEvent(data),
     onSuccess: async (result) => {
-      await uploadFiles(result.id)
+      await uploadFiles(result.slug)
       clearDraft("new-event-title")
       clearDraft("new-event-description")
       queryClient.invalidateQueries({ queryKey: ["events"] })
@@ -363,7 +362,7 @@ export default function EventFormPage() {
         message: "Din begivenhed er blevet tilføjet til kalenderen.",
         color: "green",
       })
-      navigate(`/kalender/${result.id}`)
+      navigate(`/kalender/${result.slug}`)
     },
     onError: (error) => {
       const fieldErrors = parseDrfErrors(error)
@@ -379,18 +378,18 @@ export default function EventFormPage() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: (data: CreateEventData) => eventsApi.updateEvent(eventId, data),
+    mutationFn: (data: CreateEventData) => eventsApi.updateEvent(slug!, data),
     onSuccess: async () => {
-      await uploadFiles(eventId)
+      await uploadFiles(slug!)
       queryClient.invalidateQueries({ queryKey: ["events"] })
-      queryClient.invalidateQueries({ queryKey: ["event", eventId] })
-      queryClient.invalidateQueries({ queryKey: ["event-files", eventId] })
+      queryClient.invalidateQueries({ queryKey: ["event", slug] })
+      queryClient.invalidateQueries({ queryKey: ["event-files", slug] })
       notifications.show({
         title: "Begivenhed opdateret",
         message: "Din begivenhed er blevet opdateret.",
         color: "green",
       })
-      navigate(`/kalender/${eventId}`)
+      navigate(`/kalender/${slug}`)
     },
     onError: (error) => {
       const fieldErrors = parseDrfErrors(error)
@@ -450,7 +449,7 @@ export default function EventFormPage() {
 
           if (attachments.length > 0) {
             try {
-              await eventsApi.uploadFiles(result.id, attachments)
+              await eventsApi.uploadFiles(result.slug, attachments)
             } catch {
               // Ignore file upload errors for individual events
             }
@@ -561,7 +560,7 @@ export default function EventFormPage() {
         variant="subtle"
         leftSection={<IconArrowLeft size={16} />}
         onClick={() =>
-          isEditMode ? navigate(`/kalender/${eventId}`) : navigate("/kalender")
+          isEditMode ? navigate(`/kalender/${slug}`) : navigate("/kalender")
         }
         mb="md"
         px={0}
@@ -818,7 +817,7 @@ export default function EventFormPage() {
                 variant="light"
                 onClick={() =>
                   isEditMode
-                    ? navigate(`/kalender/${eventId}`)
+                    ? navigate(`/kalender/${slug}`)
                     : navigate("/kalender")
                 }
               >

@@ -30,7 +30,7 @@ export function CompactEventCard({
         opacity: event.is_cancelled ? 0.5 : isPast ? 0.6 : 1,
         cursor: "pointer",
       }}
-      onClick={() => navigate(`/kalender/${event.id}`)}
+      onClick={() => navigate(`/kalender/${event.slug}`)}
     >
       <Group gap="sm" wrap="nowrap" style={{ flex: 1 }}>
         <Box

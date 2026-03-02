@@ -157,6 +157,7 @@ class CalendarBookingSerializer(serializers.Serializer):
     """Lightweight serializer for calendar display (events + recurring occurrences)."""
 
     id = serializers.CharField()
+    event_slug = serializers.CharField(required=False, allow_null=True, default=None)
     room = BookingRoomSerializer()
     user = UserSerializer()
     title = serializers.CharField()

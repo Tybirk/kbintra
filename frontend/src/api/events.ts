@@ -40,9 +40,9 @@ export const eventsApi = {
     return response.data.results ?? response.data
   },
 
-  // Get single event
-  getEvent: async (id: number): Promise<Event> => {
-    const response = await apiClient.get(`/events/${id}/`)
+  // Get single event by slug
+  getEvent: async (slug: string): Promise<Event> => {
+    const response = await apiClient.get(`/events/${slug}/`)
     return response.data
   },
 
@@ -59,37 +59,42 @@ export const eventsApi = {
   },
 
   // Update event
-  updateEvent: async (id: number, data: UpdateEventData): Promise<Event> => {
-    const response = await apiClient.patch(`/events/${id}/`, data)
+  updateEvent: async (slug: string, data: UpdateEventData): Promise<Event> => {
+    const response = await apiClient.patch(`/events/${slug}/`, data)
     return response.data
   },
 
   // Delete event
-  deleteEvent: async (id: number): Promise<void> => {
-    await apiClient.delete(`/events/${id}/`)
+  deleteEvent: async (slug: string): Promise<void> => {
+    await apiClient.delete(`/events/${slug}/`)
   },
 
   // RSVP
-  submitRsvp: async (eventId: number, data: RsvpSubmitData): Promise<Event> => {
-    const response = await apiClient.patch(`/events/${eventId}/rsvp/`, data)
+  submitRsvp: async (
+    eventSlug: string,
+    data: RsvpSubmitData,
+  ): Promise<Event> => {
+    const response = await apiClient.patch(`/events/${eventSlug}/rsvp/`, data)
     return response.data
   },
 
   // Get attendees
-  getAttendees: async (eventId: number): Promise<EventAttendance[]> => {
-    const response = await apiClient.get(`/events/${eventId}/attendees/`)
+  getAttendees: async (eventSlug: string): Promise<EventAttendance[]> => {
+    const response = await apiClient.get(`/events/${eventSlug}/attendees/`)
     return response.data
   },
 
   // Get household members for RSVP
-  getHouseholdMembers: async (eventId: number): Promise<HouseholdMember[]> => {
-    const response = await apiClient.get(`/events/${eventId}/household/`)
+  getHouseholdMembers: async (
+    eventSlug: string,
+  ): Promise<HouseholdMember[]> => {
+    const response = await apiClient.get(`/events/${eventSlug}/household/`)
     return response.data
   },
 
   // Download iCal file via authenticated request
-  downloadICal: async (eventId: number): Promise<void> => {
-    const response = await apiClient.get(`/events/${eventId}/ical/`, {
+  downloadICal: async (eventSlug: string): Promise<void> => {
+    const response = await apiClient.get(`/events/${eventSlug}/ical/`, {
       responseType: "blob",
     })
     const blob = new Blob([response.data], { type: "text/calendar" })
@@ -98,7 +103,7 @@ export const eventsApi = {
     a.href = url
     a.download =
       response.headers["content-disposition"]?.match(/filename="(.+)"/)?.[1] ??
-      `event-${eventId}.ics`
+      `event-${eventSlug}.ics`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
@@ -107,25 +112,31 @@ export const eventsApi = {
 
   // Cancel event
   cancelEvent: async (
-    id: number,
+    slug: string,
     cancellationMessage?: string,
   ): Promise<Event> => {
-    const response = await apiClient.post<Event>(`/events/${id}/cancel/`, {
+    const response = await apiClient.post<Event>(`/events/${slug}/cancel/`, {
       cancellation_message: cancellationMessage ?? "",
     })
     return response.data
   },
 
   // Files
-  getFiles: async (eventId: number): Promise<EventFile[]> => {
-    const response = await apiClient.get(`/events/${eventId}/files/`)
+  getFiles: async (eventSlug: string): Promise<EventFile[]> => {
+    const response = await apiClient.get(`/events/${eventSlug}/files/`)
     return response.data
   },
 
-  uploadFiles: async (eventId: number, files: File[]): Promise<EventFile[]> => {
+  uploadFiles: async (
+    eventSlug: string,
+    files: File[],
+  ): Promise<EventFile[]> => {
     const formData = new FormData()
     files.forEach((file) => formData.append("files", file))
-    const response = await apiClient.post(`/events/${eventId}/files/`, formData)
+    const response = await apiClient.post(
+      `/events/${eventSlug}/files/`,
+      formData,
+    )
     return response.data
   },
 }
