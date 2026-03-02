@@ -51,6 +51,18 @@ export function InstallPrompt() {
     }
 
     // Android/Chrome: use beforeinstallprompt
+    // Check if the event was already captured globally (it fires before React mounts)
+    const captured = (window as { __pwaInstallPrompt?: Event })
+      .__pwaInstallPrompt
+    if (captured) {
+      setDeferredPrompt(captured as BeforeInstallPromptEvent)
+      setShowPrompt(true)
+      ;(window as { __pwaInstallPrompt?: Event | null }).__pwaInstallPrompt =
+        null
+      return
+    }
+
+    // Otherwise listen for it (e.g. if the component mounts before the event fires)
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault()
       setDeferredPrompt(e as BeforeInstallPromptEvent)

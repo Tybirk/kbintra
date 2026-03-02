@@ -259,6 +259,18 @@ class TestCarAPI:
         assert response.status_code == 204
         assert not Car.objects.filter(id=car.id).exists()
 
+    def test_update_car_is_electric(self, api_client, user_with_house, car):
+        """Test updating the is_electric field on a car."""
+        api_client.force_authenticate(user=user_with_house)
+        response = api_client.patch(
+            f"/api/houses/my/cars/{car.id}/",
+            {"license_plate": car.license_plate, "is_electric": True},
+            format="json",
+        )
+        assert response.status_code == 200
+        car.refresh_from_db()
+        assert car.is_electric is True
+
     def test_cars_included_in_house_detail(self, api_client, user_with_house, car):
         """Test that cars are included in house detail response."""
         api_client.force_authenticate(user=user_with_house)

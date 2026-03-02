@@ -566,9 +566,17 @@ class TestAdminDownloadAPI:
 
     def test_download_db_staff_ok(self, admin_client, settings, tmp_path):
         """Test that staff users can download the database."""
-        # Point DATABASE NAME to a real file so FileResponse can open it
+        # Create a real SQLite database so _scrub_private_messages can query it
+        import sqlite3
+
         db_file = tmp_path / "db.sqlite3"
-        db_file.write_bytes(b"SQLite format 3\x00" + b"\x00" * 84)
+        conn = sqlite3.connect(str(db_file))
+        conn.execute("CREATE TABLE messaging_conversation (id INTEGER PRIMARY KEY)")
+        conn.execute(
+            "CREATE TABLE messaging_conversation_participants"
+            " (id INTEGER PRIMARY KEY, conversation_id INTEGER, user_id INTEGER)"
+        )
+        conn.close()
         settings.DATABASES = {"default": {**settings.DATABASES["default"], "NAME": str(db_file)}}
         response = admin_client.get("/api/auth/admin/download-db/")
         assert response.status_code == 200

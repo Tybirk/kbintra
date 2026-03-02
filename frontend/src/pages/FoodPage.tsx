@@ -52,6 +52,7 @@ import { foodApi } from "../api/food"
 import { MealFormFields } from "../components/MealFormFields"
 import { useAuthStore } from "../store/authStore"
 import { calculateDefaultTicketPrice } from "../utils/priceCalculation"
+import { isDateLocked } from "../utils/foodDeadline"
 import type {
   MealRegistration,
   CreateMealRegistrationData,
@@ -246,6 +247,9 @@ export default function FoodPage() {
       <Group justify="space-between" mb="md">
         <div>
           <Title order={1}>Mad</Title>
+          <Badge color="red" size="xl">
+            DETTE MODUL ER IKKE FÆRDIGT; VENT MED AT TESTE
+          </Badge>
           <Text c="dimmed">Ugemenu og måltidstilmelding</Text>
         </div>
         <Group>
@@ -804,7 +808,7 @@ function DayRegistrationCard({
   const [isSaving, setIsSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
 
-  const isLocked = registration?.is_locked ?? false
+  const isLocked = isDateLocked(date)
 
   // Default to house inhabitant count if no registration exists
   const houseCount = user?.house_inhabitant_count || 1

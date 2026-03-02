@@ -435,12 +435,26 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
                   lastName={thread.last_post_author.last_name}
                   size="sm"
                   c="dimmed"
+                  visibleFrom="sm"
                   style={{
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
                   }}
                 />
+                <Text
+                  size="sm"
+                  c="dimmed"
+                  hiddenFrom="sm"
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {thread.last_post_author.first_name}{" "}
+                  {thread.last_post_author.last_name}
+                </Text>
               </>
             ) : (
               <Text size="sm" c="dimmed" style={{ whiteSpace: "nowrap" }}>

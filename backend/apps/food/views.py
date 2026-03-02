@@ -49,7 +49,6 @@ from .serializers import (
     RespondSwapRequestSerializer,
     TeamGenerationResultSerializer,
     TeamSwapRequestSerializer,
-    is_after_deadline,
 )
 from .services.team_generator import TeamGenerator
 
@@ -240,84 +239,20 @@ class ApplyDefaultsView(APIView):
 
     If user has preferences set, use those.
     Otherwise, use sensible house-based defaults:
-    - All house inhabitants eat every day
+    - All house inhabitants eat every day (vegetarian)
     - 17:30 seating time (eat in)
-    - Meat on Wednesdays
     """
 
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request: Request) -> Response:
+        from .services.default_registrations import apply_defaults_for_user
+
         serializer = ApplyDefaultsSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         week_start = serializer.validated_data["week_start_date"]
-        preferences = MealPreference.objects.filter(user=request.user)
-        user = request.user
-
-        # Get house info for defaults
-        house = user.house
-        house_inhabitant_count = house.inhabitants.count() if house else 1
-
-        created_count = 0
-
-        with transaction.atomic():
-            if preferences.exists():
-                # Use user's preferences
-                for pref in preferences:
-                    reg_date = week_start + timedelta(days=pref.day_of_week)
-
-                    # Skip if date is in the past or registration is locked
-                    if reg_date < timezone.now().date():
-                        continue
-                    if is_after_deadline(reg_date):
-                        continue
-
-                    # Create or update registration (always house-based)
-                    registration, created = MealRegistration.objects.update_or_create(
-                        user=user,
-                        date=reg_date,
-                        defaults={
-                            "house": house,
-                            "adults_meat": pref.adults_meat,
-                            "adults_veg": pref.adults_veg,
-                            "children_count": pref.children_count,
-                            "dining_option": pref.dining_option,
-                            "seating_time": pref.seating_time,
-                            "is_active": True,
-                        },
-                    )
-                    if created:
-                        created_count += 1
-            else:
-                # Use sensible house-based defaults for all days (Mon-Thu)
-                for day in range(4):  # 0=Mon, 1=Tue, 2=Wed, 3=Thu
-                    reg_date = week_start + timedelta(days=day)
-
-                    # Skip if date is in the past or registration is locked
-                    if reg_date < timezone.now().date():
-                        continue
-                    if is_after_deadline(reg_date):
-                        continue
-
-                    is_wednesday = day == 2
-
-                    # Create or update registration with defaults
-                    registration, created = MealRegistration.objects.update_or_create(
-                        user=user,
-                        date=reg_date,
-                        defaults={
-                            "house": house,
-                            "adults_meat": house_inhabitant_count if is_wednesday else 0,
-                            "adults_veg": 0 if is_wednesday else house_inhabitant_count,
-                            "children_count": 0,
-                            "dining_option": "eat_in",
-                            "seating_time": "17:30",
-                            "is_active": True,
-                        },
-                    )
-                    if created:
-                        created_count += 1
+        created_count = apply_defaults_for_user(request.user, week_start, overwrite=True)
 
         return Response(
             {"detail": f"Applied defaults. {created_count} new registrations created."},

@@ -121,6 +121,9 @@ export default function FoodTeamsPage() {
       <Group justify="space-between" mb="md">
         <div>
           <Title order={1}>Madhold</Title>
+          <Badge color="red" size="xl">
+            DETTE MODUL ER IKKE FÆRDIGT; VENT MED AT TESTE
+          </Badge>
           <Text c="dimmed">Din madlavningsplan og bytte af vagter</Text>
         </div>
       </Group>

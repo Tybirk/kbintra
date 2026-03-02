@@ -1979,8 +1979,8 @@ class TestApplyDefaultsSkipsLocked:
         # The registration week is in the past relative to the mock time
         # Mock Thursday Dec 18 (after Wed Dec 17 23:59 deadline for Dec 22 week)
         with (
-            patch("apps.food.views.is_after_deadline") as mock_deadline,
-            patch("apps.food.views.timezone") as mock_tz,
+            patch("apps.food.services.default_registrations.is_after_deadline") as mock_deadline,
+            patch("apps.food.services.default_registrations.timezone") as mock_tz,
         ):
             mock_tz.now.return_value = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))
 

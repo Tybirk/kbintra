@@ -16,8 +16,11 @@ import {
   SegmentedControl,
   Divider,
   Alert,
+  Modal,
+  NumberInput,
+  Textarea,
 } from "@mantine/core"
-import { useDebouncedCallback } from "@mantine/hooks"
+import { useDebouncedCallback, useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
 import {
   IconMessageCircle,
@@ -26,6 +29,7 @@ import {
   IconArrowRight,
   IconBell,
   IconCake,
+  IconTicket,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -39,6 +43,8 @@ import { forumApi } from "../api/forum"
 import { notificationsApi } from "../api/notifications"
 import { usersApi } from "../api/users"
 import UserLink from "../components/UserLink"
+import { calculateDefaultTicketPrice } from "../utils/priceCalculation"
+import { isDateLocked } from "../utils/foodDeadline"
 import type {
   Announcement,
   Event,
@@ -50,6 +56,7 @@ import type {
   DiningOption,
   SeatingTime,
   CreateMealRegistrationData,
+  CreateFoodTicketData,
 } from "../types"
 
 dayjs.extend(relativeTime)
@@ -818,6 +825,27 @@ function FoodDayWidget({
     registration?.seating_time ?? "17:30",
   )
 
+  // Sell ticket modal state
+  const [
+    ticketModalOpened,
+    { open: openTicketModal, close: closeTicketModal },
+  ] = useDisclosure(false)
+  const isWednesday = dayjs(date).day() === 3
+  const availablePortions = registration?.available_portions ?? {
+    adults_meat: 0,
+    adults_veg: 0,
+    children_count: 0,
+  }
+  const [sellMeat, setSellMeat] = useState(0)
+  const [sellVeg, setSellVeg] = useState(0)
+  const [sellChildren, setSellChildren] = useState(0)
+  const [sellDescription, setSellDescription] = useState("")
+  const hasSomethingToSell =
+    availablePortions.adults_meat > 0 ||
+    availablePortions.adults_veg > 0 ||
+    availablePortions.children_count > 0
+  const sellPrice = calculateDefaultTicketPrice(sellMeat, sellVeg, sellChildren)
+
   // Track if initial mount to prevent auto-save on mount
   const [hasInitialized, setHasInitialized] = useState(false)
 
@@ -868,6 +896,28 @@ function FoodDayWidget({
     },
   })
 
+  const createTicketMutation = useMutation({
+    mutationFn: (data: CreateFoodTicketData) => foodApi.createTicket(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["food", "registrations"] })
+      queryClient.invalidateQueries({ queryKey: ["food", "tickets"] })
+      closeTicketModal()
+      setSellDescription("")
+      notifications.show({
+        title: "Billet oprettet",
+        message: "Din madbillet er nu tilgængelig for andre.",
+        color: "green",
+      })
+    },
+    onError: () => {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke oprette billet. Prøv venligst igen.",
+        color: "red",
+      })
+    },
+  })
+
   // Debounced save function
   const debouncedSave = useDebouncedCallback(
     (data: CreateMealRegistrationData, regId: number | undefined) => {
@@ -903,108 +953,227 @@ function FoodDayWidget({
     debouncedSave(data, registration?.id)
   }, [isActive, diningOption, seatingTime])
 
-  const isLocked = registration?.is_locked ?? false
+  const isLocked = isDateLocked(date)
+
+  const handleOpenSellModal = () => {
+    setSellMeat(availablePortions.adults_meat)
+    setSellVeg(availablePortions.adults_veg)
+    setSellChildren(availablePortions.children_count)
+    setSellDescription("")
+    openTicketModal()
+  }
+
+  const handleSellTicket = () => {
+    const ticketData: CreateFoodTicketData = {
+      date,
+      adults_meat: sellMeat,
+      adults_veg: sellVeg,
+      children_count: sellChildren,
+      price: sellPrice,
+      description: sellDescription,
+    }
+    createTicketMutation.mutate(ticketData)
+  }
 
   return (
-    <Paper p="sm" radius="sm">
-      <Group justify="space-between" mb="xs">
-        <div>
-          <Group gap="xs">
-            <Badge color={isToday ? "green" : "blue"} variant="light" size="sm">
-              {label}
-            </Badge>
-            {isLocked && (
-              <Badge color="orange" variant="light" size="sm">
-                Låst
+    <>
+      <Paper p="sm" radius="sm">
+        <Group justify="space-between" mb="xs">
+          <div>
+            <Group gap="xs">
+              <Badge
+                color={isToday ? "green" : "blue"}
+                variant="light"
+                size="sm"
+              >
+                {label}
               </Badge>
-            )}
-          </Group>
-          <Text fw={500} size="sm" mt={4}>
-            {dayName}
+              {isLocked && (
+                <Badge color="orange" variant="light" size="sm">
+                  Låst
+                </Badge>
+              )}
+            </Group>
+            <Text fw={500} size="sm" mt={4}>
+              {dayName}
+            </Text>
+          </div>
+          <Text size="xs" c="dimmed">
+            {dayjs(date).format("D. MMM")}
           </Text>
-        </div>
-        <Text size="xs" c="dimmed">
-          {dayjs(date).format("D. MMM")}
+        </Group>
+
+        {/* Menu description */}
+        <Text size="xs" mb="sm" lineClamp={2}>
+          {menuText || "Menu kommer snart"}
         </Text>
-      </Group>
 
-      {/* Menu description */}
-      <Text size="xs" mb="sm" lineClamp={2}>
-        {menuText || "Menu kommer snart"}
-      </Text>
+        <Divider mb="sm" />
 
-      <Divider mb="sm" />
+        {/* Registration controls */}
+        <Stack gap="xs">
+          {isLocked && !registration?.is_active ? (
+            <Text size="xs" c="dimmed" ta="center">
+              Ikke tilmeldt
+            </Text>
+          ) : (
+            <>
+              <SegmentedControl
+                value={isActive ? "yes" : "no"}
+                onChange={(val) => setIsActive(val === "yes")}
+                data={[
+                  { label: "Spiser", value: "yes" },
+                  { label: "Spiser ikke", value: "no" },
+                ]}
+                fullWidth
+                size="xs"
+                disabled={isLocked}
+              />
 
-      {/* Registration controls */}
-      <Stack gap="xs">
-        {isLocked && !registration?.is_active ? (
-          <Text size="xs" c="dimmed" ta="center">
-            Ikke tilmeldt
-          </Text>
-        ) : (
-          <>
-            <SegmentedControl
-              value={isActive ? "yes" : "no"}
-              onChange={(val) => setIsActive(val === "yes")}
-              data={[
-                { label: "Spiser", value: "yes" },
-                { label: "Spiser ikke", value: "no" },
-              ]}
-              fullWidth
-              size="xs"
-              disabled={isLocked}
-            />
-
-            {isActive && (
-              <>
-                <SegmentedControl
-                  value={diningOption}
-                  onChange={(val) => setDiningOption(val as DiningOption)}
-                  data={[
-                    { label: "Fælleshus", value: "eat_in" },
-                    { label: "Take Away", value: "take_away" },
-                  ]}
-                  fullWidth
-                  size="xs"
-                />
-
-                {diningOption === "eat_in" && (
+              {isActive && (
+                <>
                   <SegmentedControl
-                    value={seatingTime}
-                    onChange={(val) => setSeatingTime(val as SeatingTime)}
+                    value={diningOption}
+                    onChange={(val) => setDiningOption(val as DiningOption)}
                     data={[
-                      { label: "17:30", value: "17:30" },
-                      { label: "18:30", value: "18:30" },
+                      { label: "Fælleshus", value: "eat_in" },
+                      { label: "Take Away", value: "take_away" },
                     ]}
                     fullWidth
                     size="xs"
                   />
-                )}
-              </>
-            )}
-          </>
-        )}
 
-        {/* Status indicator */}
-        <Text size="xs" c={isSaving ? "blue" : "dimmed"} ta="center">
-          {isSaving ? (
-            <Group gap={4} justify="center">
-              <Loader size={10} />
-              Gemmer...
-            </Group>
-          ) : registration?.is_active ? (
-            `${registration.total_portions} port. • ${
-              registration.dining_option === "eat_in"
-                ? `kl. ${registration.seating_time}`
-                : "Take away"
-            }`
-          ) : registration ? (
-            "Spiser ikke"
-          ) : (
-            "Ikke tilmeldt endnu"
+                  {diningOption === "eat_in" && (
+                    <SegmentedControl
+                      value={seatingTime}
+                      onChange={(val) => setSeatingTime(val as SeatingTime)}
+                      data={[
+                        { label: "17:30", value: "17:30" },
+                        { label: "18:30", value: "18:30" },
+                      ]}
+                      fullWidth
+                      size="xs"
+                    />
+                  )}
+
+                  {isLocked && hasSomethingToSell && (
+                    <Button
+                      variant="light"
+                      color="orange"
+                      size="xs"
+                      leftSection={<IconTicket size={14} />}
+                      onClick={handleOpenSellModal}
+                    >
+                      Sælg billet
+                    </Button>
+                  )}
+                </>
+              )}
+            </>
           )}
-        </Text>
-      </Stack>
-    </Paper>
+
+          {/* Status indicator */}
+          <Text size="xs" c={isSaving ? "blue" : "dimmed"} ta="center">
+            {isSaving ? (
+              <Group gap={4} justify="center">
+                <Loader size={10} />
+                Gemmer...
+              </Group>
+            ) : registration?.is_active ? (
+              `${registration.total_portions} port. • ${
+                registration.dining_option === "eat_in"
+                  ? `kl. ${registration.seating_time}`
+                  : "Take away"
+              }`
+            ) : registration ? (
+              "Spiser ikke"
+            ) : (
+              "Ikke tilmeldt endnu"
+            )}
+          </Text>
+        </Stack>
+      </Paper>
+
+      <Modal
+        opened={ticketModalOpened}
+        onClose={closeTicketModal}
+        title="Sælg billet"
+        centered
+      >
+        <Stack gap="md">
+          <Text size="sm" c="dimmed">
+            Vælg hvor mange portioner du vil sælge. Køber betaler dig direkte
+            via MobilePay.
+          </Text>
+
+          {isWednesday ? (
+            <>
+              <NumberInput
+                label="Kød-portioner"
+                value={sellMeat}
+                onChange={(v) => setSellMeat(typeof v === "number" ? v : 0)}
+                min={0}
+                max={availablePortions.adults_meat}
+              />
+              <NumberInput
+                label="Vegetar-portioner"
+                value={sellVeg}
+                onChange={(v) => setSellVeg(typeof v === "number" ? v : 0)}
+                min={0}
+                max={availablePortions.adults_veg}
+              />
+            </>
+          ) : (
+            <NumberInput
+              label="Voksne"
+              value={sellVeg}
+              onChange={(v) => setSellVeg(typeof v === "number" ? v : 0)}
+              min={0}
+              max={availablePortions.adults_veg}
+            />
+          )}
+
+          <NumberInput
+            label="Børn"
+            value={sellChildren}
+            onChange={(v) => setSellChildren(typeof v === "number" ? v : 0)}
+            min={0}
+            max={availablePortions.children_count}
+          />
+
+          <Stack gap={4}>
+            <Text size="sm" fw={500}>
+              Pris
+            </Text>
+            <Text size="xl" fw={700}>
+              {sellPrice} kr
+            </Text>
+            <Text size="xs" c="dimmed">
+              37/voksen (kød) · 26/voksen (vegetar) · 18/barn
+            </Text>
+          </Stack>
+
+          <Textarea
+            label="Note (valgfrit)"
+            placeholder="Yderligere information..."
+            value={sellDescription}
+            onChange={(e) => setSellDescription(e.target.value)}
+          />
+
+          <Group justify="flex-end">
+            <Button variant="light" onClick={closeTicketModal}>
+              Annuller
+            </Button>
+            <Button
+              onClick={handleSellTicket}
+              loading={createTicketMutation.isPending}
+              disabled={sellMeat + sellVeg + sellChildren === 0}
+            >
+              Opret billet
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+    </>
   )
 }
