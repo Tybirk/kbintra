@@ -23,6 +23,7 @@ import {
   Table,
   Card,
   Select,
+  NumberInput,
 } from "@mantine/core"
 import { useDisclosure, useDebouncedCallback } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -39,6 +40,8 @@ import {
   IconChevronUp,
   IconRefresh,
   IconReceipt,
+  IconLock,
+  IconTrash,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import isoWeek from "dayjs/plugin/isoWeek"
@@ -159,11 +162,12 @@ export default function FoodPage() {
     queryFn: foodApi.getMyTickets,
   })
 
-  // Create a map of active tickets by date (only available tickets owned by user)
-  const activeTicketsByDate = new Map<string, FoodTicket>()
+  // Create a map of my tickets (owned) by date
+  const myTicketsByDate = new Map<string, FoodTicket[]>()
   myTickets?.forEach((ticket) => {
-    if (ticket.is_own && ticket.is_available) {
-      activeTicketsByDate.set(ticket.date, ticket)
+    if (ticket.is_own) {
+      const existing = myTicketsByDate.get(ticket.date) ?? []
+      myTicketsByDate.set(ticket.date, [...existing, ticket])
     }
   })
 
@@ -489,7 +493,7 @@ export default function FoodPage() {
                       isWednesday={isWednesday}
                       isPast={isPast}
                       weekStart={regWeekStart.format("YYYY-MM-DD")}
-                      activeTicketForDate={activeTicketsByDate.get(dateStr)}
+                      ticketsForDate={myTicketsByDate.get(dateStr) ?? []}
                     />
                   )
                 })}
@@ -778,7 +782,7 @@ interface DayRegistrationCardProps {
   isWednesday: boolean
   isPast: boolean
   weekStart: string
-  activeTicketForDate?: FoodTicket
+  ticketsForDate: FoodTicket[]
 }
 
 function DayRegistrationCard({
@@ -789,25 +793,21 @@ function DayRegistrationCard({
   isWednesday,
   isPast,
   weekStart,
-  activeTicketForDate,
+  ticketsForDate,
 }: DayRegistrationCardProps) {
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
   const { user } = useAuthStore()
   const [
     ticketModalOpened,
     { open: openTicketModal, close: closeTicketModal },
   ] = useDisclosure(false)
-  const [
-    activeTicketModalOpened,
-    { open: openActiveTicketModal, close: closeActiveTicketModal },
-  ] = useDisclosure(false)
   const [isSaving, setIsSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
 
+  const isLocked = registration?.is_locked ?? false
+
   // Default to house inhabitant count if no registration exists
   const houseCount = user?.house_inhabitant_count || 1
-  // Committed state: always a number, only updated on blur — triggers auto-save
   const [adultsMeat, setAdultsMeat] = useState(
     registration?.adults_meat ?? (isWednesday ? houseCount : 0),
   )
@@ -823,19 +823,25 @@ function DayRegistrationCard({
   )
   const [isActive, setIsActive] = useState(registration?.is_active ?? true)
 
-  // Ticket creation state
-  const [ticketDescription, setTicketDescription] = useState("")
-
-  const calculateDefaultPrice = () => {
-    const ticketAdultsMeat = registration?.adults_meat ?? adultsMeat
-    const ticketAdultsVeg = registration?.adults_veg ?? adultsVeg
-    const childCount = registration?.children_count ?? children
-    return calculateDefaultTicketPrice(
-      ticketAdultsMeat,
-      ticketAdultsVeg,
-      childCount,
-    )
+  // Sell ticket modal state
+  const availablePortions = registration?.available_portions ?? {
+    adults_meat: 0,
+    adults_veg: 0,
+    children_count: 0,
   }
+  const [sellMeat, setSellMeat] = useState(availablePortions.adults_meat)
+  const [sellVeg, setSellVeg] = useState(availablePortions.adults_veg)
+  const [sellChildren, setSellChildren] = useState(
+    availablePortions.children_count,
+  )
+  const [sellDescription, setSellDescription] = useState("")
+
+  const hasSomethingToSell =
+    availablePortions.adults_meat > 0 ||
+    availablePortions.adults_veg > 0 ||
+    availablePortions.children_count > 0
+
+  const sellPrice = calculateDefaultTicketPrice(sellMeat, sellVeg, sellChildren)
 
   // Track if initial mount to prevent auto-save on mount
   const [hasInitialized, setHasInitialized] = useState(false)
@@ -889,6 +895,8 @@ function DayRegistrationCard({
       queryClient.invalidateQueries({
         queryKey: ["food", "registrations", weekStart],
       })
+      closeTicketModal()
+      setSellDescription("")
       notifications.show({
         title: "Billet oprettet",
         message: "Din madbillet er nu tilgængelig for andre.",
@@ -904,23 +912,23 @@ function DayRegistrationCard({
     },
   })
 
-  const claimOwnTicketMutation = useMutation({
-    mutationFn: () => foodApi.claimTicket(activeTicketForDate!.id),
+  const deleteTicketMutation = useMutation({
+    mutationFn: (ticketId: number) => foodApi.deleteTicket(ticketId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "tickets"] })
-      closeActiveTicketModal()
-      setIsActive(true)
+      queryClient.invalidateQueries({
+        queryKey: ["food", "registrations", weekStart],
+      })
       notifications.show({
-        title: "Billet tilbagekaldt",
-        message:
-          "Du har tilbagekaldt din billet og kan nu tilmelde dig måltidet.",
+        title: "Billet slettet",
+        message: "Din billet er slettet.",
         color: "green",
       })
     },
     onError: () => {
       notifications.show({
         title: "Fejl",
-        message: "Kunne ikke tilbagekalde billet. Prøv venligst igen.",
+        message: "Kunne ikke slette billet. Prøv venligst igen.",
         color: "red",
       })
     },
@@ -939,7 +947,8 @@ function DayRegistrationCard({
     500,
   )
 
-  // Auto-save when values change
+  // Auto-save when values change. When locked, only dining_option and seating_time
+  // can actually change (portions and isActive are read-only), so the save still works.
   useEffect(() => {
     if (!hasInitialized) {
       setHasInitialized(true)
@@ -960,42 +969,43 @@ function DayRegistrationCard({
     }
 
     debouncedSave(data, registration?.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adultsMeat, adultsVeg, children, diningOption, seatingTime, isActive])
 
   const handleEatingChange = (val: string) => {
-    if (val === "no" && isActive) {
-      // User is switching from eating to not eating - prompt for ticket
-      // This works whether they have an explicit registration or just the default state
-      openTicketModal()
-    } else if (val === "yes" && activeTicketForDate) {
-      // User has an active ticket for this date - show warning modal
-      openActiveTicketModal()
-    } else {
-      setIsActive(val === "yes")
-    }
+    setIsActive(val === "yes")
   }
 
-  const handleCreateTicketAndSave = () => {
+  const handleOpenSellModal = () => {
+    setSellMeat(availablePortions.adults_meat)
+    setSellVeg(availablePortions.adults_veg)
+    setSellChildren(availablePortions.children_count)
+    setSellDescription("")
+    openTicketModal()
+  }
+
+  const handleSellTicket = () => {
     const ticketData: CreateFoodTicketData = {
       date,
-      adults_meat: registration?.adults_meat ?? adultsMeat,
-      adults_veg: registration?.adults_veg ?? adultsVeg,
-      children_count: registration?.children_count ?? children,
-      price: calculateDefaultPrice(),
-      description: ticketDescription,
+      adults_meat: sellMeat,
+      adults_veg: sellVeg,
+      children_count: sellChildren,
+      price: sellPrice,
+      description: sellDescription,
     }
     createTicketMutation.mutate(ticketData)
-
-    // Update registration to not active
-    setIsActive(false)
-    closeTicketModal()
-    setTicketDescription("")
   }
 
-  const handleSkipTicket = () => {
-    setIsActive(false)
-    closeTicketModal()
-    setTicketDescription("")
+  const portionSummary = () => {
+    if (!registration) return ""
+    const parts: string[] = []
+    if (registration.adults_meat > 0)
+      parts.push(`${registration.adults_meat} kød`)
+    if (registration.adults_veg > 0)
+      parts.push(`${registration.adults_veg} vegetar`)
+    if (registration.children_count > 0)
+      parts.push(`${registration.children_count} børn`)
+    return parts.join(", ")
   }
 
   return (
@@ -1007,9 +1017,21 @@ function DayRegistrationCard({
               {dayName}
             </Text>
           </div>
-          <Badge variant="light" color={isPast ? "gray" : "blue"}>
-            {dayjs(date).format("D. MMM")}
-          </Badge>
+          <Group gap="xs">
+            {isLocked && (
+              <Badge
+                color="orange"
+                variant="light"
+                size="sm"
+                leftSection={<IconLock size={12} />}
+              >
+                Låst
+              </Badge>
+            )}
+            <Badge variant="light" color={isPast ? "gray" : "blue"}>
+              {dayjs(date).format("D. MMM")}
+            </Badge>
+          </Group>
         </Group>
 
         {menuText && (
@@ -1019,19 +1041,12 @@ function DayRegistrationCard({
         )}
 
         <Stack gap="sm">
-          <SegmentedControl
-            value={isActive ? "yes" : "no"}
-            onChange={handleEatingChange}
-            data={[
-              { label: "Spiser", value: "yes" },
-              { label: "Spiser ikke", value: "no" },
-            ]}
-            fullWidth
-            disabled={isPast}
-          />
-
-          {isActive && (
+          {/* When locked and registered: show read-only info */}
+          {isLocked && registration && registration.is_active ? (
             <>
+              <Text size="sm" c="dimmed">
+                Tilmeldt: {portionSummary()}
+              </Text>
               <MealFormFields
                 adultsMeat={adultsMeat}
                 adultsVeg={adultsVeg}
@@ -1039,7 +1054,8 @@ function DayRegistrationCard({
                 diningOption={diningOption}
                 seatingTime={seatingTime}
                 isWednesday={isWednesday}
-                disabled={isPast}
+                disabled={true}
+                portionsReadOnly={true}
                 onAdultsMeatChange={setAdultsMeat}
                 onAdultsVegChange={setAdultsVeg}
                 onChildrenChange={setChildren}
@@ -1047,17 +1063,108 @@ function DayRegistrationCard({
                 onSeatingTimeChange={setSeatingTime}
               />
 
-              {user?.house && (
-                <Text size="xs" c="blue" ta="center">
-                  Tilmeldes for{" "}
-                  {user.house_name || `Kløverbakkevej ${user.house}`}
-                </Text>
+              {/* Sell ticket button */}
+              {hasSomethingToSell && (
+                <Button
+                  variant="light"
+                  color="orange"
+                  size="sm"
+                  leftSection={<IconTicket size={16} />}
+                  onClick={handleOpenSellModal}
+                >
+                  Sælg billet
+                </Button>
+              )}
+
+              {/* Ticket status */}
+              {ticketsForDate.length > 0 && (
+                <Stack gap={4}>
+                  <Text size="xs" fw={500} c="dimmed">
+                    Mine billetter:
+                  </Text>
+                  {ticketsForDate.map((ticket) => (
+                    <Group key={ticket.id} justify="space-between">
+                      <Text size="xs">
+                        {ticket.is_available ? (
+                          <Badge color="orange" variant="light" size="xs">
+                            Til salg
+                          </Badge>
+                        ) : (
+                          <Badge color="green" variant="light" size="xs">
+                            Solgt til {ticket.claimed_by?.first_name}
+                          </Badge>
+                        )}{" "}
+                        {ticket.adults_meat > 0 && `${ticket.adults_meat} kød `}
+                        {ticket.adults_veg > 0 && `${ticket.adults_veg} veg `}
+                        {ticket.children_count > 0 &&
+                          `${ticket.children_count} børn `}
+                        {ticket.price && `· ${ticket.price} kr`}
+                      </Text>
+                      {ticket.is_available && (
+                        <ActionIcon
+                          size="sm"
+                          color="red"
+                          variant="subtle"
+                          onClick={() => deleteTicketMutation.mutate(ticket.id)}
+                          loading={deleteTicketMutation.isPending}
+                        >
+                          <IconTrash size={14} />
+                        </ActionIcon>
+                      )}
+                    </Group>
+                  ))}
+                </Stack>
+              )}
+            </>
+          ) : isLocked ? (
+            /* Locked and not registered */
+            <Text size="sm" c="dimmed" ta="center">
+              Ikke tilmeldt
+            </Text>
+          ) : (
+            /* Normal editable state (before deadline) */
+            <>
+              <SegmentedControl
+                value={isActive ? "yes" : "no"}
+                onChange={handleEatingChange}
+                data={[
+                  { label: "Spiser", value: "yes" },
+                  { label: "Spiser ikke", value: "no" },
+                ]}
+                fullWidth
+                disabled={isPast}
+              />
+
+              {isActive && (
+                <>
+                  <MealFormFields
+                    adultsMeat={adultsMeat}
+                    adultsVeg={adultsVeg}
+                    children={children}
+                    diningOption={diningOption}
+                    seatingTime={seatingTime}
+                    isWednesday={isWednesday}
+                    disabled={isPast}
+                    onAdultsMeatChange={setAdultsMeat}
+                    onAdultsVegChange={setAdultsVeg}
+                    onChildrenChange={setChildren}
+                    onDiningOptionChange={setDiningOption}
+                    onSeatingTimeChange={setSeatingTime}
+                  />
+
+                  {user?.house && (
+                    <Text size="xs" c="blue" ta="center">
+                      Tilmeldes for{" "}
+                      {user.house_name || `Kløverbakkevej ${user.house}`}
+                    </Text>
+                  )}
+                </>
               )}
             </>
           )}
 
           {/* Saving indicator */}
-          {!isPast && (
+          {!isPast && !isLocked && (
             <Text
               size="xs"
               c={isSaving ? "blue" : lastSaved ? "green" : "dimmed"}
@@ -1069,50 +1176,87 @@ function DayRegistrationCard({
                   Gemmer...
                 </Group>
               ) : lastSaved ? (
-                `Gemt`
-              ) : registration ? (
-                "Gemmes automatisk ved ændringer"
+                "Gemt"
               ) : (
                 "Gemmes automatisk ved ændringer"
               )}
             </Text>
           )}
 
-          {registration && registration.is_active && (
-            <Stack gap={2}>
-              <Text size="xs" c="dimmed" ta="center">
-                {registration.total_portions} portioner •{" "}
-                {registration.dining_option === "eat_in"
-                  ? `Spiser kl. ${registration.seating_time}`
-                  : "Take away"}
-              </Text>
-              {registration.house && (
-                <Text size="xs" c="blue" ta="center" fw={500}>
-                  Tilmeldt for {registration.house.name}
-                </Text>
-              )}
-            </Stack>
+          {/* Saving indicator for locked (dining/seating edits) */}
+          {!isPast && isLocked && registration?.is_active && (
+            <Text
+              size="xs"
+              c={isSaving ? "blue" : lastSaved ? "green" : "dimmed"}
+              ta="center"
+            >
+              {isSaving ? (
+                <Group gap={4} justify="center">
+                  <Loader size={12} />
+                  Gemmer...
+                </Group>
+              ) : lastSaved ? (
+                "Gemt"
+              ) : null}
+            </Text>
           )}
         </Stack>
       </Paper>
 
+      {/* Sell Ticket Modal */}
       <Modal
         opened={ticketModalOpened}
         onClose={closeTicketModal}
-        title="Gør dit måltid tilgængeligt?"
+        title="Sælg billet"
         centered
       >
         <Stack gap="md">
-          <Text size="sm">
-            Vil du gøre din madbillet tilgængelig for andre?
+          <Text size="sm" c="dimmed">
+            Vælg hvor mange portioner du vil sælge. Køber betaler dig direkte
+            via MobilePay.
           </Text>
+
+          {isWednesday ? (
+            <>
+              <NumberInput
+                label="Kød-portioner"
+                value={sellMeat}
+                onChange={(v) => setSellMeat(typeof v === "number" ? v : 0)}
+                min={0}
+                max={availablePortions.adults_meat}
+              />
+              <NumberInput
+                label="Vegetar-portioner"
+                value={sellVeg}
+                onChange={(v) => setSellVeg(typeof v === "number" ? v : 0)}
+                min={0}
+                max={availablePortions.adults_veg}
+              />
+            </>
+          ) : (
+            <NumberInput
+              label="Voksne"
+              value={sellVeg}
+              onChange={(v) => setSellVeg(typeof v === "number" ? v : 0)}
+              min={0}
+              max={availablePortions.adults_veg}
+            />
+          )}
+
+          <NumberInput
+            label="Børn"
+            value={sellChildren}
+            onChange={(v) => setSellChildren(typeof v === "number" ? v : 0)}
+            min={0}
+            max={availablePortions.children_count}
+          />
 
           <Stack gap={4}>
             <Text size="sm" fw={500}>
               Pris
             </Text>
             <Text size="xl" fw={700}>
-              {calculateDefaultPrice()} kr
+              {sellPrice} kr
             </Text>
             <Text size="xs" c="dimmed">
               37/voksen (kød) + 26/voksen (vegetar) + 18/barn
@@ -1122,59 +1266,20 @@ function DayRegistrationCard({
           <Textarea
             label="Note (valgfrit)"
             placeholder="Yderligere information..."
-            value={ticketDescription}
-            onChange={(e) => setTicketDescription(e.target.value)}
+            value={sellDescription}
+            onChange={(e) => setSellDescription(e.target.value)}
           />
 
           <Group justify="flex-end">
-            <Button variant="light" onClick={handleSkipTicket}>
-              Nej, marker bare som ikke-spisende
+            <Button variant="light" onClick={closeTicketModal}>
+              Annuller
             </Button>
             <Button
-              onClick={handleCreateTicketAndSave}
+              onClick={handleSellTicket}
               loading={createTicketMutation.isPending}
+              disabled={sellMeat + sellVeg + sellChildren === 0}
             >
               Opret billet
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
-
-      <Modal
-        opened={activeTicketModalOpened}
-        onClose={closeActiveTicketModal}
-        title="Du har en aktiv madbillet"
-        centered
-      >
-        <Stack gap="md">
-          <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
-            Du har sat din madbillet til salg for denne dag. Du kan ikke
-            tilmelde dig måltidet, før billetten er solgt eller du tilbagekalder
-            den.
-          </Alert>
-
-          <Text size="sm">
-            {activeTicketForDate && (
-              <>
-                Din billet: {activeTicketForDate.total_portions}{" "}
-                {activeTicketForDate.total_portions === 1
-                  ? "portion"
-                  : "portioner"}
-                {activeTicketForDate.price &&
-                  ` til ${activeTicketForDate.price} kr`}
-              </>
-            )}
-          </Text>
-
-          <Group justify="flex-end">
-            <Button variant="light" onClick={() => navigate("/mad/billetter")}>
-              Se mine billetter
-            </Button>
-            <Button
-              onClick={() => claimOwnTicketMutation.mutate()}
-              loading={claimOwnTicketMutation.isPending}
-            >
-              Tilbagekald billet
             </Button>
           </Group>
         </Stack>

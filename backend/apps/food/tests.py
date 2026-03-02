@@ -497,12 +497,23 @@ class TestFoodTicketViews:
         response = authenticated_client.get(url)
         assert response.status_code == 200
 
-    def test_create_ticket(self, authenticated_client, monday_date):
-        """Test creating a food ticket."""
+    def test_create_ticket(self, api_client, user, monday_date):
+        """Test creating a food ticket after deadline with an active registration."""
+        api_client.force_authenticate(user=user)
         url = reverse("food:ticket-list")
         future_date = monday_date + timedelta(weeks=5)
+
+        # Create an active registration so the ticket can be created
+        MealRegistration.objects.create(
+            user=user,
+            date=future_date,
+            adults_veg=2,
+            children_count=0,
+            is_active=True,
+        )
+
         # Mock time to be after deadline (Thursday of the previous week)
-        # Deadline is Wednesday 18:00 of the week before the meal
+        # Deadline is Wednesday 23:59:59 of the week before the meal
         mock_now_date = future_date - timedelta(days=4)  # Thursday before Monday
         with patch("apps.food.serializers.timezone") as mock_tz:
             mock_now = timezone.make_aware(datetime.combine(mock_now_date, time(10, 0)))
@@ -514,7 +525,7 @@ class TestFoodTicketViews:
                 "children_count": 0,
                 "price": "25.00",
             }
-            response = authenticated_client.post(url, data, format="json")
+            response = api_client.post(url, data, format="json")
         assert response.status_code == 201
 
     def test_claim_ticket(self, api_client, admin_user, food_ticket):
@@ -1129,6 +1140,17 @@ class TestFoodTicketDefaultPricing:
             # Ticket for next Monday (veg - no meat on Monday)
             next_monday = date(2025, 12, 22)
 
+            # Create active registration first (required to sell a ticket)
+            MealRegistration.objects.create(
+                user=user_with_house,
+                house=user_with_house.house,
+                date=next_monday,
+                adults_meat=0,
+                adults_veg=2,
+                children_count=1,
+                is_active=True,
+            )
+
             url = reverse("food:ticket-list")
             data = {
                 "date": next_monday.isoformat(),
@@ -1146,10 +1168,15 @@ class TestFoodTicketDefaultPricing:
 
 @pytest.mark.django_db
 class TestPartialTicketSelling:
-    """Tests for partial ticket selling and registration deduction."""
+    """Tests for partial ticket selling.
 
-    def test_full_ticket_deactivates_registration(self, api_client, user_with_house, monday_date):
-        """Selling all portions deactivates the registration."""
+    In the new model, tickets do NOT modify the registration.
+    The registration is the immutable billing record.
+    available_portions = registration portions - sum of existing available tickets.
+    """
+
+    def test_ticket_does_not_modify_registration(self, api_client, user_with_house, monday_date):
+        """Creating a ticket (even for all portions) does NOT modify the registration."""
         api_client.force_authenticate(user=user_with_house)
 
         reg_date = date(2025, 12, 22)  # A Monday
@@ -1177,15 +1204,14 @@ class TestPartialTicketSelling:
             response = api_client.post(url, data, format="json")
             assert response.status_code == 201
 
+        # Registration is UNCHANGED
         registration.refresh_from_db()
-        assert registration.is_active is False
-        assert registration.adults_veg == 0
-        assert registration.children_count == 0
+        assert registration.is_active is True
+        assert registration.adults_veg == 2
+        assert registration.children_count == 1
 
-    def test_partial_ticket_keeps_registration_active(
-        self, api_client, user_with_house, monday_date
-    ):
-        """Selling some portions keeps the registration active with reduced counts."""
+    def test_partial_ticket_registration_unchanged(self, api_client, user_with_house, monday_date):
+        """Selling a partial portion leaves the registration unchanged."""
         api_client.force_authenticate(user=user_with_house)
 
         reg_date = date(2025, 12, 22)  # A Monday
@@ -1207,15 +1233,16 @@ class TestPartialTicketSelling:
             data = {
                 "date": reg_date.isoformat(),
                 "adults_meat": 0,
-                "adults_veg": 1,  # Only sell 1 of 2 portions
+                "adults_veg": 1,  # Sell 1 of 2
                 "children_count": 0,
             }
             response = api_client.post(url, data, format="json")
             assert response.status_code == 201
 
+        # Registration is UNCHANGED
         registration.refresh_from_db()
         assert registration.is_active is True
-        assert registration.adults_veg == 1  # 1 remaining
+        assert registration.adults_veg == 2  # still 2, not reduced
 
     def test_overselling_rejected(self, api_client, user_with_house, monday_date):
         """Cannot sell more portions than registered."""
@@ -1246,8 +1273,10 @@ class TestPartialTicketSelling:
             response = api_client.post(url, data, format="json")
             assert response.status_code == 400
 
-    def test_ticket_deletion_restores_portions(self, api_client, user_with_house, monday_date):
-        """Deleting a ticket restores portions to the registration."""
+    def test_ticket_deletion_does_not_modify_registration(
+        self, api_client, user_with_house, monday_date
+    ):
+        """Deleting a ticket does NOT modify the registration (registrations are immutable)."""
         api_client.force_authenticate(user=user_with_house)
 
         reg_date = date(2025, 12, 22)  # A Monday
@@ -1269,18 +1298,14 @@ class TestPartialTicketSelling:
             is_available=True,
         )
 
-        # Reduce registration as ticket creation would
-        registration.adults_veg = 0
-        registration.is_active = False
-        registration.save()
-
         url = reverse("food:ticket-detail", kwargs={"pk": ticket.pk})
         response = api_client.delete(url)
         assert response.status_code == 204
 
+        # Registration is UNCHANGED — deleting a ticket does not restore portions
         registration.refresh_from_db()
         assert registration.is_active is True
-        assert registration.adults_veg == 1
+        assert registration.adults_veg == 1  # unchanged
 
     def test_registration_coexists_with_ticket(self, api_client, user_with_house, monday_date):
         """User can have both a registration and a ticket (partial selling)."""
@@ -1333,18 +1358,27 @@ class TestTicketCreationDeadline:
             response = api_client.post(url, data, format="json")
 
             assert response.status_code == 400
-            assert "deadline" in str(response.json()).lower()
+            assert "frist" in str(response.json()).lower()
 
     def test_can_create_ticket_after_deadline(self, api_client, user_with_house):
-        """Test that tickets can be created after registration deadline."""
+        """Test that tickets can be created after registration deadline (with active reg)."""
         api_client.force_authenticate(user=user_with_house)
+
+        next_monday = date(2025, 12, 22)
+
+        # Create an active registration first
+        MealRegistration.objects.create(
+            user=user_with_house,
+            date=next_monday,
+            adults_veg=2,
+            children_count=0,
+            is_active=True,
+        )
 
         with patch("apps.food.serializers.timezone") as mock_tz:
             mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))
             mock_tz.now.return_value = mock_now
             mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
-
-            next_monday = date(2025, 12, 22)
 
             url = reverse("food:ticket-list")
             data = {
@@ -1358,27 +1392,28 @@ class TestTicketCreationDeadline:
 
     def test_deadline_calculation(self, db, user):
         """Test deadline calculation for different meal dates."""
-        serializer = FoodTicketCreateSerializer(context={"request": MockRequest(user)})
+        from apps.food.serializers import get_registration_deadline
 
-        # Monday Dec 22, 2025 - deadline should be Wed Dec 17 at 18:00
+        # Monday Dec 22, 2025 - deadline should be Wed Dec 17 at 23:59:59
         monday = date(2025, 12, 22)
-        deadline = serializer.get_registration_deadline(monday)
+        deadline = get_registration_deadline(monday)
         assert deadline.date() == date(2025, 12, 17)
-        assert deadline.hour == 18
+        assert deadline.hour == 23
+        assert deadline.minute == 59
 
-        # Tuesday Dec 23 - deadline should also be Wed Dec 17 at 18:00
+        # Tuesday Dec 23 - deadline should also be Wed Dec 17 at 23:59:59
         tuesday = date(2025, 12, 23)
-        deadline = serializer.get_registration_deadline(tuesday)
+        deadline = get_registration_deadline(tuesday)
         assert deadline.date() == date(2025, 12, 17)
 
-        # Wednesday Dec 24 - deadline should be Wed Dec 17 at 18:00
+        # Wednesday Dec 24 - deadline should be Wed Dec 17 at 23:59:59
         wednesday = date(2025, 12, 24)
-        deadline = serializer.get_registration_deadline(wednesday)
+        deadline = get_registration_deadline(wednesday)
         assert deadline.date() == date(2025, 12, 17)
 
-        # Thursday Dec 25 - deadline should be Wed Dec 17 at 18:00
+        # Thursday Dec 25 - deadline should be Wed Dec 17 at 23:59:59
         thursday = date(2025, 12, 25)
-        deadline = serializer.get_registration_deadline(thursday)
+        deadline = get_registration_deadline(thursday)
         assert deadline.date() == date(2025, 12, 17)
 
 
@@ -1386,42 +1421,27 @@ class TestTicketCreationDeadline:
 class TestMonthlyFoodCostReport:
     """Tests for monthly food cost report.
 
-    The report should include:
-    1. All ACTIVE meal registrations (people who ate their meals)
-    2. All food tickets (regardless of whether sold) - owner pays for the meal
-
-    Cost is calculated based on portions and meal type, not ticket sale price.
+    Billing is based ONLY on active meal registrations.
+    Registrations are the immutable billing record after the deadline.
+    Ticket sales are between users (MobilePay) and do NOT affect the house bill.
     """
 
-    def test_cost_charged_to_owner_house(
-        self, api_client, admin_user, user_with_house, house, house2
+    def test_cost_charged_to_registration_house(
+        self, api_client, admin_user, user_with_house, house
     ):
-        """Test that food cost is charged to the ticket owner's house, not claimer's."""
+        """Test that food cost is charged to the registration owner's house."""
         # Clean up existing data for this month
         FoodTicket.objects.filter(date__year=2025, date__month=1).delete()
         MealRegistration.objects.filter(date__year=2025, date__month=1).delete()
 
-        # Create a user in house2 who will claim the ticket
-        claimer = User.objects.create_user(
-            email="claimer@example.com",
-            password="testpass123",
-            first_name="Claimer",
-            house=house2,
-        )
-
-        # Create a ticket owned by user_with_house (in house)
-        # and claimed by claimer (in house2)
-        ticket_date = date(2025, 1, 13)  # A Monday in January 2025
-        FoodTicket.objects.create(
-            owner=user_with_house,
-            date=ticket_date,
+        reg_date = date(2025, 1, 13)  # A Monday in January 2025
+        MealRegistration.objects.create(
+            user=user_with_house,
+            date=reg_date,
             adults_meat=0,
             adults_veg=2,
             children_count=0,
-            price=Decimal("52.00"),  # 2 * 26 (veg)
-            is_available=False,
-            claimed_by=claimer,
-            claimed_at=timezone.now(),
+            is_active=True,
         )
 
         # Get the monthly cost report as admin
@@ -1432,15 +1452,13 @@ class TestMonthlyFoodCostReport:
         assert response.status_code == 200
         data = response.json()
 
-        # Find the house costs
         owner_house_cost = next((h for h in data["houses"] if h["house_id"] == house.id), None)
 
-        # The OWNER's house (house) should have the cost
-        # Cost is calculated as: 2 adults * 26 DKK (veg) = 52 DKK
+        # Cost: 2 adults * 26 DKK (veg) = 52 DKK
         assert owner_house_cost is not None
         assert Decimal(owner_house_cost["total_cost"]) == Decimal("52.00")
-        assert owner_house_cost["ticket_count"] == 1
-        assert owner_house_cost["registration_count"] == 0
+        assert owner_house_cost["ticket_count"] == 0
+        assert owner_house_cost["registration_count"] == 1
 
     def test_only_admin_can_access_report(self, api_client, user_with_house):
         """Test that non-admin users cannot access the cost report."""
@@ -1467,24 +1485,23 @@ class TestMonthlyFoodCostReport:
         response = api_client.get(url, {"month": 1})
         assert response.status_code == 400
 
-    def test_report_totals_multiple_tickets(self, api_client, admin_user, user_with_house, house):
-        """Test that report correctly sums multiple tickets."""
+    def test_report_totals_multiple_registrations(
+        self, api_client, admin_user, user_with_house, house
+    ):
+        """Test that report correctly sums multiple registrations."""
         # Clean up existing data for this test
         FoodTicket.objects.filter(date__year=2025, date__month=2).delete()
         MealRegistration.objects.filter(date__year=2025, date__month=2).delete()
 
-        # Create multiple tickets for the same owner (non-Wednesday → veg)
+        # Create multiple active registrations (non-Wednesday → veg)
         for i in range(3):
-            FoodTicket.objects.create(
-                owner=user_with_house,
+            MealRegistration.objects.create(
+                user=user_with_house,
                 date=date(2025, 2, 3 + i),  # Feb 3, 4, 5 (Mon, Tue, Wed)
                 adults_meat=0,
                 adults_veg=1,
                 children_count=0,
-                price=Decimal("26.00"),
-                is_available=False,
-                claimed_by=admin_user,
-                claimed_at=timezone.now(),
+                is_active=True,
             )
 
         api_client.force_authenticate(user=admin_user)
@@ -1498,15 +1515,16 @@ class TestMonthlyFoodCostReport:
 
         assert owner_house_cost is not None
         assert Decimal(owner_house_cost["total_cost"]) == Decimal("78.00")  # 3 * 26 (veg)
-        assert owner_house_cost["ticket_count"] == 3
+        assert owner_house_cost["ticket_count"] == 0
+        assert owner_house_cost["registration_count"] == 3
 
-    def test_unsold_tickets_still_charged(self, api_client, admin_user, user_with_house, house):
-        """Test that tickets that were NOT sold are still charged to the owner's house."""
+    def test_tickets_not_billed(self, api_client, admin_user, user_with_house, house):
+        """Test that tickets are NOT charged to the owner's house (billing is registration-based)."""
         # Clean up existing data for this test
         FoodTicket.objects.filter(date__year=2025, date__month=3).delete()
         MealRegistration.objects.filter(date__year=2025, date__month=3).delete()
 
-        # Create a ticket that is still available (not sold)
+        # Create a ticket — this should NOT affect the house bill
         FoodTicket.objects.create(
             owner=user_with_house,
             date=date(2025, 3, 3),  # A Monday in March 2025
@@ -1514,9 +1532,7 @@ class TestMonthlyFoodCostReport:
             adults_veg=1,
             children_count=1,
             price=Decimal("44.00"),
-            is_available=True,  # NOT sold
-            claimed_by=None,
-            claimed_at=None,
+            is_available=True,
         )
 
         api_client.force_authenticate(user=admin_user)
@@ -1528,10 +1544,11 @@ class TestMonthlyFoodCostReport:
 
         owner_house_cost = next((h for h in data["houses"] if h["house_id"] == house.id), None)
 
-        # Cost should be: 1 adult * 26 (veg) + 1 child * 18 = 44 DKK
+        # Tickets do NOT contribute to the house bill
         assert owner_house_cost is not None
-        assert Decimal(owner_house_cost["total_cost"]) == Decimal("44.00")
-        assert owner_house_cost["ticket_count"] == 1
+        assert Decimal(owner_house_cost["total_cost"]) == Decimal("0.00")
+        assert owner_house_cost["ticket_count"] == 0
+        assert owner_house_cost["registration_count"] == 0
 
     def test_active_registrations_charged(self, api_client, admin_user, user_with_house, house):
         """Test that active meal registrations are included in the cost report."""
@@ -1597,15 +1614,13 @@ class TestMonthlyFoodCostReport:
         assert owner_house_cost["registration_count"] == 0
         assert owner_house_cost["ticket_count"] == 0
 
-    def test_registration_and_ticket_both_counted(
-        self, api_client, admin_user, user_with_house, house
-    ):
-        """Test that both registrations and tickets are counted when present."""
+    def test_only_active_registrations_billed(self, api_client, admin_user, user_with_house, house):
+        """Test that only active registrations are billed; tickets are ignored."""
         # Clean up existing data for this test
         FoodTicket.objects.filter(date__year=2025, date__month=6).delete()
         MealRegistration.objects.filter(date__year=2025, date__month=6).delete()
 
-        # Day 1: User eats normally (active registration - Monday is veg)
+        # Day 1: Active registration (user eats)
         MealRegistration.objects.create(
             user=user_with_house,
             date=date(2025, 6, 2),  # A Monday
@@ -1615,14 +1630,14 @@ class TestMonthlyFoodCostReport:
             is_active=True,
         )
 
-        # Day 2: User creates a ticket (registration becomes inactive - Tuesday is veg)
+        # Day 2: Active registration + ticket (registration stays active — new model)
         MealRegistration.objects.create(
             user=user_with_house,
             date=date(2025, 6, 3),  # A Tuesday
             adults_meat=0,
             adults_veg=1,
             children_count=0,
-            is_active=False,  # Deactivated when ticket created
+            is_active=True,  # Registration stays active — ticket is separate
         )
         FoodTicket.objects.create(
             owner=user_with_house,
@@ -1631,7 +1646,7 @@ class TestMonthlyFoodCostReport:
             adults_veg=1,
             children_count=0,
             price=Decimal("26.00"),
-            is_available=True,  # Not sold yet
+            is_available=True,
         )
 
         api_client.force_authenticate(user=admin_user)
@@ -1643,8 +1658,338 @@ class TestMonthlyFoodCostReport:
 
         owner_house_cost = next((h for h in data["houses"] if h["house_id"] == house.id), None)
 
-        # Cost should be: 26 (day 1 registration veg) + 26 (day 2 ticket veg) = 52 DKK
+        # Billing: only registrations count → 26 + 26 = 52 DKK (not 78)
         assert owner_house_cost is not None
         assert Decimal(owner_house_cost["total_cost"]) == Decimal("52.00")
-        assert owner_house_cost["registration_count"] == 1
-        assert owner_house_cost["ticket_count"] == 1
+        assert owner_house_cost["registration_count"] == 2
+        assert owner_house_cost["ticket_count"] == 0
+
+
+# =============================================================================
+# Registration Lock Tests
+# =============================================================================
+
+
+@pytest.mark.django_db
+class TestRegistrationLock:
+    """Tests for registration lock enforcement after deadline."""
+
+    def test_cannot_create_registration_after_deadline(
+        self, api_client, user_with_house, monday_date
+    ):
+        """POST to registration-list returns 400 after the deadline."""
+        api_client.force_authenticate(user=user_with_house)
+
+        meal_date = date(2025, 12, 22)  # Monday
+
+        # Mock time to be AFTER the deadline (Wednesday 23:59:59 of previous week)
+        with patch("apps.food.serializers.timezone") as mock_tz:
+            mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))  # Thursday
+            mock_tz.now.return_value = mock_now
+            mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
+
+            url = reverse("food:registration-list")
+            data = {
+                "date": meal_date.isoformat(),
+                "adults_veg": 1,
+                "children_count": 0,
+            }
+            response = api_client.post(url, data, format="json")
+
+        assert response.status_code == 400
+        assert "frist" in str(response.json()).lower()
+
+    def test_cannot_change_portions_after_deadline(self, api_client, user_with_house, monday_date):
+        """PATCH adults_veg returns 400 after deadline."""
+        api_client.force_authenticate(user=user_with_house)
+
+        meal_date = date(2025, 12, 22)  # Monday
+        registration = MealRegistration.objects.create(
+            user=user_with_house,
+            date=meal_date,
+            adults_veg=2,
+            children_count=0,
+            is_active=True,
+        )
+
+        with patch("apps.food.serializers.timezone") as mock_tz:
+            mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))  # Thursday
+            mock_tz.now.return_value = mock_now
+            mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
+
+            url = reverse("food:registration-detail", kwargs={"pk": registration.pk})
+            response = api_client.patch(url, {"adults_veg": 3}, format="json")
+
+        assert response.status_code == 400
+
+    def test_cannot_change_is_active_after_deadline(self, api_client, user_with_house, monday_date):
+        """PATCH is_active returns 400 after deadline."""
+        api_client.force_authenticate(user=user_with_house)
+
+        meal_date = date(2025, 12, 22)  # Monday
+        registration = MealRegistration.objects.create(
+            user=user_with_house,
+            date=meal_date,
+            adults_veg=2,
+            children_count=0,
+            is_active=True,
+        )
+
+        with patch("apps.food.serializers.timezone") as mock_tz:
+            mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))
+            mock_tz.now.return_value = mock_now
+            mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
+
+            url = reverse("food:registration-detail", kwargs={"pk": registration.pk})
+            response = api_client.patch(url, {"is_active": False}, format="json")
+
+        assert response.status_code == 400
+
+    def test_can_change_dining_option_after_deadline(
+        self, api_client, user_with_house, monday_date
+    ):
+        """PATCH dining_option succeeds after deadline."""
+        api_client.force_authenticate(user=user_with_house)
+
+        meal_date = date(2025, 12, 22)  # Monday
+        registration = MealRegistration.objects.create(
+            user=user_with_house,
+            date=meal_date,
+            adults_veg=2,
+            children_count=0,
+            dining_option="eat_in",
+            is_active=True,
+        )
+
+        with patch("apps.food.serializers.timezone") as mock_tz:
+            mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))
+            mock_tz.now.return_value = mock_now
+            mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
+
+            url = reverse("food:registration-detail", kwargs={"pk": registration.pk})
+            response = api_client.patch(url, {"dining_option": "take_away"}, format="json")
+
+        assert response.status_code == 200
+        registration.refresh_from_db()
+        assert registration.dining_option == "take_away"
+
+    def test_can_change_seating_time_after_deadline(self, api_client, user_with_house, monday_date):
+        """PATCH seating_time succeeds after deadline."""
+        api_client.force_authenticate(user=user_with_house)
+
+        meal_date = date(2025, 12, 22)  # Monday
+        registration = MealRegistration.objects.create(
+            user=user_with_house,
+            date=meal_date,
+            adults_veg=2,
+            children_count=0,
+            seating_time="17:30",
+            is_active=True,
+        )
+
+        with patch("apps.food.serializers.timezone") as mock_tz:
+            mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))
+            mock_tz.now.return_value = mock_now
+            mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
+
+            url = reverse("food:registration-detail", kwargs={"pk": registration.pk})
+            response = api_client.patch(url, {"seating_time": "18:30"}, format="json")
+
+        assert response.status_code == 200
+        registration.refresh_from_db()
+        assert registration.seating_time == "18:30"
+
+
+@pytest.mark.django_db
+class TestTicketValidationWithExisting:
+    """Tests for ticket validation that accounts for existing available tickets."""
+
+    def test_cannot_oversell_with_existing_tickets(self, api_client, user_with_house):
+        """Second ticket exceeding registration minus existing tickets → 400."""
+        api_client.force_authenticate(user=user_with_house)
+
+        meal_date = date(2025, 12, 22)  # Monday
+        MealRegistration.objects.create(
+            user=user_with_house,
+            date=meal_date,
+            adults_veg=2,
+            children_count=0,
+            is_active=True,
+        )
+
+        # First ticket: sell 1 veg
+        FoodTicket.objects.create(
+            owner=user_with_house,
+            date=meal_date,
+            adults_veg=1,
+            children_count=0,
+            is_available=True,
+        )
+
+        # Second ticket: try to sell 2 more veg (1 available left, 2 requested)
+        with patch("apps.food.serializers.timezone") as mock_tz:
+            mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))
+            mock_tz.now.return_value = mock_now
+            mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
+
+            url = reverse("food:ticket-list")
+            data = {
+                "date": meal_date.isoformat(),
+                "adults_veg": 2,
+                "children_count": 0,
+            }
+            response = api_client.post(url, data, format="json")
+
+        assert response.status_code == 400
+
+    def test_multiple_partial_tickets_allowed(self, api_client, user_with_house):
+        """Sum of tickets within registration bounds → 201."""
+        api_client.force_authenticate(user=user_with_house)
+
+        meal_date = date(2025, 12, 22)  # Monday
+        MealRegistration.objects.create(
+            user=user_with_house,
+            date=meal_date,
+            adults_veg=3,
+            children_count=0,
+            is_active=True,
+        )
+
+        with patch("apps.food.serializers.timezone") as mock_tz:
+            mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))
+            mock_tz.now.return_value = mock_now
+            mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
+
+            url = reverse("food:ticket-list")
+
+            # Sell 1 first
+            response1 = api_client.post(
+                url,
+                {"date": meal_date.isoformat(), "adults_veg": 1, "children_count": 0},
+                format="json",
+            )
+            assert response1.status_code == 201
+
+            # Sell 1 more (total 2, within 3 limit)
+            response2 = api_client.post(
+                url,
+                {"date": meal_date.isoformat(), "adults_veg": 1, "children_count": 0},
+                format="json",
+            )
+            assert response2.status_code == 201
+
+    def test_ticket_requires_active_registration(self, api_client, user_with_house):
+        """Creating a ticket without an active registration returns 400."""
+        api_client.force_authenticate(user=user_with_house)
+
+        meal_date = date(2025, 12, 22)  # Monday
+        # No registration created
+
+        with patch("apps.food.serializers.timezone") as mock_tz:
+            mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))
+            mock_tz.now.return_value = mock_now
+            mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
+
+            url = reverse("food:ticket-list")
+            data = {
+                "date": meal_date.isoformat(),
+                "adults_veg": 1,
+                "children_count": 0,
+            }
+            response = api_client.post(url, data, format="json")
+
+        assert response.status_code == 400
+
+
+@pytest.mark.django_db
+class TestEffectiveStats:
+    """Tests for effective registration statistics (subtract available tickets)."""
+
+    def test_stats_subtract_available_tickets(self, authenticated_client, user_with_house):
+        """Available (unsold) tickets are subtracted from totals in stats."""
+        meal_date = date(2025, 12, 22)  # Monday
+
+        MealRegistration.objects.create(
+            user=user_with_house,
+            date=meal_date,
+            adults_veg=2,
+            children_count=0,
+            is_active=True,
+        )
+
+        # Create an unsold ticket for 1 portion
+        FoodTicket.objects.create(
+            owner=user_with_house,
+            date=meal_date,
+            adults_veg=1,
+            children_count=0,
+            is_available=True,  # Unsold
+        )
+
+        url = reverse("food:registration-stats")
+        response = authenticated_client.get(url, {"date": meal_date.isoformat()})
+        assert response.status_code == 200
+        data = response.json()
+
+        # Effective = 2 (reg) - 1 (unsold ticket) = 1
+        assert data["total"]["adults_veg"] == 1
+        assert data["total"]["adults"] == 1
+
+    def test_stats_ignore_claimed_tickets(self, authenticated_client, user_with_house, admin_user):
+        """Claimed (sold) tickets are NOT subtracted — claimer is eating."""
+        meal_date = date(2025, 12, 22)  # Monday
+
+        MealRegistration.objects.create(
+            user=user_with_house,
+            date=meal_date,
+            adults_veg=2,
+            children_count=0,
+            is_active=True,
+        )
+
+        # Create a claimed ticket — the claimer is eating in place of seller
+        FoodTicket.objects.create(
+            owner=user_with_house,
+            date=meal_date,
+            adults_veg=1,
+            children_count=0,
+            is_available=False,  # Claimed/sold
+            claimed_by=admin_user,
+            claimed_at=timezone.now(),
+        )
+
+        url = reverse("food:registration-stats")
+        response = authenticated_client.get(url, {"date": meal_date.isoformat()})
+        assert response.status_code == 200
+        data = response.json()
+
+        # Claimed ticket not subtracted → still 2
+        assert data["total"]["adults_veg"] == 2
+        assert data["total"]["adults"] == 2
+
+
+@pytest.mark.django_db
+class TestApplyDefaultsSkipsLocked:
+    """Tests that apply-defaults skips days where the registration is locked."""
+
+    def test_apply_defaults_skips_locked_days(self, api_client, user_with_house):
+        """Days past the deadline are left untouched by apply-defaults."""
+        api_client.force_authenticate(user=user_with_house)
+
+        # The registration week is in the past relative to the mock time
+        # Mock Thursday Dec 18 (after Wed Dec 17 23:59 deadline for Dec 22 week)
+        with (
+            patch("apps.food.views.is_after_deadline") as mock_deadline,
+            patch("apps.food.views.timezone") as mock_tz,
+        ):
+            mock_tz.now.return_value = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))
+
+            # Make all days appear locked
+            mock_deadline.return_value = True
+
+            url = reverse("food:apply-defaults")
+            response = api_client.post(url, {"week_start_date": "2025-12-22"}, format="json")
+
+        assert response.status_code == 200
+        # No registrations should have been created since all days are locked
+        assert MealRegistration.objects.filter(date__gte=date(2025, 12, 22)).count() == 0

@@ -16,6 +16,8 @@ interface MealFormFieldsProps {
   seatingTime: SeatingTime
   isWednesday: boolean
   disabled?: boolean
+  /** When true, portion inputs are hidden (show as read-only text) but dining/seating remain editable */
+  portionsReadOnly?: boolean
   onAdultsMeatChange: (val: number) => void
   onAdultsVegChange: (val: number) => void
   onChildrenChange: (val: number) => void
@@ -31,6 +33,7 @@ export function MealFormFields({
   seatingTime,
   isWednesday,
   disabled,
+  portionsReadOnly,
   onAdultsMeatChange,
   onAdultsVegChange,
   onChildrenChange,
@@ -47,67 +50,70 @@ export function MealFormFields({
 
   return (
     <>
-      <Group grow>
-        {isWednesday ? (
-          <>
+      {!portionsReadOnly && (
+        <Group grow>
+          {isWednesday ? (
+            <>
+              <NumberInput
+                label="Voksne (kød)"
+                value={adultsMeatInput}
+                onChange={setAdultsMeatInput}
+                onBlur={() => {
+                  const val =
+                    adultsMeatInput === "" ? 0 : Number(adultsMeatInput)
+                  setAdultsMeatInput(val)
+                  onAdultsMeatChange(val)
+                }}
+                min={0}
+                max={10}
+                disabled={disabled}
+              />
+              <NumberInput
+                label="Voksne (vegetar)"
+                value={adultsVegInput}
+                onChange={setAdultsVegInput}
+                onBlur={() => {
+                  const val = adultsVegInput === "" ? 0 : Number(adultsVegInput)
+                  setAdultsVegInput(val)
+                  onAdultsVegChange(val)
+                }}
+                min={0}
+                max={10}
+                disabled={disabled}
+              />
+            </>
+          ) : (
             <NumberInput
-              label="Voksne (kød)"
-              value={adultsMeatInput}
-              onChange={setAdultsMeatInput}
-              onBlur={() => {
-                const val = adultsMeatInput === "" ? 0 : Number(adultsMeatInput)
-                setAdultsMeatInput(val)
-                onAdultsMeatChange(val)
-              }}
-              min={0}
-              max={10}
-              disabled={disabled}
-            />
-            <NumberInput
-              label="Voksne (vegetar)"
+              label="Voksne"
               value={adultsVegInput}
               onChange={setAdultsVegInput}
               onBlur={() => {
                 const val = adultsVegInput === "" ? 0 : Number(adultsVegInput)
                 setAdultsVegInput(val)
                 onAdultsVegChange(val)
+                // On non-Wednesday, meat is always 0
+                onAdultsMeatChange(0)
               }}
               min={0}
               max={10}
               disabled={disabled}
             />
-          </>
-        ) : (
+          )}
           <NumberInput
-            label="Voksne"
-            value={adultsVegInput}
-            onChange={setAdultsVegInput}
+            label="Børn"
+            value={childrenInput}
+            onChange={setChildrenInput}
             onBlur={() => {
-              const val = adultsVegInput === "" ? 0 : Number(adultsVegInput)
-              setAdultsVegInput(val)
-              onAdultsVegChange(val)
-              // On non-Wednesday, meat is always 0
-              onAdultsMeatChange(0)
+              const val = childrenInput === "" ? 0 : Number(childrenInput)
+              setChildrenInput(val)
+              onChildrenChange(val)
             }}
             min={0}
             max={10}
             disabled={disabled}
           />
-        )}
-        <NumberInput
-          label="Børn"
-          value={childrenInput}
-          onChange={setChildrenInput}
-          onBlur={() => {
-            const val = childrenInput === "" ? 0 : Number(childrenInput)
-            setChildrenInput(val)
-            onChildrenChange(val)
-          }}
-          min={0}
-          max={10}
-          disabled={disabled}
-        />
-      </Group>
+        </Group>
+      )}
 
       <Divider />
 
@@ -123,7 +129,7 @@ export function MealFormFields({
             { label: "Tag med", value: "take_away" },
           ]}
           fullWidth
-          disabled={disabled}
+          disabled={disabled && !portionsReadOnly}
         />
       </div>
 
@@ -140,7 +146,7 @@ export function MealFormFields({
               { label: "18:30", value: "18:30" },
             ]}
             fullWidth
-            disabled={disabled}
+            disabled={disabled && !portionsReadOnly}
           />
         </div>
       )}

@@ -903,13 +903,22 @@ function FoodDayWidget({
     debouncedSave(data, registration?.id)
   }, [isActive, diningOption, seatingTime])
 
+  const isLocked = registration?.is_locked ?? false
+
   return (
     <Paper p="sm" radius="sm">
       <Group justify="space-between" mb="xs">
         <div>
-          <Badge color={isToday ? "green" : "blue"} variant="light" size="sm">
-            {label}
-          </Badge>
+          <Group gap="xs">
+            <Badge color={isToday ? "green" : "blue"} variant="light" size="sm">
+              {label}
+            </Badge>
+            {isLocked && (
+              <Badge color="orange" variant="light" size="sm">
+                Låst
+              </Badge>
+            )}
+          </Group>
           <Text fw={500} size="sm" mt={4}>
             {dayName}
           </Text>
@@ -928,41 +937,50 @@ function FoodDayWidget({
 
       {/* Registration controls */}
       <Stack gap="xs">
-        <SegmentedControl
-          value={isActive ? "yes" : "no"}
-          onChange={(val) => setIsActive(val === "yes")}
-          data={[
-            { label: "Spiser", value: "yes" },
-            { label: "Spiser ikke", value: "no" },
-          ]}
-          fullWidth
-          size="xs"
-        />
-
-        {isActive && (
+        {isLocked && !registration?.is_active ? (
+          <Text size="xs" c="dimmed" ta="center">
+            Ikke tilmeldt
+          </Text>
+        ) : (
           <>
             <SegmentedControl
-              value={diningOption}
-              onChange={(val) => setDiningOption(val as DiningOption)}
+              value={isActive ? "yes" : "no"}
+              onChange={(val) => setIsActive(val === "yes")}
               data={[
-                { label: "Fælleshus", value: "eat_in" },
-                { label: "Take Away", value: "take_away" },
+                { label: "Spiser", value: "yes" },
+                { label: "Spiser ikke", value: "no" },
               ]}
               fullWidth
               size="xs"
+              disabled={isLocked}
             />
 
-            {diningOption === "eat_in" && (
-              <SegmentedControl
-                value={seatingTime}
-                onChange={(val) => setSeatingTime(val as SeatingTime)}
-                data={[
-                  { label: "17:30", value: "17:30" },
-                  { label: "18:30", value: "18:30" },
-                ]}
-                fullWidth
-                size="xs"
-              />
+            {isActive && (
+              <>
+                <SegmentedControl
+                  value={diningOption}
+                  onChange={(val) => setDiningOption(val as DiningOption)}
+                  data={[
+                    { label: "Fælleshus", value: "eat_in" },
+                    { label: "Take Away", value: "take_away" },
+                  ]}
+                  fullWidth
+                  size="xs"
+                />
+
+                {diningOption === "eat_in" && (
+                  <SegmentedControl
+                    value={seatingTime}
+                    onChange={(val) => setSeatingTime(val as SeatingTime)}
+                    data={[
+                      { label: "17:30", value: "17:30" },
+                      { label: "18:30", value: "18:30" },
+                    ]}
+                    fullWidth
+                    size="xs"
+                  />
+                )}
+              </>
             )}
           </>
         )}

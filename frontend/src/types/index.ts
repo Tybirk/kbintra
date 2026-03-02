@@ -352,6 +352,12 @@ export interface HouseSimple {
   name: string
 }
 
+export interface AvailablePortions {
+  adults_meat: number
+  adults_veg: number
+  children_count: number
+}
+
 export interface MealRegistration {
   id: number
   date: string
@@ -365,6 +371,8 @@ export interface MealRegistration {
   house: HouseSimple | null
   is_active: boolean
   total_portions: number
+  is_locked: boolean
+  available_portions: AvailablePortions
   created_at: string
   updated_at: string
 }

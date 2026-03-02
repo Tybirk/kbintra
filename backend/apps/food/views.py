@@ -49,6 +49,7 @@ from .serializers import (
     RespondSwapRequestSerializer,
     TeamGenerationResultSerializer,
     TeamSwapRequestSerializer,
+    is_after_deadline,
 )
 from .services.team_generator import TeamGenerator
 
@@ -104,7 +105,11 @@ class DailyRegistrationStatsView(APIView):
             )
 
     def _get_stats_for_date(self, target_date: date) -> dict[str, Any]:
-        """Get registration statistics for a specific date."""
+        """Get registration statistics for a specific date.
+
+        Effective portions = active registrations minus available (unsold) tickets.
+        Claimed tickets are NOT subtracted (the claimer eats in place of the seller).
+        """
         registrations = MealRegistration.objects.filter(
             date=target_date,
             is_active=True,
@@ -125,6 +130,18 @@ class DailyRegistrationStatsView(APIView):
         eat_in_1830 = _agg(registrations.filter(dining_option="eat_in", seating_time="18:30"))
         total_agg = _agg(registrations)
 
+        # Subtract available (unsold) tickets from totals — those seats are not yet filled
+        available_tickets = FoodTicket.objects.filter(
+            date=target_date, is_available=True
+        ).aggregate(
+            ticket_meat=Coalesce(Sum("adults_meat"), 0),
+            ticket_veg=Coalesce(Sum("adults_veg"), 0),
+            ticket_children=Coalesce(Sum("children_count"), 0),
+        )
+        eff_meat = max(0, total_agg["adults_meat"] - available_tickets["ticket_meat"])
+        eff_veg = max(0, total_agg["adults_veg"] - available_tickets["ticket_veg"])
+        eff_children = max(0, total_agg["children"] - available_tickets["ticket_children"])
+
         return {
             "date": target_date.isoformat(),
             "takeaway": {
@@ -140,10 +157,10 @@ class DailyRegistrationStatsView(APIView):
                 "children": eat_in_1830["children"],
             },
             "total": {
-                "adults": total_agg["adults"],
-                "adults_meat": total_agg["adults_meat"],
-                "adults_veg": total_agg["adults_veg"],
-                "children": total_agg["children"],
+                "adults": eff_meat + eff_veg,
+                "adults_meat": eff_meat,
+                "adults_veg": eff_veg,
+                "children": eff_children,
             },
         }
 
@@ -250,8 +267,10 @@ class ApplyDefaultsView(APIView):
                 for pref in preferences:
                     reg_date = week_start + timedelta(days=pref.day_of_week)
 
-                    # Skip if date is in the past
+                    # Skip if date is in the past or registration is locked
                     if reg_date < timezone.now().date():
+                        continue
+                    if is_after_deadline(reg_date):
                         continue
 
                     # Create or update registration (always house-based)
@@ -275,8 +294,10 @@ class ApplyDefaultsView(APIView):
                 for day in range(4):  # 0=Mon, 1=Tue, 2=Wed, 3=Thu
                     reg_date = week_start + timedelta(days=day)
 
-                    # Skip if date is in the past
+                    # Skip if date is in the past or registration is locked
                     if reg_date < timezone.now().date():
+                        continue
+                    if is_after_deadline(reg_date):
                         continue
 
                     is_wednesday = day == 2
@@ -348,20 +369,7 @@ class FoodTicketDetailView(generics.RetrieveDestroyAPIView):
                 {"detail": "Cannot delete a claimed ticket."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        with transaction.atomic():
-            # Restore portions to registration (if one exists)
-            try:
-                reg = MealRegistration.objects.select_for_update().get(
-                    user=request.user, date=ticket.date
-                )
-                reg.adults_meat += ticket.adults_meat
-                reg.adults_veg += ticket.adults_veg
-                reg.children_count += ticket.children_count
-                reg.is_active = True
-                reg.save()
-            except MealRegistration.DoesNotExist:
-                pass  # No registration to restore to — just delete the ticket
-            ticket.delete()
+        ticket.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -921,12 +929,13 @@ class MonthlyFoodCostView(APIView):
         for house in houses:
             house_total = Decimal("0.00")
             registration_count = 0
-            ticket_count = 0
             adult_portions = 0
             child_portions = 0
 
-            # 1. Count all ACTIVE meal registrations for this house
-            # These are people who ate their meals
+            # Bill on active registrations only.
+            # Registrations are immutable billing records after the deadline.
+            # If a user sells a ticket the buyer pays them directly (MobilePay),
+            # but the house still owes for the original registration.
             active_registrations = MealRegistration.objects.filter(
                 user__house=house,
                 date__gte=first_day,
@@ -945,33 +954,13 @@ class MonthlyFoodCostView(APIView):
                 adult_portions += reg.adults_meat + reg.adults_veg
                 child_portions += reg.children_count
 
-            # 2. Count ALL food tickets owned by this house (regardless of is_available)
-            # Creating a ticket means you had a meal spot - you pay whether you sold it or not
-            # The ticket sale price is between users, but the house still owes for the meal
-            all_tickets = FoodTicket.objects.filter(
-                owner__house=house,
-                date__gte=first_day,
-                date__lte=last_day,
-            )
-
-            for ticket in all_tickets:
-                cost = (
-                    (price_adult_meat * ticket.adults_meat)
-                    + (price_adult_veg * ticket.adults_veg)
-                    + (price_child * ticket.children_count)
-                )
-                house_total += cost
-                ticket_count += 1
-                adult_portions += ticket.adults_meat + ticket.adults_veg
-                child_portions += ticket.children_count
-
             house_costs.append(
                 {
                     "house_id": house.id,
                     "house_name": house.name,
                     "total_cost": house_total,
                     "registration_count": registration_count,
-                    "ticket_count": ticket_count,
+                    "ticket_count": 0,
                     "adult_portions": adult_portions,
                     "child_portions": child_portions,
                 }

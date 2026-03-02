@@ -5,6 +5,8 @@ Serializers for Food models.
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
+from django.db.models import Sum
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -23,6 +25,25 @@ from .models import (
     SwapRequestStatus,
     TeamSwapRequest,
 )
+
+
+def get_registration_deadline(meal_date: date) -> datetime:
+    """Get the registration deadline for a meal date.
+
+    The deadline is Wednesday 23:59:59 of the week before the meal.
+    """
+    # Calculate Wednesday of the previous week
+    # meal_date.weekday(): 0=Mon, 1=Tue, 2=Wed, 3=Thu
+    # We need to go back to the previous week's Wednesday
+    days_to_prev_wednesday = meal_date.weekday() + 5  # Mon=5, Tue=6, Wed=7, Thu=8
+    deadline_date = meal_date - timedelta(days=days_to_prev_wednesday)
+    deadline_time = time(23, 59, 59)
+    return datetime.combine(deadline_date, deadline_time, tzinfo=timezone.get_current_timezone())
+
+
+def is_after_deadline(meal_date: date) -> bool:
+    """Return True if the registration deadline for meal_date has passed."""
+    return timezone.now() >= get_registration_deadline(meal_date)
 
 
 class AuthorSerializer(serializers.ModelSerializer):
@@ -101,6 +122,8 @@ class MealRegistrationSerializer(serializers.ModelSerializer):
     day_of_week = serializers.SerializerMethodField()
     day_name = serializers.SerializerMethodField()
     house = HouseSimpleSerializer(read_only=True)
+    is_locked = serializers.SerializerMethodField()
+    available_portions = serializers.SerializerMethodField()
 
     class Meta:
         model = MealRegistration
@@ -117,6 +140,8 @@ class MealRegistrationSerializer(serializers.ModelSerializer):
             "house",
             "is_active",
             "total_portions",
+            "is_locked",
+            "available_portions",
             "created_at",
             "updated_at",
         ]
@@ -127,6 +152,26 @@ class MealRegistrationSerializer(serializers.ModelSerializer):
     def get_day_name(self, obj: MealRegistration) -> str:
         days = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"]
         return days[obj.date.weekday()]
+
+    def get_is_locked(self, obj: MealRegistration) -> bool:
+        return is_after_deadline(obj.date)
+
+    def get_available_portions(self, obj: MealRegistration) -> dict[str, int]:
+        """Registration portions minus the user's available (unsold) tickets for this date."""
+        request = self.context.get("request")
+        user = request.user if request else obj.user
+        existing = FoodTicket.objects.filter(
+            owner=user, date=obj.date, is_available=True
+        ).aggregate(
+            total_meat=Coalesce(Sum("adults_meat"), 0),
+            total_veg=Coalesce(Sum("adults_veg"), 0),
+            total_children=Coalesce(Sum("children_count"), 0),
+        )
+        return {
+            "adults_meat": max(0, obj.adults_meat - existing["total_meat"]),
+            "adults_veg": max(0, obj.adults_veg - existing["total_veg"]),
+            "children_count": max(0, obj.children_count - existing["total_children"]),
+        }
 
 
 class MealRegistrationCreateUpdateSerializer(serializers.ModelSerializer):
@@ -169,10 +214,30 @@ class MealRegistrationCreateUpdateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs: dict) -> dict:
         reg_date = attrs.get("date") or (self.instance.date if self.instance else None)
-        is_active = attrs.get("is_active", True)
-        adults_meat = attrs.get("adults_meat", 0)
-        adults_veg = attrs.get("adults_veg", 0)
-        children_count = attrs.get("children_count", 0)
+        # For partial updates (PATCH), fall back to instance values so we don't
+        # mistakenly flag unchanged fields as violations.
+        inst = self.instance
+        is_active = attrs.get("is_active", inst.is_active if inst else True)
+        adults_meat = attrs.get("adults_meat", inst.adults_meat if inst else 0)
+        adults_veg = attrs.get("adults_veg", inst.adults_veg if inst else 0)
+        children_count = attrs.get("children_count", inst.children_count if inst else 0)
+
+        if reg_date and is_after_deadline(reg_date):
+            if self.instance is None:
+                # CREATE after deadline → reject entirely
+                raise serializers.ValidationError("Tilmeldingsfristen er overskredet.")
+            # UPDATE after deadline → only dining_option and seating_time may change
+            locked_fields = {
+                "adults_meat": self.instance.adults_meat,
+                "adults_veg": self.instance.adults_veg,
+                "children_count": self.instance.children_count,
+                "is_active": self.instance.is_active,
+            }
+            for field, current_value in locked_fields.items():
+                if field in attrs and attrs[field] != current_value:
+                    raise serializers.ValidationError(
+                        f"Tilmeldingen er låst — {field} kan ikke ændres efter fristen."
+                    )
 
         if reg_date and reg_date.weekday() != 2 and adults_meat > 0:
             raise serializers.ValidationError({"adults_meat": "Kød serveres kun om onsdagen."})
@@ -259,21 +324,6 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
         model = FoodTicket
         fields = ["date", "adults_meat", "adults_veg", "children_count", "price", "description"]
 
-    def get_registration_deadline(self, meal_date: date) -> datetime:
-        """Get the registration deadline for a meal date.
-
-        The deadline is Wednesday 18:00 of the week before the meal.
-        """
-        # Calculate Wednesday of the previous week
-        # meal_date.weekday(): 0=Mon, 1=Tue, 2=Wed, 3=Thu
-        # We need to go back to the previous week's Wednesday
-        days_to_prev_wednesday = meal_date.weekday() + 5  # Mon=5, Tue=6, Wed=7, Thu=8
-        deadline_date = meal_date - timedelta(days=days_to_prev_wednesday)
-        deadline_time = time(18, 0)  # 18:00
-        return datetime.combine(
-            deadline_date, deadline_time, tzinfo=timezone.get_current_timezone()
-        )
-
     def validate_date(self, value: date) -> date:
         # Only allow Mon-Thu
         if value.weekday() > 3:
@@ -282,15 +332,12 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
         if value < timezone.now().date():
             raise serializers.ValidationError("Cannot create ticket for past dates.")
 
-        # Check if registration deadline has passed
         # Tickets can only be created after the registration deadline
-        # (Wednesday 18:00 of the week before the meal)
-        deadline = self.get_registration_deadline(value)
+        deadline = get_registration_deadline(value)
         if timezone.now() < deadline:
-            deadline_str = deadline.strftime("%A, %B %d at %H:%M")
+            deadline_str = deadline.strftime("%A, %d/%m kl. %H:%M")
             raise serializers.ValidationError(
-                f"Tickets can only be created after the registration deadline ({deadline_str}). "
-                "You can still change your registration until then."
+                f"Billetter kan først oprettes efter tilmeldingsfristen ({deadline_str})."
             )
 
         return value
@@ -317,37 +364,51 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
         if adults_meat + adults_veg + children_count == 0:
             raise serializers.ValidationError("Der skal være mindst én portion.")
 
-        # Validate portions don't exceed registration
+        # Validate portions don't exceed registration minus existing available tickets
         if reg_date:
             user = self.context["request"].user
             reg = MealRegistration.objects.filter(user=user, date=reg_date, is_active=True).first()
-            if reg:
-                if adults_meat > reg.adults_meat:
-                    raise serializers.ValidationError(
-                        {"adults_meat": "Du kan ikke sælge flere kød-portioner end du er tilmeldt."}
-                    )
-                if adults_veg > reg.adults_veg:
-                    raise serializers.ValidationError(
-                        {
-                            "adults_veg": "Du kan ikke sælge flere vegetar-portioner end du er tilmeldt."
-                        }
-                    )
-                if children_count > reg.children_count:
-                    raise serializers.ValidationError(
-                        {
-                            "children_count": "Du kan ikke sælge flere børne-portioner end du er tilmeldt."
-                        }
-                    )
+            if not reg:
+                raise serializers.ValidationError(
+                    "Du skal have en aktiv tilmelding for at sælge en billet."
+                )
+            # Sum of already listed (available) tickets for this date
+            existing = FoodTicket.objects.filter(
+                owner=user, date=reg_date, is_available=True
+            ).aggregate(
+                total_meat=Coalesce(Sum("adults_meat"), 0),
+                total_veg=Coalesce(Sum("adults_veg"), 0),
+                total_children=Coalesce(Sum("children_count"), 0),
+            )
+            available_meat = reg.adults_meat - existing["total_meat"]
+            available_veg = reg.adults_veg - existing["total_veg"]
+            available_children = reg.children_count - existing["total_children"]
+
+            if adults_meat > available_meat:
+                raise serializers.ValidationError(
+                    {
+                        "adults_meat": "Du kan ikke sælge flere kød-portioner end du har tilgængelige."
+                    }
+                )
+            if adults_veg > available_veg:
+                raise serializers.ValidationError(
+                    {
+                        "adults_veg": "Du kan ikke sælge flere vegetar-portioner end du har tilgængelige."
+                    }
+                )
+            if children_count > available_children:
+                raise serializers.ValidationError(
+                    {
+                        "children_count": "Du kan ikke sælge flere børne-portioner end du har tilgængelige."
+                    }
+                )
 
         return attrs
 
     def create(self, validated_data: dict) -> FoodTicket:
-        from django.db import transaction
-
         user = self.context["request"].user
         validated_data["owner"] = user
 
-        # Extract portion values BEFORE super().create() consumes validated_data
         ticket_adults_meat = validated_data.get("adults_meat", 0)
         ticket_adults_veg = validated_data.get("adults_veg", 0)
         ticket_children = validated_data.get("children_count", 0)
@@ -358,24 +419,7 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
                 ticket_adults_meat, ticket_adults_veg, ticket_children
             )
 
-        ticket = super().create(validated_data)
-
-        # Partial deactivation of the user's meal registration
-        with transaction.atomic():
-            try:
-                reg = MealRegistration.objects.select_for_update().get(
-                    user=user, date=ticket.date, is_active=True
-                )
-                reg.adults_meat = max(0, reg.adults_meat - ticket_adults_meat)
-                reg.adults_veg = max(0, reg.adults_veg - ticket_adults_veg)
-                reg.children_count = max(0, reg.children_count - ticket_children)
-                if reg.adults_meat == 0 and reg.adults_veg == 0 and reg.children_count == 0:
-                    reg.is_active = False
-                reg.save()
-            except MealRegistration.DoesNotExist:
-                pass
-
-        return ticket
+        return super().create(validated_data)
 
 
 class ApplyDefaultsSerializer(serializers.Serializer):
