@@ -23,9 +23,14 @@ import {
   NumberInput,
   Avatar,
   Menu,
+  Box,
 } from "@mantine/core"
 import { DateInput } from "@mantine/dates"
-import { useDisclosure, useDebouncedCallback } from "@mantine/hooks"
+import {
+  useDisclosure,
+  useDebouncedCallback,
+  useClipboard,
+} from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
 import {
   IconCalendar,
@@ -39,6 +44,7 @@ import {
   IconPlus,
   IconDotsVertical,
   IconWallet,
+  IconCopy,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import isoWeek from "dayjs/plugin/isoWeek"
@@ -60,14 +66,6 @@ import type {
   DriveMenu,
   FoodTicket,
 } from "../types"
-
-function mobilepayPhone(phone: string): string {
-  const digits = phone.replace(/\D/g, "")
-  if (digits.startsWith("45") && digits.length === 10) return digits
-  if (digits.startsWith("45") && digits.length > 10) return digits
-  if (digits.length === 8) return `45${digits}`
-  return digits
-}
 
 export default function FoodPage() {
   const navigate = useNavigate()
@@ -1065,6 +1063,7 @@ interface TicketCardProps {
 
 function TicketCard({ ticket }: TicketCardProps) {
   const queryClient = useQueryClient()
+  const clipboard = useClipboard({ timeout: 2000 })
   const [buyModalOpened, { open: openBuyModal, close: closeBuyModal }] =
     useDisclosure(false)
 
@@ -1204,28 +1203,40 @@ function TicketCard({ ticket }: TicketCardProps) {
           </Group>
 
           <Group gap="xs">
-            {/* MobilePay button for claimed tickets with a price */}
-            {isClaimed &&
-              isClaimedByMe &&
-              !ticket.is_free &&
-              ticket.owner.phone_number && (
-                <Button
-                  variant="filled"
-                  color="indigo"
-                  size="sm"
-                  leftSection={<IconWallet size={14} />}
-                  component="a"
-                  href={`mobilepay://send?phone=${mobilepayPhone(ticket.owner.phone_number)}&amount=${ticket.price}&comment=${encodeURIComponent(`Madbillet ${dayjs(ticket.date).format("D/M")}`)}&lock=1`}
-                >
-                  Betal {ticket.price} kr
-                </Button>
-              )}
-
-            {/* Phone number as text for claimed tickets */}
+            {/* Mobile: copy + open MobilePay; Desktop: plain phone number */}
             {isClaimed && isClaimedByMe && ticket.owner.phone_number && (
-              <Text size="sm" c="dimmed">
-                Tlf: {ticket.owner.phone_number}
-              </Text>
+              <>
+                <Box hiddenFrom="sm">
+                  {!ticket.is_free && (
+                    <Group gap="xs">
+                      <Button
+                        variant="filled"
+                        color={clipboard.copied ? "green" : "indigo"}
+                        size="sm"
+                        leftSection={<IconCopy size={14} />}
+                        onClick={() =>
+                          clipboard.copy(ticket.owner.phone_number)
+                        }
+                      >
+                        {clipboard.copied ? "Kopieret!" : "Kopiér nr."}
+                      </Button>
+                      <Button
+                        variant="light"
+                        color="indigo"
+                        size="sm"
+                        leftSection={<IconWallet size={14} />}
+                        component="a"
+                        href="mobilepay://"
+                      >
+                        Åbn MobilePay
+                      </Button>
+                    </Group>
+                  )}
+                </Box>
+                <Box visibleFrom="sm">
+                  <Text>{ticket.owner.phone_number}</Text>
+                </Box>
+              </>
             )}
 
             {/* Buy button for available tickets not owned by user */}
@@ -1296,11 +1307,6 @@ function TicketCard({ ticket }: TicketCardProps) {
                 {ticket.owner.first_name} {ticket.owner.last_name}
               </Text>
             </Group>
-            {ticket.owner.phone_number && (
-              <Text size="sm" c="dimmed">
-                Tlf: {ticket.owner.phone_number}
-              </Text>
-            )}
           </div>
 
           <div>
@@ -1346,15 +1352,38 @@ function TicketCard({ ticket }: TicketCardProps) {
                 Betal med MobilePay
               </Text>
               {ticket.owner.phone_number ? (
-                <Button
-                  variant="filled"
-                  color="indigo"
-                  leftSection={<IconWallet size={16} />}
-                  component="a"
-                  href={`mobilepay://send?phone=${mobilepayPhone(ticket.owner.phone_number)}&amount=${ticket.price}&comment=${encodeURIComponent(`Madbillet ${dayjs(ticket.date).format("D/M")}`)}&lock=1`}
-                >
-                  Åbn MobilePay ({ticket.price} kr)
-                </Button>
+                <>
+                  <Box hiddenFrom="sm">
+                    <Stack gap="xs">
+                      <Button
+                        variant="filled"
+                        color={clipboard.copied ? "green" : "indigo"}
+                        leftSection={<IconCopy size={16} />}
+                        onClick={() =>
+                          clipboard.copy(ticket.owner.phone_number)
+                        }
+                      >
+                        {clipboard.copied
+                          ? "Kopieret!"
+                          : `Kopiér nr. (${ticket.owner.phone_number})`}
+                      </Button>
+                      <Button
+                        variant="light"
+                        color="indigo"
+                        leftSection={<IconWallet size={16} />}
+                        component="a"
+                        href="mobilepay://"
+                      >
+                        Åbn MobilePay
+                      </Button>
+                    </Stack>
+                  </Box>
+                  <Box visibleFrom="sm">
+                    <Text fw={500} size="lg">
+                      {ticket.owner.phone_number}
+                    </Text>
+                  </Box>
+                </>
               ) : (
                 <Text size="sm" c="dimmed">
                   Sælger har ikke registreret telefonnummer
