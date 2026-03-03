@@ -33,6 +33,14 @@ export const forumApi = {
     return response.data.results ?? response.data
   },
 
+  createSubgroup: async (data: {
+    name: string
+    description: string
+  }): Promise<Subgroup> => {
+    const response = await apiClient.post("/forum/subgroups/", data)
+    return response.data
+  },
+
   getSubgroup: async (slug: string): Promise<Subgroup> => {
     const response = await apiClient.get(`/forum/subgroups/${slug}/`)
     return response.data

@@ -26,7 +26,6 @@ import {
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
 import {
-  IconArrowLeft,
   IconDotsVertical,
   IconEdit,
   IconTrash,
@@ -44,6 +43,7 @@ import {
 import dayjs from "dayjs"
 
 import { eventsApi } from "../api/events"
+import { BackButton } from "../components/BackButton"
 import { notificationsApi } from "../api/notifications"
 import { forumApi } from "../api/forum"
 import { clearDraft } from "../utils/draftStorage"
@@ -193,16 +193,7 @@ export default function EventDetailPage() {
 
   return (
     <>
-      {/* Back button */}
-      <Button
-        variant="subtle"
-        leftSection={<IconArrowLeft size={16} />}
-        onClick={() => navigate("/kalender")}
-        mb="md"
-        px={0}
-      >
-        Tilbage til kalender
-      </Button>
+      <BackButton to="/kalender" label="Tilbage til kalender" />
 
       {/* Main event card */}
       <Paper withBorder p="lg" radius="md" mb="md">

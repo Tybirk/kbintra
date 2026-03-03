@@ -9,6 +9,7 @@ const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes)
 
 import { useAuthStore } from "./store/authStore"
 import { getAccessToken } from "./api/client"
+import { trackNavigation } from "./utils/navigationHistory"
 import { ErrorBoundary } from "./components/ErrorBoundary"
 import { PageErrorBoundary } from "./components/PageErrorBoundary"
 import { useVersionCheck } from "./hooks/useVersionCheck"
@@ -69,6 +70,11 @@ function App() {
   const { checkAuth, isAuthenticated } = useAuthStore()
   const [isInitializing, setIsInitializing] = useState(true)
   const [navbarOpened, setNavbarOpened] = useState(false)
+  const location = useLocation()
+
+  useEffect(() => {
+    trackNavigation(location.pathname)
+  }, [location.pathname])
 
   // Check for app updates when user returns to the app
   useVersionCheck()

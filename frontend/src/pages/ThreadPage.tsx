@@ -27,7 +27,6 @@ import {
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
 import {
-  IconArrowLeft,
   IconDotsVertical,
   IconEdit,
   IconTrash,
@@ -46,6 +45,7 @@ import relativeTime from "dayjs/plugin/relativeTime"
 
 import { forumApi } from "../api/forum"
 import { messagingApi } from "../api/messaging"
+import { BackButton } from "../components/BackButton"
 import { useAuthStore } from "../store/authStore"
 import { notificationsApi } from "../api/notifications"
 import { filterFilesBySize } from "../config"
@@ -489,14 +489,10 @@ export default function ThreadPage() {
 
   return (
     <>
-      <Button
-        variant="subtle"
-        leftSection={<IconArrowLeft size={16} />}
-        onClick={() => navigate(`/forum/${thread.subgroup_slug}`)}
-        mb="md"
-      >
-        Tilbage
-      </Button>
+      <BackButton
+        to={`/forum/${thread.subgroup_slug}`}
+        label="Tilbage til forum"
+      />
 
       {thread.posts[0] && (
         <PostCard

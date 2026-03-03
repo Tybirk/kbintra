@@ -38,6 +38,7 @@ from .serializers import (
     PostCreateSerializer,
     PostSerializer,
     RecentActivitySerializer,
+    SubgroupCreateSerializer,
     SubgroupSerializer,
     SubgroupSubscriptionSerializer,
     ThreadCreateSerializer,
@@ -78,12 +79,16 @@ class IsOwnerOrAdmin(permissions.BasePermission):
 
 
 # Subgroup Views
-class SubgroupListView(generics.ListAPIView):
-    """List all subgroups."""
+class SubgroupListView(generics.ListCreateAPIView):
+    """List all subgroups or create a new one."""
 
-    serializer_class = SubgroupSerializer
     permission_classes = [permissions.IsAuthenticated]
     queryset = Subgroup.objects.prefetch_related("threads").all()
+
+    def get_serializer_class(self) -> type:
+        if self.request.method == "POST":
+            return SubgroupCreateSerializer
+        return SubgroupSerializer
 
     def get_serializer_context(self) -> dict:
         context = super().get_serializer_context()
@@ -94,6 +99,13 @@ class SubgroupListView(generics.ListAPIView):
             )
             context["read_status_map"] = dict(statuses)
         return context
+
+    def create(self, request: Request, *args: object, **kwargs: object) -> Response:
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        subgroup = serializer.save()
+        out = SubgroupSerializer(subgroup, context=self.get_serializer_context())
+        return Response(out.data, status=status.HTTP_201_CREATED)
 
 
 class SubgroupDetailView(generics.RetrieveAPIView):

@@ -29,7 +29,6 @@ import {
   IconUpload,
   IconPhoto,
   IconX,
-  IconArrowLeft,
   IconHome,
   IconPlus,
   IconPencil,
@@ -46,6 +45,7 @@ import {
   type UpdateCarData,
 } from "../api/houses"
 import type { Car, Child } from "../types"
+import { BackButton } from "../components/BackButton"
 
 interface UpdateChildParams {
   id: number
@@ -409,14 +409,7 @@ export default function HouseEditPage() {
 
   return (
     <>
-      <Button
-        variant="subtle"
-        leftSection={<IconArrowLeft size={16} />}
-        onClick={() => navigate("/profil")}
-        mb="md"
-      >
-        Tilbage til profil
-      </Button>
+      <BackButton to="/profil" label="Tilbage til profil" />
 
       <Title order={1} mb="xl">
         Rediger hus

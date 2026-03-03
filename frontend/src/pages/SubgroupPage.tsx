@@ -25,7 +25,6 @@ import {
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
 import {
-  IconArrowLeft,
   IconPlus,
   IconPin,
   IconLock,
@@ -49,6 +48,7 @@ import "dayjs/locale/da"
 
 import { eventsApi } from "../api/events"
 import { forumApi } from "../api/forum"
+import { BackButton } from "../components/BackButton"
 import { clearDraft, loadDraft, saveDraft } from "../utils/draftStorage"
 import { filterFilesBySize } from "../config"
 import { CompactEventCard } from "../components/CompactEventCard"
@@ -169,14 +169,7 @@ export default function SubgroupPage() {
 
   return (
     <>
-      <Button
-        variant="subtle"
-        leftSection={<IconArrowLeft size={16} />}
-        onClick={() => navigate("/forum")}
-        mb="md"
-      >
-        Tilbage til forum
-      </Button>
+      <BackButton to="/forum" label="Tilbage til forum" />
 
       <Group justify="space-between" mb="md">
         <div>

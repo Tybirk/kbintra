@@ -98,6 +98,14 @@ class SubgroupSerializer(serializers.ModelSerializer):
         return count
 
 
+class SubgroupCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating a new subgroup (name + description only)."""
+
+    class Meta:
+        model = Subgroup
+        fields = ["name", "description"]
+
+
 class SubgroupSubscriptionSerializer(serializers.ModelSerializer):
     """Serializer for SubgroupSubscription model."""
 

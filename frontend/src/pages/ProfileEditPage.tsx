@@ -26,7 +26,6 @@ import {
   IconUpload,
   IconPhoto,
   IconX,
-  IconArrowLeft,
   IconLock,
   IconMail,
   IconDownload,
@@ -35,6 +34,7 @@ import {
 import dayjs from "dayjs"
 
 import { usersApi } from "../api/users"
+import { BackButton } from "../components/BackButton"
 import { useAuthStore } from "../store/authStore"
 import type { User } from "../types"
 
@@ -205,14 +205,7 @@ export default function ProfileEditPage() {
 
   return (
     <>
-      <Button
-        variant="subtle"
-        leftSection={<IconArrowLeft size={16} />}
-        onClick={() => navigate("/profil")}
-        mb="md"
-      >
-        Back to Profile
-      </Button>
+      <BackButton to="/profil" label="Tilbage til profil" />
 
       <Title order={1} mb="xl">
         Edit Profile

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { useNavigate, useSearchParams } from "react-router-dom"
+import { useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
@@ -17,7 +17,6 @@ import {
 } from "@mantine/core"
 import { notifications } from "@mantine/notifications"
 import {
-  IconArrowLeft,
   IconBell,
   IconMessage,
   IconDeviceMobile,
@@ -26,6 +25,7 @@ import {
 } from "@tabler/icons-react"
 
 import { notificationsApi, type TestPushResult } from "../api/notifications"
+import { BackButton } from "../components/BackButton"
 import {
   isPushSupported,
   getNotificationPermission,
@@ -37,7 +37,6 @@ import {
 import type { NotificationPreference } from "../types"
 
 export default function NotificationPreferencesPage() {
-  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const [pushSupported] = useState(isPushSupported())
@@ -199,14 +198,7 @@ export default function NotificationPreferencesPage() {
 
   return (
     <>
-      <Button
-        variant="subtle"
-        leftSection={<IconArrowLeft size={16} />}
-        onClick={() => navigate("/notifikationer")}
-        mb="md"
-      >
-        Tilbage til notifikationer
-      </Button>
+      <BackButton to="/notifikationer" label="Tilbage til notifikationer" />
 
       <Title order={1} mb="xl">
         Notifikationsindstillinger

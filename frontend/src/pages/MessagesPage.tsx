@@ -764,8 +764,8 @@ function ChatArea({
           borderBottom: "1px solid var(--mantine-color-default-border)",
         }}
       >
-        <Group gap="sm" justify="space-between">
-          <Group gap="sm">
+        <Group gap="sm" justify="space-between" wrap="nowrap">
+          <Group gap="sm" style={{ flex: 1, minWidth: 0 }}>
             {onBack && (
               <ActionIcon variant="subtle" onClick={onBack} size="lg">
                 <IconArrowLeft size={20} />
@@ -778,8 +778,10 @@ function ChatArea({
             >
               {otherParticipants[0]?.first_name?.[0]}
             </Avatar>
-            <div>
-              <Text fw={500}>{displayName}</Text>
+            <div style={{ minWidth: 0 }}>
+              <Text fw={500} truncate>
+                {displayName}
+              </Text>
               <Text size="xs" c="dimmed">
                 {conversation.participants.length} deltagere
               </Text>
@@ -1288,14 +1290,16 @@ function MessageBubble({
                       alignItems: "center",
                       gap: 8,
                       cursor: "pointer",
+                      maxWidth: "100%",
                     }}
                     onClick={() => handleAttachmentClick(attachment)}
                   >
                     <FileIcon
                       size={20}
                       color={`var(--mantine-color-${iconColor}-6)`}
+                      style={{ flexShrink: 0 }}
                     />
-                    <Text size="sm" truncate maw={180}>
+                    <Text size="sm" truncate style={{ minWidth: 0 }}>
                       {attachment.name}
                     </Text>
                   </Paper>

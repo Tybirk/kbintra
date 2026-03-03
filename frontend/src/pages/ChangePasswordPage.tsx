@@ -10,9 +10,8 @@ import {
   Alert,
 } from "@mantine/core"
 import { notifications } from "@mantine/notifications"
-import { IconArrowLeft } from "@tabler/icons-react"
-
 import { authApi } from "../api/auth"
+import { BackButton } from "../components/BackButton"
 import type { ChangePasswordData } from "../types"
 
 export default function ChangePasswordPage() {
@@ -68,14 +67,7 @@ export default function ChangePasswordPage() {
 
   return (
     <>
-      <Button
-        variant="subtle"
-        leftSection={<IconArrowLeft size={16} />}
-        onClick={() => navigate("/profil")}
-        mb="md"
-      >
-        Tilbage til profil
-      </Button>
+      <BackButton to="/profil" label="Tilbage til profil" />
 
       <Title order={1} mb="xl">
         Skift adgangskode

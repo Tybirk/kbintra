@@ -15,16 +15,11 @@ import {
   Anchor,
   Badge,
 } from "@mantine/core"
-import {
-  IconArrowLeft,
-  IconHome,
-  IconCar,
-  IconPhone,
-  IconMail,
-} from "@tabler/icons-react"
+import { IconHome, IconCar, IconPhone, IconMail } from "@tabler/icons-react"
 import dayjs from "dayjs"
 
 import { housesApi } from "../api/houses"
+import { BackButton } from "../components/BackButton"
 import type { Car, Child, UserSummary } from "../types"
 
 export default function HouseDetailPage() {
@@ -69,14 +64,7 @@ export default function HouseDetailPage() {
         <Text>{house.name}</Text>
       </Breadcrumbs>
 
-      <Button
-        variant="subtle"
-        leftSection={<IconArrowLeft size={16} />}
-        onClick={() => navigate("/beboere")}
-        mb="md"
-      >
-        Tilbage til beboeroversigt
-      </Button>
+      <BackButton to="/beboere" label="Tilbage til beboeroversigt" />
 
       <Paper withBorder p="xl" radius="md" mb="xl">
         <Group gap="md" mb="md">

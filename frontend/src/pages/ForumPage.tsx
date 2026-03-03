@@ -9,13 +9,16 @@ import {
   Badge,
   Button,
   TextInput,
+  Textarea,
   Loader,
   Center,
   ActionIcon,
   Stack,
   Box,
   ThemeIcon,
+  Modal,
 } from "@mantine/core"
+import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
 import {
   IconSearch,
@@ -24,6 +27,7 @@ import {
   IconBellOff,
   IconUsers,
   IconChecks,
+  IconPlus,
 } from "@tabler/icons-react"
 import { useNavigate } from "react-router-dom"
 import dayjs from "dayjs"
@@ -40,6 +44,10 @@ export default function ForumPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState("")
+  const [createOpened, { open: openCreate, close: closeCreate }] =
+    useDisclosure(false)
+  const [newName, setNewName] = useState("")
+  const [newDescription, setNewDescription] = useState("")
 
   const {
     data: subgroups,
@@ -96,6 +104,29 @@ export default function ForumPage() {
       queryClient.invalidateQueries({ queryKey: ["notifications"] })
       queryClient.invalidateQueries({
         queryKey: ["notifications", "unread-count"],
+      })
+    },
+  })
+
+  const createSubgroupMutation = useMutation({
+    mutationFn: forumApi.createSubgroup,
+    onSuccess: (subgroup) => {
+      queryClient.invalidateQueries({ queryKey: ["subgroups"] })
+      notifications.show({
+        title: "Gruppe oprettet",
+        message: `"${subgroup.name}" er nu oprettet.`,
+        color: "green",
+      })
+      setNewName("")
+      setNewDescription("")
+      closeCreate()
+      navigate(`/forum/${subgroup.slug}`)
+    },
+    onError: () => {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke oprette gruppen. Prøv venligst igen.",
+        color: "red",
       })
     },
   })
@@ -166,21 +197,66 @@ export default function ForumPage() {
 
   return (
     <>
+      <Modal
+        opened={createOpened}
+        onClose={closeCreate}
+        title="Opret ny gruppe"
+      >
+        <Stack>
+          <TextInput
+            label="Navn"
+            placeholder="Gruppenavn"
+            value={newName}
+            onChange={(e) => setNewName(e.currentTarget.value)}
+            required
+          />
+          <Textarea
+            label="Beskrivelse"
+            placeholder="Kort beskrivelse af gruppen (valgfrit)"
+            value={newDescription}
+            onChange={(e) => setNewDescription(e.currentTarget.value)}
+            rows={3}
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={closeCreate}>
+              Annuller
+            </Button>
+            <Button
+              onClick={() =>
+                createSubgroupMutation.mutate({
+                  name: newName,
+                  description: newDescription,
+                })
+              }
+              loading={createSubgroupMutation.isPending}
+              disabled={!newName.trim()}
+            >
+              Opret gruppe
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
       <Group justify="space-between" mb="md">
         <div>
           <Title order={1}>Forum</Title>
           <Text c="dimmed">Gennemse og deltag i fællesskabets grupper</Text>
         </div>
-        {totalUnread > 0 && (
-          <Button
-            variant="light"
-            leftSection={<IconChecks size={16} />}
-            onClick={() => markAllReadMutation.mutate()}
-            loading={markAllReadMutation.isPending}
-          >
-            Markér alt som læst
+        <Group>
+          {totalUnread > 0 && (
+            <Button
+              variant="light"
+              leftSection={<IconChecks size={16} />}
+              onClick={() => markAllReadMutation.mutate()}
+              loading={markAllReadMutation.isPending}
+            >
+              Markér alt som læst
+            </Button>
+          )}
+          <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>
+            Opret gruppe
           </Button>
-        )}
+        </Group>
       </Group>
 
       <TextInput

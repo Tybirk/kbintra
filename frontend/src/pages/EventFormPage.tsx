@@ -18,10 +18,11 @@ import {
 } from "@mantine/core"
 import { DateInput, DatePickerInput, TimePicker } from "@mantine/dates"
 import { notifications } from "@mantine/notifications"
-import { IconArrowLeft, IconMapPin, IconAlertCircle } from "@tabler/icons-react"
+import { IconMapPin, IconAlertCircle } from "@tabler/icons-react"
 import dayjs from "dayjs"
 
 import { clearDraft, loadDraft, saveDraft } from "../utils/draftStorage"
+import { BackButton } from "../components/BackButton"
 import { eventsApi } from "../api/events"
 import { bookingsApi } from "../api/bookings"
 import { forumApi } from "../api/forum"
@@ -556,17 +557,10 @@ export default function EventFormPage() {
 
   return (
     <>
-      <Button
-        variant="subtle"
-        leftSection={<IconArrowLeft size={16} />}
-        onClick={() =>
-          isEditMode ? navigate(`/kalender/${slug}`) : navigate("/kalender")
-        }
-        mb="md"
-        px={0}
-      >
-        {isEditMode ? "Tilbage til begivenhed" : "Tilbage til kalender"}
-      </Button>
+      <BackButton
+        to={isEditMode ? `/kalender/${slug}` : "/kalender"}
+        label={isEditMode ? "Tilbage til begivenhed" : "Tilbage til kalender"}
+      />
 
       <Title order={2} mb="lg">
         {isEditMode ? "Rediger begivenhed" : "Opret begivenhed"}

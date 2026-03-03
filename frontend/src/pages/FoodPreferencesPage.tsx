@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react"
-import { useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Title,
@@ -14,9 +13,9 @@ import {
 } from "@mantine/core"
 import { useDebouncedCallback } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
-import { IconArrowLeft } from "@tabler/icons-react"
 
 import { foodApi } from "../api/food"
+import { BackButton } from "../components/BackButton"
 import { MealFormFields } from "../components/MealFormFields"
 import type {
   MealPreference,
@@ -33,8 +32,6 @@ const DAYS = [
 ]
 
 export default function FoodPreferencesPage() {
-  const navigate = useNavigate()
-
   const { data: preferences, isLoading } = useQuery({
     queryKey: ["food", "preferences"],
     queryFn: foodApi.getPreferences,
@@ -56,14 +53,7 @@ export default function FoodPreferencesPage() {
 
   return (
     <>
-      <Button
-        variant="subtle"
-        leftSection={<IconArrowLeft size={16} />}
-        onClick={() => navigate("/mad")}
-        mb="md"
-      >
-        Tilbage til mad
-      </Button>
+      <BackButton to="/mad" label="Tilbage til mad" />
 
       <Title order={1} mb="xs">
         Standardindstillinger
