@@ -639,6 +639,7 @@ function EditRecurringBookingModal({
                 setEffectiveFrom(value ? new Date(value) : null)
               }
               clearable
+              inputMode="none"
             />
             <DateInput
               label="Gyldig til"
@@ -649,6 +650,7 @@ function EditRecurringBookingModal({
               }
               minDate={effectiveFrom || undefined}
               clearable
+              inputMode="none"
             />
           </Group>
           <Group justify="flex-end">
@@ -827,6 +829,7 @@ function CreateRecurringBookingModal({
                 setEffectiveFrom(value ? new Date(value) : null)
               }
               clearable
+              inputMode="none"
             />
             <DateInput
               label="Gyldig til"
@@ -837,6 +840,7 @@ function CreateRecurringBookingModal({
               }
               minDate={effectiveFrom || undefined}
               clearable
+              inputMode="none"
             />
           </Group>
           <Group justify="flex-end">

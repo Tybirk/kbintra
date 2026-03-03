@@ -712,6 +712,7 @@ export default function HouseEditPage() {
             }}
             maxDate={new Date()}
             clearable
+            inputMode="none"
           />
 
           <Group justify="flex-end" mt="md">

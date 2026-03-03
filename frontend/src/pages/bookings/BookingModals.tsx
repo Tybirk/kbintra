@@ -259,6 +259,7 @@ export function CreateBookingModal({
               onChange={(value) => setStartDate(value ? new Date(value) : null)}
               minDate={new Date()}
               required
+              inputMode="none"
             />
             <TimePicker
               label="Starttid"
@@ -277,6 +278,7 @@ export function CreateBookingModal({
               onChange={(value) => setEndDate(value ? new Date(value) : null)}
               minDate={startDate || new Date()}
               required
+              inputMode="none"
             />
             <TimePicker
               label="Sluttid"
@@ -432,6 +434,7 @@ export function EditBookingModal({
               placeholder="Vælg dato"
               value={startDate}
               onChange={(value) => setStartDate(value ? new Date(value) : null)}
+              inputMode="none"
             />
             <TimePicker
               label="Starttid"
@@ -449,6 +452,7 @@ export function EditBookingModal({
               value={endDate}
               onChange={(value) => setEndDate(value ? new Date(value) : null)}
               minDate={startDate || undefined}
+              inputMode="none"
             />
             <TimePicker
               label="Sluttid"

@@ -644,6 +644,7 @@ export default function EventFormPage() {
                 minDate={isEditMode ? undefined : new Date()}
                 error={errors.start_datetime}
                 required
+                inputMode="none"
               />
               <TimePicker
                 label="Starttid"
@@ -668,6 +669,7 @@ export default function EventFormPage() {
                 minDate={startDate || undefined}
                 error={errors.end_datetime}
                 required
+                inputMode="none"
               />
               <TimePicker
                 label="Sluttid"
@@ -792,6 +794,7 @@ export default function EventFormPage() {
                 error={errors.rsvp_deadline}
                 clearable
                 disabled={multiDate && extraDates.length > 0}
+                inputMode="none"
               />
             )}
 

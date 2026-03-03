@@ -8,7 +8,7 @@ import { writeFileSync } from 'fs';
 const appVersion = new Date().toISOString();
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
   },
@@ -32,6 +32,16 @@ export default defineConfig({
     },
   },
   plugins: [
+    ...(command === 'serve'
+      ? [
+          {
+            name: 'dev-title',
+            transformIndexHtml(html: string) {
+              return html.replace('<title>KB Intra</title>', '<title>DEV - KB Intra</title>');
+            },
+          },
+        ]
+      : []),
     react(),
     // Upload source maps to Sentry at build time (only when auth token is provided, e.g. in CI/CD)
     ...(process.env.SENTRY_AUTH_TOKEN
@@ -102,4 +112,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

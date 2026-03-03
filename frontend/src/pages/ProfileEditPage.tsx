@@ -338,6 +338,7 @@ export default function ProfileEditPage() {
               }}
               maxDate={new Date()}
               clearable
+              inputMode="none"
             />
 
             <Textarea
