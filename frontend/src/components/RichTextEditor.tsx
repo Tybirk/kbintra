@@ -47,6 +47,10 @@ export default function RichTextEditor({
       StarterKit,
       Link.configure({
         openOnClick: false,
+        HTMLAttributes: {
+          target: "_blank",
+          rel: "noopener noreferrer",
+        },
       }),
       Placeholder.configure({
         placeholder,
