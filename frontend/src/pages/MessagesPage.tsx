@@ -62,6 +62,8 @@ import ChatRichTextEditor from "../components/ChatRichTextEditor"
 import { clearDraft } from "../utils/draftStorage"
 import { getFileIcon, getFileTypeColor } from "../components/FilePreview"
 import { AttachmentCarousel } from "../components/AttachmentCarousel"
+import FileDropzone from "../components/FileDropzone"
+import { filterFilesBySize } from "../config"
 
 dayjs.extend(relativeTime)
 dayjs.locale("da")
@@ -735,8 +737,26 @@ function ChatArea({
     }
   }
 
+  const handleDrop = (files: File[]) => {
+    const { validFiles, errors } = filterFilesBySize(files)
+    for (const error of errors) {
+      notifications.show({ color: "red", message: error })
+    }
+    if (validFiles.length > 0) {
+      setAttachments((prev) => [...prev, ...validFiles])
+    }
+  }
+
   return (
-    <>
+    <FileDropzone
+      onDrop={handleDrop}
+      style={{
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}
+    >
       {/* Header */}
       <Box
         p="md"
@@ -925,7 +945,7 @@ function ChatArea({
           draftKey={"msg-" + conversation.id}
         />
       </Box>
-    </>
+    </FileDropzone>
   )
 }
 

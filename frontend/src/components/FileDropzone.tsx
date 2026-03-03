@@ -4,6 +4,7 @@ import {
   type ReactNode,
   type DragEvent,
   type ChangeEvent,
+  type CSSProperties,
 } from "react"
 import { Box, Group, Text } from "@mantine/core"
 import { IconUpload } from "@tabler/icons-react"
@@ -52,12 +53,14 @@ interface FileDropzoneProps {
   onDrop: (files: File[]) => void
   children: ReactNode
   label?: string
+  style?: CSSProperties
 }
 
 export default function FileDropzone({
   onDrop,
   children,
   label,
+  style,
 }: FileDropzoneProps) {
   const {
     isDragging,
@@ -74,6 +77,7 @@ export default function FileDropzone({
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
+      style={style}
     >
       {children}
       {isDragging && (

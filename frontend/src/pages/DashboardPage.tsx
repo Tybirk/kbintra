@@ -977,6 +977,7 @@ function FoodDayWidget({
   }, [isActive, diningOption, seatingTime])
 
   const isLocked = isDateLocked(date)
+  const isPast = dayjs(date).isBefore(dayjs(), "day")
 
   const handleOpenSellModal = () => {
     setSellMeat(availablePortions.adults_meat)
@@ -1079,7 +1080,7 @@ function FoodDayWidget({
                     />
                   )}
 
-                  {isLocked && hasSomethingToSell && (
+                  {isLocked && hasSomethingToSell && !isPast && (
                     <Button
                       variant="light"
                       color="orange"

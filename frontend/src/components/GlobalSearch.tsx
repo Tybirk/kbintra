@@ -2,7 +2,7 @@
  * Global search component using Mantine Spotlight.
  */
 
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Spotlight, spotlight } from "@mantine/spotlight"
 import { ActionIcon, Center, Loader, rem, Text } from "@mantine/core"
@@ -18,7 +18,7 @@ import {
   IconCar,
   IconX,
 } from "@tabler/icons-react"
-import { useDebouncedValue } from "@mantine/hooks"
+import { useDebouncedValue, useMediaQuery } from "@mantine/hooks"
 import { useQuery } from "@tanstack/react-query"
 
 import { searchApi } from "../api/search"
@@ -75,7 +75,24 @@ interface GlobalSearchProps {
 
 export function GlobalSearch({ onAction }: GlobalSearchProps) {
   const navigate = useNavigate()
+  const isMobile = useMediaQuery("(max-width: 48em)")
   const [query, setQuery] = useState("")
+  // Track whether we pushed a history entry so we can pop it on normal close
+  const historyPushedRef = useRef(false)
+  // Prevent the close handler from calling history.back() when back button triggered the close
+  const closingFromHistoryRef = useRef(false)
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (historyPushedRef.current) {
+        closingFromHistoryRef.current = true
+        historyPushedRef.current = false
+        spotlight.close()
+      }
+    }
+    window.addEventListener("popstate", handlePopState)
+    return () => window.removeEventListener("popstate", handlePopState)
+  }, [])
   const [debouncedQuery] = useDebouncedValue(query, 300)
   const [previewFile, setPreviewFile] = useState<ForumFile | null>(null)
 
@@ -95,7 +112,8 @@ export function GlobalSearch({ onAction }: GlobalSearchProps) {
   const handleAction = useCallback(
     (item: SearchItem) => {
       if (item.type === "file" && item.extra?.file_url) {
-        // For files, open the preview modal
+        // For files, open the preview modal. onSpotlightClose will call history.back()
+        // to pop the spotlight entry, which is correct here.
         setPreviewFile({
           id: item.id,
           name: item.title,
@@ -112,7 +130,10 @@ export function GlobalSearch({ onAction }: GlobalSearchProps) {
         })
         spotlight.close()
       } else {
-        navigate(item.url)
+        // Replace the spotlight history entry with the destination so the back-button
+        // goes to the originating page, not the ghost spotlight entry.
+        historyPushedRef.current = false
+        navigate(item.url, { replace: true })
         spotlight.close()
       }
       onAction?.()
@@ -184,6 +205,19 @@ export function GlobalSearch({ onAction }: GlobalSearchProps) {
         actions={actions}
         nothingFound={nothingFoundContent}
         highlightQuery
+        fullScreen={isMobile}
+        onSpotlightOpen={() => {
+          history.pushState({ spotlight: true }, "")
+          historyPushedRef.current = true
+        }}
+        onSpotlightClose={() => {
+          if (closingFromHistoryRef.current) {
+            closingFromHistoryRef.current = false
+          } else if (historyPushedRef.current) {
+            historyPushedRef.current = false
+            history.back()
+          }
+        }}
         searchProps={{
           leftSection: <IconSearch size={18} style={{ marginRight: rem(8) }} />,
           placeholder: "Søg i KB Intra...",
@@ -197,6 +231,7 @@ export function GlobalSearch({ onAction }: GlobalSearchProps) {
               <IconX size={16} />
             </ActionIcon>
           ),
+          rightSectionPointerEvents: "all",
           ref: (el) => {
             _searchInputEl = el
           },

@@ -148,6 +148,10 @@ export default function AppHeader({
     }
   }, [queryClient, navigate, location.pathname, user])
 
+  const closeNavbar = () => {
+    if (navbarOpened) toggleNavbar()
+  }
+
   const handleLogout = () => {
     chatWs.disconnect()
     logout()
@@ -173,6 +177,7 @@ export default function AppHeader({
       <Box style={{ flex: 1, maxWidth: rem(500) }} mx="auto">
         <UnstyledButton
           onClick={() => {
+            closeNavbar()
             // iOS/PWA: focus() is only allowed synchronously within a gesture handler.
             // We focus a temporary off-screen input immediately (opens keyboard), open
             // the spotlight, then transfer focus once its input is in the DOM.
@@ -229,7 +234,10 @@ export default function AppHeader({
           <ActionIcon
             variant="subtle"
             size="lg"
-            onClick={() => navigate("/beskeder")}
+            onClick={() => {
+              closeNavbar()
+              navigate("/beskeder")
+            }}
             aria-label="Beskeder"
           >
             <IconMail size={22} />
@@ -248,7 +256,10 @@ export default function AppHeader({
           <ActionIcon
             variant="subtle"
             size="lg"
-            onClick={() => navigate("/notifikationer")}
+            onClick={() => {
+              closeNavbar()
+              navigate("/notifikationer")
+            }}
             aria-label="Notifikationer"
           >
             <IconBell size={22} />
@@ -257,7 +268,7 @@ export default function AppHeader({
 
         <Menu shadow="md" width={200} position="bottom-end">
           <Menu.Target>
-            <UnstyledButton>
+            <UnstyledButton onClick={closeNavbar}>
               <Group gap="xs" wrap="nowrap">
                 <Avatar
                   src={user?.profile_picture}

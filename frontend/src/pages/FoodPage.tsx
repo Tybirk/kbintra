@@ -24,8 +24,8 @@ import {
   Avatar,
   Menu,
   Box,
+  ThemeIcon,
 } from "@mantine/core"
-import { DateInput } from "@mantine/dates"
 import {
   useDisclosure,
   useDebouncedCallback,
@@ -41,7 +41,6 @@ import {
   IconReceipt,
   IconLock,
   IconTrash,
-  IconPlus,
   IconDotsVertical,
   IconWallet,
   IconCopy,
@@ -204,11 +203,6 @@ export default function FoodPage() {
     return `${offset > 0 ? "+" : ""}${offset} uger`
   }
 
-  const [
-    createTicketModalOpened,
-    { open: openCreateTicketModal, close: closeCreateTicketModal },
-  ] = useDisclosure(false)
-
   return (
     <>
       <Group justify="space-between" mb="md">
@@ -335,14 +329,40 @@ export default function FoodPage() {
 
         <Tabs.Panel value="billetter">
           <Stack gap="md">
-            <Group justify="flex-end">
-              <Button
-                leftSection={<IconPlus size={16} />}
-                onClick={openCreateTicketModal}
-              >
-                Tilbyd billet
-              </Button>
-            </Group>
+            <Paper
+              withBorder
+              p="sm"
+              radius="md"
+              bg="var(--mantine-color-orange-light)"
+            >
+              <Group gap="sm">
+                <ThemeIcon color="orange" variant="light" size="md">
+                  <IconTicket size={16} />
+                </ThemeIcon>
+                <Text size="sm">
+                  For at udbyde en billet, gå til{" "}
+                  <Text
+                    span
+                    fw={600}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => setActiveTab("tilmelding")}
+                  >
+                    Menu og Tilmelding
+                  </Text>{" "}
+                  eller{" "}
+                  <Text
+                    span
+                    fw={600}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => navigate("/")}
+                  >
+                    Forsiden
+                  </Text>{" "}
+                  og klik på &quot;Sælg billet&quot; på den ønskede dag (vises
+                  når tilmeldingsfristen er passeret).
+                </Text>
+              </Group>
+            </Paper>
 
             <div>
               <Text fw={500} mb="xs">
@@ -386,15 +406,6 @@ export default function FoodPage() {
           </Tabs.Panel>
         )}
       </Tabs>
-
-      <CreateTicketModal
-        opened={createTicketModalOpened}
-        onClose={closeCreateTicketModal}
-        onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ["food", "tickets"] })
-          closeCreateTicketModal()
-        }}
-      />
     </>
   )
 }
@@ -833,7 +844,7 @@ function DayRegistrationCard({
               />
 
               {/* Sell ticket button */}
-              {hasSomethingToSell && (
+              {hasSomethingToSell && !isPast && (
                 <Button
                   variant="light"
                   color="orange"
@@ -1406,153 +1417,5 @@ function TicketCard({ ticket }: TicketCardProps) {
         </Stack>
       </Modal>
     </>
-  )
-}
-
-interface CreateTicketModalProps {
-  opened: boolean
-  onClose: () => void
-  onSuccess: () => void
-}
-
-function CreateTicketModal({
-  opened,
-  onClose,
-  onSuccess,
-}: CreateTicketModalProps) {
-  const [date, setDate] = useState<Date | null>(null)
-  const [adultsMeat, setAdultsMeat] = useState(0)
-  const [adultsVeg, setAdultsVeg] = useState(1)
-  const [children, setChildren] = useState(0)
-  const [description, setDescription] = useState("")
-
-  const isWednesday = date ? date.getDay() === 3 : false
-
-  const createMutation = useMutation({
-    mutationFn: (data: CreateFoodTicketData) => foodApi.createTicket(data),
-    onSuccess: () => {
-      notifications.show({
-        title: "Billet oprettet",
-        message: "Din billet er nu tilgængelig for andre.",
-        color: "green",
-      })
-      // Reset form
-      setDate(null)
-      setAdultsMeat(0)
-      setAdultsVeg(1)
-      setChildren(0)
-      setDescription("")
-      onSuccess()
-    },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke oprette billet.",
-        color: "red",
-      })
-    },
-  })
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!date) return
-
-    createMutation.mutate({
-      date: dayjs(date).format("YYYY-MM-DD"),
-      adults_meat: isWednesday ? adultsMeat : 0,
-      adults_veg: adultsVeg,
-      children_count: children,
-      description,
-    })
-  }
-
-  // Filter to only allow Mon-Thu
-  const excludeDate = (d: Date) => {
-    const day = d.getDay()
-    return day === 0 || day === 5 || day === 6 // Exclude Sun, Fri, Sat
-  }
-
-  const totalAdults = isWednesday ? adultsMeat + adultsVeg : adultsVeg
-
-  return (
-    <Modal
-      opened={opened}
-      onClose={onClose}
-      title="Tilbyd en madbillet"
-      size="md"
-    >
-      <form onSubmit={handleSubmit}>
-        <Stack gap="md">
-          <DateInput
-            label="Dato"
-            placeholder="Vælg dato"
-            value={date}
-            onChange={(value) => {
-              const dateValue = value ? new Date(value) : null
-              setDate(dateValue)
-            }}
-            excludeDate={(dateStr) => excludeDate(new Date(dateStr))}
-            minDate={new Date()}
-            required
-          />
-
-          <Group grow>
-            {isWednesday ? (
-              <>
-                <NumberInput
-                  label="Voksne (kød)"
-                  value={adultsMeat}
-                  onChange={(val) => setAdultsMeat(Number(val) || 0)}
-                  min={0}
-                  max={10}
-                />
-                <NumberInput
-                  label="Voksne (vegetar)"
-                  value={adultsVeg}
-                  onChange={(val) => setAdultsVeg(Number(val) || 0)}
-                  min={0}
-                  max={10}
-                />
-              </>
-            ) : (
-              <NumberInput
-                label="Voksne"
-                value={adultsVeg}
-                onChange={(val) => setAdultsVeg(Number(val) || 0)}
-                min={0}
-                max={10}
-              />
-            )}
-            <NumberInput
-              label="Børn"
-              value={children}
-              onChange={(val) => setChildren(Number(val) || 0)}
-              min={0}
-              max={10}
-            />
-          </Group>
-
-          <Textarea
-            label="Note (valgfrit)"
-            placeholder="Yderligere information..."
-            value={description}
-            onChange={(e) => setDescription(e.currentTarget.value)}
-          />
-
-          <Group justify="flex-end">
-            <Button variant="light" onClick={onClose}>
-              Annuller
-            </Button>
-            <Button
-              type="submit"
-              loading={createMutation.isPending}
-              disabled={!date || (totalAdults === 0 && children === 0)}
-            >
-              Opret billet
-            </Button>
-          </Group>
-        </Stack>
-      </form>
-    </Modal>
   )
 }
