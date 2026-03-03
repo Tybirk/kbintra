@@ -200,6 +200,8 @@ credentials.json
 
 # Claude Code
 .claude/
+CLAUDE.html
+CLAUDE_files/
 
 # Documentation build
 docs/_build/
