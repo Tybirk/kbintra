@@ -22,6 +22,7 @@ import {
   Tooltip,
   Box,
   TextInput,
+  Select,
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -38,6 +39,7 @@ import {
   IconDeviceMobileMessage,
   IconBell,
   IconBellOff,
+  IconArrowsMove,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -115,6 +117,11 @@ export default function ThreadPage() {
     { open: openDeleteModal, close: closeDeleteModal },
   ] = useDisclosure(false)
   const [postToDelete, setPostToDelete] = useState<number | null>(null)
+  const [moveModalOpened, { open: openMoveModal, close: closeMoveModal }] =
+    useDisclosure(false)
+  const [targetSubgroupSlug, setTargetSubgroupSlug] = useState<string | null>(
+    null,
+  )
   const highlightedHashRef = useRef("")
 
   const {
@@ -130,6 +137,11 @@ export default function ThreadPage() {
         ? forumApi.getThreadBySlug(subgroupSlug!, threadSlug!)
         : forumApi.getThread(numericId),
     enabled: isSlugRoute || !isNaN(numericId),
+  })
+
+  const { data: subgroups } = useQuery({
+    queryKey: ["subgroups"],
+    queryFn: forumApi.getSubgroups,
   })
 
   // Redirect to event page if this thread is an event discussion thread
@@ -340,6 +352,31 @@ export default function ThreadPage() {
     },
   })
 
+  const moveThreadMutation = useMutation({
+    mutationFn: (subgroupSlug: string) =>
+      forumApi.moveThread(thread!.id, subgroupSlug),
+    onSuccess: (data) => {
+      closeMoveModal()
+      setTargetSubgroupSlug(null)
+      notifications.show({
+        title: "Tråd flyttet",
+        message: "Tråden er blevet flyttet til den valgte gruppe.",
+        color: "green",
+      })
+      navigate(`/forum/${data.subgroup_slug}/traad/${data.thread_slug}`)
+    },
+    onError: (err: unknown) => {
+      const detail =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail ?? "Kunne ikke flytte tråden. Prøv igen."
+      notifications.show({
+        title: "Fejl",
+        message: detail,
+        color: "red",
+      })
+    },
+  })
+
   const isPostEmpty =
     (!newPostContent.trim() || newPostContent === "<p></p>") &&
     attachments.length === 0 &&
@@ -512,6 +549,14 @@ export default function ThreadPage() {
                           }
                         >
                           {thread.is_closed ? "Genåbn tråd" : "Luk tråd"}
+                        </Menu.Item>
+                      )}
+                      {thread.can_edit && (
+                        <Menu.Item
+                          leftSection={<IconArrowsMove size={14} />}
+                          onClick={openMoveModal}
+                        >
+                          Flyt tråd
                         </Menu.Item>
                       )}
                       {thread.can_edit && (
@@ -692,6 +737,44 @@ export default function ThreadPage() {
             loading={deletePostMutation.isPending}
           >
             Slet
+          </Button>
+        </Group>
+      </Modal>
+
+      <Modal
+        opened={moveModalOpened}
+        onClose={closeMoveModal}
+        title="Flyt tråd"
+        centered
+      >
+        <Text mb="md">Vælg den gruppe du vil flytte tråden til.</Text>
+        <Select
+          label="Gruppe"
+          placeholder="Vælg gruppe"
+          data={
+            subgroups
+              ?.filter((sg) => sg.slug !== thread.subgroup_slug)
+              .map((sg) => ({ value: sg.slug, label: sg.name })) ?? []
+          }
+          value={targetSubgroupSlug}
+          onChange={setTargetSubgroupSlug}
+          mb="lg"
+          searchable
+        />
+        <Group justify="flex-end">
+          <Button variant="light" onClick={closeMoveModal}>
+            Annuller
+          </Button>
+          <Button
+            onClick={() => {
+              if (targetSubgroupSlug) {
+                moveThreadMutation.mutate(targetSubgroupSlug)
+              }
+            }}
+            loading={moveThreadMutation.isPending}
+            disabled={!targetSubgroupSlug}
+          >
+            Flyt
           </Button>
         </Group>
       </Modal>

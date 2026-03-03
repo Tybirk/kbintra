@@ -117,11 +117,13 @@ def index_thread(sender, instance, **kwargs):
             subtitle=instance.subgroup.name,
             created_at=_isoformat(instance.created_at),
         )
-        # Cascade: re-index all posts so they pick up the (possibly changed) thread title.
-        # Skip on create (no posts yet) and when update_fields is set without "title".
+        # Cascade: re-index all posts so they pick up a changed title or subgroup URL.
+        # Skip on create (no posts yet) and when update_fields excludes both "title" and "subgroup".
         created = kwargs.get("created", False)
         update_fields = kwargs.get("update_fields")
-        if not created and (update_fields is None or "title" in update_fields):
+        if not created and (
+            update_fields is None or "title" in update_fields or "subgroup" in update_fields
+        ):
             for post in instance.posts.select_related("thread__subgroup").all():
                 index_object(
                     obj_type="post",

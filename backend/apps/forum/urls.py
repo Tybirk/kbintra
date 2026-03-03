@@ -32,6 +32,7 @@ from .views import (
     ThreadDetailBySlugView,
     ThreadDetailView,
     ThreadListCreateView,
+    ThreadMoveView,
     ThreadMuteToggleView,
     ThreadUpdateView,
     UnsubscribeView,
@@ -64,6 +65,7 @@ urlpatterns = [
     path("threads/<int:pk>/", ThreadDetailView.as_view(), name="thread-detail"),
     path("threads/<int:pk>/close/", ThreadCloseView.as_view(), name="thread-close"),
     path("threads/<int:pk>/delete/", ThreadDeleteView.as_view(), name="thread-delete"),
+    path("threads/<int:pk>/move/", ThreadMoveView.as_view(), name="thread-move"),
     path("threads/<int:pk>/update/", ThreadUpdateView.as_view(), name="thread-update"),
     path("threads/<int:pk>/mute/", ThreadMuteToggleView.as_view(), name="thread-mute"),
     # Posts

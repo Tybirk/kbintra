@@ -131,6 +131,17 @@ export const forumApi = {
     return response.data
   },
 
+  moveThread: async (threadId: number, subgroupSlug: string): Promise<{
+    detail: string
+    subgroup_slug: string
+    thread_slug: string
+  }> => {
+    const response = await apiClient.post(`/forum/threads/${threadId}/move/`, {
+      subgroup_slug: subgroupSlug,
+    })
+    return response.data
+  },
+
   muteThread: async (threadId: number): Promise<{ is_muted: boolean }> => {
     const response = await apiClient.post(`/forum/threads/${threadId}/mute/`)
     return response.data

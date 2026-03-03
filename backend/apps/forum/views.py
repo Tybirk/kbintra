@@ -262,6 +262,47 @@ class ThreadDeleteView(generics.DestroyAPIView):
     queryset = Thread.objects.all()
 
 
+class ThreadMoveView(APIView):
+    """Move a thread to a different subgroup (owner or admin only)."""
+
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrAdmin]
+
+    def get_object(self, pk: int) -> Thread:
+        obj = get_object_or_404(Thread, pk=pk)
+        self.check_object_permissions(self.request, obj)
+        return obj
+
+    def post(self, request: Request, pk: int) -> Response:
+        thread = self.get_object(pk)
+        subgroup_slug = request.data.get("subgroup_slug")
+        if not subgroup_slug:
+            return Response(
+                {"detail": "subgroup_slug is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        new_subgroup = get_object_or_404(Subgroup, slug=subgroup_slug)
+        if new_subgroup.id == thread.subgroup_id:
+            return Response(
+                {"detail": "Tråden er allerede i denne gruppe."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if Thread.objects.filter(subgroup=new_subgroup, slug=thread.slug).exists():
+            return Response(
+                {"detail": "Der findes allerede en tråd med samme URL-navn i den valgte gruppe."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        thread.subgroup = new_subgroup
+        thread.save(update_fields=["subgroup"])
+        return Response(
+            {
+                "detail": "Tråden blev flyttet.",
+                "subgroup_slug": new_subgroup.slug,
+                "thread_slug": thread.slug,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class ThreadCloseView(APIView):
     """Close or reopen a thread (owner or admin only)."""
 

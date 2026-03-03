@@ -87,13 +87,11 @@ function CheckboxIndicator({ checked }: { checked: boolean }) {
 function OptionBar({
   option,
   poll,
-  hasVoted,
   onVote,
   onShowVoters,
 }: {
   option: PollOption
   poll: Poll
-  hasVoted: boolean
   onVote: () => void
   onShowVoters: () => void
 }) {
@@ -106,7 +104,7 @@ function OptionBar({
     ? CheckboxIndicator
     : RadioIndicator
 
-  const showVoters = hasVoted && !poll.is_anonymous && option.voters.length > 0
+  const showVoters = !poll.is_anonymous && option.voters.length > 0
 
   return (
     <Box
@@ -123,22 +121,20 @@ function OptionBar({
       }}
     >
       {/* Progress bar background */}
-      {hasVoted && (
-        <Box
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            height: "100%",
-            width: `${percentage}%`,
-            backgroundColor: option.has_voted
-              ? "var(--mantine-color-blue-light)"
-              : "var(--mantine-color-default-hover)",
-            transition: "width 400ms ease",
-            zIndex: 0,
-          }}
-        />
-      )}
+      <Box
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          height: "100%",
+          width: `${percentage}%`,
+          backgroundColor: option.has_voted
+            ? "var(--mantine-color-blue-light)"
+            : "var(--mantine-color-default-hover)",
+          transition: "width 400ms ease",
+          zIndex: 0,
+        }}
+      />
 
       {/* Row 1: vote trigger (left) + percentage (right) */}
       <Box
@@ -162,23 +158,22 @@ function OptionBar({
           </Group>
         </UnstyledButton>
 
-        {hasVoted &&
-          (showVoters ? (
-            <UnstyledButton
-              onClick={onShowVoters}
-              style={{ display: "flex", alignItems: "center" }}
-            >
-              <Text size="sm" fw={500} c="dimmed" px="sm">
-                {percentage}%
-              </Text>
-            </UnstyledButton>
-          ) : (
-            <Box style={{ display: "flex", alignItems: "center" }}>
-              <Text size="sm" fw={500} c="dimmed" px="sm">
-                {percentage}%
-              </Text>
-            </Box>
-          ))}
+        {showVoters ? (
+          <UnstyledButton
+            onClick={onShowVoters}
+            style={{ display: "flex", alignItems: "center" }}
+          >
+            <Text size="sm" fw={500} c="dimmed" px="sm">
+              {percentage}%
+            </Text>
+          </UnstyledButton>
+        ) : (
+          <Box style={{ display: "flex", alignItems: "center" }}>
+            <Text size="sm" fw={500} c="dimmed" px="sm">
+              {percentage}%
+            </Text>
+          </Box>
+        )}
       </Box>
 
       {/* Row 2: Voters — separate button, no nesting */}
@@ -277,8 +272,6 @@ export default function PollDisplay({
     }
   }
 
-  const hasVoted = poll.options.some((o) => o.has_voted)
-
   return (
     <Paper
       withBorder
@@ -323,7 +316,6 @@ export default function PollDisplay({
             key={option.id}
             option={option}
             poll={poll}
-            hasVoted={hasVoted}
             onVote={() => handleVote(option.id)}
             onShowVoters={() => setVotersOption(option)}
           />
