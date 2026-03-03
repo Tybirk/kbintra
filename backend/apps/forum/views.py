@@ -227,17 +227,21 @@ class ThreadDetailBySlugView(generics.RetrieveAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self) -> Thread:
-        subgroup = get_object_or_404(Subgroup, slug=self.kwargs["subgroup_slug"])
-        thread = get_object_or_404(
-            Thread.objects.prefetch_related(
-                "posts__author",
-                "posts__attachments__uploaded_by",
-                "posts__reactions__user",
-                "posts__poll__options__votes__user",
-            ).select_related("author", "subgroup"),
-            subgroup=subgroup,
-            slug=self.kwargs["thread_slug"],
-        )
+        qs = Thread.objects.prefetch_related(
+            "posts__author",
+            "posts__attachments__uploaded_by",
+            "posts__reactions__user",
+            "posts__poll__options__votes__user",
+        ).select_related("author", "subgroup")
+
+        thread_slug = self.kwargs["thread_slug"]
+        subgroup_slug = self.kwargs["subgroup_slug"]
+
+        # Try exact match first; fall back to global slug lookup (handles moved threads)
+        thread = qs.filter(subgroup__slug=subgroup_slug, slug=thread_slug).first()
+        if thread is None:
+            thread = get_object_or_404(qs, slug=thread_slug)
+
         ThreadReadStatus.objects.update_or_create(
             user=self.request.user,
             thread=thread,

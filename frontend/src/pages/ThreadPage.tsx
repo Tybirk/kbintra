@@ -153,6 +153,18 @@ export default function ThreadPage() {
     }
   }, [thread?.event_slug]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // If thread was moved to a different subgroup, update the URL to reflect the new location
+  useEffect(() => {
+    if (isSlugRoute && thread && thread.subgroup_slug !== subgroupSlug) {
+      navigate(
+        `/forum/${thread.subgroup_slug}/traad/${thread.slug}${location.hash}`,
+        {
+          replace: true,
+        },
+      )
+    }
+  }, [thread?.subgroup_slug]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // After thread loads (backend marks it as read), invalidate unread counts
   // and auto-mark any notification pointing to this thread as read
   useEffect(() => {
@@ -745,7 +757,6 @@ export default function ThreadPage() {
         opened={moveModalOpened}
         onClose={closeMoveModal}
         title="Flyt tråd"
-        centered
       >
         <Text mb="md">Vælg den gruppe du vil flytte tråden til.</Text>
         <Select

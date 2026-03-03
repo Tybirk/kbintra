@@ -351,7 +351,7 @@ export default function MessagesPage() {
             }}
           >
             <TextInput
-              placeholder="Søg i samtaler..."
+              placeholder="Find samtale..."
               leftSection={<IconSearch size={16} />}
               size="sm"
               value={conversationSearch}
