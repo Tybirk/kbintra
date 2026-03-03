@@ -63,10 +63,12 @@ Then open http://localhost:5173.
 
 ### Optional extras
 
+Admin access at :/admin/, and seeding of forum data
+
 ```bash
 cd backend
-uv run python manage.py createsuperuser        # Admin access at /admin/
-uv run python manage.py seed_forum_subgroups   # Seed forum data
+uv run python manage.py createsuperuser
+uv run python manage.py seed_forum_subgroups
 ```
 
 ### Manual Setup (alternative)
