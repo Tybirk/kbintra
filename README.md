@@ -63,7 +63,7 @@ Then open http://localhost:5173.
 
 ### Optional extras
 
-Admin access at :/admin/, and seeding of forum data
+Admin access to the backend admin panel, and seeding of forum data.
 
 ```bash
 cd backend
