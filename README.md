@@ -48,52 +48,60 @@ kbintra/
 
 ## Quick Start
 
+For a streamlined one-command setup, see [INSTALL.md](INSTALL.md).
+
 ### Prerequisites
-- [uv](https://docs.astral.sh/uv/#installation) (Python and package manager — automatically installs the right Python version)
-- [Node.js](https://nodejs.org/en/download) 18+ (20+ recommended)
+- Python 3.11+
+- Node.js 18+ (20+ recommended)
+- uv (Python package manager)
+- prek (pre-commit hook manager): `uv tool install prek`
 
-### One-command setup
+### Pre-commit Hooks
+
+Install pre-commit hooks to run linting automatically before each commit:
 
 ```bash
-uv run setup.py    # Install deps, run migrations, build search index, set up pre-commit hooks
-uv run dev.py      # Start backend + frontend dev servers
+prek install -f .
 ```
 
-Then open http://localhost:5173.
-
-### Optional extras
-
-Admin access to the backend admin panel, and seeding of forum data.
+### Backend Setup
 
 ```bash
 cd backend
-uv run python manage.py createsuperuser
-uv run python manage.py seed_forum_subgroups
-```
 
-### Manual Setup (alternative)
-
-<details>
-<summary>Click to expand</summary>
-
-**Backend:**
-
-```bash
-cd backend
+# Install dependencies
 uv sync
+
+# Run migrations
 uv run python manage.py migrate
+
+# Create superuser (for admin access)
+uv run python manage.py createsuperuser
+
+# Optionally seed some data (currently seed users requires a CSV I did not commit)
+uv run python manage.py seed_forum_subgroups
+
+# Run development server
 uv run python manage.py runserver 7000
+
+
+uv run ruff check --fix .   # Linting
+uv run ruff format .  # Formatting
+uvx ty check         # Type checking - note this is not completely implemented, so can be disregarded for now
+uv run pytest         # Tests
 ```
 
-**Frontend:**
+### Frontend Setup
 
 ```bash
 cd frontend
+
+# Install dependencies
 npm install
+
+# Run development server
 npm run dev
 ```
-
-</details>
 
 ### Access the Application
 - Frontend: http://localhost:5173
