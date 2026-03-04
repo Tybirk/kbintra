@@ -877,7 +877,7 @@ function DiscussionSection({
             </Text>
           )}
         </Group>
-        {subgroupSlug && threadSlug && (
+        {subgroupSlug !== null && threadSlug !== null ? (
           <Anchor
             href={`/forum/${subgroupSlug}/traad/${threadSlug}`}
             target="_blank"
@@ -888,7 +888,7 @@ function DiscussionSection({
               <IconExternalLink size={12} />
             </Group>
           </Anchor>
-        )}
+        ) : null}
       </Group>
 
       {isLoading ? (
