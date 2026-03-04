@@ -10,7 +10,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Conversation, Message, MessageAttachment, MessageReadStatus
+from .models import Conversation, Message, MessageAttachment, MessageReaction, MessageReadStatus
 from .serializers import (
     AddParticipantsSerializer,
     ConversationDetailSerializer,
@@ -171,7 +171,7 @@ class ConversationDetailView(generics.RetrieveAPIView):
 
     def get_queryset(self) -> QuerySet[Conversation]:
         return Conversation.objects.filter(participants=self.request.user).prefetch_related(
-            "participants", "messages", "messages__sender"
+            "participants", "messages", "messages__sender", "messages__reactions__user"
         )
 
     def retrieve(self, request: Request, *args, **kwargs) -> Response:
@@ -206,7 +206,11 @@ class MessageListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self) -> QuerySet[Message]:
         conversation = self.get_conversation()
-        return conversation.messages.select_related("sender").order_by("created_at")
+        return (
+            conversation.messages.select_related("sender")
+            .prefetch_related("reactions__user")
+            .order_by("created_at")
+        )
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -446,6 +450,83 @@ class MessageUnsendView(APIView):
         )
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class MessageReactionToggleView(APIView):
+    """Toggle a reaction on a message. Only conversation participants can react."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request, message_id: int) -> Response:
+        message = get_object_or_404(Message, pk=message_id)
+
+        # Verify user is a participant in the conversation
+        if not message.conversation.participants.filter(id=request.user.id).exists():
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        if message.is_deleted or message.is_system_message:
+            return Response(
+                {"detail": "Kan ikke reagere på denne besked"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        reaction_type = request.data.get("reaction_type")
+        valid_types = [choice[0] for choice in MessageReaction.REACTION_CHOICES]
+        if reaction_type not in valid_types:
+            return Response(
+                {"detail": f"Ugyldig reaktionstype. Skal være en af: {valid_types}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        existing = MessageReaction.objects.filter(
+            message=message, user=request.user, reaction_type=reaction_type
+        ).first()
+        if existing:
+            existing.delete()
+            action = "removed"
+        else:
+            MessageReaction.objects.create(
+                message=message, user=request.user, reaction_type=reaction_type
+            )
+            action = "added"
+
+        # Build updated reactions payload for WS broadcast
+        emoji_map = dict(MessageReaction.REACTION_CHOICES)
+        reaction_map: dict[str, dict] = {}
+        for r in MessageReaction.objects.filter(message=message).select_related("user"):
+            if r.reaction_type not in reaction_map:
+                reaction_map[r.reaction_type] = {
+                    "reaction_type": r.reaction_type,
+                    "emoji": emoji_map.get(r.reaction_type, ""),
+                    "count": 0,
+                    "user_ids": [],
+                    "users": [],
+                }
+            reaction_map[r.reaction_type]["count"] += 1
+            reaction_map[r.reaction_type]["user_ids"].append(r.user.id)
+            reaction_map[r.reaction_type]["users"].append(
+                {
+                    "id": r.user.id,
+                    "first_name": r.user.first_name,
+                    "last_name": r.user.last_name,
+                }
+            )
+
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f"conversation_{message.conversation_id}",
+            {
+                "type": "message_reacted",
+                "message_id": message.id,
+                "conversation_id": message.conversation_id,
+                "reactions": list(reaction_map.values()),
+            },
+        )
+
+        return Response({"action": action}, status=status.HTTP_200_OK)
 
 
 class LeaveConversationView(APIView):

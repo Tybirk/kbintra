@@ -578,6 +578,28 @@ export interface MessageAttachment {
   uploaded_at: string
 }
 
+export interface MessageReactionUser {
+  id: number
+  first_name: string
+  last_name: string
+}
+
+export interface MessageReactionSummary {
+  reaction_type: ReactionType
+  emoji: string
+  count: number
+  has_reacted: boolean
+  users: MessageReactionUser[]
+}
+
+export interface WsMessageReactionEntry {
+  reaction_type: string
+  emoji: string
+  count: number
+  user_ids: number[]
+  users: MessageReactionUser[]
+}
+
 export interface Message {
   id: number
   conversation: number
@@ -590,6 +612,7 @@ export interface Message {
   edited_at: string | null
   created_at: string
   attachments: MessageAttachment[]
+  reactions?: MessageReactionSummary[]
 }
 
 export interface LastMessage {
@@ -662,7 +685,14 @@ export interface WsMessageDeleted {
   conversation_id: number
 }
 
-export type WsMessage = WsNewMessage | WsMessagesRead | WsTyping | WsNewConversation | WsNewNotification | WsMessageEdited | WsMessageDeleted
+export interface WsMessageReacted {
+  type: "message_reacted"
+  message_id: number
+  conversation_id: number
+  reactions: WsMessageReactionEntry[]
+}
+
+export type WsMessage = WsNewMessage | WsMessagesRead | WsTyping | WsNewConversation | WsNewNotification | WsMessageEdited | WsMessageDeleted | WsMessageReacted
 
 // Notification Types
 export type NotificationType = "new_message" | "new_announcement" | "new_thread" | "thread_reply" | "post_reply" | "post_reaction" | "event_created" | "event_updated" | "event_cancelled" | "event_reminder" | "food_ticket" | "mention"

@@ -6,7 +6,7 @@ from rest_framework import serializers
 
 from apps.users.models import User
 
-from .models import Conversation, Message, MessageAttachment
+from .models import Conversation, Message, MessageAttachment, MessageReaction
 
 
 class ParticipantSerializer(serializers.ModelSerializer):
@@ -38,6 +38,7 @@ class MessageSerializer(serializers.ModelSerializer):
     is_own = serializers.SerializerMethodField()
     is_read = serializers.SerializerMethodField()
     attachments = MessageAttachmentSerializer(many=True, read_only=True)
+    reactions = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
@@ -53,6 +54,7 @@ class MessageSerializer(serializers.ModelSerializer):
             "edited_at",
             "created_at",
             "attachments",
+            "reactions",
         ]
         read_only_fields = [
             "id",
@@ -68,6 +70,32 @@ class MessageSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             return obj.sender_id == request.user.id
         return False
+
+    def get_reactions(self, obj: Message) -> list:
+        request = self.context.get("request")
+        current_user_id = request.user.id if request and request.user.is_authenticated else None
+        emoji_map = dict(MessageReaction.REACTION_CHOICES)
+        reaction_map: dict[str, dict] = {}
+        for r in obj.reactions.all():
+            if r.reaction_type not in reaction_map:
+                reaction_map[r.reaction_type] = {
+                    "reaction_type": r.reaction_type,
+                    "emoji": emoji_map.get(r.reaction_type, ""),
+                    "count": 0,
+                    "has_reacted": False,
+                    "users": [],
+                }
+            reaction_map[r.reaction_type]["count"] += 1
+            reaction_map[r.reaction_type]["users"].append(
+                {
+                    "id": r.user.id,
+                    "first_name": r.user.first_name,
+                    "last_name": r.user.last_name,
+                }
+            )
+            if current_user_id and r.user_id == current_user_id:
+                reaction_map[r.reaction_type]["has_reacted"] = True
+        return list(reaction_map.values())
 
     def get_is_read(self, obj: Message) -> bool:
         """Check if message has been read by all other participants."""
@@ -144,7 +172,11 @@ class ConversationDetailSerializer(ConversationSerializer):
 
     def get_messages(self, obj: Conversation) -> list:
         # Get last 50 messages
-        messages = obj.messages.select_related("sender").order_by("-created_at")[:50]
+        messages = (
+            obj.messages.select_related("sender")
+            .prefetch_related("reactions__user")
+            .order_by("-created_at")[:50]
+        )
         # Reverse to show oldest first
         messages = list(reversed(messages))
         return MessageSerializer(messages, many=True, context=self.context).data

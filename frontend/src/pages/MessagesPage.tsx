@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, memo, type RefObject } from "react"
 import { useParams, useNavigate, useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
@@ -24,6 +24,10 @@ import {
   Menu,
   Anchor,
   Divider,
+  Popover,
+  SimpleGrid,
+  Tooltip,
+  UnstyledButton,
 } from "@mantine/core"
 import { useDisclosure, useMediaQuery } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -40,6 +44,7 @@ import {
   IconEdit,
   IconTrash,
   IconCopy,
+  IconMoodSmile,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -55,6 +60,10 @@ import type {
   WsMessage,
   WsMessageEdited,
   WsMessageDeleted,
+  WsMessageReacted,
+  WsMessageReactionEntry,
+  MessageReactionSummary,
+  ReactionType,
   User,
   MessageAttachment,
 } from "../types"
@@ -67,6 +76,24 @@ import { filterFilesBySize } from "../config"
 
 dayjs.extend(relativeTime)
 dayjs.locale("da")
+
+const REACTION_EMOJIS: Record<ReactionType, string> = {
+  like: "👍",
+  heart: "❤️",
+  laugh: "😂",
+  surprised: "😮",
+  sad: "😢",
+  celebrate: "🎉",
+}
+
+const ALL_REACTION_TYPES: ReactionType[] = [
+  "like",
+  "heart",
+  "laugh",
+  "surprised",
+  "sad",
+  "celebrate",
+]
 
 export default function MessagesPage() {
   const { user } = useAuthStore()
@@ -209,6 +236,36 @@ export default function MessagesPage() {
             }
           },
         )
+      } else if (wsData.type === "message_reacted") {
+        const reactedData = wsData as WsMessageReacted
+        const currentUserId = user?.id ?? -1
+        queryClient.setQueryData<ConversationDetail>(
+          ["conversation", reactedData.conversation_id],
+          (old) => {
+            if (!old) return old
+            return {
+              ...old,
+              messages: old.messages.map((m) =>
+                m.id === reactedData.message_id
+                  ? {
+                      ...m,
+                      reactions: reactedData.reactions.map(
+                        (
+                          r: WsMessageReactionEntry,
+                        ): MessageReactionSummary => ({
+                          reaction_type: r.reaction_type as ReactionType,
+                          emoji: r.emoji,
+                          count: r.count,
+                          has_reacted: r.user_ids.includes(currentUserId),
+                          users: r.users,
+                        }),
+                      ),
+                    }
+                  : m,
+              ),
+            }
+          },
+        )
       }
     })
 
@@ -299,7 +356,7 @@ export default function MessagesPage() {
   }
 
   return (
-    <>
+    <Box style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <Group justify="space-between" mb="md">
         <div>
           <Title order={1}>Beskeder</Title>
@@ -324,10 +381,10 @@ export default function MessagesPage() {
         withBorder
         radius="md"
         style={{
-          // Use dvh (dynamic viewport height) for mobile keyboard support, with vh fallback
-          height: "calc(100dvh - 200px)",
+          flex: 1,
           minHeight: "400px",
           display: "flex",
+          overflow: "hidden",
         }}
       >
         {/* Conversation List - hide on mobile when conversation is selected */}
@@ -506,7 +563,7 @@ export default function MessagesPage() {
           )}
         </Box>
       </Paper>
-    </>
+    </Box>
   )
 }
 
@@ -643,6 +700,89 @@ function getDateLabel(date: dayjs.Dayjs): string {
 }
 
 const TIME_GAP_MINUTES = 20
+
+interface MessageListProps {
+  messages: Message[]
+  isMobile: boolean | undefined
+  onEdit?: (messageId: number, content: string, editedAt: string) => void
+  onUnsend?: (messageId: number) => void
+  scrollViewportRef: RefObject<HTMLDivElement | null>
+}
+
+const MessageList = memo(function MessageList({
+  messages,
+  isMobile,
+  onEdit,
+  onUnsend,
+  scrollViewportRef,
+}: MessageListProps) {
+  return (
+    <ScrollArea
+      style={{ flex: 1 }}
+      p="md"
+      viewportRef={scrollViewportRef}
+      scrollbars="y"
+    >
+      <Stack gap="sm" style={{ width: "100%" }}>
+        {messages.map((msg, idx) => {
+          const prevMsg = idx > 0 ? messages[idx - 1] : null
+          const nextMsg = idx < messages.length - 1 ? messages[idx + 1] : null
+          const sameSenderAsPrev =
+            prevMsg != null && prevMsg.sender.id === msg.sender.id
+          const sameSenderAsNext =
+            nextMsg != null && nextMsg.sender.id === msg.sender.id
+          const timeSincePrev = prevMsg
+            ? dayjs(msg.created_at).diff(dayjs(prevMsg.created_at), "minute")
+            : Infinity
+          const timeToNext = nextMsg
+            ? dayjs(nextMsg.created_at).diff(dayjs(msg.created_at), "minute")
+            : Infinity
+          const showDateSeparator =
+            !prevMsg ||
+            !dayjs(msg.created_at).isSame(dayjs(prevMsg.created_at), "day")
+          const showAvatar =
+            !sameSenderAsPrev ||
+            timeSincePrev >= TIME_GAP_MINUTES ||
+            showDateSeparator
+          const showTime =
+            !sameSenderAsNext ||
+            timeToNext >= TIME_GAP_MINUTES ||
+            (nextMsg != null &&
+              !dayjs(msg.created_at).isSame(dayjs(nextMsg.created_at), "day"))
+          const dateLabel = showDateSeparator
+            ? getDateLabel(dayjs(msg.created_at))
+            : null
+          return (
+            <Box key={msg.id}>
+              {dateLabel && (
+                <Divider
+                  label={
+                    <Text size="xs" c="dimmed" fw={500}>
+                      {dateLabel}
+                    </Text>
+                  }
+                  labelPosition="center"
+                  my="sm"
+                />
+              )}
+              {showAvatar &&
+                !showDateSeparator &&
+                timeSincePrev >= TIME_GAP_MINUTES && <Box mt="xs" />}
+              <MessageBubble
+                message={msg}
+                showAvatar={showAvatar}
+                showTime={showTime}
+                showInlineTime={!isMobile}
+                onEdit={onEdit}
+                onUnsend={onUnsend}
+              />
+            </Box>
+          )
+        })}
+      </Stack>
+    </ScrollArea>
+  )
+})
 
 function ChatArea({
   conversation,
@@ -856,78 +996,13 @@ function ChatArea({
       </Modal>
 
       {/* Messages */}
-      <ScrollArea
-        style={{ flex: 1 }}
-        p="md"
-        viewportRef={scrollRef}
-        scrollbars="y"
-      >
-        <Stack gap="sm" style={{ width: "100%" }}>
-          {conversation.messages.map((msg, idx) => {
-            const prevMsg = idx > 0 ? conversation.messages[idx - 1] : null
-            const nextMsg =
-              idx < conversation.messages.length - 1
-                ? conversation.messages[idx + 1]
-                : null
-
-            const sameSenderAsPrev =
-              prevMsg != null && prevMsg.sender.id === msg.sender.id
-            const sameSenderAsNext =
-              nextMsg != null && nextMsg.sender.id === msg.sender.id
-
-            const timeSincePrev = prevMsg
-              ? dayjs(msg.created_at).diff(dayjs(prevMsg.created_at), "minute")
-              : Infinity
-            const timeToNext = nextMsg
-              ? dayjs(nextMsg.created_at).diff(dayjs(msg.created_at), "minute")
-              : Infinity
-
-            const showDateSeparator =
-              !prevMsg ||
-              !dayjs(msg.created_at).isSame(dayjs(prevMsg.created_at), "day")
-            const showAvatar =
-              !sameSenderAsPrev ||
-              timeSincePrev >= TIME_GAP_MINUTES ||
-              showDateSeparator
-            const showTime =
-              !sameSenderAsNext ||
-              timeToNext >= TIME_GAP_MINUTES ||
-              (nextMsg != null &&
-                !dayjs(msg.created_at).isSame(dayjs(nextMsg.created_at), "day"))
-
-            const dateLabel = showDateSeparator
-              ? getDateLabel(dayjs(msg.created_at))
-              : null
-
-            return (
-              <Box key={msg.id}>
-                {dateLabel && (
-                  <Divider
-                    label={
-                      <Text size="xs" c="dimmed" fw={500}>
-                        {dateLabel}
-                      </Text>
-                    }
-                    labelPosition="center"
-                    my="sm"
-                  />
-                )}
-                {showAvatar &&
-                  !showDateSeparator &&
-                  timeSincePrev >= TIME_GAP_MINUTES && <Box mt="xs" />}
-                <MessageBubble
-                  message={msg}
-                  showAvatar={showAvatar}
-                  showTime={showTime}
-                  showInlineTime={!isMobile}
-                  onEdit={onMessageUpdated}
-                  onUnsend={onMessageDeleted}
-                />
-              </Box>
-            )
-          })}
-        </Stack>
-      </ScrollArea>
+      <MessageList
+        messages={conversation.messages}
+        isMobile={isMobile}
+        onEdit={onMessageUpdated}
+        onUnsend={onMessageDeleted}
+        scrollViewportRef={scrollRef}
+      />
 
       {/* Input */}
       <Box
@@ -1028,7 +1103,7 @@ function isImageFile(filename: string): boolean {
   return /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(filename)
 }
 
-function MessageBubble({
+const MessageBubble = memo(function MessageBubble({
   message,
   showAvatar,
   showTime,
@@ -1039,15 +1114,30 @@ function MessageBubble({
   const [carouselOpened, setCarouselOpened] = useState(false)
   const [carouselInitialIndex, setCarouselInitialIndex] = useState(0)
   const [menuOpened, setMenuOpened] = useState(false)
+  const [reactionPickerOpened, setReactionPickerOpened] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editContent, setEditContent] = useState(message.content)
   const [isSavingEdit, setIsSavingEdit] = useState(false)
+  const isMobileDevice = useMediaQuery("(max-width: 768px)")
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const reactionMutation = useMutation({
+    mutationFn: (reactionType: ReactionType) =>
+      messagingApi.toggleMessageReaction(message.id, reactionType),
+    onSuccess: () => setReactionPickerOpened(false),
+    onError: () =>
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke tilføje reaktion",
+        color: "red",
+      }),
+  })
+
   const handleTouchStart = () => {
+    if (message.is_deleted || message.is_system_message) return
     longPressTimer.current = setTimeout(() => {
-      setMenuOpened(true)
+      setReactionPickerOpened(true)
     }, 500)
   }
 
@@ -1183,7 +1273,7 @@ function MessageBubble({
           size="sm"
           color="gray"
           style={{
-            opacity: isHovered || menuOpened ? 1 : 0,
+            opacity: isMobileDevice || isHovered || menuOpened ? 1 : 0,
             transition: "opacity 0.1s",
             flexShrink: 0,
           }}
@@ -1220,6 +1310,111 @@ function MessageBubble({
     </Menu>
   )
 
+  const emojiPickerButton = (
+    <Popover
+      opened={reactionPickerOpened}
+      onChange={setReactionPickerOpened}
+      position="top"
+      withArrow
+      withinPortal
+    >
+      <Popover.Target>
+        <ActionIcon
+          variant="subtle"
+          size="sm"
+          color="gray"
+          style={{
+            opacity: isMobileDevice
+              ? 0
+              : isHovered || reactionPickerOpened
+                ? 1
+                : 0,
+            transition: "opacity 0.1s",
+            flexShrink: 0,
+            pointerEvents: isMobileDevice ? "none" : "auto",
+          }}
+          onClick={() => setReactionPickerOpened((o) => !o)}
+          aria-label="Tilføj reaktion"
+        >
+          <IconMoodSmile size={14} />
+        </ActionIcon>
+      </Popover.Target>
+      <Popover.Dropdown p="xs">
+        <SimpleGrid cols={6} spacing={4}>
+          {ALL_REACTION_TYPES.map((type) => {
+            const existing = (message.reactions ?? []).find(
+              (r) => r.reaction_type === type,
+            )
+            return (
+              <Tooltip key={type} label={type}>
+                <ActionIcon
+                  variant={existing?.has_reacted ? "filled" : "subtle"}
+                  color={existing?.has_reacted ? "blue" : "gray"}
+                  size="lg"
+                  onClick={() => reactionMutation.mutate(type)}
+                  loading={
+                    reactionMutation.isPending &&
+                    reactionMutation.variables === type
+                  }
+                >
+                  <Text size="lg">{REACTION_EMOJIS[type]}</Text>
+                </ActionIcon>
+              </Tooltip>
+            )
+          })}
+        </SimpleGrid>
+      </Popover.Dropdown>
+    </Popover>
+  )
+
+  // Mobile reaction picker (anchored to the bubble via a separate Popover)
+  const mobileReactionPicker = isMobileDevice && (
+    <Popover
+      opened={reactionPickerOpened}
+      onChange={setReactionPickerOpened}
+      position={isOwn ? "top-end" : "top-start"}
+      withArrow
+      withinPortal
+    >
+      <Popover.Target>
+        <Box
+          style={{
+            position: "absolute",
+            bottom: 0,
+            left: isOwn ? "auto" : 28,
+            right: isOwn ? 0 : "auto",
+            width: 1,
+            height: 1,
+          }}
+        />
+      </Popover.Target>
+      <Popover.Dropdown p="xs">
+        <SimpleGrid cols={6} spacing={4}>
+          {ALL_REACTION_TYPES.map((type) => {
+            const existing = (message.reactions ?? []).find(
+              (r) => r.reaction_type === type,
+            )
+            return (
+              <ActionIcon
+                key={type}
+                variant={existing?.has_reacted ? "filled" : "subtle"}
+                color={existing?.has_reacted ? "blue" : "gray"}
+                size="lg"
+                onClick={() => reactionMutation.mutate(type)}
+                loading={
+                  reactionMutation.isPending &&
+                  reactionMutation.variables === type
+                }
+              >
+                <Text size="lg">{REACTION_EMOJIS[type]}</Text>
+              </ActionIcon>
+            )
+          })}
+        </SimpleGrid>
+      </Popover.Dropdown>
+    </Popover>
+  )
+
   return (
     <>
       <Group
@@ -1228,6 +1423,7 @@ function MessageBubble({
         gap="xs"
         align="flex-end"
         wrap="nowrap"
+        style={{ position: "relative" }}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         onContextMenu={(e) => {
@@ -1249,15 +1445,17 @@ function MessageBubble({
           </Avatar>
         )}
 
-        {/* Menu button appears to the left for own messages */}
+        {/* Emoji + menu buttons appear to the left for own messages */}
+        {isOwn && emojiPickerButton}
         {isOwn && menuButton}
 
-        <Box style={{ maxWidth: "70%", minWidth: 0 }}>
+        <Box style={{ maxWidth: "70%", minWidth: 0, overflow: "hidden" }}>
           {hasAttachments && !isEditing && (
             <Stack
               gap="xs"
               mb={hasContent ? "xs" : 0}
               align={isOwn ? "flex-end" : "flex-start"}
+              style={{ width: "100%" }}
             >
               {imageAttachments.map((attachment) => (
                 <Box
@@ -1457,9 +1655,62 @@ function MessageBubble({
           )}
         </Box>
 
-        {/* Menu button appears to the right for others' messages */}
+        {/* Menu + emoji buttons appear to the right for others' messages */}
         {!isOwn && menuButton}
+        {!isOwn && emojiPickerButton}
       </Group>
+
+      {/* Mobile long-press reaction picker */}
+      {mobileReactionPicker}
+
+      {/* Reactions display */}
+      {(message.reactions ?? []).length > 0 && (
+        <Group
+          gap={4}
+          mt={2}
+          justify={isOwn ? "flex-end" : "flex-start"}
+          style={{ paddingLeft: !isOwn ? 28 : 0 }}
+        >
+          {(message.reactions ?? []).map((reaction) => (
+            <UnstyledButton
+              key={reaction.reaction_type}
+              onClick={() => reactionMutation.mutate(reaction.reaction_type)}
+              disabled={reactionMutation.isPending}
+            >
+              <Box
+                px="xs"
+                py={2}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  borderRadius: "var(--mantine-radius-xl)",
+                  backgroundColor: reaction.has_reacted
+                    ? "var(--mantine-color-blue-light)"
+                    : "var(--mantine-color-default-hover)",
+                  border: `1px solid ${
+                    reaction.has_reacted
+                      ? "var(--mantine-color-blue-light-color)"
+                      : "var(--mantine-color-default-border)"
+                  }`,
+                  cursor: "pointer",
+                }}
+              >
+                <Text size="xs" lh={1}>
+                  {reaction.emoji}
+                </Text>
+                <Text
+                  size="xs"
+                  fw={600}
+                  c={reaction.has_reacted ? "blue.7" : "gray.7"}
+                >
+                  {reaction.count}
+                </Text>
+              </Box>
+            </UnstyledButton>
+          ))}
+        </Group>
+      )}
 
       {hasAttachments && (
         <AttachmentCarousel
@@ -1471,7 +1722,7 @@ function MessageBubble({
       )}
     </>
   )
-}
+})
 
 interface NewConversationAreaProps {
   onBack?: () => void

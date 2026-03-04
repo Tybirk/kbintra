@@ -41,6 +41,7 @@ import {
   IconChecks,
   IconCalendarEvent,
   IconLink,
+  IconCopy,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -137,6 +138,9 @@ export default function SubgroupPage() {
     },
   })
 
+  const { user } = useAuthStore()
+  const [isCopying, setIsCopying] = useState(false)
+
   const openUnread = threads?.some((t) => !t.is_closed && t.is_unread) ?? false
   const closedUnread = threads?.some((t) => t.is_closed && t.is_unread) ?? false
 
@@ -156,6 +160,140 @@ export default function SubgroupPage() {
         <Text c="red">Gruppen blev ikke fundet.</Text>
       </Center>
     )
+  }
+
+  function htmlToMarkdown(html: string): string {
+    function nodeToMd(node: Node): string {
+      if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? ""
+      if (node.nodeType !== Node.ELEMENT_NODE) return ""
+      const el = node as Element
+      const inner = Array.from(el.childNodes).map(nodeToMd).join("")
+      switch (el.tagName.toLowerCase()) {
+        case "p":
+          return inner + "\n\n"
+        case "h1":
+          return `# ${inner}\n\n`
+        case "h2":
+          return `## ${inner}\n\n`
+        case "h3":
+          return `### ${inner}\n\n`
+        case "strong":
+        case "b":
+          return `**${inner}**`
+        case "em":
+        case "i":
+          return `*${inner}*`
+        case "code":
+          return `\`${inner}\``
+        case "pre":
+          return `\`\`\`\n${inner}\n\`\`\`\n\n`
+        case "ul":
+          return inner + "\n"
+        case "ol":
+          return inner + "\n"
+        case "li":
+          return `- ${inner}\n`
+        case "a":
+          return `[${inner}](${(el as HTMLAnchorElement).href})`
+        case "br":
+          return "\n"
+        case "blockquote":
+          return (
+            inner
+              .trim()
+              .split("\n")
+              .map((l) => `> ${l}`)
+              .join("\n") + "\n\n"
+          )
+        default:
+          return inner
+      }
+    }
+    const doc = new DOMParser().parseFromString(html, "text/html")
+    return nodeToMd(doc.body).trim()
+  }
+
+  function buildLlmPreamble(threadCount: number): string {
+    const s = slug!.toLowerCase()
+    const isBugs =
+      s.includes("bug") || s.includes("fejl") || s.includes("problem")
+    const isFeatures =
+      s.includes("feature") ||
+      s.includes("ideer") ||
+      s.includes("idea") ||
+      s.includes("ønsk") ||
+      s.includes("forbedr")
+
+    const taskKind = isBugs
+      ? "bug reports"
+      : isFeatures
+        ? "feature requests"
+        : "issues/requests"
+    const actionVerb = isBugs ? "fix" : isFeatures ? "implement" : "address"
+
+    const capitalize = (str: string) =>
+      str.charAt(0).toUpperCase() + str.slice(1)
+
+    return `\
+# Task: ${capitalize(actionVerb)} open ${taskKind} from the "${subgroup!.name}" forum group
+
+Below are **${threadCount} open ${taskKind}** reported by residents. Each thread is the original post followed by replies — read the full thread for context and constraints before acting.
+
+For each ${taskKind.replace(/s$/, "")}:
+1. Read the full thread and understand the problem/request
+2. ${capitalize(actionVerb)} it with a focused, minimal change
+3. Run the relevant checks when done
+
+If multiple ${taskKind} are **independent**, spawn parallel subagents to handle them concurrently.
+Skip any that are too vague to act on, and note why at the end.
+
+---
+
+`
+  }
+
+  async function copyThreadsAsMarkdown() {
+    if (!threads || !slug || !subgroup) return
+    setIsCopying(true)
+    try {
+      const nonClosedThreads = threads.filter((t) => !t.is_closed)
+      const parts: string[] = [buildLlmPreamble(nonClosedThreads.length)]
+      for (const thread of nonClosedThreads) {
+        const posts = await forumApi.getPosts(thread.id)
+        const authorName = thread.author
+          ? `${thread.author.first_name} ${thread.author.last_name}`
+          : "Ukendt"
+        parts.push(`## ${thread.title}\n\n`)
+        parts.push(
+          `*Oprettet af ${authorName}, ${dayjs(thread.created_at).locale("da").format("D. MMMM YYYY")} · ${posts.length} svar*\n\n`,
+        )
+        for (const post of posts) {
+          const postAuthor = post.author
+            ? `${post.author.first_name} ${post.author.last_name}`
+            : "Ukendt"
+          parts.push(
+            `**${postAuthor}** *(${dayjs(post.created_at).locale("da").format("D. MMMM YYYY")})*:\n\n`,
+          )
+          parts.push(htmlToMarkdown(post.content))
+          parts.push("\n\n")
+        }
+        parts.push("---\n\n")
+      }
+      await navigator.clipboard.writeText(parts.join(""))
+      notifications.show({
+        title: "Kopieret!",
+        message: `${nonClosedThreads.length} tråde kopieret til udklipsholderen`,
+        color: "green",
+      })
+    } catch {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke kopiere indhold",
+        color: "red",
+      })
+    } finally {
+      setIsCopying(false)
+    }
   }
 
   // Sort threads: pinned first, then by updated_at
@@ -185,13 +323,26 @@ export default function SubgroupPage() {
             <Text c="dimmed">{subgroup.description}</Text>
           )}
         </div>
-        <Button
-          variant="light"
-          leftSection={<IconCalendarEvent size={16} />}
-          onClick={() => navigate(`/kalender/opret?subgroup=${subgroup.id}`)}
-        >
-          Opret begivenhed
-        </Button>
+        <Group gap="xs">
+          {user?.is_staff && (
+            <Button
+              variant="light"
+              color="gray"
+              leftSection={<IconCopy size={16} />}
+              onClick={copyThreadsAsMarkdown}
+              loading={isCopying}
+            >
+              Kopier til LLM
+            </Button>
+          )}
+          <Button
+            variant="light"
+            leftSection={<IconCalendarEvent size={16} />}
+            onClick={() => navigate(`/kalender/opret?subgroup=${subgroup.id}`)}
+          >
+            Opret begivenhed
+          </Button>
+        </Group>
       </Group>
 
       {upcomingEvents && upcomingEvents.length > 0 && (

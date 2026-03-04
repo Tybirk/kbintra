@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, lazy, Suspense } from "react"
 import { useEditor } from "@tiptap/react"
+import { mergeAttributes } from "@tiptap/core"
 import StarterKit from "@tiptap/starter-kit"
 import Link from "@tiptap/extension-link"
 import Mention from "@tiptap/extension-mention"
@@ -45,12 +46,25 @@ export default function RichTextEditor({
   const editor = useEditor({
     extensions: [
       StarterKit,
-      Link.configure({
-        openOnClick: false,
-        HTMLAttributes: {
-          target: "_blank",
-          rel: "noopener noreferrer",
+      Link.extend({
+        renderHTML({ HTMLAttributes }) {
+          const href: string = HTMLAttributes.href ?? ""
+          const isInternal =
+            !href ||
+            href.startsWith("/") ||
+            href.includes("kbintra.top") ||
+            href.includes("localhost")
+          return [
+            "a",
+            mergeAttributes(HTMLAttributes, {
+              target: isInternal ? null : "_blank",
+              rel: isInternal ? null : "noopener noreferrer",
+            }),
+            0,
+          ]
         },
+      }).configure({
+        openOnClick: false,
       }),
       Placeholder.configure({
         placeholder,

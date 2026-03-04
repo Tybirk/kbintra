@@ -76,6 +76,44 @@ class MessageReadStatus(models.Model):
         return f"{self.user.first_name} read message {self.message.id}"
 
 
+class MessageReaction(models.Model):
+    """A reaction (emoji) on a message."""
+
+    REACTION_CHOICES = [
+        ("like", "👍"),
+        ("heart", "❤️"),
+        ("laugh", "😂"),
+        ("surprised", "😮"),
+        ("sad", "😢"),
+        ("celebrate", "🎉"),
+    ]
+
+    message = models.ForeignKey(
+        Message,
+        on_delete=models.CASCADE,
+        related_name="reactions",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="message_reactions",
+    )
+    reaction_type = models.CharField(max_length=20, choices=REACTION_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["message", "user", "reaction_type"],
+                name="unique_message_reaction_per_user",
+            ),
+        ]
+        ordering = ["created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.user} reacted {self.reaction_type} to message {self.message_id}"
+
+
 class MessageAttachment(models.Model):
     """A file attachment on a message."""
 

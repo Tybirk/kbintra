@@ -10,6 +10,7 @@ class NotificationType(models.TextChoices):
     """Types of notifications."""
 
     NEW_MESSAGE = "new_message", "Ny besked"
+    MESSAGE_REACTION = "message_reaction", "Reaktion på din besked"
     NEW_ANNOUNCEMENT = "new_announcement", "Ny vigtig post"
     ANNOUNCEMENT_UPDATED = "announcement_updated", "Vigtig post opdateret"
     NEW_THREAD = "new_thread", "Ny tråd i gruppen"

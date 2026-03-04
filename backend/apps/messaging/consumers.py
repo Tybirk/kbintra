@@ -254,6 +254,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
         )
 
+    async def message_reacted(self, event):
+        """Broadcast reaction update to all clients in conversation."""
+        await self.send(
+            json.dumps(
+                {
+                    "type": "message_reacted",
+                    "message_id": event["message_id"],
+                    "conversation_id": event["conversation_id"],
+                    "reactions": event["reactions"],
+                }
+            )
+        )
+
     async def new_notification(self, event):
         """Send notification to user via WebSocket."""
         await self.send(

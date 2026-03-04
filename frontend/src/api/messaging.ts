@@ -143,6 +143,20 @@ export const messagingApi = {
   unsendMessage: async (messageId: number): Promise<void> => {
     await apiClient.delete(`/messages/messages/${messageId}/unsend/`)
   },
+
+  // Toggle a reaction on a message
+  toggleMessageReaction: async (
+    messageId: number,
+    reactionType: string,
+  ): Promise<{ action: "added" | "removed" }> => {
+    const response = await apiClient.post(
+      `/messages/messages/${messageId}/react/`,
+      {
+        reaction_type: reactionType,
+      },
+    )
+    return response.data
+  },
 }
 
 /**
