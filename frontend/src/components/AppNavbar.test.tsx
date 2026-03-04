@@ -19,13 +19,10 @@ vi.mock("../api/notifications", () => ({
   },
 }))
 
-// Mock navigation
-const mockNavigate = vi.fn()
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual("react-router-dom")
   return {
     ...actual,
-    useNavigate: () => mockNavigate,
     useLocation: () => ({ pathname: "/" }),
   }
 })
@@ -55,13 +52,14 @@ describe("AppNavbar", () => {
     expect(screen.getByText("Beskeder")).toBeInTheDocument()
   })
 
-  it("should navigate when clicking on nav item", async () => {
-    const user = userEvent.setup()
+  it("should have correct href on nav links", async () => {
     render(<AppNavbar />)
 
-    await user.click(screen.getByText("Forum"))
+    const forumLink = screen.getByText("Forum").closest("a")
+    expect(forumLink).toHaveAttribute("href", "/forum")
 
-    expect(mockNavigate).toHaveBeenCalledWith("/forum")
+    const kalenderLink = screen.getByText("Kalender").closest("a")
+    expect(kalenderLink).toHaveAttribute("href", "/kalender")
   })
 
   it("should call onNavigate callback when provided", async () => {
@@ -72,7 +70,6 @@ describe("AppNavbar", () => {
     await user.click(screen.getByText("Kalender"))
 
     expect(onNavigate).toHaveBeenCalled()
-    expect(mockNavigate).toHaveBeenCalledWith("/kalender")
   })
 
   it("should show unread messages badge", async () => {

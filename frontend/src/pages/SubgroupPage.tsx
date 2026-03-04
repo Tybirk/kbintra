@@ -279,7 +279,22 @@ Skip any that are too vague to act on, and note why at the end.
         }
         parts.push("---\n\n")
       }
-      await navigator.clipboard.writeText(parts.join(""))
+      const text = parts.join("")
+      // navigator.clipboard.writeText can fail when the user gesture
+      // has gone stale after multiple async fetches. Fall back to a
+      // temporary textarea + execCommand("copy") when that happens.
+      try {
+        await navigator.clipboard.writeText(text)
+      } catch {
+        const textarea = document.createElement("textarea")
+        textarea.value = text
+        textarea.style.position = "fixed"
+        textarea.style.left = "-9999px"
+        document.body.appendChild(textarea)
+        textarea.select()
+        document.execCommand("copy")
+        document.body.removeChild(textarea)
+      }
       notifications.show({
         title: "Kopieret!",
         message: `${nonClosedThreads.length} tråde kopieret til udklipsholderen`,

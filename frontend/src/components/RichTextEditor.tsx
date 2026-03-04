@@ -11,6 +11,34 @@ const EmojiPicker = lazy(() => import("./EmojiPicker"))
 import { saveDraft, loadDraft, clearDraft } from "../utils/draftStorage"
 import { mentionSuggestion } from "./mentionSuggestion"
 
+const daLabels = {
+  linkControlLabel: "Link",
+  boldControlLabel: "Fed",
+  italicControlLabel: "Kursiv",
+  underlineControlLabel: "Understregning",
+  strikeControlLabel: "Gennemstreget",
+  clearFormattingControlLabel: "Ryd formatering",
+  unlinkControlLabel: "Fjern link",
+  bulletListControlLabel: "Punktliste",
+  orderedListControlLabel: "Nummereret liste",
+  h1ControlLabel: "Overskrift 1",
+  h2ControlLabel: "Overskrift 2",
+  h3ControlLabel: "Overskrift 3",
+  h4ControlLabel: "Overskrift 4",
+  h5ControlLabel: "Overskrift 5",
+  h6ControlLabel: "Overskrift 6",
+  blockquoteControlLabel: "Citat",
+  codeControlLabel: "Kode",
+  codeBlockControlLabel: "Kodeblok",
+  undoControlLabel: "Fortryd",
+  redoControlLabel: "Gentag",
+  linkEditorInputLabel: "Indtast URL",
+  linkEditorInputPlaceholder: "https://eksempel.dk/",
+  linkEditorExternalLink: "Åbn link i ny fane",
+  linkEditorInternalLink: "Åbn link i samme fane",
+  linkEditorSave: "Gem",
+}
+
 interface RichTextEditorProps {
   content: string
   onChange: (content: string) => void
@@ -181,7 +209,7 @@ export default function RichTextEditor({
 
   return (
     <>
-      <MantineRTE editor={editor} style={{ minHeight }}>
+      <MantineRTE editor={editor} style={{ minHeight }} labels={daLabels}>
         <MantineRTE.Toolbar sticky stickyOffset={60}>
           <MantineRTE.ControlsGroup>
             <MantineRTE.Bold />
