@@ -16,7 +16,9 @@ Then open http://localhost:5173.
 
 ## Optional extras
 
-Admin access to the backend admin panel, and seeding of forum data.
+Download db.sqlite3 and media.zip (remember to extract) from https://kbintra.top/drift and place them in the backend/ directory.
+
+Alternatively, you can create a superficial testing setup using the following commands:
 
 ```bash
 cd backend
