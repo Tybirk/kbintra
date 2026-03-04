@@ -619,6 +619,7 @@ export default function ChatRichTextEditor({
           onClick={onSend}
           disabled={disabled || isEmpty}
           mb={1}
+          mr={isMobile ? 2 : undefined}
         >
           <IconSend size={isMobile ? 16 : 18} />
         </ActionIcon>

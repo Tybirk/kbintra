@@ -108,6 +108,8 @@ export default function MessagesPage() {
   const [isWsConnected, setIsWsConnected] = useState(chatWs.isConnected)
   const [conversationSearch, setConversationSearch] = useState("")
   const isMobile = useMediaQuery("(max-width: 768px)")
+  const inConversationMobile =
+    !!isMobile && (!!selectedConversation || isComposingNew)
   const selectedConversationRef = useRef(selectedConversation)
 
   // Sync URL param to state when URL changes (e.g., from notification link)
@@ -356,33 +358,51 @@ export default function MessagesPage() {
   }
 
   return (
-    <Box style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <Group justify="space-between" mb="md">
-        <div>
-          <Title order={1}>Beskeder</Title>
-          <Group gap="xs">
-            <Text c="dimmed">Direkte beskeder</Text>
-            {isWsConnected && (
-              <Badge size="xs" color="green" variant="dot">
-                Live
-              </Badge>
-            )}
-          </Group>
-        </div>
-        <Button
-          leftSection={<IconPlus size={16} />}
-          onClick={handleStartNewMessage}
-        >
-          Ny besked
-        </Button>
-      </Group>
+    <Box
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        // On mobile in a conversation: break out of AppShell padding for edge-to-edge layout
+        marginInline: inConversationMobile
+          ? "calc(-1 * var(--mantine-spacing-md))"
+          : undefined,
+        marginTop: inConversationMobile
+          ? "calc(-1 * var(--mantine-spacing-md))"
+          : undefined,
+        marginBottom: inConversationMobile
+          ? "calc(-1 * var(--mantine-spacing-md))"
+          : undefined,
+      }}
+    >
+      {!inConversationMobile && (
+        <Group justify="space-between" mb="md">
+          <div>
+            <Title order={1}>Beskeder</Title>
+            <Group gap="xs">
+              <Text c="dimmed">Direkte beskeder</Text>
+              {isWsConnected && (
+                <Badge size="xs" color="green" variant="dot">
+                  Live
+                </Badge>
+              )}
+            </Group>
+          </div>
+          <Button
+            leftSection={<IconPlus size={16} />}
+            onClick={handleStartNewMessage}
+          >
+            Ny besked
+          </Button>
+        </Group>
+      )}
 
       <Paper
-        withBorder
-        radius="md"
+        withBorder={!inConversationMobile}
+        radius={inConversationMobile ? 0 : "md"}
         style={{
           flex: 1,
-          minHeight: "400px",
+          minHeight: inConversationMobile ? undefined : "400px",
           display: "flex",
           overflow: "hidden",
         }}
@@ -1408,6 +1428,57 @@ const MessageBubble = memo(function MessageBubble({
             )
           })}
         </SimpleGrid>
+        <Divider my="xs" />
+        <Stack gap={0}>
+          <UnstyledButton
+            px="xs"
+            py={6}
+            style={{ borderRadius: "var(--mantine-radius-sm)" }}
+            onClick={() => {
+              handleCopy()
+              setReactionPickerOpened(false)
+            }}
+          >
+            <Group gap="xs">
+              <IconCopy size={14} color="var(--mantine-color-dimmed)" />
+              <Text size="sm">Kopiér</Text>
+            </Group>
+          </UnstyledButton>
+          {isOwn && (
+            <UnstyledButton
+              px="xs"
+              py={6}
+              style={{ borderRadius: "var(--mantine-radius-sm)" }}
+              onClick={() => {
+                handleStartEdit()
+                setReactionPickerOpened(false)
+              }}
+            >
+              <Group gap="xs">
+                <IconEdit size={14} color="var(--mantine-color-dimmed)" />
+                <Text size="sm">Rediger</Text>
+              </Group>
+            </UnstyledButton>
+          )}
+          {isOwn && (
+            <UnstyledButton
+              px="xs"
+              py={6}
+              style={{ borderRadius: "var(--mantine-radius-sm)" }}
+              onClick={() => {
+                void handleUnsend()
+                setReactionPickerOpened(false)
+              }}
+            >
+              <Group gap="xs">
+                <IconTrash size={14} color="var(--mantine-color-red-6)" />
+                <Text size="sm" c="red">
+                  Fortryd afsendelse
+                </Text>
+              </Group>
+            </UnstyledButton>
+          )}
+        </Stack>
       </Popover.Dropdown>
     </Popover>
   )
@@ -1442,9 +1513,9 @@ const MessageBubble = memo(function MessageBubble({
           </Avatar>
         )}
 
-        {/* Emoji + menu buttons appear to the left for own messages */}
+        {/* Emoji + menu buttons appear to the left for own messages (desktop only) */}
         {isOwn && emojiPickerButton}
-        {isOwn && menuButton}
+        {isOwn && !isMobileDevice && menuButton}
 
         <Box style={{ maxWidth: "70%", minWidth: 0, overflow: "hidden" }}>
           {hasAttachments && !isEditing && (
@@ -1652,8 +1723,8 @@ const MessageBubble = memo(function MessageBubble({
           )}
         </Box>
 
-        {/* Menu + emoji buttons appear to the right for others' messages */}
-        {!isOwn && menuButton}
+        {/* Menu + emoji buttons appear to the right for others' messages (desktop only) */}
+        {!isOwn && !isMobileDevice && menuButton}
         {!isOwn && emojiPickerButton}
       </Group>
 
