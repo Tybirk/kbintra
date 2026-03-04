@@ -39,7 +39,9 @@ def check_prerequisites() -> None:
 
     if not shutil.which("node") or not shutil.which("npm"):
         print(f"{RED}node/npm not found.{RESET}")
-        print("Install Node.js 18+ from https://nodejs.org/ or via your package manager.")
+        print(
+            "Install Node.js 18+ from https://nodejs.org/ or via your package manager."
+        )
         sys.exit(1)
 
     print(f"  {GREEN}uv{RESET}  — available (you're running this script with it)")
@@ -59,6 +61,7 @@ def main() -> None:
     run(["npm", "install"], cwd=FRONTEND)
 
     step("Running database migrations")
+    run(["uv", "run", "python", "manage.py", "makemigrations"], cwd=BACKEND)
     run(["uv", "run", "python", "manage.py", "migrate"], cwd=BACKEND)
 
     step("Building search index (if empty)")
