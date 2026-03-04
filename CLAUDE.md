@@ -17,6 +17,13 @@ It is a small scale app, with few developers who do not wish to spend time maint
 
 ## Common Commands
 
+### Dev Setup (run from project root)
+
+```bash
+uv run setup.py                            # One-command setup (deps, migrations, search index)
+uv run dev.py                              # Start backend + frontend dev servers
+```
+
 ### Backend (run from `/backend`)
 
 ```bash

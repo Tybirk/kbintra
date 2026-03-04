@@ -200,6 +200,8 @@ credentials.json
 
 # Claude Code
 .claude/
+CLAUDE.html
+CLAUDE_files/
 
 # Documentation build
 docs/_build/
@@ -214,6 +216,4 @@ data/
 # Server config
 .server
 
-seed.data.md# pixi environments
-.pixi/*
-!.pixi/config.toml
+seed.data.md

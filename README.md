@@ -48,6 +48,8 @@ kbintra/
 
 ## Quick Start
 
+For a streamlined one-command setup, see [INSTALL.md](INSTALL.md).
+
 ### Prerequisites
 - Python 3.11+
 - Node.js 18+ (20+ recommended)
