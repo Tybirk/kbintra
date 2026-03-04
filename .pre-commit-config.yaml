@@ -28,14 +28,14 @@ repos:
     hooks:
       - id: frontend-lint
         name: Frontend Lint (oxlint)
-        entry: bash -c 'cd frontend && npm run lint'
+        entry: bash -c 'source "$HOME/.nvm/nvm.sh" && cd frontend && npm run lint'
         language: system
         files: ^frontend/.*\.(ts|tsx|js|jsx)$
         pass_filenames: false
 
       - id: frontend-format-check
         name: Frontend Format Check (oxfmt)
-        entry: bash -c 'cd frontend && npm run format'
+        entry: bash -c 'source "$HOME/.nvm/nvm.sh" && cd frontend && npm run format'
         language: system
         files: ^frontend/.*\.(ts|tsx|js|jsx)$
         pass_filenames: false
