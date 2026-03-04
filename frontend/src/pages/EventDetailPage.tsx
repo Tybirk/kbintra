@@ -21,6 +21,7 @@ import {
   Typography,
   Textarea,
   Alert,
+  Anchor,
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -37,6 +38,7 @@ import {
   IconAlertCircle,
   IconMessage,
   IconCalendarPlus,
+  IconExternalLink,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 
@@ -764,8 +766,8 @@ interface UpdatePostMutationProps {
 
 function DiscussionSection({
   threadId,
-  subgroupSlug: _subgroupSlug,
-  threadSlug: _threadSlug,
+  subgroupSlug,
+  threadSlug,
 }: DiscussionSectionProps) {
   const queryClient = useQueryClient()
   const location = useLocation()
