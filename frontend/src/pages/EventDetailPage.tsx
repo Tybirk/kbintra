@@ -877,18 +877,6 @@ function DiscussionSection({
             </Text>
           )}
         </Group>
-        {subgroupSlug && threadSlug && (
-          <Anchor
-            href={`/forum/${subgroupSlug}/traad/${threadSlug}`}
-            target="_blank"
-            size="sm"
-          >
-            <Group gap={4}>
-              Se i forum
-              <IconExternalLink size={12} />
-            </Group>
-          </Anchor>
-        )}
       </Group>
 
       {isLoading ? (
