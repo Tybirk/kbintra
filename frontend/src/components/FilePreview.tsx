@@ -155,7 +155,7 @@ export function FilePreviewModal({
         })
     }
 
-    if (fileType === "pdf") {
+    if (fileType === "pdf" && !(isPwa && file.preview_html)) {
       setLoading(true)
       setError(null)
 
@@ -174,7 +174,7 @@ export function FilePreviewModal({
           setLoading(false)
         })
     }
-  }, [file, opened, fileType])
+  }, [file, opened, fileType, isPwa])
 
   // Cleanup blob URL on unmount
   useEffect(() => {
@@ -252,14 +252,33 @@ export function FilePreviewModal({
             </Stack>
           )
         }
-        if (!pdfBlobUrl) {
-          return (
-            <Center h={300}>
-              <Loader />
-            </Center>
-          )
-        }
         if (isPwa) {
+          if (file.preview_html) {
+            return (
+              <Stack gap="md">
+                <ScrollArea h="65vh">
+                  <Box
+                    p="md"
+                    style={{
+                      backgroundColor: "var(--mantine-color-default-hover)",
+                      borderRadius: "var(--mantine-radius-md)",
+                      overflowWrap: "break-word",
+                    }}
+                    dangerouslySetInnerHTML={{ __html: file.preview_html }}
+                  />
+                </ScrollArea>
+                <Group justify="center">
+                  <Button
+                    variant="light"
+                    leftSection={<IconDownload size={16} />}
+                    onClick={handleDownload}
+                  >
+                    Download fil
+                  </Button>
+                </Group>
+              </Stack>
+            )
+          }
           return (
             <Stack align="center" gap="lg" py="xl">
               <IconFileTypePdf size={80} color="var(--mantine-color-red-6)" />
@@ -273,6 +292,13 @@ export function FilePreviewModal({
                 Download fil
               </Button>
             </Stack>
+          )
+        }
+        if (!pdfBlobUrl) {
+          return (
+            <Center h={300}>
+              <Loader />
+            </Center>
           )
         }
         return (
@@ -434,7 +460,7 @@ export function FilePreviewModal({
   const modalSize = () => {
     switch (fileType) {
       case "pdf":
-        return "80%"
+        return isPwa && file?.preview_html ? "xl" : "80%"
       case "text":
         return "xl"
       case "word":

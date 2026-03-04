@@ -378,7 +378,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
             notify_thread_reply_task,
         )
 
-        from .utils import generate_docx_preview
+        from .utils import generate_docx_preview, generate_pdf_preview
 
         # Extract poll_data and attachments before creating post
         poll_data = validated_data.pop("poll_data", None)
@@ -395,7 +395,8 @@ class PostCreateSerializer(serializers.ModelSerializer):
                 uploaded_by=post.author,
                 file=attachment_file,
                 name=attachment_file.name,
-                preview_html=generate_docx_preview(attachment_file),
+                preview_html=generate_docx_preview(attachment_file)
+                or generate_pdf_preview(attachment_file),
             )
 
         # Create poll if poll_data is provided
@@ -674,7 +675,7 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data: dict) -> Thread:
         from django.utils import timezone
 
-        from .utils import generate_docx_preview
+        from .utils import generate_docx_preview, generate_pdf_preview
 
         content = validated_data.pop("content")
         attachments = validated_data.pop("attachments", [])
@@ -698,7 +699,8 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
                 uploaded_by=post.author,
                 file=attachment_file,
                 name=attachment_file.name,
-                preview_html=generate_docx_preview(attachment_file),
+                preview_html=generate_docx_preview(attachment_file)
+                or generate_pdf_preview(attachment_file),
             )
 
         # Create poll if poll_data is provided
@@ -866,7 +868,7 @@ class FileUploadSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data: dict) -> File:
-        from .utils import generate_docx_preview
+        from .utils import generate_docx_preview, generate_pdf_preview
 
         validated_data["uploaded_by"] = self.context["request"].user
         validated_data["folder"] = self.context.get("folder")
@@ -875,8 +877,10 @@ class FileUploadSerializer(serializers.ModelSerializer):
         name = validated_data.get("name", "").strip()
         if not name:
             validated_data["name"] = validated_data["file"].name
-        # Generate DOCX preview if applicable
-        validated_data["preview_html"] = generate_docx_preview(validated_data["file"])
+        # Generate preview if applicable (DOCX or PDF)
+        validated_data["preview_html"] = generate_docx_preview(
+            validated_data["file"]
+        ) or generate_pdf_preview(validated_data["file"])
         return super().create(validated_data)
 
 

@@ -298,6 +298,7 @@ export interface AnnouncementAttachment {
   name: string
   file: string
   file_url: string
+  preview_html?: string
   uploaded_by: Author | null
   uploaded_at: string
 }
@@ -575,6 +576,7 @@ export interface MessageAttachment {
   name: string
   file: string
   file_url: string
+  preview_html?: string
   uploaded_at: string
 }
 

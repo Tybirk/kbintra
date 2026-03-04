@@ -16,6 +16,7 @@ import {
   Select,
   UnstyledButton,
   ActionIcon,
+  SegmentedControl,
 } from "@mantine/core"
 import { Schedule } from "@mantine/schedule"
 import type { ScheduleEventData, ScheduleViewLevel } from "@mantine/schedule"
@@ -26,6 +27,8 @@ import {
   IconSettings,
   IconChevronLeft,
   IconChevronRight,
+  IconCalendar,
+  IconCalendarWeek,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 
@@ -46,12 +49,16 @@ import { BookingDetailsModal } from "./bookings/BookingDetailsModal"
 import { DeleteBookingModal } from "./bookings/DeleteBookingModal"
 import type { CalendarBooking } from "../types"
 
+type MobileViewMode = "oversigt" | "skema"
+
 export default function BookingsPage() {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
   const isMobile = useMediaQuery("(max-width: 768px)")
   const [currentDate, setCurrentDate] = useState(dayjs().format("YYYY-MM-DD"))
   const [currentView, setCurrentView] = useState<ScheduleViewLevel>("month")
+  const [mobileViewMode, setMobileViewMode] =
+    useState<MobileViewMode>("oversigt")
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null)
 
   // Modal states
@@ -382,6 +389,36 @@ export default function BookingsPage() {
         )}
       </Group>
 
+      {isMobile && (
+        <Group justify="flex-end" mb="sm">
+          <SegmentedControl
+            size="xs"
+            value={mobileViewMode}
+            onChange={(v) => setMobileViewMode(v as MobileViewMode)}
+            data={[
+              {
+                value: "oversigt",
+                label: (
+                  <Group gap={4} wrap="nowrap">
+                    <IconCalendar size={14} />
+                    <span>Oversigt</span>
+                  </Group>
+                ),
+              },
+              {
+                value: "skema",
+                label: (
+                  <Group gap={4} wrap="nowrap">
+                    <IconCalendarWeek size={14} />
+                    <span>Skema</span>
+                  </Group>
+                ),
+              },
+            ]}
+          />
+        </Group>
+      )}
+
       <div className="schedule-wrapper">
         <Schedule
           events={scheduleEvents}
@@ -391,7 +428,9 @@ export default function BookingsPage() {
           onDateChange={setCurrentDate}
           locale="da"
           labels={DA_SCHEDULE_LABELS}
-          layout="responsive"
+          layout={
+            isMobile && mobileViewMode === "oversigt" ? "responsive" : undefined
+          }
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
           onEventClick={handleEventClick}
