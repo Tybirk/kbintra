@@ -32,6 +32,7 @@ def should_send_email(user: User, notification_type: NotificationType) -> bool:
         NotificationType.POST_REPLY: prefs.email_thread_replies,
         NotificationType.SUBGROUP_ACTIVITY: prefs.email_subgroup_activity,
         NotificationType.POST_REACTION: prefs.email_post_reactions,
+        NotificationType.MESSAGE_REACTION: prefs.email_messages,
         NotificationType.EVENT_CREATED: prefs.email_events,
         NotificationType.EVENT_UPDATED: prefs.email_events,
         NotificationType.EVENT_CANCELLED: prefs.email_events,

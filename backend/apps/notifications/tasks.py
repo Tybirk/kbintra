@@ -279,6 +279,52 @@ def notify_new_message_task(
 
 
 @db_task(retries=1, retry_delay=60)
+def notify_message_reaction_task(
+    message_author_id: int,
+    reactor_id: int,
+    reaction_emoji: str,
+    conversation_id: int,
+    message_id: int,
+) -> None:
+    """Send message reaction notification in background."""
+    logger.info(
+        "notify_message_reaction_task STARTED: message_author=%d reactor=%d",
+        message_author_id,
+        reactor_id,
+    )
+    from apps.users.models import User
+
+    from .services import notify_message_reaction
+
+    try:
+        message_author = User.objects.get(id=message_author_id)
+    except User.DoesNotExist:
+        logger.warning(
+            "notify_message_reaction_task: Message author %d not found", message_author_id
+        )
+        return
+
+    try:
+        reactor = User.objects.get(id=reactor_id)
+    except User.DoesNotExist:
+        logger.warning("notify_message_reaction_task: Reactor %d not found", reactor_id)
+        return
+
+    notify_message_reaction(
+        message_author=message_author,
+        reactor=reactor,
+        reaction_emoji=reaction_emoji,
+        conversation_id=conversation_id,
+        message_id=message_id,
+    )
+    logger.info(
+        "notify_message_reaction_task COMPLETED: message_author=%d reactor=%d",
+        message_author_id,
+        reactor_id,
+    )
+
+
+@db_task(retries=1, retry_delay=60)
 def notify_thread_reply_task(
     thread_author_id: int,
     replier_id: int,

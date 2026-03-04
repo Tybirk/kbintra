@@ -490,6 +490,19 @@ class MessageReactionToggleView(APIView):
             )
             action = "added"
 
+            # Notify message author (skips if reactor == author)
+            if message.sender_id != request.user.id:
+                from apps.notifications.tasks import notify_message_reaction_task
+
+                emoji_map = dict(MessageReaction.REACTION_CHOICES)
+                notify_message_reaction_task(
+                    message_author_id=message.sender_id,
+                    reactor_id=request.user.id,
+                    reaction_emoji=emoji_map.get(reaction_type, reaction_type),
+                    conversation_id=message.conversation_id,
+                    message_id=message.id,
+                )
+
         # Build updated reactions payload for WS broadcast
         emoji_map = dict(MessageReaction.REACTION_CHOICES)
         reaction_map: dict[str, dict] = {}

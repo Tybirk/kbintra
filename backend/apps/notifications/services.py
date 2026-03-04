@@ -25,6 +25,7 @@ AGGREGATABLE_TYPES = frozenset(
         NotificationType.THREAD_REPLY,
         NotificationType.POST_REPLY,
         NotificationType.POST_REACTION,
+        NotificationType.MESSAGE_REACTION,
         NotificationType.NEW_THREAD,
         NotificationType.SUBGROUP_ACTIVITY,
     }
@@ -39,6 +40,8 @@ def _make_aggregate_title(notification_type: str, count: int, existing_title: st
         return f"{count} nye svar i en tråd du følger"
     if notification_type == NotificationType.POST_REACTION:
         return f"{count} reaktioner på dit indlæg"
+    if notification_type == NotificationType.MESSAGE_REACTION:
+        return f"{count} reaktioner på din besked"
     if notification_type in (NotificationType.NEW_THREAD, NotificationType.SUBGROUP_ACTIVITY):
         # Extract the subgroup name from the existing title (e.g. "Ny tråd i Fællesrum")
         parts = existing_title.rsplit(" i ", 1)
@@ -54,6 +57,7 @@ PUSH_TTL: dict[str, int] = {
     NotificationType.EVENT_REMINDER: 2 * 3600,  # 2 hours
     NotificationType.EVENT_CANCELLED: 12 * 3600,  # 12 hours
     NotificationType.NEW_MESSAGE: 24 * 3600,  # 24 hours
+    NotificationType.MESSAGE_REACTION: 24 * 3600,  # 24 hours
     NotificationType.MENTION: 24 * 3600,  # 24 hours
 }
 PUSH_TTL_DEFAULT = 48 * 3600  # 48 hours
@@ -116,6 +120,7 @@ def get_user_preference(user: User, notification_type: NotificationType) -> bool
         NotificationType.POST_REPLY: prefs.notify_thread_replies,
         NotificationType.SUBGROUP_ACTIVITY: prefs.notify_subgroup_activity,
         NotificationType.POST_REACTION: prefs.notify_post_reactions,
+        NotificationType.MESSAGE_REACTION: prefs.notify_messages,
         NotificationType.EVENT_CREATED: prefs.notify_events,
         NotificationType.EVENT_UPDATED: prefs.notify_events,
         NotificationType.EVENT_CANCELLED: prefs.notify_events,
@@ -144,6 +149,7 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
         NotificationType.POST_REPLY: prefs.push_thread_replies,
         NotificationType.SUBGROUP_ACTIVITY: prefs.push_subgroup_activity,
         NotificationType.POST_REACTION: prefs.push_post_reactions,
+        NotificationType.MESSAGE_REACTION: prefs.push_messages,
         NotificationType.EVENT_CREATED: prefs.push_events,
         NotificationType.EVENT_UPDATED: prefs.push_events,
         NotificationType.EVENT_CANCELLED: prefs.push_events,
@@ -1049,4 +1055,28 @@ def notify_post_reaction(
         link=link,
         related_user=reactor,
         group_key=link,  # Aggregate all reactions to same specific post
+    )
+
+
+def notify_message_reaction(
+    message_author: User,
+    reactor: User,
+    reaction_emoji: str,
+    conversation_id: int,
+    message_id: int,
+) -> Notification | None:
+    """Create notification when someone reacts to a user's private message."""
+    if message_author.id == reactor.id:
+        return None
+
+    link = f"/beskeder/{conversation_id}#msg-{message_id}"
+
+    return create_notification(
+        user=message_author,
+        notification_type=NotificationType.MESSAGE_REACTION,
+        title=f"{reactor.first_name} reagerede på din besked",
+        message=reaction_emoji,
+        link=link,
+        related_user=reactor,
+        group_key=link,  # Aggregate all reactions to same specific message
     )
