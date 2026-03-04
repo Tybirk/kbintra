@@ -362,17 +362,19 @@ export default function MessagesPage() {
       style={{
         display: "flex",
         flexDirection: "column",
-        height: "100%",
-        // On mobile in a conversation: break out of AppShell padding for edge-to-edge layout
-        marginInline: inConversationMobile
-          ? "calc(-1 * var(--mantine-spacing-md))"
-          : undefined,
-        marginTop: inConversationMobile
-          ? "calc(-1 * var(--mantine-spacing-md))"
-          : undefined,
-        marginBottom: inConversationMobile
-          ? "calc(-1 * var(--mantine-spacing-md))"
-          : undefined,
+        // On mobile in conversation: use fixed positioning so the box has an explicit
+        // viewport-based height. This fixes the height chain so flex children (ScrollArea)
+        // are properly constrained and the page body never scrolls.
+        // On desktop / list view: normal flow with height: 100%.
+        ...(inConversationMobile
+          ? {
+              position: "fixed",
+              top: "var(--app-shell-header-height, 60px)",
+              left: 0,
+              right: 0,
+              bottom: 0,
+            }
+          : { height: "100%" }),
       }}
     >
       {!inConversationMobile && (
