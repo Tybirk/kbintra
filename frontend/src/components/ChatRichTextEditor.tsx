@@ -436,7 +436,12 @@ export default function ChatRichTextEditor({
           </Group>
         </ScrollArea>
       )}
-      <Group gap={isMobile ? 4 : "xs"} align="flex-end" wrap="nowrap">
+      <Group
+        gap={isMobile ? 4 : "xs"}
+        align="flex-end"
+        wrap="nowrap"
+        style={{ minWidth: 0 }}
+      >
         {isMobile ? (
           /* Mobile: chevron to reveal attachment buttons, or the buttons themselves */
           attachExpanded ? (
