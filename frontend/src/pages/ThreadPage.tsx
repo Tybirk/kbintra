@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, memo, useCallback } from "react"
 import { useParams, useNavigate, useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
@@ -86,6 +86,134 @@ interface UpdatePostParams {
 
 dayjs.extend(relativeTime)
 
+interface ReplyFormProps {
+  threadId: number
+  onSubmit: (content: string, files: File[], pollData?: CreatePollData) => void
+  isPending: boolean
+  submitKey: number
+}
+
+const ReplyForm = memo(function ReplyForm({
+  threadId,
+  onSubmit,
+  isPending,
+  submitKey,
+}: ReplyFormProps) {
+  const [content, setContent] = useState("")
+  const [attachments, setAttachments] = useState<File[]>([])
+  const [pollData, setPollData] = useState<CreatePollData | null>(null)
+
+  useEffect(() => {
+    if (submitKey > 0) {
+      setContent("")
+      setAttachments([])
+      setPollData(null)
+    }
+  }, [submitKey])
+
+  const isEmpty =
+    (!content.trim() || content === "<p></p>") &&
+    attachments.length === 0 &&
+    !pollData
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (isEmpty) return
+    onSubmit(content.trim(), attachments, pollData || undefined)
+  }
+
+  const handleAddFiles = (files: File[]) => {
+    const { validFiles, errors } = filterFilesBySize(files)
+    if (errors.length > 0) {
+      errors.forEach((error) => {
+        notifications.show({
+          title: "Fil for stor",
+          message: error,
+          color: "red",
+        })
+      })
+    }
+    if (validFiles.length > 0) {
+      setAttachments((prev) => [
+        ...prev,
+        ...validFiles.filter((f) => !prev.some((p) => p.name === f.name)),
+      ])
+    }
+  }
+
+  return (
+    <Paper withBorder p="lg" radius="md">
+      <FileDropzone onDrop={handleAddFiles}>
+        <form onSubmit={handleSubmit}>
+          <Stack gap="md">
+            <Text fw={500}>Skriv et svar</Text>
+            <RichTextEditor
+              content={content}
+              onChange={setContent}
+              placeholder="Skriv dit svar..."
+              minHeight={150}
+              onFilePaste={handleAddFiles}
+              draftKey={"reply-" + threadId}
+            />
+            {pollData && (
+              <PollCreator
+                pollData={pollData}
+                onChange={setPollData}
+                onClose={() => setPollData(null)}
+              />
+            )}
+            <AttachmentArea onAddFiles={handleAddFiles}>
+              {attachments.length > 0 && (
+                <Group gap="xs">
+                  {attachments.map((file, index) => (
+                    <AttachmentBadge
+                      key={`${file.name}-${file.size}-${index}`}
+                      file={file}
+                      onRemove={() =>
+                        setAttachments((prev) =>
+                          prev.filter((_, i) => i !== index),
+                        )
+                      }
+                    />
+                  ))}
+                </Group>
+              )}
+            </AttachmentArea>
+            <Group justify="space-between">
+              <Group gap="xs">
+                {!pollData && (
+                  <Button
+                    variant="light"
+                    leftSection={<IconChartBar size={16} />}
+                    onClick={() =>
+                      setPollData({
+                        question: "",
+                        allow_multiple_votes: false,
+                        is_anonymous: false,
+                        options: [{ text: "" }, { text: "" }],
+                      })
+                    }
+                  >
+                    Afstemning
+                  </Button>
+                )}
+              </Group>
+              <Button
+                type="submit"
+                leftSection={<IconSend size={16} />}
+                loading={isPending}
+                disabled={isEmpty}
+              >
+                Send svar
+              </Button>
+            </Group>
+          </Stack>
+        </form>
+      </FileDropzone>
+    </Paper>
+  )
+})
+
 export default function ThreadPage() {
   const {
     id,
@@ -105,9 +233,7 @@ export default function ThreadPage() {
     ? ["thread", subgroupSlug!, threadSlug!]
     : ["thread", numericId]
 
-  const [newPostContent, setNewPostContent] = useState("")
-  const [attachments, setAttachments] = useState<File[]>([])
-  const [pollData, setPollData] = useState<CreatePollData | null>(null)
+  const [replySubmitKey, setReplySubmitKey] = useState(0)
   const [editingPost, setEditingPost] = useState<Post | null>(null)
   const [editContent, setEditContent] = useState("")
   const [editTitle, setEditTitle] = useState("")
@@ -218,10 +344,8 @@ export default function ThreadPage() {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: threadQueryKey })
-      setNewPostContent("")
-      setAttachments([])
-      setPollData(null)
       clearDraft("reply-" + thread!.id)
+      setReplySubmitKey((k) => k + 1)
       notifications.show({
         title: "Svar oprettet",
         message: "Dit svar er blevet tilføjet.",
@@ -389,43 +513,13 @@ export default function ThreadPage() {
     },
   })
 
-  const isPostEmpty =
-    (!newPostContent.trim() || newPostContent === "<p></p>") &&
-    attachments.length === 0 &&
-    !pollData
-
-  const handleSubmitPost = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (isPostEmpty) return
-    createPostMutation.mutate({
-      data: { content: newPostContent.trim() },
-      files: attachments,
-      pollData: pollData || undefined,
-    })
-  }
-
-  const handleAddFiles = (files: File[]) => {
-    const { validFiles, errors } = filterFilesBySize(files)
-    if (errors.length > 0) {
-      errors.forEach((error) => {
-        notifications.show({
-          title: "Fil for stor",
-          message: error,
-          color: "red",
-        })
-      })
-    }
-    if (validFiles.length > 0) {
-      setAttachments((prev) => [
-        ...prev,
-        ...validFiles.filter((f) => !prev.some((p) => p.name === f.name)),
-      ])
-    }
-  }
-
-  const handleRemoveFile = (index: number) => {
-    setAttachments((prev) => prev.filter((_, i) => i !== index))
-  }
+  const handleReplySubmit = useCallback(
+    (content: string, files: File[], pollData?: CreatePollData) => {
+      createPostMutation.mutate({ data: { content }, files, pollData })
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [createPostMutation.mutate],
+  )
 
   const handleStartEdit = (post: Post) => {
     setEditingPost(post)
@@ -655,74 +749,12 @@ export default function ThreadPage() {
           </Group>
         </Paper>
       ) : (
-        <Paper withBorder p="lg" radius="md">
-          <FileDropzone onDrop={handleAddFiles}>
-            <form onSubmit={handleSubmitPost}>
-              <Stack gap="md">
-                <Text fw={500}>Skriv et svar</Text>
-                <RichTextEditor
-                  content={newPostContent}
-                  onChange={setNewPostContent}
-                  placeholder="Skriv dit svar..."
-                  minHeight={150}
-                  onFilePaste={handleAddFiles}
-                  draftKey={"reply-" + thread.id}
-                />
-
-                {pollData && (
-                  <PollCreator
-                    pollData={pollData}
-                    onChange={setPollData}
-                    onClose={() => setPollData(null)}
-                  />
-                )}
-
-                <AttachmentArea onAddFiles={handleAddFiles}>
-                  {attachments.length > 0 && (
-                    <Group gap="xs">
-                      {attachments.map((file, index) => (
-                        <AttachmentBadge
-                          key={`${file.name}-${file.size}-${index}`}
-                          file={file}
-                          onRemove={() => handleRemoveFile(index)}
-                        />
-                      ))}
-                    </Group>
-                  )}
-                </AttachmentArea>
-
-                <Group justify="space-between">
-                  <Group gap="xs">
-                    {!pollData && (
-                      <Button
-                        variant="light"
-                        leftSection={<IconChartBar size={16} />}
-                        onClick={() =>
-                          setPollData({
-                            question: "",
-                            allow_multiple_votes: false,
-                            is_anonymous: false,
-                            options: [{ text: "" }, { text: "" }],
-                          })
-                        }
-                      >
-                        Afstemning
-                      </Button>
-                    )}
-                  </Group>
-                  <Button
-                    type="submit"
-                    leftSection={<IconSend size={16} />}
-                    loading={createPostMutation.isPending}
-                    disabled={isPostEmpty}
-                  >
-                    Send svar
-                  </Button>
-                </Group>
-              </Stack>
-            </form>
-          </FileDropzone>
-        </Paper>
+        <ReplyForm
+          threadId={thread.id}
+          onSubmit={handleReplySubmit}
+          isPending={createPostMutation.isPending}
+          submitKey={replySubmitKey}
+        />
       )}
 
       <Modal

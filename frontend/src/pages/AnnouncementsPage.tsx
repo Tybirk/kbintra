@@ -94,17 +94,21 @@ export default function AnnouncementsPage() {
   useEffect(() => {
     if (!hash || !announcements || scrolledRef.current === hash) return
     const el = document.getElementById(hash.slice(1))
-    if (el) {
-      scrolledRef.current = hash
+    if (!el) return
+    const currentHash = hash
+    window.history.replaceState(null, "", window.location.pathname)
+    const timer = setTimeout(() => {
+      if (scrolledRef.current === currentHash) return
+      scrolledRef.current = currentHash
       el.scrollIntoView({ behavior: "smooth", block: "center" })
-      el.style.outline = "2px solid var(--mantine-color-blue-5)"
       el.style.borderRadius = "var(--mantine-radius-md)"
-      const timer = setTimeout(() => {
-        el.style.outline = ""
-        el.style.borderRadius = ""
+      el.style.transition = "box-shadow 0.3s ease"
+      el.style.boxShadow = "0 0 0 3px var(--mantine-color-blue-4)"
+      setTimeout(() => {
+        el.style.boxShadow = ""
       }, 2000)
-      return () => clearTimeout(timer)
-    }
+    }, 100)
+    return () => clearTimeout(timer)
   }, [hash, announcements])
 
   const deleteMutation = useMutation({

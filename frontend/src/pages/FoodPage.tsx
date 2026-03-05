@@ -889,28 +889,6 @@ function DayRegistrationCard({
                 </Button>
               )}
 
-              {/* Purchased ticket status */}
-              {purchasedTicketsForDate.length > 0 && (
-                <Stack gap={4}>
-                  <Text size="xs" fw={500} c="dimmed">
-                    Købt billet:
-                  </Text>
-                  {purchasedTicketsForDate.map((ticket) => (
-                    <Text key={ticket.id} size="xs" c="green">
-                      <Badge color="green" variant="light" size="xs">
-                        Købt
-                      </Badge>{" "}
-                      {ticket.adults_meat > 0 && `${ticket.adults_meat} kød `}
-                      {ticket.adults_veg > 0 && `${ticket.adults_veg} veg `}
-                      {ticket.children_count > 0 &&
-                        `${ticket.children_count} børn `}
-                      {ticket.price && `· ${ticket.price} kr`} fra{" "}
-                      {ticket.owner.first_name}
-                    </Text>
-                  ))}
-                </Stack>
-              )}
-
               {/* Ticket status */}
               {ticketsForDate.length > 0 && (
                 <Stack gap={4}>
@@ -1016,6 +994,28 @@ function DayRegistrationCard({
                 "Gemmes automatisk ved ændringer"
               )}
             </Text>
+          )}
+
+          {/* Purchased tickets — always visible, independent of registration state */}
+          {purchasedTicketsForDate.length > 0 && (
+            <Stack gap={4}>
+              <Text size="xs" fw={500} c="dimmed">
+                Købt billet:
+              </Text>
+              {purchasedTicketsForDate.map((ticket) => (
+                <Text key={ticket.id} size="xs" c="green">
+                  <Badge color="green" variant="light" size="xs">
+                    Købt
+                  </Badge>{" "}
+                  {ticket.adults_meat > 0 && `${ticket.adults_meat} kød `}
+                  {ticket.adults_veg > 0 && `${ticket.adults_veg} veg `}
+                  {ticket.children_count > 0 &&
+                    `${ticket.children_count} børn `}
+                  {ticket.price && `· ${ticket.price} kr`} fra{" "}
+                  {ticket.owner.first_name}
+                </Text>
+              ))}
+            </Stack>
           )}
 
           {/* Saving indicator for locked (dining/seating edits) */}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, lazy, Suspense } from "react"
 import { useEditor } from "@tiptap/react"
-import { mergeAttributes } from "@tiptap/core"
+import { mergeAttributes, Extension } from "@tiptap/core"
+import Suggestion from "@tiptap/suggestion"
 import StarterKit from "@tiptap/starter-kit"
 import Link from "@tiptap/extension-link"
 import Mention from "@tiptap/extension-mention"
@@ -10,6 +11,15 @@ import { Anchor, Group, Text } from "@mantine/core"
 const EmojiPicker = lazy(() => import("./EmojiPicker"))
 import { saveDraft, loadDraft, clearDraft } from "../utils/draftStorage"
 import { mentionSuggestion } from "./mentionSuggestion"
+import { emojiSuggestion } from "./emojiSuggestion"
+import { prefetchEmojis } from "./emojiData"
+
+const EmojiSuggestionExtension = Extension.create({
+  name: "emojiSuggestion",
+  addProseMirrorPlugins() {
+    return [Suggestion({ editor: this.editor, ...emojiSuggestion })]
+  },
+})
 
 const daLabels = {
   linkControlLabel: "Link",
@@ -70,6 +80,8 @@ export default function RichTextEditor({
   const [draftRestored, setDraftRestored] = useState(false)
   // Track which draftKey we've already loaded to avoid re-running on re-renders
   const loadedForKeyRef = useRef<string | null>(null)
+  // Track the last HTML emitted via onUpdate so we can skip unnecessary getHTML() calls
+  const lastEmittedHtmlRef = useRef<string>("")
 
   const editor = useEditor({
     extensions: [
@@ -97,6 +109,7 @@ export default function RichTextEditor({
       Placeholder.configure({
         placeholder,
       }),
+      EmojiSuggestionExtension,
       // Extend Mention so parseHTML matches <a data-type="mention"> in addition
       // to the default <span data-type="mention">, since our renderHTML outputs <a>.
       Mention.extend({
@@ -124,6 +137,7 @@ export default function RichTextEditor({
     content,
     onUpdate: ({ editor }) => {
       const html = editor.getHTML()
+      lastEmittedHtmlRef.current = html
       onChangeRef.current(html)
       const key = draftKeyRef.current
       if (key) {
@@ -167,8 +181,17 @@ export default function RichTextEditor({
   })
 
   useEffect(() => {
-    if (editor && !editor.isDestroyed && content !== editor.getHTML()) {
+    prefetchEmojis()
+  }, [])
+
+  useEffect(() => {
+    if (
+      editor &&
+      !editor.isDestroyed &&
+      content !== lastEmittedHtmlRef.current
+    ) {
       editor.commands.setContent(content)
+      lastEmittedHtmlRef.current = content
     }
   }, [content, editor])
 

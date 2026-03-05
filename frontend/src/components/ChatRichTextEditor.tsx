@@ -37,6 +37,7 @@ const EmojiPicker = lazy(() => import("./EmojiPicker"))
 import { saveDraft, loadDraft, clearDraft } from "../utils/draftStorage"
 import { usersApi } from "../api/users"
 import type { MentionUser } from "../types"
+import { filterEmojis, prefetchEmojis, type EmojiItem } from "./emojiData"
 
 interface ChatRichTextEditorProps {
   content: string
@@ -94,6 +95,17 @@ export default function ChatRichTextEditor({
   const mentionedIdsRef = useRef<Map<number, string>>(new Map())
   const mentionPopoverOpen =
     mentionQuery !== null && mentionSuggestions.length > 0
+
+  // Emoji suggestion state
+  const [emojiQuery, setEmojiQuery] = useState<string | null>(null)
+  const [emojiSuggestions, setEmojiSuggestions] = useState<EmojiItem[]>([])
+  const [selectedEmojiIndex, setSelectedEmojiIndex] = useState(0)
+  const emojiPopoverOpen = emojiQuery !== null && emojiSuggestions.length > 0
+
+  // Kick off emoji data load in the background so it's ready when needed.
+  useEffect(() => {
+    prefetchEmojis()
+  }, [])
 
   // Populate the user pool for mention filtering.
   // When mentionableUsers is provided, use it directly (e.g. conversation participants).
@@ -218,6 +230,13 @@ export default function ChatRichTextEditor({
     return match ? match[1] : null
   }
 
+  // Extract :query before the cursor (>=1 char, only after space or line start, no closing colon)
+  const getEmojiQuery = (text: string, cursorPos: number): string | null => {
+    const beforeCursor = text.slice(0, cursorPos)
+    const match = beforeCursor.match(/(?:^|(?<=\s)):([^\s:]{1,})$/)
+    return match ? match[1] : null
+  }
+
   const handleContentChange = (newContent: string) => {
     onChange(newContent)
     // Re-derive active mentions so deleted mention text is no longer tracked
@@ -226,13 +245,18 @@ export default function ChatRichTextEditor({
     if (!textarea) {
       setMentionQuery(null)
       setMentionSuggestions([])
+      setEmojiQuery(null)
+      setEmojiSuggestions([])
       return
     }
     const cursor = textarea.selectionStart ?? newContent.length
-    const query = getMentionQuery(newContent, cursor)
-    if (query !== null) {
-      setMentionQuery(query)
-      const lq = query.toLowerCase()
+    const beforeCursor = newContent.slice(0, cursor)
+    const afterCursor = newContent.slice(cursor)
+
+    const mentionQ = getMentionQuery(newContent, cursor)
+    if (mentionQ !== null) {
+      setMentionQuery(mentionQ)
+      const lq = mentionQ.toLowerCase()
       const filtered = allUsers.filter(
         (u) =>
           u.first_name.toLowerCase().includes(lq) ||
@@ -240,10 +264,65 @@ export default function ChatRichTextEditor({
       )
       setMentionSuggestions(filtered.slice(0, 8))
       setSelectedMentionIndex(0)
+      setEmojiQuery(null)
+      setEmojiSuggestions([])
     } else {
       setMentionQuery(null)
       setMentionSuggestions([])
+
+      // Auto-apply closed :emoji: shortcode (e.g. :tada: → 🎉)
+      const closedMatch = beforeCursor.match(/(?:^|(?<=\s)):([^\s:]{1,}):$/)
+      if (closedMatch) {
+        filterEmojis(closedMatch[1]).then((results) => {
+          const exactEmoji = results.find(
+            (e) => e.id === closedMatch[1].toLowerCase(),
+          )
+          if (exactEmoji) {
+            const replaced = beforeCursor.replace(
+              /:[^\s:]{1,}:$/,
+              exactEmoji.native,
+            )
+            onChange(replaced + afterCursor)
+            setEmojiQuery(null)
+            setEmojiSuggestions([])
+            requestAnimationFrame(() => {
+              textarea.focus()
+              textarea.setSelectionRange(replaced.length, replaced.length)
+            })
+          }
+        })
+        return
+      }
+
+      const emojiQ = getEmojiQuery(newContent, cursor)
+      if (emojiQ !== null) {
+        setEmojiQuery(emojiQ)
+        filterEmojis(emojiQ).then((suggestions) => {
+          setEmojiSuggestions(suggestions)
+          setSelectedEmojiIndex(0)
+        })
+      } else {
+        setEmojiQuery(null)
+        setEmojiSuggestions([])
+      }
     }
+  }
+
+  const applyEmoji = (emoji: EmojiItem) => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    const cursor = textarea.selectionStart ?? content.length
+    const beforeCursor = content.slice(0, cursor)
+    const afterCursor = content.slice(cursor)
+    const replaced = beforeCursor.replace(/:[^\s:]{1,}$/, emoji.native)
+    const newContent = replaced + afterCursor
+    onChange(newContent)
+    setEmojiQuery(null)
+    setEmojiSuggestions([])
+    requestAnimationFrame(() => {
+      textarea.focus()
+      textarea.setSelectionRange(replaced.length, replaced.length)
+    })
   }
 
   const applyMention = (user: MentionUser) => {
@@ -275,6 +354,31 @@ export default function ChatRichTextEditor({
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Handle emoji popup navigation
+    if (emojiPopoverOpen) {
+      if (event.key === "ArrowUp") {
+        event.preventDefault()
+        setSelectedEmojiIndex(
+          (i) => (i + emojiSuggestions.length - 1) % emojiSuggestions.length,
+        )
+        return
+      }
+      if (event.key === "ArrowDown") {
+        event.preventDefault()
+        setSelectedEmojiIndex((i) => (i + 1) % emojiSuggestions.length)
+        return
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault()
+        applyEmoji(emojiSuggestions[selectedEmojiIndex])
+        return
+      }
+      if (event.key === "Escape") {
+        setEmojiQuery(null)
+        setEmojiSuggestions([])
+        return
+      }
+    }
     // Handle mention popup navigation
     if (mentionPopoverOpen) {
       if (event.key === "ArrowUp") {
@@ -532,9 +636,9 @@ export default function ChatRichTextEditor({
           </Group>
         )}
 
-        {/* Message input with mention popover */}
+        {/* Message input with mention/emoji popover */}
         <Popover
-          opened={mentionPopoverOpen}
+          opened={mentionPopoverOpen || emojiPopoverOpen}
           position="top-start"
           withArrow={false}
           shadow="md"
@@ -569,30 +673,54 @@ export default function ChatRichTextEditor({
           </Popover.Target>
           <Popover.Dropdown p={4}>
             <Stack gap={0}>
-              {mentionSuggestions.map((user, index) => (
-                <UnstyledButton
-                  key={user.id}
-                  onClick={() => applyMention(user)}
-                  py={6}
-                  px={8}
-                  style={{
-                    backgroundColor:
-                      index === selectedMentionIndex
-                        ? "var(--mantine-color-blue-1)"
-                        : undefined,
-                    borderRadius: "var(--mantine-radius-sm)",
-                  }}
-                >
-                  <Group gap={8}>
-                    <Avatar src={user.profile_picture} size={24} radius="xl">
-                      {user.first_name[0]}
-                    </Avatar>
-                    <Text size="sm">
-                      {user.first_name} {user.last_name}
-                    </Text>
-                  </Group>
-                </UnstyledButton>
-              ))}
+              {emojiPopoverOpen
+                ? emojiSuggestions.map((emoji, index) => (
+                    <UnstyledButton
+                      key={emoji.id}
+                      onClick={() => applyEmoji(emoji)}
+                      py={4}
+                      px={8}
+                      style={{
+                        backgroundColor:
+                          index === selectedEmojiIndex
+                            ? "var(--mantine-color-blue-1)"
+                            : undefined,
+                        borderRadius: "var(--mantine-radius-sm)",
+                      }}
+                    >
+                      <Text size="sm">
+                        {emoji.native} :{emoji.id}:
+                      </Text>
+                    </UnstyledButton>
+                  ))
+                : mentionSuggestions.map((user, index) => (
+                    <UnstyledButton
+                      key={user.id}
+                      onClick={() => applyMention(user)}
+                      py={6}
+                      px={8}
+                      style={{
+                        backgroundColor:
+                          index === selectedMentionIndex
+                            ? "var(--mantine-color-blue-1)"
+                            : undefined,
+                        borderRadius: "var(--mantine-radius-sm)",
+                      }}
+                    >
+                      <Group gap={8}>
+                        <Avatar
+                          src={user.profile_picture}
+                          size={24}
+                          radius="xl"
+                        >
+                          {user.first_name[0]}
+                        </Avatar>
+                        <Text size="sm">
+                          {user.first_name} {user.last_name}
+                        </Text>
+                      </Group>
+                    </UnstyledButton>
+                  ))}
             </Stack>
           </Popover.Dropdown>
         </Popover>
