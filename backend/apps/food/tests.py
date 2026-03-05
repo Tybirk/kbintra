@@ -1967,6 +1967,52 @@ class TestEffectiveStats:
         assert data["total"]["adults_veg"] == 2
         assert data["total"]["adults"] == 2
 
+    def test_stats_deduplicate_multi_user_households(
+        self, authenticated_client, user_with_house, house, admin_user
+    ):
+        """Multi-person households are counted once, not once per user.
+
+        If Alice and Bob both live in house X (2 inhabitants) and both have a
+        registration with adults_veg=2, the stats should report 2, not 4.
+        """
+        from apps.users.models import User
+
+        meal_date = date(2025, 12, 22)  # Monday
+
+        # Assign admin_user to the same house
+        admin_user.house = house
+        admin_user.save()
+
+        # Both users in the same house create a registration with the house count (2)
+        MealRegistration.objects.create(
+            user=user_with_house,
+            house=house,
+            date=meal_date,
+            adults_veg=2,
+            is_active=True,
+        )
+        second_user = User.objects.create_user(
+            email="second@example.com",
+            password="testpass123",
+            house=house,
+        )
+        MealRegistration.objects.create(
+            user=second_user,
+            house=house,
+            date=meal_date,
+            adults_veg=2,
+            is_active=True,
+        )
+
+        url = reverse("food:registration-stats")
+        response = authenticated_client.get(url, {"date": meal_date.isoformat()})
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should count the house once, not twice → 2 adults, not 4
+        assert data["total"]["adults_veg"] == 2
+        assert data["total"]["adults"] == 2
+
 
 @pytest.mark.django_db
 class TestApplyDefaultsSkipsLocked:
