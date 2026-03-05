@@ -39,3 +39,10 @@ repos:
         language: system
         files: ^frontend/.*\.(ts|tsx|js|jsx)$
         pass_filenames: false
+
+      - id: frontend-typecheck
+        name: Frontend Type Check (tsgo)
+        entry: bash -c '[ -f "$HOME/.nvm/nvm.sh" ] && source "$HOME/.nvm/nvm.sh"; cd frontend && npm run typecheck'
+        language: system
+        files: ^frontend/.*\.(ts|tsx)$
+        pass_filenames: false
