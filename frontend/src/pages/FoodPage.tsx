@@ -1324,35 +1324,26 @@ function TicketCard({ ticket }: TicketCardProps) {
                     <Button
                       variant="light"
                       size="sm"
-                      onClick={() => claimMutation.mutate()}
-                      loading={claimMutation.isPending}
+                      onClick={() => deleteMutation.mutate()}
+                      loading={deleteMutation.isPending}
                     >
                       Fortryd
                     </Button>
                   )}
-                  <Menu shadow="md" width={200}>
-                    <Menu.Target>
-                      <ActionIcon variant="subtle">
-                        <IconDotsVertical size={16} />
-                      </ActionIcon>
-                    </Menu.Target>
-                    <Menu.Dropdown>
-                      {!ticket.is_available && (
+                  {!ticket.is_available && (
+                    <Menu shadow="md" width={200}>
+                      <Menu.Target>
+                        <ActionIcon variant="subtle">
+                          <IconDotsVertical size={16} />
+                        </ActionIcon>
+                      </Menu.Target>
+                      <Menu.Dropdown>
                         <Menu.Item onClick={() => releaseMutation.mutate()}>
                           Frigiv billet
                         </Menu.Item>
-                      )}
-                      {ticket.is_available && (
-                        <Menu.Item
-                          color="red"
-                          leftSection={<IconTrash size={14} />}
-                          onClick={() => deleteMutation.mutate()}
-                        >
-                          Slet
-                        </Menu.Item>
-                      )}
-                    </Menu.Dropdown>
-                  </Menu>
+                      </Menu.Dropdown>
+                    </Menu>
+                  )}
                 </>
               )}
             </Group>
