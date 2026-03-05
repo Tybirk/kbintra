@@ -1,5 +1,5 @@
 import { NavLink, Stack, ScrollArea, Badge, Group } from "@mantine/core"
-import { useLocation, useNavigate } from "react-router-dom"
+import { useLocation, Link } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import {
   IconHome,
@@ -59,7 +59,6 @@ interface AppNavbarProps {
 
 export default function AppNavbar({ onNavigate }: AppNavbarProps) {
   const location = useLocation()
-  const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
 
   // Fetch unread message count
@@ -87,11 +86,6 @@ export default function AppNavbar({ onNavigate }: AppNavbarProps) {
   const unreadNotifications = unreadNotificationsData?.unread_count ?? 0
   const unreadForum = unreadForumData?.unread_count ?? 0
 
-  const handleNavigate = (path: string) => {
-    navigate(path)
-    onNavigate?.()
-  }
-
   const getLabel = (item: NavItem) => {
     let badgeCount = 0
     if (item.path === "/beskeder") badgeCount = unreadMessages
@@ -117,6 +111,8 @@ export default function AppNavbar({ onNavigate }: AppNavbarProps) {
         {navItems.map((item) => (
           <NavLink
             key={item.path}
+            component={Link}
+            to={item.path}
             label={getLabel(item)}
             leftSection={<item.icon size={20} />}
             active={
@@ -129,15 +125,17 @@ export default function AppNavbar({ onNavigate }: AppNavbarProps) {
                       location.pathname.startsWith("/mad/")
                     : location.pathname.startsWith(item.path)
             }
-            onClick={() => handleNavigate(item.path)}
+            onClick={onNavigate}
           />
         ))}
         {user?.is_staff && (
           <NavLink
+            component={Link}
+            to="/drift"
             label="Admin"
             leftSection={<IconSettings size={20} />}
             active={location.pathname === "/drift"}
-            onClick={() => handleNavigate("/drift")}
+            onClick={onNavigate}
           />
         )}
       </Stack>

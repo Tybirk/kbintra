@@ -24,6 +24,10 @@ export function useVersionCheck() {
   useEffect(() => {
     // Don't run version checks on the login page — reloading clears form inputs
     if (!isAuthenticated) return
+
+    // In dev mode version.json doesn't exist (it's generated at build time),
+    // so skip version checks to avoid console errors.
+    if (import.meta.env.DEV) return
     async function checkVersion() {
       // Rate limit checks
       const now = Date.now()
@@ -43,6 +47,10 @@ export function useVersionCheck() {
           },
         })
         if (!response.ok) return
+
+        // Guard against non-JSON responses (e.g. HTML error pages)
+        const contentType = response.headers.get("content-type") ?? ""
+        if (!contentType.includes("application/json")) return
 
         const data = await response.json()
         const serverVersion = data.version as string
@@ -76,9 +84,8 @@ export function useVersionCheck() {
             window.location.reload()
           }, 100)
         }
-      } catch (error) {
+      } catch {
         // Silently fail - don't break the app if version check fails
-        console.debug("[VersionCheck] Check failed:", error)
       }
     }
 

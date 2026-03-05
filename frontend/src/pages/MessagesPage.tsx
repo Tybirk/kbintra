@@ -137,6 +137,9 @@ export default function MessagesPage() {
   const filteredConversations = conversationSearch.trim()
     ? (conversations ?? []).filter((conv) => {
         const term = conversationSearch.trim().toLowerCase()
+        if (conv.other_participants.length === 0) {
+          return "slettet bruger".includes(term)
+        }
         return conv.other_participants.some(
           (p) =>
             p.first_name.toLowerCase().includes(term) ||
@@ -454,15 +457,17 @@ export default function MessagesPage() {
                 </Stack>
               </Center>
             ) : (
-              filteredConversations.map((conv) => (
-                <ConversationItem
-                  key={conv.id}
-                  conversation={conv}
-                  isSelected={conv.id === selectedConversation}
-                  currentUserId={user?.id}
-                  onClick={() => handleSelectConversation(conv.id)}
-                />
-              ))
+              <div role="listbox" aria-label="Samtaler">
+                {filteredConversations.map((conv) => (
+                  <ConversationItem
+                    key={conv.id}
+                    conversation={conv}
+                    isSelected={conv.id === selectedConversation}
+                    currentUserId={user?.id}
+                    onClick={() => handleSelectConversation(conv.id)}
+                  />
+                ))}
+              </div>
             )}
           </ScrollArea>
         </Box>
@@ -605,15 +610,22 @@ function ConversationItem({
 }: ConversationItemProps) {
   const otherParticipants = conversation.other_participants
   const isGroupChat = otherParticipants.length > 1
-  const displayName =
-    otherParticipants.length > 0
-      ? otherParticipants.map((p) => p.first_name).join(", ")
-      : "Unknown"
+  const hasNoParticipants = otherParticipants.length === 0
+  const displayName = hasNoParticipants
+    ? "Slettet bruger"
+    : otherParticipants.map((p) => p.first_name).join(", ")
   const avatar = otherParticipants[0]
 
+  const unreadLabel =
+    conversation.unread_count > 0 ? `, ${conversation.unread_count} ulæste` : ""
+
   return (
-    <Box
+    <UnstyledButton
       p="sm"
+      w="100%"
+      role="option"
+      aria-selected={isSelected}
+      aria-label={`Samtale med ${displayName}${unreadLabel}`}
       style={{
         cursor: "pointer",
         backgroundColor: isSelected
@@ -659,7 +671,12 @@ function ConversationItem({
         </Indicator>
         <div style={{ flex: 1, minWidth: 0 }}>
           <Group justify="space-between" gap="xs" wrap="nowrap">
-            <Text fw={conversation.unread_count > 0 ? 600 : 500} truncate>
+            <Text
+              fw={conversation.unread_count > 0 ? 600 : 500}
+              truncate
+              c={hasNoParticipants ? "dimmed" : undefined}
+              fs={hasNoParticipants ? "italic" : undefined}
+            >
               {displayName}
             </Text>
             {conversation.last_message && (
@@ -685,7 +702,7 @@ function ConversationItem({
           </Badge>
         )}
       </Group>
-    </Box>
+    </UnstyledButton>
   )
 }
 
@@ -835,12 +852,10 @@ function ChatArea({
   const highlightedHashRef = useRef<string | null>(null)
 
   const otherParticipants = conversation.other_participants
-  const displayName =
-    otherParticipants.length > 0
-      ? otherParticipants
-          .map((p) => `${p.first_name} ${p.last_name}`)
-          .join(", ")
-      : "Unknown"
+  const hasNoParticipants = otherParticipants.length === 0
+  const displayName = hasNoParticipants
+    ? "Slettet bruger"
+    : otherParticipants.map((p) => `${p.first_name} ${p.last_name}`).join(", ")
 
   // Scroll to bottom when opening a conversation (instant) or when new messages arrive (smooth)
   useEffect(() => {
@@ -942,7 +957,12 @@ function ChatArea({
               {otherParticipants[0]?.first_name?.[0]}
             </Avatar>
             <div style={{ minWidth: 0 }}>
-              <Text fw={500} truncate>
+              <Text
+                fw={500}
+                truncate
+                c={hasNoParticipants ? "dimmed" : undefined}
+                fs={hasNoParticipants ? "italic" : undefined}
+              >
                 {displayName}
               </Text>
               <Text size="xs" c="dimmed">
