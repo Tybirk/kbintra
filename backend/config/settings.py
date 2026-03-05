@@ -168,6 +168,8 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50MB
 # Application-level file limits (validated in serializers)
 MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024  # 50MB per file
 MAX_DOCX_PREVIEW_SIZE = 50 * 1024 * 1024  # 50MB - skip DOCX preview for larger files
+MAX_PDF_PREVIEW_SIZE = 20 * 1024 * 1024  # 20MB - skip PDF preview for larger files
+MAX_PDF_PREVIEW_PAGES = 20  # Max pages to include in PDF HTML preview
 
 # JWT settings
 SIMPLE_JWT = {

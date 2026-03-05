@@ -24,7 +24,7 @@ class MessageAttachmentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = MessageAttachment
-        fields = ["id", "name", "file", "file_url", "uploaded_at"]
+        fields = ["id", "name", "file", "file_url", "preview_html", "uploaded_at"]
         read_only_fields = ["id", "uploaded_at"]
 
     def get_file_url(self, obj: MessageAttachment) -> str:
@@ -289,6 +289,8 @@ class CreateMessageSerializer(serializers.ModelSerializer):
         message = super().create(validated_data)
 
         # Create attachments
+        from apps.forum.utils import generate_docx_preview, generate_pdf_preview
+
         user = self.context["request"].user
         attachment_objects = []
         for attachment_file in attachments:
@@ -297,6 +299,8 @@ class CreateMessageSerializer(serializers.ModelSerializer):
                 file=attachment_file,
                 name=attachment_file.name,
                 uploaded_by=user,
+                preview_html=generate_docx_preview(attachment_file)
+                or generate_pdf_preview(attachment_file),
             )
             attachment_objects.append(att)
 
@@ -324,6 +328,7 @@ class CreateMessageSerializer(serializers.ModelSerializer):
                     "id": att.id,
                     "name": att.name,
                     "file_url": att.file.url if att.file else "",
+                    "preview_html": att.preview_html,
                 }
                 for att in attachment_objects
             ],

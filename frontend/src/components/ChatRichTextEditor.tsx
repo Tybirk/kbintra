@@ -436,7 +436,12 @@ export default function ChatRichTextEditor({
           </Group>
         </ScrollArea>
       )}
-      <Group gap={isMobile ? 4 : "xs"} align="flex-end" wrap="nowrap">
+      <Group
+        gap={isMobile ? 4 : "xs"}
+        align="flex-end"
+        wrap="nowrap"
+        style={{ minWidth: 0 }}
+      >
         {isMobile ? (
           /* Mobile: chevron to reveal attachment buttons, or the buttons themselves */
           attachExpanded ? (
@@ -614,6 +619,7 @@ export default function ChatRichTextEditor({
           onClick={onSend}
           disabled={disabled || isEmpty}
           mb={1}
+          mr={isMobile ? 2 : undefined}
         >
           <IconSend size={isMobile ? 16 : 18} />
         </ActionIcon>

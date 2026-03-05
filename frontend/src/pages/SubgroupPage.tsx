@@ -239,6 +239,8 @@ export default function SubgroupPage() {
 
 Below are **${threadCount} open ${taskKind}** reported by residents. Each thread is the original post followed by replies — read the full thread for context and constraints before acting.
 
+Some posts include **attachments** (screenshots, images, documents) listed as local file paths. Only read attachments that seem relevant to the task at hand — e.g. screenshots attached to bug reports.
+
 For each ${taskKind.replace(/s$/, "")}:
 1. Read the full thread and understand the problem/request
 2. ${capitalize(actionVerb)} it with a focused, minimal change
@@ -276,6 +278,13 @@ Skip any that are too vague to act on, and note why at the end.
           )
           parts.push(htmlToMarkdown(post.content))
           parts.push("\n\n")
+          if (post.attachments.length > 0) {
+            parts.push("Attachments:\n")
+            for (const att of post.attachments) {
+              parts.push(`- \`backend/data/media/${att.file}\` (${att.name})\n`)
+            }
+            parts.push("\n")
+          }
         }
         parts.push("---\n\n")
       }

@@ -192,7 +192,7 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
         })
     }
 
-    if (fileType === "pdf") {
+    if (fileType === "pdf" && !(isPwa && attachment.preview_html)) {
       setLoading(true)
       setError(null)
 
@@ -211,7 +211,7 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
           setLoading(false)
         })
     }
-  }, [attachment.file_url, fileType, opened])
+  }, [attachment.file_url, attachment.preview_html, fileType, isPwa, opened])
 
   // Cleanup blob URL on unmount
   useEffect(() => {
@@ -302,14 +302,34 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
         </Stack>
       )
     }
-    if (!pdfBlobUrl) {
-      return (
-        <Center h="100%">
-          <Loader />
-        </Center>
-      )
-    }
     if (isPwa) {
+      if (attachment.preview_html) {
+        return (
+          <Stack gap="md" style={{ height: "100%" }} p={isMobile ? "xs" : "md"}>
+            <ScrollArea style={{ flex: 1 }}>
+              <Box
+                p="md"
+                style={{
+                  backgroundColor: "var(--mantine-color-default-hover)",
+                  borderRadius: "var(--mantine-radius-md)",
+                  overflowWrap: "break-word",
+                }}
+                dangerouslySetInnerHTML={{ __html: attachment.preview_html }}
+              />
+            </ScrollArea>
+            <Group justify="center">
+              <Button
+                variant="light"
+                size="sm"
+                leftSection={<IconDownload size={16} />}
+                onClick={handleDownload}
+              >
+                Download fil
+              </Button>
+            </Group>
+          </Stack>
+        )
+      }
       return (
         <Stack
           align="center"
@@ -329,6 +349,13 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
             Download fil
           </Button>
         </Stack>
+      )
+    }
+    if (!pdfBlobUrl) {
+      return (
+        <Center h="100%">
+          <Loader />
+        </Center>
       )
     }
     return (

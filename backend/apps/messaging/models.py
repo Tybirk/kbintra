@@ -124,6 +124,7 @@ class MessageAttachment(models.Model):
     )
     file = models.FileField(upload_to="message_attachments/")
     name = models.CharField(max_length=255)
+    preview_html = models.TextField(blank=True, default="")
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,

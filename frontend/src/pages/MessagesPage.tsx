@@ -108,6 +108,8 @@ export default function MessagesPage() {
   const [isWsConnected, setIsWsConnected] = useState(chatWs.isConnected)
   const [conversationSearch, setConversationSearch] = useState("")
   const isMobile = useMediaQuery("(max-width: 768px)")
+  const inConversationMobile =
+    !!isMobile && (!!selectedConversation || isComposingNew)
   const selectedConversationRef = useRef(selectedConversation)
 
   // Sync URL param to state when URL changes (e.g., from notification link)
@@ -359,33 +361,53 @@ export default function MessagesPage() {
   }
 
   return (
-    <Box style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <Group justify="space-between" mb="md">
-        <div>
-          <Title order={1}>Beskeder</Title>
-          <Group gap="xs">
-            <Text c="dimmed">Direkte beskeder</Text>
-            {isWsConnected && (
-              <Badge size="xs" color="green" variant="dot">
-                Live
-              </Badge>
-            )}
-          </Group>
-        </div>
-        <Button
-          leftSection={<IconPlus size={16} />}
-          onClick={handleStartNewMessage}
-        >
-          Ny besked
-        </Button>
-      </Group>
+    <Box
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        // On mobile in conversation: use fixed positioning so the box has an explicit
+        // viewport-based height. This fixes the height chain so flex children (ScrollArea)
+        // are properly constrained and the page body never scrolls.
+        // On desktop / list view: normal flow with height: 100%.
+        ...(inConversationMobile
+          ? {
+              position: "fixed",
+              top: "var(--app-shell-header-height, 60px)",
+              left: 0,
+              right: 0,
+              bottom: 0,
+            }
+          : { height: "100%" }),
+      }}
+    >
+      {!inConversationMobile && (
+        <Group justify="space-between" mb="md">
+          <div>
+            <Title order={1}>Beskeder</Title>
+            <Group gap="xs">
+              <Text c="dimmed">Direkte beskeder</Text>
+              {isWsConnected && (
+                <Badge size="xs" color="green" variant="dot">
+                  Live
+                </Badge>
+              )}
+            </Group>
+          </div>
+          <Button
+            leftSection={<IconPlus size={16} />}
+            onClick={handleStartNewMessage}
+          >
+            Ny besked
+          </Button>
+        </Group>
+      )}
 
       <Paper
-        withBorder
-        radius="md"
+        withBorder={!inConversationMobile}
+        radius={inConversationMobile ? 0 : "md"}
         style={{
           flex: 1,
-          minHeight: "400px",
+          minHeight: inConversationMobile ? undefined : "400px",
           display: "flex",
           overflow: "hidden",
         }}
@@ -454,6 +476,7 @@ export default function MessagesPage() {
         <Box
           style={{
             flex: 1,
+            minWidth: 0,
             display:
               isMobile && !selectedConversation && !isComposingNew
                 ? "none"
@@ -740,7 +763,7 @@ const MessageList = memo(function MessageList({
       viewportRef={scrollViewportRef}
       scrollbars="y"
     >
-      <Stack gap="sm" style={{ width: "100%" }}>
+      <Stack gap="sm" style={{ width: "100%", overflowX: "hidden" }}>
         {messages.map((msg, idx) => {
           const prevMsg = idx > 0 ? messages[idx - 1] : null
           const nextMsg = idx < messages.length - 1 ? messages[idx + 1] : null
@@ -1344,14 +1367,10 @@ const MessageBubble = memo(function MessageBubble({
           size="sm"
           color="gray"
           style={{
-            opacity: isMobileDevice
-              ? 0
-              : isHovered || reactionPickerOpened
-                ? 1
-                : 0,
+            display: isMobileDevice ? "none" : undefined,
+            opacity: isHovered || reactionPickerOpened ? 1 : 0,
             transition: "opacity 0.1s",
             flexShrink: 0,
-            pointerEvents: isMobileDevice ? "none" : "auto",
           }}
           onClick={() => setReactionPickerOpened((o) => !o)}
           aria-label="Tilføj reaktion"
@@ -1431,6 +1450,57 @@ const MessageBubble = memo(function MessageBubble({
             )
           })}
         </SimpleGrid>
+        <Divider my="xs" />
+        <Stack gap={0}>
+          <UnstyledButton
+            px="xs"
+            py={6}
+            style={{ borderRadius: "var(--mantine-radius-sm)" }}
+            onClick={() => {
+              handleCopy()
+              setReactionPickerOpened(false)
+            }}
+          >
+            <Group gap="xs">
+              <IconCopy size={14} color="var(--mantine-color-dimmed)" />
+              <Text size="sm">Kopiér</Text>
+            </Group>
+          </UnstyledButton>
+          {isOwn && (
+            <UnstyledButton
+              px="xs"
+              py={6}
+              style={{ borderRadius: "var(--mantine-radius-sm)" }}
+              onClick={() => {
+                handleStartEdit()
+                setReactionPickerOpened(false)
+              }}
+            >
+              <Group gap="xs">
+                <IconEdit size={14} color="var(--mantine-color-dimmed)" />
+                <Text size="sm">Rediger</Text>
+              </Group>
+            </UnstyledButton>
+          )}
+          {isOwn && (
+            <UnstyledButton
+              px="xs"
+              py={6}
+              style={{ borderRadius: "var(--mantine-radius-sm)" }}
+              onClick={() => {
+                void handleUnsend()
+                setReactionPickerOpened(false)
+              }}
+            >
+              <Group gap="xs">
+                <IconTrash size={14} color="var(--mantine-color-red-6)" />
+                <Text size="sm" c="red">
+                  Fortryd afsendelse
+                </Text>
+              </Group>
+            </UnstyledButton>
+          )}
+        </Stack>
       </Popover.Dropdown>
     </Popover>
   )
@@ -1465,9 +1535,9 @@ const MessageBubble = memo(function MessageBubble({
           </Avatar>
         )}
 
-        {/* Emoji + menu buttons appear to the left for own messages */}
+        {/* Emoji + menu buttons appear to the left for own messages (desktop only) */}
         {isOwn && emojiPickerButton}
-        {isOwn && menuButton}
+        {isOwn && !isMobileDevice && menuButton}
 
         <Box style={{ maxWidth: "70%", minWidth: 0, overflow: "hidden" }}>
           {hasAttachments && !isEditing && (
@@ -1675,8 +1745,8 @@ const MessageBubble = memo(function MessageBubble({
           )}
         </Box>
 
-        {/* Menu + emoji buttons appear to the right for others' messages */}
-        {!isOwn && menuButton}
+        {/* Menu + emoji buttons appear to the right for others' messages (desktop only) */}
+        {!isOwn && !isMobileDevice && menuButton}
         {!isOwn && emojiPickerButton}
       </Group>
 
