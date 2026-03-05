@@ -443,6 +443,12 @@ export interface CreateFoodTicketData {
   description?: string
 }
 
+export interface ClaimFoodTicketData {
+  adults_meat?: number
+  adults_veg?: number
+  children_count?: number
+}
+
 // Drive Menu Types (from Google Drive)
 export interface DriveMenu {
   id: number

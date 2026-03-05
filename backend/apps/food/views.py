@@ -5,6 +5,7 @@ Views for Food app.
 import contextlib
 import logging
 from datetime import date, timedelta
+from decimal import Decimal
 from typing import Any
 
 from django.db import transaction
@@ -315,9 +316,28 @@ class FoodTicketDetailView(generics.RetrieveDestroyAPIView):
 
 
 class ClaimTicketView(APIView):
-    """Claim a food ticket."""
+    """Claim a food ticket (full or partial).
+
+    Accepts optional adults_meat, adults_veg, children_count in the request body
+    to allow buying a subset of the offered portions. If all amounts match the
+    ticket, the ticket is claimed in full (existing behaviour). For a partial
+    claim the original ticket is reduced and a new claimed ticket is created for
+    the buyer.
+    """
 
     permission_classes = [permissions.IsAuthenticated]
+
+    # Default prices — keep in sync with FoodTicketCreateSerializer and frontend
+    _PRICE_ADULT_MEAT = Decimal("37.00")
+    _PRICE_ADULT_VEG = Decimal("26.00")
+    _PRICE_CHILD = Decimal("18.00")
+
+    def _calc_price(self, meat: int, veg: int, children: int) -> Decimal:
+        return (
+            self._PRICE_ADULT_MEAT * meat
+            + self._PRICE_ADULT_VEG * veg
+            + self._PRICE_CHILD * children
+        )
 
     def post(self, request: Request, pk: int) -> Response:
         with transaction.atomic():
@@ -341,10 +361,93 @@ class ClaimTicketView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            ticket.is_available = False
-            ticket.claimed_by = request.user
-            ticket.claimed_at = timezone.now()
-            ticket.save()
+            # Determine requested amounts — default to full ticket
+            try:
+                adults_meat = (
+                    int(request.data["adults_meat"])
+                    if "adults_meat" in request.data
+                    else ticket.adults_meat
+                )
+                adults_veg = (
+                    int(request.data["adults_veg"])
+                    if "adults_veg" in request.data
+                    else ticket.adults_veg
+                )
+                children_count = (
+                    int(request.data["children_count"])
+                    if "children_count" in request.data
+                    else ticket.children_count
+                )
+            except (ValueError, TypeError):
+                return Response(
+                    {"detail": "Ugyldige portionsantal."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if adults_meat < 0 or adults_veg < 0 or children_count < 0:
+                return Response(
+                    {"detail": "Portioner skal være positive tal."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if adults_meat + adults_veg + children_count == 0:
+                return Response(
+                    {"detail": "Mindst én portion skal vælges."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if (
+                adults_meat > ticket.adults_meat
+                or adults_veg > ticket.adults_veg
+                or children_count > ticket.children_count
+            ):
+                return Response(
+                    {"detail": "Kan ikke købe flere portioner end udbudt."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            is_full_claim = (
+                adults_meat == ticket.adults_meat
+                and adults_veg == ticket.adults_veg
+                and children_count == ticket.children_count
+            )
+
+            if is_full_claim:
+                ticket.is_available = False
+                ticket.claimed_by = request.user
+                ticket.claimed_at = timezone.now()
+                ticket.save()
+                claimed_ticket = ticket
+            else:
+                # Partial claim: reduce original ticket, create new claimed ticket
+                is_free_ticket = ticket.is_free
+                remaining_meat = ticket.adults_meat - adults_meat
+                remaining_veg = ticket.adults_veg - adults_veg
+                remaining_children = ticket.children_count - children_count
+                ticket.adults_meat = remaining_meat
+                ticket.adults_veg = remaining_veg
+                ticket.children_count = remaining_children
+                ticket.price = (
+                    None
+                    if is_free_ticket
+                    else self._calc_price(remaining_meat, remaining_veg, remaining_children)
+                )
+                ticket.save()
+
+                claimed_ticket = FoodTicket.objects.create(
+                    owner=ticket.owner,
+                    date=ticket.date,
+                    adults_meat=adults_meat,
+                    adults_veg=adults_veg,
+                    children_count=children_count,
+                    price=(
+                        None
+                        if is_free_ticket
+                        else self._calc_price(adults_meat, adults_veg, children_count)
+                    ),
+                    description=ticket.description,
+                    is_available=False,
+                    claimed_by=request.user,
+                    claimed_at=timezone.now(),
+                )
 
         # Notify the owner that their ticket was claimed (skip if claiming own ticket)
         if ticket.owner != request.user:
@@ -353,10 +456,10 @@ class ClaimTicketView(APIView):
             notify_ticket_claimed(
                 owner=ticket.owner,
                 claimer=request.user,
-                ticket_date=ticket.date.strftime("%A, %b %d"),
+                ticket_date=claimed_ticket.date.strftime("%A, %b %d"),
             )
 
-        serializer = FoodTicketSerializer(ticket, context={"request": request})
+        serializer = FoodTicketSerializer(claimed_ticket, context={"request": request})
         return Response(serializer.data)
 
 

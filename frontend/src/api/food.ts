@@ -10,6 +10,7 @@ import type {
   CreateMealRegistrationData,
   FoodTicket,
   CreateFoodTicketData,
+  ClaimFoodTicketData,
   DailyRegistrationStats,
   WeeklyRegistrationStats,
   FoodTeam,
@@ -129,8 +130,14 @@ export const foodApi = {
     await apiClient.delete(`/food/tickets/${id}/`)
   },
 
-  claimTicket: async (id: number): Promise<FoodTicket> => {
-    const response = await apiClient.post(`/food/tickets/${id}/claim/`)
+  claimTicket: async (
+    id: number,
+    data?: ClaimFoodTicketData,
+  ): Promise<FoodTicket> => {
+    const response = await apiClient.post(
+      `/food/tickets/${id}/claim/`,
+      data ?? {},
+    )
     return response.data
   },
 

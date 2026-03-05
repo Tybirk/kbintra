@@ -153,7 +153,23 @@ describe("foodApi", () => {
 
       const result = await foodApi.claimTicket(1)
 
-      expect(apiClient.post).toHaveBeenCalledWith("/food/tickets/1/claim/")
+      expect(apiClient.post).toHaveBeenCalledWith("/food/tickets/1/claim/", {})
+      expect(result).toEqual(mockTicket)
+    })
+
+    it("should claim ticket with partial portions", async () => {
+      const mockTicket = { id: 1, is_available: false }
+      vi.mocked(apiClient.post).mockResolvedValue({ data: mockTicket })
+
+      const result = await foodApi.claimTicket(1, {
+        adults_veg: 1,
+        children_count: 0,
+      })
+
+      expect(apiClient.post).toHaveBeenCalledWith("/food/tickets/1/claim/", {
+        adults_veg: 1,
+        children_count: 0,
+      })
       expect(result).toEqual(mockTicket)
     })
 

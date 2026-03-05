@@ -1246,9 +1246,30 @@ function TicketCard({ ticket }: TicketCardProps) {
   const clipboard = useClipboard({ timeout: 2000 })
   const [buyModalOpened, { open: openBuyModal, close: closeBuyModal }] =
     useDisclosure(false)
+  const isWednesdayTicket = dayjs(ticket.date).day() === 3
+
+  const [buyMeat, setBuyMeat] = useState(ticket.adults_meat)
+  const [buyVeg, setBuyVeg] = useState(ticket.adults_veg)
+  const [buyChildren, setBuyChildren] = useState(ticket.children_count)
+
+  const handleOpenBuyModal = () => {
+    setBuyMeat(ticket.adults_meat)
+    setBuyVeg(ticket.adults_veg)
+    setBuyChildren(ticket.children_count)
+    openBuyModal()
+  }
+
+  const buyPrice = ticket.is_free
+    ? 0
+    : calculateDefaultTicketPrice(buyMeat, buyVeg, buyChildren)
 
   const claimMutation = useMutation({
-    mutationFn: () => foodApi.claimTicket(ticket.id),
+    mutationFn: () =>
+      foodApi.claimTicket(ticket.id, {
+        adults_meat: buyMeat,
+        adults_veg: buyVeg,
+        children_count: buyChildren,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "tickets"] })
       closeBuyModal()
@@ -1426,7 +1447,7 @@ function TicketCard({ ticket }: TicketCardProps) {
 
               {/* Buy button */}
               {!ticket.is_own && ticket.is_available && (
-                <Button size="sm" onClick={openBuyModal}>
+                <Button size="sm" onClick={handleOpenBuyModal}>
                   Køb
                 </Button>
               )}
@@ -1488,32 +1509,49 @@ function TicketCard({ ticket }: TicketCardProps) {
             </Group>
           </div>
 
+          <Text size="sm" c="dimmed">
+            {ticket.day_name}, {dayjs(ticket.date).format("D. MMM")}
+          </Text>
+
           <div>
-            <Text size="sm" c="dimmed">
-              Billet
+            <Text size="sm" fw={500} mb={4}>
+              Vælg antal portioner
             </Text>
-            <Text>
-              {ticket.day_name}, {dayjs(ticket.date).format("D. MMM")} •{" "}
-              {[
-                ticket.adults_meat > 0
-                  ? `${ticket.adults_meat} voksen kød`
-                  : null,
-                ticket.adults_veg > 0
-                  ? ticket.adults_meat > 0
-                    ? `${ticket.adults_veg} vegetar`
-                    : `${ticket.adults_veg} ${
-                        ticket.adults_veg === 1 ? "voksen" : "voksne"
-                      }`
-                  : null,
-                ticket.children_count > 0
-                  ? `${ticket.children_count} ${
-                      ticket.children_count === 1 ? "barn" : "børn"
-                    }`
-                  : null,
-              ]
-                .filter(Boolean)
-                .join(", ")}
-            </Text>
+            <Stack gap="xs">
+              {isWednesdayTicket && ticket.adults_meat > 0 && (
+                <NumberInput
+                  label={`Kød-portioner (maks ${ticket.adults_meat})`}
+                  value={buyMeat}
+                  onChange={(v) => setBuyMeat(typeof v === "number" ? v : 0)}
+                  min={0}
+                  max={ticket.adults_meat}
+                />
+              )}
+              {ticket.adults_veg > 0 && (
+                <NumberInput
+                  label={
+                    isWednesdayTicket
+                      ? `Vegetar-portioner (maks ${ticket.adults_veg})`
+                      : `Voksne (maks ${ticket.adults_veg})`
+                  }
+                  value={buyVeg}
+                  onChange={(v) => setBuyVeg(typeof v === "number" ? v : 0)}
+                  min={0}
+                  max={ticket.adults_veg}
+                />
+              )}
+              {ticket.children_count > 0 && (
+                <NumberInput
+                  label={`Børn (maks ${ticket.children_count})`}
+                  value={buyChildren}
+                  onChange={(v) =>
+                    setBuyChildren(typeof v === "number" ? v : 0)
+                  }
+                  min={0}
+                  max={ticket.children_count}
+                />
+              )}
+            </Stack>
           </div>
 
           <div>
@@ -1521,11 +1559,11 @@ function TicketCard({ ticket }: TicketCardProps) {
               Pris
             </Text>
             <Text fw={500} size="lg">
-              {ticket.is_free ? "Gratis" : `${ticket.price} kr`}
+              {ticket.is_free ? "Gratis" : `${buyPrice} kr`}
             </Text>
           </div>
 
-          {!ticket.is_free && (
+          {!ticket.is_free && buyPrice > 0 && (
             <Stack gap="xs">
               <Text size="sm" fw={500}>
                 Betal med MobilePay
@@ -1578,6 +1616,7 @@ function TicketCard({ ticket }: TicketCardProps) {
             <Button
               onClick={() => claimMutation.mutate()}
               loading={claimMutation.isPending}
+              disabled={buyMeat + buyVeg + buyChildren === 0}
             >
               Bekræft køb
             </Button>
