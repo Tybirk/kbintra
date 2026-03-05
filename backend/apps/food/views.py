@@ -9,7 +9,7 @@ from decimal import Decimal
 from typing import Any
 
 from django.db import transaction
-from django.db.models import Q, QuerySet, Sum
+from django.db.models import Max, Q, QuerySet, Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -109,11 +109,23 @@ class DailyRegistrationStatsView(APIView):
 
         Effective portions = active registrations minus available (unsold) tickets.
         Claimed tickets are NOT subtracted (the claimer eats in place of the seller).
+
+        Deduplication: each house counts once. Multiple users in the same house each
+        have their own registration (each containing the full household count), so we
+        only keep the most recently created registration per house to avoid double-counting.
+        Users without a house are always counted individually.
         """
+        # For houses with multiple registrations, keep only the latest one (highest id)
+        latest_per_house = (
+            MealRegistration.objects.filter(date=target_date, is_active=True, house__isnull=False)
+            .values("house_id")
+            .annotate(latest_id=Max("id"))
+            .values("latest_id")
+        )
         registrations = MealRegistration.objects.filter(
             date=target_date,
             is_active=True,
-        )
+        ).filter(Q(house__isnull=True) | Q(id__in=latest_per_house))
 
         # Aggregate by category
         def _agg(qs: QuerySet) -> dict[str, int]:

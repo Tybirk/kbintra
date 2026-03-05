@@ -1431,7 +1431,7 @@ function TicketCard({ ticket }: TicketCardProps) {
                         size="sm"
                         leftSection={<IconWallet size={14} />}
                         component="a"
-                        href="mobilepay://"
+                        href={`mobilepay://send?phone=${ticket.owner.phone_number}`}
                       >
                         Åbn MobilePay
                       </Button>
@@ -1589,7 +1589,7 @@ function TicketCard({ ticket }: TicketCardProps) {
                         color="indigo"
                         leftSection={<IconWallet size={16} />}
                         component="a"
-                        href="mobilepay://"
+                        href={`mobilepay://send?phone=${ticket.owner.phone_number}`}
                       >
                         Åbn MobilePay
                       </Button>

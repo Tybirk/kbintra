@@ -107,9 +107,13 @@ class DriveMenuService:
 
         # Fetch from Drive
         try:
-            menu = self._fetch_menu_from_drive(week_number)
+            menu, folder_id = self._fetch_menu_from_drive(week_number)
             if menu:
                 return self._save_to_cache(menu, year)
+            elif folder_id:
+                # Folder found but no parseable menu yet — save folder_id so the link works
+                self._save_folder_id(week_number, year, folder_id)
+                return DriveMenuCache.objects.filter(week_number=week_number, year=year).first()
         except Exception as e:
             logger.error(f"Error fetching menu from Drive: {e}")
             # Return stale cache if available
@@ -146,9 +150,13 @@ class DriveMenuService:
                     continue
 
                 week_number = int(week_match.group(1))
+                folder_id = folder["id"]
+
+                # Always save the folder_id when we find the week's Drive folder
+                self._save_folder_id(week_number, current_year, folder_id)
 
                 try:
-                    menu = self._fetch_menu_from_folder(folder["id"], week_number)
+                    menu = self._fetch_menu_from_folder(folder_id, week_number)
                     if menu:
                         self._save_to_cache(menu, current_year)
                         updated += 1
@@ -178,40 +186,51 @@ class DriveMenuService:
             logger.error(f"Error listing folders: {e}")
             return []
 
-    def _fetch_menu_from_drive(self, week_number: int) -> ParsedMenu | None:
-        """Fetch menu for a specific week from Drive."""
-        # Find the folder for this week
+    def _fetch_menu_from_drive(self, week_number: int) -> tuple[ParsedMenu | None, str]:
+        """Fetch menu for a specific week from Drive.
+
+        Returns:
+            Tuple of (parsed menu or None, folder_id or empty string)
+        """
         folders = self._list_week_folders()
 
         for folder in folders:
             match = self.WEEK_FOLDER_PATTERN.search(folder["name"])
             if match and int(match.group(1)) == week_number:
-                return self._fetch_menu_from_folder(folder["id"], week_number)
+                menu = self._fetch_menu_from_folder(folder["id"], week_number)
+                return menu, folder["id"]
 
         logger.warning(f"No folder found for week {week_number}")
-        return None
+        return None, ""
+
+    GDOC_MIME = "application/vnd.google-apps.document"
+    DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
     def _fetch_menu_from_folder(self, folder_id: str, week_number: int) -> ParsedMenu | None:
-        """Fetch and parse menu from a specific folder."""
-        # Find .docx file in the folder
+        """Fetch and parse menu from a specific folder.
+
+        Supports both uploaded .docx files and native Google Docs documents.
+        """
         try:
             results = (
                 self.service.files()
                 .list(
-                    q=f"'{folder_id}' in parents and mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document'",
-                    fields="files(id, name)",
+                    q=(
+                        f"'{folder_id}' in parents and ("
+                        f"mimeType='{self.DOCX_MIME}' or mimeType='{self.GDOC_MIME}')"
+                    ),
+                    fields="files(id, name, mimeType)",
                 )
                 .execute()
             )
             files = results.get("files", [])
 
             if not files:
-                logger.warning(f"No .docx files found in folder {folder_id}")
+                logger.warning(f"No menu document found in folder {folder_id}")
                 return None
 
-            # Use the first .docx file found
-            file_id = files[0]["id"]
-            menu = self._download_and_parse(file_id, week_number)
+            file = files[0]
+            menu = self._download_and_parse(file["id"], file["mimeType"], week_number)
             if menu:
                 menu.folder_id = folder_id
             return menu
@@ -220,11 +239,17 @@ class DriveMenuService:
             logger.error(f"Error fetching menu from folder {folder_id}: {e}")
             return None
 
-    def _download_and_parse(self, file_id: str, week_number: int) -> ParsedMenu | None:
-        """Download a .docx file and parse its contents."""
+    def _download_and_parse(
+        self, file_id: str, mime_type: str, week_number: int
+    ) -> ParsedMenu | None:
+        """Download a document (uploaded .docx or native Google Doc) and parse it."""
         try:
-            # Download file content
-            request = self.service.files().get_media(fileId=file_id)
+            if mime_type == self.GDOC_MIME:
+                # Export native Google Doc as docx
+                request = self.service.files().export_media(fileId=file_id, mimeType=self.DOCX_MIME)
+            else:
+                request = self.service.files().get_media(fileId=file_id)
+
             file_content = io.BytesIO()
             downloader = MediaIoBaseDownload(file_content, request)
 
@@ -233,8 +258,6 @@ class DriveMenuService:
                 _, done = downloader.next_chunk()
 
             file_content.seek(0)
-
-            # Parse the document
             return self._parse_docx(file_content, week_number, file_id)
 
         except Exception as e:
@@ -330,6 +353,14 @@ class DriveMenuService:
             wednesday=menus["wednesday"],
             thursday=menus["thursday"],
             raw_content=raw_content,
+        )
+
+    def _save_folder_id(self, week_number: int, year: int, folder_id: str) -> None:
+        """Persist the Drive folder ID for a week even if no menu has been parsed yet."""
+        DriveMenuCache.objects.update_or_create(
+            week_number=week_number,
+            year=year,
+            defaults={"drive_folder_id": folder_id},
         )
 
     def _save_to_cache(self, menu: ParsedMenu, year: int) -> DriveMenuCache:
