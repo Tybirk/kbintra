@@ -157,12 +157,15 @@ class MealRegistrationSerializer(serializers.ModelSerializer):
         return is_after_deadline(obj.date)
 
     def get_available_portions(self, obj: MealRegistration) -> dict[str, int]:
-        """Registration portions minus the user's available (unsold) tickets for this date."""
+        """Registration portions minus ALL tickets (listed or claimed) for this date.
+
+        We count both available (listed) and claimed tickets so that a sold
+        (claimed) ticket cannot be re-listed. Released tickets are already set
+        back to is_available=True and will be counted again, which is intentional.
+        """
         request = self.context.get("request")
         user = request.user if request else obj.user
-        existing = FoodTicket.objects.filter(
-            owner=user, date=obj.date, is_available=True
-        ).aggregate(
+        existing = FoodTicket.objects.filter(owner=user, date=obj.date).aggregate(
             total_meat=Coalesce(Sum("adults_meat"), 0),
             total_veg=Coalesce(Sum("adults_veg"), 0),
             total_children=Coalesce(Sum("children_count"), 0),
@@ -238,6 +241,13 @@ class MealRegistrationCreateUpdateSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(
                         f"Tilmeldingen er låst — {field} kan ikke ændres efter fristen."
                     )
+
+        if adults_meat > 19:
+            raise serializers.ValidationError({"adults_meat": "Maks 19 portioner."})
+        if adults_veg > 19:
+            raise serializers.ValidationError({"adults_veg": "Maks 19 portioner."})
+        if children_count > 19:
+            raise serializers.ValidationError({"children_count": "Maks 19 portioner."})
 
         if reg_date and reg_date.weekday() != 2 and adults_meat > 0:
             raise serializers.ValidationError({"adults_meat": "Kød serveres kun om onsdagen."})
@@ -372,10 +382,10 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     "Du skal have en aktiv tilmelding for at sælge en billet."
                 )
-            # Sum of already listed (available) tickets for this date
-            existing = FoodTicket.objects.filter(
-                owner=user, date=reg_date, is_available=True
-            ).aggregate(
+            # Sum of ALL tickets for this date (listed + claimed) to prevent re-listing
+            # portions that are already sold. Released tickets are back to is_available=True
+            # and will be counted again, which is intentional.
+            existing = FoodTicket.objects.filter(owner=user, date=reg_date).aggregate(
                 total_meat=Coalesce(Sum("adults_meat"), 0),
                 total_veg=Coalesce(Sum("adults_veg"), 0),
                 total_children=Coalesce(Sum("children_count"), 0),
@@ -857,6 +867,7 @@ class DriveMenuCacheSerializer(serializers.ModelSerializer):
 
     is_stale = serializers.SerializerMethodField()
     week_start_date = serializers.SerializerMethodField()
+    drive_folder_url = serializers.SerializerMethodField()
 
     class Meta:
         model = DriveMenuCache
@@ -871,12 +882,19 @@ class DriveMenuCacheSerializer(serializers.ModelSerializer):
             "thursday_menu",
             "fetched_at",
             "is_stale",
+            "drive_folder_url",
         ]
 
     def get_is_stale(self, obj: DriveMenuCache) -> bool:
         from django.conf import settings
 
         return obj.is_stale(settings.MENU_CACHE_HOURS)
+
+    def get_drive_folder_url(self, obj: DriveMenuCache) -> str:
+        from django.conf import settings
+
+        folder_id = obj.drive_folder_id or settings.GOOGLE_DRIVE_MENU_FOLDER_ID
+        return f"https://drive.google.com/drive/folders/{folder_id}"
 
     def get_week_start_date(self, obj: DriveMenuCache) -> str:
         """Calculate the Monday of this week."""

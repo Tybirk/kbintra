@@ -145,14 +145,20 @@ class DailyRegistrationStatsView(APIView):
             "date": target_date.isoformat(),
             "takeaway": {
                 "adults": takeaway["adults"],
+                "adults_meat": takeaway["adults_meat"],
+                "adults_veg": takeaway["adults_veg"],
                 "children": takeaway["children"],
             },
             "eat_in_1730": {
                 "adults": eat_in_1730["adults"],
+                "adults_meat": eat_in_1730["adults_meat"],
+                "adults_veg": eat_in_1730["adults_veg"],
                 "children": eat_in_1730["children"],
             },
             "eat_in_1830": {
                 "adults": eat_in_1830["adults"],
+                "adults_meat": eat_in_1830["adults_meat"],
+                "adults_veg": eat_in_1830["adults_veg"],
                 "children": eat_in_1830["children"],
             },
             "total": {

@@ -25,6 +25,10 @@ import {
   Menu,
   Box,
   ThemeIcon,
+  Collapse,
+  UnstyledButton,
+  Divider,
+  Anchor,
 } from "@mantine/core"
 import {
   useDisclosure,
@@ -44,6 +48,11 @@ import {
   IconDotsVertical,
   IconWallet,
   IconCopy,
+  IconChevronDown,
+  IconChevronUp,
+  IconUsers,
+  IconExternalLink,
+  IconRefresh,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import isoWeek from "dayjs/plugin/isoWeek"
@@ -64,6 +73,7 @@ import type {
   SeatingTime,
   DriveMenu,
   FoodTicket,
+  DailyRegistrationStats,
 } from "../types"
 
 export default function FoodPage() {
@@ -102,10 +112,37 @@ export default function FoodPage() {
     queryFn: () => foodApi.getDriveMenu(regWeekNumber, regYear),
   })
 
+  // Mutation to refresh drive menu from Google Drive (admin only)
+  const refreshDriveMenuMutation = useMutation({
+    mutationFn: () => foodApi.refreshDriveMenu(regWeekNumber, regYear),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["food", "drive-menu", regWeekNumber, regYear],
+      })
+      notifications.show({
+        color: "green",
+        message: "Menuen er blevet opdateret fra Google Drive.",
+      })
+    },
+    onError: () => {
+      notifications.show({
+        color: "red",
+        message: "Kunne ikke opdatere menuen fra Google Drive.",
+      })
+    },
+  })
+
   // Fetch registrations for the selected registration week
   const { data: registrations, isLoading: regsLoading } = useQuery({
     queryKey: ["food", "registrations", regWeekStart.format("YYYY-MM-DD")],
     queryFn: () => foodApi.getRegistrations(regWeekStart.format("YYYY-MM-DD")),
+  })
+
+  // Fetch community stats for the selected week
+  const { data: weeklyStats } = useQuery({
+    queryKey: ["food", "stats", regWeekStart.format("YYYY-MM-DD")],
+    queryFn: () =>
+      foodApi.getRegistrationStats(regWeekStart.format("YYYY-MM-DD")),
   })
 
   // Fetch user's tickets to check for active tickets when switching eating status
@@ -282,6 +319,21 @@ export default function FoodPage() {
                   >
                     {getWeekLabel(regWeekOffset)}
                   </Badge>
+                  {regDriveMenu?.drive_folder_url && (
+                    <Anchor
+                      href={regDriveMenu.drive_folder_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      size="xs"
+                      c="dimmed"
+                      mt={4}
+                    >
+                      <Group gap={4}>
+                        <IconExternalLink size={12} />
+                        Se menu i Drive
+                      </Group>
+                    </Anchor>
+                  )}
                 </Stack>
 
                 <ActionIcon
@@ -294,7 +346,27 @@ export default function FoodPage() {
               </Group>
             </Paper>
 
-            <Group justify="flex-end">
+            <Group justify="space-between">
+              {user?.is_staff ? (
+                <Group gap="xs">
+                  {regDriveMenu?.is_stale && (
+                    <Badge color="yellow" variant="light" size="sm">
+                      Menu kan være forældet
+                    </Badge>
+                  )}
+                  <Button
+                    variant="light"
+                    size="sm"
+                    leftSection={<IconRefresh size={14} />}
+                    onClick={() => refreshDriveMenuMutation.mutate()}
+                    loading={refreshDriveMenuMutation.isPending}
+                  >
+                    Opdater fra Google Drive
+                  </Button>
+                </Group>
+              ) : (
+                <div />
+              )}
               <Button
                 variant="light"
                 size="sm"
@@ -333,6 +405,7 @@ export default function FoodPage() {
                       purchasedTicketsForDate={
                         myPurchasedByDate.get(dateStr) ?? []
                       }
+                      communityStats={weeklyStats?.[dateStr]}
                     />
                   )
                 })}
@@ -595,6 +668,7 @@ interface DayRegistrationCardProps {
   weekStart: string
   ticketsForDate: FoodTicket[]
   purchasedTicketsForDate: FoodTicket[]
+  communityStats?: DailyRegistrationStats
 }
 
 function DayRegistrationCard({
@@ -607,6 +681,7 @@ function DayRegistrationCard({
   weekStart,
   ticketsForDate,
   purchasedTicketsForDate,
+  communityStats,
 }: DayRegistrationCardProps) {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
@@ -616,6 +691,7 @@ function DayRegistrationCard({
   ] = useDisclosure(false)
   const [isSaving, setIsSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
+  const [statsOpen, setStatsOpen] = useState(false)
 
   const isLocked = isDateLocked(date)
 
@@ -1036,6 +1112,40 @@ function DayRegistrationCard({
             </Text>
           )}
         </Stack>
+
+        {communityStats && (
+          <>
+            <Divider mt="sm" />
+            <UnstyledButton
+              onClick={() => setStatsOpen((o) => !o)}
+              w="100%"
+              mt="xs"
+            >
+              <Group gap="xs" justify="space-between">
+                <Group gap={4}>
+                  <IconUsers size={12} color="var(--mantine-color-dimmed)" />
+                  <Text size="xs" c="dimmed">
+                    Fællesskabets tilmeldinger
+                  </Text>
+                </Group>
+                {statsOpen ? (
+                  <IconChevronUp
+                    size={12}
+                    color="var(--mantine-color-dimmed)"
+                  />
+                ) : (
+                  <IconChevronDown
+                    size={12}
+                    color="var(--mantine-color-dimmed)"
+                  />
+                )}
+              </Group>
+            </UnstyledButton>
+            <Collapse expanded={statsOpen}>
+              <FoodPageCommunityStats stats={communityStats} />
+            </Collapse>
+          </>
+        )}
       </Paper>
 
       {/* Sell Ticket Modal */}
@@ -1059,6 +1169,7 @@ function DayRegistrationCard({
                 onChange={(v) => setSellMeat(typeof v === "number" ? v : 0)}
                 min={0}
                 max={availablePortions.adults_meat}
+                disabled={availablePortions.adults_meat === 0}
               />
               <NumberInput
                 label="Vegetar-portioner"
@@ -1066,6 +1177,7 @@ function DayRegistrationCard({
                 onChange={(v) => setSellVeg(typeof v === "number" ? v : 0)}
                 min={0}
                 max={availablePortions.adults_veg}
+                disabled={availablePortions.adults_veg === 0}
               />
             </>
           ) : (
@@ -1075,6 +1187,7 @@ function DayRegistrationCard({
               onChange={(v) => setSellVeg(typeof v === "number" ? v : 0)}
               min={0}
               max={availablePortions.adults_veg}
+              disabled={availablePortions.adults_veg === 0}
             />
           )}
 
@@ -1084,6 +1197,7 @@ function DayRegistrationCard({
             onChange={(v) => setSellChildren(typeof v === "number" ? v : 0)}
             min={0}
             max={availablePortions.children_count}
+            disabled={availablePortions.children_count === 0}
           />
 
           <Stack gap={4}>
@@ -1471,5 +1585,76 @@ function TicketCard({ ticket }: TicketCardProps) {
         </Stack>
       </Modal>
     </>
+  )
+}
+
+interface FoodPageCommunityStatsProps {
+  stats: DailyRegistrationStats
+}
+
+function FoodPageCommunityStats({ stats }: FoodPageCommunityStatsProps) {
+  const hasWednesdayData =
+    stats.eat_in_1730.adults_meat > 0 ||
+    stats.eat_in_1830.adults_meat > 0 ||
+    stats.takeaway.adults_meat > 0
+
+  const formatSlot = (slot: DailyRegistrationStats["eat_in_1730"]) => {
+    if (slot.adults === 0 && slot.children === 0) return null
+    const parts: string[] = []
+    if (hasWednesdayData) {
+      if (slot.adults_veg > 0) parts.push(`${slot.adults_veg} veg`)
+      if (slot.adults_meat > 0) parts.push(`${slot.adults_meat} kød`)
+    } else {
+      if (slot.adults > 0) parts.push(`${slot.adults} voksne`)
+    }
+    if (slot.children > 0) parts.push(`${slot.children} børn`)
+    return parts.join(" · ")
+  }
+
+  const slot1730 = formatSlot(stats.eat_in_1730)
+  const slot1830 = formatSlot(stats.eat_in_1830)
+  const slotTakeaway = formatSlot(stats.takeaway)
+
+  if (!slot1730 && !slot1830 && !slotTakeaway) {
+    return (
+      <Text size="xs" c="dimmed" mt="xs">
+        Ingen tilmeldte endnu
+      </Text>
+    )
+  }
+
+  return (
+    <Stack gap={4} mt="xs">
+      {slot1730 && (
+        <Group gap="xs" justify="space-between">
+          <Text size="xs" c="dimmed" fw={500}>
+            17:30
+          </Text>
+          <Text size="xs" c="dimmed">
+            {slot1730}
+          </Text>
+        </Group>
+      )}
+      {slot1830 && (
+        <Group gap="xs" justify="space-between">
+          <Text size="xs" c="dimmed" fw={500}>
+            18:30
+          </Text>
+          <Text size="xs" c="dimmed">
+            {slot1830}
+          </Text>
+        </Group>
+      )}
+      {slotTakeaway && (
+        <Group gap="xs" justify="space-between">
+          <Text size="xs" c="dimmed" fw={500}>
+            Take away
+          </Text>
+          <Text size="xs" c="dimmed">
+            {slotTakeaway}
+          </Text>
+        </Group>
+      )}
+    </Stack>
   )
 }

@@ -34,6 +34,7 @@ class ParsedMenu:
     wednesday: str
     thursday: str
     raw_content: str
+    folder_id: str = ""
 
 
 class DriveMenuService:
@@ -210,7 +211,10 @@ class DriveMenuService:
 
             # Use the first .docx file found
             file_id = files[0]["id"]
-            return self._download_and_parse(file_id, week_number)
+            menu = self._download_and_parse(file_id, week_number)
+            if menu:
+                menu.folder_id = folder_id
+            return menu
 
         except Exception as e:
             logger.error(f"Error fetching menu from folder {folder_id}: {e}")
@@ -339,6 +343,7 @@ class DriveMenuService:
                 "wednesday_menu": menu.wednesday,
                 "thursday_menu": menu.thursday,
                 "raw_content": menu.raw_content,
+                "drive_folder_id": menu.folder_id,
                 "fetched_at": timezone.now(),
             },
         )

@@ -19,6 +19,9 @@ import {
   Modal,
   NumberInput,
   Textarea,
+  Collapse,
+  UnstyledButton,
+  Anchor,
 } from "@mantine/core"
 import { useDebouncedCallback, useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -30,6 +33,10 @@ import {
   IconBell,
   IconCake,
   IconTicket,
+  IconChevronDown,
+  IconChevronUp,
+  IconUsers,
+  IconExternalLink,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -58,6 +65,7 @@ import type {
   CreateMealRegistrationData,
   CreateFoodTicketData,
   FoodTicket,
+  DailyRegistrationStats,
 } from "../types"
 
 dayjs.extend(relativeTime)
@@ -147,6 +155,18 @@ export default function DashboardPage() {
   const { data: myTickets } = useQuery({
     queryKey: ["food", "tickets", "my"],
     queryFn: foodApi.getMyTickets,
+  })
+
+  // Fetch community stats for current and next week
+  const { data: currentWeekStats } = useQuery({
+    queryKey: ["food", "stats", currentWeekStart.format("YYYY-MM-DD")],
+    queryFn: () =>
+      foodApi.getRegistrationStats(currentWeekStart.format("YYYY-MM-DD")),
+  })
+  const { data: nextWeekStats } = useQuery({
+    queryKey: ["food", "stats", nextWeekStart.format("YYYY-MM-DD")],
+    queryFn: () =>
+      foodApi.getRegistrationStats(nextWeekStart.format("YYYY-MM-DD")),
   })
 
   // Build map of own available-for-sale tickets by date
@@ -358,6 +378,20 @@ export default function DashboardPage() {
                 <IconSoup size={14} />
               </ThemeIcon>
               <Title order={3}>Mad</Title>
+              {currentDriveMenu?.drive_folder_url && (
+                <Anchor
+                  href={currentDriveMenu.drive_folder_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  size="xs"
+                  c="dimmed"
+                >
+                  <Group gap={4}>
+                    <IconExternalLink size={12} />
+                    Drive
+                  </Group>
+                </Anchor>
+              )}
             </Group>
             <Button
               variant="subtle"
@@ -380,6 +414,7 @@ export default function DashboardPage() {
                   isToday
                   ticketsForSale={ticketsForSaleByDate.get(todayStr) ?? []}
                   purchasedTickets={purchasedTicketsByDate.get(todayStr) ?? []}
+                  communityStats={currentWeekStats?.[todayStr]}
                 />
               )}
               {nextFoodDay && (
@@ -403,6 +438,13 @@ export default function DashboardPage() {
                     purchasedTicketsByDate.get(
                       nextFoodDay.date.format("YYYY-MM-DD"),
                     ) ?? []
+                  }
+                  communityStats={
+                    nextFoodDay.date.isoWeek() === currentWeekNumber
+                      ? currentWeekStats?.[
+                          nextFoodDay.date.format("YYYY-MM-DD")
+                        ]
+                      : nextWeekStats?.[nextFoodDay.date.format("YYYY-MM-DD")]
                   }
                 />
               )}
@@ -840,6 +882,7 @@ interface FoodDayWidgetProps {
   isToday: boolean
   ticketsForSale?: FoodTicket[]
   purchasedTickets?: FoodTicket[]
+  communityStats?: DailyRegistrationStats
 }
 
 function FoodDayWidget({
@@ -851,10 +894,12 @@ function FoodDayWidget({
   isToday,
   ticketsForSale,
   purchasedTickets,
+  communityStats,
 }: FoodDayWidgetProps) {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
   const [isSaving, setIsSaving] = useState(false)
+  const [statsOpen, setStatsOpen] = useState(false)
 
   // Local state for registration controls
   const [isActive, setIsActive] = useState(registration?.is_active ?? true)
@@ -1156,6 +1201,40 @@ function FoodDayWidget({
             )}
           </Text>
         </Stack>
+
+        {communityStats && (
+          <>
+            <Divider mt="sm" />
+            <UnstyledButton
+              onClick={() => setStatsOpen((o) => !o)}
+              w="100%"
+              mt="xs"
+            >
+              <Group gap="xs" justify="space-between">
+                <Group gap={4}>
+                  <IconUsers size={12} color="var(--mantine-color-dimmed)" />
+                  <Text size="xs" c="dimmed">
+                    Fællesskabets tilmeldinger
+                  </Text>
+                </Group>
+                {statsOpen ? (
+                  <IconChevronUp
+                    size={12}
+                    color="var(--mantine-color-dimmed)"
+                  />
+                ) : (
+                  <IconChevronDown
+                    size={12}
+                    color="var(--mantine-color-dimmed)"
+                  />
+                )}
+              </Group>
+            </UnstyledButton>
+            <Collapse expanded={statsOpen}>
+              <CommunityRegistrationStats stats={communityStats} />
+            </Collapse>
+          </>
+        )}
       </Paper>
 
       <Modal
@@ -1178,6 +1257,7 @@ function FoodDayWidget({
                 onChange={(v) => setSellMeat(typeof v === "number" ? v : 0)}
                 min={0}
                 max={availablePortions.adults_meat}
+                disabled={availablePortions.adults_meat === 0}
               />
               <NumberInput
                 label="Vegetar-portioner"
@@ -1185,6 +1265,7 @@ function FoodDayWidget({
                 onChange={(v) => setSellVeg(typeof v === "number" ? v : 0)}
                 min={0}
                 max={availablePortions.adults_veg}
+                disabled={availablePortions.adults_veg === 0}
               />
             </>
           ) : (
@@ -1194,6 +1275,7 @@ function FoodDayWidget({
               onChange={(v) => setSellVeg(typeof v === "number" ? v : 0)}
               min={0}
               max={availablePortions.adults_veg}
+              disabled={availablePortions.adults_veg === 0}
             />
           )}
 
@@ -1203,6 +1285,7 @@ function FoodDayWidget({
             onChange={(v) => setSellChildren(typeof v === "number" ? v : 0)}
             min={0}
             max={availablePortions.children_count}
+            disabled={availablePortions.children_count === 0}
           />
 
           <Stack gap={4}>
@@ -1239,5 +1322,78 @@ function FoodDayWidget({
         </Stack>
       </Modal>
     </>
+  )
+}
+
+interface CommunityRegistrationStatsProps {
+  stats: DailyRegistrationStats
+}
+
+function CommunityRegistrationStats({
+  stats,
+}: CommunityRegistrationStatsProps) {
+  const hasWednesdayData =
+    stats.eat_in_1730.adults_meat > 0 ||
+    stats.eat_in_1830.adults_meat > 0 ||
+    stats.takeaway.adults_meat > 0
+
+  const formatSlot = (slot: DailyRegistrationStats["eat_in_1730"]) => {
+    if (slot.adults === 0 && slot.children === 0) return null
+    const parts: string[] = []
+    if (hasWednesdayData) {
+      if (slot.adults_veg > 0) parts.push(`${slot.adults_veg} veg`)
+      if (slot.adults_meat > 0) parts.push(`${slot.adults_meat} kød`)
+    } else {
+      if (slot.adults > 0) parts.push(`${slot.adults} voksne`)
+    }
+    if (slot.children > 0) parts.push(`${slot.children} børn`)
+    return parts.join(" · ")
+  }
+
+  const slot1730 = formatSlot(stats.eat_in_1730)
+  const slot1830 = formatSlot(stats.eat_in_1830)
+  const slotTakeaway = formatSlot(stats.takeaway)
+
+  if (!slot1730 && !slot1830 && !slotTakeaway) {
+    return (
+      <Text size="xs" c="dimmed" mt="xs">
+        Ingen tilmeldte endnu
+      </Text>
+    )
+  }
+
+  return (
+    <Stack gap={4} mt="xs">
+      {slot1730 && (
+        <Group gap="xs" justify="space-between">
+          <Text size="xs" c="dimmed" fw={500}>
+            17:30
+          </Text>
+          <Text size="xs" c="dimmed">
+            {slot1730}
+          </Text>
+        </Group>
+      )}
+      {slot1830 && (
+        <Group gap="xs" justify="space-between">
+          <Text size="xs" c="dimmed" fw={500}>
+            18:30
+          </Text>
+          <Text size="xs" c="dimmed">
+            {slot1830}
+          </Text>
+        </Group>
+      )}
+      {slotTakeaway && (
+        <Group gap="xs" justify="space-between">
+          <Text size="xs" c="dimmed" fw={500}>
+            Take away
+          </Text>
+          <Text size="xs" c="dimmed">
+            {slotTakeaway}
+          </Text>
+        </Group>
+      )}
+    </Stack>
   )
 }

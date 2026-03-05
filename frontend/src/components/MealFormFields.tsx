@@ -65,7 +65,7 @@ export function MealFormFields({
                   onAdultsMeatChange(val)
                 }}
                 min={0}
-                max={10}
+                max={19}
                 disabled={disabled}
               />
               <NumberInput
@@ -78,7 +78,7 @@ export function MealFormFields({
                   onAdultsVegChange(val)
                 }}
                 min={0}
-                max={10}
+                max={19}
                 disabled={disabled}
               />
             </>
@@ -95,7 +95,7 @@ export function MealFormFields({
                 onAdultsMeatChange(0)
               }}
               min={0}
-              max={10}
+              max={19}
               disabled={disabled}
             />
           )}
@@ -109,7 +109,7 @@ export function MealFormFields({
               onChildrenChange(val)
             }}
             min={0}
-            max={10}
+            max={19}
             disabled={disabled}
           />
         </Group>

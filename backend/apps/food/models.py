@@ -498,6 +498,11 @@ class DriveMenuCache(models.Model):
         blank=True,
         help_text="Google Drive file ID for reference",
     )
+    drive_folder_id = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Google Drive week folder ID (used for linking to the specific week's folder)",
+    )
     fetched_at = models.DateTimeField(
         auto_now=True,
         help_text="When this menu was last fetched from Drive",

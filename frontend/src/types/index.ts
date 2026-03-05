@@ -391,13 +391,12 @@ export interface CreateMealRegistrationData {
 
 export interface RegistrationCount {
   adults: number
+  adults_meat: number
+  adults_veg: number
   children: number
 }
 
-export interface TotalRegistrationCount extends RegistrationCount {
-  adults_meat: number
-  adults_veg: number
-}
+export type TotalRegistrationCount = RegistrationCount
 
 export interface DailyRegistrationStats {
   date: string
@@ -456,6 +455,7 @@ export interface DriveMenu {
   thursday_menu: string
   fetched_at: string
   is_stale: boolean
+  drive_folder_url: string
 }
 
 // Event Types (unified: community events + private room bookings)
