@@ -57,7 +57,7 @@ dayjs.extend(relativeTime)
 export default function AnnouncementsPage() {
   const queryClient = useQueryClient()
   const { hash } = useLocation()
-  const scrolledRef = useRef(false)
+  const scrolledRef = useRef("")
   const [
     createModalOpened,
     { open: openCreateModal, close: closeCreateModal },
@@ -92,10 +92,10 @@ export default function AnnouncementsPage() {
 
   // Scroll to and highlight a specific announcement when navigating from search
   useEffect(() => {
-    if (!hash || !announcements || scrolledRef.current) return
+    if (!hash || !announcements || scrolledRef.current === hash) return
     const el = document.getElementById(hash.slice(1))
     if (el) {
-      scrolledRef.current = true
+      scrolledRef.current = hash
       el.scrollIntoView({ behavior: "smooth", block: "center" })
       el.style.outline = "2px solid var(--mantine-color-blue-5)"
       el.style.borderRadius = "var(--mantine-radius-md)"

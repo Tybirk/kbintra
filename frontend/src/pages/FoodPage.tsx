@@ -129,9 +129,20 @@ export default function FoodPage() {
     }
   })
 
+  // Create a map of purchased (claimed by me) tickets by date
+  const myPurchasedByDate = new Map<string, FoodTicket[]>()
+  myTickets?.forEach((ticket) => {
+    if (!ticket.is_own && !ticket.is_available) {
+      const existing = myPurchasedByDate.get(ticket.date) ?? []
+      myPurchasedByDate.set(ticket.date, [...existing, ticket])
+    }
+  })
+
   // Filter tickets for billetter tab sections
   const myTicketsForSale =
     myTickets?.filter((t) => t.is_own && t.is_available) ?? []
+  const myPurchasedTickets =
+    myTickets?.filter((t) => !t.is_own && !t.is_available) ?? []
   const othersAvailableTickets =
     availableTickets?.filter((t) => !t.is_own && t.is_available) ?? []
 
@@ -319,6 +330,9 @@ export default function FoodPage() {
                       isPast={isPast}
                       weekStart={regWeekStart.format("YYYY-MM-DD")}
                       ticketsForDate={myTicketsByDate.get(dateStr) ?? []}
+                      purchasedTicketsForDate={
+                        myPurchasedByDate.get(dateStr) ?? []
+                      }
                     />
                   )
                 })}
@@ -375,6 +389,23 @@ export default function FoodPage() {
               ) : (
                 <Stack gap="sm">
                   {myTicketsForSale.map((ticket) => (
+                    <TicketCard key={ticket.id} ticket={ticket} />
+                  ))}
+                </Stack>
+              )}
+            </div>
+
+            <div>
+              <Text fw={500} mb="xs">
+                Mine købte billetter
+              </Text>
+              {myPurchasedTickets.length === 0 ? (
+                <Text c="dimmed" size="sm">
+                  Du har ikke købt nogen billetter
+                </Text>
+              ) : (
+                <Stack gap="sm">
+                  {myPurchasedTickets.map((ticket) => (
                     <TicketCard key={ticket.id} ticket={ticket} />
                   ))}
                 </Stack>
@@ -563,6 +594,7 @@ interface DayRegistrationCardProps {
   isPast: boolean
   weekStart: string
   ticketsForDate: FoodTicket[]
+  purchasedTicketsForDate: FoodTicket[]
 }
 
 function DayRegistrationCard({
@@ -574,6 +606,7 @@ function DayRegistrationCard({
   isPast,
   weekStart,
   ticketsForDate,
+  purchasedTicketsForDate,
 }: DayRegistrationCardProps) {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
@@ -856,6 +889,28 @@ function DayRegistrationCard({
                 </Button>
               )}
 
+              {/* Purchased ticket status */}
+              {purchasedTicketsForDate.length > 0 && (
+                <Stack gap={4}>
+                  <Text size="xs" fw={500} c="dimmed">
+                    Købt billet:
+                  </Text>
+                  {purchasedTicketsForDate.map((ticket) => (
+                    <Text key={ticket.id} size="xs" c="green">
+                      <Badge color="green" variant="light" size="xs">
+                        Købt
+                      </Badge>{" "}
+                      {ticket.adults_meat > 0 && `${ticket.adults_meat} kød `}
+                      {ticket.adults_veg > 0 && `${ticket.adults_veg} veg `}
+                      {ticket.children_count > 0 &&
+                        `${ticket.children_count} børn `}
+                      {ticket.price && `· ${ticket.price} kr`} fra{" "}
+                      {ticket.owner.first_name}
+                    </Text>
+                  ))}
+                </Stack>
+              )}
+
               {/* Ticket status */}
               {ticketsForDate.length > 0 && (
                 <Stack gap={4}>
@@ -1085,8 +1140,8 @@ function TicketCard({ ticket }: TicketCardProps) {
       closeBuyModal()
       if (ticket.is_own) {
         notifications.show({
-          title: "Billet tilbagekaldt",
-          message: "Du har tilbagekaldt din billet.",
+          title: "Billet fortrudt",
+          message: "Du har fjernet din billet fra salg.",
           color: "green",
         })
       } else {
@@ -1151,14 +1206,15 @@ function TicketCard({ ticket }: TicketCardProps) {
   return (
     <>
       <Paper withBorder p="md" radius="md">
-        <Group justify="space-between" wrap="nowrap">
-          <Group gap="md" wrap="nowrap" style={{ flex: 1 }}>
-            <Avatar src={ticket.owner.profile_picture} radius="xl" size="lg">
+        <Stack gap="xs">
+          {/* Info row: avatar + ticket details */}
+          <Group gap="md" wrap="nowrap">
+            <Avatar src={ticket.owner.profile_picture} radius="xl" size="md">
               {ticket.owner.first_name?.[0]}
               {ticket.owner.last_name?.[0]}
             </Avatar>
-            <div style={{ flex: 1 }}>
-              <Group gap="xs" mb={4}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Group gap="xs" mb={2}>
                 <Text fw={500}>
                   {ticket.owner.first_name} {ticket.owner.last_name}
                 </Text>
@@ -1205,7 +1261,7 @@ function TicketCard({ ticket }: TicketCardProps) {
                 </Text>
               )}
               {isClaimed && ticket.claimed_by && (
-                <Text size="sm" c="dimmed" mt={4}>
+                <Text size="sm" c="dimmed">
                   {isOwner ? "Købt" : "Reserveret"} af{" "}
                   {ticket.claimed_by.first_name} {ticket.claimed_by.last_name}
                 </Text>
@@ -1213,13 +1269,16 @@ function TicketCard({ ticket }: TicketCardProps) {
             </div>
           </Group>
 
-          <Group gap="xs">
-            {/* Mobile: copy + open MobilePay; Desktop: plain phone number */}
-            {isClaimed && isClaimedByMe && ticket.owner.phone_number && (
-              <>
-                <Box hiddenFrom="sm">
+          {/* Actions row */}
+          {((!ticket.is_own && ticket.is_available) ||
+            isOwner ||
+            (isClaimed && isClaimedByMe && ticket.owner.phone_number)) && (
+            <Group gap="xs" justify="flex-end">
+              {/* Phone number for buyer who claimed */}
+              {isClaimed && isClaimedByMe && ticket.owner.phone_number && (
+                <>
                   {!ticket.is_free && (
-                    <Group gap="xs">
+                    <>
                       <Button
                         variant="filled"
                         color={clipboard.copied ? "green" : "indigo"}
@@ -1241,60 +1300,64 @@ function TicketCard({ ticket }: TicketCardProps) {
                       >
                         Åbn MobilePay
                       </Button>
-                    </Group>
+                    </>
                   )}
-                </Box>
-                <Box visibleFrom="sm">
-                  <Text>{ticket.owner.phone_number}</Text>
-                </Box>
-              </>
-            )}
+                  <Box visibleFrom="sm">
+                    <Text size="sm" c="dimmed">
+                      {ticket.owner.phone_number}
+                    </Text>
+                  </Box>
+                </>
+              )}
 
-            {/* Buy button for available tickets not owned by user */}
-            {!ticket.is_own && ticket.is_available && (
-              <Button onClick={openBuyModal}>Køb</Button>
-            )}
+              {/* Buy button */}
+              {!ticket.is_own && ticket.is_available && (
+                <Button size="sm" onClick={openBuyModal}>
+                  Køb
+                </Button>
+              )}
 
-            {/* Owner actions */}
-            {isOwner && (
-              <>
-                {ticket.is_available && (
-                  <Button
-                    variant="light"
-                    size="sm"
-                    onClick={() => claimMutation.mutate()}
-                    loading={claimMutation.isPending}
-                  >
-                    Tilbagekald
-                  </Button>
-                )}
-                <Menu shadow="md" width={200}>
-                  <Menu.Target>
-                    <ActionIcon variant="subtle">
-                      <IconDotsVertical size={16} />
-                    </ActionIcon>
-                  </Menu.Target>
-                  <Menu.Dropdown>
-                    {!ticket.is_available && (
-                      <Menu.Item onClick={() => releaseMutation.mutate()}>
-                        Frigiv billet
-                      </Menu.Item>
-                    )}
-                    {ticket.is_available && (
-                      <Menu.Item
-                        color="red"
-                        leftSection={<IconTrash size={14} />}
-                        onClick={() => deleteMutation.mutate()}
-                      >
-                        Slet
-                      </Menu.Item>
-                    )}
-                  </Menu.Dropdown>
-                </Menu>
-              </>
-            )}
-          </Group>
-        </Group>
+              {/* Owner actions */}
+              {isOwner && (
+                <>
+                  {ticket.is_available && (
+                    <Button
+                      variant="light"
+                      size="sm"
+                      onClick={() => claimMutation.mutate()}
+                      loading={claimMutation.isPending}
+                    >
+                      Fortryd
+                    </Button>
+                  )}
+                  <Menu shadow="md" width={200}>
+                    <Menu.Target>
+                      <ActionIcon variant="subtle">
+                        <IconDotsVertical size={16} />
+                      </ActionIcon>
+                    </Menu.Target>
+                    <Menu.Dropdown>
+                      {!ticket.is_available && (
+                        <Menu.Item onClick={() => releaseMutation.mutate()}>
+                          Frigiv billet
+                        </Menu.Item>
+                      )}
+                      {ticket.is_available && (
+                        <Menu.Item
+                          color="red"
+                          leftSection={<IconTrash size={14} />}
+                          onClick={() => deleteMutation.mutate()}
+                        >
+                          Slet
+                        </Menu.Item>
+                      )}
+                    </Menu.Dropdown>
+                  </Menu>
+                </>
+              )}
+            </Group>
+          )}
+        </Stack>
       </Paper>
 
       {/* Buy Modal */}

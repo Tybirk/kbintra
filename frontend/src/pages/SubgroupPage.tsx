@@ -242,7 +242,7 @@ Below are **${threadCount} open ${taskKind}** reported by residents. Each thread
 Some posts include **attachments** (screenshots, images, documents) listed as local file paths. Only read attachments that seem relevant to the task at hand — e.g. screenshots attached to bug reports.
 
 For each ${taskKind.replace(/s$/, "")}:
-1. Read the full thread and understand the problem/request
+1. Read the full thread and understand the problem/request. Ask clarifying questions if needed.
 2. ${capitalize(actionVerb)} it with a focused, minimal change
 3. Run the relevant checks when done
 

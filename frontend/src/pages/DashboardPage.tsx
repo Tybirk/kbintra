@@ -158,6 +158,15 @@ export default function DashboardPage() {
     }
   })
 
+  // Build map of purchased (claimed by me) tickets by date
+  const purchasedTicketsByDate = new Map<string, FoodTicket[]>()
+  myTickets?.forEach((t) => {
+    if (!t.is_own && !t.is_available) {
+      const existing = purchasedTicketsByDate.get(t.date) ?? []
+      purchasedTicketsByDate.set(t.date, [...existing, t])
+    }
+  })
+
   // Helper to get menu text for a specific day from drive menu
   const getDayMenu = (
     driveMenu: DriveMenu | undefined,
@@ -370,6 +379,7 @@ export default function DashboardPage() {
                   label="I dag"
                   isToday
                   ticketsForSale={ticketsForSaleByDate.get(todayStr) ?? []}
+                  purchasedTickets={purchasedTicketsByDate.get(todayStr) ?? []}
                 />
               )}
               {nextFoodDay && (
@@ -386,6 +396,11 @@ export default function DashboardPage() {
                   isToday={false}
                   ticketsForSale={
                     ticketsForSaleByDate.get(
+                      nextFoodDay.date.format("YYYY-MM-DD"),
+                    ) ?? []
+                  }
+                  purchasedTickets={
+                    purchasedTicketsByDate.get(
                       nextFoodDay.date.format("YYYY-MM-DD"),
                     ) ?? []
                   }
@@ -535,7 +550,7 @@ function AnnouncementPreview({ announcement }: AnnouncementPreviewProps) {
       radius="sm"
       bg="var(--mantine-color-default-hover)"
       style={{ cursor: "pointer" }}
-      onClick={() => navigate("/opslag")}
+      onClick={() => navigate(`/opslag#announcement-${announcement.id}`)}
     >
       <Group gap="sm" mb={4}>
         <Avatar src={announcement.author.profile_picture} radius="xl" size="sm">
@@ -824,6 +839,7 @@ interface FoodDayWidgetProps {
   label: string
   isToday: boolean
   ticketsForSale?: FoodTicket[]
+  purchasedTickets?: FoodTicket[]
 }
 
 function FoodDayWidget({
@@ -834,6 +850,7 @@ function FoodDayWidget({
   label,
   isToday,
   ticketsForSale,
+  purchasedTickets,
 }: FoodDayWidgetProps) {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
@@ -1098,6 +1115,18 @@ function FoodDayWidget({
                         <Text key={t.id} size="xs" c="orange">
                           Billet til salg: {t.total_portions} port.{" "}
                           {t.price ? `• ${t.price} kr` : "• Gratis"}
+                        </Text>
+                      ))}
+                    </Stack>
+                  )}
+
+                  {purchasedTickets && purchasedTickets.length > 0 && (
+                    <Stack gap={2} mt="xs">
+                      {purchasedTickets.map((t) => (
+                        <Text key={t.id} size="xs" c="green">
+                          Købt billet: {t.total_portions} port.{" "}
+                          {t.price ? `• ${t.price} kr` : "• Gratis"} fra{" "}
+                          {t.owner.first_name}
                         </Text>
                       ))}
                     </Stack>
