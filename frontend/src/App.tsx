@@ -185,7 +185,7 @@ function App() {
 
         <AppShell.Main
           style={
-            location.pathname.startsWith("/messages")
+            location.pathname.startsWith("/beskeder")
               ? { height: "100dvh", overflow: "hidden" }
               : undefined
           }
