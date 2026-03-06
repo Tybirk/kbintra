@@ -28,11 +28,19 @@ DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 
 ALLOWED_HOSTS: list[str] = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
+# Message encryption key (Fernet). Required in production, optional in dev.
+MESSAGES_ENCRYPTION_KEY = os.getenv("MESSAGES_ENCRYPTION_KEY", "")
+
 # Validate critical settings in production
 if not DEBUG and SECRET_KEY.startswith("django-insecure"):
     from django.core.exceptions import ImproperlyConfigured
 
     raise ImproperlyConfigured("SECRET_KEY must be set in production (DEBUG=False)")
+
+if not DEBUG and not MESSAGES_ENCRYPTION_KEY:
+    from django.core.exceptions import ImproperlyConfigured
+
+    raise ImproperlyConfigured("MESSAGES_ENCRYPTION_KEY must be set in production (DEBUG=False)")
 
 # Application definition
 INSTALLED_APPS = [
