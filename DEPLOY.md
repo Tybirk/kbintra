@@ -78,9 +78,6 @@ docker compose up -d --build
 # Run migrations
 docker compose exec backend uv run python manage.py migrate
 
-# Encrypt existing messages (one-time, only needed on first deploy — new messages are encrypted automatically)
-docker compose exec backend uv run python manage.py encrypt_messages
-
 # Create superuser (optional)
 docker compose exec backend uv run python manage.py createsuperuser
 
