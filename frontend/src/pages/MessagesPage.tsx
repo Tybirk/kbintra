@@ -377,7 +377,10 @@ export default function MessagesPage() {
               right: 0,
               bottom: 0,
             }
-          : { height: "100%" }),
+          : {
+              height:
+                "calc(100dvh - var(--app-shell-header-height, 60px) - 2 * var(--mantine-spacing-md, 16px))",
+            }),
       }}
     >
       {!inConversationMobile && (
