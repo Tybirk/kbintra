@@ -53,6 +53,7 @@ Fill in:
 - `CORS_ALLOWED_ORIGINS`: `https://app.yourdomain.com`
 - `CSRF_TRUSTED_ORIGINS`: `https://app.yourdomain.com`
 - `CLOUDFLARE_TUNNEL_TOKEN`: Token from Cloudflare dashboard
+- `MESSAGES_ENCRYPTION_KEY`: Generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` — **back up this key separately; if lost, encrypted messages are unrecoverable**
 
 ### Push Notifications (Optional)
 
