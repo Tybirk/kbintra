@@ -220,27 +220,6 @@ export default function FoodPage() {
     }
   }, [activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const applyDefaultsMutation = useMutation({
-    mutationFn: () => foodApi.applyDefaults(regWeekStart.format("YYYY-MM-DD")),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["food", "registrations"] })
-      queryClient.invalidateQueries({ queryKey: ["food", "stats"] })
-      notifications.show({
-        title: "Standardindstillinger anvendt",
-        message: data.detail,
-        color: "green",
-      })
-    },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message:
-          "Kunne ikke anvende standardindstillinger. Sørg for at du har sat dine præferencer først.",
-        color: "red",
-      })
-    },
-  })
-
   const isLoading = regsLoading
 
   // Create a map of registrations by date for registration tab
@@ -352,38 +331,24 @@ export default function FoodPage() {
               </Group>
             </Paper>
 
-            <Group justify="space-between">
-              {user?.is_staff ? (
-                <Group gap="xs">
-                  {regDriveMenu?.is_stale && (
-                    <Badge color="yellow" variant="light" size="sm">
-                      Menu kan være forældet
-                    </Badge>
-                  )}
-                  <Button
-                    variant="light"
-                    size="sm"
-                    leftSection={<IconRefresh size={14} />}
-                    onClick={() => refreshDriveMenuMutation.mutate()}
-                    loading={refreshDriveMenuMutation.isPending}
-                  >
-                    Opdater fra Google Drive
-                  </Button>
-                </Group>
-              ) : (
-                <div />
-              )}
-              {!isDateLocked(regWeekStart.format("YYYY-MM-DD")) && (
+            {user?.is_staff && (
+              <Group gap="xs">
+                {regDriveMenu?.is_stale && (
+                  <Badge color="yellow" variant="light" size="sm">
+                    Menu kan være forældet
+                  </Badge>
+                )}
                 <Button
                   variant="light"
                   size="sm"
-                  onClick={() => applyDefaultsMutation.mutate()}
-                  loading={applyDefaultsMutation.isPending}
+                  leftSection={<IconRefresh size={14} />}
+                  onClick={() => refreshDriveMenuMutation.mutate()}
+                  loading={refreshDriveMenuMutation.isPending}
                 >
-                  Anvend standardpræferencer
+                  Opdater fra Google Drive
                 </Button>
-              )}
-            </Group>
+              </Group>
+            )}
 
             {isLoading ? (
               <Center h={200}>
@@ -720,7 +685,7 @@ function DayRegistrationCard({
   )
   const [isActive, setIsActive] = useState(registration?.is_active ?? true)
 
-  // Sync local state when registration prop changes (e.g. after applyDefaults refetch).
+  // Sync local state when registration prop changes (e.g. after preference change refetch).
   // React bails out of re-renders when primitive state values are identical, so syncing
   // to the same values on initial load is a no-op and doesn't trigger auto-save.
   useEffect(() => {
@@ -779,7 +744,7 @@ function DayRegistrationCard({
 
   const updateMutation = useMutation({
     mutationFn: (data: Partial<CreateMealRegistrationData>) =>
-      foodApi.updateRegistration(registration!.id, data),
+      foodApi.updateRegistration(registration!.id as number, data),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["food", "registrations", weekStart],
@@ -846,7 +811,7 @@ function DayRegistrationCard({
 
   // Debounced save function
   const debouncedSave = useDebouncedCallback(
-    (data: CreateMealRegistrationData, regId: number | undefined) => {
+    (data: CreateMealRegistrationData, regId: number | null | undefined) => {
       setIsSaving(true)
       if (regId) {
         updateMutation.mutate(data)

@@ -78,16 +78,6 @@ export const foodApi = {
     await apiClient.delete(`/food/registrations/${id}/`)
   },
 
-  applyDefaults: async (weekStartDate: string): Promise<{ detail: string }> => {
-    const response = await apiClient.post(
-      "/food/registrations/apply-defaults/",
-      {
-        week_start_date: weekStartDate,
-      },
-    )
-    return response.data
-  },
-
   getRegistrationStats: async (
     weekStart: string,
   ): Promise<WeeklyRegistrationStats> => {

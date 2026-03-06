@@ -36,7 +36,6 @@ vi.mock("../api/food", () => ({
     getRegistrations: () => mockGetRegistrations(),
     getMyTickets: () => mockGetMyTickets(),
     getTickets: () => mockGetTickets(),
-    applyDefaults: vi.fn().mockResolvedValue({ detail: "OK" }),
     createRegistration: vi.fn().mockResolvedValue({}),
     updateRegistration: vi.fn().mockResolvedValue({}),
     deleteRegistration: vi.fn().mockResolvedValue(undefined),

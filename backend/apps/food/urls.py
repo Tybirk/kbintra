@@ -6,7 +6,6 @@ from django.urls import path
 
 from .views import (
     ActiveCycleView,
-    ApplyDefaultsView,
     ClaimTicketView,
     CycleWishesListView,
     DailyRegistrationStatsView,
@@ -45,7 +44,6 @@ urlpatterns = [
     path(
         "registrations/<int:pk>/", MealRegistrationDetailView.as_view(), name="registration-detail"
     ),
-    path("registrations/apply-defaults/", ApplyDefaultsView.as_view(), name="apply-defaults"),
     path("registrations/stats/", DailyRegistrationStatsView.as_view(), name="registration-stats"),
     # Tickets
     path("tickets/", FoodTicketListCreateView.as_view(), name="ticket-list"),

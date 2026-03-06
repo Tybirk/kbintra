@@ -60,8 +60,8 @@ export default function FoodPreferencesPage() {
         Standardindstillinger
       </Title>
       <Text c="dimmed" mb="xl">
-        Angiv dine standardindstillinger for hver dag. Disse bruges når du
-        anvender standarder på en uge.
+        Angiv dine standardindstillinger for hver dag. Disse vises automatisk
+        for uger du endnu ikke har ændret.
       </Text>
 
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">

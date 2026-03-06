@@ -124,6 +124,7 @@ class MealRegistrationSerializer(serializers.ModelSerializer):
     house = HouseSimpleSerializer(read_only=True)
     is_locked = serializers.SerializerMethodField()
     available_portions = serializers.SerializerMethodField()
+    is_from_preference = serializers.SerializerMethodField()
 
     class Meta:
         model = MealRegistration
@@ -141,6 +142,7 @@ class MealRegistrationSerializer(serializers.ModelSerializer):
             "is_active",
             "total_portions",
             "is_locked",
+            "is_from_preference",
             "available_portions",
             "created_at",
             "updated_at",
@@ -155,6 +157,9 @@ class MealRegistrationSerializer(serializers.ModelSerializer):
 
     def get_is_locked(self, obj: MealRegistration) -> bool:
         return is_after_deadline(obj.date)
+
+    def get_is_from_preference(self, obj: MealRegistration) -> bool:
+        return False
 
     def get_available_portions(self, obj: MealRegistration) -> dict[str, int]:
         """Registration portions minus ALL tickets (listed or claimed) for this date.
@@ -430,17 +435,6 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
             )
 
         return super().create(validated_data)
-
-
-class ApplyDefaultsSerializer(serializers.Serializer):
-    """Serializer for applying default preferences to a week."""
-
-    week_start_date = serializers.DateField()
-
-    def validate_week_start_date(self, value: date) -> date:
-        if value.weekday() != 0:
-            raise serializers.ValidationError("Week start date must be a Monday.")
-        return value
 
 
 # Food Team Serializers

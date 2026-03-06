@@ -28,7 +28,6 @@ from .models import (
     TeamSwapRequest,
 )
 from .serializers import (
-    ApplyDefaultsSerializer,
     CreateSwapRequestSerializer,
     DefaultCookingDaysSerializer,
     DriveMenuCacheSerializer,
@@ -50,6 +49,7 @@ from .serializers import (
     RespondSwapRequestSerializer,
     TeamGenerationResultSerializer,
     TeamSwapRequestSerializer,
+    is_after_deadline,
 )
 from .services.team_generator import TeamGenerator
 
@@ -59,6 +59,82 @@ logger = logging.getLogger(__name__)
 def get_week_start(d: date) -> date:
     """Get the Monday of the week containing the given date."""
     return d - timedelta(days=d.weekday())
+
+
+DAY_NAMES = ["Mandag", "Tirsdag", "Onsdag", "Torsdag"]
+
+
+def _get_preference_values(
+    pref: MealPreference | None, house_count: int
+) -> tuple[int, int, int, str, str]:
+    """Extract portion values from a preference, or return system defaults."""
+    if pref:
+        return (
+            pref.adults_meat,
+            pref.adults_veg,
+            pref.children_count,
+            pref.dining_option,
+            pref.seating_time,
+        )
+    return 0, house_count, 0, "eat_in", "17:30"
+
+
+def _build_virtual_registration(
+    target_date: date,
+    day_of_week: int,
+    pref: MealPreference | None,
+    house: Any,
+    house_count: int,
+) -> dict[str, Any]:
+    """Return a dict matching MealRegistrationSerializer output for a day with no real row."""
+    meat, veg, children, dining, seating = _get_preference_values(pref, house_count)
+    return {
+        "id": None,
+        "date": target_date.isoformat(),
+        "day_of_week": day_of_week,
+        "day_name": DAY_NAMES[day_of_week],
+        "adults_meat": meat,
+        "adults_veg": veg,
+        "children_count": children,
+        "dining_option": dining,
+        "seating_time": seating,
+        "house": {"id": house.id, "name": house.name} if house else None,
+        "is_active": True,
+        "total_portions": meat + veg + children,
+        "is_locked": is_after_deadline(target_date),
+        "is_from_preference": True,
+        "available_portions": {"adults_meat": 0, "adults_veg": 0, "children_count": 0},
+        "created_at": None,
+        "updated_at": None,
+    }
+
+
+def _materialize_registration(
+    user: Any,
+    target_date: date,
+    pref: MealPreference | None,
+    house: Any,
+    house_count: int,
+) -> MealRegistration:
+    """Create a real MealRegistration from preference/defaults. Used post-deadline.
+
+    Uses get_or_create to handle concurrent requests safely.
+    """
+    meat, veg, children, dining, seating = _get_preference_values(pref, house_count)
+    reg, _ = MealRegistration.objects.get_or_create(
+        user=user,
+        date=target_date,
+        defaults={
+            "house": house,
+            "adults_meat": meat,
+            "adults_veg": veg,
+            "children_count": children,
+            "dining_option": dining,
+            "seating_time": seating,
+            "is_active": True,
+        },
+    )
+    return reg
 
 
 class DailyRegistrationStatsView(APIView):
@@ -142,7 +218,46 @@ class DailyRegistrationStatsView(APIView):
         eat_in_1830 = _agg(registrations.filter(dining_option="eat_in", seating_time="18:30"))
         total_agg = _agg(registrations)
 
-        # Subtract available (unsold) tickets from totals — those seats are not yet filled
+        # Add virtual contributions from users with preferences but no real registration.
+        # Track which houses already have a real registration (already deduplicated above).
+        covered_house_ids = set(
+            MealRegistration.objects.filter(
+                date=target_date, is_active=True, house__isnull=False
+            ).values_list("house_id", flat=True)
+        )
+        day_of_week = target_date.weekday()
+        prefs = MealPreference.objects.filter(
+            day_of_week=day_of_week, user__is_active=True
+        ).select_related("user__house")
+
+        virtual: dict[str, dict[str, int]] = {
+            "take_away": {"adults_meat": 0, "adults_veg": 0, "children": 0},
+            "eat_in_1730": {"adults_meat": 0, "adults_veg": 0, "children": 0},
+            "eat_in_1830": {"adults_meat": 0, "adults_veg": 0, "children": 0},
+            "total": {"adults_meat": 0, "adults_veg": 0, "children": 0},
+        }
+        seen_virtual_houses: set[int] = set()
+        for pref in prefs:
+            house = pref.user.house
+            if house is None:
+                continue
+            if house.id in covered_house_ids:
+                continue
+            if house.id in seen_virtual_houses:
+                continue
+            seen_virtual_houses.add(house.id)
+            if pref.dining_option == "take_away":
+                bucket = "take_away"
+            elif pref.seating_time == "17:30":
+                bucket = "eat_in_1730"
+            else:
+                bucket = "eat_in_1830"
+            for b in (bucket, "total"):
+                virtual[b]["adults_meat"] += pref.adults_meat
+                virtual[b]["adults_veg"] += pref.adults_veg
+                virtual[b]["children"] += pref.children_count
+
+        # Subtract available (unsold) tickets from combined total
         available_tickets = FoodTicket.objects.filter(
             date=target_date, is_available=True
         ).aggregate(
@@ -150,30 +265,24 @@ class DailyRegistrationStatsView(APIView):
             ticket_veg=Coalesce(Sum("adults_veg"), 0),
             ticket_children=Coalesce(Sum("children_count"), 0),
         )
-        eff_meat = max(0, total_agg["adults_meat"] - available_tickets["ticket_meat"])
-        eff_veg = max(0, total_agg["adults_veg"] - available_tickets["ticket_veg"])
-        eff_children = max(0, total_agg["children"] - available_tickets["ticket_children"])
+        combined_meat = total_agg["adults_meat"] + virtual["total"]["adults_meat"]
+        combined_veg = total_agg["adults_veg"] + virtual["total"]["adults_veg"]
+        combined_children = total_agg["children"] + virtual["total"]["children"]
+        eff_meat = max(0, combined_meat - available_tickets["ticket_meat"])
+        eff_veg = max(0, combined_veg - available_tickets["ticket_veg"])
+        eff_children = max(0, combined_children - available_tickets["ticket_children"])
+
+        def _merge(db: dict[str, int], virt: dict[str, int]) -> dict[str, int]:
+            m = db["adults_meat"] + virt["adults_meat"]
+            v = db["adults_veg"] + virt["adults_veg"]
+            c = db["children"] + virt["children"]
+            return {"adults": m + v, "adults_meat": m, "adults_veg": v, "children": c}
 
         return {
             "date": target_date.isoformat(),
-            "takeaway": {
-                "adults": takeaway["adults"],
-                "adults_meat": takeaway["adults_meat"],
-                "adults_veg": takeaway["adults_veg"],
-                "children": takeaway["children"],
-            },
-            "eat_in_1730": {
-                "adults": eat_in_1730["adults"],
-                "adults_meat": eat_in_1730["adults_meat"],
-                "adults_veg": eat_in_1730["adults_veg"],
-                "children": eat_in_1730["children"],
-            },
-            "eat_in_1830": {
-                "adults": eat_in_1830["adults"],
-                "adults_meat": eat_in_1830["adults_meat"],
-                "adults_veg": eat_in_1830["adults_veg"],
-                "children": eat_in_1830["children"],
-            },
+            "takeaway": _merge(takeaway, virtual["take_away"]),
+            "eat_in_1730": _merge(eat_in_1730, virtual["eat_in_1730"]),
+            "eat_in_1830": _merge(eat_in_1830, virtual["eat_in_1830"]),
             "total": {
                 "adults": eff_meat + eff_veg,
                 "adults_meat": eff_meat,
@@ -184,18 +293,6 @@ class DailyRegistrationStatsView(APIView):
 
 
 # Meal Preference Views
-def _apply_defaults_for_upcoming_weeks(user: Any) -> None:
-    """Apply defaults (overwrite=True) for all upcoming unlocked weeks up to 8 weeks ahead.
-
-    Called whenever a user's preferences change so future registrations stay in sync.
-    """
-    from .services.default_registrations import apply_defaults_for_user
-
-    today = timezone.now().date()
-    current_monday = today - timedelta(days=today.weekday())
-    for week_offset in range(9):  # current week + 8 more
-        week_start = current_monday + timedelta(weeks=week_offset)
-        apply_defaults_for_user(user, week_start, overwrite=True)
 
 
 class MealPreferenceListCreateView(generics.ListCreateAPIView):
@@ -211,10 +308,6 @@ class MealPreferenceListCreateView(generics.ListCreateAPIView):
     def get_queryset(self) -> QuerySet[MealPreference]:
         return MealPreference.objects.filter(user=self.request.user)
 
-    def perform_create(self, serializer: Any) -> None:
-        serializer.save(user=self.request.user)
-        _apply_defaults_for_upcoming_weeks(self.request.user)
-
 
 class MealPreferenceDetailView(generics.RetrieveUpdateDestroyAPIView):
     """Get, update, or delete a meal preference."""
@@ -229,18 +322,16 @@ class MealPreferenceDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self) -> QuerySet[MealPreference]:
         return MealPreference.objects.filter(user=self.request.user)
 
-    def perform_update(self, serializer: Any) -> None:
-        serializer.save()
-        _apply_defaults_for_upcoming_weeks(self.request.user)
-
-    def perform_destroy(self, instance: Any) -> None:
-        instance.delete()
-        _apply_defaults_for_upcoming_weeks(self.request.user)
-
 
 # Meal Registration Views
 class MealRegistrationListCreateView(generics.ListCreateAPIView):
-    """List or create meal registrations for the current user."""
+    """List or create meal registrations for the current user.
+
+    When `week_start` query param is present, always returns exactly 4 entries (Mon-Thu):
+    - Days with a real DB row: serialized normally (is_from_preference=False)
+    - Pre-deadline days with no real row: virtual registration from preference/default
+    - Post-deadline days with no real row: lazily materialized into a real DB row
+    """
 
     permission_classes = [permissions.IsAuthenticated]
 
@@ -251,8 +342,6 @@ class MealRegistrationListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self) -> QuerySet[MealRegistration]:
         queryset = MealRegistration.objects.filter(user=self.request.user)
-
-        # Filter by week if week_start param provided
         week_start = self.request.query_params.get("week_start")
         if week_start:
             try:
@@ -261,8 +350,45 @@ class MealRegistrationListCreateView(generics.ListCreateAPIView):
                 return queryset.none()
             end_date = start_date + timedelta(days=6)
             queryset = queryset.filter(date__gte=start_date, date__lte=end_date)
-
         return queryset
+
+    def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        week_start_str = request.query_params.get("week_start")
+        if not week_start_str:
+            return super().list(request, *args, **kwargs)
+
+        try:
+            week_start = date.fromisoformat(week_start_str)
+        except ValueError:
+            return Response({"detail": "Invalid date."}, status=status.HTTP_400_BAD_REQUEST)
+
+        real_regs = {r.date: r for r in self.get_queryset()}
+        user = request.user
+        house = user.house
+        house_count = house.inhabitants.count() if house else 1
+        prefs = {p.day_of_week: p for p in MealPreference.objects.filter(user=user)}
+
+        results = []
+        for day in range(4):
+            target_date = week_start + timedelta(days=day)
+            if target_date in real_regs:
+                results.append(
+                    MealRegistrationSerializer(
+                        real_regs[target_date], context={"request": request}
+                    ).data
+                )
+            elif is_after_deadline(target_date):
+                reg = _materialize_registration(
+                    user, target_date, prefs.get(day), house, house_count
+                )
+                results.append(MealRegistrationSerializer(reg, context={"request": request}).data)
+            else:
+                results.append(
+                    _build_virtual_registration(
+                        target_date, day, prefs.get(day), house, house_count
+                    )
+                )
+        return Response(results)
 
 
 class MealRegistrationDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -277,32 +403,6 @@ class MealRegistrationDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self) -> QuerySet[MealRegistration]:
         return MealRegistration.objects.filter(user=self.request.user)
-
-
-class ApplyDefaultsView(APIView):
-    """Apply default preferences to a week's registrations.
-
-    If user has preferences set, use those.
-    Otherwise, use sensible house-based defaults:
-    - All house inhabitants eat every day (vegetarian)
-    - 17:30 seating time (eat in)
-    """
-
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request: Request) -> Response:
-        from .services.default_registrations import apply_defaults_for_user
-
-        serializer = ApplyDefaultsSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        week_start = serializer.validated_data["week_start_date"]
-        created_count = apply_defaults_for_user(request.user, week_start, overwrite=True)
-
-        return Response(
-            {"detail": f"Applied defaults. {created_count} new registrations created."},
-            status=status.HTTP_200_OK,
-        )
 
 
 # Food Ticket Views
@@ -1004,9 +1104,17 @@ class MonthlyFoodCostView(APIView):
         last_day = date(year, month, last_day_num)
 
         # Get all houses
-        houses = House.objects.all()
+        houses = House.objects.prefetch_related("inhabitants")
         house_costs = []
         total_cost = Decimal("0.00")
+
+        # Collect Mon-Thu dates in the month where the deadline has already passed
+        billing_dates: list[date] = []
+        current = first_day
+        while current <= last_day:
+            if current.weekday() <= 3 and is_after_deadline(current):
+                billing_dates.append(current)
+            current += timedelta(days=1)
 
         for house in houses:
             house_total = Decimal("0.00")
@@ -1014,27 +1122,48 @@ class MonthlyFoodCostView(APIView):
             adult_portions = 0
             child_portions = 0
 
-            # Bill on active registrations only.
-            # Registrations are immutable billing records after the deadline.
-            # If a user sells a ticket the buyer pays them directly (MobilePay),
-            # but the house still owes for the original registration.
-            active_registrations = MealRegistration.objects.filter(
+            # Deduplicate: latest registration (active OR inactive) per date per house.
+            # We track inactive registrations to avoid double-billing via preference fallback
+            # when the user explicitly opted out (is_active=False).
+            regs_by_date: dict[date, MealRegistration] = {}
+            for reg in MealRegistration.objects.filter(
                 user__house=house,
                 date__gte=first_day,
                 date__lte=last_day,
-                is_active=True,
-            )
+            ).order_by("date", "id"):
+                regs_by_date[reg.date] = reg  # latest wins (ascending id order)
 
-            for reg in active_registrations:
+            # Preferences: first preference found per day-of-week for any house member
+            prefs_by_dow: dict[int, MealPreference] = {}
+            for house_user in house.inhabitants.filter(is_active=True):
+                for pref in MealPreference.objects.filter(user=house_user):
+                    if pref.day_of_week not in prefs_by_dow:
+                        prefs_by_dow[pref.day_of_week] = pref
+
+            for billing_date in billing_dates:
+                if billing_date in regs_by_date:
+                    reg = regs_by_date[billing_date]
+                    if not reg.is_active:
+                        # Explicitly cancelled — do not bill
+                        continue
+                    meat = reg.adults_meat
+                    veg = reg.adults_veg
+                    children = reg.children_count
+                else:
+                    # No real registration: use preference fallback only
+                    pref = prefs_by_dow.get(billing_date.weekday())
+                    if pref is None:
+                        # No preference and no registration — skip
+                        continue
+                    meat, veg, children = pref.adults_meat, pref.adults_veg, pref.children_count
+
                 cost = (
-                    (price_adult_meat * reg.adults_meat)
-                    + (price_adult_veg * reg.adults_veg)
-                    + (price_child * reg.children_count)
+                    (price_adult_meat * meat) + (price_adult_veg * veg) + (price_child * children)
                 )
                 house_total += cost
                 registration_count += 1
-                adult_portions += reg.adults_meat + reg.adults_veg
-                child_portions += reg.children_count
+                adult_portions += meat + veg
+                child_portions += children
 
             house_costs.append(
                 {

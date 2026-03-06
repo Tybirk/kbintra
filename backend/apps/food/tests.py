@@ -1032,40 +1032,256 @@ class TestWednesdayMeatVeg:
 
 
 @pytest.mark.django_db
-class TestApplyDefaultsView:
-    """Tests for apply defaults endpoint."""
+class TestVirtualRegistrations:
+    """Tests for virtual (preference-based) registrations."""
 
-    def test_apply_defaults_with_preferences(
-        self, authenticated_client, meal_preference, monday_date
-    ):
-        """Test applying defaults when user has preferences."""
-        # Use a future Monday
+    def test_week_start_returns_4_rows(self, authenticated_client, monday_date):
+        """GET with week_start always returns exactly 4 rows (Mon-Thu)."""
         future_monday = monday_date + timedelta(weeks=5)
-        url = reverse("food:apply-defaults")
-        response = authenticated_client.post(
-            url, {"week_start_date": future_monday.isoformat()}, format="json"
-        )
+        url = reverse("food:registration-list")
+        response = authenticated_client.get(url, {"week_start": future_monday.isoformat()})
         assert response.status_code == 200
-        assert "Applied defaults" in response.json()["detail"]
+        data = response.json()
+        assert len(data) == 4
 
-    def test_apply_defaults_without_preferences(self, api_client, user_with_house, monday_date):
-        """Test applying defaults when user has no preferences but has a house."""
+    def test_virtual_rows_have_null_id(self, authenticated_client, monday_date):
+        """Days without DB rows have id=null and is_from_preference=True."""
+        future_monday = monday_date + timedelta(weeks=5)
+        url = reverse("food:registration-list")
+        response = authenticated_client.get(url, {"week_start": future_monday.isoformat()})
+        assert response.status_code == 200
+        data = response.json()
+        for row in data:
+            assert row["id"] is None
+            assert row["is_from_preference"] is True
+
+    def test_real_rows_have_real_ids(self, api_client, user, monday_date):
+        """Days with DB rows have real ids and is_from_preference=False."""
+        api_client.force_authenticate(user=user)
+        future_monday = monday_date + timedelta(weeks=5)
+        MealRegistration.objects.create(
+            user=user,
+            date=future_monday,
+            adults_veg=2,
+            is_active=True,
+        )
+        url = reverse("food:registration-list")
+        response = api_client.get(url, {"week_start": future_monday.isoformat()})
+        assert response.status_code == 200
+        data = response.json()
+        monday_row = next(r for r in data if r["date"] == future_monday.isoformat())
+        assert monday_row["id"] is not None
+        assert monday_row["is_from_preference"] is False
+        # Other days are still virtual
+        other_rows = [r for r in data if r["date"] != future_monday.isoformat()]
+        for row in other_rows:
+            assert row["id"] is None
+            assert row["is_from_preference"] is True
+
+    def test_virtual_values_match_preferences(self, api_client, user, monday_date):
+        """Virtual registration values match user preferences."""
+        api_client.force_authenticate(user=user)
+        MealPreference.objects.create(
+            user=user,
+            day_of_week=0,  # Monday
+            adults_veg=3,
+            adults_meat=0,
+            children_count=1,
+            dining_option="take_away",
+            seating_time="17:30",
+        )
+        future_monday = monday_date + timedelta(weeks=5)
+        url = reverse("food:registration-list")
+        response = api_client.get(url, {"week_start": future_monday.isoformat()})
+        assert response.status_code == 200
+        data = response.json()
+        monday_row = next(r for r in data if r["date"] == future_monday.isoformat())
+        assert monday_row["adults_veg"] == 3
+        assert monday_row["children_count"] == 1
+        assert monday_row["dining_option"] == "take_away"
+
+    def test_virtual_defaults_when_no_preference(self, api_client, user_with_house, monday_date):
+        """Virtual registration uses house_count veg portions when no preference."""
         api_client.force_authenticate(user=user_with_house)
-        future_monday = monday_date + timedelta(weeks=6)
-        url = reverse("food:apply-defaults")
-        response = api_client.post(
-            url, {"week_start_date": future_monday.isoformat()}, format="json"
-        )
+        house_count = user_with_house.house.inhabitants.count()
+        future_monday = monday_date + timedelta(weeks=5)
+        url = reverse("food:registration-list")
+        response = api_client.get(url, {"week_start": future_monday.isoformat()})
         assert response.status_code == 200
+        data = response.json()
+        monday_row = next(r for r in data if r["date"] == future_monday.isoformat())
+        assert monday_row["adults_veg"] == house_count
+        assert monday_row["adults_meat"] == 0
+        assert monday_row["children_count"] == 0
 
-    def test_apply_defaults_rejects_non_monday(self, authenticated_client, monday_date):
-        """Test that non-Monday dates are rejected."""
-        tuesday = monday_date + timedelta(days=1)
-        url = reverse("food:apply-defaults")
-        response = authenticated_client.post(
-            url, {"week_start_date": tuesday.isoformat()}, format="json"
+
+@pytest.mark.django_db
+class TestLazyMaterialization:
+    """Tests for lazy materialization of registrations post-deadline."""
+
+    def test_post_deadline_creates_real_row(self, api_client, user):
+        """GET for a post-deadline week creates real DB rows."""
+        api_client.force_authenticate(user=user)
+        # Use a hardcoded past Monday (deadline definitely passed)
+        past_monday = date(2024, 1, 8)  # A Monday far in the past
+
+        url = reverse("food:registration-list")
+        response = api_client.get(url, {"week_start": past_monday.isoformat()})
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 4
+        # All rows should have real ids (materialized)
+        for row in data:
+            assert row["id"] is not None
+            assert row["is_from_preference"] is False
+
+        # Real DB rows were created
+        assert MealRegistration.objects.filter(user=user, date=past_monday).exists()
+
+    def test_materialized_values_match_preferences(self, api_client, user):
+        """Materialized registrations use preference values."""
+        api_client.force_authenticate(user=user)
+        MealPreference.objects.create(
+            user=user,
+            day_of_week=0,  # Monday
+            adults_veg=3,
+            adults_meat=0,
+            children_count=0,
+            dining_option="eat_in",
+            seating_time="17:30",
         )
-        assert response.status_code == 400
+        past_monday = date(2024, 2, 5)  # A Monday far in the past
+
+        url = reverse("food:registration-list")
+        response = api_client.get(url, {"week_start": past_monday.isoformat()})
+        assert response.status_code == 200
+        data = response.json()
+        monday_row = next(r for r in data if r["date"] == past_monday.isoformat())
+        assert monday_row["adults_veg"] == 3
+
+        # Verify DB row matches
+        reg = MealRegistration.objects.get(user=user, date=past_monday)
+        assert reg.adults_veg == 3
+
+    def test_concurrent_materialization_no_error(self, api_client, user):
+        """Concurrent materialization uses get_or_create — no integrity errors."""
+        from apps.food.views import _materialize_registration
+
+        past_monday = date(2024, 3, 4)  # A Monday far in the past
+
+        # Call twice (simulates concurrent requests)
+        reg1 = _materialize_registration(user, past_monday, None, user.house, 1)
+        reg2 = _materialize_registration(user, past_monday, None, user.house, 1)
+        assert reg1.id == reg2.id
+
+
+@pytest.mark.django_db
+class TestStatsWithPreferenceFallback:
+    """Tests for stats endpoint including preference-based virtual contributions."""
+
+    def test_stats_nonzero_with_preferences_no_real_regs(
+        self, api_client, user_with_house, monday_date
+    ):
+        """Stats for a date with no real registrations is non-zero when preferences exist."""
+        api_client.force_authenticate(user=user_with_house)
+        MealPreference.objects.create(
+            user=user_with_house,
+            day_of_week=monday_date.weekday(),
+            adults_veg=2,
+            adults_meat=0,
+            children_count=0,
+            dining_option="eat_in",
+            seating_time="17:30",
+        )
+        url = reverse("food:registration-stats")
+        response = api_client.get(url, {"date": monday_date.isoformat()})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"]["adults_veg"] > 0
+
+    def test_user_with_real_reg_not_double_counted(self, api_client, user_with_house, monday_date):
+        """User with a real registration is not also counted via preference."""
+        api_client.force_authenticate(user=user_with_house)
+        MealPreference.objects.create(
+            user=user_with_house,
+            day_of_week=monday_date.weekday(),
+            adults_veg=3,
+            adults_meat=0,
+            children_count=0,
+            dining_option="eat_in",
+            seating_time="17:30",
+        )
+        MealRegistration.objects.create(
+            user=user_with_house,
+            house=user_with_house.house,
+            date=monday_date,
+            adults_veg=2,
+            is_active=True,
+        )
+        url = reverse("food:registration-stats")
+        response = api_client.get(url, {"date": monday_date.isoformat()})
+        assert response.status_code == 200
+        data = response.json()
+        # Should count 2 (real reg), not 5 (2 + 3)
+        assert data["total"]["adults_veg"] == 2
+
+    def test_two_users_same_house_counted_once(self, api_client, house, monday_date):
+        """Two users in the same house with preferences are counted only once."""
+        user1 = User.objects.create_user(
+            email="housemate1@example.com", password="pass", first_name="A", house=house
+        )
+        user2 = User.objects.create_user(
+            email="housemate2@example.com", password="pass", first_name="B", house=house
+        )
+        api_client.force_authenticate(user=user1)
+        for u in (user1, user2):
+            MealPreference.objects.create(
+                user=u,
+                day_of_week=monday_date.weekday(),
+                adults_veg=2,
+                adults_meat=0,
+                children_count=0,
+                dining_option="eat_in",
+                seating_time="17:30",
+            )
+        url = reverse("food:registration-stats")
+        response = api_client.get(url, {"date": monday_date.isoformat()})
+        assert response.status_code == 200
+        data = response.json()
+        # Only user1's preference should count (first encountered); user2 skipped
+        assert data["total"]["adults_veg"] == 2
+
+
+@pytest.mark.django_db
+class TestBillingDedup:
+    """Tests for billing deduplication (fixes double-counting bug)."""
+
+    def test_two_users_same_house_billed_once(self, api_client, admin_user, house):
+        """Two users in the same house with registrations on the same day are billed once."""
+        # Use a hardcoded past date so deadline has passed
+        past_monday = date(2024, 4, 1)  # Monday, April 2024
+
+        user1 = User.objects.create_user(
+            email="bill1@example.com", password="pass", first_name="Bill1", house=house
+        )
+        user2 = User.objects.create_user(
+            email="bill2@example.com", password="pass", first_name="Bill2", house=house
+        )
+        MealRegistration.objects.create(
+            user=user1, house=house, date=past_monday, adults_veg=2, is_active=True
+        )
+        MealRegistration.objects.create(
+            user=user2, house=house, date=past_monday, adults_veg=2, is_active=True
+        )
+
+        api_client.force_authenticate(user=admin_user)
+        url = reverse("food:monthly-food-cost")
+        response = api_client.get(url, {"year": past_monday.year, "month": past_monday.month})
+        assert response.status_code == 200
+        data = response.json()
+        house_data = next(h for h in data["houses"] if h["house_id"] == house.id)
+        # Should only count 2 portions (one registration), not 4
+        assert house_data["adult_portions"] == 2
 
 
 # =============================================================================
@@ -2012,30 +2228,3 @@ class TestEffectiveStats:
         # Should count the house once, not twice → 2 adults, not 4
         assert data["total"]["adults_veg"] == 2
         assert data["total"]["adults"] == 2
-
-
-@pytest.mark.django_db
-class TestApplyDefaultsSkipsLocked:
-    """Tests that apply-defaults skips days where the registration is locked."""
-
-    def test_apply_defaults_skips_locked_days(self, api_client, user_with_house):
-        """Days past the deadline are left untouched by apply-defaults."""
-        api_client.force_authenticate(user=user_with_house)
-
-        # The registration week is in the past relative to the mock time
-        # Mock Thursday Dec 18 (after Wed Dec 17 23:59 deadline for Dec 22 week)
-        with (
-            patch("apps.food.services.default_registrations.is_after_deadline") as mock_deadline,
-            patch("apps.food.services.default_registrations.timezone") as mock_tz,
-        ):
-            mock_tz.now.return_value = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))
-
-            # Make all days appear locked
-            mock_deadline.return_value = True
-
-            url = reverse("food:apply-defaults")
-            response = api_client.post(url, {"week_start_date": "2025-12-22"}, format="json")
-
-        assert response.status_code == 200
-        # No registrations should have been created since all days are locked
-        assert MealRegistration.objects.filter(date__gte=date(2025, 12, 22)).count() == 0

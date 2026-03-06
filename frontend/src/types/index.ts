@@ -360,7 +360,7 @@ export interface AvailablePortions {
 }
 
 export interface MealRegistration {
-  id: number
+  id: number | null
   date: string
   day_of_week: number
   day_name: string
@@ -373,9 +373,10 @@ export interface MealRegistration {
   is_active: boolean
   total_portions: number
   is_locked: boolean
+  is_from_preference?: boolean
   available_portions: AvailablePortions
-  created_at: string
-  updated_at: string
+  created_at: string | null
+  updated_at: string | null
 }
 
 export interface CreateMealRegistrationData {

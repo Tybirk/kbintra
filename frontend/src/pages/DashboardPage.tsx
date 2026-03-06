@@ -964,7 +964,7 @@ function FoodDayWidget({
 
   const updateMutation = useMutation({
     mutationFn: (data: Partial<CreateMealRegistrationData>) =>
-      foodApi.updateRegistration(registration!.id, data),
+      foodApi.updateRegistration(registration!.id as number, data),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["food", "registrations"],
@@ -1005,7 +1005,7 @@ function FoodDayWidget({
 
   // Debounced save function
   const debouncedSave = useDebouncedCallback(
-    (data: CreateMealRegistrationData, regId: number | undefined) => {
+    (data: CreateMealRegistrationData, regId: number | null | undefined) => {
       setIsSaving(true)
       if (regId) {
         updateMutation.mutate(data)
