@@ -159,6 +159,9 @@ REST_FRAMEWORK = {
         "rest_framework.parsers.FormParser",
         "rest_framework.parsers.MultiPartParser",
     ],
+    "DEFAULT_THROTTLE_RATES": {
+        "login": "5/minute",
+    },
 }
 
 # File upload settings
