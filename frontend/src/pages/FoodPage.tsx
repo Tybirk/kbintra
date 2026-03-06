@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
@@ -219,6 +219,7 @@ export default function FoodPage() {
     mutationFn: () => foodApi.applyDefaults(regWeekStart.format("YYYY-MM-DD")),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["food", "registrations"] })
+      queryClient.invalidateQueries({ queryKey: ["food", "stats"] })
       notifications.show({
         title: "Standardindstillinger anvendt",
         message: data.detail,
@@ -711,6 +712,23 @@ function DayRegistrationCard({
     registration?.seating_time ?? "17:30",
   )
   const [isActive, setIsActive] = useState(registration?.is_active ?? true)
+
+  // Sync local state when registration prop changes (e.g. after applyDefaults refetch).
+  // Skip the initial load since useState already handles that.
+  const isRegistrationInitialized = useRef(false)
+  useEffect(() => {
+    if (!registration) return
+    if (!isRegistrationInitialized.current) {
+      isRegistrationInitialized.current = true
+      return
+    }
+    setAdultsMeat(registration.adults_meat)
+    setAdultsVeg(registration.adults_veg)
+    setChildren(registration.children_count)
+    setDiningOption(registration.dining_option)
+    setSeatingTime(registration.seating_time)
+    setIsActive(registration.is_active)
+  }, [registration])
 
   // Sell ticket modal state
   const availablePortions = registration?.available_portions ?? {
