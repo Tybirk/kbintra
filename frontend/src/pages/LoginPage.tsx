@@ -13,6 +13,7 @@ import {
   Alert,
 } from "@mantine/core"
 import { useAuthStore } from "../store/authStore"
+import { isAxiosError } from "axios"
 
 interface LocationState {
   from?: { pathname: string }
@@ -25,17 +26,21 @@ export default function LoginPage() {
 
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [rateLimited, setRateLimited] = useState(false)
 
   const from = (location.state as LocationState)?.from?.pathname || "/"
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setRateLimited(false)
 
     try {
       await login(email, password)
       navigate(from, { replace: true })
-    } catch {
-      // Error is handled by the store
+    } catch (err) {
+      if (isAxiosError(err) && err.response?.status === 429) {
+        setRateLimited(true)
+      }
     }
   }
 
@@ -51,7 +56,12 @@ export default function LoginPage() {
       <Paper withBorder shadow="md" p={30} mt={30} radius="md">
         <form onSubmit={handleSubmit}>
           <Stack>
-            {error && (
+            {rateLimited && (
+              <Alert color="orange">
+                For mange loginforsøg. Vent venligst et minut og prøv igen.
+              </Alert>
+            )}
+            {error && !rateLimited && (
               <Alert color="red" onClose={clearError}>
                 Forkert e-mail eller adgangskode. Prøv venligst igen.
               </Alert>
