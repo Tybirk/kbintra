@@ -365,22 +365,16 @@ export default function MessagesPage() {
       style={{
         display: "flex",
         flexDirection: "column",
-        // On mobile in conversation: use fixed positioning so the box has an explicit
-        // viewport-based height. This fixes the height chain so flex children (ScrollArea)
-        // are properly constrained and the page body never scrolls.
-        // On desktop / list view: normal flow with height: 100%.
         ...(inConversationMobile
           ? {
+              // Full-screen overlay for mobile conversation view
               position: "fixed",
               top: "var(--app-shell-header-height, 60px)",
               left: 0,
               right: 0,
               bottom: 0,
             }
-          : {
-              height:
-                "calc(100dvh - var(--app-shell-header-height, 60px) - 2 * var(--mantine-spacing-md, 16px))",
-            }),
+          : { height: "100%" }),
       }}
     >
       {!inConversationMobile && (
