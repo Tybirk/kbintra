@@ -434,7 +434,13 @@ export default function BookingsPage() {
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
           onEventClick={handleEventClick}
-          onTimeSlotClick={handleTimeSlotClick}
+          // Workaround: @mantine/schedule alpha doesn't destructure onTimeSlotClick
+          // in MonthView/YearView, leaking it to the DOM. Remove conditional when stable.
+          onTimeSlotClick={
+            currentView === "day" || currentView === "week"
+              ? handleTimeSlotClick
+              : undefined
+          }
           onDayClick={handleDayClick}
           renderEventBody={(event) => {
             const payload = event.payload as {
