@@ -5,7 +5,7 @@ import {
   Divider,
   SegmentedControl,
 } from "@mantine/core"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import type { DiningOption, SeatingTime } from "../types"
 
 interface MealFormFieldsProps {
@@ -47,6 +47,16 @@ export function MealFormFields({
     adultsVeg,
   )
   const [childrenInput, setChildrenInput] = useState<number | string>(children)
+
+  useEffect(() => {
+    setAdultsMeatInput(adultsMeat)
+  }, [adultsMeat])
+  useEffect(() => {
+    setAdultsVegInput(adultsVeg)
+  }, [adultsVeg])
+  useEffect(() => {
+    setChildrenInput(children)
+  }, [children])
 
   return (
     <>

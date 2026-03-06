@@ -899,7 +899,7 @@ function FoodDayWidget({
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
   const [isSaving, setIsSaving] = useState(false)
-  const [statsOpen, setStatsOpen] = useState(false)
+  const [statsOpen, setStatsOpen] = useState(true)
 
   // Local state for registration controls
   const [isActive, setIsActive] = useState(registration?.is_active ?? true)
@@ -1182,24 +1182,47 @@ function FoodDayWidget({
           )}
 
           {/* Status indicator */}
-          <Text size="xs" c={isSaving ? "blue" : "dimmed"} ta="center">
-            {isSaving ? (
+          {isSaving ? (
+            <Text size="xs" c="blue" ta="center">
               <Group gap={4} justify="center">
                 <Loader size={10} />
                 Gemmer...
               </Group>
-            ) : registration?.is_active ? (
-              `${registration.total_portions} port. • ${
-                registration.dining_option === "eat_in"
-                  ? `kl. ${registration.seating_time}`
-                  : "Take away"
-              }`
-            ) : registration ? (
-              "Spiser ikke"
-            ) : (
-              "Ikke tilmeldt endnu"
-            )}
-          </Text>
+            </Text>
+          ) : registration?.is_active ? (
+            <Group justify="center" gap="xs">
+              {isWednesday && registration.adults_meat > 0 && (
+                <Text size="sm" fw={600}>
+                  {registration.adults_meat} kød
+                </Text>
+              )}
+              {registration.adults_veg > 0 && (
+                <Text size="sm" fw={600}>
+                  {isWednesday
+                    ? `${registration.adults_veg} vegetar`
+                    : `${registration.adults_veg} voksne`}
+                </Text>
+              )}
+              {registration.children_count > 0 && (
+                <Text size="sm" fw={600}>
+                  {registration.children_count} børn
+                </Text>
+              )}
+              {registration.total_portions === 0 && (
+                <Text size="sm" fw={600} c="dimmed">
+                  0 portioner
+                </Text>
+              )}
+            </Group>
+          ) : registration ? (
+            <Text size="xs" c="dimmed" ta="center">
+              Spiser ikke
+            </Text>
+          ) : (
+            <Text size="xs" c="dimmed" ta="center">
+              Ikke tilmeldt endnu
+            </Text>
+          )}
         </Stack>
 
         {communityStats && (

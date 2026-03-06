@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
@@ -373,14 +373,16 @@ export default function FoodPage() {
               ) : (
                 <div />
               )}
-              <Button
-                variant="light"
-                size="sm"
-                onClick={() => applyDefaultsMutation.mutate()}
-                loading={applyDefaultsMutation.isPending}
-              >
-                Anvend standardpræferencer
-              </Button>
+              {!isDateLocked(regWeekStart.format("YYYY-MM-DD")) && (
+                <Button
+                  variant="light"
+                  size="sm"
+                  onClick={() => applyDefaultsMutation.mutate()}
+                  loading={applyDefaultsMutation.isPending}
+                >
+                  Anvend standardpræferencer
+                </Button>
+              )}
             </Group>
 
             {isLoading ? (
@@ -697,7 +699,7 @@ function DayRegistrationCard({
   ] = useDisclosure(false)
   const [isSaving, setIsSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
-  const [statsOpen, setStatsOpen] = useState(false)
+  const [statsOpen, setStatsOpen] = useState(true)
 
   const isLocked = isDateLocked(date)
 
@@ -719,14 +721,10 @@ function DayRegistrationCard({
   const [isActive, setIsActive] = useState(registration?.is_active ?? true)
 
   // Sync local state when registration prop changes (e.g. after applyDefaults refetch).
-  // Skip the initial load since useState already handles that.
-  const isRegistrationInitialized = useRef(false)
+  // React bails out of re-renders when primitive state values are identical, so syncing
+  // to the same values on initial load is a no-op and doesn't trigger auto-save.
   useEffect(() => {
     if (!registration) return
-    if (!isRegistrationInitialized.current) {
-      isRegistrationInitialized.current = true
-      return
-    }
     setAdultsMeat(registration.adults_meat)
     setAdultsVeg(registration.adults_veg)
     setChildren(registration.children_count)
