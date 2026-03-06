@@ -66,6 +66,8 @@ export function MealFormFields({
                 }}
                 min={0}
                 max={19}
+                clampBehavior="strict"
+                allowLeadingZeros={false}
                 disabled={disabled}
               />
               <NumberInput
@@ -79,6 +81,8 @@ export function MealFormFields({
                 }}
                 min={0}
                 max={19}
+                clampBehavior="strict"
+                allowLeadingZeros={false}
                 disabled={disabled}
               />
             </>
@@ -96,6 +100,7 @@ export function MealFormFields({
               }}
               min={0}
               max={19}
+              clampBehavior="strict"
               disabled={disabled}
             />
           )}
@@ -110,6 +115,7 @@ export function MealFormFields({
             }}
             min={0}
             max={19}
+            clampBehavior="strict"
             disabled={disabled}
           />
         </Group>

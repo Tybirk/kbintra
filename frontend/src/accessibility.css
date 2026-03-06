@@ -18,6 +18,16 @@
 html[data-accessibility="on"] {
   /* 20px base (125% of default 16px) — scales all rem units */
   font-size: 20px;
+
+  /*
+   * Bump Mantine's named font sizes so that "sm" and "xs" text (used in
+   * message bubbles, timestamps etc.) doesn't end up smaller than normal
+   * body text. Without this, size="sm" = 0.875rem = 17.5px which feels
+   * noticeably small compared to the 20px base used everywhere else.
+   * Shifting the scale up one step makes sm → md and xs → sm.
+   */
+  --mantine-font-size-xs: 0.875rem;  /* was 0.75rem  (12 → 17.5px) */
+  --mantine-font-size-sm: 1rem;      /* was 0.875rem (14 → 20px)   */
 }
 
 /* ── Light mode base ────────────────────────────────────────────────── */

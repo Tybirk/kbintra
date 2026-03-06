@@ -63,7 +63,12 @@ import { foodApi } from "../api/food"
 import { notificationsApi } from "../api/notifications"
 import { MealFormFields } from "../components/MealFormFields"
 import { useAuthStore } from "../store/authStore"
-import { calculateDefaultTicketPrice } from "../utils/priceCalculation"
+import {
+  calculateDefaultTicketPrice,
+  PRICE_ADULT_MEAT,
+  PRICE_ADULT_VEG,
+  PRICE_CHILD,
+} from "../utils/priceCalculation"
 import { isDateLocked } from "../utils/foodDeadline"
 import type {
   MealRegistration,
@@ -304,8 +309,8 @@ export default function FoodPage() {
 
                 <Stack gap={0} align="center">
                   <Text fw={500}>
-                    {regWeekStart.format("D. MMMM")} -{" "}
-                    {regWeekStart.add(3, "day").format("D. MMMM YYYY")}
+                    {regWeekStart.format("D. MMM")} -{" "}
+                    {regWeekStart.add(3, "day").format("D. MMM")}
                   </Text>
                   <Badge
                     color={
@@ -1182,19 +1187,23 @@ function DayRegistrationCard({
           {isWednesday ? (
             <>
               <NumberInput
-                label="Kød-portioner"
+                label="Kødportioner"
                 value={sellMeat}
                 onChange={(v) => setSellMeat(typeof v === "number" ? v : 0)}
                 min={0}
                 max={availablePortions.adults_meat}
+                clampBehavior="strict"
+                allowLeadingZeros={false}
                 disabled={availablePortions.adults_meat === 0}
               />
               <NumberInput
-                label="Vegetar-portioner"
+                label="Vegetarportioner"
                 value={sellVeg}
                 onChange={(v) => setSellVeg(typeof v === "number" ? v : 0)}
                 min={0}
                 max={availablePortions.adults_veg}
+                clampBehavior="strict"
+                allowLeadingZeros={false}
                 disabled={availablePortions.adults_veg === 0}
               />
             </>
@@ -1205,18 +1214,23 @@ function DayRegistrationCard({
               onChange={(v) => setSellVeg(typeof v === "number" ? v : 0)}
               min={0}
               max={availablePortions.adults_veg}
+              clampBehavior="strict"
+              allowLeadingZeros={false}
               disabled={availablePortions.adults_veg === 0}
             />
           )}
 
-          <NumberInput
-            label="Børn"
-            value={sellChildren}
-            onChange={(v) => setSellChildren(typeof v === "number" ? v : 0)}
-            min={0}
-            max={availablePortions.children_count}
-            disabled={availablePortions.children_count === 0}
-          />
+          {availablePortions.children_count > 0 && (
+            <NumberInput
+              label="Børneportioner"
+              value={sellChildren}
+              onChange={(v) => setSellChildren(typeof v === "number" ? v : 0)}
+              min={0}
+              max={availablePortions.children_count}
+              clampBehavior="strict"
+              allowLeadingZeros={false}
+            />
+          )}
 
           <Stack gap={4}>
             <Text size="sm" fw={500}>
@@ -1226,7 +1240,19 @@ function DayRegistrationCard({
               {sellPrice} kr
             </Text>
             <Text size="xs" c="dimmed">
-              37/voksen (kød) + 26/voksen (vegetar) + 18/barn
+              {[
+                availablePortions.adults_meat > 0
+                  ? `${PRICE_ADULT_MEAT} kr/Kødportioner`
+                  : null,
+                availablePortions.adults_veg > 0
+                  ? `${PRICE_ADULT_VEG} kr/Vegetarportioner`
+                  : null,
+                availablePortions.children_count > 0
+                  ? `${PRICE_CHILD} kr/Børneportioner`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" + ")}
             </Text>
           </Stack>
 
