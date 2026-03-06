@@ -220,6 +220,34 @@ export default function FoodPage() {
     }
   }, [activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const resetToDefaultsMutation = useMutation({
+    mutationFn: async () => {
+      if (!registrations) return
+      const deletable = registrations.filter(
+        (r) => r.id !== null && !isDateLocked(r.date),
+      )
+      await Promise.all(
+        deletable.map((r) => foodApi.deleteRegistration(r.id as number)),
+      )
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["food", "registrations"] })
+      queryClient.invalidateQueries({ queryKey: ["food", "stats"] })
+      notifications.show({
+        title: "Nulstillet",
+        message: "Tilmeldinger nulstillet til standardpræferencer.",
+        color: "green",
+      })
+    },
+    onError: () => {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke nulstille tilmeldinger.",
+        color: "red",
+      })
+    },
+  })
+
   const isLoading = regsLoading
 
   // Create a map of registrations by date for registration tab
@@ -331,24 +359,40 @@ export default function FoodPage() {
               </Group>
             </Paper>
 
-            {user?.is_staff && (
-              <Group gap="xs">
-                {regDriveMenu?.is_stale && (
-                  <Badge color="yellow" variant="light" size="sm">
-                    Menu kan være forældet
-                  </Badge>
-                )}
+            <Group justify="space-between">
+              {user?.is_staff ? (
+                <Group gap="xs">
+                  {regDriveMenu?.is_stale && (
+                    <Badge color="yellow" variant="light" size="sm">
+                      Menu kan være forældet
+                    </Badge>
+                  )}
+                  <Button
+                    variant="light"
+                    size="sm"
+                    leftSection={<IconRefresh size={14} />}
+                    onClick={() => refreshDriveMenuMutation.mutate()}
+                    loading={refreshDriveMenuMutation.isPending}
+                  >
+                    Opdater fra Google Drive
+                  </Button>
+                </Group>
+              ) : (
+                <div />
+              )}
+              {registrations?.some(
+                (r) => r.id !== null && !isDateLocked(r.date),
+              ) && (
                 <Button
                   variant="light"
                   size="sm"
-                  leftSection={<IconRefresh size={14} />}
-                  onClick={() => refreshDriveMenuMutation.mutate()}
-                  loading={refreshDriveMenuMutation.isPending}
+                  onClick={() => resetToDefaultsMutation.mutate()}
+                  loading={resetToDefaultsMutation.isPending}
                 >
-                  Opdater fra Google Drive
+                  Nulstil til standardpræferencer
                 </Button>
-              </Group>
-            )}
+              )}
+            </Group>
 
             {isLoading ? (
               <Center h={200}>

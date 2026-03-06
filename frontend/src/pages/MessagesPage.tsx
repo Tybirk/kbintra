@@ -300,6 +300,7 @@ export default function MessagesPage() {
         },
       )
       queryClient.invalidateQueries({ queryKey: ["conversations"] })
+      queryClient.invalidateQueries({ queryKey: ["messages", "unread-count"] })
     }
   }, [selectedConversation, activeConversation?.unread_count, queryClient])
 

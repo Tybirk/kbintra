@@ -5,11 +5,11 @@ import {
   Text,
   Paper,
   Group,
-  Button,
   Loader,
   Center,
   Stack,
   SimpleGrid,
+  SegmentedControl,
 } from "@mantine/core"
 import { useDebouncedCallback } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -17,6 +17,7 @@ import { notifications } from "@mantine/notifications"
 import { foodApi } from "../api/food"
 import { BackButton } from "../components/BackButton"
 import { MealFormFields } from "../components/MealFormFields"
+import { useAuthStore } from "../store/authStore"
 import type {
   MealPreference,
   CreateMealPreferenceData,
@@ -100,8 +101,19 @@ function PreferenceCard({
   onSaved,
 }: PreferenceCardProps) {
   const queryClient = useQueryClient()
+  const { user } = useAuthStore()
+  const houseCount = user?.house_inhabitant_count || 1
+
+  const isAllZero =
+    (preference?.adults_meat ?? 0) === 0 &&
+    (preference?.adults_veg ?? 0) === 0 &&
+    (preference?.children_count ?? 0) === 0 &&
+    preference !== undefined
+
   const [adultsMeat, setAdultsMeat] = useState(preference?.adults_meat ?? 0)
-  const [adultsVeg, setAdultsVeg] = useState(preference?.adults_veg ?? 1)
+  const [adultsVeg, setAdultsVeg] = useState(
+    preference?.adults_veg ?? houseCount,
+  )
   const [children, setChildren] = useState(preference?.children_count ?? 0)
   const [diningOption, setDiningOption] = useState<DiningOption>(
     preference?.dining_option ?? "eat_in",
@@ -109,6 +121,7 @@ function PreferenceCard({
   const [seatingTime, setSeatingTime] = useState<SeatingTime>(
     preference?.seating_time ?? "17:30",
   )
+  const [isEating, setIsEating] = useState(!isAllZero)
 
   const [isSaving, setIsSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
@@ -152,25 +165,6 @@ function PreferenceCard({
     },
   })
 
-  const deleteMutation = useMutation({
-    mutationFn: () => foodApi.deletePreference(preference!.id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["food", "preferences"] })
-      notifications.show({
-        title: "Slettet",
-        message: `Præferencer fjernet for ${dayName}`,
-        color: "blue",
-      })
-    },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke slette præferencer.",
-        color: "red",
-      })
-    },
-  })
-
   const debouncedSave = useDebouncedCallback(
     (data: CreateMealPreferenceData, prefId: number | undefined) => {
       setIsSaving(true)
@@ -182,6 +176,21 @@ function PreferenceCard({
     },
     500,
   )
+
+  const handleEatingChange = (val: string) => {
+    const eating = val === "yes"
+    setIsEating(eating)
+    if (!eating) {
+      setAdultsMeat(0)
+      setAdultsVeg(0)
+      setChildren(0)
+    } else {
+      // Restore sensible defaults
+      setAdultsMeat(isWednesday ? houseCount : 0)
+      setAdultsVeg(isWednesday ? 0 : houseCount)
+      setChildren(0)
+    }
+  }
 
   useEffect(() => {
     if (!hasInitialized) {
@@ -204,35 +213,36 @@ function PreferenceCard({
 
   return (
     <Paper withBorder p="md" radius="md">
-      <Group justify="space-between" mb="md">
-        <Text fw={500}>{dayName}</Text>
-        {preference && (
-          <Button
-            variant="subtle"
-            color="red"
-            size="compact-sm"
-            onClick={() => deleteMutation.mutate()}
-            loading={deleteMutation.isPending}
-          >
-            Fjern
-          </Button>
-        )}
-      </Group>
+      <Text fw={500} mb="md">
+        {dayName}
+      </Text>
 
       <Stack gap="sm">
-        <MealFormFields
-          adultsMeat={adultsMeat}
-          adultsVeg={adultsVeg}
-          children={children}
-          diningOption={diningOption}
-          seatingTime={seatingTime}
-          isWednesday={isWednesday}
-          onAdultsMeatChange={setAdultsMeat}
-          onAdultsVegChange={setAdultsVeg}
-          onChildrenChange={setChildren}
-          onDiningOptionChange={setDiningOption}
-          onSeatingTimeChange={setSeatingTime}
+        <SegmentedControl
+          value={isEating ? "yes" : "no"}
+          onChange={handleEatingChange}
+          data={[
+            { label: "Spiser", value: "yes" },
+            { label: "Spiser ikke", value: "no" },
+          ]}
+          fullWidth
         />
+
+        {isEating && (
+          <MealFormFields
+            adultsMeat={adultsMeat}
+            adultsVeg={adultsVeg}
+            children={children}
+            diningOption={diningOption}
+            seatingTime={seatingTime}
+            isWednesday={isWednesday}
+            onAdultsMeatChange={setAdultsMeat}
+            onAdultsVegChange={setAdultsVeg}
+            onChildrenChange={setChildren}
+            onDiningOptionChange={setDiningOption}
+            onSeatingTimeChange={setSeatingTime}
+          />
+        )}
 
         <Text
           size="xs"

@@ -25,7 +25,6 @@ vi.mock("../api/food", () => ({
     getPreferences: () => mockGetPreferences(),
     createPreference: (...args: unknown[]) => mockCreatePreference(...args),
     updatePreference: (...args: unknown[]) => mockUpdatePreference(...args),
-    deletePreference: vi.fn().mockResolvedValue(undefined),
   },
 }))
 
@@ -79,13 +78,10 @@ describe("FoodPreferencesPage", () => {
     })
   })
 
-  it("shows auto-save indicator and delete button for days with preferences", async () => {
+  it("shows auto-save indicator for all cards", async () => {
     render(<FoodPreferencesPage />)
 
     await waitFor(() => {
-      // Days with preferences show a "Fjern" button
-      expect(screen.getByRole("button", { name: /fjern/i })).toBeInTheDocument()
-      // All cards show the auto-save indicator
       const indicators = screen.getAllByText("Gemmes automatisk ved ændringer")
       expect(indicators.length).toBeGreaterThan(0)
     })

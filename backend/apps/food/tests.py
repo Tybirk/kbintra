@@ -1267,6 +1267,20 @@ class TestBillingDedup:
         user2 = User.objects.create_user(
             email="bill2@example.com", password="pass", first_name="Bill2", house=house
         )
+        # Zero-portion preferences so other Mon-Thu dates don't get default billing
+        for u in (user1, user2):
+            for day in range(4):
+                MealPreference.objects.get_or_create(
+                    user=u,
+                    day_of_week=day,
+                    defaults={
+                        "adults_meat": 0,
+                        "adults_veg": 0,
+                        "children_count": 0,
+                        "dining_option": "eat_in",
+                        "seating_time": "17:30",
+                    },
+                )
         MealRegistration.objects.create(
             user=user1, house=house, date=past_monday, adults_veg=2, is_active=True
         )
@@ -1282,6 +1296,78 @@ class TestBillingDedup:
         house_data = next(h for h in data["houses"] if h["house_id"] == house.id)
         # Should only count 2 portions (one registration), not 4
         assert house_data["adult_portions"] == 2
+
+
+@pytest.mark.django_db
+class TestBillingWithPreferenceFallback:
+    """Tests for billing using preference/default fallback."""
+
+    def test_billing_includes_house_with_preference_no_reg(self, api_client, admin_user, house):
+        """A house with a preference but no registration is still billed."""
+        user1 = User.objects.create_user(
+            email="prefbill@example.com", password="pass", first_name="PB", house=house
+        )
+        MealPreference.objects.create(
+            user=user1,
+            day_of_week=0,  # Monday
+            adults_veg=3,
+            adults_meat=0,
+            children_count=0,
+            dining_option="eat_in",
+            seating_time="17:30",
+        )
+        api_client.force_authenticate(user=admin_user)
+        url = reverse("food:monthly-food-cost")
+        response = api_client.get(url, {"year": 2024, "month": 4})
+        assert response.status_code == 200
+        data = response.json()
+        house_data = next(h for h in data["houses"] if h["house_id"] == house.id)
+        assert house_data["adult_portions"] > 0
+
+    def test_billing_uses_default_for_house_with_no_preference(self, api_client, admin_user, house):
+        """A house with inhabitants but no preference is billed house_count veg."""
+        User.objects.create_user(
+            email="nopref@example.com", password="pass", first_name="NP", house=house
+        )
+        api_client.force_authenticate(user=admin_user)
+        url = reverse("food:monthly-food-cost")
+        # Use a past month so all Mon-Thu dates have passed the deadline
+        response = api_client.get(url, {"year": 2024, "month": 4})
+        assert response.status_code == 200
+        data = response.json()
+        house_data = next(h for h in data["houses"] if h["house_id"] == house.id)
+        # House has at least 1 inhabitant, so should be billed for each Mon-Thu
+        assert house_data["adult_portions"] > 0
+
+    def test_billing_inactive_reg_not_billed_via_fallback(self, api_client, admin_user, house):
+        """An explicitly cancelled registration (is_active=False) is not billed."""
+        past_monday = date(2024, 5, 6)  # Monday, May 2024
+        user1 = User.objects.create_user(
+            email="inactive@example.com", password="pass", first_name="IA", house=house
+        )
+        # Set zero preferences so only the explicit registration matters
+        for day in range(4):
+            MealPreference.objects.create(
+                user=user1,
+                day_of_week=day,
+                adults_meat=0,
+                adults_veg=0,
+                children_count=0,
+                dining_option="eat_in",
+                seating_time="17:30",
+            )
+        # Explicit opt-out via is_active=False registration
+        MealRegistration.objects.create(
+            user=user1, house=house, date=past_monday, adults_veg=3, is_active=False
+        )
+        api_client.force_authenticate(user=admin_user)
+        url = reverse("food:monthly-food-cost")
+        response = api_client.get(url, {"year": 2024, "month": 5})
+        assert response.status_code == 200
+        data = response.json()
+        house_data = next(h for h in data["houses"] if h["house_id"] == house.id)
+        # Cancelled registration should not be billed
+        assert house_data["total_cost"] == "0.00"
 
 
 # =============================================================================
@@ -1637,10 +1723,25 @@ class TestTicketCreationDeadline:
 class TestMonthlyFoodCostReport:
     """Tests for monthly food cost report.
 
-    Billing is based ONLY on active meal registrations.
-    Registrations are the immutable billing record after the deadline.
+    Billing is based on active meal registrations + preference/default fallback.
     Ticket sales are between users (MobilePay) and do NOT affect the house bill.
     """
+
+    @staticmethod
+    def _set_zero_preferences(user):
+        """Set zero-portion preferences for all days, opting the house out of defaults."""
+        for day in range(4):
+            MealPreference.objects.get_or_create(
+                user=user,
+                day_of_week=day,
+                defaults={
+                    "adults_meat": 0,
+                    "adults_veg": 0,
+                    "children_count": 0,
+                    "dining_option": "eat_in",
+                    "seating_time": "17:30",
+                },
+            )
 
     def test_cost_charged_to_registration_house(
         self, api_client, admin_user, user_with_house, house
@@ -1649,10 +1750,12 @@ class TestMonthlyFoodCostReport:
         # Clean up existing data for this month
         FoodTicket.objects.filter(date__year=2025, date__month=1).delete()
         MealRegistration.objects.filter(date__year=2025, date__month=1).delete()
+        self._set_zero_preferences(user_with_house)
 
         reg_date = date(2025, 1, 13)  # A Monday in January 2025
         MealRegistration.objects.create(
             user=user_with_house,
+            house=house,
             date=reg_date,
             adults_meat=0,
             adults_veg=2,
@@ -1708,11 +1811,13 @@ class TestMonthlyFoodCostReport:
         # Clean up existing data for this test
         FoodTicket.objects.filter(date__year=2025, date__month=2).delete()
         MealRegistration.objects.filter(date__year=2025, date__month=2).delete()
+        self._set_zero_preferences(user_with_house)
 
         # Create multiple active registrations (non-Wednesday → veg)
         for i in range(3):
             MealRegistration.objects.create(
                 user=user_with_house,
+                house=house,
                 date=date(2025, 2, 3 + i),  # Feb 3, 4, 5 (Mon, Tue, Wed)
                 adults_meat=0,
                 adults_veg=1,
@@ -1739,6 +1844,7 @@ class TestMonthlyFoodCostReport:
         # Clean up existing data for this test
         FoodTicket.objects.filter(date__year=2025, date__month=3).delete()
         MealRegistration.objects.filter(date__year=2025, date__month=3).delete()
+        self._set_zero_preferences(user_with_house)
 
         # Create a ticket — this should NOT affect the house bill
         FoodTicket.objects.create(
@@ -1771,10 +1877,12 @@ class TestMonthlyFoodCostReport:
         # Clean up existing data for this test
         FoodTicket.objects.filter(date__year=2025, date__month=4).delete()
         MealRegistration.objects.filter(date__year=2025, date__month=4).delete()
+        self._set_zero_preferences(user_with_house)
 
         # Create an active meal registration (user ate the meal) - Monday is veg
         MealRegistration.objects.create(
             user=user_with_house,
+            house=house,
             date=date(2025, 4, 7),  # A Monday in April 2025
             adults_meat=0,
             adults_veg=2,
@@ -1804,10 +1912,12 @@ class TestMonthlyFoodCostReport:
         # Clean up existing data for this test
         FoodTicket.objects.filter(date__year=2025, date__month=5).delete()
         MealRegistration.objects.filter(date__year=2025, date__month=5).delete()
+        self._set_zero_preferences(user_with_house)
 
         # Create an inactive meal registration (user cancelled without creating ticket)
         MealRegistration.objects.create(
             user=user_with_house,
+            house=house,
             date=date(2025, 5, 5),  # A Monday in May 2025
             adults_meat=0,
             adults_veg=1,
@@ -1835,10 +1945,12 @@ class TestMonthlyFoodCostReport:
         # Clean up existing data for this test
         FoodTicket.objects.filter(date__year=2025, date__month=6).delete()
         MealRegistration.objects.filter(date__year=2025, date__month=6).delete()
+        self._set_zero_preferences(user_with_house)
 
         # Day 1: Active registration (user eats)
         MealRegistration.objects.create(
             user=user_with_house,
+            house=house,
             date=date(2025, 6, 2),  # A Monday
             adults_meat=0,
             adults_veg=1,
@@ -1849,6 +1961,7 @@ class TestMonthlyFoodCostReport:
         # Day 2: Active registration + ticket (registration stays active — new model)
         MealRegistration.objects.create(
             user=user_with_house,
+            house=house,
             date=date(2025, 6, 3),  # A Tuesday
             adults_meat=0,
             adults_veg=1,
@@ -2121,12 +2234,13 @@ class TestTicketValidationWithExisting:
 class TestEffectiveStats:
     """Tests for effective registration statistics (subtract available tickets)."""
 
-    def test_stats_subtract_available_tickets(self, authenticated_client, user_with_house):
+    def test_stats_subtract_available_tickets(self, authenticated_client, user_with_house, house):
         """Available (unsold) tickets are subtracted from totals in stats."""
         meal_date = date(2025, 12, 22)  # Monday
 
         MealRegistration.objects.create(
             user=user_with_house,
+            house=house,
             date=meal_date,
             adults_veg=2,
             children_count=0,
@@ -2151,12 +2265,15 @@ class TestEffectiveStats:
         assert data["total"]["adults_veg"] == 1
         assert data["total"]["adults"] == 1
 
-    def test_stats_ignore_claimed_tickets(self, authenticated_client, user_with_house, admin_user):
+    def test_stats_ignore_claimed_tickets(
+        self, authenticated_client, user_with_house, house, admin_user
+    ):
         """Claimed (sold) tickets are NOT subtracted — claimer is eating."""
         meal_date = date(2025, 12, 22)  # Monday
 
         MealRegistration.objects.create(
             user=user_with_house,
+            house=house,
             date=meal_date,
             adults_veg=2,
             children_count=0,

@@ -92,14 +92,9 @@ class MealPreferenceCreateUpdateSerializer(serializers.ModelSerializer):
             self.instance.day_of_week if self.instance else None
         )
         adults_meat = attrs.get("adults_meat", 0)
-        adults_veg = attrs.get("adults_veg", 0)
-        children_count = attrs.get("children_count", 0)
 
         if day_of_week is not None and day_of_week != 2 and adults_meat > 0:
             raise serializers.ValidationError({"adults_meat": "Kød serveres kun om onsdagen."})
-
-        if adults_meat + adults_veg + children_count == 0:
-            raise serializers.ValidationError("Der skal være mindst én portion.")
 
         return attrs
 

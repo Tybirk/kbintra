@@ -88,6 +88,7 @@ def _build_virtual_registration(
 ) -> dict[str, Any]:
     """Return a dict matching MealRegistrationSerializer output for a day with no real row."""
     meat, veg, children, dining, seating = _get_preference_values(pref, house_count)
+    is_eating = meat + veg + children > 0
     return {
         "id": None,
         "date": target_date.isoformat(),
@@ -99,7 +100,7 @@ def _build_virtual_registration(
         "dining_option": dining,
         "seating_time": seating,
         "house": {"id": house.id, "name": house.name} if house else None,
-        "is_active": True,
+        "is_active": is_eating,
         "total_portions": meat + veg + children,
         "is_locked": is_after_deadline(target_date),
         "is_from_preference": True,
@@ -131,7 +132,7 @@ def _materialize_registration(
             "children_count": children,
             "dining_option": dining,
             "seating_time": seating,
-            "is_active": True,
+            "is_active": meat + veg + children > 0,
         },
     )
     return reg
@@ -218,17 +219,24 @@ class DailyRegistrationStatsView(APIView):
         eat_in_1830 = _agg(registrations.filter(dining_option="eat_in", seating_time="18:30"))
         total_agg = _agg(registrations)
 
-        # Add virtual contributions from users with preferences but no real registration.
-        # Track which houses already have a real registration (already deduplicated above).
+        # Add virtual contributions for houses without a real registration.
+        # Houses with a preference: use the preference values.
+        # Houses with no preference: default to house_count veg portions (eat_in 17:30).
+        from apps.houses.models import House
+
         covered_house_ids = set(
             MealRegistration.objects.filter(
                 date=target_date, is_active=True, house__isnull=False
             ).values_list("house_id", flat=True)
         )
         day_of_week = target_date.weekday()
-        prefs = MealPreference.objects.filter(
+        prefs_by_house: dict[int, MealPreference] = {}
+        for pref in MealPreference.objects.filter(
             day_of_week=day_of_week, user__is_active=True
-        ).select_related("user__house")
+        ).select_related("user__house"):
+            house = pref.user.house
+            if house and house.id not in prefs_by_house:
+                prefs_by_house[house.id] = pref
 
         virtual: dict[str, dict[str, int]] = {
             "take_away": {"adults_meat": 0, "adults_veg": 0, "children": 0},
@@ -236,26 +244,28 @@ class DailyRegistrationStatsView(APIView):
             "eat_in_1830": {"adults_meat": 0, "adults_veg": 0, "children": 0},
             "total": {"adults_meat": 0, "adults_veg": 0, "children": 0},
         }
-        seen_virtual_houses: set[int] = set()
-        for pref in prefs:
-            house = pref.user.house
-            if house is None:
+        for h in House.objects.prefetch_related("inhabitants"):
+            if h.id in covered_house_ids:
                 continue
-            if house.id in covered_house_ids:
-                continue
-            if house.id in seen_virtual_houses:
-                continue
-            seen_virtual_houses.add(house.id)
-            if pref.dining_option == "take_away":
-                bucket = "take_away"
-            elif pref.seating_time == "17:30":
-                bucket = "eat_in_1730"
+            pref = prefs_by_house.get(h.id)
+            if pref:
+                meat, veg, children = pref.adults_meat, pref.adults_veg, pref.children_count
+                if pref.dining_option == "take_away":
+                    bucket = "take_away"
+                elif pref.seating_time == "17:30":
+                    bucket = "eat_in_1730"
+                else:
+                    bucket = "eat_in_1830"
             else:
-                bucket = "eat_in_1830"
+                house_count = h.inhabitants.count()
+                if house_count == 0:
+                    continue
+                meat, veg, children = 0, house_count, 0
+                bucket = "eat_in_1730"
             for b in (bucket, "total"):
-                virtual[b]["adults_meat"] += pref.adults_meat
-                virtual[b]["adults_veg"] += pref.adults_veg
-                virtual[b]["children"] += pref.children_count
+                virtual[b]["adults_meat"] += meat
+                virtual[b]["adults_veg"] += veg
+                virtual[b]["children"] += children
 
         # Subtract available (unsold) tickets from combined total
         available_tickets = FoodTicket.objects.filter(
@@ -293,8 +303,6 @@ class DailyRegistrationStatsView(APIView):
 
 
 # Meal Preference Views
-
-
 class MealPreferenceListCreateView(generics.ListCreateAPIView):
     """List or create meal preferences for the current user."""
 
@@ -1135,10 +1143,11 @@ class MonthlyFoodCostView(APIView):
 
             # Preferences: first preference found per day-of-week for any house member
             prefs_by_dow: dict[int, MealPreference] = {}
-            for house_user in house.inhabitants.filter(is_active=True):
-                for pref in MealPreference.objects.filter(user=house_user):
-                    if pref.day_of_week not in prefs_by_dow:
-                        prefs_by_dow[pref.day_of_week] = pref
+            for pref in MealPreference.objects.filter(user__house=house, user__is_active=True):
+                if pref.day_of_week not in prefs_by_dow:
+                    prefs_by_dow[pref.day_of_week] = pref
+
+            house_count = house.inhabitants.count()
 
             for billing_date in billing_dates:
                 if billing_date in regs_by_date:
@@ -1150,13 +1159,21 @@ class MonthlyFoodCostView(APIView):
                     veg = reg.adults_veg
                     children = reg.children_count
                 else:
-                    # No real registration: use preference fallback only
+                    # No real registration: use preference, or house_count veg default
                     pref = prefs_by_dow.get(billing_date.weekday())
-                    if pref is None:
-                        # No preference and no registration — skip
+                    if pref:
+                        meat, veg, children = (
+                            pref.adults_meat,
+                            pref.adults_veg,
+                            pref.children_count,
+                        )
+                    elif house_count > 0:
+                        meat, veg, children = 0, house_count, 0
+                    else:
                         continue
-                    meat, veg, children = pref.adults_meat, pref.adults_veg, pref.children_count
 
+                if meat == 0 and veg == 0 and children == 0:
+                    continue
                 cost = (
                     (price_adult_meat * meat) + (price_adult_veg * veg) + (price_child * children)
                 )
