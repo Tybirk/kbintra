@@ -5,6 +5,8 @@ Models for Messaging app.
 from django.conf import settings
 from django.db import models
 
+from .encryption import EncryptedTextField
+
 
 class Conversation(models.Model):
     """A conversation between two or more users."""
@@ -41,7 +43,7 @@ class Message(models.Model):
         on_delete=models.CASCADE,
         related_name="sent_messages",
     )
-    content = models.TextField()
+    content = EncryptedTextField()
     is_system_message = models.BooleanField(default=False)
     is_deleted = models.BooleanField(default=False)
     edited_at = models.DateTimeField(null=True, blank=True)
