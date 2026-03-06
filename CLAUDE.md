@@ -75,17 +75,13 @@ Note: Migrations run automatically on backend container startup via `docker-entr
 - `food` - MenuTemplates → WeeklyMenu → DailyMenu, MealRegistration, FoodTickets, FoodTeams
 - `announcements` - Priority community posts
 - `calendar_app` - Community events
-- `messaging` - 1:1 Conversations with real-time Messages
-- `notifications` - In-app + email notifications with preferences
-
-Key config files:
-- `backend/config/settings.py` - Django settings (JWT, CORS, Channels)
-- `backend/config/asgi.py` - WebSocket routing
+- `messaging` - 1:1 and group conversations with real-time messages (encrypted at rest)
+- `notifications` - In-app + email + push notifications with preferences
 
 ### Frontend Structure
 
 - `frontend/src/api/` - Axios client with JWT interceptor + API modules per feature
-- `frontend/src/pages/` - 22 page components
+- `frontend/src/pages/` - Page components
 - `frontend/src/components/` - Shared components (AppHeader, AppNavbar, RichTextEditor)
 - `frontend/src/store/authStore.ts` - Zustand auth state
 - `frontend/src/types/index.ts` - All TypeScript types
@@ -103,111 +99,42 @@ Key config files:
 - Email-based login (no username)
 - JWT: access token (1 hour), refresh token (7 days with rotation)
 - Invitation-only registration with house assignment
-- Frontend auto-refreshes tokens via axios interceptor
+- Frontend auto-refreshes tokens via axios interceptor (subscriber queue prevents duplicate refresh requests)
 
-### Background Tasks (Huey)
+For detailed architecture docs (Huey tasks, production infrastructure, message encryption, search), see `docs/architecture.md`.
 
-Huey is used as a lightweight task queue for background work (emails, push notifications). It uses SQLite as its broker — no Redis needed.
+## Important Patterns & Gotchas
 
-**Configuration** (`backend/config/settings.py`):
-- `huey.contrib.djhuey` is in `INSTALLED_APPS`
-- `HUEY` dict configures `SqliteHuey` with broker at `backend/huey.db`
-- `immediate: DEBUG` — tasks run synchronously in dev/test, async via worker in production
-- 2 thread workers in production
+### Search index signals
+The `search` app keeps its FTS5 index in sync via `post_save`/`post_delete` signals registered in `SearchConfig.ready()`. When adding or modifying searchable models, check `backend/apps/search/signals.py`. See `backend/apps/search/SEARCH.md` for full docs.
 
-**Writing tasks** (`backend/apps/<app>/tasks.py`):
-```python
-from huey.contrib.djhuey import db_task
+### Periodic background tasks
+Two Huey periodic tasks exist beyond one-off tasks:
+- **Event reminders** (`apps/events/tasks.py`) — hourly, sends 24h and 1h reminders
+- **Food team defaults** (`apps/food/tasks.py`) — Thursday 1 AM, cycles cooking teams
 
-@db_task(retries=3, retry_delay=2)
-def my_task(user_id: int, ...) -> None:
-    """Always pass primitive args (int, str) — not model instances."""
-    from apps.users.models import User  # import inside task to avoid AppRegistryNotReady
-    user = User.objects.get(id=user_id)
-    # do work...
-```
+Use `@db_periodic_task(crontab(...))` for new periodic tasks. Import the task module in the app's `AppConfig.ready()` to register it.
 
-Key rules:
-- Use `@db_task()` (wraps task execution in a database transaction) or `@task()` for no transaction
+### Huey task rules
+- Use `@db_task()` for transactional tasks, `@task()` for non-transactional
 - Pass only serializable primitives (int, str, bool) — never Django model instances
 - Import models inside the task function body, not at module top level
-- Use `retries` and `retry_delay` for transient failures (network, SMTP, etc.)
+- `immediate: DEBUG` — tasks run synchronously in dev, async via worker in production
 
-**Calling tasks** (from views/services):
-```python
-from apps.notifications.tasks import send_email_task
+### Frontend version check
+`useVersionCheck()` polls `/version.json` every 5 minutes and force-reloads when a new version is detected. It has iOS PWA-specific workarounds. If the page reloads unexpectedly, this is likely why.
 
-# This enqueues immediately; the worker picks it up in the background
-send_email_task(user.id, notification_type, title, message, link, related_user_id, html_content)
-```
+### Service worker & push notifications
+Custom service worker (`frontend/src/sw.ts`) handles push notifications with iOS Safari-specific workarounds (no icon support, different event handling). Notifications are collapsed per type+URL to prevent spam.
 
-**Running the worker**:
-```bash
-# Dev: not needed (immediate=True runs tasks synchronously)
-# Production (or to test async behavior):
-uv run python manage.py run_huey -w 2 -k thread --flush-locks
-```
+### Sentry error filtering
+`_sentry_before_send` in `settings.py` drops JWT token errors (TokenError, InvalidToken, TokenExpiredError) to reduce noise. If errors seem missing from Sentry, check this filter.
 
-**Docker**: The `huey` service in `docker-compose.yml` runs the worker. It shares the same `huey.db` and `db.sqlite3` volumes as the `backend` service.
+### Pre-commit hooks
+Uses `prek` (not standard `pre-commit`). Hooks run ruff, frontend lint/format/typecheck. They source `~/.nvm/nvm.sh` for Node access. Install with `uv tool install prek && prek install -f .`.
 
-**Existing tasks**: `backend/apps/notifications/tasks.py` — `send_email_task`, `send_push_task`
-
-### Production Infrastructure
-
-**Docker services** (`docker-compose.yml`):
-- `traefik` — Reverse proxy, routes by path prefix to backend/frontend
-- `cloudflared` — Cloudflare Tunnel for secure ingress (no exposed ports)
-- `redis` — Channel layer backend for Django Channels (WebSocket message routing)
-- `backend` — Daphne ASGI server (HTTP + WebSocket)
-- `huey` — Background task worker
-- `frontend` — Nginx serving the React SPA
-
-**Daphne configuration** (`backend/docker-entrypoint.sh`):
-- Runs migrations automatically on startup
-- `--proxy-headers` — trusts X-Forwarded-For/Proto from Traefik
-- `--ping-interval 20 --ping-timeout 30` — detects and cleans up stale WebSocket connections
-
-**Channel layer** (`backend/config/settings.py`):
-- Uses `channels_redis` when `REDIS_URL` env var is set (production/Docker)
-- Falls back to `InMemoryChannelLayer` when `REDIS_URL` is empty (local dev, tests)
-
-**Reliability features**:
-- Health checks on Redis and backend (`/api/health/`) containers
-- Graceful shutdown (`stop_signal: SIGINT`, `stop_grace_period: 30s`) on backend and huey
-- Memory limits on all containers (512m backend, 256m huey, 128m others)
-- SQLite write timeout of 20s to reduce `database is locked` errors from concurrent access
-
-### Message Encryption
-
-Private messages are encrypted at rest using Fernet (AES-128-CBC + HMAC). The encryption key is stored in the `MESSAGES_ENCRYPTION_KEY` environment variable.
-
-**Generating a key**:
-```bash
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-```
-
-**Configuration**:
-- Production (`DEBUG=False`): Key is **required** — the app refuses to start without it
-- Development (`DEBUG=True`): Key is optional — messages are stored as plaintext without it
-- Encrypted messages from a production DB copy show as `[krypteret besked]` without the key
-
-**Initial setup** (new server or first deploy):
-1. Generate a key and add `MESSAGES_ENCRYPTION_KEY=<key>` to the production environment
-2. Deploy (migrations run automatically)
-3. Run `docker exec <backend-container> uv run python manage.py encrypt_messages` once to encrypt existing messages
-4. Back up the key separately from the database — if lost, encrypted messages are **unrecoverable**
-
-### Full-Text Search (FTS5)
-
-The `search` app provides global search using SQLite FTS5 with recency-boosted BM25 ranking. See `backend/apps/search/SEARCH.md` for full architecture docs.
-
-**Key commands**:
-```bash
-uv run python manage.py rebuild_search_index            # Full reindex
-uv run python manage.py rebuild_search_index --if-empty  # Only if index is empty (used on container startup)
-```
-
-**Adding a new searchable model**: Add signals in `signals.py`, indexing in `rebuild_search_index.py`, type mapping in `views.py:TYPE_TO_KEY`.
+### Message encryption
+Private messages are encrypted at rest using Fernet. Key stored in `MESSAGES_ENCRYPTION_KEY` env var. Required in production, optional in dev. See `docs/architecture.md` for details.
 
 ## Key Files for Common Tasks
 
@@ -240,18 +167,14 @@ useState<FolderPathEntry[]>([])
 
 ## Required Checks (Backend)
 
-Before committing, ensure all checks pass:
-
 ```bash
 uv run ruff check --fix .   # Linting
-uv run ruff format .  # Formatting
-uvx ty check         # Type checking
-uv run pytest         # Tests
+uv run ruff format .        # Formatting
+uvx ty check                # Type checking
+uv run pytest               # Tests
 ```
 
 ## Required Checks (Frontend)
-
-Before committing, ensure all checks pass:
 
 ```bash
 npm run typecheck     # Type checking (tsgo)
@@ -260,10 +183,10 @@ npm run format:check  # Formatting check (oxfmt)
 npm run test:run      # Tests
 ```
 
-Also ensure that ALL user facing text in the app is in danish! (Not in our conversations!)
+ALL user facing text in the app must be in Danish! (Not in our conversations!)
 
 ## Adding New Models or Columns
 
 When adding a new major database model or a significant column to an existing model, consider whether it should be included in the full-text search index. See `backend/apps/search/SEARCH.md` for details on how to add a new searchable model (signals, rebuild command, type mapping).
 
-Also in general prefer slugs to IDs for use in URLs
+Also in general prefer slugs to IDs for use in URLs.
