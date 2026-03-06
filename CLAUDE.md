@@ -177,6 +177,26 @@ uv run python manage.py run_huey -w 2 -k thread --flush-locks
 - Memory limits on all containers (512m backend, 256m huey, 128m others)
 - SQLite write timeout of 20s to reduce `database is locked` errors from concurrent access
 
+### Message Encryption
+
+Private messages are encrypted at rest using Fernet (AES-128-CBC + HMAC). The encryption key is stored in the `MESSAGES_ENCRYPTION_KEY` environment variable.
+
+**Generating a key**:
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+**Configuration**:
+- Production (`DEBUG=False`): Key is **required** — the app refuses to start without it
+- Development (`DEBUG=True`): Key is optional — messages are stored as plaintext without it
+- Encrypted messages from a production DB copy show as `[krypteret besked]` without the key
+
+**Initial setup** (new server or first deploy):
+1. Generate a key and add `MESSAGES_ENCRYPTION_KEY=<key>` to the production environment
+2. Deploy (migrations run automatically)
+3. Run `docker exec <backend-container> uv run python manage.py encrypt_messages` once to encrypt existing messages
+4. Back up the key separately from the database — if lost, encrypted messages are **unrecoverable**
+
 ### Full-Text Search (FTS5)
 
 The `search` app provides global search using SQLite FTS5 with recency-boosted BM25 ranking. See `backend/apps/search/SEARCH.md` for full architecture docs.
