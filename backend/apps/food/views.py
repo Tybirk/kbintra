@@ -184,6 +184,20 @@ class DailyRegistrationStatsView(APIView):
 
 
 # Meal Preference Views
+def _apply_defaults_for_upcoming_weeks(user: Any) -> None:
+    """Apply defaults (overwrite=True) for all upcoming unlocked weeks up to 8 weeks ahead.
+
+    Called whenever a user's preferences change so future registrations stay in sync.
+    """
+    from .services.default_registrations import apply_defaults_for_user
+
+    today = timezone.now().date()
+    current_monday = today - timedelta(days=today.weekday())
+    for week_offset in range(9):  # current week + 8 more
+        week_start = current_monday + timedelta(weeks=week_offset)
+        apply_defaults_for_user(user, week_start, overwrite=True)
+
+
 class MealPreferenceListCreateView(generics.ListCreateAPIView):
     """List or create meal preferences for the current user."""
 
@@ -196,6 +210,10 @@ class MealPreferenceListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self) -> QuerySet[MealPreference]:
         return MealPreference.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer: Any) -> None:
+        serializer.save(user=self.request.user)
+        _apply_defaults_for_upcoming_weeks(self.request.user)
 
 
 class MealPreferenceDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -210,6 +228,14 @@ class MealPreferenceDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self) -> QuerySet[MealPreference]:
         return MealPreference.objects.filter(user=self.request.user)
+
+    def perform_update(self, serializer: Any) -> None:
+        serializer.save()
+        _apply_defaults_for_upcoming_weeks(self.request.user)
+
+    def perform_destroy(self, instance: Any) -> None:
+        instance.delete()
+        _apply_defaults_for_upcoming_weeks(self.request.user)
 
 
 # Meal Registration Views

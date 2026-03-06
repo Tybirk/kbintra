@@ -1303,7 +1303,7 @@ function FoodDayWidget({
           )}
 
           <NumberInput
-            label="Børn"
+            label="Børneportioner"
             value={sellChildren}
             onChange={(v) => setSellChildren(typeof v === "number" ? v : 0)}
             min={0}

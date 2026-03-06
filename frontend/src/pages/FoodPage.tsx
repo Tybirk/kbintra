@@ -1207,7 +1207,7 @@ function DayRegistrationCard({
             </>
           ) : (
             <NumberInput
-              label="Voksne"
+              label="Vegetarportioner"
               value={sellVeg}
               onChange={(v) => setSellVeg(typeof v === "number" ? v : 0)}
               min={0}
@@ -1584,7 +1584,7 @@ function TicketCard({ ticket }: TicketCardProps) {
               )}
               {ticket.children_count > 0 && (
                 <NumberInput
-                  label={`Børn (maks ${ticket.children_count})`}
+                  label={`Børneportioner (maks ${ticket.children_count})`}
                   value={buyChildren}
                   onChange={(v) =>
                     setBuyChildren(typeof v === "number" ? v : 0)

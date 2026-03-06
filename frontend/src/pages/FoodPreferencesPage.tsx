@@ -32,6 +32,7 @@ const DAYS = [
 ]
 
 export default function FoodPreferencesPage() {
+  const queryClient = useQueryClient()
   const { data: preferences, isLoading } = useQuery({
     queryKey: ["food", "preferences"],
     queryFn: foodApi.getPreferences,
@@ -71,6 +72,11 @@ export default function FoodPreferencesPage() {
             dayName={day.label}
             preference={prefsByDay.get(day.value)}
             isWednesday={day.value === 2}
+            onSaved={() =>
+              queryClient.invalidateQueries({
+                queryKey: ["food", "registrations"],
+              })
+            }
           />
         ))}
       </SimpleGrid>
@@ -83,6 +89,7 @@ interface PreferenceCardProps {
   dayName: string
   preference?: MealPreference
   isWednesday: boolean
+  onSaved: () => void
 }
 
 function PreferenceCard({
@@ -90,6 +97,7 @@ function PreferenceCard({
   dayName,
   preference,
   isWednesday,
+  onSaved,
 }: PreferenceCardProps) {
   const queryClient = useQueryClient()
   const [adultsMeat, setAdultsMeat] = useState(preference?.adults_meat ?? 0)
@@ -113,6 +121,7 @@ function PreferenceCard({
       queryClient.invalidateQueries({ queryKey: ["food", "preferences"] })
       setLastSaved(new Date())
       setIsSaving(false)
+      onSaved()
     },
     onError: () => {
       notifications.show({
@@ -131,6 +140,7 @@ function PreferenceCard({
       queryClient.invalidateQueries({ queryKey: ["food", "preferences"] })
       setLastSaved(new Date())
       setIsSaving(false)
+      onSaved()
     },
     onError: () => {
       notifications.show({
