@@ -272,7 +272,7 @@ export default function AppHeader({
               <Group gap="xs" wrap="nowrap">
                 <Avatar
                   src={user?.profile_picture}
-                  alt={user?.first_name}
+                  alt=""
                   radius="xl"
                   size="sm"
                 >
