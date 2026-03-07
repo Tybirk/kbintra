@@ -8,3 +8,4 @@ class BackupConfig(AppConfig):
 
     def ready(self):
         import apps.backup.signals  # noqa: F401
+        import apps.backup.tasks  # noqa: F401

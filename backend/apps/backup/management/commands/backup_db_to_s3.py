@@ -5,6 +5,7 @@ Creates a consistent snapshot via sqlite3.backup() and uploads it directly.
 Runs synchronously (not via Huey) for use in deploy scripts.
 """
 
+import os
 import sqlite3
 import tempfile
 from datetime import UTC, datetime
@@ -29,13 +30,17 @@ class Command(BaseCommand):
         timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
         s3_key = f"{settings.S3_BACKUP_PREFIX}db-backups/db-{timestamp}.sqlite3"
 
-        with tempfile.NamedTemporaryFile(suffix=".sqlite3", delete=True) as tmp:
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".sqlite3")
+        os.close(tmp_fd)
+        try:
             src = sqlite3.connect(db_path)
-            dst = sqlite3.connect(tmp.name)
+            dst = sqlite3.connect(tmp_path)
             src.backup(dst)
             dst.close()
             src.close()
 
-            upload_local_file(tmp.name, s3_key)
+            upload_local_file(tmp_path, s3_key)
+        finally:
+            os.unlink(tmp_path)
 
         self.stdout.write(self.style.SUCCESS(f"Database backed up to S3: {s3_key}"))

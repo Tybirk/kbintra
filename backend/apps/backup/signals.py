@@ -70,34 +70,34 @@ IMAGE_MODELS = [
     ("bookings.Room", "image"),
 ]
 
-# Cache to track the old file name before save so we can delete it from S3 if replaced.
-_old_file_cache: dict[str, str] = {}
-
 
 def _image_pre_save(sender, instance, field_name, **kwargs):
+    """Store the old file name on the instance so post_save can detect replacements."""
     if not is_enabled() or not instance.pk:
         return
+    attr = f"_backup_old_{field_name}"
     try:
         old_instance = sender.objects.get(pk=instance.pk)
         old_file = getattr(old_instance, field_name, None)
         if old_file and old_file.name:
-            cache_key = f"{sender.__name__}:{instance.pk}:{field_name}"
-            _old_file_cache[cache_key] = old_file.name
+            setattr(instance, attr, old_file.name)
     except sender.DoesNotExist:
         pass
 
 
 def _image_post_save(sender, instance, field_name, **kwargs):
-    if not is_enabled():
+    if not is_enabled() or not instance.pk:
         return
     file_field = getattr(instance, field_name, None)
     new_name = file_field.name if file_field else ""
 
     # Delete old file from S3 if it was replaced
-    cache_key = f"{sender.__name__}:{instance.pk}:{field_name}"
-    old_name = _old_file_cache.pop(cache_key, "")
-    if old_name and old_name != new_name:
-        delete_file_from_s3_task(old_name)
+    attr = f"_backup_old_{field_name}"
+    old_name = getattr(instance, attr, "")
+    if old_name:
+        delattr(instance, attr)
+        if old_name != new_name:
+            delete_file_from_s3_task(old_name)
 
     # Upload new file
     if new_name:
