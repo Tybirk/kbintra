@@ -766,7 +766,7 @@ const MessageList = memo(function MessageList({
         overscrollBehavior: "contain",
       }}
     >
-      <Stack gap="sm" style={{ width: "100%", overflowX: "hidden" }}>
+      <Stack gap="sm" style={{ width: "100%" }}>
         {messages.map((msg, idx) => {
           const prevMsg = idx > 0 ? messages[idx - 1] : null
           const nextMsg = idx < messages.length - 1 ? messages[idx + 1] : null
@@ -1510,6 +1510,38 @@ const MessageBubble = memo(function MessageBubble({
     </Popover>
   )
 
+  if (isEditing) {
+    return (
+      <Stack id={`msg-${message.id}`} gap="xs">
+        <Textarea
+          value={editContent}
+          onChange={(e) => setEditContent(e.currentTarget.value)}
+          autosize
+          minRows={3}
+          maxRows={20}
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault()
+              void handleSaveEdit()
+            }
+            if (e.key === "Escape") {
+              setIsEditing(false)
+            }
+          }}
+        />
+        <Group gap="xs" justify="flex-end">
+          <Button size="xs" variant="subtle" onClick={() => setIsEditing(false)}>
+            Annuller
+          </Button>
+          <Button size="xs" loading={isSavingEdit} onClick={() => void handleSaveEdit()}>
+            Gem
+          </Button>
+        </Group>
+      </Stack>
+    )
+  }
+
   return (
     <>
       <Group
@@ -1544,8 +1576,8 @@ const MessageBubble = memo(function MessageBubble({
         {isOwn && emojiPickerButton}
         {isOwn && !isMobileDevice && menuButton}
 
-        <Box style={{ maxWidth: isEditing ? "90%" : "70%", minWidth: 0, overflow: "hidden" }}>
-          {hasAttachments && !isEditing && (
+        <Box style={{ maxWidth: "70%", minWidth: 0, overflow: "hidden" }}>
+          {hasAttachments && (
             <Stack
               gap="xs"
               mb={hasContent ? "xs" : 0}
@@ -1600,7 +1632,7 @@ const MessageBubble = memo(function MessageBubble({
               })}
             </Stack>
           )}
-          {showInlineTime && !hasContent && hasAttachments && !isEditing && (
+          {showInlineTime && !hasContent && hasAttachments && (
             <Group gap={4} justify={isOwn ? "flex-end" : "flex-start"} mt={2}>
               {showTime &&
                 isOwn &&
@@ -1619,118 +1651,80 @@ const MessageBubble = memo(function MessageBubble({
               )}
             </Group>
           )}
-          {isEditing ? (
-            <Stack gap="xs" style={{ minWidth: 200 }}>
-              <Textarea
-                value={editContent}
-                onChange={(e) => setEditContent(e.currentTarget.value)}
-                autosize
-                minRows={1}
-                maxRows={20}
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault()
-                    void handleSaveEdit()
-                  }
-                  if (e.key === "Escape") {
-                    setIsEditing(false)
-                  }
-                }}
-              />
-              <Group gap="xs" justify="flex-end">
-                <Button
-                  size="xs"
-                  variant="subtle"
-                  onClick={() => setIsEditing(false)}
+          {hasContent && (
+            <Box
+              style={{
+                display: "flex",
+                justifyContent: isOwn ? "flex-end" : "flex-start",
+                alignItems: "flex-end",
+                gap: 6,
+                width: "100%",
+              }}
+            >
+              {showInlineTime && isOwn && (
+                <Group
+                  gap={4}
+                  style={{ flexShrink: 0, alignSelf: "flex-end" }}
                 >
-                  Annuller
-                </Button>
-                <Button
-                  size="xs"
-                  loading={isSavingEdit}
-                  onClick={() => void handleSaveEdit()}
-                >
-                  Gem
-                </Button>
-              </Group>
-            </Stack>
-          ) : (
-            hasContent && (
-              <Box
+                  {showTime &&
+                    isOwn &&
+                    (message.is_read ? (
+                      <IconChecks
+                        size={14}
+                        color="var(--mantine-color-blue-6)"
+                      />
+                    ) : (
+                      <IconCheck size={14} color="gray" />
+                    ))}
+                  <Text size="xs" c="dimmed" style={{ lineHeight: "20px" }}>
+                    {dayjs(message.created_at).format("HH:mm")}
+                  </Text>
+                  {showTime && message.edited_at && (
+                    <Text size="xs" c="dimmed" style={{ lineHeight: "20px" }}>
+                      (redigeret)
+                    </Text>
+                  )}
+                </Group>
+              )}
+              <Paper
+                p="xs"
+                radius="lg"
                 style={{
-                  display: "flex",
-                  justifyContent: isOwn ? "flex-end" : "flex-start",
-                  alignItems: "flex-end",
-                  gap: 6,
-                  width: "100%",
+                  backgroundColor: isOwn
+                    ? "var(--mantine-color-blue-6)"
+                    : "var(--mantine-color-default-hover)",
+                  maxWidth: showInlineTime ? "calc(100% - 40px)" : "100%",
                 }}
               >
-                {showInlineTime && isOwn && (
-                  <Group
-                    gap={4}
-                    style={{ flexShrink: 0, alignSelf: "flex-end" }}
-                  >
-                    {showTime &&
-                      isOwn &&
-                      (message.is_read ? (
-                        <IconChecks
-                          size={14}
-                          color="var(--mantine-color-blue-6)"
-                        />
-                      ) : (
-                        <IconCheck size={14} color="gray" />
-                      ))}
-                    <Text size="xs" c="dimmed" style={{ lineHeight: "20px" }}>
-                      {dayjs(message.created_at).format("HH:mm")}
-                    </Text>
-                    {showTime && message.edited_at && (
-                      <Text size="xs" c="dimmed" style={{ lineHeight: "20px" }}>
-                        (redigeret)
-                      </Text>
-                    )}
-                  </Group>
-                )}
-                <Paper
-                  p="xs"
-                  radius="lg"
+                <Text
+                  size="sm"
                   style={{
-                    backgroundColor: isOwn
-                      ? "var(--mantine-color-blue-6)"
-                      : "var(--mantine-color-default-hover)",
-                    maxWidth: showInlineTime ? "calc(100% - 40px)" : "100%",
+                    color: isOwn ? "white" : "inherit",
+                    whiteSpace: "pre-wrap",
+                    overflowWrap: "anywhere",
                   }}
                 >
-                  <Text
-                    size="sm"
-                    style={{
-                      color: isOwn ? "white" : "inherit",
-                      whiteSpace: "pre-wrap",
-                      overflowWrap: "anywhere",
-                    }}
-                  >
-                    <MessageContent content={message.content} isOwn={isOwn} />
+                  <MessageContent content={message.content} isOwn={isOwn} />
+                </Text>
+              </Paper>
+              {showInlineTime && !isOwn && (
+                <Group
+                  gap={4}
+                  style={{ flexShrink: 0, alignSelf: "flex-end" }}
+                >
+                  <Text size="xs" c="dimmed" style={{ lineHeight: "20px" }}>
+                    {dayjs(message.created_at).format("HH:mm")}
                   </Text>
-                </Paper>
-                {showInlineTime && !isOwn && (
-                  <Group
-                    gap={4}
-                    style={{ flexShrink: 0, alignSelf: "flex-end" }}
-                  >
+                  {showTime && message.edited_at && (
                     <Text size="xs" c="dimmed" style={{ lineHeight: "20px" }}>
-                      {dayjs(message.created_at).format("HH:mm")}
+                      (redigeret)
                     </Text>
-                    {showTime && message.edited_at && (
-                      <Text size="xs" c="dimmed" style={{ lineHeight: "20px" }}>
-                        (redigeret)
-                      </Text>
-                    )}
-                  </Group>
-                )}
-              </Box>
-            )
+                  )}
+                </Group>
+              )}
+            </Box>
           )}
-          {showTime && !isEditing && !showInlineTime && (
+          {showTime && !showInlineTime && (
             <Group gap={4} justify={isOwn ? "flex-end" : "flex-start"} mt={2}>
               <Text size="xs" c="dimmed">
                 {dayjs(message.created_at).format("HH:mm")}
