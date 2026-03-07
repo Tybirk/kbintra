@@ -12,7 +12,7 @@ services:
     networks:
       - web
     restart: unless-stopped
-    mem_limit: 128m
+    mem_limit: 256m
 
   cloudflared:
     image: cloudflare/cloudflared:latest
@@ -24,7 +24,7 @@ services:
     depends_on:
       - traefik
     restart: unless-stopped
-    mem_limit: 128m
+    mem_limit: 256m
 
   redis:
     image: redis:7-alpine
@@ -33,7 +33,7 @@ services:
     networks:
       - web
     restart: unless-stopped
-    mem_limit: 128m
+    mem_limit: 256m
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -100,7 +100,7 @@ services:
         condition: service_healthy
     stop_signal: SIGINT
     stop_grace_period: 30s
-    mem_limit: 512m
+    mem_limit: 1524m
     logging:
       driver: "json-file"
       options:
@@ -136,7 +136,7 @@ services:
         condition: service_healthy
     stop_signal: SIGINT
     stop_grace_period: 30s
-    mem_limit: 256m
+    mem_limit: 1024m
     healthcheck:
       test: ["CMD-SHELL", "grep -qa run_huey /proc/1/cmdline"]
       interval: 30s
@@ -177,7 +177,7 @@ services:
     networks:
       - web
     restart: unless-stopped
-    mem_limit: 128m
+    mem_limit: 512m
     logging:
       driver: "json-file"
       options:
