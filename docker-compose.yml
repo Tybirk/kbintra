@@ -154,8 +154,8 @@ services:
       context: ./frontend
       args:
         # DSN is embedded at build time (public key, safe to include in JS bundle).
-        # Reuses the same SENTRY_DSN that the backend reads — no separate var needed.
-        VITE_SENTRY_DSN: ${SENTRY_DSN:-}
+        # Use a separate Sentry project for frontend vs backend.
+        VITE_SENTRY_DSN: ${SENTRY_DSN_FRONTEND:-}
         VITE_SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
         # Source map upload credentials (only needed when SENTRY_AUTH_TOKEN is set)
         SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN:-}

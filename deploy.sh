@@ -65,7 +65,7 @@ docker compose build
 echo "Running startup tasks with new image (old server still serving)..."
 docker compose run --rm -T --entrypoint sh backend -c \
     "uv run python manage.py migrate --noinput && \
-     uv run python manage.py rebuild_search_index && \
+     uv run python manage.py rebuild_search_index --if-empty && \
      touch /app/data/.deploy_tasks_done"
 
 echo "Swapping to new containers..."

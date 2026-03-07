@@ -4,6 +4,7 @@ Notification services for creating notifications.
 
 import json
 import logging
+import re
 import time
 from typing import Any
 from urllib.parse import urlparse
@@ -239,9 +240,11 @@ def send_push_notification(
         try:
             # Build claims with aud (audience) derived from endpoint
             # Apple requires aud to be the push service origin (e.g., https://web.push.apple.com)
+            now = int(time.time())
             claims = vapid_claims.copy()
             claims["aud"] = f"{parsed.scheme}://{parsed.netloc}"
-            claims["exp"] = int(time.time()) + 86400  # 24 hours
+            claims["iat"] = now
+            claims["exp"] = now + 43200  # 12 hours (Apple rejects tokens near the 24h limit)
 
             response = webpush(
                 subscription_info=subscription.get_subscription_info(),
@@ -257,7 +260,12 @@ def send_push_notification(
                 {"status": response.status_code, "ttl": ttl, **log_ctx},
             )
         except WebPushException as e:
-            status_code = e.response.status_code if e.response else None
+            status_code = getattr(e.response, "status_code", None)
+            # pywebpush may not expose .response; parse status from message
+            if status_code is None:
+                m = re.search(r"Push failed: (\d+)", str(e))
+                if m:
+                    status_code = int(m.group(1))
             if status_code in (404, 410):
                 logger.warning(
                     "Push subscription expired (%(status)s): sub_id=%(sub_id)s "
@@ -265,12 +273,12 @@ def send_push_notification(
                     {"status": status_code, **log_ctx},
                 )
                 expired_ids.append(subscription.id)
-            elif status_code == 401:
+            elif status_code in (401, 403):
                 # VAPID credentials rejected — do NOT delete the subscription
                 logger.error(
-                    "VAPID auth rejected (401): sub_id=%(sub_id)s user=%(user_id)s "
-                    "endpoint=%(endpoint)s — check VAPID keys config",
-                    log_ctx,
+                    "VAPID auth rejected (%(status)s): sub_id=%(sub_id)s user=%(user_id)s "
+                    "endpoint=%(endpoint)s — check VAPID keys config. %(error)s",
+                    {"status": status_code, "error": e, **log_ctx},
                 )
                 failed_ids.append(subscription.id)
             else:
