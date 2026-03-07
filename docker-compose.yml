@@ -184,9 +184,51 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # --- Monitoring ---
+
+  dozzle:
+    image: amir20/dozzle:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - DOZZLE_BASE=/dozzle
+      - DOZZLE_NO_ANALYTICS=true
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dozzle.rule=PathPrefix(`/dozzle`)"
+      - "traefik.http.routers.dozzle.entrypoints=web"
+      - "traefik.http.routers.dozzle.middlewares=dozzle-auth"
+      - "traefik.http.services.dozzle.loadbalancer.server.port=8080"
+      # Generate with: htpasswd -nbB admin yourpassword | sed 's/\$/\$\$/g'
+      - "traefik.http.middlewares.dozzle-auth.basicauth.users=${DOZZLE_BASICAUTH_USERS}"
+    networks:
+      - web
+    restart: unless-stopped
+    mem_limit: 128m
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    volumes:
+      - uptime_kuma_data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      - "traefik.enable=true"
+      # Requires its own subdomain — Uptime Kuma does not support subpath routing.
+      # Set UPTIME_KUMA_HOST in .env (e.g. status.yourdomain.com) and add a
+      # matching public hostname in the Cloudflare Tunnel dashboard pointing to
+      # http://traefik:80.
+      - "traefik.http.routers.uptime-kuma.rule=Host(`${UPTIME_KUMA_HOST:-status.localhost}`)"
+      - "traefik.http.routers.uptime-kuma.entrypoints=web"
+      - "traefik.http.services.uptime-kuma.loadbalancer.server.port=3001"
+    networks:
+      - web
+    restart: unless-stopped
+    mem_limit: 256m
+
 networks:
   web:
     driver: bridge
 
 volumes:
   redis_data:
+  uptime_kuma_data:

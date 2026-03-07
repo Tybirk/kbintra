@@ -172,6 +172,57 @@ backup_database_to_s3_task()
     db-20260306-120000.sqlite3
 ```
 
+## Monitoring
+
+Two lightweight services provide log viewing and uptime monitoring without SSH access.
+
+### Dozzle (Log Viewer) — `yourdomain.com/dozzle`
+
+Real-time Docker container log viewer in the browser. Protected by basic auth.
+
+**Setup:**
+
+1. Install `apache2-utils` (for `htpasswd`) if not already available:
+   ```bash
+   apt install apache2-utils
+   ```
+
+2. Generate credentials (escape `$` for docker-compose with `sed`):
+   ```bash
+   htpasswd -nbB admin yourpassword | sed 's/\$/\$\$/g'
+   ```
+
+3. Add the output to `.env`:
+   ```
+   DOZZLE_BASICAUTH_USERS=admin:$$2y$$05$$hashedpasswordhere
+   ```
+
+4. Deploy — Dozzle is available at `https://yourdomain.com/dozzle`.
+
+### Uptime Kuma (Status Page) — `status.yourdomain.com`
+
+Self-hosted uptime monitoring with a public status page, alerts, and Docker container monitoring.
+
+**Setup:**
+
+1. Add subdomain to `.env`:
+   ```
+   UPTIME_KUMA_HOST=status.yourdomain.com
+   ```
+
+2. Add a public hostname in the **Cloudflare Tunnel dashboard** (Zero Trust > Networks > Tunnels > Configure):
+   - Subdomain: `status`
+   - Domain: `yourdomain.com`
+   - Service: `http://traefik:80`
+
+3. Deploy — visit `https://status.yourdomain.com` and create your admin account on first visit.
+
+4. **Recommended monitors to add in Uptime Kuma:**
+   - HTTP: `http://backend:8000/api/health/` (backend health check)
+   - Docker Container: `backend`, `huey`, `redis`, `frontend` (container status)
+
+Uptime Kuma can send alerts via email, Slack, Telegram, etc. — configure under Settings > Notifications.
+
 ## Pre-Deployment Checks
 
 Before deploying, run these checks locally:

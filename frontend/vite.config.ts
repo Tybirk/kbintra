@@ -18,6 +18,33 @@ export default defineConfig(({ command }) => ({
     sourcemap: !!process.env.SENTRY_AUTH_TOKEN,
     // Generate version.json file after build
     rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-mantine': [
+            '@mantine/core',
+            '@mantine/hooks',
+            '@mantine/notifications',
+            '@mantine/dates',
+            '@mantine/dropzone',
+            '@mantine/tiptap',
+            '@mantine/spotlight',
+            '@mantine/carousel',
+            '@mantine/schedule',
+          ],
+          'vendor-tiptap': [
+            '@tiptap/react',
+            '@tiptap/starter-kit',
+            '@tiptap/extension-link',
+            '@tiptap/extension-mention',
+            '@tiptap/extension-placeholder',
+            '@tiptap/suggestion',
+            '@tiptap/core',
+          ],
+          'vendor-sentry': ['@sentry/react'],
+          'vendor-query': ['@tanstack/react-query'],
+        },
+      },
       plugins: [
         {
           name: 'generate-version',
