@@ -1512,7 +1512,11 @@ const MessageBubble = memo(function MessageBubble({
 
   if (isEditing) {
     return (
-      <Stack id={`msg-${message.id}`} gap="xs">
+      <Stack
+        id={`msg-${message.id}`}
+        gap="xs"
+        ref={(el) => el?.scrollIntoView({ behavior: "smooth", block: "nearest" })}
+      >
         <Textarea
           value={editContent}
           onChange={(e) => setEditContent(e.currentTarget.value)}
