@@ -226,53 +226,57 @@ class DailyRegistrationStatsView(APIView):
         eat_in_1830 = _agg(registrations.filter(dining_option="eat_in", seating_time="18:30"))
         total_agg = _agg(registrations)
 
-        # Add virtual contributions for houses without a real registration.
-        # Houses with a preference: use the preference values.
-        # Houses with no preference: default to house_count veg portions (eat_in 17:30).
-        from apps.houses.models import House
-
-        covered_house_ids = set(
-            MealRegistration.objects.filter(
-                date=target_date, is_active=True, house__isnull=False
-            ).values_list("house_id", flat=True)
-        )
-        day_of_week = target_date.weekday()
-        prefs_by_house: dict[int, MealPreference] = {}
-        for pref in MealPreference.objects.filter(
-            day_of_week=day_of_week, user__is_active=True
-        ).select_related("user__house"):
-            house = pref.user.house
-            if house and house.id not in prefs_by_house:
-                prefs_by_house[house.id] = pref
-
+        # For pre-deadline dates, add virtual contributions for houses without
+        # a real registration. Post-deadline dates already have materialized rows.
         virtual: dict[str, dict[str, int]] = {
             "take_away": {"adults_meat": 0, "adults_veg": 0, "children": 0},
             "eat_in_1730": {"adults_meat": 0, "adults_veg": 0, "children": 0},
             "eat_in_1830": {"adults_meat": 0, "adults_veg": 0, "children": 0},
             "total": {"adults_meat": 0, "adults_veg": 0, "children": 0},
         }
-        for h in House.objects.prefetch_related("inhabitants"):
-            if h.id in covered_house_ids:
-                continue
-            pref = prefs_by_house.get(h.id)
-            if pref:
-                meat, veg, children = pref.adults_meat, pref.adults_veg, pref.children_count
-                if pref.dining_option == "take_away":
-                    bucket = "take_away"
-                elif pref.seating_time == "17:30":
-                    bucket = "eat_in_1730"
-                else:
-                    bucket = "eat_in_1830"
-            else:
-                house_count = h.inhabitants.count()
-                if house_count == 0:
+        if not is_after_deadline(target_date):
+            from apps.houses.models import House
+
+            covered_house_ids = set(
+                MealRegistration.objects.filter(
+                    date=target_date, is_active=True, house__isnull=False
+                ).values_list("house_id", flat=True)
+            )
+            day_of_week = target_date.weekday()
+            prefs_by_house: dict[int, MealPreference] = {}
+            for pref in MealPreference.objects.filter(
+                day_of_week=day_of_week, user__is_active=True
+            ).select_related("user__house"):
+                house = pref.user.house
+                if house and house.id not in prefs_by_house:
+                    prefs_by_house[house.id] = pref
+
+            for h in House.objects.prefetch_related("inhabitants"):
+                if h.id in covered_house_ids:
                     continue
-                meat, veg, children = 0, house_count, 0
-                bucket = "eat_in_1730"
-            for b in (bucket, "total"):
-                virtual[b]["adults_meat"] += meat
-                virtual[b]["adults_veg"] += veg
-                virtual[b]["children"] += children
+                pref = prefs_by_house.get(h.id)
+                if pref:
+                    meat, veg, children = (
+                        pref.adults_meat,
+                        pref.adults_veg,
+                        pref.children_count,
+                    )
+                    if pref.dining_option == "take_away":
+                        bucket = "take_away"
+                    elif pref.seating_time == "17:30":
+                        bucket = "eat_in_1730"
+                    else:
+                        bucket = "eat_in_1830"
+                else:
+                    house_count = h.inhabitants.count()
+                    if house_count == 0:
+                        continue
+                    meat, veg, children = 0, house_count, 0
+                    bucket = "eat_in_1730"
+                for b in (bucket, "total"):
+                    virtual[b]["adults_meat"] += meat
+                    virtual[b]["adults_veg"] += veg
+                    virtual[b]["children"] += children
 
         # Subtract available (unsold) tickets from combined total
         available_tickets = FoodTicket.objects.filter(

@@ -12,7 +12,7 @@ import logging
 from datetime import date, timedelta
 
 from huey import crontab
-from huey.contrib.djhuey import db_periodic_task, db_task
+from huey.contrib.djhuey import db_periodic_task
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +23,9 @@ def _materialize_for_houses(dates: list[date]) -> int:
     For each house, picks one active user (preferring one with a MealPreference)
     and creates a registration using their preference values (or system defaults).
 
+    Uses get_or_create to safely handle concurrent calls (e.g. simultaneous
+    view requests or overlap with the periodic task).
+
     Returns the number of registrations created.
     """
     from apps.houses.models import House
@@ -31,13 +34,15 @@ def _materialize_for_houses(dates: list[date]) -> int:
 
     created = 0
 
-    # Pre-fetch all preferences keyed by (house_id, day_of_week)
+    # Pre-fetch all preferences keyed by (house_id, day_of_week).
+    # Within a house, prefer the most recently updated preference.
     all_prefs: dict[tuple[int, int], MealPreference] = {}
     for pref in MealPreference.objects.filter(user__is_active=True).select_related("user__house"):
         house = pref.user.house
         if house:
             key = (house.id, pref.day_of_week)
-            if key not in all_prefs:
+            existing = all_prefs.get(key)
+            if existing is None or pref.pk > existing.pk:
                 all_prefs[key] = pref
 
     for house in House.objects.prefetch_related("inhabitants"):
@@ -67,18 +72,21 @@ def _materialize_for_houses(dates: list[date]) -> int:
                 meat, veg, children = 0, house_count, 0
                 dining, seating = "eat_in", "17:30"
 
-            MealRegistration.objects.create(
+            _, was_created = MealRegistration.objects.get_or_create(
                 user=user,
                 date=target_date,
-                house=house,
-                adults_meat=meat,
-                adults_veg=veg,
-                children_count=children,
-                dining_option=dining,
-                seating_time=seating,
-                is_active=meat + veg + children > 0,
+                defaults={
+                    "house": house,
+                    "adults_meat": meat,
+                    "adults_veg": veg,
+                    "children_count": children,
+                    "dining_option": dining,
+                    "seating_time": seating,
+                    "is_active": meat + veg + children > 0,
+                },
             )
-            created += 1
+            if was_created:
+                created += 1
 
     return created
 
@@ -90,22 +98,14 @@ def materialize_week_registrations() -> None:
     The registration deadline is Wednesday 23:59:59, so by Thursday 00:30 the
     deadline has passed and all preferences should be locked in as real rows.
     """
-    # The upcoming Monday is 4 days after Thursday
     today = date.today()
-    # today is Thursday (weekday 3). Next Monday = today + 4 days.
-    next_monday = today + timedelta(days=(7 - today.weekday()))
+    # Next Monday: move forward to the coming Monday regardless of current weekday
+    days_ahead = (7 - today.weekday()) % 7
+    if days_ahead == 0:
+        days_ahead = 7
+    next_monday = today + timedelta(days=days_ahead)
     dates = [next_monday + timedelta(days=d) for d in range(4)]
 
     logger.info("Materializing registrations for %s to %s", dates[0], dates[-1])
     created = _materialize_for_houses(dates)
     logger.info("Materialized %d registrations", created)
-
-
-@db_task(retries=1, retry_delay=60)
-def materialize_dates_task(date_strings: list[str]) -> None:
-    """Materialize registrations for arbitrary dates. Called as safety net from billing."""
-    dates = [date.fromisoformat(s) for s in date_strings]
-    created = _materialize_for_houses(dates)
-    logger.info(
-        "materialize_dates_task: created %d registrations for %d dates", created, len(dates)
-    )

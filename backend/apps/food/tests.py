@@ -2345,3 +2345,153 @@ class TestEffectiveStats:
         # Should count the house once, not twice → 2 adults, not 4
         assert data["total"]["adults_veg"] == 2
         assert data["total"]["adults"] == 2
+
+
+# =============================================================================
+# Materialize-for-houses Tests
+# =============================================================================
+
+
+@pytest.mark.django_db
+class TestMaterializeForHouses:
+    """Tests for _materialize_for_houses from the tasks module."""
+
+    def test_creates_registrations_for_houses_without_one(self, house):
+        """Houses with active inhabitants but no registration get one created."""
+        from apps.food.tasks import _materialize_for_houses
+
+        user1 = User.objects.create_user(
+            email="mat1@example.com", password="pass", first_name="Mat1", house=house
+        )
+        MealPreference.objects.create(
+            user=user1, day_of_week=0, adults_veg=2, adults_meat=1, children_count=0
+        )
+        past_monday = date(2023, 10, 2)  # A Monday
+        created = _materialize_for_houses([past_monday])
+        assert created == 1
+        reg = MealRegistration.objects.get(user=user1, date=past_monday)
+        assert reg.adults_veg == 2
+        assert reg.adults_meat == 1
+        assert reg.house == house
+
+    def test_skips_houses_with_existing_registration(self, house):
+        """Houses that already have a registration are skipped."""
+        from apps.food.tasks import _materialize_for_houses
+
+        user1 = User.objects.create_user(
+            email="mat2@example.com", password="pass", first_name="Mat2", house=house
+        )
+        past_monday = date(2023, 10, 9)
+        MealRegistration.objects.create(
+            user=user1, house=house, date=past_monday, adults_veg=5, is_active=True
+        )
+        created = _materialize_for_houses([past_monday])
+        assert created == 0
+        # Original registration unchanged
+        assert MealRegistration.objects.get(user=user1, date=past_monday).adults_veg == 5
+
+    def test_skips_weekend_dates(self, house):
+        """Weekend dates (weekday > 3) are skipped."""
+        from apps.food.tasks import _materialize_for_houses
+
+        User.objects.create_user(
+            email="mat3@example.com", password="pass", first_name="Mat3", house=house
+        )
+        saturday = date(2023, 10, 7)
+        created = _materialize_for_houses([saturday])
+        assert created == 0
+
+    def test_concurrent_calls_no_integrity_error(self, house):
+        """Calling _materialize_for_houses twice for the same date doesn't raise."""
+        from apps.food.tasks import _materialize_for_houses
+
+        User.objects.create_user(
+            email="mat4@example.com", password="pass", first_name="Mat4", house=house
+        )
+        past_monday = date(2023, 11, 6)
+        created1 = _materialize_for_houses([past_monday])
+        created2 = _materialize_for_houses([past_monday])
+        assert created1 == 1
+        assert created2 == 0  # Already exists, skipped by has_reg check
+        assert MealRegistration.objects.filter(date=past_monday, house=house).count() == 1
+
+    def test_defaults_when_no_preference(self, house):
+        """Without a preference, defaults to house_count veg portions."""
+        from apps.food.tasks import _materialize_for_houses
+
+        User.objects.create_user(
+            email="mat5a@example.com", password="pass", first_name="Mat5a", house=house
+        )
+        User.objects.create_user(
+            email="mat5b@example.com", password="pass", first_name="Mat5b", house=house
+        )
+        past_monday = date(2023, 11, 13)
+        _materialize_for_houses([past_monday])
+        reg = MealRegistration.objects.get(date=past_monday, house=house)
+        assert reg.adults_veg == 2  # 2 inhabitants
+        assert reg.adults_meat == 0
+        assert reg.dining_option == "eat_in"
+        assert reg.seating_time == "17:30"
+
+    def test_skips_houses_with_no_active_inhabitants(self, house):
+        """Houses with no active inhabitants are skipped."""
+        from apps.food.tasks import _materialize_for_houses
+
+        user1 = User.objects.create_user(
+            email="mat6@example.com", password="pass", first_name="Mat6", house=house
+        )
+        user1.is_active = False
+        user1.save()
+        past_monday = date(2023, 11, 20)
+        created = _materialize_for_houses([past_monday])
+        assert created == 0
+
+
+@pytest.mark.django_db
+class TestMaterializeWeekDateCalculation:
+    """Tests for the date calculation in the periodic task."""
+
+    def test_thursday_calculates_next_monday(self):
+        """When run on Thursday, calculates next Monday correctly."""
+        from apps.food.tasks import materialize_week_registrations
+
+        thursday = date(2024, 3, 7)  # A Thursday
+        with patch("apps.food.tasks.date") as mock_date:
+            mock_date.today.return_value = thursday
+            mock_date.side_effect = lambda *args, **kw: date(*args, **kw)
+            with patch("apps.food.tasks._materialize_for_houses") as mock_mat:
+                mock_mat.return_value = 0
+                materialize_week_registrations()
+                dates = mock_mat.call_args[0][0]
+                assert dates[0] == date(2024, 3, 11)  # Next Monday
+                assert dates[-1] == date(2024, 3, 14)  # Next Thursday
+                assert len(dates) == 4
+
+
+@pytest.mark.django_db
+class TestBillingOnlyUsesRealRegistrations:
+    """After materialization, billing only uses real MealRegistration rows."""
+
+    def test_billing_no_registration_means_zero_cost(self, api_client, admin_user, house):
+        """If materialization creates a zero-portion row, house is not billed."""
+        user1 = User.objects.create_user(
+            email="bilreal@example.com", password="pass", first_name="BR", house=house
+        )
+        # Set zero preferences so materialization creates inactive registrations
+        for day in range(4):
+            MealPreference.objects.create(
+                user=user1,
+                day_of_week=day,
+                adults_meat=0,
+                adults_veg=0,
+                children_count=0,
+                dining_option="eat_in",
+                seating_time="17:30",
+            )
+        api_client.force_authenticate(user=admin_user)
+        url = reverse("food:monthly-food-cost")
+        response = api_client.get(url, {"year": 2024, "month": 6})
+        assert response.status_code == 200
+        data = response.json()
+        house_data = next(h for h in data["houses"] if h["house_id"] == house.id)
+        assert house_data["total_cost"] == "0.00"
