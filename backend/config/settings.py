@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     "apps.search",
     "apps.bookings",
     "apps.links",
+    "apps.backup",
 ]
 
 MIDDLEWARE = [
@@ -213,6 +214,14 @@ STORAGES = {
 # Media files (uploads)
 MEDIA_URL = "media/"
 MEDIA_ROOT = DATA_DIR / "media"
+
+# S3 backup storage (set S3_BACKUP_BUCKET to enable; empty = disabled)
+S3_BACKUP_BUCKET = os.getenv("S3_BACKUP_BUCKET", "")
+S3_BACKUP_ENDPOINT = os.getenv("S3_BACKUP_ENDPOINT", "")
+S3_BACKUP_ACCESS_KEY = os.getenv("S3_BACKUP_ACCESS_KEY", "")
+S3_BACKUP_SECRET_KEY = os.getenv("S3_BACKUP_SECRET_KEY", "")
+S3_BACKUP_REGION = os.getenv("S3_BACKUP_REGION", "auto")
+S3_BACKUP_PREFIX = os.getenv("S3_BACKUP_PREFIX", "media/")
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

@@ -2,13 +2,13 @@
 URL configuration for KB Intra project.
 """
 
-from django.conf import settings
 from django.contrib import admin
 from django.http import HttpRequest, JsonResponse
 from django.urls import include, path, re_path
-from django.views.static import serve
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+
+from apps.backup.views import serve_media
 
 
 class ThrottledTokenObtainPairView(TokenObtainPairView):
@@ -47,7 +47,7 @@ urlpatterns = [
     path("api/links/", include("apps.links.urls")),
 ]
 
-# Serve media files (static() helper doesn't work when DEBUG=False, so use re_path directly)
+# Serve media files with S3 fallback (restores missing files from backup)
 urlpatterns += [
-    re_path(r"^media/(?P<path>.*)$", serve, {"document_root": settings.MEDIA_ROOT}),
+    re_path(r"^media/(?P<path>.*)$", serve_media),
 ]
