@@ -1515,7 +1515,9 @@ const MessageBubble = memo(function MessageBubble({
       <Stack
         id={`msg-${message.id}`}
         gap="xs"
-        ref={(el) => el?.scrollIntoView({ behavior: "smooth", block: "nearest" })}
+        ref={(el) =>
+          el?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+        }
       >
         <Textarea
           value={editContent}
@@ -1535,10 +1537,18 @@ const MessageBubble = memo(function MessageBubble({
           }}
         />
         <Group gap="xs" justify="flex-end">
-          <Button size="xs" variant="subtle" onClick={() => setIsEditing(false)}>
+          <Button
+            size="xs"
+            variant="subtle"
+            onClick={() => setIsEditing(false)}
+          >
             Annuller
           </Button>
-          <Button size="xs" loading={isSavingEdit} onClick={() => void handleSaveEdit()}>
+          <Button
+            size="xs"
+            loading={isSavingEdit}
+            onClick={() => void handleSaveEdit()}
+          >
             Gem
           </Button>
         </Group>
@@ -1666,10 +1676,7 @@ const MessageBubble = memo(function MessageBubble({
               }}
             >
               {showInlineTime && isOwn && (
-                <Group
-                  gap={4}
-                  style={{ flexShrink: 0, alignSelf: "flex-end" }}
-                >
+                <Group gap={4} style={{ flexShrink: 0, alignSelf: "flex-end" }}>
                   {showTime &&
                     isOwn &&
                     (message.is_read ? (
@@ -1712,10 +1719,7 @@ const MessageBubble = memo(function MessageBubble({
                 </Text>
               </Paper>
               {showInlineTime && !isOwn && (
-                <Group
-                  gap={4}
-                  style={{ flexShrink: 0, alignSelf: "flex-end" }}
-                >
+                <Group gap={4} style={{ flexShrink: 0, alignSelf: "flex-end" }}>
                   <Text size="xs" c="dimmed" style={{ lineHeight: "20px" }}>
                     {dayjs(message.created_at).format("HH:mm")}
                   </Text>
