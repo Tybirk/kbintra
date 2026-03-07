@@ -46,7 +46,7 @@ kbintra/
 └── README.md
 ```
 
-## Quick Start
+## Setup
 
 For a streamlined one-command setup, see [INSTALL.md](INSTALL.md).
 

@@ -183,7 +183,13 @@ function App() {
           <AppNavbar onNavigate={() => setNavbarOpened(false)} />
         </AppShell.Navbar>
 
-        <AppShell.Main>
+        <AppShell.Main
+          style={
+            location.pathname.startsWith("/beskeder")
+              ? { height: "100dvh", overflow: "hidden" }
+              : undefined
+          }
+        >
           <SentryRoutes>
             {/* Forside */}
             <Route
