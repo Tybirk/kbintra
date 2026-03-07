@@ -1755,7 +1755,7 @@ const MessageBubble = memo(function MessageBubble({
         {!isOwn && !isMobileDevice && menuButton}
         {!isOwn && emojiPickerButton}
 
-        {/* Mobile long-press reaction picker — must be inside position:relative Group */}
+        {/* Mobile long-press reaction picker */}
         {mobileReactionPicker}
       </Group>
 
