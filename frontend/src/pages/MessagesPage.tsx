@@ -1411,22 +1411,21 @@ const MessageBubble = memo(function MessageBubble({
     </Popover>
   )
 
-  // Mobile reaction picker (anchored to the bubble via a separate Popover)
+  // Mobile reaction picker — anchor is fixed bottom-right so popup always appears on-screen
   const mobileReactionPicker = isMobileDevice && (
     <Popover
       opened={reactionPickerOpened}
       onChange={setReactionPickerOpened}
-      position={isOwn ? "top-end" : "top-start"}
+      position="top-end"
       withArrow
       withinPortal
     >
       <Popover.Target>
         <Box
           style={{
-            position: "absolute",
-            bottom: 0,
-            left: isOwn ? "auto" : 28,
-            right: isOwn ? 0 : "auto",
+            position: "fixed",
+            bottom: 80,
+            right: 16,
             width: 1,
             height: 1,
           }}
