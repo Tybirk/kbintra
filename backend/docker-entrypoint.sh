@@ -1,17 +1,23 @@
 #!/bin/sh
 set -e
 
-echo "Running database migrations..."
-uv run python manage.py migrate --noinput
+# Flag file is created by deploy.sh after running these tasks pre-restart.
+# This allows the container to start serving immediately during deploys.
+if [ -f /app/data/.deploy_tasks_done ]; then
+    echo "Startup tasks pre-completed by deploy script, skipping..."
+else
+    echo "Running database migrations..."
+    uv run python manage.py migrate --noinput
 
-echo "Rebuilding search index..."
-_search_start=$(date +%s%3N)
-uv run python manage.py rebuild_search_index
-_search_end=$(date +%s%3N)
-echo "Search index rebuilt in $((_search_end - _search_start))ms"
+    echo "Rebuilding search index..."
+    _search_start=$(date +%s%3N)
+    uv run python manage.py rebuild_search_index
+    _search_end=$(date +%s%3N)
+    echo "Search index rebuilt in $((_search_end - _search_start))ms"
 
-echo "Applying weekly food defaults..."
-uv run python manage.py apply_weekly_defaults
+    echo "Applying weekly food defaults..."
+    uv run python manage.py apply_weekly_defaults
+fi
 
 # If a command was passed (e.g. from docker-compose `command:`), run it
 if [ $# -gt 0 ]; then

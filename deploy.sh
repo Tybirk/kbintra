@@ -53,8 +53,24 @@ else
     echo "Skipping S3 database backup (backend container not running)."
 fi
 
-echo "Building and restarting services..."
-docker compose up -d --build
+# Clean up deploy flag on exit (prevents stale flag if deploy fails mid-way)
+cleanup() {
+    rm -f ./data/.deploy_tasks_done
+}
+trap cleanup EXIT
+
+echo "Building new images (old containers keep serving)..."
+docker compose build
+
+echo "Running startup tasks with new image (old server still serving)..."
+docker compose run --rm -T --entrypoint sh backend -c \
+    "uv run python manage.py migrate --noinput && \
+     uv run python manage.py rebuild_search_index && \
+     uv run python manage.py apply_weekly_defaults && \
+     touch /app/data/.deploy_tasks_done"
+
+echo "Swapping to new containers..."
+docker compose up -d
 
 echo "Cleaning up old images..."
 docker image prune -f
