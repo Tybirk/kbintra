@@ -15,8 +15,6 @@ else
     _search_end=$(date +%s%3N)
     echo "Search index rebuilt in $((_search_end - _search_start))ms"
 
-    echo "Applying weekly food defaults..."
-    uv run python manage.py apply_weekly_defaults
 fi
 
 # If a command was passed (e.g. from docker-compose `command:`), run it
