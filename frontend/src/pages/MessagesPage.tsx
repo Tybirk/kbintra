@@ -1747,10 +1747,10 @@ const MessageBubble = memo(function MessageBubble({
         {/* Menu + emoji buttons appear to the right for others' messages (desktop only) */}
         {!isOwn && !isMobileDevice && menuButton}
         {!isOwn && emojiPickerButton}
-      </Group>
 
-      {/* Mobile long-press reaction picker */}
-      {mobileReactionPicker}
+        {/* Mobile long-press reaction picker — must be inside position:relative Group */}
+        {mobileReactionPicker}
+      </Group>
 
       {/* Reactions display */}
       {(message.reactions ?? []).length > 0 && (
