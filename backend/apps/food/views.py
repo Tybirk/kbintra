@@ -192,6 +192,13 @@ class DailyRegistrationStatsView(APIView):
         only keep the most recently created registration per house to avoid double-counting.
         Users without a house are always counted individually.
         """
+        # For post-deadline dates, ensure all houses have materialized registrations
+        # so stats don't depend on mutable preferences.
+        if is_after_deadline(target_date):
+            from .tasks import _materialize_for_houses
+
+            _materialize_for_houses([target_date])
+
         # For houses with multiple registrations, keep only the latest one (highest id)
         latest_per_house = (
             MealRegistration.objects.filter(date=target_date, is_active=True, house__isnull=False)
@@ -1124,6 +1131,14 @@ class MonthlyFoodCostView(APIView):
                 billing_dates.append(current)
             current += timedelta(days=1)
 
+        # Safety net: materialize any missing registrations before computing costs.
+        # The periodic Huey task should have already done this, but if it missed any
+        # dates (e.g. downtime), this ensures billing never falls back to mutable
+        # preferences which could retroactively change costs.
+        from .tasks import _materialize_for_houses
+
+        _materialize_for_houses(billing_dates)
+
         for house in houses:
             house_total = Decimal("0.00")
             registration_count = 0
@@ -1141,36 +1156,15 @@ class MonthlyFoodCostView(APIView):
             ).order_by("date", "id"):
                 regs_by_date[reg.date] = reg  # latest wins (ascending id order)
 
-            # Preferences: first preference found per day-of-week for any house member
-            prefs_by_dow: dict[int, MealPreference] = {}
-            for pref in MealPreference.objects.filter(user__house=house, user__is_active=True):
-                if pref.day_of_week not in prefs_by_dow:
-                    prefs_by_dow[pref.day_of_week] = pref
-
-            house_count = house.inhabitants.count()
-
             for billing_date in billing_dates:
-                if billing_date in regs_by_date:
-                    reg = regs_by_date[billing_date]
-                    if not reg.is_active:
-                        # Explicitly cancelled — do not bill
-                        continue
-                    meat = reg.adults_meat
-                    veg = reg.adults_veg
-                    children = reg.children_count
-                else:
-                    # No real registration: use preference, or house_count veg default
-                    pref = prefs_by_dow.get(billing_date.weekday())
-                    if pref:
-                        meat, veg, children = (
-                            pref.adults_meat,
-                            pref.adults_veg,
-                            pref.children_count,
-                        )
-                    elif house_count > 0:
-                        meat, veg, children = 0, house_count, 0
-                    else:
-                        continue
+                if billing_date not in regs_by_date:
+                    continue
+                reg = regs_by_date[billing_date]
+                if not reg.is_active:
+                    continue
+                meat = reg.adults_meat
+                veg = reg.adults_veg
+                children = reg.children_count
 
                 if meat == 0 and veg == 0 and children == 0:
                     continue
