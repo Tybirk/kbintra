@@ -845,6 +845,10 @@ function ChatArea({
     leaveConfirmOpened,
     { open: openLeaveConfirm, close: closeLeaveConfirm },
   ] = useDisclosure(false)
+  const [
+    participantsPopoverOpened,
+    { toggle: toggleParticipantsPopover, close: closeParticipantsPopover },
+  ] = useDisclosure(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevConversationIdRef = useRef<number | null>(null)
   const highlightedHashRef = useRef<string | null>(null)
@@ -947,26 +951,62 @@ function ChatArea({
                 <IconArrowLeft size={20} />
               </ActionIcon>
             )}
-            <Avatar
-              src={otherParticipants[0]?.profile_picture}
-              radius="xl"
-              size="md"
+            <Popover
+              opened={participantsPopoverOpened}
+              onClose={closeParticipantsPopover}
+              position="bottom-start"
+              shadow="md"
+              withinPortal
             >
-              {otherParticipants[0]?.first_name?.[0]}
-            </Avatar>
-            <div style={{ minWidth: 0 }}>
-              <Text
-                fw={500}
-                truncate
-                c={hasNoParticipants ? "dimmed" : undefined}
-                fs={hasNoParticipants ? "italic" : undefined}
-              >
-                {displayName}
-              </Text>
-              <Text size="xs" c="dimmed">
-                {conversation.participants.length} deltagere
-              </Text>
-            </div>
+              <Popover.Target>
+                <UnstyledButton
+                  onClick={toggleParticipantsPopover}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    minWidth: 0,
+                    flex: 1,
+                  }}
+                >
+                  <Avatar
+                    src={otherParticipants[0]?.profile_picture}
+                    radius="xl"
+                    size="md"
+                    style={{ flexShrink: 0 }}
+                  >
+                    {otherParticipants[0]?.first_name?.[0]}
+                  </Avatar>
+                  <div style={{ minWidth: 0 }}>
+                    <Text
+                      fw={500}
+                      truncate
+                      c={hasNoParticipants ? "dimmed" : undefined}
+                      fs={hasNoParticipants ? "italic" : undefined}
+                    >
+                      {displayName}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      {conversation.participants.length} deltagere
+                    </Text>
+                  </div>
+                </UnstyledButton>
+              </Popover.Target>
+              <Popover.Dropdown>
+                <Stack gap="xs">
+                  {conversation.participants.map((p) => (
+                    <Group key={p.id} gap="sm" wrap="nowrap">
+                      <Avatar src={p.profile_picture} radius="xl" size="sm">
+                        {p.first_name?.[0]}
+                      </Avatar>
+                      <Text size="sm">
+                        {p.first_name} {p.last_name}
+                      </Text>
+                    </Group>
+                  ))}
+                </Stack>
+              </Popover.Dropdown>
+            </Popover>
           </Group>
           <Menu shadow="md" width={200} position="bottom-end">
             <Menu.Target>
