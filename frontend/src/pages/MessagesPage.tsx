@@ -365,6 +365,7 @@ export default function MessagesPage() {
       style={{
         display: "flex",
         flexDirection: "column",
+        overflow: "hidden",
         ...(inConversationMobile
           ? {
               // Full-screen overlay for mobile conversation view
@@ -754,11 +755,16 @@ const MessageList = memo(function MessageList({
   scrollViewportRef,
 }: MessageListProps) {
   return (
-    <ScrollArea
-      style={{ flex: 1 }}
-      p="md"
-      viewportRef={scrollViewportRef}
-      scrollbars="y"
+    <div
+      ref={scrollViewportRef}
+      style={{
+        flex: 1,
+        overflowY: "auto",
+        overflowX: "hidden",
+        scrollbarGutter: "stable",
+        padding: "var(--mantine-spacing-md)",
+        overscrollBehavior: "contain",
+      }}
     >
       <Stack gap="sm" style={{ width: "100%", overflowX: "hidden" }}>
         {messages.map((msg, idx) => {
@@ -817,7 +823,7 @@ const MessageList = memo(function MessageList({
           )
         })}
       </Stack>
-    </ScrollArea>
+    </div>
   )
 })
 
@@ -1317,6 +1323,7 @@ const MessageBubble = memo(function MessageBubble({
             transition: "opacity 0.1s",
             flexShrink: 0,
           }}
+          onMouseDown={(e) => e.preventDefault()}
           aria-label="Beskedindstillinger"
         >
           <IconDots size={14} />
@@ -1369,6 +1376,7 @@ const MessageBubble = memo(function MessageBubble({
             transition: "opacity 0.1s",
             flexShrink: 0,
           }}
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => setReactionPickerOpened((o) => !o)}
           aria-label="Tilføj reaktion"
         >
@@ -1536,7 +1544,7 @@ const MessageBubble = memo(function MessageBubble({
         {isOwn && emojiPickerButton}
         {isOwn && !isMobileDevice && menuButton}
 
-        <Box style={{ maxWidth: "70%", minWidth: 0, overflow: "hidden" }}>
+        <Box style={{ maxWidth: isEditing ? "90%" : "70%", minWidth: 0, overflow: "hidden" }}>
           {hasAttachments && !isEditing && (
             <Stack
               gap="xs"
@@ -1618,7 +1626,7 @@ const MessageBubble = memo(function MessageBubble({
                 onChange={(e) => setEditContent(e.currentTarget.value)}
                 autosize
                 minRows={1}
-                maxRows={6}
+                maxRows={20}
                 autoFocus
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {

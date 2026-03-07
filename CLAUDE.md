@@ -146,6 +146,7 @@ Private messages are encrypted at rest using Fernet. Key stored in `MESSAGES_ENC
 
 ## Code Style
 
+- Mobile-first: design and implement UI for mobile screens first, then adapt for desktop
 - Python: Ruff (line-length 100, py311), ty (type checking)
 - TypeScript: oxlint (linting), oxfmt (formatting), tsgo (type checking)
 - Tests: pytest-django (backend), Vitest + Testing Library (frontend)
