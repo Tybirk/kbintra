@@ -85,16 +85,16 @@ export default function ProfileEditPage() {
       updateUser(updatedUser)
       queryClient.invalidateQueries({ queryKey: ["user"] })
       notifications.show({
-        title: "Profile updated",
-        message: "Your profile has been successfully updated.",
+        title: "Profil opdateret",
+        message: "Din profil er blevet opdateret.",
         color: "green",
       })
       navigate("/profil")
     },
     onError: () => {
       notifications.show({
-        title: "Error",
-        message: "Failed to update profile. Please try again.",
+        title: "Fejl",
+        message: "Kunne ikke opdatere profilen. Prøv igen.",
         color: "red",
       })
     },
@@ -168,8 +168,8 @@ export default function ProfileEditPage() {
     },
     onError: () => {
       notifications.show({
-        title: "Error",
-        message: "Failed to upload picture. Please try again.",
+        title: "Fejl",
+        message: "Kunne ikke uploade billede. Prøv igen.",
         color: "red",
       })
     },
@@ -208,12 +208,12 @@ export default function ProfileEditPage() {
       <BackButton to="/profil" label="Tilbage til profil" />
 
       <Title order={1} mb="xl">
-        Edit Profile
+        Rediger profil
       </Title>
 
       <Paper withBorder p="xl" radius="md" mb="xl">
         <Title order={4} mb="md">
-          Profile Picture
+          Profilbillede
         </Title>
 
         <Group>
@@ -268,10 +268,10 @@ export default function ProfileEditPage() {
 
               <div>
                 <Text size="lg" inline>
-                  Drag image here or click to select
+                  Træk billede hertil eller klik for at vælge
                 </Text>
                 <Text size="sm" c="dimmed" inline mt={7}>
-                  Max file size: 5MB
+                  Maks filstørrelse: 5 MB
                 </Text>
               </div>
             </Group>
@@ -282,11 +282,11 @@ export default function ProfileEditPage() {
       <Paper withBorder p="xl" radius="md">
         <form onSubmit={handleSubmit}>
           <Stack>
-            <Title order={4}>Personal Information</Title>
+            <Title order={4}>Personlige oplysninger</Title>
 
             <Group grow>
               <TextInput
-                label="First Name"
+                label="Fornavn"
                 value={formData.first_name}
                 onChange={(e) =>
                   setFormData((prev) => ({
@@ -297,7 +297,7 @@ export default function ProfileEditPage() {
                 required
               />
               <TextInput
-                label="Last Name"
+                label="Efternavn"
                 value={formData.last_name}
                 onChange={(e) =>
                   setFormData((prev) => ({
@@ -310,7 +310,7 @@ export default function ProfileEditPage() {
             </Group>
 
             <TextInput
-              label="Phone Number"
+              label="Telefonnummer"
               placeholder="+45 12 34 56 78"
               value={formData.phone_number}
               onChange={(e) =>
@@ -322,8 +322,8 @@ export default function ProfileEditPage() {
             />
 
             <DateInput
-              label="Birthday"
-              placeholder="Select your birthday"
+              label="Fødselsdag"
+              placeholder="Vælg din fødselsdag"
               value={formData.birthdate}
               onChange={(value) => {
                 const date = value ? new Date(value) : null
@@ -336,22 +336,22 @@ export default function ProfileEditPage() {
 
             <Textarea
               label="Bio"
-              placeholder="Tell us about yourself..."
+              placeholder="Fortæl om dig selv..."
               value={formData.bio}
               onChange={(e) =>
                 setFormData((prev) => ({ ...prev, bio: e.target.value }))
               }
               minRows={3}
               maxLength={500}
-              description={`${formData.bio.length}/500 characters`}
+              description={`${formData.bio.length}/500 tegn`}
             />
 
             <Group justify="flex-end" mt="md">
               <Button variant="light" onClick={() => navigate("/profil")}>
-                Cancel
+                Annuller
               </Button>
               <Button type="submit" loading={updateProfileMutation.isPending}>
-                Save Changes
+                Gem ændringer
               </Button>
             </Group>
           </Stack>
