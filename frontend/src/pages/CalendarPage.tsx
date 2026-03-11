@@ -443,11 +443,17 @@ export default function CalendarPage() {
                   firstDayOfWeek: 1,
                   withWeekNumber: true,
                   withCurrentTimeIndicator: true,
+                  highlightToday: true,
                   intervalMinutes: 60,
+                  weekLabelFormat: "D. MMM",
                 }}
                 monthViewProps={{
                   firstDayOfWeek: 1,
                   withWeekNumbers: true,
+                  monthYearSelectProps: { labels: DA_SCHEDULE_LABELS },
+                }}
+                yearViewProps={{
+                  monthYearSelectProps: { labels: DA_SCHEDULE_LABELS },
                 }}
                 mobileMonthViewProps={{
                   firstDayOfWeek: 1,
@@ -498,6 +504,7 @@ export default function CalendarPage() {
                 dayViewProps={{
                   withCurrentTimeIndicator: true,
                   intervalMinutes: 30,
+                  headerFormat: "ddd D. MMM YYYY",
                 }}
               />
             </div>
