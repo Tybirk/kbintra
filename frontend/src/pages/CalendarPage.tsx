@@ -503,7 +503,7 @@ export default function CalendarPage() {
                 dayViewProps={{
                   withCurrentTimeIndicator: true,
                   intervalMinutes: 30,
-                  headerFormat: "D. MMM YYYY",
+                  headerFormat: "ddd D. MMM YYYY",
                 }}
               />
             </div>

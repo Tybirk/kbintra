@@ -474,7 +474,7 @@ export default function BookingsPage() {
             startTime: "06:00:00",
             endTime: "23:59:59",
             intervalMinutes: 30,
-            headerFormat: "D. MMM YYYY",
+            headerFormat: "ddd D. MMM YYYY",
           }}
           monthViewProps={{
             firstDayOfWeek: 1,
