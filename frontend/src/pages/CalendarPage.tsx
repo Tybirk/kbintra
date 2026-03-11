@@ -448,6 +448,10 @@ export default function CalendarPage() {
                 monthViewProps={{
                   firstDayOfWeek: 1,
                   withWeekNumbers: true,
+                  monthYearSelectProps: { labels: DA_SCHEDULE_LABELS },
+                }}
+                yearViewProps={{
+                  monthYearSelectProps: { labels: DA_SCHEDULE_LABELS },
                 }}
                 mobileMonthViewProps={{
                   firstDayOfWeek: 1,
