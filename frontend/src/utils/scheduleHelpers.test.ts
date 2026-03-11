@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest"
-import { eventToScheduleData, bookingToScheduleData, DA_SCHEDULE_LABELS } from "./scheduleHelpers"
+import {
+  eventToScheduleData,
+  bookingToScheduleData,
+  DA_SCHEDULE_LABELS,
+} from "./scheduleHelpers"
 import type { Event, CalendarBooking } from "../types"
 
 const baseEvent: Event = {
