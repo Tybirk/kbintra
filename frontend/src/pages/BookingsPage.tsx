@@ -464,6 +464,7 @@ export default function BookingsPage() {
             firstDayOfWeek: 1,
             withWeekNumber: true,
             withCurrentTimeIndicator: true,
+            highlightToday: true,
             startTime: "06:00:00",
             endTime: "23:59:59",
             intervalMinutes: 60,

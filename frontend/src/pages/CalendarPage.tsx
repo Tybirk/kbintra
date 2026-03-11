@@ -443,6 +443,7 @@ export default function CalendarPage() {
                   firstDayOfWeek: 1,
                   withWeekNumber: true,
                   withCurrentTimeIndicator: true,
+                  highlightToday: true,
                   intervalMinutes: 60,
                   weekLabelFormat: "D. MMM",
                 }}
