@@ -444,6 +444,7 @@ export default function CalendarPage() {
                   withWeekNumber: true,
                   withCurrentTimeIndicator: true,
                   intervalMinutes: 60,
+                  weekLabelFormat: "D. MMM",
                 }}
                 monthViewProps={{
                   firstDayOfWeek: 1,
@@ -502,6 +503,7 @@ export default function CalendarPage() {
                 dayViewProps={{
                   withCurrentTimeIndicator: true,
                   intervalMinutes: 30,
+                  headerFormat: "D. MMM YYYY",
                 }}
               />
             </div>
