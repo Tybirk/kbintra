@@ -464,19 +464,26 @@ export default function BookingsPage() {
             firstDayOfWeek: 1,
             withWeekNumber: true,
             withCurrentTimeIndicator: true,
+            highlightToday: true,
             startTime: "06:00:00",
             endTime: "23:59:59",
             intervalMinutes: 60,
+            weekLabelFormat: "D. MMM",
           }}
           dayViewProps={{
             withCurrentTimeIndicator: true,
             startTime: "06:00:00",
             endTime: "23:59:59",
             intervalMinutes: 30,
+            headerFormat: "ddd D. MMM YYYY",
           }}
           monthViewProps={{
             firstDayOfWeek: 1,
             withWeekNumbers: true,
+            monthYearSelectProps: { labels: DA_SCHEDULE_LABELS },
+          }}
+          yearViewProps={{
+            monthYearSelectProps: { labels: DA_SCHEDULE_LABELS },
           }}
           mobileMonthViewProps={{
             renderHeader: () => (
