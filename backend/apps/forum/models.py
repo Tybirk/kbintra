@@ -2,9 +2,16 @@
 Forum models for KB Intra community platform.
 """
 
+import secrets
+
 from django.conf import settings
 from django.db import models
 from django.utils.text import slugify
+
+
+def _generate_download_token() -> str:
+    """Generate a URL-safe random token for ZipDownloadJob."""
+    return secrets.token_urlsafe(32)
 
 
 class Subgroup(models.Model):
@@ -446,3 +453,33 @@ class File(models.Model):
         """Delete the file from storage when the model instance is deleted."""
         self.file.delete(save=False)
         return super().delete(*args, **kwargs)
+
+
+class ZipDownloadJob(models.Model):
+    """
+    Tracks an async zip-build job for folder downloads.
+    The token acts as a one-time download credential.
+    """
+
+    STATUS_PENDING = "pending"
+    STATUS_BUILDING = "building"
+    STATUS_READY = "ready"
+    STATUS_FAILED = "failed"
+    STATUS_CHOICES = [
+        (s, s) for s in [STATUS_PENDING, STATUS_BUILDING, STATUS_READY, STATUS_FAILED]
+    ]
+
+    folder = models.ForeignKey(Folder, on_delete=models.CASCADE, related_name="download_jobs")
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    token = models.CharField(max_length=64, unique=True, default=_generate_download_token)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    zip_path = models.CharField(max_length=500, blank=True)
+    error = models.CharField(max_length=500, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"ZipDownloadJob({self.status}) for {self.folder} by {self.requested_by}"

@@ -2,8 +2,8 @@
 Views for Forum models.
 """
 
-import io
-import zipfile
+import os
+from datetime import timedelta
 from typing import Any
 
 from django.http import FileResponse
@@ -27,6 +27,7 @@ from .models import (
     Thread,
     ThreadMuteStatus,
     ThreadReadStatus,
+    ZipDownloadJob,
 )
 from .serializers import (
     FileSerializer,
@@ -589,51 +590,64 @@ class FileMoveView(APIView):
         return Response({"detail": "File moved successfully."}, status=status.HTTP_200_OK)
 
 
-class FolderDownloadView(APIView):
-    """Download all files in a folder (including subfolders) as a zip."""
+class FolderPrepareDownloadView(APIView):
+    """Initiate a background zip build for a folder; returns a download token."""
 
     permission_classes = [permissions.IsAuthenticated]
-    MAX_ZIP_SIZE = 100 * 1024 * 1024  # 100 MB
 
-    def get(self, request: Request, pk: int) -> FileResponse | Response:
+    def post(self, request: Request, pk: int) -> Response:
+        from apps.forum.tasks import build_folder_zip
+
         folder = get_object_or_404(Folder, pk=pk)
+        job = ZipDownloadJob.objects.create(
+            folder=folder,
+            requested_by=request.user,
+            expires_at=timezone.now() + timedelta(hours=2),
+        )
+        build_folder_zip(job.id)
+        return Response({"token": job.token, "status": job.status}, status=status.HTTP_202_ACCEPTED)
 
-        buf = io.BytesIO()
-        total_size = 0
-        try:
-            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-                total_size = self._add_folder(zf, folder, "", total_size)
-        except _ZipSizeLimitError:
+
+class ZipDownloadStatusView(APIView):
+    """Check the status of a zip download job."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: Request, token: str) -> Response:
+        job = get_object_or_404(ZipDownloadJob, token=token)
+        if job.requested_by != request.user:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        return Response({"status": job.status, "error": job.error})
+
+
+class ZipDownloadFileView(APIView):
+    """Stream the built zip file; token is the credential (no JWT required)."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request: Request, token: str) -> FileResponse | Response:
+        job = get_object_or_404(ZipDownloadJob.objects.select_related("folder"), token=token)
+        if timezone.now() > job.expires_at:
             return Response(
-                {"detail": "Mappen er for stor til at downloade som zip (maks 100 MB)."},
-                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                {"detail": "Download-linket er udløbet."},
+                status=status.HTTP_410_GONE,
             )
-
-        buf.seek(0)
+        if job.status != ZipDownloadJob.STATUS_READY:
+            return Response(
+                {"detail": "Zip-filen er endnu ikke klar."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        folder_name = job.folder.name
+        f = open(job.zip_path, "rb")  # noqa: SIM115 — fd kept open for streaming after os.unlink
+        os.unlink(job.zip_path)  # Linux: removed from dir but data accessible via fd
+        job.delete()
         return FileResponse(
-            buf,
+            f,
             as_attachment=True,
-            filename=f"{folder.name}.zip",
+            filename=f"{folder_name}.zip",
             content_type="application/zip",
         )
-
-    def _add_folder(self, zf: zipfile.ZipFile, folder: Folder, prefix: str, total_size: int) -> int:
-        path = f"{prefix}{folder.name}/"
-        for file_obj in File.objects.filter(folder=folder):
-            if file_obj.file and file_obj.file.storage.exists(file_obj.file.name):
-                with file_obj.file.open("rb") as f:
-                    data = f.read()
-                total_size += len(data)
-                if total_size > self.MAX_ZIP_SIZE:
-                    raise _ZipSizeLimitError
-                zf.writestr(f"{path}{file_obj.name}", data)
-        for subfolder in Folder.objects.filter(parent=folder):
-            total_size = self._add_folder(zf, subfolder, path, total_size)
-        return total_size
-
-
-class _ZipSizeLimitError(Exception):
-    """Raised when cumulative zip content exceeds the size limit."""
 
 
 class RecentActivityView(generics.ListAPIView):

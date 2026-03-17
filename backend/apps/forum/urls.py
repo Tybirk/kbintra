@@ -10,8 +10,8 @@ from .views import (
     FileMoveView,
     FolderBySlugView,
     FolderDetailView,
-    FolderDownloadView,
     FolderListCreateView,
+    FolderPrepareDownloadView,
     ForumUnreadCountView,
     MarkAllForumReadView,
     MarkSubgroupReadView,
@@ -36,6 +36,8 @@ from .views import (
     ThreadMuteToggleView,
     ThreadUpdateView,
     UnsubscribeView,
+    ZipDownloadFileView,
+    ZipDownloadStatusView,
 )
 
 urlpatterns = [
@@ -77,7 +79,17 @@ urlpatterns = [
     # Folders
     path("subgroups/<slug:slug>/folders/", FolderListCreateView.as_view(), name="folder-list"),
     path("folders/<int:pk>/", FolderDetailView.as_view(), name="folder-detail"),
-    path("folders/<int:pk>/download/", FolderDownloadView.as_view(), name="folder-download"),
+    path(
+        "folders/<int:pk>/prepare-download/",
+        FolderPrepareDownloadView.as_view(),
+        name="folder-prepare-download",
+    ),
+    path(
+        "downloads/<str:token>/status/",
+        ZipDownloadStatusView.as_view(),
+        name="zip-download-status",
+    ),
+    path("downloads/<str:token>/", ZipDownloadFileView.as_view(), name="zip-download-file"),
     path(
         "subgroups/<slug:slug>/folder/<str:folder_slug>/",
         FolderBySlugView.as_view(),

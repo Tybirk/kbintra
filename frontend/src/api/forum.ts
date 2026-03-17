@@ -321,22 +321,22 @@ export const forumApi = {
     await apiClient.delete(`/forum/files/${fileId}/`)
   },
 
-  downloadFolder: async (
-    folderId: number,
-    folderName: string,
-  ): Promise<void> => {
-    const response = await apiClient.get(
-      `/forum/folders/${folderId}/download/`,
-      { responseType: "blob" },
+  prepareDownloadFolder: async (folderId: number): Promise<{
+    token: string
+    status: string
+  }> => {
+    const response = await apiClient.post(
+      `/forum/folders/${folderId}/prepare-download/`,
     )
-    const url = URL.createObjectURL(response.data as Blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `${folderName}.zip`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    setTimeout(() => URL.revokeObjectURL(url), 100)
+    return response.data
+  },
+
+  getDownloadJobStatus: async (token: string): Promise<{
+    status: string
+    error: string
+  }> => {
+    const response = await apiClient.get(`/forum/downloads/${token}/status/`)
+    return response.data
   },
 
   moveFile: async (fileId: number, folderId: number | null): Promise<{

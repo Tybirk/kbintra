@@ -1214,6 +1214,17 @@ function FolderRow({
 }: FolderRowProps) {
   const [isDragOver, setIsDragOver] = useState(false)
   const dragCounter = useRef(0)
+  const downloadIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  )
+
+  useEffect(() => {
+    return () => {
+      if (downloadIntervalRef.current !== null) {
+        clearInterval(downloadIntervalRef.current)
+      }
+    }
+  }, [])
 
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault()
@@ -1306,13 +1317,55 @@ function FolderRow({
               title="Download mappe som zip"
               onClick={(e: React.MouseEvent) => {
                 e.stopPropagation()
-                forumApi.downloadFolder(folder.id, folder.name).catch(() => {
-                  notifications.show({
-                    title: "Fejl",
-                    message: "Kunne ikke downloade mappen.",
-                    color: "red",
+                forumApi
+                  .prepareDownloadFolder(folder.id)
+                  .then(({ token }) => {
+                    const notifId = notifications.show({
+                      loading: true,
+                      title: "Forbereder zip-fil...",
+                      message: "Vent venligst",
+                      autoClose: false,
+                      withCloseButton: false,
+                    })
+                    downloadIntervalRef.current = setInterval(() => {
+                      forumApi
+                        .getDownloadJobStatus(token)
+                        .then(({ status, error }) => {
+                          if (status === "ready") {
+                            clearInterval(downloadIntervalRef.current!)
+                            downloadIntervalRef.current = null
+                            notifications.hide(notifId)
+                            window.location.href = `/api/forum/downloads/${token}/`
+                          } else if (status === "failed") {
+                            clearInterval(downloadIntervalRef.current!)
+                            downloadIntervalRef.current = null
+                            notifications.hide(notifId)
+                            notifications.show({
+                              title: "Fejl",
+                              message: error || "Kunne ikke bygge zip-filen.",
+                              color: "red",
+                            })
+                          }
+                        })
+                        .catch(() => {
+                          clearInterval(downloadIntervalRef.current!)
+                          downloadIntervalRef.current = null
+                          notifications.hide(notifId)
+                          notifications.show({
+                            title: "Fejl",
+                            message: "Kunne ikke downloade mappen.",
+                            color: "red",
+                          })
+                        })
+                    }, 2000)
                   })
-                })
+                  .catch(() => {
+                    notifications.show({
+                      title: "Fejl",
+                      message: "Kunne ikke starte download.",
+                      color: "red",
+                    })
+                  })
               }}
             >
               <IconDownload size={16} />
