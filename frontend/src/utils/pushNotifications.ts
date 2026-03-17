@@ -11,6 +11,13 @@ export type PushSubscribeResult = { success: true } | {
   reason: "not_supported" | "permission_denied" | "not_configured" | "error"
 }
 
+/** localStorage key tracking whether the user explicitly opted out of push */
+const PUSH_OPTED_OUT_KEY = "push_opted_out"
+
+export function getPushOptedOut(): boolean {
+  return localStorage.getItem(PUSH_OPTED_OUT_KEY) === "true"
+}
+
 /**
  * Convert a base64 string to a Uint8Array (needed for applicationServerKey)
  */
@@ -116,6 +123,7 @@ export async function subscribeToPushNotificationsWithReason(): Promise<PushSubs
 
     // Send subscription to server
     await notificationsApi.subscribePush(subscription)
+    localStorage.removeItem(PUSH_OPTED_OUT_KEY)
     console.log("Successfully subscribed to push notifications")
     return { success: true }
   } catch (error) {
@@ -145,6 +153,7 @@ export async function unsubscribeFromPushNotifications(): Promise<boolean> {
     const subscription = await getCurrentPushSubscription()
     if (!subscription) {
       console.log("No push subscription to unsubscribe")
+      localStorage.setItem(PUSH_OPTED_OUT_KEY, "true")
       return true
     }
 
@@ -153,6 +162,8 @@ export async function unsubscribeFromPushNotifications(): Promise<boolean> {
 
     // Remove subscription from server
     await notificationsApi.unsubscribePush(subscription.endpoint)
+    // Mark explicit opt-out so the sync hook doesn't re-subscribe automatically
+    localStorage.setItem(PUSH_OPTED_OUT_KEY, "true")
     console.log("Successfully unsubscribed from push notifications")
     return true
   } catch (error) {

@@ -6,6 +6,7 @@ import { useAuthStore } from "../store/authStore"
 import {
   isPushSupported,
   getCurrentPushSubscription,
+  getPushOptedOut,
   subscribeToPushNotifications,
 } from "../utils/pushNotifications"
 
@@ -29,8 +30,10 @@ async function syncPushSubscription(): Promise<void> {
         )
       }
     } else {
-      // Permission granted but no subscription — force-close likely
-      // killed it. Re-subscribe from scratch.
+      // Permission granted but no subscription. If the user explicitly opted
+      // out, respect that. Otherwise it was likely a force-close that killed
+      // the subscription — re-subscribe automatically.
+      if (getPushOptedOut()) return
       const result = await subscribeToPushNotifications()
       if (!result) {
         console.warn(

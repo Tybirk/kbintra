@@ -7,6 +7,7 @@ import {
   isPushSupported,
   isPushConfigured,
   isPushSubscribed,
+  getPushOptedOut,
   subscribeToPushNotificationsWithReason,
   getNotificationPermission,
 } from "../utils/pushNotifications"
@@ -23,6 +24,7 @@ export function PushNotificationPrompt() {
       // Check all conditions
       if (!isPushSupported()) return
       if (localStorage.getItem("push-prompt-status") === "declined") return
+      if (getPushOptedOut()) return
       if (getNotificationPermission() === "denied") return
 
       const [configured, subscribed] = await Promise.all([
