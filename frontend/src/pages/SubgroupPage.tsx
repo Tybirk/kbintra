@@ -1309,7 +1309,7 @@ function FolderRow({
           >
             <IconLink size={16} />
           </ActionIcon>
-          {folder.file_count > 0 && (
+          {(folder.file_count > 0 || folder.subfolder_count > 0) && (
             <ActionIcon
               variant="subtle"
               color="gray"

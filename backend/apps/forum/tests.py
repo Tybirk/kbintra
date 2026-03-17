@@ -17,6 +17,7 @@ from apps.forum.models import (
     Subgroup,
     SubgroupSubscription,
     Thread,
+    ZipDownloadJob,
 )
 
 
@@ -501,6 +502,144 @@ class TestFolderViews:
         assert response.status_code == 201
         new_folder = Folder.objects.get(name="New Subfolder")
         assert new_folder.parent == folder
+
+
+class TestZipDownloadViews:
+    """Tests for the async folder zip download flow."""
+
+    def test_prepare_download_creates_job(self, authenticated_client, folder):
+        """POST prepare-download creates a ZipDownloadJob and returns a token."""
+        response = authenticated_client.post(f"/api/forum/folders/{folder.id}/prepare-download/")
+        assert response.status_code == 202
+        assert "token" in response.data
+        assert ZipDownloadJob.objects.filter(folder=folder).exists()
+
+    def test_prepare_download_unauthenticated(self, api_client, folder):
+        """Unauthenticated requests are rejected."""
+        response = api_client.post(f"/api/forum/folders/{folder.id}/prepare-download/")
+        assert response.status_code == 401
+
+    def test_status_returns_job_status(self, authenticated_client, folder, user):
+        """GET status returns the current job status for the requesting user."""
+        from django.utils import timezone
+
+        job = ZipDownloadJob.objects.create(
+            folder=folder,
+            requested_by=user,
+            expires_at=timezone.now() + __import__("datetime").timedelta(hours=2),
+            status=ZipDownloadJob.STATUS_READY,
+            zip_path="/tmp/test.zip",
+        )
+        response = authenticated_client.get(f"/api/forum/downloads/{job.token}/status/")
+        assert response.status_code == 200
+        assert response.data["status"] == "ready"
+
+    def test_status_forbidden_for_other_user(self, api_client, second_user, folder, user):
+        """Another user cannot poll someone else's job status."""
+        from django.utils import timezone
+
+        job = ZipDownloadJob.objects.create(
+            folder=folder,
+            requested_by=user,
+            expires_at=timezone.now() + __import__("datetime").timedelta(hours=2),
+        )
+        api_client.force_authenticate(user=second_user)
+        response = api_client.get(f"/api/forum/downloads/{job.token}/status/")
+        assert response.status_code == 403
+
+    def test_download_with_real_file(
+        self, authenticated_client, api_client, folder, user, tmp_path
+    ):
+        """GET download streams a real zip file and deletes the DB record after."""
+        import zipfile as zf
+
+        from django.utils import timezone
+
+        # Create a real zip on disk
+        zip_file = tmp_path / "test.zip"
+        with zf.ZipFile(zip_file, "w") as z:
+            z.writestr("hello.txt", b"hello")
+
+        job = ZipDownloadJob.objects.create(
+            folder=folder,
+            requested_by=user,
+            expires_at=timezone.now() + __import__("datetime").timedelta(hours=2),
+            status=ZipDownloadJob.STATUS_READY,
+            zip_path=str(zip_file),
+        )
+        # No auth needed — token is the credential
+        response = api_client.get(f"/api/forum/downloads/{job.token}/")
+        assert response.status_code == 200
+        assert response["Content-Type"] == "application/zip"
+        # Job is deleted after download
+        assert not ZipDownloadJob.objects.filter(id=job.id).exists()
+
+    def test_download_expired_returns_410(self, api_client, folder, user, tmp_path):
+        """Expired jobs return 410 Gone."""
+        from django.utils import timezone
+
+        job = ZipDownloadJob.objects.create(
+            folder=folder,
+            requested_by=user,
+            expires_at=timezone.now() - __import__("datetime").timedelta(hours=1),
+            status=ZipDownloadJob.STATUS_READY,
+            zip_path="/tmp/doesnotmatter.zip",
+        )
+        response = api_client.get(f"/api/forum/downloads/{job.token}/")
+        assert response.status_code == 410
+
+    def test_download_not_ready_returns_409(self, api_client, folder, user):
+        """Jobs still building return 409 Conflict."""
+        from django.utils import timezone
+
+        job = ZipDownloadJob.objects.create(
+            folder=folder,
+            requested_by=user,
+            expires_at=timezone.now() + __import__("datetime").timedelta(hours=2),
+            status=ZipDownloadJob.STATUS_BUILDING,
+        )
+        response = api_client.get(f"/api/forum/downloads/{job.token}/")
+        assert response.status_code == 409
+
+    def test_build_folder_zip_task(self, db, folder, user, tmp_path, settings):
+        """build_folder_zip task creates a valid zip file on disk."""
+        import zipfile as zf
+
+        from django.utils import timezone
+
+        settings.MEDIA_ROOT = str(tmp_path)
+
+        # Create a file in the folder
+        content = b"test content"
+        django_file = SimpleUploadedFile("doc.txt", content)
+        forum_file = File.objects.create(
+            subgroup=folder.subgroup,
+            folder=folder,
+            uploaded_by=user,
+            file=django_file,
+            name="doc.txt",
+        )
+
+        job = ZipDownloadJob.objects.create(
+            folder=folder,
+            requested_by=user,
+            expires_at=timezone.now() + __import__("datetime").timedelta(hours=2),
+        )
+
+        from apps.forum.tasks import build_folder_zip
+
+        build_folder_zip(job.id)
+
+        job.refresh_from_db()
+        assert job.status == ZipDownloadJob.STATUS_READY
+        assert job.zip_path
+
+        with zf.ZipFile(job.zip_path) as z:
+            names = z.namelist()
+        assert any("doc.txt" in n for n in names)
+
+        # Cleanup
+        forum_file.file.delete(save=False)
 
 
 class TestFileViews:
