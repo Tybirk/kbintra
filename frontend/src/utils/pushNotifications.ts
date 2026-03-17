@@ -159,11 +159,13 @@ export async function unsubscribeFromPushNotifications(): Promise<boolean> {
 
     // Unsubscribe from browser
     await subscription.unsubscribe()
+    // Mark explicit opt-out immediately after the irreversible browser unsub,
+    // so the sync hook won't re-subscribe even if the server call below fails.
+    // (The stale backend record self-heals: next push attempt gets 404/410.)
+    localStorage.setItem(PUSH_OPTED_OUT_KEY, "true")
 
     // Remove subscription from server
     await notificationsApi.unsubscribePush(subscription.endpoint)
-    // Mark explicit opt-out so the sync hook doesn't re-subscribe automatically
-    localStorage.setItem(PUSH_OPTED_OUT_KEY, "true")
     console.log("Successfully unsubscribed from push notifications")
     return true
   } catch (error) {

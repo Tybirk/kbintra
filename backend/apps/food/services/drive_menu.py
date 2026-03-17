@@ -265,14 +265,34 @@ class DriveMenuService:
             return None
 
     def _has_page_break(self, paragraph) -> bool:
-        """Check if a paragraph contains a page break."""
+        """Check if a paragraph contains or ends with a page break.
+
+        Handles both explicit w:br page breaks (common in .docx) and
+        section breaks encoded as w:sectPr in paragraph properties (common
+        in Google Docs exported as .docx).
+        """
         from docx.oxml.ns import qn
 
+        # Check for explicit page break in runs
         for run in paragraph.runs:
             for child in run._element:
-                # Check for explicit page break
                 if child.tag == qn("w:br") and child.get(qn("w:type")) == "page":
                     return True
+
+        # Check for section break (Google Docs uses these for page breaks)
+        p_pr = paragraph._element.find(qn("w:pPr"))
+        if p_pr is not None:
+            sect_pr = p_pr.find(qn("w:sectPr"))
+            if sect_pr is not None:
+                type_elem = sect_pr.find(qn("w:type"))
+                # nextPage, oddPage, evenPage all start a new page
+                if type_elem is None or type_elem.get(qn("w:val")) in (
+                    "nextPage",
+                    "oddPage",
+                    "evenPage",
+                ):
+                    return True
+
         return False
 
     def _parse_docx(
@@ -303,6 +323,7 @@ class DriveMenuService:
         # Parse day menus by splitting on weekday names
         current_day = None
         menu_lines = []
+        seen_days: set[str] = set()
 
         for para in page1_paragraphs:
             # Check if this is a day header (try strict pattern first, then flexible)
@@ -327,10 +348,19 @@ class DriveMenuService:
                         break
 
             if day_found:
+                # If we've already seen this day, we've hit the detailed recipe section
+                # (some documents repeat the day headers in both an overview and a recipe
+                # section on the same page). Save the current day and stop.
+                if day_found in seen_days:
+                    if current_day and menu_lines:
+                        menus[current_day] = " ".join(menu_lines)
+                    break
+
                 # Save previous day's menu
                 if current_day and menu_lines:
                     menus[current_day] = " ".join(menu_lines)
 
+                seen_days.add(day_found)
                 current_day = day_found
                 menu_lines = []
 
