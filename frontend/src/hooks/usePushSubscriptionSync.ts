@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 
 import { notificationsApi } from "../api/notifications"
+import { useAuthStore } from "../store/authStore"
 import {
   isPushSupported,
   getCurrentPushSubscription,
@@ -63,9 +64,13 @@ async function syncPushSubscription(): Promise<void> {
  */
 export function usePushSubscriptionSync() {
   const navigate = useNavigate()
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const lastSyncRef = useRef<number>(0)
 
   useEffect(() => {
+    // Don't sync push subscriptions when not authenticated — API calls would
+    // trigger a 401 → token refresh → redirect loop on the login page.
+    if (!isAuthenticated) return
     /** Run syncPushSubscription respecting the debounce window. */
     function debouncedSync() {
       const now = Date.now()
@@ -127,5 +132,5 @@ export function usePushSubscriptionSync() {
       window.removeEventListener("pageshow", handlePageShow)
       navigator.serviceWorker?.removeEventListener("message", handleSwMessage)
     }
-  }, [navigate])
+  }, [navigate, isAuthenticated])
 }
