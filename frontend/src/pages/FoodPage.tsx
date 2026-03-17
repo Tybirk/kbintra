@@ -701,6 +701,7 @@ function DayRegistrationCard({
   communityStats,
 }: DayRegistrationCardProps) {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const { user } = useAuthStore()
   const [
     ticketModalOpened,
@@ -1009,7 +1010,24 @@ function DayRegistrationCard({
                             Til salg
                           </Badge>
                         ) : (
-                          <Badge color="green" variant="light" size="xs">
+                          <Badge
+                            color="green"
+                            variant="light"
+                            size="sm"
+                            leftSection={
+                              <Avatar
+                                src={ticket.claimed_by?.profile_picture}
+                                size={14}
+                                radius="xl"
+                              >
+                                {ticket.claimed_by?.first_name?.[0]}
+                              </Avatar>
+                            }
+                            style={{ cursor: "pointer" }}
+                            onClick={() =>
+                              navigate(`/profil/${ticket.claimed_by?.id}`)
+                            }
+                          >
                             Solgt til {ticket.claimed_by?.first_name}
                           </Badge>
                         )}{" "}
@@ -1294,6 +1312,7 @@ interface TicketCardProps {
 
 function TicketCard({ ticket }: TicketCardProps) {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const clipboard = useClipboard({ timeout: 2000 })
   const [buyModalOpened, { open: openBuyModal, close: closeBuyModal }] =
     useDisclosure(false)
@@ -1413,11 +1432,32 @@ function TicketCard({ ticket }: TicketCardProps) {
                     {ticket.price} DKK
                   </Badge>
                 )}
-                {isClaimed && (
-                  <Badge color="gray" variant="light">
-                    {isOwner ? "Solgt" : "Reserveret"}
-                  </Badge>
-                )}
+                {isClaimed &&
+                  (isOwner && ticket.claimed_by ? (
+                    <Badge
+                      color="gray"
+                      variant="light"
+                      leftSection={
+                        <Avatar
+                          src={ticket.claimed_by.profile_picture}
+                          size={14}
+                          radius="xl"
+                        >
+                          {ticket.claimed_by.first_name?.[0]}
+                        </Avatar>
+                      }
+                      style={{ cursor: "pointer" }}
+                      onClick={() =>
+                        navigate(`/profil/${ticket.claimed_by!.id}`)
+                      }
+                    >
+                      Solgt til {ticket.claimed_by.first_name}
+                    </Badge>
+                  ) : (
+                    <Badge color="gray" variant="light">
+                      Reserveret
+                    </Badge>
+                  ))}
               </Group>
               <Text size="sm" c="dimmed">
                 {ticket.day_name}, {dayjs(ticket.date).format("D. MMM")} •{" "}
