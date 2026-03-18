@@ -88,6 +88,7 @@ class MessageReaction(models.Model):
         ("surprised", "😮"),
         ("sad", "😢"),
         ("celebrate", "🎉"),
+        ("claim", "🙋"),
     ]
 
     message = models.ForeignKey(
