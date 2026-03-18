@@ -2,8 +2,8 @@
 Views for Forum models.
 """
 
-import os
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 from django.http import FileResponse
@@ -638,12 +638,19 @@ class ZipDownloadFileView(APIView):
                 {"detail": "Zip-filen er endnu ikke klar."},
                 status=status.HTTP_409_CONFLICT,
             )
+        zip_path = Path(job.zip_path)
+        if not zip_path.exists():
+            job.delete()
+            return Response(
+                {"detail": "Zip-filen findes ikke længere."},
+                status=status.HTTP_410_GONE,
+            )
         folder_name = job.folder.name
-        f = open(job.zip_path, "rb")  # noqa: SIM115 — fd kept open for streaming after os.unlink
-        os.unlink(job.zip_path)  # Linux: removed from dir but data accessible via fd
-        job.delete()
+        # Expire immediately so the periodic cleanup removes the file shortly after.
+        job.expires_at = timezone.now()
+        job.save(update_fields=["expires_at"])
         return FileResponse(
-            f,
+            open(zip_path, "rb"),  # noqa: SIM115
             as_attachment=True,
             filename=f"{folder_name}.zip",
             content_type="application/zip",

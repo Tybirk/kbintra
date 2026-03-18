@@ -1213,16 +1213,23 @@ function FolderRow({
   onDropFiles,
 }: FolderRowProps) {
   const [isDragOver, setIsDragOver] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
   const dragCounter = useRef(0)
   const downloadIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   )
 
+  const clearDownloadInterval = () => {
+    if (downloadIntervalRef.current !== null) {
+      clearInterval(downloadIntervalRef.current)
+      downloadIntervalRef.current = null
+    }
+    setIsDownloading(false)
+  }
+
   useEffect(() => {
     return () => {
-      if (downloadIntervalRef.current !== null) {
-        clearInterval(downloadIntervalRef.current)
-      }
+      clearDownloadInterval()
     }
   }, [])
 
@@ -1315,8 +1322,13 @@ function FolderRow({
               color="gray"
               size="sm"
               title="Download mappe som zip"
+              disabled={isDownloading}
+              loading={isDownloading}
               onClick={(e: React.MouseEvent) => {
                 e.stopPropagation()
+                if (isDownloading) return
+                setIsDownloading(true)
+                let pollCount = 0
                 forumApi
                   .prepareDownloadFolder(folder.id)
                   .then(({ token }) => {
@@ -1327,18 +1339,28 @@ function FolderRow({
                       autoClose: false,
                       withCloseButton: false,
                     })
+                    clearDownloadInterval()
                     downloadIntervalRef.current = setInterval(() => {
+                      pollCount++
+                      if (pollCount > 60) {
+                        clearDownloadInterval()
+                        notifications.hide(notifId)
+                        notifications.show({
+                          title: "Fejl",
+                          message: "Timeout — zip-filen tog for lang tid.",
+                          color: "red",
+                        })
+                        return
+                      }
                       forumApi
                         .getDownloadJobStatus(token)
                         .then(({ status, error }) => {
                           if (status === "ready") {
-                            clearInterval(downloadIntervalRef.current!)
-                            downloadIntervalRef.current = null
+                            clearDownloadInterval()
                             notifications.hide(notifId)
                             window.location.href = `/api/forum/downloads/${token}/`
                           } else if (status === "failed") {
-                            clearInterval(downloadIntervalRef.current!)
-                            downloadIntervalRef.current = null
+                            clearDownloadInterval()
                             notifications.hide(notifId)
                             notifications.show({
                               title: "Fejl",
@@ -1348,8 +1370,7 @@ function FolderRow({
                           }
                         })
                         .catch(() => {
-                          clearInterval(downloadIntervalRef.current!)
-                          downloadIntervalRef.current = null
+                          clearDownloadInterval()
                           notifications.hide(notifId)
                           notifications.show({
                             title: "Fejl",
@@ -1360,6 +1381,7 @@ function FolderRow({
                     }, 2000)
                   })
                   .catch(() => {
+                    setIsDownloading(false)
                     notifications.show({
                       title: "Fejl",
                       message: "Kunne ikke starte download.",
