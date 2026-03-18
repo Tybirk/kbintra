@@ -28,7 +28,7 @@ def step(msg: str) -> None:
 
 
 def run(cmd: list[str], cwd: Path) -> None:
-    result = subprocess.run(cmd, cwd=cwd)
+    result = subprocess.run(cmd, cwd=cwd, shell=(sys.platform == "win32"))
     if result.returncode != 0:
         print(f"{RED}Command failed: {' '.join(cmd)}{RESET}")
         sys.exit(1)

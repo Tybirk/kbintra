@@ -582,7 +582,11 @@ function AnnouncementPreview({ announcement }: AnnouncementPreviewProps) {
   const navigate = useNavigate()
 
   // Strip HTML tags for preview
-  const plainText = announcement.content.replace(/<[^>]*>/g, "")
+  const plainText = announcement.content
+    .replace(/<\/[^>]+>/g, " ")
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
   const preview =
     plainText.length > 150 ? `${plainText.slice(0, 150)}...` : plainText
 
@@ -811,7 +815,11 @@ function ActivityPreview({ activity }: ActivityPreviewProps) {
   const navigate = useNavigate()
 
   // Strip HTML tags for preview
-  const plainText = activity.content.replace(/<[^>]*>/g, "")
+  const plainText = activity.content
+    .replace(/<\/[^>]+>/g, " ")
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
   const preview =
     plainText.length > 100 ? `${plainText.slice(0, 100)}...` : plainText
 

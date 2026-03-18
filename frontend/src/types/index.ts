@@ -154,7 +154,7 @@ export interface PostAttachment {
   uploaded_at: string
 }
 
-export type ReactionType = "like" | "heart" | "laugh" | "surprised" | "sad" | "celebrate"
+export type ReactionType = "like" | "heart" | "laugh" | "surprised" | "sad" | "celebrate" | "claim"
 
 export interface ReactionUser {
   id: number
