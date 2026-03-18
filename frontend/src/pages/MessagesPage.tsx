@@ -84,6 +84,7 @@ const REACTION_EMOJIS: Record<ReactionType, string> = {
   surprised: "😮",
   sad: "😢",
   celebrate: "🎉",
+  claim: "🙋",
 }
 
 const ALL_REACTION_TYPES: ReactionType[] = [
@@ -93,6 +94,7 @@ const ALL_REACTION_TYPES: ReactionType[] = [
   "surprised",
   "sad",
   "celebrate",
+  "claim",
 ]
 
 export default function MessagesPage() {

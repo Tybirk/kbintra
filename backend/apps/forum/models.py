@@ -257,6 +257,7 @@ class Reaction(models.Model):
         ("surprised", "😮"),
         ("sad", "😢"),
         ("celebrate", "🎉"),
+        ("claim", "🙋"),
     ]
 
     post = models.ForeignKey(

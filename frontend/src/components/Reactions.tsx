@@ -26,6 +26,7 @@ const REACTION_EMOJIS: Record<ReactionType, string> = {
   surprised: "\u{1F62E}",
   sad: "\u{1F622}",
   celebrate: "\u{1F389}",
+  claim: "\u{1F64B}",
 }
 
 const REACTION_LABELS: Record<ReactionType, string> = {
@@ -35,6 +36,7 @@ const REACTION_LABELS: Record<ReactionType, string> = {
   surprised: "Overrasket",
   sad: "Ked af det",
   celebrate: "Fejrer",
+  claim: "Jeg tager den",
 }
 
 interface ReactionsProps {
@@ -76,6 +78,7 @@ export default function Reactions({
     "surprised",
     "sad",
     "celebrate",
+    "claim",
   ]
 
   return (
@@ -195,7 +198,7 @@ export default function Reactions({
           </Tooltip>
         </Popover.Target>
         <Popover.Dropdown p="xs">
-          <SimpleGrid cols={6} spacing="xs">
+          <SimpleGrid cols={7} spacing="xs">
             {allReactionTypes.map((type) => {
               const existingReaction = reactions.find(
                 (r) => r.reaction_type === type,
