@@ -893,8 +893,24 @@ function DayRegistrationCard({
   }, [adultsMeat, adultsVeg, children, diningOption, seatingTime, isActive])
 
   const handleEatingChange = (val: string) => {
-    setIsActive(val === "yes")
+    const eating = val === "yes"
+    setIsActive(eating)
+    // Restore default portions when switching back to eating
+    if (eating && adultsMeat === 0 && adultsVeg === 0 && children === 0) {
+      if (isWednesday) {
+        setAdultsMeat(houseCount)
+      } else {
+        setAdultsVeg(houseCount)
+      }
+    }
   }
+
+  // Auto-switch to "spiser ikke" when all portions are set to 0
+  useEffect(() => {
+    if (isActive && adultsMeat === 0 && adultsVeg === 0 && children === 0) {
+      setIsActive(false)
+    }
+  }, [adultsMeat, adultsVeg, children, isActive])
 
   const handleOpenSellModal = () => {
     setSellMeat(availablePortions.adults_meat)
