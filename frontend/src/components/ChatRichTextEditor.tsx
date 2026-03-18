@@ -38,6 +38,12 @@ import { saveDraft, loadDraft, clearDraft } from "../utils/draftStorage"
 import { usersApi } from "../api/users"
 import type { MentionUser } from "../types"
 import { filterEmojis, prefetchEmojis, type EmojiItem } from "./emojiData"
+import GiphyPicker, { type GiphyAnchor } from "./GiphyPicker"
+
+interface ChatGiphyState {
+  query: string
+  anchor: GiphyAnchor
+}
 
 interface ChatRichTextEditorProps {
   content: string
@@ -102,6 +108,9 @@ export default function ChatRichTextEditor({
   const [selectedEmojiIndex, setSelectedEmojiIndex] = useState(0)
   const emojiPopoverOpen = emojiQuery !== null && emojiSuggestions.length > 0
 
+  // Giphy state
+  const [giphyState, setGiphyState] = useState<ChatGiphyState | null>(null)
+
   // Kick off emoji data load in the background so it's ready when needed.
   useEffect(() => {
     prefetchEmojis()
@@ -130,12 +139,13 @@ export default function ChatRichTextEditor({
     return ids
   }
 
-  // Clear mention state when content is reset to empty (after send)
+  // Clear mention/giphy state when content is reset to empty (after send)
   useEffect(() => {
     if (!content) {
       mentionedIdsRef.current = new Map()
       setMentionQuery(null)
       setMentionSuggestions([])
+      setGiphyState(null)
     }
   }, [content])
 
@@ -306,6 +316,18 @@ export default function ChatRichTextEditor({
         setEmojiSuggestions([])
       }
     }
+
+    // Giphy detection — independent of mention/emoji triggers
+    const giphyMatch = beforeCursor.match(/\/giphy\s+(\S+)$/)
+    if (giphyMatch) {
+      const rect = textarea.getBoundingClientRect()
+      setGiphyState({
+        query: giphyMatch[1],
+        anchor: { left: rect.left, top: rect.top, bottom: rect.bottom },
+      })
+    } else {
+      setGiphyState(null)
+    }
   }
 
   const applyEmoji = (emoji: EmojiItem) => {
@@ -353,7 +375,41 @@ export default function ChatRichTextEditor({
     })
   }
 
+  const handleGiphyInsert = (url: string) => {
+    const textarea = textareaRef.current
+    const cursor = textarea?.selectionStart ?? content.length
+    const beforeCursor = content.slice(0, cursor)
+    const afterCursor = content.slice(cursor)
+    const replaced = beforeCursor.replace(/\/giphy\s+\S+$/, url)
+    const newContent = replaced + afterCursor
+    onChange(newContent)
+    setGiphyState(null)
+    requestAnimationFrame(() => {
+      textarea?.focus()
+      textarea?.setSelectionRange(replaced.length, replaced.length)
+    })
+  }
+
+  const handleGiphyCancel = () => {
+    const textarea = textareaRef.current
+    const cursor = textarea?.selectionStart ?? content.length
+    const beforeCursor = content.slice(0, cursor)
+    const afterCursor = content.slice(cursor)
+    const replaced = beforeCursor.replace(/\/giphy\s+\S+$/, "")
+    onChange(replaced + afterCursor)
+    setGiphyState(null)
+    requestAnimationFrame(() => {
+      textarea?.focus()
+      textarea?.setSelectionRange(replaced.length, replaced.length)
+    })
+  }
+
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Handle giphy picker dismiss
+    if (giphyState && event.key === "Escape") {
+      handleGiphyCancel()
+      return
+    }
     // Handle emoji popup navigation
     if (emojiPopoverOpen) {
       if (event.key === "ArrowUp") {
@@ -469,6 +525,14 @@ export default function ChatRichTextEditor({
 
   return (
     <Stack gap="xs">
+      {giphyState && (
+        <GiphyPicker
+          query={giphyState.query}
+          anchor={giphyState.anchor}
+          onInsert={handleGiphyInsert}
+          onCancel={handleGiphyCancel}
+        />
+      )}
       {draftRestored && (
         <Group gap={4}>
           <Text size="xs" c="dimmed" fs="italic">
