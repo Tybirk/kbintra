@@ -90,8 +90,13 @@ const mockSubgroup = {
   is_committee: false,
   is_subscribed: true,
   is_default: false,
+  is_main: false,
+  is_member: false,
+  member_count: 0,
+  members: [],
   thread_count: 2,
   unread_thread_count: 1,
+  created_at: "2026-01-01T10:00:00Z",
   last_activity_at: "2026-01-20T10:00:00Z",
 }
 

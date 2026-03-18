@@ -23,6 +23,7 @@ from .models import (
     Post,
     Reaction,
     Subgroup,
+    SubgroupMembership,
     SubgroupSubscription,
     Thread,
     ThreadMuteStatus,
@@ -41,6 +42,7 @@ from .serializers import (
     SubgroupCreateSerializer,
     SubgroupSerializer,
     SubgroupSubscriptionSerializer,
+    SubgroupUpdateSerializer,
     ThreadCreateSerializer,
     ThreadDetailSerializer,
     ThreadSerializer,
@@ -159,6 +161,117 @@ class UnsubscribeView(APIView):
             {"detail": "Successfully unsubscribed."},
             status=status.HTTP_200_OK,
         )
+
+
+class SubgroupJoinView(APIView):
+    """Join a subgroup (self or add another user)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request, slug: str) -> Response:
+        subgroup = get_object_or_404(Subgroup, slug=slug)
+        user_id = request.data.get("user_id")
+
+        if user_id:
+            # Adding another user — requires membership
+            if not SubgroupMembership.objects.filter(user=request.user, subgroup=subgroup).exists():
+                return Response(
+                    {"detail": "Du skal være medlem for at tilføje andre."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            from apps.users.models import User
+
+            target_user = get_object_or_404(User, pk=user_id)
+        else:
+            target_user = request.user
+
+        _, created = SubgroupMembership.objects.get_or_create(user=target_user, subgroup=subgroup)
+        # Auto-subscribe to notifications
+        SubgroupSubscription.objects.get_or_create(user=target_user, subgroup=subgroup)
+
+        if not created:
+            return Response({"detail": "Allerede medlem."}, status=status.HTTP_200_OK)
+        return Response({"detail": "Medlem tilføjet."}, status=status.HTTP_201_CREATED)
+
+
+class SubgroupLeaveView(APIView):
+    """Leave a subgroup (self or remove another user)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request, slug: str) -> Response:
+        subgroup = get_object_or_404(Subgroup, slug=slug)
+        user_id = request.data.get("user_id")
+
+        if user_id:
+            # Removing another user — requires membership
+            if not SubgroupMembership.objects.filter(user=request.user, subgroup=subgroup).exists():
+                return Response(
+                    {"detail": "Du skal være medlem for at fjerne andre."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            from apps.users.models import User
+
+            target_user = get_object_or_404(User, pk=user_id)
+        else:
+            target_user = request.user
+
+        deleted, _ = SubgroupMembership.objects.filter(user=target_user, subgroup=subgroup).delete()
+        if not deleted:
+            return Response({"detail": "Ikke medlem."}, status=status.HTTP_200_OK)
+        return Response({"detail": "Medlem fjernet."}, status=status.HTTP_200_OK)
+
+
+class SubgroupUpdateView(APIView):
+    """Update subgroup description (members only)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request: Request, slug: str) -> Response:
+        subgroup = get_object_or_404(Subgroup, slug=slug)
+        if not SubgroupMembership.objects.filter(user=request.user, subgroup=subgroup).exists():
+            return Response(
+                {"detail": "Kun medlemmer kan redigere beskrivelsen."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        serializer = SubgroupUpdateSerializer(subgroup, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"detail": "Beskrivelse opdateret."}, status=status.HTTP_200_OK)
+
+
+class SubgroupGroupChatView(APIView):
+    """Get or create a group conversation for all members."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request, slug: str) -> Response:
+        from apps.messaging.models import Conversation
+
+        subgroup = get_object_or_404(Subgroup, slug=slug)
+        if not SubgroupMembership.objects.filter(user=request.user, subgroup=subgroup).exists():
+            return Response(
+                {"detail": "Kun medlemmer kan bruge gruppebesked."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        member_ids = list(
+            SubgroupMembership.objects.filter(subgroup=subgroup).values_list("user_id", flat=True)
+        )
+
+        if subgroup.group_conversation:
+            # Sync participants
+            subgroup.group_conversation.participants.set(member_ids)
+            return Response(
+                {"conversation_id": subgroup.group_conversation.id}, status=status.HTTP_200_OK
+            )
+
+        # Create new conversation
+        conversation = Conversation.objects.create()
+        conversation.participants.set(member_ids)
+        subgroup.group_conversation = conversation
+        subgroup.save(update_fields=["group_conversation"])
+        return Response({"conversation_id": conversation.id}, status=status.HTTP_201_CREATED)
 
 
 class MySubscriptionsView(generics.ListAPIView):

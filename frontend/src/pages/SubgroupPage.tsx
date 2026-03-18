@@ -21,6 +21,9 @@ import {
   Anchor,
   Select,
   SimpleGrid,
+  Textarea,
+  Tooltip,
+  CloseButton,
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -42,6 +45,10 @@ import {
   IconCalendarEvent,
   IconLink,
   IconCopy,
+  IconUserPlus,
+  IconEdit,
+  IconX,
+  IconCheck,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -49,6 +56,7 @@ import "dayjs/locale/da"
 
 import { eventsApi } from "../api/events"
 import { forumApi } from "../api/forum"
+import { usersApi } from "../api/users"
 import { BackButton } from "../components/BackButton"
 import { clearDraft, loadDraft, saveDraft } from "../utils/draftStorage"
 import { filterFilesBySize } from "../config"
@@ -72,6 +80,7 @@ import type {
   CreatePollData,
   Folder,
   ForumFile,
+  Author,
 } from "../types"
 
 interface CreateThreadParams {
@@ -140,6 +149,49 @@ export default function SubgroupPage() {
 
   const { user } = useAuthStore()
   const [isCopying, setIsCopying] = useState(false)
+  const [isEditingDescription, setIsEditingDescription] = useState(false)
+  const [editedDescription, setEditedDescription] = useState("")
+  const [addMemberOpened, { open: openAddMember, close: closeAddMember }] =
+    useDisclosure(false)
+  const [addMemberSearch, setAddMemberSearch] = useState("")
+
+  const { data: allUsers } = useQuery({
+    queryKey: ["users"],
+    queryFn: () => usersApi.getUsers(),
+    enabled: addMemberOpened,
+  })
+
+  const joinMutation = useMutation({
+    mutationFn: (userId?: number) => forumApi.joinSubgroup(slug!, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["subgroup", slug] })
+      queryClient.invalidateQueries({ queryKey: ["subgroups"] })
+    },
+  })
+
+  const leaveMutation = useMutation({
+    mutationFn: (userId?: number) => forumApi.leaveSubgroup(slug!, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["subgroup", slug] })
+      queryClient.invalidateQueries({ queryKey: ["subgroups"] })
+    },
+  })
+
+  const updateDescriptionMutation = useMutation({
+    mutationFn: (description: string) =>
+      forumApi.updateSubgroup(slug!, { description }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["subgroup", slug] })
+      setIsEditingDescription(false)
+    },
+  })
+
+  const groupChatMutation = useMutation({
+    mutationFn: () => forumApi.openGroupChat(slug!),
+    onSuccess: (data) => {
+      navigate(`/beskeder?conversation=${data.conversation_id}`)
+    },
+  })
 
   const openUnread = threads?.some((t) => !t.is_closed && t.is_unread) ?? false
   const closedUnread = threads?.some((t) => t.is_closed && t.is_unread) ?? false
@@ -343,11 +395,92 @@ Skip any that are too vague to act on, and note why at the end.
               </Badge>
             )}
           </Group>
-          {subgroup.description && (
-            <Text c="dimmed">{subgroup.description}</Text>
+          {isEditingDescription ? (
+            <Group gap="xs" mt="xs">
+              <Textarea
+                value={editedDescription}
+                onChange={(e) => setEditedDescription(e.currentTarget.value)}
+                autosize
+                minRows={2}
+                style={{ flex: 1 }}
+              />
+              <ActionIcon
+                color="green"
+                variant="light"
+                onClick={() =>
+                  updateDescriptionMutation.mutate(editedDescription)
+                }
+                loading={updateDescriptionMutation.isPending}
+              >
+                <IconCheck size={16} />
+              </ActionIcon>
+              <ActionIcon
+                color="gray"
+                variant="light"
+                onClick={() => setIsEditingDescription(false)}
+              >
+                <IconX size={16} />
+              </ActionIcon>
+            </Group>
+          ) : (
+            <Group gap="xs">
+              {subgroup.description && (
+                <Text c="dimmed">{subgroup.description}</Text>
+              )}
+              {subgroup.is_member && (
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size="sm"
+                  onClick={() => {
+                    setEditedDescription(subgroup.description || "")
+                    setIsEditingDescription(true)
+                  }}
+                >
+                  <IconEdit size={14} />
+                </ActionIcon>
+              )}
+            </Group>
           )}
         </div>
         <Group gap="xs">
+          {subgroup.is_member ? (
+            <Button
+              variant="light"
+              color="red"
+              onClick={() => leaveMutation.mutate(undefined)}
+              loading={leaveMutation.isPending}
+            >
+              Forlad gruppe
+            </Button>
+          ) : (
+            <Button
+              variant="light"
+              onClick={() => joinMutation.mutate(undefined)}
+              loading={joinMutation.isPending}
+            >
+              Bliv medlem
+            </Button>
+          )}
+          {subgroup.is_member && (
+            <>
+              <Button
+                variant="light"
+                leftSection={<IconUserPlus size={16} />}
+                onClick={openAddMember}
+              >
+                Tilføj medlem
+              </Button>
+              <Button
+                variant="light"
+                leftSection={<IconMessage size={16} />}
+                onClick={() => groupChatMutation.mutate()}
+                loading={groupChatMutation.isPending}
+              >
+                Gruppebesked
+              </Button>
+            </>
+          )}
           {user?.is_staff && (
             <Button
               variant="light"
@@ -368,6 +501,93 @@ Skip any that are too vague to act on, and note why at the end.
           </Button>
         </Group>
       </Group>
+
+      {subgroup.members.length > 0 && (
+        <Box mb="md">
+          <Text size="sm" fw={500} mb="xs">
+            Medlemmer ({subgroup.member_count})
+          </Text>
+          <Group gap="xs">
+            {subgroup.members.map((member: Author) => (
+              <Tooltip
+                key={member.id}
+                label={`${member.first_name} ${member.last_name}`}
+              >
+                <Box
+                  style={{ position: "relative", cursor: "pointer" }}
+                  onClick={() => navigate(`/profil/${member.id}`)}
+                >
+                  <Avatar src={member.profile_picture} radius="xl" size="md">
+                    {member.first_name?.[0]}
+                    {member.last_name?.[0]}
+                  </Avatar>
+                  {subgroup.is_member && member.id !== user?.id && (
+                    <CloseButton
+                      size="xs"
+                      style={{
+                        position: "absolute",
+                        top: -4,
+                        right: -4,
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        leaveMutation.mutate(member.id)
+                      }}
+                    />
+                  )}
+                </Box>
+              </Tooltip>
+            ))}
+          </Group>
+        </Box>
+      )}
+
+      <Modal
+        opened={addMemberOpened}
+        onClose={closeAddMember}
+        title="Tilføj medlem"
+      >
+        <TextInput
+          placeholder="Søg efter navn..."
+          value={addMemberSearch}
+          onChange={(e) => setAddMemberSearch(e.currentTarget.value)}
+          mb="md"
+        />
+        <Stack gap="xs">
+          {allUsers?.results
+            ?.filter((u) => {
+              const name = `${u.first_name} ${u.last_name}`.toLowerCase()
+              return (
+                name.includes(addMemberSearch.toLowerCase()) &&
+                !subgroup.members.some((m: Author) => m.id === u.id)
+              )
+            })
+            .slice(0, 10)
+            .map((u) => (
+              <Group key={u.id} justify="space-between">
+                <Group gap="sm">
+                  <Avatar src={u.profile_picture} radius="xl" size="sm">
+                    {u.first_name?.[0]}
+                    {u.last_name?.[0]}
+                  </Avatar>
+                  <Text size="sm">
+                    {u.first_name} {u.last_name}
+                  </Text>
+                </Group>
+                <Button
+                  size="xs"
+                  variant="light"
+                  onClick={() => {
+                    joinMutation.mutate(u.id)
+                    closeAddMember()
+                  }}
+                >
+                  Tilføj
+                </Button>
+              </Group>
+            ))}
+        </Stack>
+      </Modal>
 
       {upcomingEvents && upcomingEvents.length > 0 && (
         <SimpleGrid cols={{ base: 1, sm: 2 }} mb="md">

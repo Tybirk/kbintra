@@ -132,6 +132,9 @@ export interface Subgroup {
   thread_count: number
   unread_thread_count: number
   is_subscribed: boolean
+  is_member: boolean
+  member_count: number
+  members: Author[]
   created_at: string
   last_activity_at: string | null
 }
