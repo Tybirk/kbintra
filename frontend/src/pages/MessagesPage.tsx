@@ -1126,6 +1126,14 @@ type MessageSegment = {
 
 const URL_REGEX = /https?:\/\/[^\s<>)"']+/g
 
+function isGiphyMediaUrl(url: string): boolean {
+  try {
+    return /^media\d*\.giphy\.com$/.test(new URL(url).hostname)
+  } catch {
+    return false
+  }
+}
+
 function truncateUrl(url: string, maxLen = 40): string {
   try {
     const parsed = new URL(url)
@@ -1162,7 +1170,20 @@ function MessageContent({
   return (
     <>
       {parts.map((part, i) =>
-        part.type === "link" ? (
+        part.type === "link" && isGiphyMediaUrl(part.value) ? (
+          <img
+            key={i}
+            src={part.value}
+            alt="GIF"
+            style={{
+              maxWidth: "200px",
+              borderRadius: "var(--mantine-radius-sm)",
+              display: "block",
+              marginTop: 4,
+              marginBottom: 4,
+            }}
+          />
+        ) : part.type === "link" ? (
           <Anchor
             key={i}
             href={part.value}
