@@ -691,7 +691,11 @@ function ConversationItem({
                 : isGroupChat
                   ? `${otherParticipants.find((p) => p.id === conversation.last_message?.sender_id)?.first_name || ""}: `
                   : ""}
-              {conversation.last_message.content.replace(/<[^>]*>/g, "")}
+              {conversation.last_message.content
+                .replace(/<\/[^>]+>/g, " ")
+                .replace(/<[^>]*>/g, "")
+                .replace(/\s+/g, " ")
+                .trim()}
             </Text>
           )}
         </div>
@@ -1236,7 +1240,11 @@ const MessageBubble = memo(function MessageBubble({
   }
 
   const handleCopy = () => {
-    const plainText = message.content.replace(/<[^>]*>/g, "")
+    const plainText = message.content
+      .replace(/<\/[^>]+>/g, " ")
+      .replace(/<[^>]*>/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
     navigator.clipboard.writeText(plainText).catch(() => {})
   }
 
