@@ -53,7 +53,7 @@ def _create_and_upload_db_snapshot() -> None:
     try:
         src = sqlite3.connect(db_path)
         dst = sqlite3.connect(tmp_path)
-        src.backup(dst)
+        src.backup(dst, pages=256, sleep=0.1)
         dst.close()
         src.close()
         logger.info("Database snapshot created: %s", tmp_path)
