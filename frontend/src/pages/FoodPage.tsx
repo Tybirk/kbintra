@@ -711,6 +711,13 @@ function DayRegistrationCard({
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
   const [statsOpen, setStatsOpen] = useState(true)
 
+  // Fade out "Gemt" indicator after 3 seconds
+  useEffect(() => {
+    if (!lastSaved) return
+    const timer = setTimeout(() => setLastSaved(null), 3000)
+    return () => clearTimeout(timer)
+  }, [lastSaved])
+
   const isLocked = isDateLocked(date)
 
   // Default to house inhabitant count if no registration exists
@@ -864,7 +871,7 @@ function DayRegistrationCard({
         createMutation.mutate(data)
       }
     },
-    500,
+    2000,
   )
 
   // Auto-save when values change. When locked, only dining_option and seating_time
