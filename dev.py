@@ -32,19 +32,31 @@ def prefix_stream(stream, prefix: str) -> None:
 
 def main() -> None:
     print(f"{BOLD}KB Intra — Dev Servers{RESET}\n")
-    print(f"  Backend:  http://localhost:7000")
-    print(f"  Frontend: http://localhost:5173")
-    print(f"  Press Ctrl+C to stop\n")
+    print("  Backend:  http://localhost:7000")
+    print("  Frontend: http://localhost:5173")
+    print("  Press Ctrl+C to stop\n")
 
     backend_prefix = f"{BLUE}[backend]{RESET}  "
     frontend_prefix = f"{MAGENTA}[frontend]{RESET} "
 
+    _shell = sys.platform == "win32"
+
     backend = subprocess.Popen(
-        ["uv", "run", "daphne", "-b", "0.0.0.0", "-p", "7000", "config.asgi:application"],
+        [
+            "uv",
+            "run",
+            "daphne",
+            "-b",
+            "0.0.0.0",
+            "-p",
+            "7000",
+            "config.asgi:application",
+        ],
         cwd=BACKEND,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        shell=_shell,
     )
 
     frontend = subprocess.Popen(
@@ -53,6 +65,7 @@ def main() -> None:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        shell=_shell,
     )
 
     procs = [backend, frontend]
