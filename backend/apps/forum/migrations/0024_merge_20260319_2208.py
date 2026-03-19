@@ -4,11 +4,9 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('forum', '0023_alter_reaction_reaction_type'),
-        ('forum', '0023_subgroup_group_conversation_subgroupmembership'),
+        ("forum", "0023_alter_reaction_reaction_type"),
+        ("forum", "0023_subgroup_group_conversation_subgroupmembership"),
     ]
 
-    operations = [
-    ]
+    operations = []

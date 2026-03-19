@@ -131,7 +131,7 @@ DATABASES = {
         "NAME": DATA_DIR / "db.sqlite3",
         "OPTIONS": {
             "timeout": 20,
-            "init_command": "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;", # Use WAL mode for better concurrency; full sync for durability. Init command is supported since django 5.1 for sqlite3!  We use Django 5.2+
+            "init_command": "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;",  # Use WAL mode for better concurrency; full sync for durability. Init command is supported since django 5.1 for sqlite3!  We use Django 5.2+
         },
     }
 }

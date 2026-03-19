@@ -105,14 +105,10 @@ class SubgroupListView(generics.ListCreateAPIView):
             )
             context["read_status_map"] = dict(statuses)
             context["subscribed_subgroup_ids"] = set(
-                SubgroupSubscription.objects.filter(user=user).values_list(
-                    "subgroup_id", flat=True
-                )
+                SubgroupSubscription.objects.filter(user=user).values_list("subgroup_id", flat=True)
             )
             context["member_subgroup_ids"] = set(
-                SubgroupMembership.objects.filter(user=user).values_list(
-                    "subgroup_id", flat=True
-                )
+                SubgroupMembership.objects.filter(user=user).values_list("subgroup_id", flat=True)
             )
         return context
 
@@ -140,14 +136,10 @@ class SubgroupDetailView(generics.RetrieveAPIView):
         user = self.request.user
         if user.is_authenticated:
             context["subscribed_subgroup_ids"] = set(
-                SubgroupSubscription.objects.filter(user=user).values_list(
-                    "subgroup_id", flat=True
-                )
+                SubgroupSubscription.objects.filter(user=user).values_list("subgroup_id", flat=True)
             )
             context["member_subgroup_ids"] = set(
-                SubgroupMembership.objects.filter(user=user).values_list(
-                    "subgroup_id", flat=True
-                )
+                SubgroupMembership.objects.filter(user=user).values_list("subgroup_id", flat=True)
             )
         return context
 
