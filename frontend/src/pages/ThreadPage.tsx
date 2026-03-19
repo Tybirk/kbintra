@@ -113,6 +113,7 @@ const ReplyForm = memo(function ReplyForm({
 
   const isEmpty =
     (!content.trim() || content === "<p></p>") &&
+    !content.includes("<img") &&
     attachments.length === 0 &&
     !pollData
 

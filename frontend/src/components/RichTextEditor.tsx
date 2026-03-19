@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, lazy, Suspense } from "react"
 import { useEditor } from "@tiptap/react"
 import { mergeAttributes, Extension } from "@tiptap/core"
+import type { Editor } from "@tiptap/core"
 import Suggestion from "@tiptap/suggestion"
 import StarterKit from "@tiptap/starter-kit"
+import Image from "@tiptap/extension-image"
 import Link from "@tiptap/extension-link"
 import Mention from "@tiptap/extension-mention"
 import Placeholder from "@tiptap/extension-placeholder"
@@ -13,6 +15,29 @@ import { saveDraft, loadDraft, clearDraft } from "../utils/draftStorage"
 import { mentionSuggestion } from "./mentionSuggestion"
 import { emojiSuggestion } from "./emojiSuggestion"
 import { prefetchEmojis } from "./emojiData"
+import GiphyPicker, { type GiphyAnchor } from "./GiphyPicker"
+
+interface GiphyState {
+  query: string
+  anchor: GiphyAnchor
+  from: number
+}
+
+function detectGiphy(editor: Editor, setter: (s: GiphyState | null) => void) {
+  if (!editor.state.selection.empty) {
+    setter(null)
+    return
+  }
+  const { from } = editor.state.selection
+  const text = editor.state.doc.textBetween(0, from, "\n")
+  const match = text.match(/\/giphy\s+(\S+)$/)
+  if (match) {
+    const coords = editor.view.coordsAtPos(from)
+    setter({ query: match[1], anchor: coords, from })
+  } else {
+    setter(null)
+  }
+}
 
 const EmojiSuggestionExtension = Extension.create({
   name: "emojiSuggestion",
@@ -78,6 +103,9 @@ export default function RichTextEditor({
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [draftRestored, setDraftRestored] = useState(false)
+  const [giphyState, setGiphyState] = useState<GiphyState | null>(null)
+  const setGiphyStateRef = useRef(setGiphyState)
+  setGiphyStateRef.current = setGiphyState
   // Track which draftKey we've already loaded to avoid re-running on re-renders
   const loadedForKeyRef = useRef<string | null>(null)
   // Track the last HTML emitted via onUpdate so we can skip unnecessary getHTML() calls
@@ -86,6 +114,7 @@ export default function RichTextEditor({
   const editor = useEditor({
     extensions: [
       StarterKit,
+      Image.configure({ inline: true }),
       Link.extend({
         renderHTML({ HTMLAttributes }) {
           const href: string = HTMLAttributes.href ?? ""
@@ -146,6 +175,10 @@ export default function RichTextEditor({
           saveDraft(key, html)
         }, 1500)
       }
+      detectGiphy(editor, setGiphyStateRef.current)
+    },
+    onSelectionUpdate: ({ editor }) => {
+      detectGiphy(editor, setGiphyStateRef.current)
     },
     editorProps: {
       handlePaste(_view, event) {
@@ -220,6 +253,31 @@ export default function RichTextEditor({
     }
   }, [])
 
+  const handleGiphyInsert = (url: string) => {
+    if (!giphyState || !editor) return
+    const { query, from } = giphyState
+    const triggerLen = "/giphy ".length + query.length
+    editor
+      .chain()
+      .focus()
+      .deleteRange({ from: from - triggerLen, to: from })
+      .setImage({ src: url })
+      .run()
+    setGiphyState(null)
+  }
+
+  const handleGiphyCancel = () => {
+    if (!giphyState || !editor) return
+    const { query, from } = giphyState
+    const triggerLen = "/giphy ".length + query.length
+    editor
+      .chain()
+      .focus()
+      .deleteRange({ from: from - triggerLen, to: from })
+      .run()
+    setGiphyState(null)
+  }
+
   const handleEmojiSelect = (emoji: string) => {
     editor?.chain().focus().insertContent(emoji).run()
   }
@@ -232,6 +290,14 @@ export default function RichTextEditor({
 
   return (
     <>
+      {giphyState && (
+        <GiphyPicker
+          query={giphyState.query}
+          anchor={giphyState.anchor}
+          onInsert={handleGiphyInsert}
+          onCancel={handleGiphyCancel}
+        />
+      )}
       <MantineRTE editor={editor} style={{ minHeight }} labels={daLabels}>
         <MantineRTE.Toolbar sticky stickyOffset={60}>
           <MantineRTE.ControlsGroup>

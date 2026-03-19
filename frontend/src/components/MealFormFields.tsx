@@ -67,7 +67,10 @@ export function MealFormFields({
               <NumberInput
                 label="Voksne (kød)"
                 value={adultsMeatInput}
-                onChange={setAdultsMeatInput}
+                onChange={(val) => {
+                  setAdultsMeatInput(val)
+                  if (typeof val === "number") onAdultsMeatChange(val)
+                }}
                 onBlur={() => {
                   const val =
                     adultsMeatInput === "" ? 0 : Number(adultsMeatInput)
@@ -83,7 +86,10 @@ export function MealFormFields({
               <NumberInput
                 label="Voksne (vegetar)"
                 value={adultsVegInput}
-                onChange={setAdultsVegInput}
+                onChange={(val) => {
+                  setAdultsVegInput(val)
+                  if (typeof val === "number") onAdultsVegChange(val)
+                }}
                 onBlur={() => {
                   const val = adultsVegInput === "" ? 0 : Number(adultsVegInput)
                   setAdultsVegInput(val)
@@ -100,7 +106,13 @@ export function MealFormFields({
             <NumberInput
               label="Voksne"
               value={adultsVegInput}
-              onChange={setAdultsVegInput}
+              onChange={(val) => {
+                setAdultsVegInput(val)
+                if (typeof val === "number") {
+                  onAdultsVegChange(val)
+                  onAdultsMeatChange(0)
+                }
+              }}
               onBlur={() => {
                 const val = adultsVegInput === "" ? 0 : Number(adultsVegInput)
                 setAdultsVegInput(val)
@@ -117,7 +129,10 @@ export function MealFormFields({
           <NumberInput
             label="Børn"
             value={childrenInput}
-            onChange={setChildrenInput}
+            onChange={(val) => {
+              setChildrenInput(val)
+              if (typeof val === "number") onChildrenChange(val)
+            }}
             onBlur={() => {
               const val = childrenInput === "" ? 0 : Number(childrenInput)
               setChildrenInput(val)
