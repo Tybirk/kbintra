@@ -268,7 +268,7 @@ class DailyRegistrationStatsView(APIView):
                     else:
                         bucket = "eat_in_1830"
                 else:
-                    house_count = h.inhabitants.count()
+                    house_count = len(h.inhabitants.all())
                     if house_count == 0:
                         continue
                     meat, veg, children = 0, house_count, 0
@@ -360,7 +360,7 @@ class MealRegistrationListCreateView(generics.ListCreateAPIView):
         return MealRegistrationSerializer
 
     def get_queryset(self) -> QuerySet[MealRegistration]:
-        queryset = MealRegistration.objects.filter(user=self.request.user)
+        queryset = MealRegistration.objects.filter(user=self.request.user).select_related("house")
         week_start = self.request.query_params.get("week_start")
         if week_start:
             try:
@@ -421,7 +421,7 @@ class MealRegistrationDetailView(generics.RetrieveUpdateDestroyAPIView):
         return MealRegistrationSerializer
 
     def get_queryset(self) -> QuerySet[MealRegistration]:
-        return MealRegistration.objects.filter(user=self.request.user)
+        return MealRegistration.objects.filter(user=self.request.user).select_related("house")
 
 
 # Food Ticket Views

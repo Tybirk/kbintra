@@ -135,7 +135,7 @@ class ConversationSerializer(serializers.ModelSerializer):
     def get_other_participants(self, obj: Conversation) -> list:
         request = self.context.get("request")
         if request and request.user.is_authenticated:
-            others = obj.participants.exclude(id=request.user.id)
+            others = [p for p in obj.participants.all() if p.id != request.user.id]
             return ParticipantSerializer(others, many=True).data
         return []
 

@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.conf import settings
+from django.db import transaction
 from django.db.models import QuerySet
 
 from apps.users.models import User
@@ -378,43 +379,54 @@ def create_notification(
                 group_key=group_key,
             )
 
-        # Send real-time notification via WebSocket
-        try:
-            send_notification_to_websocket(notification)
-        except Exception:
-            logger.exception("Failed to send WebSocket notification to user %s", user.id)
+    # Defer side effects (WebSocket, email, push) until the transaction commits.
+    # If no transaction is active, on_commit runs the callback immediately.
+    _notification_id = notification.id if notification else None
+    _user_id = user.id
+    _related_user_id = related_user.id if related_user else None
 
-    # Enqueue email and push notifications as background tasks
-    from apps.notifications.tasks import send_email_task, send_push_task
+    def _dispatch_side_effects() -> None:
+        if _notification_id is not None:
+            try:
+                n = Notification.objects.get(id=_notification_id)
+                send_notification_to_websocket(n)
+            except Notification.DoesNotExist:
+                pass
+            except Exception:
+                logger.exception("Failed to send WebSocket notification to user %s", _user_id)
 
-    logger.info(
-        "Enqueuing email+push tasks for user=%d type=%s title='%s'",
-        user.id,
-        notification_type,
-        title,
-    )
-    email_result = send_email_task(
-        user.id,
-        notification_type,
-        title,
-        message,
-        link,
-        related_user.id if related_user else None,
-        html_content,
-    )
-    push_result = send_push_task(
-        user.id,
-        notification_type,
-        title,
-        message,
-        link,
-    )
-    logger.info(
-        "Enqueued tasks for user=%d: email=%s push=%s",
-        user.id,
-        email_result,
-        push_result,
-    )
+        from apps.notifications.tasks import send_email_task, send_push_task
+
+        logger.info(
+            "Enqueuing email+push tasks for user=%d type=%s title='%s'",
+            _user_id,
+            notification_type,
+            title,
+        )
+        email_result = send_email_task(
+            _user_id,
+            notification_type,
+            title,
+            message,
+            link,
+            _related_user_id,
+            html_content,
+        )
+        push_result = send_push_task(
+            _user_id,
+            notification_type,
+            title,
+            message,
+            link,
+        )
+        logger.info(
+            "Enqueued tasks for user=%d: email=%s push=%s",
+            _user_id,
+            email_result,
+            push_result,
+        )
+
+    transaction.on_commit(_dispatch_side_effects)
 
     return notification
 
@@ -462,20 +474,21 @@ def notify_new_announcement(
     Returns the count of notifications created.
     """
     count = 0
-    for user in recipients.exclude(id=author.id):
-        notification = create_notification(
-            user=user,
-            notification_type=NotificationType.NEW_ANNOUNCEMENT,
-            title="Nyt opslag",
-            message=announcement_title,
-            link="/opslag",
-            related_user=author,
-            html_content=f"<h3>{announcement_title}</h3>{announcement_content}"
-            if announcement_content
-            else None,
-        )
-        if notification:
-            count += 1
+    with transaction.atomic():
+        for user in recipients.exclude(id=author.id):
+            notification = create_notification(
+                user=user,
+                notification_type=NotificationType.NEW_ANNOUNCEMENT,
+                title="Nyt opslag",
+                message=announcement_title,
+                link="/opslag",
+                related_user=author,
+                html_content=f"<h3>{announcement_title}</h3>{announcement_content}"
+                if announcement_content
+                else None,
+            )
+            if notification:
+                count += 1
     return count
 
 
@@ -507,21 +520,22 @@ def notify_new_thread(
     subgroup_link = f"/forum/{subgroup_slug}"
 
     count = 0
-    for user in subscribers.exclude(id=author.id):
-        notification = create_notification(
-            user=user,
-            notification_type=NotificationType.NEW_THREAD,
-            title=f"Ny tråd i {subgroup_name}",
-            message=thread_title,
-            link=thread_link,
-            related_user=author,
-            html_content=f"<h3>{thread_title}</h3>{initial_post_content}"
-            if initial_post_content
-            else None,
-            group_key=subgroup_link,  # Aggregate new threads in same subgroup
-        )
-        if notification:
-            count += 1
+    with transaction.atomic():
+        for user in subscribers.exclude(id=author.id):
+            notification = create_notification(
+                user=user,
+                notification_type=NotificationType.NEW_THREAD,
+                title=f"Ny tråd i {subgroup_name}",
+                message=thread_title,
+                link=thread_link,
+                related_user=author,
+                html_content=f"<h3>{thread_title}</h3>{initial_post_content}"
+                if initial_post_content
+                else None,
+                group_key=subgroup_link,  # Aggregate new threads in same subgroup
+            )
+            if notification:
+                count += 1
     return count
 
 
@@ -653,17 +667,18 @@ def notify_food_ticket_available(
     Returns the count of notifications created.
     """
     count = 0
-    for user in recipients.exclude(id=owner.id):
-        notification = create_notification(
-            user=user,
-            notification_type=NotificationType.FOOD_TICKET,
-            title="Madbillet tilgængelig",
-            message=f"{owner.first_name} tilbyder {portions} portion(er) den {ticket_date}",
-            link="/mad/billetter",
-            related_user=owner,
-        )
-        if notification:
-            count += 1
+    with transaction.atomic():
+        for user in recipients.exclude(id=owner.id):
+            notification = create_notification(
+                user=user,
+                notification_type=NotificationType.FOOD_TICKET,
+                title="Madbillet tilgængelig",
+                message=f"{owner.first_name} tilbyder {portions} portion(er) den {ticket_date}",
+                link="/mad/billetter",
+                related_user=owner,
+            )
+            if notification:
+                count += 1
     return count
 
 
@@ -750,17 +765,18 @@ def notify_event_created(
     recipients = _get_event_recipients(event, exclude_user_id=author.id)
 
     count = 0
-    for user in recipients:
-        notification = create_notification(
-            user=user,
-            notification_type=NotificationType.EVENT_CREATED,
-            title=title_text,
-            message=message,
-            link=link,
-            related_user=author,
-        )
-        if notification:
-            count += 1
+    with transaction.atomic():
+        for user in recipients:
+            notification = create_notification(
+                user=user,
+                notification_type=NotificationType.EVENT_CREATED,
+                title=title_text,
+                message=message,
+                link=link,
+                related_user=author,
+            )
+            if notification:
+                count += 1
     return count
 
 
@@ -793,17 +809,18 @@ def notify_event_updated(
     )
 
     count = 0
-    for user in recipients:
-        notification = create_notification(
-            user=user,
-            notification_type=NotificationType.EVENT_UPDATED,
-            title=title_text,
-            message=message,
-            link=link,
-            related_user=updater,
-        )
-        if notification:
-            count += 1
+    with transaction.atomic():
+        for user in recipients:
+            notification = create_notification(
+                user=user,
+                notification_type=NotificationType.EVENT_UPDATED,
+                title=title_text,
+                message=message,
+                link=link,
+                related_user=updater,
+            )
+            if notification:
+                count += 1
     return count
 
 
@@ -838,17 +855,18 @@ def notify_event_cancelled(
     )
 
     count = 0
-    for user in recipients:
-        notification = create_notification(
-            user=user,
-            notification_type=NotificationType.EVENT_CANCELLED,
-            title=title_text,
-            message=message,
-            link=link,
-            related_user=canceller,
-        )
-        if notification:
-            count += 1
+    with transaction.atomic():
+        for user in recipients:
+            notification = create_notification(
+                user=user,
+                notification_type=NotificationType.EVENT_CANCELLED,
+                title=title_text,
+                message=message,
+                link=link,
+                related_user=canceller,
+            )
+            if notification:
+                count += 1
     return count
 
 
@@ -893,16 +911,17 @@ def notify_event_reminder(
     )
 
     count = 0
-    for user in recipients:
-        notification = create_notification(
-            user=user,
-            notification_type=NotificationType.EVENT_REMINDER,
-            title=title_text,
-            message=message,
-            link=link,
-        )
-        if notification:
-            count += 1
+    with transaction.atomic():
+        for user in recipients:
+            notification = create_notification(
+                user=user,
+                notification_type=NotificationType.EVENT_REMINDER,
+                title=title_text,
+                message=message,
+                link=link,
+            )
+            if notification:
+                count += 1
     return count
 
 
@@ -926,23 +945,24 @@ def notify_mentions(
     """
     skip_ids = set(exclude_user_ids) if exclude_user_ids else set()
     count = 0
-    for user_id in set(mentioned_user_ids):
-        if user_id == author.id or user_id in skip_ids:
-            continue
-        try:
-            user = User.objects.get(id=user_id, is_active=True)
-        except User.DoesNotExist:
-            continue
-        notification = create_notification(
-            user=user,
-            notification_type=NotificationType.MENTION,
-            title="Du er blevet nævnt",
-            message=f"{author.first_name} nævnte dig i {context_label}",
-            link=link,
-            related_user=author,
-        )
-        if notification:
-            count += 1
+    with transaction.atomic():
+        for user_id in set(mentioned_user_ids):
+            if user_id == author.id or user_id in skip_ids:
+                continue
+            try:
+                user = User.objects.get(id=user_id, is_active=True)
+            except User.DoesNotExist:
+                continue
+            notification = create_notification(
+                user=user,
+                notification_type=NotificationType.MENTION,
+                title="Du er blevet nævnt",
+                message=f"{author.first_name} nævnte dig i {context_label}",
+                link=link,
+                related_user=author,
+            )
+            if notification:
+                count += 1
     return count
 
 
@@ -959,17 +979,18 @@ def notify_announcement_updated(
     Returns the count of notifications created.
     """
     count = 0
-    for user in recipients.exclude(id=editor.id):
-        notification = create_notification(
-            user=user,
-            notification_type=NotificationType.ANNOUNCEMENT_UPDATED,
-            title="Vigtig post opdateret",
-            message=announcement_title,
-            link="/opslag",
-            related_user=editor,
-        )
-        if notification:
-            count += 1
+    with transaction.atomic():
+        for user in recipients.exclude(id=editor.id):
+            notification = create_notification(
+                user=user,
+                notification_type=NotificationType.ANNOUNCEMENT_UPDATED,
+                title="Vigtig post opdateret",
+                message=announcement_title,
+                link="/opslag",
+                related_user=editor,
+            )
+            if notification:
+                count += 1
     return count
 
 
@@ -1004,18 +1025,19 @@ def notify_subgroup_activity(
     notification_title = title or f"{replier.first_name} svarede i {subgroup_name}"
 
     count = 0
-    for user in subscribers.exclude(id=replier.id):
-        notification = create_notification(
-            user=user,
-            notification_type=NotificationType.SUBGROUP_ACTIVITY,
-            title=notification_title,
-            message=f'"{thread_title}": {preview}',
-            link=link,
-            related_user=replier,
-            group_key=subgroup_link,  # Aggregate activity in same subgroup
-        )
-        if notification:
-            count += 1
+    with transaction.atomic():
+        for user in subscribers.exclude(id=replier.id):
+            notification = create_notification(
+                user=user,
+                notification_type=NotificationType.SUBGROUP_ACTIVITY,
+                title=notification_title,
+                message=f'"{thread_title}": {preview}',
+                link=link,
+                related_user=replier,
+                group_key=subgroup_link,  # Aggregate activity in same subgroup
+            )
+            if notification:
+                count += 1
     return count
 
 

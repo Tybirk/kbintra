@@ -85,9 +85,12 @@ class SubgroupSerializer(serializers.ModelSerializer):
         ]
 
     def get_thread_count(self, obj: Subgroup) -> int:
-        return obj.threads.count()
+        return len(obj.threads.all())
 
     def get_is_subscribed(self, obj: Subgroup) -> bool:
+        subscribed_ids = self.context.get("subscribed_subgroup_ids")
+        if subscribed_ids is not None:
+            return obj.id in subscribed_ids
         request = self.context.get("request")
         if request and request.user.is_authenticated:
             return SubgroupSubscription.objects.filter(user=request.user, subgroup=obj).exists()
@@ -105,17 +108,19 @@ class SubgroupSerializer(serializers.ModelSerializer):
         return count
 
     def get_is_member(self, obj: Subgroup) -> bool:
+        member_ids = self.context.get("member_subgroup_ids")
+        if member_ids is not None:
+            return obj.id in member_ids
         request = self.context.get("request")
         if request and request.user.is_authenticated:
             return SubgroupMembership.objects.filter(user=request.user, subgroup=obj).exists()
         return False
 
     def get_member_count(self, obj: Subgroup) -> int:
-        return obj.memberships.count()
+        return len(obj.memberships.all())
 
     def get_members(self, obj: Subgroup) -> list[dict]:
-        memberships = obj.memberships.select_related("user").all()
-        return AuthorSerializer([m.user for m in memberships], many=True).data
+        return AuthorSerializer([m.user for m in obj.memberships.all()], many=True).data
 
 
 class SubgroupUpdateSerializer(serializers.ModelSerializer):
@@ -555,9 +560,14 @@ class ThreadSerializer(serializers.ModelSerializer):
         ]
 
     def get_post_count(self, obj: Thread) -> int:
+        if hasattr(obj, "post_count_annotation"):
+            return obj.post_count_annotation
         return obj.posts.count()
 
     def _get_last_post(self, obj: Thread) -> Post | None:
+        last_posts_map = self.context.get("last_posts_map")
+        if last_posts_map is not None:
+            return last_posts_map.get(obj.id)
         cache = getattr(self, "_last_post_cache", None)
         if cache is None:
             self._last_post_cache = cache = {}

@@ -6,6 +6,7 @@ import io
 import zipfile
 from typing import Any
 
+from django.db.models import Count, Max, Prefetch
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -85,7 +86,10 @@ class SubgroupListView(generics.ListCreateAPIView):
     """List all subgroups or create a new one."""
 
     permission_classes = [permissions.IsAuthenticated]
-    queryset = Subgroup.objects.prefetch_related("threads").all()
+    queryset = Subgroup.objects.prefetch_related(
+        "threads",
+        Prefetch("memberships", queryset=SubgroupMembership.objects.select_related("user")),
+    ).all()
 
     def get_serializer_class(self) -> type:
         if self.request.method == "POST":
@@ -100,6 +104,16 @@ class SubgroupListView(generics.ListCreateAPIView):
                 "thread_id", "last_read_at"
             )
             context["read_status_map"] = dict(statuses)
+            context["subscribed_subgroup_ids"] = set(
+                SubgroupSubscription.objects.filter(user=user).values_list(
+                    "subgroup_id", flat=True
+                )
+            )
+            context["member_subgroup_ids"] = set(
+                SubgroupMembership.objects.filter(user=user).values_list(
+                    "subgroup_id", flat=True
+                )
+            )
         return context
 
     def create(self, request: Request, *args: object, **kwargs: object) -> Response:
@@ -115,8 +129,27 @@ class SubgroupDetailView(generics.RetrieveAPIView):
 
     serializer_class = SubgroupSerializer
     permission_classes = [permissions.IsAuthenticated]
-    queryset = Subgroup.objects.all()
+    queryset = Subgroup.objects.prefetch_related(
+        "threads",
+        Prefetch("memberships", queryset=SubgroupMembership.objects.select_related("user")),
+    )
     lookup_field = "slug"
+
+    def get_serializer_context(self) -> dict:
+        context = super().get_serializer_context()
+        user = self.request.user
+        if user.is_authenticated:
+            context["subscribed_subgroup_ids"] = set(
+                SubgroupSubscription.objects.filter(user=user).values_list(
+                    "subgroup_id", flat=True
+                )
+            )
+            context["member_subgroup_ids"] = set(
+                SubgroupMembership.objects.filter(user=user).values_list(
+                    "subgroup_id", flat=True
+                )
+            )
+        return context
 
 
 class SubscribeView(APIView):
@@ -299,7 +332,11 @@ class ThreadListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self) -> Any:
         subgroup = get_object_or_404(Subgroup, slug=self.kwargs["slug"])
-        return Thread.objects.filter(subgroup=subgroup).select_related("author")
+        return (
+            Thread.objects.filter(subgroup=subgroup)
+            .select_related("author")
+            .annotate(post_count_annotation=Count("posts"))
+        )
 
     def get_serializer_context(self) -> dict:
         context = super().get_serializer_context()
@@ -319,6 +356,15 @@ class ThreadListCreateView(generics.ListCreateAPIView):
                 if last_read is None or thread.updated_at > last_read:
                     unread_ids.add(thread.id)
             context["unread_thread_ids"] = unread_ids
+            # Batch-load last post per thread (avoids N+1 in ThreadSerializer)
+            latest_post_ids = (
+                Post.objects.filter(thread__subgroup=subgroup)
+                .values("thread_id")
+                .annotate(latest_id=Max("id"))
+                .values_list("latest_id", flat=True)
+            )
+            latest_posts = Post.objects.filter(id__in=latest_post_ids).select_related("author")
+            context["last_posts_map"] = {p.thread_id: p for p in latest_posts}
         return context
 
 
@@ -337,10 +383,12 @@ class ThreadDetailView(generics.RetrieveAPIView):
     def retrieve(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         response = super().retrieve(request, *args, **kwargs)
         thread = self.get_object()
-        ThreadReadStatus.objects.update_or_create(
-            user=request.user,
-            thread=thread,
-            defaults={"last_read_at": timezone.now()},
+        now = timezone.now()
+        ThreadReadStatus.objects.bulk_create(
+            [ThreadReadStatus(user=request.user, thread=thread, last_read_at=now)],
+            update_conflicts=True,
+            unique_fields=["user", "thread"],
+            update_fields=["last_read_at"],
         )
         return response
 
@@ -367,10 +415,12 @@ class ThreadDetailBySlugView(generics.RetrieveAPIView):
         if thread is None:
             thread = get_object_or_404(qs, slug=thread_slug)
 
-        ThreadReadStatus.objects.update_or_create(
-            user=self.request.user,
-            thread=thread,
-            defaults={"last_read_at": timezone.now()},
+        now = timezone.now()
+        ThreadReadStatus.objects.bulk_create(
+            [ThreadReadStatus(user=self.request.user, thread=thread, last_read_at=now)],
+            update_conflicts=True,
+            unique_fields=["user", "thread"],
+            update_fields=["last_read_at"],
         )
         return thread
 

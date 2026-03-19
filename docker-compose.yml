@@ -134,6 +134,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      backend:
+        condition: service_healthy
     stop_signal: SIGINT
     stop_grace_period: 30s
     mem_limit: 1024m
