@@ -16,7 +16,6 @@ from .models import (
     PostAttachment,
     Reaction,
     Subgroup,
-    SubgroupMembership,
     SubgroupSubscription,
     Thread,
 )
@@ -60,9 +59,6 @@ class SubgroupSerializer(serializers.ModelSerializer):
     thread_count = serializers.SerializerMethodField()
     is_subscribed = serializers.SerializerMethodField()
     unread_thread_count = serializers.SerializerMethodField()
-    is_member = serializers.SerializerMethodField()
-    member_count = serializers.SerializerMethodField()
-    members = serializers.SerializerMethodField()
 
     class Meta:
         model = Subgroup
@@ -77,9 +73,6 @@ class SubgroupSerializer(serializers.ModelSerializer):
             "thread_count",
             "unread_thread_count",
             "is_subscribed",
-            "is_member",
-            "member_count",
-            "members",
             "created_at",
             "last_activity_at",
         ]
@@ -106,21 +99,6 @@ class SubgroupSerializer(serializers.ModelSerializer):
             if last_read is None or thread.updated_at > last_read:
                 count += 1
         return count
-
-    def get_is_member(self, obj: Subgroup) -> bool:
-        member_ids = self.context.get("member_subgroup_ids")
-        if member_ids is not None:
-            return obj.id in member_ids
-        request = self.context.get("request")
-        if request and request.user.is_authenticated:
-            return SubgroupMembership.objects.filter(user=request.user, subgroup=obj).exists()
-        return False
-
-    def get_member_count(self, obj: Subgroup) -> int:
-        return len(obj.memberships.all())
-
-    def get_members(self, obj: Subgroup) -> list[dict]:
-        return AuthorSerializer([m.user for m in obj.memberships.all()], many=True).data
 
 
 class SubgroupUpdateSerializer(serializers.ModelSerializer):

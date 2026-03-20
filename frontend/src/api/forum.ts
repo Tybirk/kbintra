@@ -410,40 +410,13 @@ export const forumApi = {
     await apiClient.delete(`/forum/polls/${pollId}/`)
   },
 
-  // Membership
-  joinSubgroup: async (slug: string, userId?: number): Promise<{
-    detail: string
-  }> => {
-    const response = await apiClient.post(
-      `/forum/subgroups/${slug}/join/`,
-      userId ? { user_id: userId } : undefined,
-    )
-    return response.data
-  },
-
-  leaveSubgroup: async (slug: string, userId?: number): Promise<{
-    detail: string
-  }> => {
-    const response = await apiClient.post(
-      `/forum/subgroups/${slug}/leave/`,
-      userId ? { user_id: userId } : undefined,
-    )
-    return response.data
-  },
-
+  // Subgroup management
   updateSubgroup: async (slug: string, data: { description: string }): Promise<{
     detail: string
   }> => {
     const response = await apiClient.patch(
       `/forum/subgroups/${slug}/update/`,
       data,
-    )
-    return response.data
-  },
-
-  openGroupChat: async (slug: string): Promise<{ conversation_id: number }> => {
-    const response = await apiClient.post(
-      `/forum/subgroups/${slug}/group-chat/`,
     )
     return response.data
   },

@@ -28,13 +28,6 @@ class Subgroup(models.Model):
         default=False,
         help_text="If true, this subgroup appears at the very top (e.g., Fælles).",
     )
-    group_conversation = models.OneToOneField(
-        "messaging.Conversation",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="subgroup",
-    )
     created_at = models.DateTimeField(auto_now_add=True)
     last_activity_at = models.DateTimeField(
         null=True,
@@ -83,36 +76,6 @@ class SubgroupSubscription(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user} -> {self.subgroup}"
-
-
-class SubgroupMembership(models.Model):
-    """
-    User membership in a forum subgroup.
-    Members can see other members, edit group description, and use group chat.
-    """
-
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="subgroup_memberships",
-    )
-    subgroup = models.ForeignKey(
-        Subgroup,
-        on_delete=models.CASCADE,
-        related_name="memberships",
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=["user", "subgroup"], name="unique_user_subgroup_membership"
-            ),
-        ]
-        ordering = ["user__first_name", "user__last_name"]
-
-    def __str__(self) -> str:
-        return f"{self.user} member of {self.subgroup}"
 
 
 class Thread(models.Model):

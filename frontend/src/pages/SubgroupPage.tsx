@@ -21,9 +21,7 @@ import {
   Anchor,
   Select,
   SimpleGrid,
-  CloseButton,
   Typography,
-  ScrollArea,
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -45,11 +43,9 @@ import {
   IconCalendarEvent,
   IconLink,
   IconCopy,
-  IconUserPlus,
   IconEdit,
   IconX,
   IconCheck,
-  IconSearch,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -57,7 +53,6 @@ import "dayjs/locale/da"
 
 import { eventsApi } from "../api/events"
 import { forumApi } from "../api/forum"
-import { apiClient } from "../api/client"
 import { BackButton } from "../components/BackButton"
 import { clearDraft, loadDraft, saveDraft } from "../utils/draftStorage"
 import { filterFilesBySize } from "../config"
@@ -81,8 +76,6 @@ import type {
   CreatePollData,
   Folder,
   ForumFile,
-  Author,
-  User,
 } from "../types"
 
 interface CreateThreadParams {
@@ -153,38 +146,14 @@ export default function SubgroupPage() {
   const [isCopying, setIsCopying] = useState(false)
   const [isEditingDescription, setIsEditingDescription] = useState(false)
   const [editedDescription, setEditedDescription] = useState("")
-  const [addMemberOpened, { open: openAddMember, close: closeAddMember }] =
-    useDisclosure(false)
-
-  const joinMutation = useMutation({
-    mutationFn: (userId?: number) => forumApi.joinSubgroup(slug!, userId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["subgroup", slug] })
-      queryClient.invalidateQueries({ queryKey: ["subgroups"] })
-    },
-  })
-
-  const leaveMutation = useMutation({
-    mutationFn: (userId?: number) => forumApi.leaveSubgroup(slug!, userId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["subgroup", slug] })
-      queryClient.invalidateQueries({ queryKey: ["subgroups"] })
-    },
-  })
 
   const updateDescriptionMutation = useMutation({
     mutationFn: (description: string) =>
       forumApi.updateSubgroup(slug!, { description }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["subgroup", slug] })
+      queryClient.invalidateQueries({ queryKey: ["subgroups"] })
       setIsEditingDescription(false)
-    },
-  })
-
-  const groupChatMutation = useMutation({
-    mutationFn: () => forumApi.openGroupChat(slug!),
-    onSuccess: (data) => {
-      navigate(`/beskeder/${data.conversation_id}`)
     },
   })
 
@@ -380,7 +349,7 @@ Skip any that are too vague to act on, and note why at the end.
     <>
       <BackButton to="/forum" label="Tilbage til forum" />
 
-      <Stack mb="md" gap="md">
+      <Group justify="space-between" mb="md">
         <div>
           <Group gap="xs">
             <Title order={1}>{subgroup.name}</Title>
@@ -420,120 +389,32 @@ Skip any that are too vague to act on, and note why at the end.
             </Stack>
           ) : (
             <Group gap="xs" align="flex-start">
-              {subgroup.description && (
+              {subgroup.description ? (
                 <Typography style={{ flex: 1 }}>
                   <div
                     dangerouslySetInnerHTML={{ __html: subgroup.description }}
                   />
                 </Typography>
+              ) : (
+                <Text c="dimmed" size="sm" style={{ flex: 1 }}>
+                  Ingen beskrivelse
+                </Text>
               )}
-              {subgroup.is_member && (
-                <ActionIcon
-                  variant="subtle"
-                  color="gray"
-                  size="sm"
-                  onClick={() => {
-                    setEditedDescription(subgroup.description || "")
-                    setIsEditingDescription(true)
-                  }}
-                >
-                  <IconEdit size={14} />
-                </ActionIcon>
-              )}
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                size="sm"
+                onClick={() => {
+                  setEditedDescription(subgroup.description || "")
+                  setIsEditingDescription(true)
+                }}
+              >
+                <IconEdit size={14} />
+              </ActionIcon>
             </Group>
           )}
         </div>
-
-        {subgroup.members.length > 0 && (
-          <Box>
-            <Text size="sm" fw={500} mb="xs">
-              Medlemmer ({subgroup.member_count})
-            </Text>
-            <Group gap="md">
-              {subgroup.members.map((member: Author) => (
-                <Box
-                  key={member.id}
-                  style={{ position: "relative", cursor: "pointer" }}
-                  onClick={() => navigate(`/profil/${member.id}`)}
-                >
-                  <Stack gap={4} align="center">
-                    <Box style={{ position: "relative" }}>
-                      <Avatar
-                        src={member.profile_picture}
-                        radius="xl"
-                        size="md"
-                      >
-                        {member.first_name?.[0]}
-                        {member.last_name?.[0]}
-                      </Avatar>
-                      {subgroup.is_member && member.id !== user?.id && (
-                        <CloseButton
-                          size="xs"
-                          style={{
-                            position: "absolute",
-                            top: -4,
-                            right: -4,
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            leaveMutation.mutate(member.id)
-                          }}
-                        />
-                      )}
-                    </Box>
-                    <Text
-                      size="xs"
-                      ta="center"
-                      style={{ maxWidth: 60 }}
-                      lineClamp={2}
-                    >
-                      {member.first_name} {member.last_name}
-                    </Text>
-                  </Stack>
-                </Box>
-              ))}
-            </Group>
-          </Box>
-        )}
-
         <Group gap="xs">
-          {subgroup.is_member ? (
-            <Button
-              variant="light"
-              color="red"
-              onClick={() => leaveMutation.mutate(undefined)}
-              loading={leaveMutation.isPending}
-            >
-              Forlad gruppe
-            </Button>
-          ) : (
-            <Button
-              variant="light"
-              onClick={() => joinMutation.mutate(undefined)}
-              loading={joinMutation.isPending}
-            >
-              Bliv medlem
-            </Button>
-          )}
-          {subgroup.is_member && (
-            <>
-              <Button
-                variant="light"
-                leftSection={<IconUserPlus size={16} />}
-                onClick={openAddMember}
-              >
-                Tilføj medlem
-              </Button>
-              <Button
-                variant="light"
-                leftSection={<IconMessage size={16} />}
-                onClick={() => groupChatMutation.mutate()}
-                loading={groupChatMutation.isPending}
-              >
-                Gruppebesked
-              </Button>
-            </>
-          )}
           {user?.is_staff && (
             <Button
               variant="light"
@@ -553,19 +434,7 @@ Skip any that are too vague to act on, and note why at the end.
             Opret begivenhed
           </Button>
         </Group>
-      </Stack>
-
-      <AddMemberModal
-        opened={addMemberOpened}
-        onClose={closeAddMember}
-        subgroupSlug={slug!}
-        currentMembers={subgroup.members}
-        onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ["subgroup", slug] })
-          queryClient.invalidateQueries({ queryKey: ["subgroups"] })
-          closeAddMember()
-        }}
-      />
+      </Group>
 
       {upcomingEvents && upcomingEvents.length > 0 && (
         <SimpleGrid cols={{ base: 1, sm: 2 }} mb="md">
@@ -1008,188 +877,6 @@ function CreateThreadModal({
           </Stack>
         </form>
       </FileDropzone>
-    </Modal>
-  )
-}
-
-// =============================================================================
-// Add Member Modal
-// =============================================================================
-
-interface AddMemberModalProps {
-  opened: boolean
-  onClose: () => void
-  subgroupSlug: string
-  currentMembers: Author[]
-  onSuccess: () => void
-}
-
-function AddMemberModal({
-  opened,
-  onClose,
-  subgroupSlug,
-  currentMembers,
-  onSuccess,
-}: AddMemberModalProps) {
-  const [search, setSearch] = useState("")
-  const [selectedUsers, setSelectedUsers] = useState<User[]>([])
-
-  const currentMemberIds = new Set(currentMembers.map((m) => m.id))
-
-  const { data: allUsers } = useQuery({
-    queryKey: ["users"],
-    queryFn: async () => {
-      const response = await apiClient.get("/users/")
-      return (response.data.results ?? response.data) as User[]
-    },
-    enabled: opened,
-  })
-
-  const addMutation = useMutation({
-    mutationFn: async (userIds: number[]) => {
-      for (const userId of userIds) {
-        await forumApi.joinSubgroup(subgroupSlug, userId)
-      }
-    },
-    onSuccess: () => {
-      onSuccess()
-      setSearch("")
-      setSelectedUsers([])
-    },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke tilføje membre",
-        color: "red",
-      })
-    },
-  })
-
-  const searchTerm = search.trim().toLowerCase()
-  const filteredUsers = allUsers?.filter((u) => {
-    if (currentMemberIds.has(u.id)) return false
-    if (selectedUsers.some((s) => s.id === u.id)) return false
-    if (!searchTerm) return true
-    const firstName = (u.first_name || "").toLowerCase()
-    const lastName = (u.last_name || "").toLowerCase()
-    return (
-      firstName.includes(searchTerm) ||
-      lastName.includes(searchTerm) ||
-      `${firstName} ${lastName}`.includes(searchTerm)
-    )
-  })
-
-  const handleSelectUser = (user: User) => {
-    setSelectedUsers((prev) => [...prev, user])
-    setSearch("")
-  }
-
-  const handleRemoveUser = (userId: number) => {
-    setSelectedUsers((prev) => prev.filter((u) => u.id !== userId))
-  }
-
-  const handleAdd = () => {
-    if (selectedUsers.length === 0) return
-    addMutation.mutate(selectedUsers.map((u) => u.id))
-  }
-
-  const handleClose = () => {
-    setSearch("")
-    setSelectedUsers([])
-    onClose()
-  }
-
-  return (
-    <Modal opened={opened} onClose={handleClose} title="Tilføj medlemmer" size="md">
-      <Stack gap="md">
-        {selectedUsers.length > 0 && (
-          <Group gap="xs">
-            {selectedUsers.map((u) => (
-              <Badge
-                key={u.id}
-                size="lg"
-                variant="light"
-                leftSection={
-                  <Avatar src={u.profile_picture} size={20} radius="xl">
-                    {u.first_name?.[0]}
-                  </Avatar>
-                }
-                rightSection={
-                  <Box
-                    component="span"
-                    style={{ cursor: "pointer", marginLeft: 4 }}
-                    onClick={() => handleRemoveUser(u.id)}
-                  >
-                    ×
-                  </Box>
-                }
-                styles={{
-                  root: { paddingLeft: 4, paddingRight: 8 },
-                  section: { marginRight: 4 },
-                }}
-              >
-                {u.first_name} {u.last_name}
-              </Badge>
-            ))}
-          </Group>
-        )}
-
-        <TextInput
-          placeholder="Søg brugere..."
-          leftSection={<IconSearch size={16} />}
-          value={search}
-          onChange={(e) => setSearch(e.currentTarget.value)}
-        />
-
-        <ScrollArea h={200}>
-          <Stack gap="xs">
-            {filteredUsers?.map((u) => (
-              <Paper
-                key={u.id}
-                p="sm"
-                withBorder
-                style={{ cursor: "pointer" }}
-                onClick={() => handleSelectUser(u)}
-              >
-                <Group gap="sm">
-                  <Avatar src={u.profile_picture} radius="xl" size="md">
-                    {u.first_name?.[0]}
-                    {u.last_name?.[0]}
-                  </Avatar>
-                  <div>
-                    <Text fw={500}>
-                      {u.first_name} {u.last_name}
-                    </Text>
-                    {u.house_name && (
-                      <Text size="xs" c="dimmed">
-                        {u.house_name}
-                      </Text>
-                    )}
-                  </div>
-                </Group>
-              </Paper>
-            ))}
-            {filteredUsers?.length === 0 && (
-              <Text c="dimmed" ta="center" py="md">
-                Ingen brugere fundet
-              </Text>
-            )}
-          </Stack>
-        </ScrollArea>
-
-        <Group justify="flex-end">
-          <Button variant="light" onClick={handleClose}>
-            Annuller
-          </Button>
-          <Button
-            onClick={handleAdd}
-            loading={addMutation.isPending}
-            disabled={selectedUsers.length === 0}
-          >
-            Tilføj ({selectedUsers.length})
-          </Button>
-        </Group>
-      </Stack>
     </Modal>
   )
 }

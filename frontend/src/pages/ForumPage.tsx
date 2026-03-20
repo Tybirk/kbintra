@@ -9,7 +9,6 @@ import {
   Badge,
   Button,
   TextInput,
-  Textarea,
   Loader,
   Center,
   ActionIcon,
@@ -17,6 +16,7 @@ import {
   Box,
   ThemeIcon,
   Modal,
+  Typography,
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -35,6 +35,7 @@ import relativeTime from "dayjs/plugin/relativeTime"
 import "dayjs/locale/da"
 
 import { forumApi } from "../api/forum"
+import RichTextEditor from "../components/RichTextEditor"
 import type { Subgroup } from "../types"
 
 dayjs.extend(relativeTime)
@@ -210,13 +211,17 @@ export default function ForumPage() {
             onChange={(e) => setNewName(e.currentTarget.value)}
             required
           />
-          <Textarea
-            label="Beskrivelse"
-            placeholder="Kort beskrivelse af gruppen (valgfrit)"
-            value={newDescription}
-            onChange={(e) => setNewDescription(e.currentTarget.value)}
-            rows={3}
-          />
+          <Box>
+            <Text size="sm" fw={500} mb={4}>
+              Beskrivelse
+            </Text>
+            <RichTextEditor
+              content={newDescription}
+              onChange={setNewDescription}
+              placeholder="Kort beskrivelse af gruppen (valgfrit)"
+              minHeight={100}
+            />
+          </Box>
           <Group justify="flex-end">
             <Button variant="default" onClick={closeCreate}>
               Annuller
@@ -407,9 +412,18 @@ function SubgroupCard({
         </Group>
 
         {subgroup.description && (
-          <Text size="sm" c="dimmed" lineClamp={2}>
-            {subgroup.description}
-          </Text>
+          <Typography
+            style={{
+              fontSize: "var(--mantine-font-size-sm)",
+              color: "var(--mantine-color-dimmed)",
+              overflow: "hidden",
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+            }}
+          >
+            <div dangerouslySetInnerHTML={{ __html: subgroup.description }} />
+          </Typography>
         )}
 
         <Group gap="xs" justify="space-between">
