@@ -44,6 +44,9 @@ def send_email_task(
         with contextlib.suppress(User.DoesNotExist):
             related_user = User.objects.get(id=related_user_id)
 
+    from django.db import connection
+
+    connection.close()  # Release DB connection before SMTP call
     send_notification_email(
         user=user,
         notification_type=notification_type,
@@ -78,6 +81,9 @@ def send_push_task(
         logger.warning(f"send_push_task: User {user_id} not found")
         return
 
+    from django.db import connection
+
+    connection.close()  # Release DB connection before HTTP push calls
     send_push_notification(
         user=user,
         notification_type=notification_type,

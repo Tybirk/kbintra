@@ -52,10 +52,14 @@ def _create_and_upload_db_snapshot() -> None:
     os.close(tmp_fd)
     try:
         src = sqlite3.connect(db_path)
-        dst = sqlite3.connect(tmp_path)
-        src.backup(dst, pages=256, sleep=0.1)
-        dst.close()
-        src.close()
+        try:
+            dst = sqlite3.connect(tmp_path)
+            try:
+                src.backup(dst, pages=256, sleep=0.1)
+            finally:
+                dst.close()
+        finally:
+            src.close()
         logger.info("Database snapshot created: %s", tmp_path)
 
         upload_local_file(tmp_path, s3_key)
