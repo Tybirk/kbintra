@@ -5,6 +5,7 @@ Views for Notifications app.
 from django.conf import settings
 from django.db.models import QuerySet
 from rest_framework import generics, permissions, status
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -20,11 +21,18 @@ from .serializers import (
 from .services import send_push_notification
 
 
+class NotificationPagination(PageNumberPagination):
+    page_size = 50
+    page_size_query_param = "page_size"
+    max_page_size = 200
+
+
 class NotificationListView(generics.ListAPIView):
     """List user's notifications."""
 
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = NotificationSerializer
+    pagination_class = NotificationPagination
 
     def get_queryset(self) -> QuerySet[Notification]:
         return (

@@ -2,7 +2,7 @@
 Views for Messaging app.
 """
 
-from django.db.models import Max, QuerySet
+from django.db.models import Count, Max, QuerySet
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -34,10 +34,49 @@ class ConversationListCreateView(generics.ListCreateAPIView):
     def get_queryset(self) -> QuerySet[Conversation]:
         return (
             Conversation.objects.filter(participants=self.request.user)
-            .prefetch_related("participants", "messages")
+            .prefetch_related("participants")
             .annotate(last_message_at=Max("messages__created_at"))
             .order_by("-last_message_at", "-updated_at")
         )
+
+    def list(self, request: Request, *args, **kwargs) -> Response:
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        instances = list(page) if page is not None else list(queryset)
+
+        conv_ids = [c.id for c in instances]
+        if conv_ids:
+            # Batch last messages: 2 queries instead of N
+            last_msg_id_qs = (
+                Message.objects.filter(conversation_id__in=conv_ids)
+                .values("conversation_id")
+                .annotate(last_id=Max("id"))
+                .values_list("last_id", flat=True)
+            )
+            last_msgs = {
+                m.conversation_id: m for m in Message.objects.filter(id__in=last_msg_id_qs)
+            }
+            # Batch unread counts: 1 query instead of N
+            unread_counts = dict(
+                Message.objects.filter(conversation_id__in=conv_ids)
+                .exclude(sender=request.user)
+                .exclude(read_statuses__user=request.user)
+                .values("conversation_id")
+                .annotate(cnt=Count("id", distinct=True))
+                .values_list("conversation_id", "cnt")
+            )
+        else:
+            last_msgs = {}
+            unread_counts = {}
+
+        context = self.get_serializer_context()
+        context["last_messages"] = last_msgs
+        context["unread_counts"] = {cid: unread_counts.get(cid, 0) for cid in conv_ids}
+
+        serializer = ConversationSerializer(instances, many=True, context=context)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
 
     def create(self, request: Request, *args, **kwargs) -> Response:
         serializer = self.get_serializer(data=request.data)

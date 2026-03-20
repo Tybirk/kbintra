@@ -281,7 +281,7 @@ export default function DashboardPage() {
   const recentAnnouncements = announcements?.slice(0, 3)
 
   // Get the 5 most recent unread notifications
-  const recentNotifications = notifications
+  const recentNotifications = notifications?.results
     ?.filter((n) => !n.is_read)
     .slice(0, 5)
 

@@ -1,4 +1,8 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query"
 import { useNavigate } from "react-router-dom"
 import {
   Title,
@@ -79,13 +83,21 @@ export default function NotificationsPage() {
     useDisclosure(false)
 
   const {
-    data: notificationsList,
+    data,
     isLoading,
     error,
-  } = useQuery({
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ["notifications"],
-    queryFn: notificationsApi.getNotifications,
+    queryFn: ({ pageParam }) => notificationsApi.getNotifications(pageParam),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.next ? allPages.length + 1 : undefined,
   })
+
+  const notificationsList = data?.pages.flatMap((page) => page.results)
 
   const markAllReadMutation = useMutation({
     mutationFn: () => notificationsApi.markAsRead(),
@@ -238,16 +250,30 @@ export default function NotificationsPage() {
             </Center>
           </Paper>
         ) : (
-          notificationsList?.map((notification) => (
-            <NotificationCard
-              key={notification.id}
-              notification={notification}
-              onClick={() => handleNotificationClick(notification)}
-              onMarkRead={() => markOneReadMutation.mutate(notification.id)}
-              onMarkUnread={() => markOneUnreadMutation.mutate(notification.id)}
-              onDelete={() => deleteOneMutation.mutate(notification.id)}
-            />
-          ))
+          <>
+            {notificationsList?.map((notification) => (
+              <NotificationCard
+                key={notification.id}
+                notification={notification}
+                onClick={() => handleNotificationClick(notification)}
+                onMarkRead={() => markOneReadMutation.mutate(notification.id)}
+                onMarkUnread={() =>
+                  markOneUnreadMutation.mutate(notification.id)
+                }
+                onDelete={() => deleteOneMutation.mutate(notification.id)}
+              />
+            ))}
+            {hasNextPage && (
+              <Button
+                variant="subtle"
+                fullWidth
+                onClick={() => fetchNextPage()}
+                loading={isFetchingNextPage}
+              >
+                Indlæs flere
+              </Button>
+            )}
+          </>
         )}
       </Stack>
 

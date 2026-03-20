@@ -212,31 +212,35 @@ class ThreadListCreateView(generics.ListCreateAPIView):
         return ThreadSerializer
 
     def get_queryset(self) -> Any:
-        subgroup = get_object_or_404(Subgroup, slug=self.kwargs["slug"])
+        self._subgroup = get_object_or_404(Subgroup, slug=self.kwargs["slug"])
         return (
-            Thread.objects.filter(subgroup=subgroup)
+            Thread.objects.filter(subgroup=self._subgroup)
             .select_related("author")
             .annotate(post_count_annotation=Count("posts"))
         )
 
     def get_serializer_context(self) -> dict:
         context = super().get_serializer_context()
+        subgroup = getattr(self, "_subgroup", None) or get_object_or_404(
+            Subgroup, slug=self.kwargs["slug"]
+        )
         if self.request.method == "POST":
-            context["subgroup"] = get_object_or_404(Subgroup, slug=self.kwargs["slug"])
+            context["subgroup"] = subgroup
         elif self.request.user.is_authenticated:
-            subgroup = get_object_or_404(Subgroup, slug=self.kwargs["slug"])
-            threads = Thread.objects.filter(subgroup=subgroup)
+            # Lightweight query: only id + updated_at needed for unread check
+            thread_dates = dict(
+                Thread.objects.filter(subgroup=subgroup).values_list("id", "updated_at")
+            )
             read_map = dict(
                 ThreadReadStatus.objects.filter(
-                    user=self.request.user, thread__in=threads
+                    user=self.request.user, thread__subgroup=subgroup
                 ).values_list("thread_id", "last_read_at")
             )
-            unread_ids = set()
-            for thread in threads:
-                last_read = read_map.get(thread.id)
-                if last_read is None or thread.updated_at > last_read:
-                    unread_ids.add(thread.id)
-            context["unread_thread_ids"] = unread_ids
+            context["unread_thread_ids"] = {
+                thread_id
+                for thread_id, updated_at in thread_dates.items()
+                if read_map.get(thread_id) is None or updated_at > read_map[thread_id]
+            }
             # Batch-load last post per thread (avoids N+1 in ThreadSerializer)
             latest_post_ids = (
                 Post.objects.filter(thread__subgroup=subgroup)

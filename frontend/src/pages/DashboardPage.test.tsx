@@ -37,7 +37,9 @@ vi.mock("../api/events", () => ({
 
 vi.mock("../api/notifications", () => ({
   notificationsApi: {
-    getNotifications: vi.fn().mockResolvedValue([]),
+    getNotifications: vi
+      .fn()
+      .mockResolvedValue({ count: 0, next: null, previous: null, results: [] }),
   },
 }))
 

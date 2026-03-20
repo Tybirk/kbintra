@@ -18,19 +18,25 @@ describe("notificationsApi", () => {
   })
 
   describe("getNotifications", () => {
-    it("should fetch all notifications", async () => {
+    it("should fetch paginated notifications", async () => {
       const mockNotifications = [
         { id: 1, message: "New message", is_read: false },
         { id: 2, message: "New post", is_read: true },
       ]
-      vi.mocked(apiClient.get).mockResolvedValue({
-        data: { results: mockNotifications },
-      })
+      const paginatedResponse = {
+        count: 2,
+        next: null,
+        previous: null,
+        results: mockNotifications,
+      }
+      vi.mocked(apiClient.get).mockResolvedValue({ data: paginatedResponse })
 
       const result = await notificationsApi.getNotifications()
 
-      expect(apiClient.get).toHaveBeenCalledWith("/notifications/")
-      expect(result).toEqual(mockNotifications)
+      expect(apiClient.get).toHaveBeenCalledWith("/notifications/", {
+        params: { page: 1 },
+      })
+      expect(result).toEqual(paginatedResponse)
     })
 
     it("should handle non-paginated response", async () => {
@@ -39,7 +45,12 @@ describe("notificationsApi", () => {
 
       const result = await notificationsApi.getNotifications()
 
-      expect(result).toEqual(mockNotifications)
+      expect(result).toEqual({
+        count: 1,
+        next: null,
+        previous: null,
+        results: mockNotifications,
+      })
     })
   })
 

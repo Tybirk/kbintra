@@ -140,21 +140,27 @@ class ConversationSerializer(serializers.ModelSerializer):
         return []
 
     def get_last_message(self, obj: Conversation) -> dict | None:
-        last_msg = obj.messages.order_by("-created_at").first()
+        last_messages = self.context.get("last_messages")
+        if last_messages is not None:
+            last_msg = last_messages.get(obj.id)
+        else:
+            last_msg = obj.messages.order_by("-created_at").first()
         if last_msg:
             return {
                 "id": last_msg.id,
-                "content": last_msg.content[:100],
+                "content": last_msg.content[:100] if last_msg.content else "",
                 "sender_id": last_msg.sender_id,
                 "created_at": last_msg.created_at.isoformat(),
             }
         return None
 
     def get_unread_count(self, obj: Conversation) -> int:
+        unread_counts = self.context.get("unread_counts")
+        if unread_counts is not None:
+            return unread_counts.get(obj.id, 0)
         request = self.context.get("request")
         if not request or not request.user.is_authenticated:
             return 0
-        # Count messages from others that user hasn't read
         return (
             obj.messages.exclude(sender=request.user)
             .exclude(read_statuses__user=request.user)

@@ -194,10 +194,22 @@ class DailyRegistrationStatsView(APIView):
         """
         # For post-deadline dates, ensure all houses have materialized registrations
         # so stats don't depend on mutable preferences.
+        # Only call _materialize_for_houses when rows are actually missing — the
+        # periodic Huey task handles the common case, so this is just a safety net.
         if is_after_deadline(target_date):
+            from apps.houses.models import House
+
             from .tasks import _materialize_for_houses
 
-            _materialize_for_houses([target_date])
+            house_count = House.objects.filter(inhabitants__is_active=True).distinct().count()
+            covered = (
+                MealRegistration.objects.filter(date=target_date, house__isnull=False)
+                .values("house_id")
+                .distinct()
+                .count()
+            )
+            if covered < house_count:
+                _materialize_for_houses([target_date])
 
         # For houses with multiple registrations, keep only the latest one (highest id)
         latest_per_house = (

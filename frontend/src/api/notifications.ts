@@ -9,11 +9,28 @@ import type {
   UpdateNotificationPreferenceData,
 } from "../types"
 
+export interface PaginatedNotifications {
+  count: number
+  next: string | null
+  previous: string | null
+  results: Notification[]
+}
+
 export const notificationsApi = {
-  // Get all notifications
-  getNotifications: async (): Promise<Notification[]> => {
-    const response = await apiClient.get("/notifications/")
-    return response.data.results ?? response.data
+  // Get notifications (paginated, page 1 by default)
+  getNotifications: async (page = 1): Promise<PaginatedNotifications> => {
+    const response = await apiClient.get("/notifications/", {
+      params: { page },
+    })
+    if (Array.isArray(response.data)) {
+      return {
+        count: response.data.length,
+        next: null,
+        previous: null,
+        results: response.data,
+      }
+    }
+    return response.data
   },
 
   // Get single notification

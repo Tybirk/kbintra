@@ -62,7 +62,12 @@ const readNotification = {
 describe("NotificationsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockGetNotifications.mockResolvedValue([mockNotification, readNotification])
+    mockGetNotifications.mockResolvedValue({
+      count: 2,
+      next: null,
+      previous: null,
+      results: [mockNotification, readNotification],
+    })
     mockMarkAsRead.mockResolvedValue({ marked_read: 1 })
     mockMarkAsUnread.mockResolvedValue({ marked_unread: 1 })
     mockDeleteNotification.mockResolvedValue(undefined)
@@ -117,7 +122,12 @@ describe("NotificationsPage", () => {
   })
 
   it("shows empty state when no notifications", async () => {
-    mockGetNotifications.mockResolvedValue([])
+    mockGetNotifications.mockResolvedValue({
+      count: 0,
+      next: null,
+      previous: null,
+      results: [],
+    })
     render(<NotificationsPage />)
 
     await waitFor(() => {
