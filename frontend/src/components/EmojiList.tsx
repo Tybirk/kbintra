@@ -63,7 +63,7 @@ const EmojiList = forwardRef<EmojiListRef, EmojiListProps>(
               style={{
                 backgroundColor:
                   index === selectedIndex
-                    ? "var(--mantine-color-blue-1)"
+                    ? "var(--mantine-color-blue-light)"
                     : undefined,
               }}
             >

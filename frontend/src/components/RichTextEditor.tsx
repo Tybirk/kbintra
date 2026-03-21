@@ -142,6 +142,7 @@ export default function RichTextEditor({
       // Extend Mention so parseHTML matches <a data-type="mention"> in addition
       // to the default <span data-type="mention">, since our renderHTML outputs <a>.
       Mention.extend({
+        atom: true,
         parseHTML() {
           return [{ tag: '[data-type="mention"]' }]
         },

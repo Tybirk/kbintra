@@ -479,9 +479,12 @@ class PostUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
         old_content = serializer.instance.content or ""
         old_mention_ids = set(extract_mention_ids(old_content))
 
-        serializer.save()
-
         post = serializer.instance
+        if post.author_id != self.request.user.id:
+            serializer.save(edited_by=self.request.user)
+        else:
+            serializer.save()
+
         new_content = post.content or ""
         new_mention_ids = set(extract_mention_ids(new_content))
         new_mentions = list(new_mention_ids - old_mention_ids)

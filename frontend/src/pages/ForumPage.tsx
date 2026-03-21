@@ -31,15 +31,10 @@ import {
 } from "@tabler/icons-react"
 import { useNavigate } from "react-router-dom"
 import dayjs from "dayjs"
-import relativeTime from "dayjs/plugin/relativeTime"
-import "dayjs/locale/da"
 
 import { forumApi } from "../api/forum"
 import RichTextEditor from "../components/RichTextEditor"
 import type { Subgroup } from "../types"
-
-dayjs.extend(relativeTime)
-dayjs.locale("da")
 
 export default function ForumPage() {
   const navigate = useNavigate()
@@ -422,7 +417,10 @@ function SubgroupCard({
               WebkitBoxOrient: "vertical",
             }}
           >
-            <div dangerouslySetInnerHTML={{ __html: subgroup.description }} />
+            <div
+              className="description-content"
+              dangerouslySetInnerHTML={{ __html: subgroup.description }}
+            />
           </Typography>
         )}
 

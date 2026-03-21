@@ -48,8 +48,6 @@ import {
   IconCheck,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
-import relativeTime from "dayjs/plugin/relativeTime"
-import "dayjs/locale/da"
 
 import { eventsApi } from "../api/events"
 import { forumApi } from "../api/forum"
@@ -83,9 +81,6 @@ interface CreateThreadParams {
   files: File[]
   pollData?: CreatePollData
 }
-
-dayjs.extend(relativeTime)
-dayjs.locale("da")
 
 export default function SubgroupPage() {
   const { slug, folderSlug: folderSlugParam } = useParams<{
@@ -392,6 +387,7 @@ Skip any that are too vague to act on, and note why at the end.
               {subgroup.description ? (
                 <Typography style={{ flex: 1 }}>
                   <div
+                    className="description-content"
                     dangerouslySetInnerHTML={{ __html: subgroup.description }}
                   />
                 </Typography>
@@ -629,7 +625,7 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
                   style={{ flexShrink: 0 }}
                 />
               )}
-              <Text fw={thread.is_unread ? 700 : 500} lineClamp={1}>
+              <Text fw={thread.is_unread ? 700 : 500} lineClamp={2}>
                 {thread.title}
               </Text>
             </Group>
@@ -1535,7 +1531,7 @@ function FileRow({
             <ActionIcon
               variant="light"
               onClick={handleDownload}
-              title="Download"
+              title="Hent fil"
             >
               <IconDownload size={16} />
             </ActionIcon>

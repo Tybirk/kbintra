@@ -40,9 +40,6 @@ import {
   IconBellOff,
   IconArrowsMove,
 } from "@tabler/icons-react"
-import dayjs from "dayjs"
-import relativeTime from "dayjs/plugin/relativeTime"
-
 import { forumApi } from "../api/forum"
 import { messagingApi } from "../api/messaging"
 import { BackButton } from "../components/BackButton"
@@ -83,8 +80,6 @@ interface UpdatePostParams {
   threadId?: number
   newTitle?: string
 }
-
-dayjs.extend(relativeTime)
 
 interface ReplyFormProps {
   threadId: number
@@ -916,6 +911,7 @@ function PostCard({
               <PostDate
                 createdAt={post.created_at}
                 updatedAt={post.updated_at}
+                editedBy={post.edited_by}
               />
             </div>
           </Group>

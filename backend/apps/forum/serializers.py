@@ -257,6 +257,7 @@ class PostSerializer(serializers.ModelSerializer):
     """Serializer for Post model."""
 
     author = AuthorSerializer(read_only=True)
+    edited_by = AuthorSerializer(read_only=True)
     is_own = serializers.SerializerMethodField()
     can_edit = serializers.SerializerMethodField()
     attachments = PostAttachmentSerializer(many=True, read_only=True)
@@ -269,6 +270,7 @@ class PostSerializer(serializers.ModelSerializer):
             "id",
             "thread",
             "author",
+            "edited_by",
             "content",
             "is_own",
             "can_edit",
@@ -278,7 +280,7 @@ class PostSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "thread", "author", "created_at", "updated_at"]
+        read_only_fields = ["id", "thread", "author", "edited_by", "created_at", "updated_at"]
 
     def get_poll(self, obj: Post) -> dict | None:
         try:

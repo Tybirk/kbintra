@@ -39,7 +39,6 @@ import {
   IconExternalLink,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
-import relativeTime from "dayjs/plugin/relativeTime"
 import isoWeek from "dayjs/plugin/isoWeek"
 
 import { useAuthStore } from "../store/authStore"
@@ -68,7 +67,6 @@ import type {
   DailyRegistrationStats,
 } from "../types"
 
-dayjs.extend(relativeTime)
 dayjs.extend(isoWeek)
 
 export default function DashboardPage() {
@@ -1098,7 +1096,7 @@ function FoodDayWidget({
         </Group>
 
         {/* Menu description */}
-        <Text size="xs" mb="sm" lineClamp={2}>
+        <Text size="xs" mb="sm">
           {menuText || "Menu kommer snart"}
         </Text>
 
@@ -1176,11 +1174,20 @@ function FoodDayWidget({
                   {purchasedTickets && purchasedTickets.length > 0 && (
                     <Stack gap={2} mt="xs">
                       {purchasedTickets.map((t) => (
-                        <Text key={t.id} size="xs" c="green">
-                          Købt billet: {t.total_portions} port.{" "}
-                          {t.price ? `• ${t.price} kr` : "• Gratis"} fra{" "}
-                          {t.owner.first_name}
-                        </Text>
+                        <Group key={t.id} gap="xs" wrap="nowrap">
+                          <Avatar
+                            src={t.owner.profile_picture}
+                            size={18}
+                            radius="xl"
+                          >
+                            {t.owner.first_name?.[0]}
+                          </Avatar>
+                          <Text size="xs" c="green">
+                            Købt billet: {t.total_portions} port.{" "}
+                            {t.price ? `• ${t.price} kr` : "• Gratis"} fra{" "}
+                            {t.owner.first_name}
+                          </Text>
+                        </Group>
                       ))}
                     </Stack>
                   )}

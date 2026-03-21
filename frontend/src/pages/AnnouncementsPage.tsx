@@ -29,7 +29,6 @@ import {
   IconTrash,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
-import relativeTime from "dayjs/plugin/relativeTime"
 
 import { announcementsApi } from "../api/announcements"
 import { notificationsApi } from "../api/notifications"
@@ -51,8 +50,6 @@ import type {
   CreateAnnouncementData,
   AnnouncementAttachment,
 } from "../types"
-
-dayjs.extend(relativeTime)
 
 export default function AnnouncementsPage() {
   const queryClient = useQueryClient()

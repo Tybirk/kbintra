@@ -207,7 +207,7 @@ export default function ProfilePage() {
           {user.birthdate && (
             <Group gap="xs">
               <IconCake size={18} />
-              <Text>{dayjs(user.birthdate).format("MMMM D")}</Text>
+              <Text>{dayjs(user.birthdate).format("D. MMMM")}</Text>
             </Group>
           )}
         </Stack>

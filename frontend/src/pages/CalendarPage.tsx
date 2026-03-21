@@ -28,9 +28,6 @@ import {
   IconClock,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
-import "dayjs/locale/da"
-
-dayjs.locale("da")
 
 import { eventsApi } from "../api/events"
 import { forumApi } from "../api/forum"

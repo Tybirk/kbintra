@@ -461,6 +461,14 @@ export default function ChatRichTextEditor({
         return
       }
     }
+    // Cmd+Enter (Mac) / Ctrl+Enter always sends, even on mobile
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault()
+      if (content.trim() || attachments.length > 0) {
+        onSend()
+      }
+      return
+    }
     // On mobile, Enter creates a newline (more natural for touch keyboards)
     // On desktop, Enter submits (Shift+Enter for newline)
     if (event.key === "Enter" && !event.shiftKey && !isMobile) {
@@ -747,7 +755,7 @@ export default function ChatRichTextEditor({
                       style={{
                         backgroundColor:
                           index === selectedEmojiIndex
-                            ? "var(--mantine-color-blue-1)"
+                            ? "var(--mantine-color-blue-light)"
                             : undefined,
                         borderRadius: "var(--mantine-radius-sm)",
                       }}
@@ -766,7 +774,7 @@ export default function ChatRichTextEditor({
                       style={{
                         backgroundColor:
                           index === selectedMentionIndex
-                            ? "var(--mantine-color-blue-1)"
+                            ? "var(--mantine-color-blue-light)"
                             : undefined,
                         borderRadius: "var(--mantine-radius-sm)",
                       }}

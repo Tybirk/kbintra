@@ -209,7 +209,7 @@ export default function EventDetailPage() {
               )}
               {event.rsvp_enabled && !event.is_cancelled && (
                 <Badge variant="light" color="grape">
-                  RSVP
+                  S.U.
                 </Badge>
               )}
               {event.visibility === "private" && (

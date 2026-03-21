@@ -147,6 +147,13 @@ class Post(models.Model):
         related_name="posts",
     )
     content = models.TextField(blank=True, default="")
+    edited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="edited_posts",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

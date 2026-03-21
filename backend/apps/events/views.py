@@ -262,14 +262,14 @@ class EventRsvpView(APIView):
 
         if not event.rsvp_enabled:
             return Response(
-                {"error": "RSVP er ikke aktiveret for denne begivenhed."},
+                {"error": "Tilmelding er ikke aktiveret for denne begivenhed."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Check deadline
         if event.rsvp_deadline and timezone.now() > event.rsvp_deadline:
             return Response(
-                {"error": "RSVP-fristen er overskredet."},
+                {"error": "Svarfristen er overskredet."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

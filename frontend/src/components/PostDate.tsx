@@ -2,15 +2,22 @@ import { Popover, Text, UnstyledButton } from "@mantine/core"
 import dayjs from "dayjs"
 import { useState } from "react"
 
+interface EditedByInfo {
+  first_name: string
+  last_name: string
+}
+
 interface PostDateProps {
   createdAt: string
   updatedAt?: string
+  editedBy?: EditedByInfo | null
   shortFormat?: string
 }
 
 export default function PostDate({
   createdAt,
   updatedAt,
+  editedBy,
   shortFormat = "D. MMM YYYY [kl.] HH:mm",
 }: PostDateProps) {
   const [opened, setOpened] = useState(false)
@@ -30,7 +37,10 @@ export default function PostDate({
         <UnstyledButton onClick={() => setOpened((o) => !o)}>
           <Text size="xs" c="dimmed" style={{ cursor: "pointer" }}>
             {dayjs(createdAt).format(shortFormat)}
-            {wasEdited && " (redigeret)"}
+            {wasEdited &&
+              (editedBy
+                ? ` (redigeret af ${editedBy.first_name} ${editedBy.last_name})`
+                : " (redigeret)")}
           </Text>
         </UnstyledButton>
       </Popover.Target>
@@ -41,6 +51,7 @@ export default function PostDate({
         {wasEdited && (
           <Text size="xs" mt={2}>
             Redigeret: {dayjs(updatedAt).format("DD.MM.YY HH:mm:ss")}
+            {editedBy && ` af ${editedBy.first_name} ${editedBy.last_name}`}
           </Text>
         )}
       </Popover.Dropdown>

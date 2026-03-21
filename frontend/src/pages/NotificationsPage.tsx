@@ -38,13 +38,10 @@ import {
   IconMailOpened,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
-import relativeTime from "dayjs/plugin/relativeTime"
 
 import { notificationsApi } from "../api/notifications"
 import { invalidateCacheForLink } from "../utils/cacheInvalidation"
 import type { Notification, NotificationType } from "../types"
-
-dayjs.extend(relativeTime)
 
 const notificationIcons: Record<NotificationType, React.ReactNode> = {
   new_message: <IconMessage size={20} />,

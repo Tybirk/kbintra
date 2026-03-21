@@ -260,7 +260,8 @@ export function FilePreviewModal({
                   <Box
                     p="md"
                     style={{
-                      backgroundColor: "var(--mantine-color-default-hover)",
+                      backgroundColor: "#ffffff",
+                      color: "#000000",
                       borderRadius: "var(--mantine-radius-md)",
                       overflowWrap: "break-word",
                     }}
@@ -372,7 +373,8 @@ export function FilePreviewModal({
                 <Box
                   p="md"
                   style={{
-                    backgroundColor: "var(--mantine-color-default-hover)",
+                    backgroundColor: "#ffffff",
+                    color: "#000000",
                     borderRadius: "var(--mantine-radius-md)",
                     overflowWrap: "break-word",
                   }}

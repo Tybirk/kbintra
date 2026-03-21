@@ -108,6 +108,22 @@ export default function NotificationPreferencesPage() {
         const success = await unsubscribeFromPushNotifications()
         if (success) {
           setPushSubscribed(false)
+          // Also disable all server-side push preferences so that even if
+          // the browser re-subscribes (e.g. after localStorage is cleared),
+          // no push notifications will be sent.
+          updateMutation.mutate({
+            push_messages: false,
+            push_announcements: false,
+            push_announcement_updates: false,
+            push_forum_subscriptions: false,
+            push_thread_replies: false,
+            push_subgroup_activity: false,
+            push_post_reactions: false,
+            push_events: false,
+            push_event_reminders: false,
+            push_food_tickets: false,
+            push_mentions: false,
+          })
           notifications.show({
             title: "Push-notifikationer deaktiveret",
             message: "Du modtager ikke længere push-notifikationer.",
@@ -119,6 +135,21 @@ export default function NotificationPreferencesPage() {
         if (result.success) {
           setPushSubscribed(true)
           setPushPermission("granted")
+          // Re-enable default push preferences on the server so the user
+          // actually receives push notifications after activating.
+          updateMutation.mutate({
+            push_messages: true,
+            push_announcements: true,
+            push_announcement_updates: false,
+            push_forum_subscriptions: true,
+            push_thread_replies: true,
+            push_subgroup_activity: false,
+            push_post_reactions: true,
+            push_events: true,
+            push_event_reminders: true,
+            push_food_tickets: true,
+            push_mentions: true,
+          })
           notifications.show({
             title: "Push-notifikationer aktiveret",
             message: "Du modtager nu push-notifikationer på denne enhed.",
@@ -572,7 +603,7 @@ export default function NotificationPreferencesPage() {
                       </Button>
 
                       {testPushError && (
-                        <Alert color="red" title="Error">
+                        <Alert color="red" title="Fejl">
                           {testPushError}
                         </Alert>
                       )}
@@ -580,7 +611,7 @@ export default function NotificationPreferencesPage() {
                       {testPushResult && (
                         <Box>
                           <Text size="sm" fw={500} mb="xs">
-                            Web Push API Response:
+                            Web Push API-svar:
                           </Text>
                           <Code block style={{ whiteSpace: "pre-wrap" }}>
                             {JSON.stringify(testPushResult, null, 2)}

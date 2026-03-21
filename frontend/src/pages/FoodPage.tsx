@@ -1150,17 +1150,26 @@ function DayRegistrationCard({
                 Købt billet:
               </Text>
               {purchasedTicketsForDate.map((ticket) => (
-                <Text key={ticket.id} size="xs" c="green">
-                  <Badge color="green" variant="light" size="xs">
-                    Købt
-                  </Badge>{" "}
-                  {ticket.adults_meat > 0 && `${ticket.adults_meat} kød `}
-                  {ticket.adults_veg > 0 && `${ticket.adults_veg} veg `}
-                  {ticket.children_count > 0 &&
-                    `${ticket.children_count} børn `}
-                  {ticket.price && `· ${ticket.price} kr`} fra{" "}
-                  {ticket.owner.first_name}
-                </Text>
+                <Group key={ticket.id} gap="xs" wrap="nowrap">
+                  <Avatar
+                    src={ticket.owner.profile_picture}
+                    size={18}
+                    radius="xl"
+                  >
+                    {ticket.owner.first_name?.[0]}
+                  </Avatar>
+                  <Text size="xs" c="green">
+                    <Badge color="green" variant="light" size="xs">
+                      Købt
+                    </Badge>{" "}
+                    {ticket.adults_meat > 0 && `${ticket.adults_meat} kød `}
+                    {ticket.adults_veg > 0 && `${ticket.adults_veg} veg `}
+                    {ticket.children_count > 0 &&
+                      `${ticket.children_count} børn `}
+                    {ticket.price && `· ${ticket.price} kr`} fra{" "}
+                    {ticket.owner.first_name}
+                  </Text>
+                </Group>
               ))}
             </Stack>
           )}
@@ -1510,10 +1519,19 @@ function TicketCard({ ticket }: TicketCardProps) {
                 </Text>
               )}
               {isClaimed && ticket.claimed_by && (
-                <Text size="sm" c="dimmed">
-                  {isOwner ? "Købt" : "Reserveret"} af{" "}
-                  {ticket.claimed_by.first_name} {ticket.claimed_by.last_name}
-                </Text>
+                <Group gap="xs">
+                  <Avatar
+                    src={ticket.claimed_by.profile_picture}
+                    size={20}
+                    radius="xl"
+                  >
+                    {ticket.claimed_by.first_name?.[0]}
+                  </Avatar>
+                  <Text size="sm" c="dimmed">
+                    {isOwner ? "Købt" : "Reserveret"} af{" "}
+                    {ticket.claimed_by.first_name} {ticket.claimed_by.last_name}
+                  </Text>
+                </Group>
               )}
             </div>
           </Group>
@@ -1545,7 +1563,7 @@ function TicketCard({ ticket }: TicketCardProps) {
                         size="sm"
                         leftSection={<IconWallet size={14} />}
                         component="a"
-                        href={"vipps://"}
+                        href={"mobilepay://"}
                       >
                         Åbn MobilePay
                       </Button>
@@ -1703,7 +1721,7 @@ function TicketCard({ ticket }: TicketCardProps) {
                         color="indigo"
                         leftSection={<IconWallet size={16} />}
                         component="a"
-                        href={"vipps://"}
+                        href={"mobilepay://"}
                       >
                         Åbn MobilePay
                       </Button>

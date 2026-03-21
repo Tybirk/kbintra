@@ -6,6 +6,7 @@ import json
 import logging
 import re
 import time
+import zoneinfo
 from typing import Any
 from urllib.parse import urlparse
 
@@ -20,6 +21,9 @@ from apps.users.models import User
 from .models import Notification, NotificationPreference, NotificationType, PushSubscription
 
 logger = logging.getLogger(__name__)
+
+# Copenhagen timezone for formatting event times in notifications.
+_CPH_TZ = zoneinfo.ZoneInfo("Europe/Copenhagen")
 
 # Notification types that support in-app aggregation (collapse multiple events into one notification).
 AGGREGATABLE_TYPES = frozenset(
@@ -759,7 +763,8 @@ def notify_event_created(
     event = Event.objects.prefetch_related("rooms").select_related("subgroup").get(id=event_id)
     location = event.resolved_location
     title_text = f"Nyt arrangement: {event.title}"
-    message = location or event.start_datetime.strftime("%d/%m %H:%M")
+    local_start = event.start_datetime.astimezone(_CPH_TZ)
+    message = location or local_start.strftime("%d/%m %H:%M")
     link = f"/kalender/{event.slug}"
 
     recipients = _get_event_recipients(event, exclude_user_id=author.id)
@@ -797,7 +802,8 @@ def notify_event_updated(
     event = Event.objects.prefetch_related("rooms").select_related("subgroup").get(id=event_id)
     location = event.resolved_location
     title_text = f"Arrangement opdateret: {event.title}"
-    message = f"Ny tid/sted: {event.start_datetime.strftime('%d/%m %H:%M')}"
+    local_start = event.start_datetime.astimezone(_CPH_TZ)
+    message = f"Ny tid/sted: {local_start.strftime('%d/%m %H:%M')}"
     if location:
         message += f" – {location}"
     link = f"/kalender/{event.slug}"
@@ -891,7 +897,8 @@ def notify_event_reminder(
 
     event = Event.objects.prefetch_related("rooms").select_related("subgroup").get(id=event_id)
     location = event.resolved_location
-    start_str = event.start_datetime.strftime("%d/%m kl. %H:%M")
+    local_start = event.start_datetime.astimezone(_CPH_TZ)
+    start_str = local_start.strftime("%d/%m kl. %H:%M")
 
     if reminder_type == "24h":
         title_text = f"I morgen: {event.title}"

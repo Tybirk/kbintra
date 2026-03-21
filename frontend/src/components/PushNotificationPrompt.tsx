@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { Modal, Button, Group, Stack, Text, ThemeIcon } from "@mantine/core"
 import { IconBell } from "@tabler/icons-react"
 
+import { notificationsApi } from "../api/notifications"
 import {
   isPushSupported,
   isPushConfigured,
@@ -34,6 +35,27 @@ export function PushNotificationPrompt() {
 
       if (!configured) return
       if (subscribed) return
+
+      // Don't prompt if the user disabled all push categories on the server
+      // (e.g. via the "Deaktiver" button). This survives localStorage clearing.
+      try {
+        const prefs = await notificationsApi.getPreferences()
+        const anyPushEnabled =
+          prefs.push_messages ||
+          prefs.push_announcements ||
+          prefs.push_announcement_updates ||
+          prefs.push_forum_subscriptions ||
+          prefs.push_thread_replies ||
+          prefs.push_subgroup_activity ||
+          prefs.push_post_reactions ||
+          prefs.push_events ||
+          prefs.push_event_reminders ||
+          prefs.push_food_tickets ||
+          prefs.push_mentions
+        if (!anyPushEnabled) return
+      } catch {
+        // If we can't fetch preferences, don't block the prompt
+      }
 
       // All conditions met — show after 2 second delay
       timeout = setTimeout(() => setVisible(true), 2000)

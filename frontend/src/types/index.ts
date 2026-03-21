@@ -212,6 +212,7 @@ export interface Post {
   id: number
   thread: number
   author: Author | null
+  edited_by: Author | null
   content: string
   is_own: boolean
   can_edit: boolean

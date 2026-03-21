@@ -47,8 +47,6 @@ import {
   IconMoodSmile,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
-import relativeTime from "dayjs/plugin/relativeTime"
-import "dayjs/locale/da"
 
 import { messagingApi, chatWs } from "../api/messaging"
 import { apiClient } from "../api/client"
@@ -73,9 +71,6 @@ import { getFileIcon, getFileTypeColor } from "../components/FilePreview"
 import { AttachmentCarousel } from "../components/AttachmentCarousel"
 import FileDropzone from "../components/FileDropzone"
 import { filterFilesBySize } from "../config"
-
-dayjs.extend(relativeTime)
-dayjs.locale("da")
 
 const REACTION_EMOJIS: Record<ReactionType, string> = {
   like: "👍",

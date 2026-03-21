@@ -13,7 +13,12 @@ import { DateInput, DatePickerInput, DatesProvider } from "@mantine/dates"
 import { Notifications } from "@mantine/notifications"
 import * as Sentry from "@sentry/react"
 
+import dayjs from "dayjs"
+import relativeTime from "dayjs/plugin/relativeTime"
 import "dayjs/locale/da"
+
+dayjs.locale("da")
+dayjs.extend(relativeTime)
 
 import "@mantine/core/styles.css"
 import "@mantine/carousel/styles.css"

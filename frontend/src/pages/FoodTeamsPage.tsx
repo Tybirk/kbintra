@@ -43,9 +43,6 @@ import {
   IconPlus,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
-import "dayjs/locale/da"
-
-dayjs.locale("da")
 
 import { foodApi } from "../api/food"
 import { useAuthStore } from "../store/authStore"
@@ -567,7 +564,7 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
                           />
                           <div>
                             <Text size="sm" fw={500}>
-                              {dayName}, {dayjs(date).format("MMM D")}
+                              {dayName}, {dayjs(date).format("D. MMM")}
                             </Text>
                           </div>
                         </Group>
@@ -802,12 +799,17 @@ function CycleAdminCard({
           </Text>
           <Text size="sm" c="dimmed">
             {cycle.cooking_dates.length > 0
-              ? `${dayjs(cycle.cooking_dates[0]).format("MMM D")} - ${dayjs(cycle.cooking_dates[cycle.cooking_dates.length - 1]).format("MMM D, YYYY")}`
-              : "No dates"}
+              ? `${dayjs(cycle.cooking_dates[0]).format("D. MMM")} - ${dayjs(cycle.cooking_dates[cycle.cooking_dates.length - 1]).format("D. MMM YYYY")}`
+              : "Ingen datoer"}
           </Text>
         </div>
         <Badge color={statusColors[cycle.status] || "gray"} size="lg">
-          {cycle.status.replace("_", " ")}
+          {{
+            draft: "Kladde",
+            collecting_wishes: "Indsamler ønsker",
+            generating: "Genererer",
+            finalized: "Afsluttet",
+          }[cycle.status] || cycle.status}
         </Badge>
       </Group>
 
@@ -835,7 +837,7 @@ function CycleAdminCard({
             Deadline
           </Text>
           <Text fw={500}>
-            {dayjs(cycle.wish_deadline).format("MMM D, HH:mm")}
+            {dayjs(cycle.wish_deadline).format("D. MMM, HH:mm")}
           </Text>
         </div>
       </SimpleGrid>
@@ -1058,7 +1060,7 @@ function MyTeamCard({
           <Group>
             <div>
               <Text fw={600} size="lg">
-                {team.day_name}, {dayjs(team.date).format("MMMM D, YYYY")}
+                {team.day_name}, {dayjs(team.date).format("D. MMMM YYYY")}
               </Text>
               <Text size="sm" c="dimmed">
                 {team.member_count} holdmedlemmer
@@ -1158,7 +1160,7 @@ function MyTeamCard({
                     <Group justify="space-between">
                       <div>
                         <Text fw={500}>
-                          {t.day_name}, {dayjs(t.date).format("MMMM D")}
+                          {t.day_name}, {dayjs(t.date).format("D. MMMM")}
                         </Text>
                         <Text size="xs" c="dimmed">
                           {t.members_display}
@@ -1276,7 +1278,7 @@ function AllTeamCard({ team }: AllTeamCardProps) {
         <div>
           <Group gap="xs">
             <Text fw={500}>
-              {team.day_name}, {dayjs(team.date).format("MMM D")}
+              {team.day_name}, {dayjs(team.date).format("D. MMM")}
             </Text>
             {team.is_my_team && (
               <Badge size="sm" color="blue" variant="filled">
@@ -1431,7 +1433,12 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
                   : "red"
             }
           >
-            {request.status}
+            {{
+              pending: "Afventer",
+              accepted: "Accepteret",
+              declined: "Afvist",
+              cancelled: "Annulleret",
+            }[request.status] || request.status}
           </Badge>
         </Group>
 

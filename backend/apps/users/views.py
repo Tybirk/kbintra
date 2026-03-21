@@ -520,7 +520,10 @@ class DownloadMediaView(APIView):
         with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
             tmp_name = tmp.name
         with zipfile.ZipFile(tmp_name, "w", zipfile.ZIP_DEFLATED) as zf:
-            for dirpath, _dirnames, filenames in os.walk(media_root):
+            for dirpath, dirnames, filenames in os.walk(media_root):
+                # Exclude private message attachments from backup (privacy)
+                if "message_attachments" in dirnames:
+                    dirnames.remove("message_attachments")
                 for filename in filenames:
                     filepath = os.path.join(dirpath, filename)
                     arcname = os.path.relpath(filepath, media_root)

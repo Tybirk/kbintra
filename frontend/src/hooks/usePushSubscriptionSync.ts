@@ -13,6 +13,30 @@ import {
 /** Minimum interval (ms) between automatic re-syncs to avoid spamming the backend. */
 const DEBOUNCE_MS = 30_000
 
+/** Check whether the user has any push category enabled on the server. */
+async function hasAnyPushPreferenceEnabled(): Promise<boolean> {
+  try {
+    const prefs = await notificationsApi.getPreferences()
+    return (
+      prefs.push_messages ||
+      prefs.push_announcements ||
+      prefs.push_announcement_updates ||
+      prefs.push_forum_subscriptions ||
+      prefs.push_thread_replies ||
+      prefs.push_subgroup_activity ||
+      prefs.push_post_reactions ||
+      prefs.push_events ||
+      prefs.push_event_reminders ||
+      prefs.push_food_tickets ||
+      prefs.push_mentions
+    )
+  } catch {
+    // If we can't fetch preferences, assume enabled to avoid silently
+    // breaking push for users who do want it.
+    return true
+  }
+}
+
 async function syncPushSubscription(): Promise<void> {
   if (!isPushSupported()) return
   if (Notification.permission !== "granted") return
@@ -34,6 +58,18 @@ async function syncPushSubscription(): Promise<void> {
       // out, respect that. Otherwise it was likely a force-close that killed
       // the subscription — re-subscribe automatically.
       if (getPushOptedOut()) return
+
+      // Also check server-side push preferences. If the user disabled all
+      // push categories (e.g. via the "Deaktiver" button), don't auto-
+      // resubscribe even if localStorage was cleared.
+      const anyEnabled = await hasAnyPushPreferenceEnabled()
+      if (!anyEnabled) {
+        console.debug(
+          "[PushSync] All push preferences disabled on server, skipping auto-resubscribe",
+        )
+        return
+      }
+
       const result = await subscribeToPushNotifications()
       if (!result) {
         console.warn(

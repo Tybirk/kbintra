@@ -20,6 +20,16 @@ h1, h2, h3, h4, h5, h6 {
   cursor: pointer;
 }
 
+[data-mantine-color-scheme="dark"] .mention {
+  background-color: var(--mantine-color-blue-9);
+  color: var(--mantine-color-blue-2);
+}
+
+/* Reduce paragraph spacing in subgroup/committee description areas */
+.description-content p {
+  margin: 0.25em 0;
+}
+
 html {
   /* Prevent overscroll/bounce on iOS */
   overflow: hidden;

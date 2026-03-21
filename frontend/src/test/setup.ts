@@ -1,6 +1,12 @@
 import "@testing-library/jest-dom"
 import { afterEach, vi } from "vitest"
 import { cleanup } from "@testing-library/react"
+import dayjs from "dayjs"
+import relativeTime from "dayjs/plugin/relativeTime"
+import "dayjs/locale/da"
+
+dayjs.locale("da")
+dayjs.extend(relativeTime)
 
 // Clean up after each test
 afterEach(() => {
