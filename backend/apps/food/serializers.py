@@ -12,6 +12,10 @@ from rest_framework import serializers
 
 from apps.users.models import User
 
+from .constants import (
+    DAY_NAMES,
+    calculate_meal_price,
+)
 from .models import (
     CycleStatus,
     DriveMenuCache,
@@ -147,8 +151,7 @@ class MealRegistrationSerializer(serializers.ModelSerializer):
         return obj.date.weekday()
 
     def get_day_name(self, obj: MealRegistration) -> str:
-        days = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"]
-        return days[obj.date.weekday()]
+        return DAY_NAMES[obj.date.weekday()]
 
     def get_is_locked(self, obj: MealRegistration) -> bool:
         return is_after_deadline(obj.date)
@@ -318,17 +321,11 @@ class FoodTicketSerializer(serializers.ModelSerializer):
         return obj.date.weekday()
 
     def get_day_name(self, obj: FoodTicket) -> str:
-        days = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"]
-        return days[obj.date.weekday()]
+        return DAY_NAMES[obj.date.weekday()]
 
 
 class FoodTicketCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating food tickets."""
-
-    # Default prices in DKK
-    PRICE_ADULT_MEAT = Decimal("37.00")
-    PRICE_ADULT_VEG = Decimal("26.00")
-    PRICE_CHILD = Decimal("18.00")
 
     class Meta:
         model = FoodTicket
@@ -356,11 +353,7 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
         self, adults_meat: int, adults_veg: int, children_count: int
     ) -> Decimal:
         """Calculate default price based on portion counts."""
-        return (
-            (self.PRICE_ADULT_MEAT * adults_meat)
-            + (self.PRICE_ADULT_VEG * adults_veg)
-            + (self.PRICE_CHILD * children_count)
-        )
+        return calculate_meal_price(adults_meat, adults_veg, children_count)
 
     def validate(self, attrs: dict) -> dict:
         reg_date = attrs.get("date")

@@ -5,7 +5,6 @@ Views for Food app.
 import contextlib
 import logging
 from datetime import date, timedelta
-from decimal import Decimal
 from typing import Any
 
 from django.db import transaction
@@ -17,6 +16,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .constants import DAY_NAMES, calculate_meal_price
 from .models import (
     FoodTeam,
     FoodTeamCycle,
@@ -59,9 +59,6 @@ logger = logging.getLogger(__name__)
 def get_week_start(d: date) -> date:
     """Get the Monday of the week containing the given date."""
     return d - timedelta(days=d.weekday())
-
-
-DAY_NAMES = ["Mandag", "Tirsdag", "Onsdag", "Torsdag"]
 
 
 def _get_preference_values(
@@ -556,18 +553,6 @@ class ClaimTicketView(APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
-    # Default prices — keep in sync with FoodTicketCreateSerializer and frontend
-    _PRICE_ADULT_MEAT = Decimal("37.00")
-    _PRICE_ADULT_VEG = Decimal("26.00")
-    _PRICE_CHILD = Decimal("18.00")
-
-    def _calc_price(self, meat: int, veg: int, children: int) -> Decimal:
-        return (
-            self._PRICE_ADULT_MEAT * meat
-            + self._PRICE_ADULT_VEG * veg
-            + self._PRICE_CHILD * children
-        )
-
     def post(self, request: Request, pk: int) -> Response:
         with transaction.atomic():
             try:
@@ -657,7 +642,7 @@ class ClaimTicketView(APIView):
                 ticket.price = (
                     None
                     if is_free_ticket
-                    else self._calc_price(remaining_meat, remaining_veg, remaining_children)
+                    else calculate_meal_price(remaining_meat, remaining_veg, remaining_children)
                 )
                 ticket.save()
 
@@ -670,7 +655,7 @@ class ClaimTicketView(APIView):
                     price=(
                         None
                         if is_free_ticket
-                        else self._calc_price(adults_meat, adults_veg, children_count)
+                        else calculate_meal_price(adults_meat, adults_veg, children_count)
                     ),
                     description=ticket.description,
                     is_available=False,
@@ -943,43 +928,33 @@ class RespondSwapRequestView(APIView):
 class FoodTeamCycleListCreateView(generics.ListCreateAPIView):
     """List all cycles or create a new one (admin only for create)."""
 
-    permission_classes = [permissions.IsAuthenticated]
     queryset = FoodTeamCycle.objects.all().order_by("-created_at")
+
+    def get_permissions(self) -> list:
+        if self.request.method == "POST":
+            return [permissions.IsAuthenticated(), permissions.IsAdminUser()]
+        return [permissions.IsAuthenticated()]
 
     def get_serializer_class(self) -> type:
         if self.request.method == "POST":
             return FoodTeamCycleCreateSerializer
         return FoodTeamCycleSerializer
 
-    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        # Only staff can create cycles
-        if not request.user.is_staff:
-            return Response(
-                {"detail": "Only administrators can create food team cycles."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        return super().create(request, *args, **kwargs)
-
 
 class FoodTeamCycleDetailView(generics.RetrieveUpdateAPIView):
     """Get or update a food team cycle."""
 
-    permission_classes = [permissions.IsAuthenticated]
     queryset = FoodTeamCycle.objects.all()
+
+    def get_permissions(self) -> list:
+        if self.request.method in ["PUT", "PATCH"]:
+            return [permissions.IsAuthenticated(), permissions.IsAdminUser()]
+        return [permissions.IsAuthenticated()]
 
     def get_serializer_class(self) -> type:
         if self.request.method in ["PUT", "PATCH"]:
             return FoodTeamCycleCreateSerializer
         return FoodTeamCycleSerializer
-
-    def update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        # Only staff can update cycles
-        if not request.user.is_staff:
-            return Response(
-                {"detail": "Only administrators can update food team cycles."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        return super().update(request, *args, **kwargs)
 
 
 class ActiveCycleView(APIView):
@@ -1063,7 +1038,7 @@ class MyWishView(APIView):
 class CycleWishesListView(generics.ListAPIView):
     """List all wishes for a cycle (admin only)."""
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
     serializer_class = FoodTeamWishSerializer
 
     def get_queryset(self) -> QuerySet[FoodTeamWish]:
@@ -1074,15 +1049,6 @@ class CycleWishesListView(generics.ListAPIView):
             .order_by("user__first_name")
         )
 
-    def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        # Only staff can view all wishes
-        if not request.user.is_staff:
-            return Response(
-                {"detail": "Only administrators can view all wishes."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        return super().list(request, *args, **kwargs)
-
 
 # Team Generation View
 
@@ -1090,16 +1056,9 @@ class CycleWishesListView(generics.ListAPIView):
 class GenerateTeamsView(APIView):
     """Generate food teams for a cycle."""
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
 
     def post(self, request: Request) -> Response:
-        # Only staff can generate teams
-        if not request.user.is_staff:
-            return Response(
-                {"detail": "Only administrators can generate food teams."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
         serializer = GenerateTeamsSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -1147,17 +1106,10 @@ class DefaultCookingDaysView(APIView):
 class MonthlyFoodCostView(APIView):
     """Get monthly food cost breakdown per house (admin only)."""
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
 
     def get(self, request: Request) -> Response:
         """Get monthly food cost report for a specific month."""
-        # Only staff can access this report
-        if not request.user.is_staff:
-            return Response(
-                {"detail": "Only administrators can access food cost reports."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
         # Validate query params
         year = request.query_params.get("year")
         month = request.query_params.get("month")
@@ -1185,10 +1137,7 @@ class MonthlyFoodCostView(APIView):
 
         from apps.houses.models import House
 
-        # Food prices (same as in FoodTicketCreateSerializer)
-        price_adult_meat = Decimal("37.00")
-        price_adult_veg = Decimal("26.00")
-        price_child = Decimal("18.00")
+        from .constants import PRICE_ADULT_MEAT, PRICE_ADULT_VEG, PRICE_CHILD
 
         first_day = date(year, month, 1)
         _, last_day_num = monthrange(year, month)
@@ -1245,7 +1194,7 @@ class MonthlyFoodCostView(APIView):
                 if meat == 0 and veg == 0 and children == 0:
                     continue
                 cost = (
-                    (price_adult_meat * meat) + (price_adult_veg * veg) + (price_child * children)
+                    (PRICE_ADULT_MEAT * meat) + (PRICE_ADULT_VEG * veg) + (PRICE_CHILD * children)
                 )
                 house_total += cost
                 registration_count += 1
@@ -1307,7 +1256,10 @@ class DriveMenuView(APIView):
     POST: Force refresh from Google Drive (admin only)
     """
 
-    permission_classes = [permissions.IsAuthenticated]
+    def get_permissions(self) -> list:
+        if self.request.method == "POST":
+            return [permissions.IsAuthenticated(), permissions.IsAdminUser()]
+        return [permissions.IsAuthenticated()]
 
     def get(self, request: Request) -> Response:
         """Get menu for a week."""
@@ -1364,12 +1316,6 @@ class DriveMenuView(APIView):
 
     def post(self, request: Request) -> Response:
         """Force refresh menu from Google Drive (admin only)."""
-        if not request.user.is_staff:
-            return Response(
-                {"detail": "Only administrators can force refresh menus."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
         week_number = request.data.get("week")
         year = request.data.get("year")
 
@@ -1414,15 +1360,10 @@ class DriveMenuView(APIView):
 class DriveMenuRefreshAllView(APIView):
     """Refresh all menus from Google Drive (admin only)."""
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
 
     def post(self, request: Request) -> Response:
         """Refresh all available menus from Drive (runs in background)."""
-        if not request.user.is_staff:
-            return Response(
-                {"detail": "Only administrators can refresh all menus."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
 
         from apps.notifications.tasks import refresh_all_drive_menus_task
 
