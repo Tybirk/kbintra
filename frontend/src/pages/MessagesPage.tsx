@@ -662,22 +662,21 @@ function ConversationItem({
         >
           {isGroupChat ? (
             <Avatar.Group spacing="sm">
-              <Avatar
-                src={otherParticipants[0]?.profile_picture}
-                radius="xl"
-                size="md"
-              >
-                {otherParticipants[0]?.first_name?.[0]}
-              </Avatar>
-              <Avatar
-                src={otherParticipants[1]?.profile_picture}
-                radius="xl"
-                size="md"
-              >
-                {otherParticipants.length > 2
-                  ? `+${otherParticipants.length - 1}`
-                  : otherParticipants[1]?.first_name?.[0]}
-              </Avatar>
+              {otherParticipants.slice(0, 3).map((p) => (
+                <Avatar
+                  key={p.id}
+                  src={p.profile_picture}
+                  radius="xl"
+                  size="md"
+                >
+                  {p.first_name?.[0]}
+                </Avatar>
+              ))}
+              {otherParticipants.length > 3 && (
+                <Avatar radius="xl" size="md">
+                  +{otherParticipants.length - 3}
+                </Avatar>
+              )}
             </Avatar.Group>
           ) : (
             <Avatar src={avatar?.profile_picture} radius="xl" size="md">
@@ -888,6 +887,7 @@ function ChatArea({
   const highlightedHashRef = useRef<string | null>(null)
 
   const otherParticipants = conversation.other_participants
+  const isGroupChat = otherParticipants.length > 1
   const hasNoParticipants = otherParticipants.length === 0
   const displayName = conversation.name
     ? conversation.name
@@ -1026,14 +1026,34 @@ function ChatArea({
                     flex: 1,
                   }}
                 >
-                  <Avatar
-                    src={otherParticipants[0]?.profile_picture}
-                    radius="xl"
-                    size="md"
-                    style={{ flexShrink: 0 }}
-                  >
-                    {otherParticipants[0]?.first_name?.[0]}
-                  </Avatar>
+                  {isGroupChat ? (
+                    <Avatar.Group spacing="sm" style={{ flexShrink: 0 }}>
+                      {otherParticipants.slice(0, 3).map((p) => (
+                        <Avatar
+                          key={p.id}
+                          src={p.profile_picture}
+                          radius="xl"
+                          size="md"
+                        >
+                          {p.first_name?.[0]}
+                        </Avatar>
+                      ))}
+                      {otherParticipants.length > 3 && (
+                        <Avatar radius="xl" size="md">
+                          +{otherParticipants.length - 3}
+                        </Avatar>
+                      )}
+                    </Avatar.Group>
+                  ) : (
+                    <Avatar
+                      src={otherParticipants[0]?.profile_picture}
+                      radius="xl"
+                      size="md"
+                      style={{ flexShrink: 0 }}
+                    >
+                      {otherParticipants[0]?.first_name?.[0]}
+                    </Avatar>
+                  )}
                   <div style={{ minWidth: 0 }}>
                     <Text
                       fw={500}
