@@ -1159,6 +1159,7 @@ function ChatArea({
             <TextInput
               ref={renameInputRef}
               label="Samtalens navn"
+              description="Tøm feltet for at vise deltagernavne i stedet"
               placeholder="Indtast et navn..."
               value={renameName}
               onChange={(e) => setRenameName(e.currentTarget.value)}
