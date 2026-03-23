@@ -81,6 +81,7 @@ function App() {
 
   useEffect(() => {
     trackNavigation(location.pathname)
+    setNavbarOpened(false)
   }, [location.pathname])
 
   // Check for app updates when user returns to the app
