@@ -256,8 +256,8 @@ export default function DashboardPage() {
   const todayRegistration = allRegistrations.find((r) => r.date === todayStr)
   const nextFoodDayRegistration = nextFoodDay
     ? allRegistrations.find(
-        (r) => r.date === nextFoodDay.date.format("YYYY-MM-DD"),
-      )
+      (r) => r.date === nextFoodDay.date.format("YYYY-MM-DD"),
+    )
     : undefined
 
   // Calculate birthday info for each user
@@ -285,13 +285,6 @@ export default function DashboardPage() {
 
   return (
     <>
-      <Title order={1} mb="xs">
-        Velkommen, {user?.first_name || "bruger"}!
-      </Title>
-      <Text c="dimmed" mb="xl">
-        Hvad vil du lave i dag?
-      </Text>
-
       {hasError && (
         <Alert color="red" title="Fejl" mb="xl">
           Kunne ikke hente data. Prøv at genindlæse siden.
@@ -440,8 +433,8 @@ export default function DashboardPage() {
                   communityStats={
                     nextFoodDay.date.isoWeek() === currentWeekNumber
                       ? currentWeekStats?.[
-                          nextFoodDay.date.format("YYYY-MM-DD")
-                        ]
+                      nextFoodDay.date.format("YYYY-MM-DD")
+                      ]
                       : nextWeekStats?.[nextFoodDay.date.format("YYYY-MM-DD")]
                   }
                 />
