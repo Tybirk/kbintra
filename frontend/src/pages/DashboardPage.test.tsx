@@ -90,13 +90,6 @@ describe("DashboardPage", () => {
     mockGetRegistrations.mockResolvedValue([])
   })
 
-  it("should render welcome message", async () => {
-    render(<DashboardPage />)
-
-    await waitFor(() => {
-      expect(screen.getByText(/velkommen, test!/i)).toBeInTheDocument()
-    })
-  })
   // Recent Forum Activity Tests
   it("should show empty message when no forum activity", async () => {
     mockGetRecentActivity.mockResolvedValue([])

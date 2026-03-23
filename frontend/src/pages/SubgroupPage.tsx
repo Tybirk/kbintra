@@ -517,9 +517,7 @@ Skip any that are too vague to act on, and note why at the end.
                 <Center>
                   <Stack align="center" gap="xs">
                     <IconMessage size={48} color="gray" />
-                    <Text c="dimmed">
-                      Ingen tråde endnu. Start samtalen!
-                    </Text>
+                    <Text c="dimmed">Ingen tråde endnu. Start samtalen!</Text>
                     <Button onClick={openCreateThreadModal} mt="sm">
                       Opret første tråd
                     </Button>
