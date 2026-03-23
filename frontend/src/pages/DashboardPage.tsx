@@ -70,7 +70,6 @@ import type {
 dayjs.extend(isoWeek)
 
 export default function DashboardPage() {
-  const { user } = useAuthStore()
   const navigate = useNavigate()
 
   const {
@@ -256,8 +255,8 @@ export default function DashboardPage() {
   const todayRegistration = allRegistrations.find((r) => r.date === todayStr)
   const nextFoodDayRegistration = nextFoodDay
     ? allRegistrations.find(
-      (r) => r.date === nextFoodDay.date.format("YYYY-MM-DD"),
-    )
+        (r) => r.date === nextFoodDay.date.format("YYYY-MM-DD"),
+      )
     : undefined
 
   // Calculate birthday info for each user
@@ -433,8 +432,8 @@ export default function DashboardPage() {
                   communityStats={
                     nextFoodDay.date.isoWeek() === currentWeekNumber
                       ? currentWeekStats?.[
-                      nextFoodDay.date.format("YYYY-MM-DD")
-                      ]
+                          nextFoodDay.date.format("YYYY-MM-DD")
+                        ]
                       : nextWeekStats?.[nextFoodDay.date.format("YYYY-MM-DD")]
                   }
                 />

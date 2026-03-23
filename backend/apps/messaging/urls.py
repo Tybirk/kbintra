@@ -14,6 +14,7 @@ from .views import (
     MessageListCreateView,
     MessageReactionToggleView,
     MessageUnsendView,
+    RenameConversationView,
     UnreadCountView,
 )
 
@@ -29,6 +30,11 @@ urlpatterns = [
         "conversations/<int:pk>/leave/",
         LeaveConversationView.as_view(),
         name="leave-conversation",
+    ),
+    path(
+        "conversations/<int:pk>/rename/",
+        RenameConversationView.as_view(),
+        name="rename-conversation",
     ),
     path(
         "conversations/<int:conversation_id>/messages/",

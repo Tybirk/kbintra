@@ -42,6 +42,7 @@ import {
   IconDots,
   IconLogout,
   IconEdit,
+  IconPencil,
   IconTrash,
   IconCopy,
   IconMoodSmile,
@@ -59,6 +60,7 @@ import type {
   WsMessageEdited,
   WsMessageDeleted,
   WsMessageReacted,
+  WsConversationRenamed,
   WsMessageReactionEntry,
   MessageReactionSummary,
   ReactionType,
@@ -268,6 +270,23 @@ export default function MessagesPage() {
             }
           },
         )
+      } else if (wsData.type === "conversation_renamed") {
+        const renameData = wsData as WsConversationRenamed
+        queryClient.setQueryData<ConversationDetail>(
+          ["conversation", renameData.conversation_id],
+          (old) => {
+            if (!old) return old
+            return { ...old, name: renameData.name }
+          },
+        )
+        queryClient.setQueryData<Conversation[]>(["conversations"], (old) => {
+          if (!old) return old
+          return old.map((c) =>
+            c.id === renameData.conversation_id
+              ? { ...c, name: renameData.name }
+              : c,
+          )
+        })
       }
     })
 
@@ -607,9 +626,11 @@ function ConversationItem({
   const otherParticipants = conversation.other_participants
   const isGroupChat = otherParticipants.length > 1
   const hasNoParticipants = otherParticipants.length === 0
-  const displayName = hasNoParticipants
-    ? "Slettet bruger"
-    : otherParticipants.map((p) => p.first_name).join(", ")
+  const displayName = conversation.name
+    ? conversation.name
+    : hasNoParticipants
+      ? "Slettet bruger"
+      : otherParticipants.map((p) => p.first_name).join(", ")
   const avatar = otherParticipants[0]
 
   const unreadLabel =
@@ -856,15 +877,43 @@ function ChatArea({
     participantsPopoverOpened,
     { toggle: toggleParticipantsPopover, close: closeParticipantsPopover },
   ] = useDisclosure(false)
+  const [renameOpened, { open: openRename, close: closeRename }] =
+    useDisclosure(false)
+  const [renameName, setRenameName] = useState(conversation.name || "")
+  const [isRenaming, setIsRenaming] = useState(false)
+  const queryClient = useQueryClient()
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevConversationIdRef = useRef<number | null>(null)
   const highlightedHashRef = useRef<string | null>(null)
 
   const otherParticipants = conversation.other_participants
   const hasNoParticipants = otherParticipants.length === 0
-  const displayName = hasNoParticipants
-    ? "Slettet bruger"
-    : otherParticipants.map((p) => `${p.first_name} ${p.last_name}`).join(", ")
+  const displayName = conversation.name
+    ? conversation.name
+    : hasNoParticipants
+      ? "Slettet bruger"
+      : otherParticipants
+          .map((p) => `${p.first_name} ${p.last_name}`)
+          .join(", ")
+
+  const handleRename = async () => {
+    setIsRenaming(true)
+    try {
+      await messagingApi.renameConversation(conversation.id, renameName.trim())
+      queryClient.invalidateQueries({
+        queryKey: ["conversation", conversation.id],
+      })
+      queryClient.invalidateQueries({ queryKey: ["conversations"] })
+      closeRename()
+    } catch {
+      notifications.show({
+        color: "red",
+        message: "Kunne ikke omdøbe samtalen",
+      })
+    } finally {
+      setIsRenaming(false)
+    }
+  }
 
   // Scroll to bottom when opening a conversation (instant) or when new messages arrive (smooth)
   useEffect(() => {
@@ -1023,6 +1072,15 @@ function ChatArea({
             </Menu.Target>
             <Menu.Dropdown>
               <Menu.Item
+                leftSection={<IconPencil size={16} />}
+                onClick={() => {
+                  setRenameName(conversation.name || "")
+                  openRename()
+                }}
+              >
+                Omdøb samtale
+              </Menu.Item>
+              <Menu.Item
                 leftSection={<IconUserPlus size={16} />}
                 onClick={openAddParticipants}
               >
@@ -1081,6 +1139,39 @@ function ChatArea({
             </Button>
           </Group>
         </Stack>
+      </Modal>
+
+      <Modal
+        opened={renameOpened}
+        onClose={closeRename}
+        title="Omdøb samtale"
+        size="sm"
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            handleRename()
+          }}
+        >
+          <Stack gap="md">
+            <TextInput
+              label="Samtalens navn"
+              placeholder="Indtast et navn..."
+              value={renameName}
+              onChange={(e) => setRenameName(e.currentTarget.value)}
+              maxLength={100}
+              data-autofocus
+            />
+            <Group justify="flex-end">
+              <Button variant="light" onClick={closeRename}>
+                Annuller
+              </Button>
+              <Button type="submit" loading={isRenaming}>
+                Gem
+              </Button>
+            </Group>
+          </Stack>
+        </form>
       </Modal>
 
       {/* Messages */}
