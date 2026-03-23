@@ -314,7 +314,7 @@ export default function CalendarPage() {
                           <div style={{ minWidth: 0, flex: 1 }}>
                             <Text
                               fw={500}
-                              lineClamp={1}
+                              lineClamp={2}
                               td={ev.is_cancelled ? "line-through" : undefined}
                               c={ev.is_cancelled ? "dimmed" : undefined}
                             >

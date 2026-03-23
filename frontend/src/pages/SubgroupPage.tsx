@@ -625,7 +625,7 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
                   style={{ flexShrink: 0 }}
                 />
               )}
-              <Text fw={thread.is_unread ? 700 : 500} lineClamp={2}>
+              <Text fw={thread.is_unread ? 700 : 500} lineClamp={3}>
                 {thread.title}
               </Text>
             </Group>

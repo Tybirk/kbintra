@@ -619,8 +619,19 @@ export default function ChatRichTextEditor({
         style={{ minWidth: 0 }}
       >
         {isMobile ? (
-          /* Mobile: chevron to reveal attachment buttons, or the buttons themselves */
+          /* Mobile: show attachment buttons by default, collapse to chevron on focus */
           attachExpanded ? (
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              size="md"
+              mb={1}
+              onClick={() => setAttachExpanded(false)}
+              title="Vis vedhæftninger"
+            >
+              <IconChevronRight size={18} />
+            </ActionIcon>
+          ) : (
             <Group gap={2} wrap="nowrap" mb={1}>
               <FileButton
                 onChange={handleFilesSelected}
@@ -655,17 +666,6 @@ export default function ChatRichTextEditor({
                 )}
               </FileButton>
             </Group>
-          ) : (
-            <ActionIcon
-              variant="subtle"
-              color="gray"
-              size="md"
-              mb={1}
-              onClick={() => setAttachExpanded(true)}
-              title="Vis vedhæftninger"
-            >
-              <IconChevronRight size={18} />
-            </ActionIcon>
           )
         ) : (
           /* Desktop: always show all action icons */
@@ -724,6 +724,9 @@ export default function ChatRichTextEditor({
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
               onFocus={() => {
+                if (isMobile) setAttachExpanded(true)
+              }}
+              onBlur={() => {
                 if (isMobile) setAttachExpanded(false)
               }}
               placeholder={actualPlaceholder}
@@ -796,20 +799,6 @@ export default function ChatRichTextEditor({
             </Stack>
           </Popover.Dropdown>
         </Popover>
-
-        {/* Emoji picker — always visible on mobile, part of desktop action group above */}
-        {isMobile && (
-          <Box mb={1}>
-            <Suspense fallback={null}>
-              <EmojiPicker
-                onSelect={handleEmojiSelect}
-                disabled={disabled}
-                size="md"
-                iconSize={18}
-              />
-            </Suspense>
-          </Box>
-        )}
 
         {/* Send button */}
         <ActionIcon

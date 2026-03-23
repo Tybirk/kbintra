@@ -369,7 +369,7 @@ function AnnouncementCard({
                 >
                   <Group gap="xs">
                     <FileIcon size={20} color={fileColor} />
-                    <Text size="sm" lineClamp={1} style={{ maxWidth: 150 }}>
+                    <Text size="sm" lineClamp={2} style={{ maxWidth: 150 }}>
                       {attachment.name}
                     </Text>
                   </Group>

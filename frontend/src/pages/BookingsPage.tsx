@@ -449,11 +449,11 @@ export default function BookingsPage() {
             const booking = payload?.booking
             return (
               <div>
-                <Text size="xs" fw={500} lineClamp={1}>
+                <Text size="xs" fw={500} lineClamp={2}>
                   {event.title}
                 </Text>
                 {booking && (
-                  <Text size="xs" c="dimmed" lineClamp={1}>
+                  <Text size="xs" c="dimmed" lineClamp={2}>
                     {booking.room.name}
                   </Text>
                 )}

@@ -653,7 +653,7 @@ function EventPreview({ event }: EventPreviewProps) {
         <Text
           size="sm"
           fw={500}
-          lineClamp={1}
+          lineClamp={2}
           td={event.is_cancelled ? "line-through" : undefined}
         >
           {event.title}
