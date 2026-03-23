@@ -949,6 +949,9 @@ function FoodDayWidget({
       queryClient.invalidateQueries({
         queryKey: ["food", "registrations"],
       })
+      queryClient.invalidateQueries({
+        queryKey: ["food", "stats"],
+      })
       setIsSaving(false)
     },
     onError: () => {
@@ -967,6 +970,9 @@ function FoodDayWidget({
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["food", "registrations"],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ["food", "stats"],
       })
       setIsSaving(false)
     },
