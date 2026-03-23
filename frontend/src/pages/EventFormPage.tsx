@@ -730,7 +730,7 @@ export default function EventFormPage() {
             />
 
             <Switch
-              label="Tilmelding (S.U.)"
+              label="Tilmelding"
               description="Tillad beboere at tilmelde sig begivenheden"
               checked={rsvpEnabled}
               onChange={(e) => setRsvpEnabled(e.currentTarget.checked)}

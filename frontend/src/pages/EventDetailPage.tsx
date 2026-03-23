@@ -207,11 +207,6 @@ export default function EventDetailPage() {
                   AFLYST
                 </Badge>
               )}
-              {event.rsvp_enabled && !event.is_cancelled && (
-                <Badge variant="light" color="grape">
-                  S.U.
-                </Badge>
-              )}
               {event.visibility === "private" && (
                 <Badge variant="light" color="gray">
                   Privat
