@@ -131,7 +131,13 @@ DATABASES = {
         "NAME": DATA_DIR / "db.sqlite3",
         "OPTIONS": {
             "timeout": 20,
-            "init_command": "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;",  # Use WAL mode for better concurrency; full sync for durability. Init command is supported since django 5.1 for sqlite3!  We use Django 5.2+
+            "transaction_mode": "IMMEDIATE",  # Acquire write lock upfront so busy_timeout works; prevents deadlocks from deferred lock upgrades (Django 5.1+)
+            "init_command": (
+                "PRAGMA journal_mode=WAL;"  # WAL mode for better read/write concurrency
+                " PRAGMA synchronous=NORMAL;"  # Safe with WAL; FULL holds write locks much longer for no practical benefit
+                " PRAGMA cache_size=-64000;"  # 64MB page cache (default ~2MB) — reduces disk I/O
+                " PRAGMA mmap_size=134217728;"  # 128MB memory-mapped I/O — faster reads
+            ),
         },
     }
 }
