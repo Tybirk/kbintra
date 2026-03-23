@@ -11,6 +11,7 @@ from .encryption import EncryptedTextField
 class Conversation(models.Model):
     """A conversation between two or more users."""
 
+    name = models.CharField(max_length=100, blank=True, default="")
     participants = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
         related_name="conversations",
