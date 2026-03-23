@@ -125,6 +125,18 @@ export const messagingApi = {
     return response.data
   },
 
+  // Rename a conversation
+  renameConversation: async (
+    conversationId: number,
+    name: string,
+  ): Promise<Conversation> => {
+    const response = await apiClient.patch(
+      `/messages/conversations/${conversationId}/rename/`,
+      { name },
+    )
+    return response.data
+  },
+
   // Leave a conversation
   leaveConversation: async (conversationId: number): Promise<void> => {
     await apiClient.post(`/messages/conversations/${conversationId}/leave/`)

@@ -96,7 +96,11 @@ export default function AppNavbar({ onNavigate }: AppNavbarProps) {
       return (
         <Group gap="xs">
           {item.label}
-          <Badge size="xs" circle color="red">
+          <Badge
+            size="xs"
+            color="red"
+            style={{ minWidth: 18, paddingInline: 4 }}
+          >
             {badgeCount > 9 ? "9+" : badgeCount}
           </Badge>
         </Group>
