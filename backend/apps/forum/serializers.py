@@ -78,7 +78,7 @@ class SubgroupSerializer(serializers.ModelSerializer):
         ]
 
     def get_thread_count(self, obj: Subgroup) -> int:
-        return len(obj.threads.all())
+        return len([t for t in obj.threads.all() if not t.is_closed])
 
     def get_is_subscribed(self, obj: Subgroup) -> bool:
         subscribed_ids = self.context.get("subscribed_subgroup_ids")
@@ -95,6 +95,8 @@ class SubgroupSerializer(serializers.ModelSerializer):
             return 0
         count = 0
         for thread in obj.threads.all():
+            if thread.is_closed:
+                continue
             last_read = read_status_map.get(thread.id)
             if last_read is None or thread.updated_at > last_read:
                 count += 1

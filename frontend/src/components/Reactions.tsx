@@ -132,7 +132,7 @@ export default function Reactions({
                 <Text
                   size="sm"
                   fw={600}
-                  c={reaction.has_reacted ? "blue.7" : "gray.7"}
+                  c={reaction.has_reacted ? "blue" : "dimmed"}
                 >
                   {reaction.count}
                 </Text>

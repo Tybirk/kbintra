@@ -900,32 +900,35 @@ function DiscussionSection({
               p="md"
               radius="sm"
             >
-              <Group justify="space-between" mb="xs" wrap="nowrap">
-                <Group gap="xs">
+              <Group justify="space-between" mb="sm">
+                <Group gap="sm">
                   <Avatar
                     src={post.author?.profile_picture}
-                    size="sm"
+                    size="md"
                     radius="xl"
                   >
                     {post.author?.first_name?.[0]}
+                    {post.author?.last_name?.[0]}
                   </Avatar>
                   <div>
-                    {post.author ? (
-                      <UserLink
-                        id={post.author.id}
-                        firstName={post.author.first_name}
-                        lastName={post.author.last_name}
-                        size="sm"
-                        fw={500}
-                      />
-                    ) : (
-                      <Text size="sm" c="dimmed" fw={500}>
-                        Slettet bruger
-                      </Text>
-                    )}
+                    <Text size="sm" fw={500}>
+                      {post.author ? (
+                        <UserLink
+                          id={post.author.id}
+                          firstName={post.author.first_name}
+                          lastName={post.author.last_name}
+                          fw={500}
+                        />
+                      ) : (
+                        <Text component="span" size="sm" c="dimmed" fw={500}>
+                          Slettet bruger
+                        </Text>
+                      )}
+                    </Text>
                     <PostDate
                       createdAt={post.created_at}
-                      shortFormat="D. MMM YYYY HH:mm"
+                      updatedAt={post.updated_at}
+                      editedBy={post.edited_by}
                     />
                   </div>
                 </Group>
