@@ -880,6 +880,7 @@ function ChatArea({
   const [renameOpened, { open: openRename, close: closeRename }] =
     useDisclosure(false)
   const [renameName, setRenameName] = useState(conversation.name || "")
+  const renameInputRef = useRef<HTMLInputElement>(null)
   const [isRenaming, setIsRenaming] = useState(false)
   const queryClient = useQueryClient()
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -1146,6 +1147,7 @@ function ChatArea({
         onClose={closeRename}
         title="Omdøb samtale"
         size="sm"
+        onEnterTransitionEnd={() => renameInputRef.current?.focus()}
       >
         <form
           onSubmit={(e) => {
@@ -1155,12 +1157,12 @@ function ChatArea({
         >
           <Stack gap="md">
             <TextInput
+              ref={renameInputRef}
               label="Samtalens navn"
               placeholder="Indtast et navn..."
               value={renameName}
               onChange={(e) => setRenameName(e.currentTarget.value)}
               maxLength={100}
-              data-autofocus
             />
             <Group justify="flex-end">
               <Button variant="light" onClick={closeRename}>
