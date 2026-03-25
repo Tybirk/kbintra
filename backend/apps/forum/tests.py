@@ -391,6 +391,44 @@ class TestThreadCloseViews:
         assert threads[0]["is_closed"] is True
 
 
+class TestThreadPinViews:
+    """Tests for thread pin/unpin functionality."""
+
+    def test_any_user_can_pin_thread(self, api_client, second_user, thread):
+        """Test that any authenticated user can pin a thread."""
+        api_client.force_authenticate(user=second_user)
+        response = api_client.post(f"/api/forum/threads/{thread.id}/pin/")
+        assert response.status_code == 200
+        assert response.data["is_pinned"] is True
+        thread.refresh_from_db()
+        assert thread.is_pinned is True
+
+    def test_toggle_unpin(self, authenticated_client, thread):
+        """Test that pinning a pinned thread unpins it."""
+        thread.is_pinned = True
+        thread.save()
+
+        response = authenticated_client.post(f"/api/forum/threads/{thread.id}/pin/")
+        assert response.status_code == 200
+        assert response.data["is_pinned"] is False
+        thread.refresh_from_db()
+        assert thread.is_pinned is False
+
+    def test_explicit_pin_value(self, authenticated_client, thread):
+        """Test that explicit is_pinned value can be passed."""
+        response = authenticated_client.post(
+            f"/api/forum/threads/{thread.id}/pin/",
+            {"is_pinned": True},
+        )
+        assert response.status_code == 200
+        assert response.data["is_pinned"] is True
+
+    def test_unauthenticated_cannot_pin(self, api_client, thread):
+        """Test that unauthenticated users cannot pin threads."""
+        response = api_client.post(f"/api/forum/threads/{thread.id}/pin/")
+        assert response.status_code == 401
+
+
 class TestPostViews:
     """Tests for post views."""
 

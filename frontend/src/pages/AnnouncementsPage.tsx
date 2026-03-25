@@ -18,6 +18,8 @@ import {
   Badge,
   Typography,
   Box,
+  Checkbox,
+  Tooltip,
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -253,9 +255,27 @@ function AnnouncementCard({
   onEdit,
   onDelete,
 }: AnnouncementCardProps) {
+  const queryClient = useQueryClient()
   const [previewFile, setPreviewFile] = useState<AnnouncementAttachment | null>(
     null,
   )
+
+  const toggleDashboardMutation = useMutation({
+    mutationFn: (show: boolean) =>
+      announcementsApi.updateAnnouncement(announcement.id, {
+        show_on_dashboard: show,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["announcements"] })
+    },
+    onError: () => {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke opdatere opslag. Prøv igen.",
+        color: "red",
+      })
+    },
+  })
 
   // Convert attachment to ForumFile format for FilePreviewModal
   const toForumFile = (attachment: AnnouncementAttachment) => ({
@@ -302,28 +322,42 @@ function AnnouncementCard({
             </Badge>
           )}
           {announcement.can_edit && (
-            <Menu shadow="md" width={200}>
-              <Menu.Target>
-                <ActionIcon variant="subtle">
-                  <IconDotsVertical size={16} />
-                </ActionIcon>
-              </Menu.Target>
-              <Menu.Dropdown>
-                <Menu.Item
-                  leftSection={<IconEdit size={14} />}
-                  onClick={onEdit}
-                >
-                  Rediger
-                </Menu.Item>
-                <Menu.Item
-                  color="red"
-                  leftSection={<IconTrash size={14} />}
-                  onClick={onDelete}
-                >
-                  Slet
-                </Menu.Item>
-              </Menu.Dropdown>
-            </Menu>
+            <>
+              <Tooltip label="Vis på forsiden" withArrow>
+                <Checkbox
+                  size="sm"
+                  checked={announcement.show_on_dashboard}
+                  onChange={(e) =>
+                    toggleDashboardMutation.mutate(e.currentTarget.checked)
+                  }
+                  disabled={toggleDashboardMutation.isPending}
+                  label="Forside"
+                  styles={{ label: { cursor: "pointer" } }}
+                />
+              </Tooltip>
+              <Menu shadow="md" width={200}>
+                <Menu.Target>
+                  <ActionIcon variant="subtle">
+                    <IconDotsVertical size={16} />
+                  </ActionIcon>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  <Menu.Item
+                    leftSection={<IconEdit size={14} />}
+                    onClick={onEdit}
+                  >
+                    Rediger
+                  </Menu.Item>
+                  <Menu.Item
+                    color="red"
+                    leftSection={<IconTrash size={14} />}
+                    onClick={onDelete}
+                  >
+                    Slet
+                  </Menu.Item>
+                </Menu.Dropdown>
+              </Menu>
+            </>
           )}
         </Group>
       </Group>

@@ -40,6 +40,16 @@ describe("announcementsApi", () => {
       })
     })
 
+    it("passes dashboard_only=true when dashboardOnly=true", async () => {
+      vi.mocked(apiClient.get).mockResolvedValue({ data: [] })
+
+      await announcementsApi.getAnnouncements(false, true)
+
+      expect(apiClient.get).toHaveBeenCalledWith("/announcements/", {
+        params: { dashboard_only: "true" },
+      })
+    })
+
     it("handles paginated response with results wrapper", async () => {
       const mockResults = [{ id: 1, title: "Test opslag" }]
       vi.mocked(apiClient.get).mockResolvedValue({

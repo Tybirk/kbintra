@@ -6,7 +6,6 @@ import {
   SimpleGrid,
   Paper,
   Group,
-  Badge,
   Button,
   TextInput,
   Loader,
@@ -22,12 +21,12 @@ import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
 import {
   IconSearch,
-  IconMessageCircle,
   IconBell,
   IconBellOff,
   IconUsers,
   IconChecks,
   IconPlus,
+  IconMessageCircle,
 } from "@tabler/icons-react"
 import { useNavigate } from "react-router-dom"
 import dayjs from "dayjs"
@@ -370,26 +369,43 @@ function SubgroupCard({
       withBorder
       p="lg"
       radius="md"
-      style={{ cursor: "pointer" }}
+      style={{ cursor: "pointer", position: "relative", overflow: "visible" }}
       onClick={onClick}
     >
+      {subgroup.unread_thread_count > 0 && (
+        <Box
+          style={{
+            position: "absolute",
+            top: -8,
+            right: -8,
+            background: "var(--mantine-color-red-filled)",
+            color: "white",
+            borderRadius: 10,
+            minWidth: 20,
+            height: 20,
+            padding: "0 6px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 11,
+            fontWeight: 700,
+            zIndex: 1,
+          }}
+        >
+          {subgroup.unread_thread_count}
+        </Box>
+      )}
       <Stack gap="sm">
         <Group justify="space-between">
           <Group gap="xs">
-            <IconMessageCircle size={20} />
+            {subgroup.icon && (
+              <Text size="lg" lh={1}>
+                {subgroup.icon}
+              </Text>
+            )}
             <Text fw={500}>{subgroup.name}</Text>
           </Group>
           <Group gap="xs">
-            {subgroup.is_committee && (
-              <Badge size="xs" variant="filled" color="teal">
-                Udvalg
-              </Badge>
-            )}
-            {subgroup.is_default && !subgroup.is_committee && (
-              <Badge size="xs" variant="light" color="gray">
-                Standard
-              </Badge>
-            )}
             <ActionIcon
               variant={subgroup.is_subscribed ? "filled" : "light"}
               color={subgroup.is_subscribed ? "blue" : "gray"}
@@ -424,35 +440,18 @@ function SubgroupCard({
           </Typography>
         )}
 
-        <Group gap="xs" justify="space-between">
-          <Group gap="xs">
-            <Badge variant="light" color="blue">
-              {subgroup.thread_count} tråde
-            </Badge>
-            {subgroup.unread_thread_count > 0 &&
-              (subgroup.is_subscribed ? (
-                <Badge variant="filled" color="red">
-                  {subgroup.unread_thread_count}{" "}
-                  {subgroup.unread_thread_count === 1 ? "ulæst" : "ulæste"}
-                </Badge>
-              ) : (
-                <Badge variant="light" color="gray">
-                  {subgroup.unread_thread_count}{" "}
-                  {subgroup.unread_thread_count === 1 ? "ulæst" : "ulæste"}
-                </Badge>
-              ))}
-            {subgroup.is_subscribed && (
-              <Badge variant="outline" color="green">
-                Tilmeldt
-              </Badge>
-            )}
-          </Group>
-          {subgroup.last_activity_at && (
-            <Text size="xs" c="dimmed">
-              {dayjs(subgroup.last_activity_at).fromNow()}
-            </Text>
-          )}
-        </Group>
+        {subgroup.last_activity_at && (
+          <Text
+            size="xs"
+            c="dimmed"
+            truncate
+            style={{ overflow: "hidden", textOverflow: "ellipsis" }}
+          >
+            {subgroup.latest_thread_title
+              ? `Seneste: ${subgroup.latest_thread_title} \u2014 ${dayjs(subgroup.last_activity_at).fromNow()}`
+              : dayjs(subgroup.last_activity_at).fromNow()}
+          </Text>
+        )}
       </Stack>
     </Paper>
   )

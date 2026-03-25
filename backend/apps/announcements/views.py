@@ -40,6 +40,10 @@ class AnnouncementListCreateView(generics.ListCreateAPIView):
             queryset = queryset.filter(is_active=is_active.lower() == "true")
         else:
             queryset = queryset.filter(is_active=True)
+        # Allow filtering to only dashboard announcements
+        dashboard_only = self.request.query_params.get("dashboard_only")
+        if dashboard_only is not None and dashboard_only.lower() == "true":
+            queryset = queryset.filter(show_on_dashboard=True)
         return queryset
 
 

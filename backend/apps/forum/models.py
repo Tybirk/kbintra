@@ -28,6 +28,12 @@ class Subgroup(models.Model):
         default=False,
         help_text="If true, this subgroup appears at the very top (e.g., Fælles).",
     )
+    icon = models.CharField(
+        max_length=30,
+        blank=True,
+        default="",
+        help_text="Tabler icon name for display, e.g. 'users', 'home'. Empty = default per type.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     last_activity_at = models.DateTimeField(
         null=True,

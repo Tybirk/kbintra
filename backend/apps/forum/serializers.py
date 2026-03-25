@@ -59,6 +59,7 @@ class SubgroupSerializer(serializers.ModelSerializer):
     thread_count = serializers.SerializerMethodField()
     is_subscribed = serializers.SerializerMethodField()
     unread_thread_count = serializers.SerializerMethodField()
+    latest_thread_title = serializers.SerializerMethodField()
 
     class Meta:
         model = Subgroup
@@ -70,15 +71,26 @@ class SubgroupSerializer(serializers.ModelSerializer):
             "is_default",
             "is_committee",
             "is_main",
+            "icon",
             "thread_count",
             "unread_thread_count",
             "is_subscribed",
+            "latest_thread_title",
             "created_at",
             "last_activity_at",
         ]
 
     def get_thread_count(self, obj: Subgroup) -> int:
         return len([t for t in obj.threads.all() if not t.is_closed])
+
+    def get_latest_thread_title(self, obj: Subgroup) -> str | None:
+        latest = None
+        for thread in obj.threads.all():
+            if thread.is_closed:
+                continue
+            if latest is None or thread.updated_at > latest.updated_at:
+                latest = thread
+        return latest.title if latest else None
 
     def get_is_subscribed(self, obj: Subgroup) -> bool:
         subscribed_ids = self.context.get("subscribed_subgroup_ids")
@@ -104,11 +116,11 @@ class SubgroupSerializer(serializers.ModelSerializer):
 
 
 class SubgroupUpdateSerializer(serializers.ModelSerializer):
-    """Serializer for updating subgroup description."""
+    """Serializer for updating subgroup description and icon."""
 
     class Meta:
         model = Subgroup
-        fields = ["description"]
+        fields = ["description", "icon"]
 
 
 class SubgroupCreateSerializer(serializers.ModelSerializer):

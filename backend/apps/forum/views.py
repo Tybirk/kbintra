@@ -185,7 +185,7 @@ class SubgroupUpdateView(APIView):
         serializer = SubgroupUpdateSerializer(subgroup, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response({"detail": "Beskrivelse opdateret."}, status=status.HTTP_200_OK)
+        return Response({"detail": "Gruppe opdateret."}, status=status.HTTP_200_OK)
 
 
 class MySubscriptionsView(generics.ListAPIView):
@@ -362,6 +362,34 @@ class ThreadMoveView(APIView):
                 "detail": "Tråden blev flyttet.",
                 "subgroup_slug": new_subgroup.slug,
                 "thread_slug": thread.slug,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ThreadPinView(APIView):
+    """Pin or unpin a thread (any authenticated user)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request, pk: int) -> Response:
+        """Toggle the pinned state of a thread."""
+        thread = get_object_or_404(Thread, pk=pk)
+        if "is_pinned" in request.data:
+            value = request.data["is_pinned"]
+            if isinstance(value, str):
+                thread.is_pinned = value.lower() in ("true", "1", "yes")
+            else:
+                thread.is_pinned = bool(value)
+        else:
+            thread.is_pinned = not thread.is_pinned
+        thread.save(update_fields=["is_pinned"])
+
+        action = "fastgjort" if thread.is_pinned else "løsnet"
+        return Response(
+            {
+                "detail": f"Tråden blev {action}.",
+                "is_pinned": thread.is_pinned,
             },
             status=status.HTTP_200_OK,
         )

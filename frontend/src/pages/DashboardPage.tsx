@@ -79,7 +79,7 @@ export default function DashboardPage() {
     isError: announcementsError,
   } = useQuery({
     queryKey: ["announcements", "recent"],
-    queryFn: () => announcementsApi.getAnnouncements(),
+    queryFn: () => announcementsApi.getAnnouncements(false, true),
   })
 
   const {

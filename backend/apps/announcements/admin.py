@@ -9,8 +9,8 @@ from .models import Announcement, AnnouncementAttachment
 
 @admin.register(Announcement)
 class AnnouncementAdmin(admin.ModelAdmin):
-    list_display = ["title", "author", "is_active", "priority", "created_at"]
-    list_filter = ["is_active", "created_at"]
+    list_display = ["title", "author", "is_active", "show_on_dashboard", "priority", "created_at"]
+    list_filter = ["is_active", "show_on_dashboard", "created_at"]
     search_fields = ["title", "content", "author__email"]
     raw_id_fields = ["author"]
     date_hierarchy = "created_at"

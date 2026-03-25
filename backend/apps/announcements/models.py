@@ -17,6 +17,10 @@ class Announcement(models.Model):
         related_name="announcements",
     )
     is_active = models.BooleanField(default=True)
+    show_on_dashboard = models.BooleanField(
+        default=True,
+        help_text="Show this announcement on the main dashboard page",
+    )
     priority = models.IntegerField(
         default=0,
         help_text="Higher priority announcements appear first",

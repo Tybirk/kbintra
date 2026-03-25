@@ -20,6 +20,11 @@ import type {
   ReactionTypeInfo,
 } from "../types"
 
+interface SubgroupUpdateData {
+  description?: string
+  icon?: string
+}
+
 export const forumApi = {
   // Recent activity
   getRecentActivity: async (limit = 10): Promise<RecentActivity[]> => {
@@ -135,6 +140,16 @@ export const forumApi = {
   }> => {
     const response = await apiClient.post(`/forum/threads/${threadId}/close/`, {
       is_closed: isClosed,
+    })
+    return response.data
+  },
+
+  pinThread: async (threadId: number, isPinned?: boolean): Promise<{
+    detail: string
+    is_pinned: boolean
+  }> => {
+    const response = await apiClient.post(`/forum/threads/${threadId}/pin/`, {
+      is_pinned: isPinned,
     })
     return response.data
   },
@@ -411,7 +426,7 @@ export const forumApi = {
   },
 
   // Subgroup management
-  updateSubgroup: async (slug: string, data: { description: string }): Promise<{
+  updateSubgroup: async (slug: string, data: SubgroupUpdateData): Promise<{
     detail: string
   }> => {
     const response = await apiClient.patch(

@@ -40,8 +40,11 @@ const mockSubgroups = [
     is_subscribed: false,
     is_committee: false,
     is_default: true,
+    is_main: false,
+    icon: "",
     thread_count: 5,
     unread_thread_count: 0,
+    latest_thread_title: "Velkommen",
     last_activity_at: "2026-01-20T10:00:00Z",
   },
   {
@@ -52,8 +55,11 @@ const mockSubgroups = [
     is_subscribed: true,
     is_committee: true,
     is_default: false,
+    is_main: false,
+    icon: "\uD83C\uDF73",
     thread_count: 3,
     unread_thread_count: 2,
+    latest_thread_title: "Menuplan uge 4",
     last_activity_at: "2026-01-21T12:00:00Z",
   },
 ]
@@ -81,12 +87,12 @@ describe("ForumPage", () => {
     })
   })
 
-  it("shows subscribed indicator on subscribed subgroups", async () => {
+  it("shows unread count indicator on subgroups with unread threads", async () => {
     render(<ForumPage />)
 
     await waitFor(() => {
-      // Madudvalg is subscribed
-      expect(screen.getByText("Tilmeldt")).toBeInTheDocument()
+      // Madudvalg has 2 unread threads - shown as red dot badge
+      expect(screen.getByText("2")).toBeInTheDocument()
     })
   })
 
@@ -150,11 +156,11 @@ describe("ForumPage", () => {
     expect(mockNavigate).toHaveBeenCalledWith("/forum/faellesgruppe")
   })
 
-  it("shows committee badge on committee subgroups", async () => {
+  it("shows subscribed groups section for subscribed subgroups", async () => {
     render(<ForumPage />)
 
     await waitFor(() => {
-      expect(screen.getByText("Udvalg")).toBeInTheDocument()
+      expect(screen.getByText("Mine grupper")).toBeInTheDocument()
     })
   })
 

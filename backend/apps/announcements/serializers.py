@@ -57,6 +57,7 @@ class AnnouncementSerializer(serializers.ModelSerializer):
             "content",
             "author",
             "is_active",
+            "show_on_dashboard",
             "priority",
             "is_own",
             "can_edit",
@@ -91,7 +92,7 @@ class AnnouncementCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Announcement
-        fields = ["title", "content", "is_active", "priority", "attachments"]
+        fields = ["title", "content", "is_active", "show_on_dashboard", "priority", "attachments"]
 
     def validate_attachments(self, value: list) -> list:
         from apps.forum.utils import validate_file_size

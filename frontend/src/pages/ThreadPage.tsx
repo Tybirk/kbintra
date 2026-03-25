@@ -39,6 +39,8 @@ import {
   IconBell,
   IconBellOff,
   IconArrowsMove,
+  IconPin,
+  IconPinnedOff,
 } from "@tabler/icons-react"
 import { forumApi } from "../api/forum"
 import { messagingApi } from "../api/messaging"
@@ -484,6 +486,27 @@ export default function ThreadPage() {
     },
   })
 
+  const pinThreadMutation = useMutation({
+    mutationFn: (isPinned: boolean) => forumApi.pinThread(thread!.id, isPinned),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: threadQueryKey })
+      notifications.show({
+        title: data.is_pinned ? "Tråd fastgjort" : "Tråd løsnet",
+        message: data.is_pinned
+          ? "Tråden vises nu øverst i listen."
+          : "Tråden er ikke længere fastgjort.",
+        color: data.is_pinned ? "blue" : "gray",
+      })
+    },
+    onError: () => {
+      notifications.show({
+        title: "Fejl",
+        message: "Kunne ikke opdatere trådens status. Prøv igen.",
+        color: "red",
+      })
+    },
+  })
+
   const moveThreadMutation = useMutation({
     mutationFn: (subgroupSlug: string) =>
       forumApi.moveThread(thread!.id, subgroupSlug),
@@ -597,6 +620,11 @@ export default function ThreadPage() {
                 </Text>
                 <Group gap="sm">
                   <Title order={2}>{thread.title}</Title>
+                  {thread.is_pinned && (
+                    <Badge color="blue" leftSection={<IconPin size={12} />}>
+                      Fastgjort
+                    </Badge>
+                  )}
                   {thread.is_closed && (
                     <Badge color="orange" leftSection={<IconLock size={12} />}>
                       Lukket
@@ -625,50 +653,62 @@ export default function ThreadPage() {
                     )}
                   </ActionIcon>
                 </Tooltip>
-                {(thread.can_edit || thread.can_close) && (
-                  <Menu shadow="md" width={200}>
-                    <Menu.Target>
-                      <ActionIcon variant="subtle">
-                        <IconDotsVertical size={16} />
-                      </ActionIcon>
-                    </Menu.Target>
-                    <Menu.Dropdown>
-                      {thread.can_close && (
-                        <Menu.Item
-                          leftSection={
-                            thread.is_closed ? (
-                              <IconLockOpen size={14} />
-                            ) : (
-                              <IconLock size={14} />
-                            )
-                          }
-                          onClick={() =>
-                            closeThreadMutation.mutate(!thread.is_closed)
-                          }
-                        >
-                          {thread.is_closed ? "Genåbn tråd" : "Luk tråd"}
-                        </Menu.Item>
-                      )}
-                      {thread.can_edit && (
-                        <Menu.Item
-                          leftSection={<IconArrowsMove size={14} />}
-                          onClick={openMoveModal}
-                        >
-                          Flyt tråd
-                        </Menu.Item>
-                      )}
-                      {thread.can_edit && (
-                        <Menu.Item
-                          color="red"
-                          leftSection={<IconTrash size={14} />}
-                          onClick={() => deleteThreadMutation.mutate(thread.id)}
-                        >
-                          Slet tråd
-                        </Menu.Item>
-                      )}
-                    </Menu.Dropdown>
-                  </Menu>
-                )}
+                <Menu shadow="md" width={200}>
+                  <Menu.Target>
+                    <ActionIcon variant="subtle">
+                      <IconDotsVertical size={16} />
+                    </ActionIcon>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    <Menu.Item
+                      leftSection={
+                        thread.is_pinned ? (
+                          <IconPinnedOff size={14} />
+                        ) : (
+                          <IconPin size={14} />
+                        )
+                      }
+                      onClick={() =>
+                        pinThreadMutation.mutate(!thread.is_pinned)
+                      }
+                    >
+                      {thread.is_pinned ? "Løsn tråd" : "Fastgør tråd"}
+                    </Menu.Item>
+                    {thread.can_close && (
+                      <Menu.Item
+                        leftSection={
+                          thread.is_closed ? (
+                            <IconLockOpen size={14} />
+                          ) : (
+                            <IconLock size={14} />
+                          )
+                        }
+                        onClick={() =>
+                          closeThreadMutation.mutate(!thread.is_closed)
+                        }
+                      >
+                        {thread.is_closed ? "Genåbn tråd" : "Luk tråd"}
+                      </Menu.Item>
+                    )}
+                    {thread.can_edit && (
+                      <Menu.Item
+                        leftSection={<IconArrowsMove size={14} />}
+                        onClick={openMoveModal}
+                      >
+                        Flyt tråd
+                      </Menu.Item>
+                    )}
+                    {thread.can_edit && (
+                      <Menu.Item
+                        color="red"
+                        leftSection={<IconTrash size={14} />}
+                        onClick={() => deleteThreadMutation.mutate(thread.id)}
+                      >
+                        Slet tråd
+                      </Menu.Item>
+                    )}
+                  </Menu.Dropdown>
+                </Menu>
               </Group>
             </Group>
           }

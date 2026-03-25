@@ -8,8 +8,11 @@ import type { Announcement, CreateAnnouncementData } from "../types"
 export const announcementsApi = {
   getAnnouncements: async (
     includeInactive = false,
+    dashboardOnly = false,
   ): Promise<Announcement[]> => {
-    const params = includeInactive ? { is_active: "false" } : {}
+    const params: Record<string, string> = {}
+    if (includeInactive) params.is_active = "false"
+    if (dashboardOnly) params.dashboard_only = "true"
     const response = await apiClient.get("/announcements/", { params })
     // Handle paginated response
     return response.data.results ?? response.data

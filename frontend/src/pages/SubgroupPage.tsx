@@ -66,6 +66,7 @@ import {
   getFileTypeColor,
 } from "../components/FilePreview"
 import { AttachmentBadge } from "../components/AttachmentBadge"
+import EmojiPicker from "../components/EmojiPicker"
 import UserLink from "../components/UserLink"
 import { useAuthStore } from "../store/authStore"
 import type {
@@ -149,6 +150,14 @@ export default function SubgroupPage() {
       queryClient.invalidateQueries({ queryKey: ["subgroup", slug] })
       queryClient.invalidateQueries({ queryKey: ["subgroups"] })
       setIsEditingDescription(false)
+    },
+  })
+
+  const updateIconMutation = useMutation({
+    mutationFn: (icon: string) => forumApi.updateSubgroup(slug!, { icon }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["subgroup", slug] })
+      queryClient.invalidateQueries({ queryKey: ["subgroups"] })
     },
   })
 
@@ -347,12 +356,20 @@ Skip any that are too vague to act on, and note why at the end.
       <Group justify="space-between" mb="md">
         <div>
           <Group gap="xs">
+            <EmojiPicker
+              onSelect={(emoji) => updateIconMutation.mutate(emoji)}
+              icon={subgroup.icon || "💬"}
+              size="lg"
+            />
             <Title order={1}>{subgroup.name}</Title>
             {subgroup.is_committee && (
               <Badge variant="filled" color="teal">
                 Udvalg
               </Badge>
             )}
+            <Text size="sm" c="dimmed">
+              {subgroup.thread_count} tråde
+            </Text>
           </Group>
           {isEditingDescription ? (
             <Stack gap="xs" mt="xs">

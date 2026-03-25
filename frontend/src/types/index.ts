@@ -129,9 +129,11 @@ export interface Subgroup {
   is_default: boolean
   is_committee: boolean
   is_main: boolean
+  icon: string
   thread_count: number
   unread_thread_count: number
   is_subscribed: boolean
+  latest_thread_title: string | null
   created_at: string
   last_activity_at: string | null
 }
@@ -310,6 +312,7 @@ export interface Announcement {
   content: string
   author: Author
   is_active: boolean
+  show_on_dashboard: boolean
   priority: number
   is_own: boolean
   can_edit: boolean
@@ -322,6 +325,7 @@ export interface CreateAnnouncementData {
   title: string
   content: string
   is_active?: boolean
+  show_on_dashboard?: boolean
   priority?: number
 }
 
