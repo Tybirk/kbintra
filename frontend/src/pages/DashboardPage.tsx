@@ -70,7 +70,6 @@ import type {
 dayjs.extend(isoWeek)
 
 export default function DashboardPage() {
-  const { user } = useAuthStore()
   const navigate = useNavigate()
 
   const {
@@ -285,13 +284,6 @@ export default function DashboardPage() {
 
   return (
     <>
-      <Title order={1} mb="xs">
-        Velkommen, {user?.first_name || "bruger"}!
-      </Title>
-      <Text c="dimmed" mb="xl">
-        Hvad vil du lave i dag?
-      </Text>
-
       {hasError && (
         <Alert color="red" title="Fejl" mb="xl">
           Kunne ikke hente data. Prøv at genindlæse siden.
@@ -956,6 +948,9 @@ function FoodDayWidget({
       queryClient.invalidateQueries({
         queryKey: ["food", "registrations"],
       })
+      queryClient.invalidateQueries({
+        queryKey: ["food", "stats"],
+      })
       setIsSaving(false)
     },
     onError: () => {
@@ -974,6 +969,9 @@ function FoodDayWidget({
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["food", "registrations"],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ["food", "stats"],
       })
       setIsSaving(false)
     },

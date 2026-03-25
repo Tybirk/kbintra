@@ -412,6 +412,88 @@ class AddParticipantsView(APIView):
         )
 
 
+class RenameConversationView(APIView):
+    """Rename a conversation. Any participant can rename."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request: Request, pk: int) -> Response:
+        conversation = get_object_or_404(
+            Conversation.objects.filter(participants=request.user),
+            pk=pk,
+        )
+
+        name = request.data.get("name", "").strip()
+        if len(name) > 100:
+            return Response(
+                {"detail": "Navnet må højst være 100 tegn"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        old_name = conversation.name
+        conversation.name = name
+        conversation.save()
+
+        # Create system message about the rename
+        if name:
+            if old_name:
+                system_content = f'{request.user.first_name} ændrede samtalens navn fra "{old_name}" til "{name}"'
+            else:
+                system_content = f'{request.user.first_name} navngav samtalen "{name}"'
+        else:
+            system_content = f"{request.user.first_name} fjernede samtalens navn"
+
+        system_message = Message.objects.create(
+            conversation=conversation,
+            sender=request.user,
+            content=system_content,
+            is_system_message=True,
+        )
+
+        # Broadcast via WebSocket
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+
+        channel_layer = get_channel_layer()
+
+        # Broadcast the system message
+        message_data = {
+            "id": system_message.id,
+            "conversation": conversation.id,
+            "sender": {
+                "id": request.user.id,
+                "first_name": request.user.first_name,
+                "last_name": request.user.last_name,
+                "profile_picture": (
+                    request.user.profile_picture.url if request.user.profile_picture else None
+                ),
+            },
+            "content": system_message.content,
+            "is_own": False,
+            "is_read": False,
+            "is_system_message": True,
+            "created_at": system_message.created_at.isoformat(),
+            "attachments": [],
+        }
+
+        async_to_sync(channel_layer.group_send)(
+            f"conversation_{conversation.id}",
+            {"type": "chat_message", "message": message_data},
+        )
+
+        # Broadcast conversation rename event
+        async_to_sync(channel_layer.group_send)(
+            f"conversation_{conversation.id}",
+            {
+                "type": "conversation_renamed",
+                "conversation_id": conversation.id,
+                "name": name,
+            },
+        )
+
+        return Response(ConversationSerializer(conversation, context={"request": request}).data)
+
+
 class MessageEditView(APIView):
     """Edit a message. Only the sender can edit their own non-system messages."""
 

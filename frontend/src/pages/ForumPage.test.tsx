@@ -36,7 +36,7 @@ const mockSubgroups = [
     id: 1,
     name: "Fællesgruppe",
     slug: "faellesgruppe",
-    description: "Generel diskussion",
+    description: "Generel tråd",
     is_subscribed: false,
     is_committee: false,
     is_default: true,

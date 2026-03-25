@@ -534,11 +534,9 @@ Skip any that are too vague to act on, and note why at the end.
                 <Center>
                   <Stack align="center" gap="xs">
                     <IconMessage size={48} color="gray" />
-                    <Text c="dimmed">
-                      Ingen diskussioner endnu. Start samtalen!
-                    </Text>
+                    <Text c="dimmed">Ingen tråde endnu. Start samtalen!</Text>
                     <Button onClick={openCreateThreadModal} mt="sm">
-                      Opret første diskussion
+                      Opret første tråd
                     </Button>
                   </Stack>
                 </Center>
@@ -757,8 +755,8 @@ function CreateThreadModal({
       ),
     onSuccess: (thread) => {
       notifications.show({
-        title: "Diskussion oprettet",
-        message: "Din diskussion er blevet oprettet.",
+        title: "Tråd oprettet",
+        message: "Din tråd er blevet oprettet.",
         color: "green",
       })
       setTitle("")
@@ -772,7 +770,7 @@ function CreateThreadModal({
     onError: () => {
       notifications.show({
         title: "Fejl",
-        message: "Kunne ikke oprette diskussion. Prøv igen.",
+        message: "Kunne ikke oprette tråd. Prøv igen.",
         color: "red",
       })
     },
@@ -883,7 +881,7 @@ function CreateThreadModal({
                   loading={createMutation.isPending}
                   disabled={!title.trim() || !content.trim()}
                 >
-                  Opret diskussion
+                  Opret tråd
                 </Button>
               </Group>
             </Group>

@@ -989,18 +989,22 @@ class ForumUnreadCountView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request: Request) -> Response:
-        subscribed_subgroup_ids = SubgroupSubscription.objects.filter(
-            user=request.user
-        ).values_list("subgroup_id", flat=True)
+        subscriptions = SubgroupSubscription.objects.filter(user=request.user).values_list(
+            "subgroup_id", "created_at"
+        )
+        subscribed_since = dict(subscriptions)
         read_map = dict(
             ThreadReadStatus.objects.filter(user=request.user).values_list(
                 "thread_id", "last_read_at"
             )
         )
         count = 0
-        for thread in Thread.objects.filter(subgroup_id__in=subscribed_subgroup_ids).only(
-            "id", "updated_at"
+        for thread in Thread.objects.filter(subgroup_id__in=subscribed_since.keys()).only(
+            "id", "subgroup_id", "updated_at"
         ):
+            # Only count threads updated after the user subscribed
+            if thread.updated_at <= subscribed_since[thread.subgroup_id]:
+                continue
             last_read = read_map.get(thread.id)
             if last_read is None or thread.updated_at > last_read:
                 count += 1

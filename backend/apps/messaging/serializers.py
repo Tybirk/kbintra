@@ -123,6 +123,7 @@ class ConversationSerializer(serializers.ModelSerializer):
         model = Conversation
         fields = [
             "id",
+            "name",
             "participants",
             "other_participants",
             "last_message",

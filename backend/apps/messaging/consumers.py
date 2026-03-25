@@ -254,6 +254,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
         )
 
+    async def conversation_renamed(self, event):
+        """Broadcast conversation rename to all clients in conversation."""
+        await self.send(
+            json.dumps(
+                {
+                    "type": "conversation_renamed",
+                    "conversation_id": event["conversation_id"],
+                    "name": event["name"],
+                }
+            )
+        )
+
     async def message_reacted(self, event):
         """Broadcast reaction update to all clients in conversation."""
         await self.send(

@@ -5,11 +5,10 @@ Views for Food app.
 import contextlib
 import logging
 from datetime import date, timedelta
-from decimal import Decimal
 from typing import Any
 
 from django.db import transaction
-from django.db.models import Max, Q, QuerySet, Sum
+from django.db.models import Count, Max, Q, QuerySet, Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -17,6 +16,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .constants import DAY_NAMES, calculate_meal_price
 from .models import (
     FoodTeam,
     FoodTeamCycle,
@@ -59,9 +59,6 @@ logger = logging.getLogger(__name__)
 def get_week_start(d: date) -> date:
     """Get the Monday of the week containing the given date."""
     return d - timedelta(days=d.weekday())
-
-
-DAY_NAMES = ["Mandag", "Tirsdag", "Onsdag", "Torsdag"]
 
 
 def _get_preference_values(
@@ -169,11 +166,8 @@ class DailyRegistrationStatsView(APIView):
                     {"detail": "Invalid date format. Use YYYY-MM-DD."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            stats = {}
-            for day in range(4):  # Mon-Thu
-                day_date = week_start + timedelta(days=day)
-                stats[day_date.isoformat()] = self._get_stats_for_date(day_date)
-            return Response(stats)
+            dates = [week_start + timedelta(days=d) for d in range(4)]
+            return Response(self._get_stats_for_dates(dates))
 
         else:
             return Response(
@@ -182,7 +176,12 @@ class DailyRegistrationStatsView(APIView):
             )
 
     def _get_stats_for_date(self, target_date: date) -> dict[str, Any]:
-        """Get registration statistics for a specific date.
+        """Get registration statistics for a single date."""
+        result = self._get_stats_for_dates([target_date])
+        return result[target_date.isoformat()]
+
+    def _get_stats_for_dates(self, dates: list[date]) -> dict[str, dict[str, Any]]:
+        """Get registration statistics for multiple dates in batched queries.
 
         Effective portions = active registrations minus available (unsold) tickets.
         Claimed tickets are NOT subtracted (the claimer eats in place of the seller).
@@ -192,137 +191,195 @@ class DailyRegistrationStatsView(APIView):
         only keep the most recently created registration per house to avoid double-counting.
         Users without a house are always counted individually.
         """
-        # For post-deadline dates, ensure all houses have materialized registrations
-        # so stats don't depend on mutable preferences.
-        # Only call _materialize_for_houses when rows are actually missing — the
-        # periodic Huey task handles the common case, so this is just a safety net.
-        if is_after_deadline(target_date):
-            from apps.houses.models import House
+        from apps.houses.models import House
 
+        # 1. Materialization safety net for post-deadline dates (batched)
+        post_deadline_dates = [d for d in dates if is_after_deadline(d)]
+        if post_deadline_dates:
             from .tasks import _materialize_for_houses
 
             house_count = House.objects.filter(inhabitants__is_active=True).distinct().count()
-            covered = (
-                MealRegistration.objects.filter(date=target_date, house__isnull=False)
-                .values("house_id")
-                .distinct()
-                .count()
+            covered_counts = dict(
+                MealRegistration.objects.filter(date__in=post_deadline_dates, house__isnull=False)
+                .values("date")
+                .annotate(cnt=Count("house_id", distinct=True))
+                .values_list("date", "cnt")
             )
-            if covered < house_count:
-                _materialize_for_houses([target_date])
+            unmaterialized = [
+                d for d in post_deadline_dates if covered_counts.get(d, 0) < house_count
+            ]
+            if unmaterialized:
+                _materialize_for_houses(unmaterialized)
 
-        # For houses with multiple registrations, keep only the latest one (highest id)
+        # 2. Deduplicated registrations for all dates (1 query with subquery)
         latest_per_house = (
-            MealRegistration.objects.filter(date=target_date, is_active=True, house__isnull=False)
-            .values("house_id")
+            MealRegistration.objects.filter(date__in=dates, is_active=True, house__isnull=False)
+            .values("date", "house_id")
             .annotate(latest_id=Max("id"))
             .values("latest_id")
         )
-        registrations = MealRegistration.objects.filter(
-            date=target_date,
-            is_active=True,
-        ).filter(Q(house__isnull=True) | Q(id__in=latest_per_house))
+        all_registrations = MealRegistration.objects.filter(date__in=dates, is_active=True).filter(
+            Q(house__isnull=True) | Q(id__in=latest_per_house)
+        )
 
-        # Aggregate by category
-        def _agg(qs: QuerySet) -> dict[str, int]:
-            result = qs.aggregate(
-                adults_meat=Coalesce(Sum("adults_meat"), 0),
-                adults_veg=Coalesce(Sum("adults_veg"), 0),
-                children=Coalesce(Sum("children_count"), 0),
+        # 3. Single conditional aggregate grouped by date (replaces 4 queries × N dates)
+        _ta = Q(dining_option="take_away")
+        _e17 = Q(dining_option="eat_in", seating_time="17:30")
+        _e18 = Q(dining_option="eat_in", seating_time="18:30")
+        agg_rows = all_registrations.values("date").annotate(
+            ta_meat=Coalesce(Sum("adults_meat", filter=_ta), 0),
+            ta_veg=Coalesce(Sum("adults_veg", filter=_ta), 0),
+            ta_children=Coalesce(Sum("children_count", filter=_ta), 0),
+            e17_meat=Coalesce(Sum("adults_meat", filter=_e17), 0),
+            e17_veg=Coalesce(Sum("adults_veg", filter=_e17), 0),
+            e17_children=Coalesce(Sum("children_count", filter=_e17), 0),
+            e18_meat=Coalesce(Sum("adults_meat", filter=_e18), 0),
+            e18_veg=Coalesce(Sum("adults_veg", filter=_e18), 0),
+            e18_children=Coalesce(Sum("children_count", filter=_e18), 0),
+            total_meat=Coalesce(Sum("adults_meat"), 0),
+            total_veg=Coalesce(Sum("adults_veg"), 0),
+            total_children=Coalesce(Sum("children_count"), 0),
+        )
+        agg_by_date: dict[date, dict[str, int]] = {row["date"]: row for row in agg_rows}
+        empty_agg: dict[str, int] = {
+            "ta_meat": 0,
+            "ta_veg": 0,
+            "ta_children": 0,
+            "e17_meat": 0,
+            "e17_veg": 0,
+            "e17_children": 0,
+            "e18_meat": 0,
+            "e18_veg": 0,
+            "e18_children": 0,
+            "total_meat": 0,
+            "total_veg": 0,
+            "total_children": 0,
+        }
+
+        # 4. Virtual contributions for pre-deadline dates (batched)
+        pre_deadline_dates = [d for d in dates if not is_after_deadline(d)]
+        virtual_by_date: dict[date, dict[str, dict[str, int]]] = {}
+        if pre_deadline_dates:
+            # Covered house IDs for all pre-deadline dates (1 query)
+            covered_by_date: dict[date, set[int]] = {}
+            for d, hid in MealRegistration.objects.filter(
+                date__in=pre_deadline_dates, is_active=True, house__isnull=False
+            ).values_list("date", "house_id"):
+                covered_by_date.setdefault(d, set()).add(hid)
+
+            # Preferences for all relevant weekdays (1 query)
+            weekdays = {d.weekday() for d in pre_deadline_dates}
+            prefs_by_weekday_house: dict[tuple[int, int], MealPreference] = {}
+            for pref in MealPreference.objects.filter(
+                day_of_week__in=weekdays, user__is_active=True
+            ).select_related("user__house"):
+                house = pref.user.house
+                if house:
+                    key = (pref.day_of_week, house.id)
+                    if key not in prefs_by_weekday_house:
+                        prefs_by_weekday_house[key] = pref
+
+            # Load houses once (1 query + 1 prefetch)
+            houses = list(House.objects.prefetch_related("inhabitants"))
+
+            for d in pre_deadline_dates:
+                covered_ids = covered_by_date.get(d, set())
+                virt: dict[str, dict[str, int]] = {
+                    "take_away": {"adults_meat": 0, "adults_veg": 0, "children": 0},
+                    "eat_in_1730": {"adults_meat": 0, "adults_veg": 0, "children": 0},
+                    "eat_in_1830": {"adults_meat": 0, "adults_veg": 0, "children": 0},
+                    "total": {"adults_meat": 0, "adults_veg": 0, "children": 0},
+                }
+                dow = d.weekday()
+                for h in houses:
+                    if h.id in covered_ids:
+                        continue
+                    pref = prefs_by_weekday_house.get((dow, h.id))
+                    if pref:
+                        meat, veg, children = (
+                            pref.adults_meat,
+                            pref.adults_veg,
+                            pref.children_count,
+                        )
+                        if pref.dining_option == "take_away":
+                            bucket = "take_away"
+                        elif pref.seating_time == "17:30":
+                            bucket = "eat_in_1730"
+                        else:
+                            bucket = "eat_in_1830"
+                    else:
+                        inhabitant_count = len(h.inhabitants.all())
+                        if inhabitant_count == 0:
+                            continue
+                        meat, veg, children = 0, inhabitant_count, 0
+                        bucket = "eat_in_1730"
+                    for b in (bucket, "total"):
+                        virt[b]["adults_meat"] += meat
+                        virt[b]["adults_veg"] += veg
+                        virt[b]["children"] += children
+                virtual_by_date[d] = virt
+
+        # 5. Available tickets for all dates (1 query)
+        ticket_rows = (
+            FoodTicket.objects.filter(date__in=dates, is_available=True)
+            .values("date")
+            .annotate(
+                ticket_meat=Coalesce(Sum("adults_meat"), 0),
+                ticket_veg=Coalesce(Sum("adults_veg"), 0),
+                ticket_children=Coalesce(Sum("children_count"), 0),
             )
-            result["adults"] = result["adults_meat"] + result["adults_veg"]
-            return result
-
-        takeaway = _agg(registrations.filter(dining_option="take_away"))
-        eat_in_1730 = _agg(registrations.filter(dining_option="eat_in", seating_time="17:30"))
-        eat_in_1830 = _agg(registrations.filter(dining_option="eat_in", seating_time="18:30"))
-        total_agg = _agg(registrations)
-
-        # For pre-deadline dates, add virtual contributions for houses without
-        # a real registration. Post-deadline dates already have materialized rows.
-        virtual: dict[str, dict[str, int]] = {
+        )
+        tickets_by_date: dict[date, dict[str, int]] = {row["date"]: row for row in ticket_rows}
+        empty_tickets: dict[str, int] = {"ticket_meat": 0, "ticket_veg": 0, "ticket_children": 0}
+        empty_virt: dict[str, dict[str, int]] = {
             "take_away": {"adults_meat": 0, "adults_veg": 0, "children": 0},
             "eat_in_1730": {"adults_meat": 0, "adults_veg": 0, "children": 0},
             "eat_in_1830": {"adults_meat": 0, "adults_veg": 0, "children": 0},
             "total": {"adults_meat": 0, "adults_veg": 0, "children": 0},
         }
-        if not is_after_deadline(target_date):
-            from apps.houses.models import House
 
-            covered_house_ids = set(
-                MealRegistration.objects.filter(
-                    date=target_date, is_active=True, house__isnull=False
-                ).values_list("house_id", flat=True)
-            )
-            day_of_week = target_date.weekday()
-            prefs_by_house: dict[int, MealPreference] = {}
-            for pref in MealPreference.objects.filter(
-                day_of_week=day_of_week, user__is_active=True
-            ).select_related("user__house"):
-                house = pref.user.house
-                if house and house.id not in prefs_by_house:
-                    prefs_by_house[house.id] = pref
-
-            for h in House.objects.prefetch_related("inhabitants"):
-                if h.id in covered_house_ids:
-                    continue
-                pref = prefs_by_house.get(h.id)
-                if pref:
-                    meat, veg, children = (
-                        pref.adults_meat,
-                        pref.adults_veg,
-                        pref.children_count,
-                    )
-                    if pref.dining_option == "take_away":
-                        bucket = "take_away"
-                    elif pref.seating_time == "17:30":
-                        bucket = "eat_in_1730"
-                    else:
-                        bucket = "eat_in_1830"
-                else:
-                    house_count = len(h.inhabitants.all())
-                    if house_count == 0:
-                        continue
-                    meat, veg, children = 0, house_count, 0
-                    bucket = "eat_in_1730"
-                for b in (bucket, "total"):
-                    virtual[b]["adults_meat"] += meat
-                    virtual[b]["adults_veg"] += veg
-                    virtual[b]["children"] += children
-
-        # Subtract available (unsold) tickets from combined total
-        available_tickets = FoodTicket.objects.filter(
-            date=target_date, is_available=True
-        ).aggregate(
-            ticket_meat=Coalesce(Sum("adults_meat"), 0),
-            ticket_veg=Coalesce(Sum("adults_veg"), 0),
-            ticket_children=Coalesce(Sum("children_count"), 0),
-        )
-        combined_meat = total_agg["adults_meat"] + virtual["total"]["adults_meat"]
-        combined_veg = total_agg["adults_veg"] + virtual["total"]["adults_veg"]
-        combined_children = total_agg["children"] + virtual["total"]["children"]
-        eff_meat = max(0, combined_meat - available_tickets["ticket_meat"])
-        eff_veg = max(0, combined_veg - available_tickets["ticket_veg"])
-        eff_children = max(0, combined_children - available_tickets["ticket_children"])
-
-        def _merge(db: dict[str, int], virt: dict[str, int]) -> dict[str, int]:
-            m = db["adults_meat"] + virt["adults_meat"]
-            v = db["adults_veg"] + virt["adults_veg"]
-            c = db["children"] + virt["children"]
+        # 6. Assemble results
+        def _merge(
+            db_meat: int, db_veg: int, db_children: int, virt_bucket: dict[str, int]
+        ) -> dict[str, int]:
+            m = db_meat + virt_bucket["adults_meat"]
+            v = db_veg + virt_bucket["adults_veg"]
+            c = db_children + virt_bucket["children"]
             return {"adults": m + v, "adults_meat": m, "adults_veg": v, "children": c}
 
-        return {
-            "date": target_date.isoformat(),
-            "takeaway": _merge(takeaway, virtual["take_away"]),
-            "eat_in_1730": _merge(eat_in_1730, virtual["eat_in_1730"]),
-            "eat_in_1830": _merge(eat_in_1830, virtual["eat_in_1830"]),
-            "total": {
-                "adults": eff_meat + eff_veg,
-                "adults_meat": eff_meat,
-                "adults_veg": eff_veg,
-                "children": eff_children,
-            },
-        }
+        result: dict[str, dict[str, Any]] = {}
+        for d in dates:
+            agg = agg_by_date.get(d, empty_agg)
+            virt = virtual_by_date.get(d, empty_virt)
+            tickets = tickets_by_date.get(d, empty_tickets)
+
+            combined_meat = agg["total_meat"] + virt["total"]["adults_meat"]
+            combined_veg = agg["total_veg"] + virt["total"]["adults_veg"]
+            combined_children = agg["total_children"] + virt["total"]["children"]
+            eff_meat = max(0, combined_meat - tickets["ticket_meat"])
+            eff_veg = max(0, combined_veg - tickets["ticket_veg"])
+            eff_children = max(0, combined_children - tickets["ticket_children"])
+
+            result[d.isoformat()] = {
+                "date": d.isoformat(),
+                "takeaway": _merge(
+                    agg["ta_meat"], agg["ta_veg"], agg["ta_children"], virt["take_away"]
+                ),
+                "eat_in_1730": _merge(
+                    agg["e17_meat"], agg["e17_veg"], agg["e17_children"], virt["eat_in_1730"]
+                ),
+                "eat_in_1830": _merge(
+                    agg["e18_meat"], agg["e18_veg"], agg["e18_children"], virt["eat_in_1830"]
+                ),
+                "total": {
+                    "adults": eff_meat + eff_veg,
+                    "adults_meat": eff_meat,
+                    "adults_veg": eff_veg,
+                    "children": eff_children,
+                },
+            }
+
+        return result
 
 
 # Meal Preference Views
@@ -496,18 +553,6 @@ class ClaimTicketView(APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
-    # Default prices — keep in sync with FoodTicketCreateSerializer and frontend
-    _PRICE_ADULT_MEAT = Decimal("37.00")
-    _PRICE_ADULT_VEG = Decimal("26.00")
-    _PRICE_CHILD = Decimal("18.00")
-
-    def _calc_price(self, meat: int, veg: int, children: int) -> Decimal:
-        return (
-            self._PRICE_ADULT_MEAT * meat
-            + self._PRICE_ADULT_VEG * veg
-            + self._PRICE_CHILD * children
-        )
-
     def post(self, request: Request, pk: int) -> Response:
         with transaction.atomic():
             try:
@@ -597,7 +642,7 @@ class ClaimTicketView(APIView):
                 ticket.price = (
                     None
                     if is_free_ticket
-                    else self._calc_price(remaining_meat, remaining_veg, remaining_children)
+                    else calculate_meal_price(remaining_meat, remaining_veg, remaining_children)
                 )
                 ticket.save()
 
@@ -610,7 +655,7 @@ class ClaimTicketView(APIView):
                     price=(
                         None
                         if is_free_ticket
-                        else self._calc_price(adults_meat, adults_veg, children_count)
+                        else calculate_meal_price(adults_meat, adults_veg, children_count)
                     ),
                     description=ticket.description,
                     is_available=False,
@@ -883,43 +928,33 @@ class RespondSwapRequestView(APIView):
 class FoodTeamCycleListCreateView(generics.ListCreateAPIView):
     """List all cycles or create a new one (admin only for create)."""
 
-    permission_classes = [permissions.IsAuthenticated]
     queryset = FoodTeamCycle.objects.all().order_by("-created_at")
+
+    def get_permissions(self) -> list:
+        if self.request.method == "POST":
+            return [permissions.IsAuthenticated(), permissions.IsAdminUser()]
+        return [permissions.IsAuthenticated()]
 
     def get_serializer_class(self) -> type:
         if self.request.method == "POST":
             return FoodTeamCycleCreateSerializer
         return FoodTeamCycleSerializer
 
-    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        # Only staff can create cycles
-        if not request.user.is_staff:
-            return Response(
-                {"detail": "Only administrators can create food team cycles."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        return super().create(request, *args, **kwargs)
-
 
 class FoodTeamCycleDetailView(generics.RetrieveUpdateAPIView):
     """Get or update a food team cycle."""
 
-    permission_classes = [permissions.IsAuthenticated]
     queryset = FoodTeamCycle.objects.all()
+
+    def get_permissions(self) -> list:
+        if self.request.method in ["PUT", "PATCH"]:
+            return [permissions.IsAuthenticated(), permissions.IsAdminUser()]
+        return [permissions.IsAuthenticated()]
 
     def get_serializer_class(self) -> type:
         if self.request.method in ["PUT", "PATCH"]:
             return FoodTeamCycleCreateSerializer
         return FoodTeamCycleSerializer
-
-    def update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        # Only staff can update cycles
-        if not request.user.is_staff:
-            return Response(
-                {"detail": "Only administrators can update food team cycles."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        return super().update(request, *args, **kwargs)
 
 
 class ActiveCycleView(APIView):
@@ -1003,7 +1038,7 @@ class MyWishView(APIView):
 class CycleWishesListView(generics.ListAPIView):
     """List all wishes for a cycle (admin only)."""
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
     serializer_class = FoodTeamWishSerializer
 
     def get_queryset(self) -> QuerySet[FoodTeamWish]:
@@ -1014,15 +1049,6 @@ class CycleWishesListView(generics.ListAPIView):
             .order_by("user__first_name")
         )
 
-    def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        # Only staff can view all wishes
-        if not request.user.is_staff:
-            return Response(
-                {"detail": "Only administrators can view all wishes."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        return super().list(request, *args, **kwargs)
-
 
 # Team Generation View
 
@@ -1030,16 +1056,9 @@ class CycleWishesListView(generics.ListAPIView):
 class GenerateTeamsView(APIView):
     """Generate food teams for a cycle."""
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
 
     def post(self, request: Request) -> Response:
-        # Only staff can generate teams
-        if not request.user.is_staff:
-            return Response(
-                {"detail": "Only administrators can generate food teams."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
         serializer = GenerateTeamsSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -1087,17 +1106,10 @@ class DefaultCookingDaysView(APIView):
 class MonthlyFoodCostView(APIView):
     """Get monthly food cost breakdown per house (admin only)."""
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
 
     def get(self, request: Request) -> Response:
         """Get monthly food cost report for a specific month."""
-        # Only staff can access this report
-        if not request.user.is_staff:
-            return Response(
-                {"detail": "Only administrators can access food cost reports."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
         # Validate query params
         year = request.query_params.get("year")
         month = request.query_params.get("month")
@@ -1125,10 +1137,7 @@ class MonthlyFoodCostView(APIView):
 
         from apps.houses.models import House
 
-        # Food prices (same as in FoodTicketCreateSerializer)
-        price_adult_meat = Decimal("37.00")
-        price_adult_veg = Decimal("26.00")
-        price_child = Decimal("18.00")
+        from .constants import PRICE_ADULT_MEAT, PRICE_ADULT_VEG, PRICE_CHILD
 
         first_day = date(year, month, 1)
         _, last_day_num = monthrange(year, month)
@@ -1185,7 +1194,7 @@ class MonthlyFoodCostView(APIView):
                 if meat == 0 and veg == 0 and children == 0:
                     continue
                 cost = (
-                    (price_adult_meat * meat) + (price_adult_veg * veg) + (price_child * children)
+                    (PRICE_ADULT_MEAT * meat) + (PRICE_ADULT_VEG * veg) + (PRICE_CHILD * children)
                 )
                 house_total += cost
                 registration_count += 1
@@ -1247,7 +1256,10 @@ class DriveMenuView(APIView):
     POST: Force refresh from Google Drive (admin only)
     """
 
-    permission_classes = [permissions.IsAuthenticated]
+    def get_permissions(self) -> list:
+        if self.request.method == "POST":
+            return [permissions.IsAuthenticated(), permissions.IsAdminUser()]
+        return [permissions.IsAuthenticated()]
 
     def get(self, request: Request) -> Response:
         """Get menu for a week."""
@@ -1304,12 +1316,6 @@ class DriveMenuView(APIView):
 
     def post(self, request: Request) -> Response:
         """Force refresh menu from Google Drive (admin only)."""
-        if not request.user.is_staff:
-            return Response(
-                {"detail": "Only administrators can force refresh menus."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
         week_number = request.data.get("week")
         year = request.data.get("year")
 
@@ -1354,15 +1360,10 @@ class DriveMenuView(APIView):
 class DriveMenuRefreshAllView(APIView):
     """Refresh all menus from Google Drive (admin only)."""
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
 
     def post(self, request: Request) -> Response:
         """Refresh all available menus from Drive (runs in background)."""
-        if not request.user.is_staff:
-            return Response(
-                {"detail": "Only administrators can refresh all menus."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
 
         from apps.notifications.tasks import refresh_all_drive_menus_task
 

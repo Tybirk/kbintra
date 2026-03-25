@@ -141,7 +141,7 @@ const mockThreads = [
   {
     id: 3,
     slug: "closed-thread",
-    title: "Lukket diskussion",
+    title: "Lukket tråd",
     author: {
       id: 4,
       first_name: "Lars",

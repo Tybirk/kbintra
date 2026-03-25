@@ -17,6 +17,7 @@ export interface User {
   is_staff: boolean
   date_joined: string
   accessibility_mode: boolean
+  rainbow_mode: boolean
 }
 
 export interface Child {
@@ -638,6 +639,7 @@ export interface LastMessage {
 
 export interface Conversation {
   id: number
+  name: string
   participants: Participant[]
   other_participants: Participant[]
   last_message: LastMessage | null
@@ -706,7 +708,13 @@ export interface WsMessageReacted {
   reactions: WsMessageReactionEntry[]
 }
 
-export type WsMessage = WsNewMessage | WsMessagesRead | WsTyping | WsNewConversation | WsNewNotification | WsMessageEdited | WsMessageDeleted | WsMessageReacted
+export interface WsConversationRenamed {
+  type: "conversation_renamed"
+  conversation_id: number
+  name: string
+}
+
+export type WsMessage = WsNewMessage | WsMessagesRead | WsTyping | WsNewConversation | WsNewNotification | WsMessageEdited | WsMessageDeleted | WsMessageReacted | WsConversationRenamed
 
 // Notification Types
 export type NotificationType = "new_message" | "new_announcement" | "new_thread" | "thread_reply" | "post_reply" | "post_reaction" | "event_created" | "event_updated" | "event_cancelled" | "event_reminder" | "food_ticket" | "mention"

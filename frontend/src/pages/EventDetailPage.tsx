@@ -729,8 +729,7 @@ function HouseholdRsvpForm({
         const key =
           member.type === "adult" ? `user_${member.id}` : `child_${member.id}`
         return (
-          <Group key={key} justify="space-between" wrap="nowrap">
-            <Text size="sm">{member.name}</Text>
+          <Group key={key} wrap="nowrap">
             <SegmentedControl
               size="xs"
               value={statuses[key]}
@@ -741,6 +740,7 @@ function HouseholdRsvpForm({
                 { label: "Deltager ikke", value: "not_attending" },
               ]}
             />
+            <Text size="sm">{member.name}</Text>
           </Group>
         )
       })}
