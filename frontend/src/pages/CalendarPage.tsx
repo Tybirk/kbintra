@@ -454,6 +454,7 @@ export default function CalendarPage() {
                 }}
                 mobileMonthViewProps={{
                   firstDayOfWeek: 1,
+                  noEventsText: "Ingen begivenheder",
                   renderHeader: () => (
                     <Group justify="space-between" align="center" w="100%">
                       <ActionIcon

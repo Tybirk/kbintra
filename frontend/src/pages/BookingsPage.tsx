@@ -486,6 +486,7 @@ export default function BookingsPage() {
             monthYearSelectProps: { labels: DA_SCHEDULE_LABELS },
           }}
           mobileMonthViewProps={{
+            noEventsText: "Ingen reserveringer",
             renderHeader: () => (
               <Group justify="space-between" align="center" w="100%">
                 <ActionIcon
