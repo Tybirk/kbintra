@@ -527,6 +527,15 @@ class PostUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
                 link=link,
             )
 
+    def perform_destroy(self, instance: Any) -> None:
+        thread = instance.thread
+        # If this is the first post (thread starter), delete the entire thread
+        first_post = thread.posts.order_by("created_at").first()
+        if first_post and first_post.pk == instance.pk:
+            thread.delete()
+        else:
+            instance.delete()
+
 
 # Folder Views
 class FolderListCreateView(generics.ListCreateAPIView):
