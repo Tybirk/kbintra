@@ -392,6 +392,13 @@ class PostCreateSerializer(serializers.ModelSerializer):
     def validate_poll_data(self, value: object) -> dict:
         if value is None:
             return value
+        if isinstance(value, str):
+            import json
+
+            try:
+                value = json.loads(value)
+            except (json.JSONDecodeError, TypeError):
+                raise serializers.ValidationError("Ugyldig afstemningsdata.") from None
         serializer = PollCreateSerializer(data=value)
         serializer.is_valid(raise_exception=True)
         return serializer.validated_data
@@ -700,6 +707,13 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
     def validate_poll_data(self, value: object) -> dict:
         if value is None:
             return value
+        if isinstance(value, str):
+            import json
+
+            try:
+                value = json.loads(value)
+            except (json.JSONDecodeError, TypeError):
+                raise serializers.ValidationError("Ugyldig afstemningsdata.") from None
         serializer = PollCreateSerializer(data=value)
         serializer.is_valid(raise_exception=True)
         return serializer.validated_data
