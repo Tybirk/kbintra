@@ -776,8 +776,8 @@ function CreateThreadModal({
     },
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = (e?: React.FormEvent) => {
+    e?.preventDefault()
     if (!title.trim() || !content.trim()) return
     createMutation.mutate({
       data: { title: title.trim(), content: content.trim() },
@@ -831,6 +831,7 @@ function CreateThreadModal({
                 placeholder="Skriv dit første indlæg..."
                 minHeight={200}
                 onFilePaste={handleAddFiles}
+                onSubmit={handleSubmit}
                 draftKey={"new-thread-" + subgroupSlug}
               />
             </div>

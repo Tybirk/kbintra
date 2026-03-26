@@ -998,6 +998,7 @@ function PostCard({
               onChange={onEditContentChange}
               placeholder="Rediger dit indlæg..."
               minHeight={150}
+              onSubmit={onSaveEdit}
             />
             {editPollData && (
               <PollCreator
