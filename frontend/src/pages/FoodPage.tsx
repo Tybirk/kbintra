@@ -1819,7 +1819,7 @@ function FoodPageCommunityStats({ stats }: FoodPageCommunityStatsProps) {
       {slotTakeaway && (
         <Group gap="xs" justify="space-between">
           <Text size="xs" c="dimmed" fw={500}>
-            Take away
+            Tag med
           </Text>
           <Text size="xs" c="dimmed">
             {slotTakeaway}

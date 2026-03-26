@@ -156,7 +156,7 @@ export function MealFormFields({
           value={diningOption}
           onChange={(val) => onDiningOptionChange(val as DiningOption)}
           data={[
-            { label: "Spise i fælleshuset", value: "eat_in" },
+            { label: "Fælleshuset", value: "eat_in" },
             { label: "Tag med", value: "take_away" },
           ]}
           fullWidth
