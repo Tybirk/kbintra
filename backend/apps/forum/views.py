@@ -999,9 +999,9 @@ class ForumUnreadCountView(APIView):
             )
         )
         count = 0
-        for thread in Thread.objects.filter(subgroup_id__in=subscribed_since.keys()).only(
-            "id", "subgroup_id", "updated_at"
-        ):
+        for thread in Thread.objects.filter(
+            subgroup_id__in=subscribed_since.keys(), is_closed=False
+        ).only("id", "subgroup_id", "updated_at"):
             # Only count threads updated after the user subscribed
             if thread.updated_at <= subscribed_since[thread.subgroup_id]:
                 continue
