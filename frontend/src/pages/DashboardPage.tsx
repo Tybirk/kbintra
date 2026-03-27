@@ -1126,8 +1126,8 @@ function FoodDayWidget({
                     value={diningOption}
                     onChange={(val) => setDiningOption(val as DiningOption)}
                     data={[
-                      { label: "Fælleshus", value: "eat_in" },
-                      { label: "Take Away", value: "take_away" },
+                      { label: "Fælleshuset", value: "eat_in" },
+                      { label: "Tag med", value: "take_away" },
                     ]}
                     fullWidth
                     size="xs"
@@ -1423,7 +1423,7 @@ function CommunityRegistrationStats({
       {slotTakeaway && (
         <Group gap="xs" justify="space-between">
           <Text size="xs" c="dimmed" fw={500}>
-            Take away
+            Tag med
           </Text>
           <Text size="xs" c="dimmed">
             {slotTakeaway}

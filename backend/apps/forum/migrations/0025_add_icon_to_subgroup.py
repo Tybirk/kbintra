@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("forum", "0024_post_edited_by"),
+        ("forum", "0024_merge_20260319_1604"),
     ]
 
     operations = [

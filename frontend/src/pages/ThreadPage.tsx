@@ -114,8 +114,8 @@ const ReplyForm = memo(function ReplyForm({
     attachments.length === 0 &&
     !pollData
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = (e?: React.FormEvent) => {
+    e?.preventDefault()
     if (isEmpty) return
     onSubmit(content.trim(), attachments, pollData || undefined)
   }
@@ -151,6 +151,7 @@ const ReplyForm = memo(function ReplyForm({
               placeholder="Skriv dit svar..."
               minHeight={150}
               onFilePaste={handleAddFiles}
+              onSubmit={handleSubmit}
               draftKey={"reply-" + threadId}
             />
             {pollData && (
@@ -997,6 +998,7 @@ function PostCard({
               onChange={onEditContentChange}
               placeholder="Rediger dit indlæg..."
               minHeight={150}
+              onSubmit={onSaveEdit}
             />
             {editPollData && (
               <PollCreator

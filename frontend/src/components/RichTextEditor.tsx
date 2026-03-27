@@ -80,6 +80,8 @@ interface RichTextEditorProps {
   placeholder?: string
   minHeight?: number
   onFilePaste?: (files: File[]) => void
+  /** Called on Cmd+Enter (Mac) / Ctrl+Enter (Windows). */
+  onSubmit?: () => void
   /** Unique key for persisting a draft across refreshes. Omit for edit forms. */
   draftKey?: string
 }
@@ -90,10 +92,13 @@ export default function RichTextEditor({
   placeholder = "Write something...",
   minHeight = 150,
   onFilePaste,
+  onSubmit,
   draftKey,
 }: RichTextEditorProps) {
   const onFilePasteRef = useRef(onFilePaste)
   onFilePasteRef.current = onFilePaste
+  const onSubmitRef = useRef(onSubmit)
+  onSubmitRef.current = onSubmit
 
   // Use refs so the onUpdate callback always sees the latest values
   const onChangeRef = useRef(onChange)
@@ -182,6 +187,13 @@ export default function RichTextEditor({
       detectGiphy(editor, setGiphyStateRef.current)
     },
     editorProps: {
+      handleKeyDown(_view, event) {
+        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+          onSubmitRef.current?.()
+          return true
+        }
+        return false
+      },
       handlePaste(_view, event) {
         const cb = onFilePasteRef.current
         if (!cb) return false

@@ -72,9 +72,7 @@ describe("FoodPreferencesPage", () => {
     render(<FoodPreferencesPage />)
 
     await waitFor(() => {
-      expect(screen.getAllByText("Spise i fælleshuset").length).toBeGreaterThan(
-        0,
-      )
+      expect(screen.getAllByText("Fælleshuset").length).toBeGreaterThan(0)
     })
   })
 
