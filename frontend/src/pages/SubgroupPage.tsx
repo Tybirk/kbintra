@@ -372,7 +372,7 @@ Skip any that are too vague to act on, and note why at the end.
             </Text>
           </Group>
           {isEditingDescription ? (
-            <Stack gap="xs" mt="xs">
+            <Stack gap="xs" mt="sm">
               <RichTextEditor
                 content={editedDescription}
                 onChange={setEditedDescription}
@@ -400,7 +400,7 @@ Skip any that are too vague to act on, and note why at the end.
               </Group>
             </Stack>
           ) : (
-            <Group gap="xs" align="flex-start">
+            <Group gap="xs" align="flex-start" mt="sm">
               {subgroup.description ? (
                 <Typography style={{ flex: 1 }}>
                   <div

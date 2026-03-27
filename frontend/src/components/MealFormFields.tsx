@@ -18,6 +18,8 @@ interface MealFormFieldsProps {
   disabled?: boolean
   /** When true, portion inputs are hidden (show as read-only text) but dining/seating remain editable */
   portionsReadOnly?: boolean
+  /** When true, dining/seating controls are disabled regardless of other props */
+  diningDisabled?: boolean
   onAdultsMeatChange: (val: number) => void
   onAdultsVegChange: (val: number) => void
   onChildrenChange: (val: number) => void
@@ -34,6 +36,7 @@ export function MealFormFields({
   isWednesday,
   disabled,
   portionsReadOnly,
+  diningDisabled,
   onAdultsMeatChange,
   onAdultsVegChange,
   onChildrenChange,
@@ -160,7 +163,7 @@ export function MealFormFields({
             { label: "Tag med", value: "take_away" },
           ]}
           fullWidth
-          disabled={disabled && !portionsReadOnly}
+          disabled={(disabled && !portionsReadOnly) || diningDisabled}
         />
       </div>
 
@@ -177,7 +180,7 @@ export function MealFormFields({
               { label: "18:30", value: "18:30" },
             ]}
             fullWidth
-            disabled={disabled && !portionsReadOnly}
+            disabled={(disabled && !portionsReadOnly) || diningDisabled}
           />
         </div>
       )}

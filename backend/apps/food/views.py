@@ -338,6 +338,56 @@ class DailyRegistrationStatsView(APIView):
             "total": {"adults_meat": 0, "adults_veg": 0, "children": 0},
         }
 
+        # 5b. Claimed ticket bucket adjustments (up to 2 queries)
+        # Portions from claimed tickets are counted via the seller's registration,
+        # but the buyer controls where/when they eat. Move claimed portions from
+        # the seller's dining/seating bucket to the buyer's.
+        claimed_raw = list(
+            FoodTicket.objects.filter(
+                date__in=dates,
+                is_available=False,
+                claimed_by__isnull=False,
+            ).values_list(
+                "date",
+                "owner_id",
+                "claimed_by_id",
+                "adults_meat",
+                "adults_veg",
+                "children_count",
+            )
+        )
+
+        claimed_adj: dict[date, dict[str, dict[str, int]]] = {}
+        if claimed_raw:
+            _uids: set[int] = set()
+            for _, oid, cid, _, _, _ in claimed_raw:
+                _uids.add(oid)
+                _uids.add(cid)
+
+            _dining: dict[tuple[int, date], tuple[str, str]] = {}
+            for uid, d_val, dopt, stime in MealRegistration.objects.filter(
+                user_id__in=_uids,
+                date__in=dates,
+            ).values_list("user_id", "date", "dining_option", "seating_time"):
+                _dining[(uid, d_val)] = (dopt, stime)
+
+            def _bkt(dining_opt: str, seat_time: str) -> str:
+                if dining_opt == "take_away":
+                    return "ta"
+                return "e17" if seat_time == "17:30" else "e18"
+
+            for d_val, oid, cid, c_meat, c_veg, c_ch in claimed_raw:
+                sb = _bkt(*_dining.get((oid, d_val), ("eat_in", "17:30")))
+                bb = _bkt(*_dining.get((cid, d_val), ("eat_in", "17:30")))
+                if sb == bb:
+                    continue
+                adj = claimed_adj.setdefault(d_val, {})
+                for bk, sign in ((sb, -1), (bb, 1)):
+                    ba = adj.setdefault(bk, {"meat": 0, "veg": 0, "children": 0})
+                    ba["meat"] += sign * c_meat
+                    ba["veg"] += sign * c_veg
+                    ba["children"] += sign * c_ch
+
         # 6. Assemble results
         def _merge(
             db_meat: int, db_veg: int, db_children: int, virt_bucket: dict[str, int]
@@ -350,6 +400,14 @@ class DailyRegistrationStatsView(APIView):
         result: dict[str, dict[str, Any]] = {}
         for d in dates:
             agg = agg_by_date.get(d, empty_agg)
+
+            # Apply claimed ticket bucket adjustments
+            if d in claimed_adj:
+                agg = dict(agg)  # copy to avoid mutating aggregate cache
+                for bk, delta in claimed_adj[d].items():
+                    agg[f"{bk}_meat"] = max(0, agg[f"{bk}_meat"] + delta["meat"])
+                    agg[f"{bk}_veg"] = max(0, agg[f"{bk}_veg"] + delta["veg"])
+                    agg[f"{bk}_children"] = max(0, agg[f"{bk}_children"] + delta["children"])
             virt = virtual_by_date.get(d, empty_virt)
             tickets = tickets_by_date.get(d, empty_tickets)
 
