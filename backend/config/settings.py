@@ -175,7 +175,7 @@ REST_FRAMEWORK = {
         "rest_framework.parsers.MultiPartParser",
     ],
     "DEFAULT_THROTTLE_RATES": {
-        "login": "5/minute",
+        "login": "100/minute",
     },
 }
 
