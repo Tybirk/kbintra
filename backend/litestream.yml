@@ -1,5 +1,5 @@
 # Litestream continuous replication config.
-# Replicates the SQLite database to S3-compatible storage (~1 second RPO).
+# Replicates the SQLite database to S3-compatible storage (~60 second RPO).
 # All credentials are read from environment variables at runtime.
 # Litestream only runs in the backend container (not huey) via docker-entrypoint.sh.
 dbs:

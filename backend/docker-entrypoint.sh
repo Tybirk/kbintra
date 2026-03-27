@@ -9,7 +9,7 @@ else
     # Restore database from Litestream replica if S3 is configured and DB doesn't exist yet
     if [ -n "$S3_BACKUP_BUCKET" ] && [ ! -f /app/data/db.sqlite3 ]; then
         echo "Restoring database from Litestream replica..."
-        litestream restore -config /etc/litestream.yml -if-replica-exists /app/data/db.sqlite3 || true
+        litestream restore -config /etc/litestream.yml -if-replica-exists /app/data/db.sqlite3
     fi
 
     echo "Running database migrations..."

@@ -27,7 +27,7 @@ git pull
 
 echo "Ensuring data files exist..."
 mkdir -p ./data ./data/backups
-touch ./data/db.sqlite3 ./data/huey.db
+touch ./data/huey.db
 
 echo "Backing up database..."
 if [ -f ./data/db.sqlite3 ]; then
@@ -53,10 +53,15 @@ echo "Building new images (old containers keep serving)..."
 docker compose build
 
 echo "Running startup tasks with new image (old server still serving)..."
-docker compose run --rm -T --entrypoint sh backend -c \
-    "uv run python manage.py migrate --noinput && \
-     uv run python manage.py rebuild_search_index --if-empty && \
-     touch /app/data/.deploy_tasks_done"
+docker compose run --rm -T --entrypoint sh backend -c "
+    # Restore database from Litestream replica on first deploy (DB doesn't exist yet)
+    if [ -n \"\$S3_BACKUP_BUCKET\" ] && [ ! -f /app/data/db.sqlite3 ]; then
+        echo 'Restoring database from Litestream replica...'
+        litestream restore -config /etc/litestream.yml -if-replica-exists /app/data/db.sqlite3
+    fi
+    uv run python manage.py migrate --noinput && \
+    uv run python manage.py rebuild_search_index --if-empty && \
+    touch /app/data/.deploy_tasks_done"
 
 echo "Swapping to new containers..."
 docker compose up -d
