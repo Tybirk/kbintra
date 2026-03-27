@@ -41,17 +41,7 @@ if [ -f ./data/db.sqlite3 ]; then
     fi
 fi
 
-# Upload database backup to S3 (non-blocking — deploy continues regardless)
-if docker compose ps --status running backend --format '{{.Name}}' 2>/dev/null | grep -q backend; then
-    echo "Uploading database backup to S3..."
-    if docker compose exec -T backend uv run python manage.py backup_db_to_s3 2>&1; then
-        echo "S3 database backup complete."
-    else
-        echo "WARNING: S3 database backup failed (S3 may not be configured). Continuing deploy..."
-    fi
-else
-    echo "Skipping S3 database backup (backend container not running)."
-fi
+# S3 database backup is handled continuously by Litestream (no manual upload needed).
 
 # Clean up deploy flag on exit (prevents stale flag if deploy fails mid-way)
 cleanup() {

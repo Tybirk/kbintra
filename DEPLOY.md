@@ -124,42 +124,55 @@ git checkout deploy-YYYYMMDD-HHMMSS && docker compose up -d --build
 
 ## Backups
 
+### Database — Litestream continuous replication
+
+[Litestream](https://litestream.io/) runs as a wrapper around Daphne in the backend container, continuously replicating SQLite WAL changes to S3. This provides:
+
+- **~60 second RPO** — WAL changes ship every minute (vs. daily snapshots before)
+- **Automatic restore** — on first deploy (or data loss), the entrypoint restores from the latest replica
+- **7 days retention** with daily snapshots and continuous WAL shipping in between
+- **Graceful shutdown** — Litestream syncs outstanding changes before exiting (SIGINT/SIGTERM)
+
+Litestream only runs in the **backend** container (not huey). Both containers share the same SQLite file via the `./data` bind mount, so all writes from both processes are captured.
+
+The replica is stored at `litestream/db/` in the S3 bucket (separate from media files).
+
+**Restore manually** (if needed):
+
+```bash
+# Stop the backend container first
+docker compose stop backend
+
+# Restore from S3 replica
+docker compose run --rm -T --entrypoint sh backend -c \
+    "litestream restore -config /etc/litestream.yml /app/data/db.sqlite3"
+
+# Restart
+docker compose up -d backend
+```
+
 ### Local database backups
 
-Every deploy creates a local snapshot at `./data/backups/db-YYYY-MM-DD-HHMMSS.sqlite3` using SQLite's online backup API. The 10 most recent are kept; older ones are pruned automatically.
+Every deploy also creates a local snapshot at `./data/backups/db-YYYY-MM-DD-HHMMSS.sqlite3` using SQLite's online backup API. The 10 most recent are kept. These provide instant local rollback without needing S3.
 
-### S3 backups
+### Media files — S3 sync
 
-When `S3_BACKUP_BUCKET` is configured:
-
-**Media files** — Synced automatically via Django signals + Huey tasks:
+When `S3_BACKUP_BUCKET` is configured, media files are synced automatically via Django signals + Huey tasks:
 - File uploads are backed up on create
 - Profile picture replacements delete old + upload new
 - File deletions are mirrored to S3
 - Missing local files are restored from S3 on access
 
-**Database** — Backed up to S3:
-- Automatically on each deploy (via `deploy.sh`)
-- On demand via management command or Huey task:
-
 ```bash
-# Management command (synchronous)
-docker compose exec backend uv run python manage.py backup_db_to_s3
-
-# Upload all existing media files
+# Upload all existing media files to S3 (one-time, for existing installations)
 docker compose exec backend uv run python manage.py sync_media_to_s3
-```
-
-```python
-# Huey task (background)
-from apps.backup.tasks import backup_database_to_s3_task
-backup_database_to_s3_task()
 ```
 
 **S3 bucket structure:**
 
 ```
-<S3_BACKUP_PREFIX>/
+litestream/db/          # Litestream DB replica (snapshots + WAL segments)
+<S3_BACKUP_PREFIX>/     # Media files
   post_attachments/...
   forum_files/...
   message_attachments/...
@@ -167,9 +180,6 @@ backup_database_to_s3_task()
   profile_pictures/...
   house_pictures/...
   rooms/...
-  db-backups/
-    db-20260307-120000.sqlite3
-    db-20260306-120000.sqlite3
 ```
 
 ## Monitoring

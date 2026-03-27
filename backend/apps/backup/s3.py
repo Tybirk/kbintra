@@ -74,39 +74,3 @@ def delete_file(relative_path: str) -> None:
     key = _s3_key(relative_path)
     client.delete_object(Bucket=settings.S3_BACKUP_BUCKET, Key=key)
     logger.info("Deleted from S3: %s", key)
-
-
-def upload_local_file(local_path: str, s3_key: str) -> None:
-    """Upload an arbitrary local file to S3 with an explicit key. Used for DB backups."""
-    if not is_enabled():
-        return
-    if not Path(local_path).is_file():
-        logger.warning("upload_local_file: file missing: %s", local_path)
-        return
-    client = _get_client()
-    client.upload_file(local_path, settings.S3_BACKUP_BUCKET, s3_key)
-    logger.info("Uploaded to S3: %s", s3_key)
-
-
-def prune_old_db_backups(keep: int = 30) -> int:
-    """Delete old DB backups from S3, keeping the most recent `keep` snapshots. Returns count deleted."""
-    if not is_enabled():
-        return 0
-    client = _get_client()
-    prefix = f"{settings.S3_BACKUP_PREFIX}db-backups/"
-    paginator = client.get_paginator("list_objects_v2")
-    all_keys = []
-    for page in paginator.paginate(Bucket=settings.S3_BACKUP_BUCKET, Prefix=prefix):
-        for obj in page.get("Contents", []):
-            all_keys.append(obj["Key"])
-
-    all_keys.sort()
-    to_delete = all_keys[:-keep] if len(all_keys) > keep else []
-    for key in to_delete:
-        client.delete_object(Bucket=settings.S3_BACKUP_BUCKET, Key=key)
-        logger.info("Pruned old DB backup: %s", key)
-    if to_delete:
-        logger.info(
-            "Pruned %d old DB backups, kept %d", len(to_delete), len(all_keys) - len(to_delete)
-        )
-    return len(to_delete)

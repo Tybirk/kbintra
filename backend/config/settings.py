@@ -137,6 +137,7 @@ DATABASES = {
                 " PRAGMA synchronous=NORMAL;"  # Safe with WAL; FULL holds write locks much longer for no practical benefit
                 " PRAGMA cache_size=-64000;"  # 64MB page cache (default ~2MB) — reduces disk I/O
                 " PRAGMA mmap_size=134217728;"  # 128MB memory-mapped I/O — faster reads
+                " PRAGMA journal_size_limit=27103364;"  # ~26MB — cap WAL file size after checkpoint
             ),
         },
     }
@@ -230,6 +231,7 @@ MEDIA_URL = "media/"
 MEDIA_ROOT = DATA_DIR / "media"
 
 # S3 backup storage (set S3_BACKUP_BUCKET to enable; empty = disabled)
+# Used for media file sync (via Django signals) and Litestream continuous DB replication.
 S3_BACKUP_BUCKET = os.getenv("S3_BACKUP_BUCKET", "")
 S3_BACKUP_ENDPOINT = os.getenv("S3_BACKUP_ENDPOINT", "")
 S3_BACKUP_ACCESS_KEY = os.getenv("S3_BACKUP_ACCESS_KEY", "")

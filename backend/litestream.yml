@@ -1,0 +1,17 @@
+# Litestream continuous replication config.
+# Replicates the SQLite database to S3-compatible storage (~1 second RPO).
+# All credentials are read from environment variables at runtime.
+# Litestream only runs in the backend container (not huey) via docker-entrypoint.sh.
+dbs:
+  - path: /app/data/db.sqlite3
+    replicas:
+      - type: s3
+        endpoint: ${S3_BACKUP_ENDPOINT}
+        bucket: ${S3_BACKUP_BUCKET}
+        path: litestream/db
+        access-key-id: ${S3_BACKUP_ACCESS_KEY}
+        secret-access-key: ${S3_BACKUP_SECRET_KEY}
+        region: ${S3_BACKUP_REGION}
+        sync-interval: 60s       # Ship WAL changes every minute (default: 1s)
+        retention: 168h          # Keep 7 days of WAL history
+        snapshot-interval: 24h   # Full snapshot daily (WAL changes ship between snapshots)
