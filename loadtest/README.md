@@ -4,7 +4,7 @@ Realistic load tests for KB Intra using [Locust](https://locust.io). Simulates u
 
 ## Quick Start (Dev)
 
-Good for verifying the test works. Dev mode has limitations (single-process server, synchronous Huey tasks) so response times will be inflated. Use the Docker stack for realistic numbers.
+Good for verifying the test works. Dev mode runs Huey tasks synchronously so write operations will be slow — use the Docker stack for realistic numbers.
 
 ```bash
 # Terminal 1: start dev server
@@ -23,21 +23,38 @@ Open http://localhost:8089, set host to `http://localhost:7000`, and start.
 
 ## Prod-Like Setup (Docker Compose)
 
-The local Docker stack (`docker-compose.local.yml`) includes a Huey worker and runs with `DEBUG=False` — matching production behavior. This means async notification delivery, proper task queuing, and realistic response times.
+A compose overlay (`docker-compose.loadtest.yml`) layers on top of the local stack, adding a Huey worker and setting `DEBUG=False` for async task processing — matching production behavior.
 
 **1. Build and start the stack:**
 
 ```bash
-docker compose -f docker-compose.local.yml up -d --build
+docker compose -f docker-compose.local.yml -f docker-compose.loadtest.yml up -d --build
 ```
 
-This starts: Traefik (port 80) + Redis + Backend + Huey worker + Frontend.
+This starts: Traefik (port 80) + Redis + Backend (`DEBUG=False`) + Huey worker + Frontend.
 
-**2. Create test users:**
+**2. Create test users** (note: use `-T` flag and pipe, not `<` redirect):
 
 ```bash
-docker compose -f docker-compose.local.yml exec backend \
-  uv run python manage.py shell < loadtest/setup_users.py
+cat loadtest/setup_users.py | \
+  docker compose -f docker-compose.local.yml -f docker-compose.loadtest.yml \
+  exec -T backend uv run python manage.py shell
+```
+
+If you have a fresh database, also create some forum subgroups:
+
+```bash
+docker compose -f docker-compose.local.yml -f docker-compose.loadtest.yml \
+  exec -T backend uv run python manage.py shell -c "
+from apps.forum.models import Subgroup, SubgroupSubscription
+from apps.users.models import User
+for name, slug in [('Fælles','faelles'),('Arrangementer','arrangementer'),('Mad','mad'),('Vedligeholdelse','vedligeholdelse')]:
+    Subgroup.objects.get_or_create(name=name, defaults={'slug': slug})
+for u in User.objects.filter(email__startswith='loadtest'):
+    for sg in Subgroup.objects.all():
+        SubgroupSubscription.objects.get_or_create(user=u, subgroup=sg)
+print('Done')
+"
 ```
 
 **3. Run locust (on the host):**
@@ -48,15 +65,21 @@ export LOAD_TEST_USERS="loadtest1@test.com:loadtest123,loadtest2@test.com:loadte
 uv run --with locust locust
 ```
 
-Open http://localhost:8089, set host to `http://localhost` (port 80, through Traefik), and start.
+Open http://localhost:8089, set host to `http://localhost`, and start.
+
+**4. Stop and clean up:**
+
+```bash
+docker compose -f docker-compose.local.yml -f docker-compose.loadtest.yml down
+```
 
 ### Recommended test profiles
 
 | Profile | Users | Ramp-up | Duration | What it tests |
 |---|---|---|---|---|
 | Smoke | 5 | 5/s | 1 min | Basic sanity |
-| Normal load | 50 | 10/s | 5 min | Typical usage (90 real users, not all active at once) |
-| Peak load | 200 | 20/s | 5 min | Everyone online at once (unlikely but good to know) |
+| Normal load | 50 | 10/s | 5 min | Typical usage (~90 real users, not all active) |
+| Peak load | 200 | 20/s | 5 min | Everyone online at once |
 | Stress | 1000 | 50/s | 10 min | Find the breaking point |
 
 ## Headless Mode (CI / quick check)
@@ -75,17 +98,15 @@ uv run --with locust locust \
 
 ## How It Scales to 1000 Users
 
-Three design choices make this work:
+1. **Shared token cache** — only 5 logins happen (one per credential), not 1000. All Locust users sharing a credential reuse the same JWT token.
 
-1. **Shared token cache** — only 5 logins happen (one per credential), not 1000. All Locust users sharing a credential reuse the same JWT token. No login throttle issues.
+2. **Shared data pool** — discovered IDs (threads, posts, conversations) are pooled across all users in a thread-safe store.
 
-2. **Shared data pool** — discovered IDs (threads, posts, conversations) are pooled across all users in a thread-safe shared store. New data from any user enriches everyone.
-
-3. **Lazy discovery** — only the first user bootstraps data. Everyone else discovers IDs naturally through read tasks (browsing threads populates thread IDs, etc).
+3. **Lazy discovery** — only the first user bootstraps. Others discover IDs naturally through read tasks.
 
 ### Account sharing side effects
 
-Since 1000 Locust users share 5 accounts, some write operations will get 403/404 when a user tries to act on another session's data (e.g., react to a message in a conversation they don't have access to). These are counted as successes in the stats since they're expected — the server still processes the auth, routing, and permission check, which is the load we're testing.
+Since 1000 Locust users share 5 accounts, some operations get 403/404 (ownership mismatches). These are expected and counted as successes — the server still does auth, routing, and permission checks, which is the load we're testing.
 
 ## What It Tests
 
@@ -139,29 +160,22 @@ Since 1000 Locust users share 5 accounts, some write operations will get 403/404
 Remove all loadtest data:
 
 ```bash
-cd backend
-uv run python manage.py shell < ../loadtest/cleanup.py
+# Dev
+cd backend && uv run python manage.py shell < ../loadtest/cleanup.py
+
+# Docker
+cat loadtest/cleanup.py | \
+  docker compose -f docker-compose.local.yml -f docker-compose.loadtest.yml \
+  exec -T backend uv run python manage.py shell
 ```
-
-Or inside Docker:
-
-```bash
-docker compose -f docker-compose.local.yml exec backend \
-  uv run python manage.py shell < loadtest/cleanup.py
-```
-
-## Configuration
-
-| Environment variable | Default | Description |
-|---|---|---|
-| `LOAD_TEST_USERS` | `test@example.com:testpassword` | Comma-separated `email:password` pairs |
 
 ## Files
 
 ```
 loadtest/
-├── README.md          # This file
-├── locustfile.py      # Locust test scenarios (shared token + data pool)
-├── setup_users.py     # Create test users (run via manage.py shell)
-└── cleanup.py         # Remove all loadtest data (run via manage.py shell)
+├── README.md                       # This file
+├── locustfile.py                   # Locust test scenarios
+├── setup_users.py                  # Create test users (manage.py shell)
+└── cleanup.py                      # Remove loadtest data (manage.py shell)
+docker-compose.loadtest.yml         # Compose overlay (Huey + DEBUG=False)
 ```

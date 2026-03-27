@@ -1,0 +1,36 @@
+# Overlay for prod-like load testing.
+#
+# Usage:
+#   docker compose -f docker-compose.local.yml -f docker-compose.loadtest.yml up -d --build
+#
+# Layers on top of docker-compose.local.yml:
+#   - Sets DEBUG=False on backend (async Huey tasks, no debug toolbar)
+#   - Adds MESSAGES_ENCRYPTION_KEY (required when DEBUG=False)
+#   - Adds Huey worker container (2 threads, async task processing)
+
+services:
+  backend:
+    environment:
+      - DEBUG=False
+      - MESSAGES_ENCRYPTION_KEY=Lp9LAKi3V8rD1uEGsCcsIlIoGHkrnRWh4omC4I_crUo=
+
+  huey:
+    build: ./backend
+    command: ["uv", "run", "python", "manage.py", "run_huey", "-w", "2", "-k", "thread", "--flush-locks"]
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      - DEBUG=False
+      - DATA_DIR=/app/data
+      - SECRET_KEY=local-dev-secret-key-not-for-production
+      - ALLOWED_HOSTS=localhost,127.0.0.1
+      - REDIS_URL=redis://redis:6379/0
+      - MESSAGES_ENCRYPTION_KEY=Lp9LAKi3V8rD1uEGsCcsIlIoGHkrnRWh4omC4I_crUo=
+    networks:
+      - web
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
