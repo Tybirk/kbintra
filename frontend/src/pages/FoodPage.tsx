@@ -183,6 +183,8 @@ export default function FoodPage() {
   // Filter tickets for billetter tab sections
   const myTicketsForSale =
     myTickets?.filter((t) => t.is_own && t.is_available) ?? []
+  const mySoldTickets =
+    myTickets?.filter((t) => t.is_own && !t.is_available) ?? []
   const myPurchasedTickets =
     myTickets?.filter((t) => !t.is_own && !t.is_available) ?? []
   const othersAvailableTickets =
@@ -485,6 +487,19 @@ export default function FoodPage() {
               )}
             </div>
 
+            {mySoldTickets.length > 0 && (
+              <div>
+                <Text fw={500} mb="xs">
+                  Mine solgte billetter
+                </Text>
+                <Stack gap="sm">
+                  {mySoldTickets.map((ticket) => (
+                    <TicketCard key={ticket.id} ticket={ticket} />
+                  ))}
+                </Stack>
+              </div>
+            )}
+
             <div>
               <Text fw={500} mb="xs">
                 Mine købte billetter
@@ -768,6 +783,9 @@ function DayRegistrationCard({
     availablePortions.adults_veg > 0 ||
     availablePortions.children_count > 0
 
+  // All portions sold via tickets — seller should not control dining/seating
+  const allPortionsSold = ticketsForDate.length > 0 && !hasSomethingToSell
+
   const sellPrice = calculateDefaultTicketPrice(sellMeat, sellVeg, sellChildren)
 
   // Track if initial mount to prevent auto-save on mount
@@ -999,6 +1017,7 @@ function DayRegistrationCard({
                 isWednesday={isWednesday}
                 disabled={true}
                 portionsReadOnly={true}
+                diningDisabled={allPortionsSold}
                 onAdultsMeatChange={setAdultsMeat}
                 onAdultsVegChange={setAdultsVeg}
                 onChildrenChange={setChildren}
