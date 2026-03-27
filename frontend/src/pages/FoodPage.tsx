@@ -968,7 +968,7 @@ function DayRegistrationCard({
                 size="sm"
                 leftSection={<IconLock size={12} />}
               >
-                Låst
+                Bestilt
               </Badge>
             )}
             <Badge variant="light" color={isPast ? "gray" : "blue"}>
@@ -1125,22 +1125,19 @@ function DayRegistrationCard({
 
           {/* Saving indicator */}
           {!isPast && !isLocked && (
-            <Text
-              size="xs"
-              c={isSaving ? "blue" : lastSaved ? "green" : "dimmed"}
-              ta="center"
-            >
-              {isSaving ? (
-                <Group gap={4} justify="center">
-                  <Loader size={12} />
-                  Gemmer...
-                </Group>
-              ) : lastSaved ? (
-                "Gemt"
-              ) : (
-                "Gemmes automatisk ved ændringer"
-              )}
-            </Text>
+            <Group gap={4} justify="center" h={20}>
+              {isSaving && <Loader size={12} />}
+              <Text
+                size="xs"
+                c={isSaving ? "blue" : lastSaved ? "green" : "dimmed"}
+              >
+                {isSaving
+                  ? "Gemmer..."
+                  : lastSaved
+                    ? "Gemt"
+                    : "Gemmes automatisk ved ændringer"}
+              </Text>
+            </Group>
           )}
 
           {/* Purchased tickets — always visible, independent of registration state */}
@@ -1176,20 +1173,14 @@ function DayRegistrationCard({
 
           {/* Saving indicator for locked (dining/seating edits) */}
           {!isPast && isLocked && registration?.is_active && (
-            <Text
-              size="xs"
-              c={isSaving ? "blue" : lastSaved ? "green" : "dimmed"}
-              ta="center"
-            >
-              {isSaving ? (
-                <Group gap={4} justify="center">
-                  <Loader size={12} />
-                  Gemmer...
-                </Group>
-              ) : lastSaved ? (
-                "Gemt"
-              ) : null}
-            </Text>
+            <Group gap={4} justify="center" h={20}>
+              {isSaving && <Loader size={12} />}
+              {(isSaving || lastSaved) && (
+                <Text size="xs" c={isSaving ? "blue" : "green"}>
+                  {isSaving ? "Gemmer..." : "Gemt"}
+                </Text>
+              )}
+            </Group>
           )}
         </Stack>
 
