@@ -15,7 +15,6 @@ import {
   Box,
   ThemeIcon,
   Modal,
-  Typography,
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -423,21 +422,12 @@ function SubgroupCard({
         </Group>
 
         {subgroup.description && (
-          <Typography
-            style={{
-              fontSize: "var(--mantine-font-size-sm)",
-              color: "var(--mantine-color-dimmed)",
-              overflow: "hidden",
-              display: "-webkit-box",
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: "vertical",
-            }}
-          >
-            <div
-              className="description-content"
-              dangerouslySetInnerHTML={{ __html: subgroup.description }}
-            />
-          </Typography>
+          <Text size="sm" c="dimmed" lineClamp={2}>
+            {subgroup.description
+              .replace(/<[^>]*>/g, " ")
+              .replace(/\s+/g, " ")
+              .trim()}
+          </Text>
         )}
 
         {subgroup.last_activity_at && (
