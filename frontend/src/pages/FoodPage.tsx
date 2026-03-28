@@ -182,7 +182,10 @@ export default function FoodPage() {
 
   // Filter tickets for billetter tab sections
   const myTicketsForSale =
-    myTickets?.filter((t) => t.is_own && t.is_available) ?? []
+    myTickets?.filter(
+      (t) =>
+        t.is_own && t.is_available && !dayjs(t.date).isBefore(dayjs(), "day"),
+    ) ?? []
   const mySoldTickets =
     myTickets?.filter((t) => t.is_own && !t.is_available) ?? []
   const myPurchasedTickets =
@@ -1046,7 +1049,7 @@ function DayRegistrationCard({
                   </Text>
                   {ticketsForDate.map((ticket) => (
                     <Group key={ticket.id} justify="space-between">
-                      <Text size="xs">
+                      <Text size="xs" component="span">
                         {ticket.is_available ? (
                           <Badge color="orange" variant="light" size="xs">
                             Til salg
@@ -1174,7 +1177,7 @@ function DayRegistrationCard({
                   >
                     {ticket.owner.first_name?.[0]}
                   </Avatar>
-                  <Text size="xs" c="green">
+                  <Text size="xs" c="green" component="span">
                     <Badge color="green" variant="light" size="xs">
                       Købt
                     </Badge>{" "}
@@ -1504,16 +1507,8 @@ function TicketCard({ ticket }: TicketCardProps) {
               <Text size="sm" c="dimmed">
                 {ticket.day_name}, {dayjs(ticket.date).format("D. MMM")} •{" "}
                 {[
-                  ticket.adults_meat > 0
-                    ? `${ticket.adults_meat} voksen kød`
-                    : null,
-                  ticket.adults_veg > 0
-                    ? ticket.adults_meat > 0
-                      ? `${ticket.adults_veg} vegetar`
-                      : `${ticket.adults_veg} ${
-                          ticket.adults_veg === 1 ? "voksen" : "voksne"
-                        }`
-                    : null,
+                  ticket.adults_meat > 0 ? `${ticket.adults_meat} kød` : null,
+                  ticket.adults_veg > 0 ? `${ticket.adults_veg} vegetar` : null,
                   ticket.children_count > 0
                     ? `${ticket.children_count} ${
                         ticket.children_count === 1 ? "barn" : "børn"
@@ -1674,7 +1669,7 @@ function TicketCard({ ticket }: TicketCardProps) {
                   label={
                     isWednesdayTicket
                       ? `Vegetar-portioner (maks ${ticket.adults_veg})`
-                      : `Voksne (maks ${ticket.adults_veg})`
+                      : `Voksenportioner (maks ${ticket.adults_veg})`
                   }
                   value={buyVeg}
                   onChange={(v) => setBuyVeg(typeof v === "number" ? v : 0)}

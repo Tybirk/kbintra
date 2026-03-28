@@ -642,6 +642,12 @@ class ClaimTicketView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+            if ticket.owner == request.user:
+                return Response(
+                    {"detail": "Du kan ikke købe din egen billet."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             # Determine requested amounts — default to full ticket
             try:
                 adults_meat = (
@@ -786,9 +792,12 @@ class MyTicketsView(generics.ListAPIView):
     serializer_class = FoodTicketSerializer
 
     def get_queryset(self) -> QuerySet[FoodTicket]:
-        return FoodTicket.objects.filter(
-            Q(owner=self.request.user) | Q(claimed_by=self.request.user)
-        ).select_related("owner", "claimed_by")
+        today = timezone.now().date()
+        return (
+            FoodTicket.objects.filter(Q(owner=self.request.user) | Q(claimed_by=self.request.user))
+            .exclude(is_available=True, date__lt=today)
+            .select_related("owner", "claimed_by")
+        )
 
 
 # Food Team Views
