@@ -614,13 +614,15 @@ export default function ThreadPage() {
           post={thread.posts[0]}
           threadQueryKey={threadQueryKey}
           threadHeader={
-            <Group justify="space-between">
-              <div>
+            <Group justify="space-between" wrap="nowrap" align="flex-start">
+              <div style={{ minWidth: 0, flex: 1 }}>
                 <Text size="sm" c="dimmed" mb={4}>
                   {thread.subgroup_name}
                 </Text>
-                <Group gap="sm">
-                  <Title order={2}>{thread.title}</Title>
+                <Group gap="sm" wrap="wrap">
+                  <Title order={2} style={{ wordBreak: "break-word" }}>
+                    {thread.title}
+                  </Title>
                   {thread.is_pinned && (
                     <Badge color="blue" leftSection={<IconPin size={12} />}>
                       Fastgjort
@@ -633,7 +635,7 @@ export default function ThreadPage() {
                   )}
                 </Group>
               </div>
-              <Group gap="xs">
+              <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
                 <Tooltip
                   label={
                     thread.is_muted
