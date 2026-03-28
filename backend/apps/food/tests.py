@@ -539,23 +539,15 @@ class TestFoodTicketViews:
         assert food_ticket.is_available is False
         assert food_ticket.claimed_by == admin_user
 
-    def test_can_claim_own_ticket(self, authenticated_client, food_ticket):
-        """Test that user can claim (recall) their own ticket."""
+    def test_cannot_claim_own_ticket(self, authenticated_client, food_ticket):
+        """Test that user cannot claim (buy) their own ticket."""
         url = reverse("food:ticket-claim", kwargs={"pk": food_ticket.pk})
         response = authenticated_client.post(url)
-        assert response.status_code == 200
+        assert response.status_code == 400
+        assert "egen billet" in response.json()["detail"].lower()
         food_ticket.refresh_from_db()
-        assert food_ticket.is_available is False
-        assert food_ticket.claimed_by == food_ticket.owner
-
-    def test_claim_own_ticket_no_notification(self, authenticated_client, food_ticket):
-        """Test that claiming own ticket doesn't send notification."""
-        with patch("apps.notifications.services.notify_ticket_claimed") as mock_notify:
-            url = reverse("food:ticket-claim", kwargs={"pk": food_ticket.pk})
-            response = authenticated_client.post(url)
-            assert response.status_code == 200
-            # Notification should NOT be called when claiming own ticket
-            mock_notify.assert_not_called()
+        assert food_ticket.is_available is True
+        assert food_ticket.claimed_by is None
 
     def test_claim_ticket_sends_notification(self, api_client, admin_user, food_ticket):
         """Test that claiming another user's ticket sends notification."""

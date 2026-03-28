@@ -8,7 +8,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from django.db import transaction
-from django.db.models import Count, Max, Q, QuerySet, Sum
+from django.db.models import Count, F, OuterRef, Q, QuerySet, Subquery, Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -211,15 +211,24 @@ class DailyRegistrationStatsView(APIView):
             if unmaterialized:
                 _materialize_for_houses(unmaterialized)
 
-        # 2. Deduplicated registrations for all dates (1 query with subquery)
-        latest_per_house = (
-            MealRegistration.objects.filter(date__in=dates, is_active=True, house__isnull=False)
-            .values("date", "house_id")
-            .annotate(latest_id=Max("id"))
-            .values("latest_id")
+        # 2. Deduplicated registrations for all dates (1 query with correlated subquery)
+        # Use updated_at (with id tiebreaker) so the most recently *edited* registration
+        # wins per house — this way a user who changes their dining option immediately
+        # sees the stats reflect the change instead of being shadowed by a housemate's
+        # registration that happened to have a higher PK.
+        latest_per_house = Subquery(
+            MealRegistration.objects.filter(
+                date=OuterRef("date"),
+                house_id=OuterRef("house_id"),
+                is_active=True,
+            )
+            .order_by("-updated_at", "-id")
+            .values("id")[:1]
         )
-        all_registrations = MealRegistration.objects.filter(date__in=dates, is_active=True).filter(
-            Q(house__isnull=True) | Q(id__in=latest_per_house)
+        all_registrations = (
+            MealRegistration.objects.filter(date__in=dates, is_active=True)
+            .annotate(_house_latest=latest_per_house)
+            .filter(Q(house__isnull=True) | Q(id=F("_house_latest")))
         )
 
         # 3. Single conditional aggregate grouped by date (replaces 4 queries × N dates)
@@ -633,6 +642,12 @@ class ClaimTicketView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+            if ticket.owner == request.user:
+                return Response(
+                    {"detail": "Du kan ikke købe din egen billet."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             # Determine requested amounts — default to full ticket
             try:
                 adults_meat = (
@@ -777,9 +792,12 @@ class MyTicketsView(generics.ListAPIView):
     serializer_class = FoodTicketSerializer
 
     def get_queryset(self) -> QuerySet[FoodTicket]:
-        return FoodTicket.objects.filter(
-            Q(owner=self.request.user) | Q(claimed_by=self.request.user)
-        ).select_related("owner", "claimed_by")
+        today = timezone.now().date()
+        return (
+            FoodTicket.objects.filter(Q(owner=self.request.user) | Q(claimed_by=self.request.user))
+            .exclude(is_available=True, date__lt=today)
+            .select_related("owner", "claimed_by")
+        )
 
 
 # Food Team Views
