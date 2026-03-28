@@ -221,8 +221,41 @@ export const forumApi = {
     await apiClient.patch(`/forum/threads/${threadId}/update/`, data)
   },
 
-  updatePost: async (postId: number, data: CreatePostData): Promise<Post> => {
-    const response = await apiClient.patch(`/forum/posts/${postId}/`, data)
+  updatePost: async (
+    postId: number,
+    data: CreatePostData,
+    attachments?: File[],
+    removeAttachmentIds?: number[],
+  ): Promise<Post> => {
+    const hasFiles = attachments && attachments.length > 0
+    const hasRemovals = removeAttachmentIds && removeAttachmentIds.length > 0
+    if (hasFiles) {
+      const formData = new FormData()
+      formData.append("content", data.content)
+      attachments.forEach((file) => {
+        formData.append("attachments", file)
+      })
+      if (hasRemovals) {
+        removeAttachmentIds.forEach((id) => {
+          formData.append("remove_attachment_ids", String(id))
+        })
+      }
+      const response = await apiClient.patch(
+        `/forum/posts/${postId}/`,
+        formData,
+        {
+          headers: {
+            "Content-Type": undefined,
+          },
+        },
+      )
+      return response.data
+    }
+    const payload: Record<string, unknown> = { ...data }
+    if (hasRemovals) {
+      payload.remove_attachment_ids = removeAttachmentIds
+    }
+    const response = await apiClient.patch(`/forum/posts/${postId}/`, payload)
     return response.data
   },
 
