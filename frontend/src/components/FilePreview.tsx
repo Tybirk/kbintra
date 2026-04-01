@@ -14,6 +14,7 @@ import {
 } from "@mantine/core"
 import {
   IconDownload,
+  IconExternalLink,
   IconPhoto,
   IconFileTypePdf,
   IconFileTypeDoc,
@@ -117,7 +118,6 @@ export function FilePreviewModal({
   onClose,
 }: FilePreviewModalProps) {
   const [textContent, setTextContent] = useState<string | null>(null)
-  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -129,10 +129,6 @@ export function FilePreviewModal({
     if (!file || !opened) {
       setTextContent(null)
       setError(null)
-      if (pdfBlobUrl) {
-        URL.revokeObjectURL(pdfBlobUrl)
-        setPdfBlobUrl(null)
-      }
       return
     }
 
@@ -154,36 +150,7 @@ export function FilePreviewModal({
           setLoading(false)
         })
     }
-
-    if (fileType === "pdf" && !(isPwa && file.preview_html)) {
-      setLoading(true)
-      setError(null)
-
-      fetch(file.file_url)
-        .then((res) => {
-          if (!res.ok) throw new Error("Failed to load file")
-          return res.blob()
-        })
-        .then((blob) => {
-          const url = URL.createObjectURL(blob)
-          setPdfBlobUrl(url)
-          setLoading(false)
-        })
-        .catch(() => {
-          setError("Kunne ikke indlæse PDF-filen")
-          setLoading(false)
-        })
-    }
-  }, [file, opened, fileType, isPwa])
-
-  // Cleanup blob URL on unmount
-  useEffect(() => {
-    return () => {
-      if (pdfBlobUrl) {
-        URL.revokeObjectURL(pdfBlobUrl)
-      }
-    }
-  }, [pdfBlobUrl])
+  }, [file, opened, fileType])
 
   if (!file) return null
 
@@ -231,82 +198,39 @@ export function FilePreviewModal({
         )
 
       case "pdf":
-        if (loading) {
-          return (
-            <Center h={300}>
-              <Loader />
-            </Center>
-          )
-        }
-        if (error) {
-          return (
-            <Stack align="center" gap="lg" py="xl">
-              <IconFileTypePdf size={80} color="var(--mantine-color-red-6)" />
-              <Text c="red">{error}</Text>
-              <Button
-                leftSection={<IconDownload size={16} />}
-                onClick={handleDownload}
-              >
-                Download fil
-              </Button>
-            </Stack>
-          )
-        }
         if (isPwa) {
-          if (file.preview_html) {
-            return (
-              <Stack gap="md">
-                <ScrollArea h="65vh">
-                  <Box
-                    p="md"
-                    style={{
-                      backgroundColor: "#ffffff",
-                      color: "#000000",
-                      borderRadius: "var(--mantine-radius-md)",
-                      overflowWrap: "break-word",
-                    }}
-                    dangerouslySetInnerHTML={{ __html: file.preview_html }}
-                  />
-                </ScrollArea>
-                <Group justify="center">
-                  <Button
-                    variant="light"
-                    leftSection={<IconDownload size={16} />}
-                    onClick={handleDownload}
-                  >
-                    Download fil
-                  </Button>
-                </Group>
-              </Stack>
-            )
-          }
           return (
             <Stack align="center" gap="lg" py="xl">
               <IconFileTypePdf size={80} color="var(--mantine-color-red-6)" />
-              <Text ta="center">
-                PDF kan ikke vises i appen — tryk Download for at åbne den.
+              <Text size="lg" fw={500}>
+                {file.name}
               </Text>
-              <Button
-                leftSection={<IconDownload size={16} />}
-                onClick={handleDownload}
-              >
-                Download fil
-              </Button>
+              <Group>
+                <Button
+                  component="a"
+                  href={file.file_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  leftSection={<IconExternalLink size={16} />}
+                >
+                  Åbn PDF
+                </Button>
+                <Button
+                  variant="light"
+                  leftSection={<IconDownload size={16} />}
+                  onClick={handleDownload}
+                >
+                  Download fil
+                </Button>
+              </Group>
             </Stack>
-          )
-        }
-        if (!pdfBlobUrl) {
-          return (
-            <Center h={300}>
-              <Loader />
-            </Center>
           )
         }
         return (
           <Stack gap="md">
             <Box style={{ width: "100%", height: "65vh" }}>
               <iframe
-                src={pdfBlobUrl}
+                src={file.file_url}
                 style={{
                   width: "100%",
                   height: "100%",
@@ -462,7 +386,7 @@ export function FilePreviewModal({
   const modalSize = () => {
     switch (fileType) {
       case "pdf":
-        return isPwa && file?.preview_html ? "xl" : "80%"
+        return isPwa ? "md" : "80%"
       case "text":
         return "xl"
       case "word":

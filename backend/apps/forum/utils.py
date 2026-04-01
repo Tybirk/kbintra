@@ -31,66 +31,6 @@ def validate_file_size(file: UploadedFile) -> None:
         )
 
 
-def generate_pdf_preview(file_field) -> str:
-    """
-    Generate HTML preview for a PDF file using PyMuPDF.
-
-    Args:
-        file_field: Django FileField containing the uploaded file
-
-    Returns:
-        HTML string preview of the document, or empty string if not a PDF,
-        file is too large, or conversion fails.
-    """
-    if not file_field or not file_field.name:
-        return ""
-
-    filename = file_field.name.lower()
-    if not filename.endswith(".pdf"):
-        return ""
-
-    max_preview_size = getattr(settings, "MAX_PDF_PREVIEW_SIZE", 20 * 1024 * 1024)
-    try:
-        file_size = file_field.size
-        if file_size > max_preview_size:
-            logger.info(
-                f"Skipping PDF preview for {file_field.name}: "
-                f"file size ({file_size / (1024 * 1024):.1f}MB) exceeds limit "
-                f"({max_preview_size / (1024 * 1024):.0f}MB)"
-            )
-            return ""
-    except (AttributeError, OSError):
-        pass
-
-    try:
-        import fitz  # pymupdf
-
-        file_field.seek(0)
-        pdf_bytes = file_field.read()
-        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-
-        max_pages = getattr(settings, "MAX_PDF_PREVIEW_PAGES", 20)
-        total_pages = len(doc)
-        pages_html = []
-        for page_num in range(min(total_pages, max_pages)):
-            page = doc[page_num]
-            pages_html.append(page.get_text("html"))
-
-        doc.close()
-        truncated = total_pages > max_pages
-        html = "".join(pages_html)
-        if truncated:
-            html += (
-                f'<p style="color: gray; font-style: italic;">'
-                f"Kun de første {max_pages} sider vises. Download filen for at se hele dokumentet."
-                f"</p>"
-            )
-        return html
-    except Exception as e:
-        logger.warning(f"Failed to generate PDF preview for {file_field.name}: {e}")
-        return ""
-
-
 def generate_docx_preview(file_field) -> str:
     """
     Generate HTML preview for a DOCX file.

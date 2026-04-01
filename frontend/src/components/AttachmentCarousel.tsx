@@ -18,6 +18,7 @@ import {
   IconDownload,
   IconChevronLeft,
   IconChevronRight,
+  IconExternalLink,
   IconFileTypePdf,
   IconFileTypeDoc,
   IconFileTypePpt,
@@ -154,22 +155,17 @@ interface SlideContentProps {
 
 function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
   const [textContent, setTextContent] = useState<string | null>(null)
-  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const fileType = getFileType(attachment.name)
   const isPwa = window.matchMedia("(display-mode: standalone)").matches
 
-  // Fetch content for text and PDF files
+  // Fetch content for text files
   useEffect(() => {
     if (!opened) {
       setTextContent(null)
       setError(null)
-      if (pdfBlobUrl) {
-        URL.revokeObjectURL(pdfBlobUrl)
-        setPdfBlobUrl(null)
-      }
       return
     }
 
@@ -191,36 +187,7 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
           setLoading(false)
         })
     }
-
-    if (fileType === "pdf" && !(isPwa && attachment.preview_html)) {
-      setLoading(true)
-      setError(null)
-
-      fetch(attachment.file_url)
-        .then((res) => {
-          if (!res.ok) throw new Error("Failed to load file")
-          return res.blob()
-        })
-        .then((blob) => {
-          const url = URL.createObjectURL(blob)
-          setPdfBlobUrl(url)
-          setLoading(false)
-        })
-        .catch(() => {
-          setError("Kunne ikke indlæse PDF-filen")
-          setLoading(false)
-        })
-    }
-  }, [attachment.file_url, attachment.preview_html, fileType, isPwa, opened])
-
-  // Cleanup blob URL on unmount
-  useEffect(() => {
-    return () => {
-      if (pdfBlobUrl) {
-        URL.revokeObjectURL(pdfBlobUrl)
-      }
-    }
-  }, [pdfBlobUrl])
+  }, [attachment.file_url, fileType, opened])
 
   const handleDownload = () => {
     fetch(attachment.file_url)
@@ -275,61 +242,8 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
 
   // PDF preview
   if (fileType === "pdf") {
-    if (loading) {
-      return (
-        <Center h="100%">
-          <Loader />
-        </Center>
-      )
-    }
-    if (error) {
-      return (
-        <Stack
-          align="center"
-          justify="center"
-          gap="lg"
-          style={{ height: "100%" }}
-          p="xl"
-        >
-          <IconFileTypePdf size={80} color="var(--mantine-color-red-6)" />
-          <Text c="red">{error}</Text>
-          <Button
-            leftSection={<IconDownload size={16} />}
-            onClick={handleDownload}
-          >
-            Download fil
-          </Button>
-        </Stack>
-      )
-    }
     if (isPwa) {
-      if (attachment.preview_html) {
-        return (
-          <Stack gap="md" style={{ height: "100%" }} p={isMobile ? "xs" : "md"}>
-            <ScrollArea style={{ flex: 1 }}>
-              <Box
-                p="md"
-                style={{
-                  backgroundColor: "var(--mantine-color-default-hover)",
-                  borderRadius: "var(--mantine-radius-md)",
-                  overflowWrap: "break-word",
-                }}
-                dangerouslySetInnerHTML={{ __html: attachment.preview_html }}
-              />
-            </ScrollArea>
-            <Group justify="center">
-              <Button
-                variant="light"
-                size="sm"
-                leftSection={<IconDownload size={16} />}
-                onClick={handleDownload}
-              >
-                Download fil
-              </Button>
-            </Group>
-          </Stack>
-        )
-      }
+      // In PWA, iframes are unreliable — open in browser/system PDF viewer instead
       return (
         <Stack
           align="center"
@@ -339,30 +253,35 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
           p="xl"
         >
           <IconFileTypePdf size={80} color="var(--mantine-color-red-6)" />
-          <Text ta="center">
-            PDF kan ikke vises i appen — tryk Download for at åbne den.
+          <Text size="lg" fw={500} ta="center">
+            {attachment.name}
           </Text>
-          <Button
-            leftSection={<IconDownload size={16} />}
-            onClick={handleDownload}
-          >
-            Download fil
-          </Button>
+          <Group>
+            <Button
+              component="a"
+              href={attachment.file_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              leftSection={<IconExternalLink size={16} />}
+            >
+              Åbn PDF
+            </Button>
+            <Button
+              variant="light"
+              leftSection={<IconDownload size={16} />}
+              onClick={handleDownload}
+            >
+              Download
+            </Button>
+          </Group>
         </Stack>
-      )
-    }
-    if (!pdfBlobUrl) {
-      return (
-        <Center h="100%">
-          <Loader />
-        </Center>
       )
     }
     return (
       <Stack gap="md" style={{ height: "100%" }} p={isMobile ? "xs" : "md"}>
         <Box style={{ flex: 1, minHeight: 0 }}>
           <iframe
-            src={pdfBlobUrl}
+            src={attachment.file_url}
             style={{
               width: "100%",
               height: "100%",

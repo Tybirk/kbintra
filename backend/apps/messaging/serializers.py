@@ -296,7 +296,7 @@ class CreateMessageSerializer(serializers.ModelSerializer):
         message = super().create(validated_data)
 
         # Create attachments
-        from apps.forum.utils import generate_docx_preview, generate_pdf_preview
+        from apps.forum.utils import generate_docx_preview
 
         user = self.context["request"].user
         attachment_objects = []
@@ -306,8 +306,7 @@ class CreateMessageSerializer(serializers.ModelSerializer):
                 file=attachment_file,
                 name=attachment_file.name,
                 uploaded_by=user,
-                preview_html=generate_docx_preview(attachment_file)
-                or generate_pdf_preview(attachment_file),
+                preview_html=generate_docx_preview(attachment_file),
             )
             attachment_objects.append(att)
 

@@ -107,7 +107,7 @@ class AnnouncementCreateSerializer(serializers.ModelSerializer):
         announcement = super().create(validated_data)
 
         # Create attachments
-        from apps.forum.utils import generate_docx_preview, generate_pdf_preview
+        from apps.forum.utils import generate_docx_preview
 
         for attachment_file in attachments:
             AnnouncementAttachment.objects.create(
@@ -115,8 +115,7 @@ class AnnouncementCreateSerializer(serializers.ModelSerializer):
                 uploaded_by=announcement.author,
                 file=attachment_file,
                 name=attachment_file.name,
-                preview_html=generate_docx_preview(attachment_file)
-                or generate_pdf_preview(attachment_file),
+                preview_html=generate_docx_preview(attachment_file),
             )
 
         # Send notifications to all users (except author) if announcement is active
