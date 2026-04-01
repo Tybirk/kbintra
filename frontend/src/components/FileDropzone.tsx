@@ -40,12 +40,18 @@ function useDragDrop(onDrop: (files: File[]) => void) {
     if (files.length > 0) onDrop(files)
   }
 
+  const handleDropCapture = () => {
+    dragCounter.current = 0
+    setIsDragging(false)
+  }
+
   return {
     isDragging,
     handleDragEnter,
     handleDragLeave,
     handleDragOver,
     handleDrop,
+    handleDropCapture,
   }
 }
 
@@ -68,6 +74,7 @@ export default function FileDropzone({
     handleDragLeave,
     handleDragOver,
     handleDrop,
+    handleDropCapture,
   } = useDragDrop(onDrop)
 
   return (
@@ -77,6 +84,7 @@ export default function FileDropzone({
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
+      onDropCapture={handleDropCapture}
       style={style}
     >
       {children}
