@@ -1218,7 +1218,7 @@ function DayRegistrationCard({
                 <Group gap={4}>
                   <IconUsers size={12} color="var(--mantine-color-dimmed)" />
                   <Text size="xs" c="dimmed">
-                    Fællesskabets tilmeldinger
+                    Tilmeldinger
                   </Text>
                 </Group>
                 {statsOpen ? (
