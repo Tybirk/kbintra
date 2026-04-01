@@ -1080,7 +1080,7 @@ function FoodDayWidget({
               </Badge>
               {isLocked && (
                 <Badge color="orange" variant="light" size="sm">
-                  Låst
+                  Bestilt
                 </Badge>
               )}
             </Group>

@@ -182,7 +182,12 @@ export default function FoodPage() {
 
   // Filter tickets for billetter tab sections
   const myTicketsForSale =
-    myTickets?.filter((t) => t.is_own && t.is_available) ?? []
+    myTickets?.filter(
+      (t) =>
+        t.is_own && t.is_available && !dayjs(t.date).isBefore(dayjs(), "day"),
+    ) ?? []
+  const mySoldTickets =
+    myTickets?.filter((t) => t.is_own && !t.is_available) ?? []
   const myPurchasedTickets =
     myTickets?.filter((t) => !t.is_own && !t.is_available) ?? []
   const othersAvailableTickets =
@@ -485,6 +490,19 @@ export default function FoodPage() {
               )}
             </div>
 
+            {mySoldTickets.length > 0 && (
+              <div>
+                <Text fw={500} mb="xs">
+                  Mine solgte billetter
+                </Text>
+                <Stack gap="sm">
+                  {mySoldTickets.map((ticket) => (
+                    <TicketCard key={ticket.id} ticket={ticket} />
+                  ))}
+                </Stack>
+              </div>
+            )}
+
             <div>
               <Text fw={500} mb="xs">
                 Mine købte billetter
@@ -768,6 +786,9 @@ function DayRegistrationCard({
     availablePortions.adults_veg > 0 ||
     availablePortions.children_count > 0
 
+  // All portions sold via tickets — seller should not control dining/seating
+  const allPortionsSold = ticketsForDate.length > 0 && !hasSomethingToSell
+
   const sellPrice = calculateDefaultTicketPrice(sellMeat, sellVeg, sellChildren)
 
   // Track if initial mount to prevent auto-save on mount
@@ -968,7 +989,7 @@ function DayRegistrationCard({
                 size="sm"
                 leftSection={<IconLock size={12} />}
               >
-                Låst
+                Bestilt
               </Badge>
             )}
             <Badge variant="light" color={isPast ? "gray" : "blue"}>
@@ -999,6 +1020,7 @@ function DayRegistrationCard({
                 isWednesday={isWednesday}
                 disabled={true}
                 portionsReadOnly={true}
+                diningDisabled={allPortionsSold}
                 onAdultsMeatChange={setAdultsMeat}
                 onAdultsVegChange={setAdultsVeg}
                 onChildrenChange={setChildren}
@@ -1027,7 +1049,7 @@ function DayRegistrationCard({
                   </Text>
                   {ticketsForDate.map((ticket) => (
                     <Group key={ticket.id} justify="space-between">
-                      <Text size="xs">
+                      <Text size="xs" component="span">
                         {ticket.is_available ? (
                           <Badge color="orange" variant="light" size="xs">
                             Til salg
@@ -1125,22 +1147,19 @@ function DayRegistrationCard({
 
           {/* Saving indicator */}
           {!isPast && !isLocked && (
-            <Text
-              size="xs"
-              c={isSaving ? "blue" : lastSaved ? "green" : "dimmed"}
-              ta="center"
-            >
-              {isSaving ? (
-                <Group gap={4} justify="center">
-                  <Loader size={12} />
-                  Gemmer...
-                </Group>
-              ) : lastSaved ? (
-                "Gemt"
-              ) : (
-                "Gemmes automatisk ved ændringer"
-              )}
-            </Text>
+            <Group gap={4} justify="center" h={20}>
+              {isSaving && <Loader size={12} />}
+              <Text
+                size="xs"
+                c={isSaving ? "blue" : lastSaved ? "green" : "dimmed"}
+              >
+                {isSaving
+                  ? "Gemmer..."
+                  : lastSaved
+                    ? "Gemt"
+                    : "Gemmes automatisk ved ændringer"}
+              </Text>
+            </Group>
           )}
 
           {/* Purchased tickets — always visible, independent of registration state */}
@@ -1158,7 +1177,7 @@ function DayRegistrationCard({
                   >
                     {ticket.owner.first_name?.[0]}
                   </Avatar>
-                  <Text size="xs" c="green">
+                  <Text size="xs" c="green" component="span">
                     <Badge color="green" variant="light" size="xs">
                       Købt
                     </Badge>{" "}
@@ -1176,20 +1195,14 @@ function DayRegistrationCard({
 
           {/* Saving indicator for locked (dining/seating edits) */}
           {!isPast && isLocked && registration?.is_active && (
-            <Text
-              size="xs"
-              c={isSaving ? "blue" : lastSaved ? "green" : "dimmed"}
-              ta="center"
-            >
-              {isSaving ? (
-                <Group gap={4} justify="center">
-                  <Loader size={12} />
-                  Gemmer...
-                </Group>
-              ) : lastSaved ? (
-                "Gemt"
-              ) : null}
-            </Text>
+            <Group gap={4} justify="center" h={20}>
+              {isSaving && <Loader size={12} />}
+              {(isSaving || lastSaved) && (
+                <Text size="xs" c={isSaving ? "blue" : "green"}>
+                  {isSaving ? "Gemmer..." : "Gemt"}
+                </Text>
+              )}
+            </Group>
           )}
         </Stack>
 
@@ -1494,16 +1507,8 @@ function TicketCard({ ticket }: TicketCardProps) {
               <Text size="sm" c="dimmed">
                 {ticket.day_name}, {dayjs(ticket.date).format("D. MMM")} •{" "}
                 {[
-                  ticket.adults_meat > 0
-                    ? `${ticket.adults_meat} voksen kød`
-                    : null,
-                  ticket.adults_veg > 0
-                    ? ticket.adults_meat > 0
-                      ? `${ticket.adults_veg} vegetar`
-                      : `${ticket.adults_veg} ${
-                          ticket.adults_veg === 1 ? "voksen" : "voksne"
-                        }`
-                    : null,
+                  ticket.adults_meat > 0 ? `${ticket.adults_meat} kød` : null,
+                  ticket.adults_veg > 0 ? `${ticket.adults_veg} vegetar` : null,
                   ticket.children_count > 0
                     ? `${ticket.children_count} ${
                         ticket.children_count === 1 ? "barn" : "børn"
@@ -1664,7 +1669,7 @@ function TicketCard({ ticket }: TicketCardProps) {
                   label={
                     isWednesdayTicket
                       ? `Vegetar-portioner (maks ${ticket.adults_veg})`
-                      : `Voksne (maks ${ticket.adults_veg})`
+                      : `Voksenportioner (maks ${ticket.adults_veg})`
                   }
                   value={buyVeg}
                   onChange={(v) => setBuyVeg(typeof v === "number" ? v : 0)}

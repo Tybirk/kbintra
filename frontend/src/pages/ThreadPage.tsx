@@ -41,6 +41,8 @@ import {
   IconArrowsMove,
   IconPin,
   IconPinnedOff,
+  IconX,
+  IconRestore,
 } from "@tabler/icons-react"
 import { forumApi } from "../api/forum"
 import { messagingApi } from "../api/messaging"
@@ -79,6 +81,8 @@ interface CreatePostParams {
 interface UpdatePostParams {
   postId: number
   data: CreatePostData
+  attachments?: File[]
+  removeAttachmentIds?: number[]
   threadId?: number
   newTitle?: string
 }
@@ -237,6 +241,8 @@ export default function ThreadPage() {
   const [editContent, setEditContent] = useState("")
   const [editTitle, setEditTitle] = useState("")
   const [editPollData, setEditPollData] = useState<CreatePollData | null>(null)
+  const [editAttachments, setEditAttachments] = useState<File[]>([])
+  const [removedAttachmentIds, setRemovedAttachmentIds] = useState<number[]>([])
   const [
     deleteModalOpened,
     { open: openDeleteModal, close: closeDeleteModal },
@@ -364,10 +370,12 @@ export default function ThreadPage() {
     mutationFn: async ({
       postId,
       data,
+      attachments,
+      removeAttachmentIds: removeIds,
       threadId,
       newTitle,
     }: UpdatePostParams) => {
-      await forumApi.updatePost(postId, data)
+      await forumApi.updatePost(postId, data, attachments, removeIds)
       // Read current values from state at call time (not closure time)
       const currentEditPollData = editPollData
       const currentEditingPost = editingPost
@@ -387,6 +395,8 @@ export default function ThreadPage() {
       setEditContent("")
       setEditTitle("")
       setEditPollData(null)
+      setEditAttachments([])
+      setRemovedAttachmentIds([])
       notifications.show({
         title: "Indlæg opdateret",
         message: "Dit indlæg er blevet opdateret.",
@@ -568,6 +578,9 @@ export default function ThreadPage() {
     updatePostMutation.mutate({
       postId: editingPost.id,
       data: { content: editContent.trim() },
+      attachments: editAttachments.length > 0 ? editAttachments : undefined,
+      removeAttachmentIds:
+        removedAttachmentIds.length > 0 ? removedAttachmentIds : undefined,
       ...(isFirstPost && thread
         ? { threadId: thread.id, newTitle: editTitle.trim() }
         : {}),
@@ -614,13 +627,15 @@ export default function ThreadPage() {
           post={thread.posts[0]}
           threadQueryKey={threadQueryKey}
           threadHeader={
-            <Group justify="space-between">
-              <div>
+            <Group justify="space-between" wrap="nowrap" align="flex-start">
+              <div style={{ minWidth: 0, flex: 1 }}>
                 <Text size="sm" c="dimmed" mb={4}>
                   {thread.subgroup_name}
                 </Text>
-                <Group gap="sm">
-                  <Title order={2}>{thread.title}</Title>
+                <Group gap="sm" wrap="wrap">
+                  <Title order={2} style={{ wordBreak: "break-word" }}>
+                    {thread.title}
+                  </Title>
                   {thread.is_pinned && (
                     <Badge color="blue" leftSection={<IconPin size={12} />}>
                       Fastgjort
@@ -633,7 +648,7 @@ export default function ThreadPage() {
                   )}
                 </Group>
               </div>
-              <Group gap="xs">
+              <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
                 <Tooltip
                   label={
                     thread.is_muted
@@ -724,6 +739,15 @@ export default function ThreadPage() {
             editingPost?.id === thread.posts[0].id ? editPollData : null
           }
           onEditPollDataChange={setEditPollData}
+          editAttachments={editAttachments}
+          onEditAttachmentsChange={setEditAttachments}
+          removedAttachmentIds={removedAttachmentIds}
+          onRemoveExistingAttachment={(id) =>
+            setRemovedAttachmentIds((prev) => [...prev, id])
+          }
+          onRestoreExistingAttachment={(id) =>
+            setRemovedAttachmentIds((prev) => prev.filter((x) => x !== id))
+          }
           onStartEdit={() => handleStartEdit(thread.posts[0])}
           onSaveEdit={handleSaveEdit}
           onCancelEdit={() => {
@@ -731,6 +755,8 @@ export default function ThreadPage() {
             setEditContent("")
             setEditTitle("")
             setEditPollData(null)
+            setEditAttachments([])
+            setRemovedAttachmentIds([])
           }}
           onDelete={() => handleDeleteClick(thread.posts[0].id)}
           isSaving={updatePostMutation.isPending}
@@ -753,6 +779,17 @@ export default function ThreadPage() {
                 onEditContentChange={setEditContent}
                 editPollData={editingPost?.id === post.id ? editPollData : null}
                 onEditPollDataChange={setEditPollData}
+                editAttachments={editAttachments}
+                onEditAttachmentsChange={setEditAttachments}
+                removedAttachmentIds={removedAttachmentIds}
+                onRemoveExistingAttachment={(id) =>
+                  setRemovedAttachmentIds((prev) => [...prev, id])
+                }
+                onRestoreExistingAttachment={(id) =>
+                  setRemovedAttachmentIds((prev) =>
+                    prev.filter((x) => x !== id),
+                  )
+                }
                 onStartEdit={() => handleStartEdit(post)}
                 onSaveEdit={handleSaveEdit}
                 onCancelEdit={() => {
@@ -760,6 +797,8 @@ export default function ThreadPage() {
                   setEditContent("")
                   setEditTitle("")
                   setEditPollData(null)
+                  setEditAttachments([])
+                  setRemovedAttachmentIds([])
                 }}
                 onDelete={() => handleDeleteClick(post.id)}
                 isSaving={updatePostMutation.isPending}
@@ -869,6 +908,11 @@ interface PostCardProps {
   onEditTitleChange?: (title: string) => void
   editPollData: CreatePollData | null
   onEditPollDataChange: (data: CreatePollData) => void
+  editAttachments: File[]
+  onEditAttachmentsChange: (files: File[]) => void
+  removedAttachmentIds: number[]
+  onRemoveExistingAttachment: (id: number) => void
+  onRestoreExistingAttachment: (id: number) => void
   onStartEdit: () => void
   onSaveEdit: () => void
   onCancelEdit: () => void
@@ -887,6 +931,11 @@ function PostCard({
   onEditTitleChange,
   editPollData,
   onEditPollDataChange,
+  editAttachments,
+  onEditAttachmentsChange,
+  removedAttachmentIds,
+  onRemoveExistingAttachment,
+  onRestoreExistingAttachment,
   onStartEdit,
   onSaveEdit,
   onCancelEdit,
@@ -984,42 +1033,167 @@ function PostCard({
         </Group>
 
         {isEditing ? (
-          <Stack gap="sm">
-            {editTitle !== undefined && onEditTitleChange && (
-              <TextInput
-                label="Titel"
-                value={editTitle}
-                onChange={(e) => onEditTitleChange(e.currentTarget.value)}
-                required
+          <FileDropzone
+            onDrop={(files) => {
+              const { validFiles, errors } = filterFilesBySize(files)
+              if (errors.length > 0) {
+                errors.forEach((error) => {
+                  notifications.show({
+                    title: "Fil for stor",
+                    message: error,
+                    color: "red",
+                  })
+                })
+              }
+              if (validFiles.length > 0) {
+                onEditAttachmentsChange([
+                  ...editAttachments,
+                  ...validFiles.filter(
+                    (f) => !editAttachments.some((p) => p.name === f.name),
+                  ),
+                ])
+              }
+            }}
+          >
+            <Stack gap="sm">
+              {editTitle !== undefined && onEditTitleChange && (
+                <TextInput
+                  label="Titel"
+                  value={editTitle}
+                  onChange={(e) => onEditTitleChange(e.currentTarget.value)}
+                  required
+                />
+              )}
+              <RichTextEditor
+                content={editContent}
+                onChange={onEditContentChange}
+                placeholder="Rediger dit indlæg..."
+                minHeight={150}
+                onSubmit={onSaveEdit}
+                onFilePaste={(files) => {
+                  const { validFiles, errors } = filterFilesBySize(files)
+                  if (errors.length > 0) {
+                    errors.forEach((error) => {
+                      notifications.show({
+                        title: "Fil for stor",
+                        message: error,
+                        color: "red",
+                      })
+                    })
+                  }
+                  if (validFiles.length > 0) {
+                    onEditAttachmentsChange([
+                      ...editAttachments,
+                      ...validFiles.filter(
+                        (f) => !editAttachments.some((p) => p.name === f.name),
+                      ),
+                    ])
+                  }
+                }}
               />
-            )}
-            <RichTextEditor
-              content={editContent}
-              onChange={onEditContentChange}
-              placeholder="Rediger dit indlæg..."
-              minHeight={150}
-              onSubmit={onSaveEdit}
-            />
-            {editPollData && (
-              <PollCreator
-                pollData={editPollData}
-                onChange={onEditPollDataChange}
-              />
-            )}
-            <Group justify="flex-end">
-              <Button variant="light" size="sm" onClick={onCancelEdit}>
-                Annuller
-              </Button>
-              <Button
-                size="sm"
-                onClick={onSaveEdit}
-                loading={isSaving}
-                disabled={editTitle !== undefined && !editTitle.trim()}
+              {editPollData && (
+                <PollCreator
+                  pollData={editPollData}
+                  onChange={onEditPollDataChange}
+                />
+              )}
+              <AttachmentArea
+                onAddFiles={(files) => {
+                  const { validFiles, errors } = filterFilesBySize(files)
+                  if (errors.length > 0) {
+                    errors.forEach((error) => {
+                      notifications.show({
+                        title: "Fil for stor",
+                        message: error,
+                        color: "red",
+                      })
+                    })
+                  }
+                  if (validFiles.length > 0) {
+                    onEditAttachmentsChange([
+                      ...editAttachments,
+                      ...validFiles.filter(
+                        (f) => !editAttachments.some((p) => p.name === f.name),
+                      ),
+                    ])
+                  }
+                }}
               >
-                Gem
-              </Button>
-            </Group>
-          </Stack>
+                {(post.attachments?.length > 0 ||
+                  editAttachments.length > 0) && (
+                  <Group gap="xs">
+                    {post.attachments?.map((att) => {
+                      const isRemoved = removedAttachmentIds.includes(att.id)
+                      const FileIcon = getFileIcon(att.name)
+                      const fileColor = getFileTypeColor(att.name)
+                      return (
+                        <Badge
+                          key={`existing-${att.id}`}
+                          variant="light"
+                          color={isRemoved ? "gray" : fileColor}
+                          size="lg"
+                          leftSection={<FileIcon size={14} />}
+                          rightSection={
+                            <ActionIcon
+                              size="xs"
+                              variant="transparent"
+                              color={isRemoved ? "blue" : fileColor}
+                              onClick={() =>
+                                isRemoved
+                                  ? onRestoreExistingAttachment(att.id)
+                                  : onRemoveExistingAttachment(att.id)
+                              }
+                            >
+                              {isRemoved ? (
+                                <IconRestore size={12} />
+                              ) : (
+                                <IconX size={12} />
+                              )}
+                            </ActionIcon>
+                          }
+                          style={{
+                            paddingRight: 4,
+                            textDecoration: isRemoved
+                              ? "line-through"
+                              : undefined,
+                            opacity: isRemoved ? 0.5 : 1,
+                          }}
+                        >
+                          {att.name.length > 20
+                            ? `${att.name.slice(0, 17)}...`
+                            : att.name}
+                        </Badge>
+                      )
+                    })}
+                    {editAttachments.map((file, index) => (
+                      <AttachmentBadge
+                        key={`${file.name}-${file.size}-${index}`}
+                        file={file}
+                        onRemove={() =>
+                          onEditAttachmentsChange(
+                            editAttachments.filter((_, i) => i !== index),
+                          )
+                        }
+                      />
+                    ))}
+                  </Group>
+                )}
+              </AttachmentArea>
+              <Group justify="flex-end">
+                <Button variant="light" size="sm" onClick={onCancelEdit}>
+                  Annuller
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={onSaveEdit}
+                  loading={isSaving}
+                  disabled={editTitle !== undefined && !editTitle.trim()}
+                >
+                  Gem
+                </Button>
+              </Group>
+            </Stack>
+          </FileDropzone>
         ) : (
           <>
             <Typography>

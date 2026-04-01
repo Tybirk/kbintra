@@ -360,11 +360,17 @@ class PostCreateSerializer(serializers.ModelSerializer):
         required=False,
         allow_empty=True,
     )
+    remove_attachment_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        write_only=True,
+        required=False,
+        allow_empty=True,
+    )
     poll_data = serializers.JSONField(write_only=True, required=False)
 
     class Meta:
         model = Post
-        fields = ["content", "attachments", "poll_data"]
+        fields = ["content", "attachments", "remove_attachment_ids", "poll_data"]
         extra_kwargs = {"content": {"allow_blank": True}}
 
     def validate(self, attrs: dict) -> dict:
@@ -402,6 +408,33 @@ class PostCreateSerializer(serializers.ModelSerializer):
         serializer = PollCreateSerializer(data=value)
         serializer.is_valid(raise_exception=True)
         return serializer.validated_data
+
+    def update(self, instance: Post, validated_data: dict) -> Post:
+        from .utils import generate_docx_preview, generate_pdf_preview
+
+        attachments = validated_data.pop("attachments", [])
+        remove_attachment_ids = validated_data.pop("remove_attachment_ids", [])
+        validated_data.pop("poll_data", None)  # poll updates handled separately
+
+        instance = super().update(instance, validated_data)
+
+        # Remove attachments that belong to this post
+        if remove_attachment_ids:
+            instance.attachments.filter(id__in=remove_attachment_ids).delete()
+
+        # Create new attachments
+        user = self.context["request"].user
+        for attachment_file in attachments:
+            PostAttachment.objects.create(
+                post=instance,
+                uploaded_by=user,
+                file=attachment_file,
+                name=attachment_file.name,
+                preview_html=generate_docx_preview(attachment_file)
+                or generate_pdf_preview(attachment_file),
+            )
+
+        return instance
 
     def create(self, validated_data: dict) -> Post:
         from django.utils import timezone
