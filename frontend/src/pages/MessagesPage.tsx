@@ -110,6 +110,7 @@ export default function MessagesPage() {
   const inConversationMobile =
     !!isMobile && (!!selectedConversation || isComposingNew)
   const selectedConversationRef = useRef(selectedConversation)
+  const lastMarkedReadConversation = useRef<number | null>(null)
 
   // Sync URL param to state when URL changes (e.g., from notification link)
   useEffect(() => {
@@ -196,6 +197,11 @@ export default function MessagesPage() {
               }
             },
           )
+          // Mark as read immediately since we're actively viewing this conversation
+          chatWs.markRead(currentConv)
+          queryClient.invalidateQueries({
+            queryKey: ["messages", "unread-count"],
+          })
         }
       } else if (wsData.type === "messages_read") {
         // Update read status in active conversation
@@ -296,29 +302,19 @@ export default function MessagesPage() {
     }
   }, [queryClient])
 
-  // Mark messages as read when viewing conversation
+  // Mark messages as read when opening a conversation.
+  // The backend auto-marks messages as read when the conversation is fetched,
+  // so unread_count in the response is always 0 — we cannot rely on it as a
+  // condition. Instead, run once per conversation selection (tracked via ref)
+  // and invalidate the sidebar list and header badge caches.
   useEffect(() => {
-    if (selectedConversation && activeConversation?.unread_count) {
-      chatWs.markRead(selectedConversation)
-      // Optimistically update the conversation detail to mark messages as read
-      queryClient.setQueryData<ConversationDetail>(
-        ["conversation", selectedConversation],
-        (old) => {
-          if (!old) return old
-          return {
-            ...old,
-            unread_count: 0,
-            messages: old.messages.map((msg) => ({
-              ...msg,
-              is_read: msg.is_own ? msg.is_read : true,
-            })),
-          }
-        },
-      )
-      queryClient.invalidateQueries({ queryKey: ["conversations"] })
-      queryClient.invalidateQueries({ queryKey: ["messages", "unread-count"] })
-    }
-  }, [selectedConversation, activeConversation?.unread_count, queryClient])
+    if (!selectedConversation || !activeConversation) return
+    if (lastMarkedReadConversation.current === selectedConversation) return
+    lastMarkedReadConversation.current = selectedConversation
+    chatWs.markRead(selectedConversation)
+    queryClient.invalidateQueries({ queryKey: ["conversations"] })
+    queryClient.invalidateQueries({ queryKey: ["messages", "unread-count"] })
+  }, [selectedConversation, activeConversation, queryClient])
 
   // Polling fallback when WebSocket is disconnected
   useEffect(() => {
