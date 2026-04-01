@@ -103,8 +103,14 @@ class MealPreferenceCreateUpdateSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data: dict) -> MealPreference:
-        validated_data["user"] = self.context["request"].user
+        user = self.context["request"].user
+        validated_data["house"] = user.house
+        validated_data["last_modified_by"] = user
         return super().create(validated_data)
+
+    def update(self, instance: MealPreference, validated_data: dict) -> MealPreference:
+        validated_data["last_modified_by"] = self.context["request"].user
+        return super().update(instance, validated_data)
 
 
 class HouseSimpleSerializer(serializers.Serializer):
@@ -166,9 +172,7 @@ class MealRegistrationSerializer(serializers.ModelSerializer):
         (claimed) ticket cannot be re-listed. Released tickets are already set
         back to is_available=True and will be counted again, which is intentional.
         """
-        request = self.context.get("request")
-        user = request.user if request else obj.user
-        existing = FoodTicket.objects.filter(owner=user, date=obj.date).aggregate(
+        existing = FoodTicket.objects.filter(house=obj.house, date=obj.date).aggregate(
             total_meat=Coalesce(Sum("adults_meat"), 0),
             total_veg=Coalesce(Sum("adults_veg"), 0),
             total_children=Coalesce(Sum("children_count"), 0),
@@ -183,8 +187,6 @@ class MealRegistrationSerializer(serializers.ModelSerializer):
 class MealRegistrationCreateUpdateSerializer(serializers.ModelSerializer):
     """Serializer for creating/updating meal registrations."""
 
-    house_id = serializers.IntegerField(required=False, allow_null=True)
-
     class Meta:
         model = MealRegistration
         fields = [
@@ -194,7 +196,6 @@ class MealRegistrationCreateUpdateSerializer(serializers.ModelSerializer):
             "children_count",
             "dining_option",
             "seating_time",
-            "house_id",
             "is_active",
         ]
 
@@ -204,21 +205,11 @@ class MealRegistrationCreateUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Meals are only served Monday through Thursday.")
         return value
 
-    def validate_house_id(self, value: int | None) -> int | None:
-        if value is not None:
-            from apps.houses.models import House
-
-            if not House.objects.filter(id=value).exists():
-                raise serializers.ValidationError("House does not exist.")
-            # Check if user belongs to this house
-            user = self.context["request"].user
-            if user.house_id != value:
-                raise serializers.ValidationError(
-                    "You can only register on behalf of your own house."
-                )
-        return value
-
     def validate(self, attrs: dict) -> dict:
+        user = self.context["request"].user
+        if not user.house_id:
+            raise serializers.ValidationError("Du skal tilhøre et hus for at tilmelde dig.")
+
         reg_date = attrs.get("date") or (self.instance.date if self.instance else None)
         # For partial updates (PATCH), fall back to instance values so we don't
         # mistakenly flag unchanged fields as violations.
@@ -261,20 +252,13 @@ class MealRegistrationCreateUpdateSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data: dict) -> MealRegistration:
-        house_id = validated_data.pop("house_id", None)
-        validated_data["user"] = self.context["request"].user
-        if house_id:
-            from apps.houses.models import House
-
-            validated_data["house"] = House.objects.get(id=house_id)
+        user = self.context["request"].user
+        validated_data["house"] = user.house
+        validated_data["last_modified_by"] = user
         return super().create(validated_data)
 
     def update(self, instance: MealRegistration, validated_data: dict) -> MealRegistration:
-        house_id = validated_data.pop("house_id", None)
-        if house_id is not None:
-            from apps.houses.models import House
-
-            validated_data["house"] = House.objects.get(id=house_id) if house_id else None
+        validated_data["last_modified_by"] = self.context["request"].user
         return super().update(instance, validated_data)
 
 
@@ -314,7 +298,7 @@ class FoodTicketSerializer(serializers.ModelSerializer):
     def get_is_own(self, obj: FoodTicket) -> bool:
         request = self.context.get("request")
         if request and request.user.is_authenticated:
-            return obj.owner_id == request.user.id
+            return obj.house_id == request.user.house_id
         return False
 
     def get_day_of_week(self, obj: FoodTicket) -> int:
@@ -370,15 +354,19 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
         # Validate portions don't exceed registration minus existing available tickets
         if reg_date:
             user = self.context["request"].user
-            reg = MealRegistration.objects.filter(user=user, date=reg_date, is_active=True).first()
+            if not user.house_id:
+                raise serializers.ValidationError("Du skal tilhøre et hus for at sælge en billet.")
+            reg = MealRegistration.objects.filter(
+                house=user.house, date=reg_date, is_active=True
+            ).first()
             if not reg:
                 raise serializers.ValidationError(
-                    "Du skal have en aktiv tilmelding for at sælge en billet."
+                    "Dit hus skal have en aktiv tilmelding for at sælge en billet."
                 )
             # Sum of ALL tickets for this date (listed + claimed) to prevent re-listing
             # portions that are already sold. Released tickets are back to is_available=True
             # and will be counted again, which is intentional.
-            existing = FoodTicket.objects.filter(owner=user, date=reg_date).aggregate(
+            existing = FoodTicket.objects.filter(house=user.house, date=reg_date).aggregate(
                 total_meat=Coalesce(Sum("adults_meat"), 0),
                 total_veg=Coalesce(Sum("adults_veg"), 0),
                 total_children=Coalesce(Sum("children_count"), 0),
@@ -411,6 +399,7 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data: dict) -> FoodTicket:
         user = self.context["request"].user
         validated_data["owner"] = user
+        validated_data["house"] = user.house
 
         ticket_adults_meat = validated_data.get("adults_meat", 0)
         ticket_adults_veg = validated_data.get("adults_veg", 0)

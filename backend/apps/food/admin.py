@@ -19,24 +19,33 @@ from .models import (
 
 @admin.register(MealPreference)
 class MealPreferenceAdmin(admin.ModelAdmin):
-    list_display = ["user", "day_of_week", "adults_meat", "adults_veg", "children_count"]
+    list_display = ["house", "day_of_week", "adults_meat", "adults_veg", "children_count"]
     list_filter = ["day_of_week"]
-    search_fields = ["user__email"]
-    raw_id_fields = ["user"]
+    search_fields = ["house__name"]
+    raw_id_fields = ["house", "last_modified_by"]
 
 
 @admin.register(MealRegistration)
 class MealRegistrationAdmin(admin.ModelAdmin):
-    list_display = ["user", "date", "adults_meat", "adults_veg", "children_count", "is_active"]
+    list_display = [
+        "house",
+        "date",
+        "adults_meat",
+        "adults_veg",
+        "children_count",
+        "is_active",
+        "last_modified_by",
+    ]
     list_filter = ["date", "is_active"]
-    search_fields = ["user__email"]
-    raw_id_fields = ["user"]
+    search_fields = ["house__name", "last_modified_by__email"]
+    raw_id_fields = ["house", "last_modified_by"]
     date_hierarchy = "date"
 
 
 @admin.register(FoodTicket)
 class FoodTicketAdmin(admin.ModelAdmin):
     list_display = [
+        "house",
         "owner",
         "date",
         "adults_meat",
@@ -47,8 +56,8 @@ class FoodTicketAdmin(admin.ModelAdmin):
         "claimed_by",
     ]
     list_filter = ["date", "is_available"]
-    search_fields = ["owner__email", "claimed_by__email"]
-    raw_id_fields = ["owner", "claimed_by"]
+    search_fields = ["house__name", "owner__email", "claimed_by__email"]
+    raw_id_fields = ["house", "owner", "claimed_by"]
     date_hierarchy = "date"
 
 

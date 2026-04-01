@@ -116,10 +116,10 @@ def monday_date(request):
 
 
 @pytest.fixture
-def meal_preference(db, user):
+def meal_preference(db, house):
     """Create a test meal preference."""
     return MealPreference.objects.create(
-        user=user,
+        house=house,
         day_of_week=DayOfWeek.MONDAY,
         adults_meat=0,
         adults_veg=2,
@@ -130,10 +130,10 @@ def meal_preference(db, user):
 
 
 @pytest.fixture
-def meal_registration(db, user, monday_date):
+def meal_registration(db, house, monday_date):
     """Create a test meal registration."""
     return MealRegistration.objects.create(
-        user=user,
+        house=house,
         date=monday_date,
         adults_meat=0,
         adults_veg=2,
@@ -145,10 +145,11 @@ def meal_registration(db, user, monday_date):
 
 
 @pytest.fixture
-def food_ticket(db, user, monday_date):
+def food_ticket(db, user_with_house, house, monday_date):
     """Create a test food ticket."""
     return FoodTicket.objects.create(
-        owner=user,
+        house=house,
+        owner=user_with_house,
         date=monday_date,
         adults_meat=0,
         adults_veg=1,
@@ -160,10 +161,11 @@ def food_ticket(db, user, monday_date):
 
 
 @pytest.fixture
-def food_ticket_free(db, user, monday_date):
+def food_ticket_free(db, user_with_house, house, monday_date):
     """Create a free food ticket."""
     return FoodTicket.objects.create(
-        owner=user,
+        house=house,
+        owner=user_with_house,
         date=monday_date + timedelta(days=1),
         adults_meat=0,
         adults_veg=2,

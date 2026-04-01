@@ -20,8 +20,7 @@ logger = logging.getLogger(__name__)
 def _materialize_for_houses(dates: list[date]) -> int:
     """Create MealRegistration rows for all houses missing one on the given dates.
 
-    For each house, picks one active user (preferring one with a MealPreference)
-    and creates a registration using their preference values (or system defaults).
+    Uses the house's MealPreference (if any) or system defaults (house_count veg).
 
     Uses get_or_create to safely handle concurrent calls (e.g. simultaneous
     view requests or overlap with the periodic task).
@@ -34,16 +33,11 @@ def _materialize_for_houses(dates: list[date]) -> int:
 
     created = 0
 
-    # Pre-fetch all preferences keyed by (house_id, day_of_week).
-    # Within a house, prefer the most recently updated preference.
+    # Pre-fetch all preferences keyed by (house_id, day_of_week)
     all_prefs: dict[tuple[int, int], MealPreference] = {}
-    for pref in MealPreference.objects.filter(user__is_active=True).select_related("user__house"):
-        house = pref.user.house
-        if house:
-            key = (house.id, pref.day_of_week)
-            existing = all_prefs.get(key)
-            if existing is None or pref.pk > existing.pk:
-                all_prefs[key] = pref
+    for pref in MealPreference.objects.select_related("house"):
+        key = (pref.house_id, pref.day_of_week)
+        all_prefs[key] = pref
 
     for house in House.objects.prefetch_related("inhabitants"):
         inhabitants = list(house.inhabitants.filter(is_active=True))
@@ -55,15 +49,12 @@ def _materialize_for_houses(dates: list[date]) -> int:
             if target_date.weekday() > 3:
                 continue
 
-            # Skip if any user in this house already has a registration for this date
-            has_reg = MealRegistration.objects.filter(user__house=house, date=target_date).exists()
+            # Skip if house already has a registration for this date
+            has_reg = MealRegistration.objects.filter(house=house, date=target_date).exists()
             if has_reg:
                 continue
 
             pref = all_prefs.get((house.id, target_date.weekday()))
-
-            # Pick the user who owns the preference, or fall back to first inhabitant
-            user = pref.user if pref else inhabitants[0]
 
             if pref:
                 meat, veg, children = pref.adults_meat, pref.adults_veg, pref.children_count
@@ -73,10 +64,10 @@ def _materialize_for_houses(dates: list[date]) -> int:
                 dining, seating = "eat_in", "17:30"
 
             _, was_created = MealRegistration.objects.get_or_create(
-                user=user,
+                house=house,
                 date=target_date,
                 defaults={
-                    "house": house,
+                    "last_modified_by": inhabitants[0],
                     "adults_meat": meat,
                     "adults_veg": veg,
                     "children_count": children,
