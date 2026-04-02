@@ -377,6 +377,8 @@ class DailyRegistrationStatsView(APIView):
             for d_val, oid, cid, c_meat, c_veg, c_ch in claimed_raw:
                 seller_house = _user_house.get(oid)
                 buyer_house = _user_house.get(cid)
+                if not seller_house or not buyer_house:
+                    continue
                 sb = _bkt(*_dining.get((seller_house, d_val), ("eat_in", "17:30")))
                 bb = _bkt(*_dining.get((buyer_house, d_val), ("eat_in", "17:30")))
                 if sb == bb:

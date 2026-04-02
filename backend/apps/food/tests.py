@@ -248,7 +248,7 @@ class MockRequest:
 class TestMealRegistrationSerializer:
     """Tests for MealRegistrationCreateUpdateSerializer."""
 
-    def test_validate_weekday(self, db, user, monday_date):
+    def test_validate_weekday(self, db, user_with_house, monday_date):
         """Test that only Mon-Thu dates are accepted."""
         # Valid Monday
         serializer = MealRegistrationCreateUpdateSerializer(
@@ -257,11 +257,11 @@ class TestMealRegistrationSerializer:
                 "adults_veg": 1,
                 "children_count": 0,
             },
-            context={"request": MockRequest(user)},
+            context={"request": MockRequest(user_with_house)},
         )
         assert serializer.is_valid()
 
-    def test_reject_weekend(self, db, user, monday_date):
+    def test_reject_weekend(self, db, user_with_house, monday_date):
         """Test that weekend dates are rejected."""
         saturday = monday_date + timedelta(days=5)
         serializer = MealRegistrationCreateUpdateSerializer(
@@ -270,12 +270,12 @@ class TestMealRegistrationSerializer:
                 "adults_veg": 1,
                 "children_count": 0,
             },
-            context={"request": MockRequest(user)},
+            context={"request": MockRequest(user_with_house)},
         )
         assert not serializer.is_valid()
         assert "date" in serializer.errors
 
-    def test_reject_meat_on_non_wednesday(self, db, user, monday_date):
+    def test_reject_meat_on_non_wednesday(self, db, user_with_house, monday_date):
         """Test that adults_meat > 0 on non-Wednesday is rejected."""
         serializer = MealRegistrationCreateUpdateSerializer(
             data={
@@ -284,12 +284,12 @@ class TestMealRegistrationSerializer:
                 "adults_veg": 0,
                 "children_count": 0,
             },
-            context={"request": MockRequest(user)},
+            context={"request": MockRequest(user_with_house)},
         )
         assert not serializer.is_valid()
         assert "adults_meat" in serializer.errors
 
-    def test_reject_empty_portions(self, db, user, monday_date):
+    def test_reject_empty_portions(self, db, user_with_house, monday_date):
         """Test that zero total portions is rejected when active."""
         serializer = MealRegistrationCreateUpdateSerializer(
             data={
@@ -299,11 +299,11 @@ class TestMealRegistrationSerializer:
                 "children_count": 0,
                 "is_active": True,
             },
-            context={"request": MockRequest(user)},
+            context={"request": MockRequest(user_with_house)},
         )
         assert not serializer.is_valid()
 
-    def test_wednesday_allows_meat(self, db, user, monday_date):
+    def test_wednesday_allows_meat(self, db, user_with_house, monday_date):
         """Test that adults_meat > 0 is allowed on Wednesday."""
         wednesday = monday_date + timedelta(days=2)
         serializer = MealRegistrationCreateUpdateSerializer(
@@ -313,7 +313,7 @@ class TestMealRegistrationSerializer:
                 "adults_veg": 1,
                 "children_count": 0,
             },
-            context={"request": MockRequest(user)},
+            context={"request": MockRequest(user_with_house)},
         )
         assert serializer.is_valid()
 

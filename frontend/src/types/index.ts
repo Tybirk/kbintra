@@ -392,7 +392,6 @@ export interface CreateMealRegistrationData {
   children_count: number
   dining_option: DiningOption
   seating_time: SeatingTime
-  house_id: number | null
   is_active?: boolean
 }
 
