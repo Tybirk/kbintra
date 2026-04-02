@@ -256,24 +256,15 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
           <Text size="lg" fw={500} ta="center">
             {attachment.name}
           </Text>
-          <Group>
-            <Button
-              component="a"
-              href={attachment.file_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              leftSection={<IconExternalLink size={16} />}
-            >
-              Åbn PDF
-            </Button>
-            <Button
-              variant="light"
-              leftSection={<IconDownload size={16} />}
-              onClick={handleDownload}
-            >
-              Download
-            </Button>
-          </Group>
+          <Button
+            component="a"
+            href={attachment.file_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            leftSection={<IconExternalLink size={16} />}
+          >
+            Åbn PDF
+          </Button>
         </Stack>
       )
     }

@@ -205,24 +205,15 @@ export function FilePreviewModal({
               <Text size="lg" fw={500}>
                 {file.name}
               </Text>
-              <Group>
-                <Button
-                  component="a"
-                  href={file.file_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  leftSection={<IconExternalLink size={16} />}
-                >
-                  Åbn PDF
-                </Button>
-                <Button
-                  variant="light"
-                  leftSection={<IconDownload size={16} />}
-                  onClick={handleDownload}
-                >
-                  Download fil
-                </Button>
-              </Group>
+              <Button
+                component="a"
+                href={file.file_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                leftSection={<IconExternalLink size={16} />}
+              >
+                Åbn PDF
+              </Button>
             </Stack>
           )
         }
