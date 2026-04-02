@@ -55,17 +55,17 @@ class TestMealPreferenceModel:
         assert meal_preference.children_count == 1
         assert meal_preference.dining_option == DiningOption.EAT_IN
 
-    def test_meal_preference_unique_constraint(self, db, user):
-        """Test unique constraint on user + day_of_week."""
+    def test_meal_preference_unique_constraint(self, db, house):
+        """Test unique constraint on house + day_of_week."""
         from django.db import IntegrityError
 
         MealPreference.objects.create(
-            user=user,
+            house=house,
             day_of_week=DayOfWeek.MONDAY,
         )
         with pytest.raises(IntegrityError):
             MealPreference.objects.create(
-                user=user,
+                house=house,
                 day_of_week=DayOfWeek.MONDAY,
             )
 
@@ -88,8 +88,8 @@ class TestMealRegistrationModel:
     def test_meal_registration_with_house(self, db, user_with_house, monday_date, house):
         """Test meal registration with house."""
         reg = MealRegistration.objects.create(
-            user=user_with_house,
             house=house,
+            last_modified_by=user_with_house,
             date=monday_date,
             adults_veg=4,
         )
@@ -248,7 +248,7 @@ class MockRequest:
 class TestMealRegistrationSerializer:
     """Tests for MealRegistrationCreateUpdateSerializer."""
 
-    def test_validate_weekday(self, db, user, monday_date):
+    def test_validate_weekday(self, db, user_with_house, monday_date):
         """Test that only Mon-Thu dates are accepted."""
         # Valid Monday
         serializer = MealRegistrationCreateUpdateSerializer(
@@ -257,11 +257,11 @@ class TestMealRegistrationSerializer:
                 "adults_veg": 1,
                 "children_count": 0,
             },
-            context={"request": MockRequest(user)},
+            context={"request": MockRequest(user_with_house)},
         )
         assert serializer.is_valid()
 
-    def test_reject_weekend(self, db, user, monday_date):
+    def test_reject_weekend(self, db, user_with_house, monday_date):
         """Test that weekend dates are rejected."""
         saturday = monday_date + timedelta(days=5)
         serializer = MealRegistrationCreateUpdateSerializer(
@@ -270,12 +270,12 @@ class TestMealRegistrationSerializer:
                 "adults_veg": 1,
                 "children_count": 0,
             },
-            context={"request": MockRequest(user)},
+            context={"request": MockRequest(user_with_house)},
         )
         assert not serializer.is_valid()
         assert "date" in serializer.errors
 
-    def test_reject_meat_on_non_wednesday(self, db, user, monday_date):
+    def test_reject_meat_on_non_wednesday(self, db, user_with_house, monday_date):
         """Test that adults_meat > 0 on non-Wednesday is rejected."""
         serializer = MealRegistrationCreateUpdateSerializer(
             data={
@@ -284,12 +284,12 @@ class TestMealRegistrationSerializer:
                 "adults_veg": 0,
                 "children_count": 0,
             },
-            context={"request": MockRequest(user)},
+            context={"request": MockRequest(user_with_house)},
         )
         assert not serializer.is_valid()
         assert "adults_meat" in serializer.errors
 
-    def test_reject_empty_portions(self, db, user, monday_date):
+    def test_reject_empty_portions(self, db, user_with_house, monday_date):
         """Test that zero total portions is rejected when active."""
         serializer = MealRegistrationCreateUpdateSerializer(
             data={
@@ -299,11 +299,11 @@ class TestMealRegistrationSerializer:
                 "children_count": 0,
                 "is_active": True,
             },
-            context={"request": MockRequest(user)},
+            context={"request": MockRequest(user_with_house)},
         )
         assert not serializer.is_valid()
 
-    def test_wednesday_allows_meat(self, db, user, monday_date):
+    def test_wednesday_allows_meat(self, db, user_with_house, monday_date):
         """Test that adults_meat > 0 is allowed on Wednesday."""
         wednesday = monday_date + timedelta(days=2)
         serializer = MealRegistrationCreateUpdateSerializer(
@@ -313,7 +313,7 @@ class TestMealRegistrationSerializer:
                 "adults_veg": 1,
                 "children_count": 0,
             },
-            context={"request": MockRequest(user)},
+            context={"request": MockRequest(user_with_house)},
         )
         assert serializer.is_valid()
 
@@ -445,8 +445,9 @@ class TestMealPreferenceViews:
         response = authenticated_client.get(url)
         assert response.status_code == 200
 
-    def test_create_preference(self, authenticated_client):
+    def test_create_preference(self, api_client, user_with_house):
         """Test creating a meal preference."""
+        api_client.force_authenticate(user=user_with_house)
         url = reverse("food:preference-list")
         data = {
             "day_of_week": DayOfWeek.TUESDAY,
@@ -456,7 +457,7 @@ class TestMealPreferenceViews:
             "dining_option": DiningOption.TAKE_AWAY,
             "seating_time": SeatingTime.SECOND,
         }
-        response = authenticated_client.post(url, data, format="json")
+        response = api_client.post(url, data, format="json")
         assert response.status_code == 201
 
 
@@ -470,8 +471,9 @@ class TestMealRegistrationViews:
         response = authenticated_client.get(url)
         assert response.status_code == 200
 
-    def test_create_registration(self, authenticated_client, monday_date):
+    def test_create_registration(self, api_client, user_with_house, monday_date):
         """Test creating a meal registration."""
+        api_client.force_authenticate(user=user_with_house)
         url = reverse("food:registration-list")
         # Use next week to avoid duplicates
         next_monday = monday_date + timedelta(weeks=2)
@@ -483,7 +485,7 @@ class TestMealRegistrationViews:
             "dining_option": DiningOption.EAT_IN,
             "seating_time": SeatingTime.FIRST,
         }
-        response = authenticated_client.post(url, data, format="json")
+        response = api_client.post(url, data, format="json")
         assert response.status_code == 201
 
 
@@ -497,15 +499,16 @@ class TestFoodTicketViews:
         response = authenticated_client.get(url)
         assert response.status_code == 200
 
-    def test_create_ticket(self, api_client, user, monday_date):
+    def test_create_ticket(self, api_client, user_with_house, monday_date):
         """Test creating a food ticket after deadline with an active registration."""
-        api_client.force_authenticate(user=user)
+        api_client.force_authenticate(user=user_with_house)
         url = reverse("food:ticket-list")
         future_date = monday_date + timedelta(weeks=5)
 
         # Create an active registration so the ticket can be created
         MealRegistration.objects.create(
-            user=user,
+            house=user_with_house.house,
+            last_modified_by=user_with_house,
             date=future_date,
             adults_veg=2,
             children_count=0,
@@ -539,12 +542,13 @@ class TestFoodTicketViews:
         assert food_ticket.is_available is False
         assert food_ticket.claimed_by == admin_user
 
-    def test_cannot_claim_own_ticket(self, authenticated_client, food_ticket):
-        """Test that user cannot claim (buy) their own ticket."""
+    def test_cannot_claim_own_house_ticket(self, api_client, user_with_house, food_ticket):
+        """Test that user cannot claim (buy) their own house's ticket."""
+        api_client.force_authenticate(user=user_with_house)
         url = reverse("food:ticket-claim", kwargs={"pk": food_ticket.pk})
-        response = authenticated_client.post(url)
+        response = api_client.post(url)
         assert response.status_code == 400
-        assert "egen billet" in response.json()["detail"].lower()
+        assert "eget hus" in response.json()["detail"].lower()
         food_ticket.refresh_from_db()
         assert food_ticket.is_available is True
         assert food_ticket.claimed_by is None
@@ -594,6 +598,7 @@ class TestFoodTicketViews:
 
         # Create a ticket
         ticket = FoodTicket.objects.create(
+            house=user_with_house.house,
             owner=user_with_house,
             date=monday_date,
             adults_meat=0,
@@ -962,8 +967,9 @@ class TestTeamGenerator:
 class TestWednesdayMeatVeg:
     """Tests for Wednesday mixed meal types."""
 
-    def test_wednesday_mixed_registration(self, authenticated_client, monday_date):
+    def test_wednesday_mixed_registration(self, api_client, user_with_house, monday_date):
         """Test registering mixed meat+veg on Wednesday."""
+        api_client.force_authenticate(user=user_with_house)
         wednesday = monday_date + timedelta(days=2)
         url = reverse("food:registration-list")
         data = {
@@ -972,14 +978,15 @@ class TestWednesdayMeatVeg:
             "adults_veg": 1,
             "children_count": 0,
         }
-        response = authenticated_client.post(url, data, format="json")
+        response = api_client.post(url, data, format="json")
         assert response.status_code == 201
         result = response.json()
         assert result["adults_meat"] == 1
         assert result["adults_veg"] == 1
 
-    def test_wednesday_preference_allows_meat(self, authenticated_client):
+    def test_wednesday_preference_allows_meat(self, api_client, user_with_house):
         """Test that a Wednesday preference can have adults_meat > 0."""
+        api_client.force_authenticate(user=user_with_house)
         url = reverse("food:preference-list")
         data = {
             "day_of_week": 2,  # Wednesday
@@ -987,11 +994,12 @@ class TestWednesdayMeatVeg:
             "adults_veg": 0,
             "children_count": 0,
         }
-        response = authenticated_client.post(url, data, format="json")
+        response = api_client.post(url, data, format="json")
         assert response.status_code == 201
 
-    def test_non_wednesday_preference_rejects_meat(self, authenticated_client):
+    def test_non_wednesday_preference_rejects_meat(self, api_client, user_with_house):
         """Test that a non-Wednesday preference rejects adults_meat > 0."""
+        api_client.force_authenticate(user=user_with_house)
         url = reverse("food:preference-list")
         data = {
             "day_of_week": 1,  # Tuesday
@@ -999,16 +1007,22 @@ class TestWednesdayMeatVeg:
             "adults_veg": 0,
             "children_count": 0,
         }
-        response = authenticated_client.post(url, data, format="json")
+        response = api_client.post(url, data, format="json")
         assert response.status_code == 400
 
-    def test_stats_include_meat_veg_breakdown(self, authenticated_client, monday_date):
+    def test_stats_include_meat_veg_breakdown(self, authenticated_client, monday_date, house):
         """Stats for total include adults_meat and adults_veg breakdown."""
+        user = (
+            authenticated_client.handler._force_user
+            if hasattr(authenticated_client, "handler")
+            else User.objects.get(email="test@example.com")
+        )
+        user.house = house
+        user.save()
         wednesday = monday_date + timedelta(days=2)
         MealRegistration.objects.create(
-            user=authenticated_client.handler._force_user
-            if hasattr(authenticated_client, "handler")
-            else User.objects.get(email="test@example.com"),
+            house=house,
+            last_modified_by=user,
             date=wednesday,
             adults_meat=2,
             adults_veg=1,
@@ -1027,32 +1041,35 @@ class TestWednesdayMeatVeg:
 class TestVirtualRegistrations:
     """Tests for virtual (preference-based) registrations."""
 
-    def test_week_start_returns_4_rows(self, authenticated_client, monday_date):
+    def test_week_start_returns_4_rows(self, api_client, user_with_house, monday_date):
         """GET with week_start always returns exactly 4 rows (Mon-Thu)."""
+        api_client.force_authenticate(user=user_with_house)
         future_monday = monday_date + timedelta(weeks=5)
         url = reverse("food:registration-list")
-        response = authenticated_client.get(url, {"week_start": future_monday.isoformat()})
+        response = api_client.get(url, {"week_start": future_monday.isoformat()})
         assert response.status_code == 200
         data = response.json()
         assert len(data) == 4
 
-    def test_virtual_rows_have_null_id(self, authenticated_client, monday_date):
+    def test_virtual_rows_have_null_id(self, api_client, user_with_house, monday_date):
         """Days without DB rows have id=null and is_from_preference=True."""
+        api_client.force_authenticate(user=user_with_house)
         future_monday = monday_date + timedelta(weeks=5)
         url = reverse("food:registration-list")
-        response = authenticated_client.get(url, {"week_start": future_monday.isoformat()})
+        response = api_client.get(url, {"week_start": future_monday.isoformat()})
         assert response.status_code == 200
         data = response.json()
         for row in data:
             assert row["id"] is None
             assert row["is_from_preference"] is True
 
-    def test_real_rows_have_real_ids(self, api_client, user, monday_date):
+    def test_real_rows_have_real_ids(self, api_client, user_with_house, monday_date):
         """Days with DB rows have real ids and is_from_preference=False."""
-        api_client.force_authenticate(user=user)
+        api_client.force_authenticate(user=user_with_house)
         future_monday = monday_date + timedelta(weeks=5)
         MealRegistration.objects.create(
-            user=user,
+            house=user_with_house.house,
+            last_modified_by=user_with_house,
             date=future_monday,
             adults_veg=2,
             is_active=True,
@@ -1070,11 +1087,12 @@ class TestVirtualRegistrations:
             assert row["id"] is None
             assert row["is_from_preference"] is True
 
-    def test_virtual_values_match_preferences(self, api_client, user, monday_date):
+    def test_virtual_values_match_preferences(self, api_client, user_with_house, monday_date):
         """Virtual registration values match user preferences."""
-        api_client.force_authenticate(user=user)
+        api_client.force_authenticate(user=user_with_house)
         MealPreference.objects.create(
-            user=user,
+            house=user_with_house.house,
+            last_modified_by=user_with_house,
             day_of_week=0,  # Monday
             adults_veg=3,
             adults_meat=0,
@@ -1111,9 +1129,9 @@ class TestVirtualRegistrations:
 class TestLazyMaterialization:
     """Tests for lazy materialization of registrations post-deadline."""
 
-    def test_post_deadline_creates_real_row(self, api_client, user):
+    def test_post_deadline_creates_real_row(self, api_client, user_with_house):
         """GET for a post-deadline week creates real DB rows."""
-        api_client.force_authenticate(user=user)
+        api_client.force_authenticate(user=user_with_house)
         # Use a hardcoded past Monday (deadline definitely passed)
         past_monday = date(2024, 1, 8)  # A Monday far in the past
 
@@ -1128,13 +1146,16 @@ class TestLazyMaterialization:
             assert row["is_from_preference"] is False
 
         # Real DB rows were created
-        assert MealRegistration.objects.filter(user=user, date=past_monday).exists()
+        assert MealRegistration.objects.filter(
+            house=user_with_house.house, date=past_monday
+        ).exists()
 
-    def test_materialized_values_match_preferences(self, api_client, user):
+    def test_materialized_values_match_preferences(self, api_client, user_with_house):
         """Materialized registrations use preference values."""
-        api_client.force_authenticate(user=user)
+        api_client.force_authenticate(user=user_with_house)
         MealPreference.objects.create(
-            user=user,
+            house=user_with_house.house,
+            last_modified_by=user_with_house,
             day_of_week=0,  # Monday
             adults_veg=3,
             adults_meat=0,
@@ -1152,18 +1173,22 @@ class TestLazyMaterialization:
         assert monday_row["adults_veg"] == 3
 
         # Verify DB row matches
-        reg = MealRegistration.objects.get(user=user, date=past_monday)
+        reg = MealRegistration.objects.get(house=user_with_house.house, date=past_monday)
         assert reg.adults_veg == 3
 
-    def test_concurrent_materialization_no_error(self, api_client, user):
+    def test_concurrent_materialization_no_error(self, api_client, user_with_house):
         """Concurrent materialization uses get_or_create — no integrity errors."""
         from apps.food.views import _materialize_registration
 
         past_monday = date(2024, 3, 4)  # A Monday far in the past
 
         # Call twice (simulates concurrent requests)
-        reg1 = _materialize_registration(user, past_monday, None, user.house, 1)
-        reg2 = _materialize_registration(user, past_monday, None, user.house, 1)
+        reg1 = _materialize_registration(
+            user_with_house, past_monday, None, user_with_house.house, 1
+        )
+        reg2 = _materialize_registration(
+            user_with_house, past_monday, None, user_with_house.house, 1
+        )
         assert reg1.id == reg2.id
 
 
@@ -1177,7 +1202,8 @@ class TestStatsWithPreferenceFallback:
         """Stats for a date with no real registrations is non-zero when preferences exist."""
         api_client.force_authenticate(user=user_with_house)
         MealPreference.objects.create(
-            user=user_with_house,
+            house=user_with_house.house,
+            last_modified_by=user_with_house,
             day_of_week=monday_date.weekday(),
             adults_veg=2,
             adults_meat=0,
@@ -1192,10 +1218,11 @@ class TestStatsWithPreferenceFallback:
         assert data["total"]["adults_veg"] > 0
 
     def test_user_with_real_reg_not_double_counted(self, api_client, user_with_house, monday_date):
-        """User with a real registration is not also counted via preference."""
+        """House with a real registration is not also counted via preference."""
         api_client.force_authenticate(user=user_with_house)
         MealPreference.objects.create(
-            user=user_with_house,
+            house=user_with_house.house,
+            last_modified_by=user_with_house,
             day_of_week=monday_date.weekday(),
             adults_veg=3,
             adults_meat=0,
@@ -1204,8 +1231,8 @@ class TestStatsWithPreferenceFallback:
             seating_time="17:30",
         )
         MealRegistration.objects.create(
-            user=user_with_house,
             house=user_with_house.house,
+            last_modified_by=user_with_house,
             date=monday_date,
             adults_veg=2,
             is_active=True,
@@ -1218,29 +1245,30 @@ class TestStatsWithPreferenceFallback:
         assert data["total"]["adults_veg"] == 2
 
     def test_two_users_same_house_counted_once(self, api_client, house, monday_date):
-        """Two users in the same house with preferences are counted only once."""
+        """House with a preference is counted only once regardless of inhabitants."""
         user1 = User.objects.create_user(
             email="housemate1@example.com", password="pass", first_name="A", house=house
         )
-        user2 = User.objects.create_user(
+        User.objects.create_user(
             email="housemate2@example.com", password="pass", first_name="B", house=house
         )
         api_client.force_authenticate(user=user1)
-        for u in (user1, user2):
-            MealPreference.objects.create(
-                user=u,
-                day_of_week=monday_date.weekday(),
-                adults_veg=2,
-                adults_meat=0,
-                children_count=0,
-                dining_option="eat_in",
-                seating_time="17:30",
-            )
+        # One preference per house (unique constraint: house + day_of_week)
+        MealPreference.objects.create(
+            house=house,
+            last_modified_by=user1,
+            day_of_week=monday_date.weekday(),
+            adults_veg=2,
+            adults_meat=0,
+            children_count=0,
+            dining_option="eat_in",
+            seating_time="17:30",
+        )
         url = reverse("food:registration-stats")
         response = api_client.get(url, {"date": monday_date.isoformat()})
         assert response.status_code == 200
         data = response.json()
-        # Only user1's preference should count (first encountered); user2 skipped
+        # Only one preference per house
         assert data["total"]["adults_veg"] == 2
 
 
@@ -1248,36 +1276,29 @@ class TestStatsWithPreferenceFallback:
 class TestBillingDedup:
     """Tests for billing deduplication (fixes double-counting bug)."""
 
-    def test_two_users_same_house_billed_once(self, api_client, admin_user, house):
-        """Two users in the same house with registrations on the same day are billed once."""
+    def test_one_registration_per_house_billed_once(self, api_client, admin_user, house):
+        """One registration per house per date is billed once (unique constraint: house+date)."""
         # Use a hardcoded past date so deadline has passed
         past_monday = date(2024, 4, 1)  # Monday, April 2024
 
         user1 = User.objects.create_user(
             email="bill1@example.com", password="pass", first_name="Bill1", house=house
         )
-        user2 = User.objects.create_user(
-            email="bill2@example.com", password="pass", first_name="Bill2", house=house
-        )
         # Zero-portion preferences so other Mon-Thu dates don't get default billing
-        for u in (user1, user2):
-            for day in range(4):
-                MealPreference.objects.get_or_create(
-                    user=u,
-                    day_of_week=day,
-                    defaults={
-                        "adults_meat": 0,
-                        "adults_veg": 0,
-                        "children_count": 0,
-                        "dining_option": "eat_in",
-                        "seating_time": "17:30",
-                    },
-                )
+        for day in range(4):
+            MealPreference.objects.get_or_create(
+                house=house,
+                day_of_week=day,
+                defaults={
+                    "adults_meat": 0,
+                    "adults_veg": 0,
+                    "children_count": 0,
+                    "dining_option": "eat_in",
+                    "seating_time": "17:30",
+                },
+            )
         MealRegistration.objects.create(
-            user=user1, house=house, date=past_monday, adults_veg=2, is_active=True
-        )
-        MealRegistration.objects.create(
-            user=user2, house=house, date=past_monday, adults_veg=2, is_active=True
+            house=house, last_modified_by=user1, date=past_monday, adults_veg=2, is_active=True
         )
 
         api_client.force_authenticate(user=admin_user)
@@ -1286,7 +1307,7 @@ class TestBillingDedup:
         assert response.status_code == 200
         data = response.json()
         house_data = next(h for h in data["houses"] if h["house_id"] == house.id)
-        # Should only count 2 portions (one registration), not 4
+        # Should count 2 portions (one registration per house)
         assert house_data["adult_portions"] == 2
 
 
@@ -1300,7 +1321,8 @@ class TestBillingWithPreferenceFallback:
             email="prefbill@example.com", password="pass", first_name="PB", house=house
         )
         MealPreference.objects.create(
-            user=user1,
+            house=house,
+            last_modified_by=user1,
             day_of_week=0,  # Monday
             adults_veg=3,
             adults_meat=0,
@@ -1340,7 +1362,8 @@ class TestBillingWithPreferenceFallback:
         # Set zero preferences so only the explicit registration matters
         for day in range(4):
             MealPreference.objects.create(
-                user=user1,
+                house=house,
+                last_modified_by=user1,
                 day_of_week=day,
                 adults_meat=0,
                 adults_veg=0,
@@ -1350,7 +1373,7 @@ class TestBillingWithPreferenceFallback:
             )
         # Explicit opt-out via is_active=False registration
         MealRegistration.objects.create(
-            user=user1, house=house, date=past_monday, adults_veg=3, is_active=False
+            house=house, last_modified_by=user1, date=past_monday, adults_veg=3, is_active=False
         )
         api_client.force_authenticate(user=admin_user)
         url = reverse("food:monthly-food-cost")
@@ -1436,8 +1459,8 @@ class TestFoodTicketDefaultPricing:
 
             # Create active registration first (required to sell a ticket)
             MealRegistration.objects.create(
-                user=user_with_house,
                 house=user_with_house.house,
+                last_modified_by=user_with_house,
                 date=next_monday,
                 adults_meat=0,
                 adults_veg=2,
@@ -1475,7 +1498,8 @@ class TestPartialTicketSelling:
 
         reg_date = date(2025, 12, 22)  # A Monday
         registration = MealRegistration.objects.create(
-            user=user_with_house,
+            house=user_with_house.house,
+            last_modified_by=user_with_house,
             date=reg_date,
             adults_meat=0,
             adults_veg=2,
@@ -1510,7 +1534,8 @@ class TestPartialTicketSelling:
 
         reg_date = date(2025, 12, 22)  # A Monday
         registration = MealRegistration.objects.create(
-            user=user_with_house,
+            house=user_with_house.house,
+            last_modified_by=user_with_house,
             date=reg_date,
             adults_meat=0,
             adults_veg=2,
@@ -1544,7 +1569,8 @@ class TestPartialTicketSelling:
 
         reg_date = date(2025, 12, 22)  # A Monday
         MealRegistration.objects.create(
-            user=user_with_house,
+            house=user_with_house.house,
+            last_modified_by=user_with_house,
             date=reg_date,
             adults_meat=0,
             adults_veg=1,
@@ -1575,7 +1601,8 @@ class TestPartialTicketSelling:
 
         reg_date = date(2025, 12, 22)  # A Monday
         registration = MealRegistration.objects.create(
-            user=user_with_house,
+            house=user_with_house.house,
+            last_modified_by=user_with_house,
             date=reg_date,
             adults_meat=0,
             adults_veg=1,
@@ -1584,6 +1611,7 @@ class TestPartialTicketSelling:
         )
 
         ticket = FoodTicket.objects.create(
+            house=user_with_house.house,
             owner=user_with_house,
             date=reg_date,
             adults_meat=0,
@@ -1609,6 +1637,7 @@ class TestPartialTicketSelling:
 
         # Create an available ticket - registration is NOT blocked
         FoodTicket.objects.create(
+            house=user_with_house.house,
             owner=user_with_house,
             date=ticket_date,
             adults_meat=0,
@@ -1662,7 +1691,8 @@ class TestTicketCreationDeadline:
 
         # Create an active registration first
         MealRegistration.objects.create(
-            user=user_with_house,
+            house=user_with_house.house,
+            last_modified_by=user_with_house,
             date=next_monday,
             adults_veg=2,
             children_count=0,
@@ -1724,7 +1754,7 @@ class TestMonthlyFoodCostReport:
         """Set zero-portion preferences for all days, opting the house out of defaults."""
         for day in range(4):
             MealPreference.objects.get_or_create(
-                user=user,
+                house=user.house,
                 day_of_week=day,
                 defaults={
                     "adults_meat": 0,
@@ -1732,6 +1762,7 @@ class TestMonthlyFoodCostReport:
                     "children_count": 0,
                     "dining_option": "eat_in",
                     "seating_time": "17:30",
+                    "last_modified_by": user,
                 },
             )
 
@@ -1746,8 +1777,8 @@ class TestMonthlyFoodCostReport:
 
         reg_date = date(2025, 1, 13)  # A Monday in January 2025
         MealRegistration.objects.create(
-            user=user_with_house,
             house=house,
+            last_modified_by=user_with_house,
             date=reg_date,
             adults_meat=0,
             adults_veg=2,
@@ -1808,8 +1839,8 @@ class TestMonthlyFoodCostReport:
         # Create multiple active registrations (non-Wednesday → veg)
         for i in range(3):
             MealRegistration.objects.create(
-                user=user_with_house,
                 house=house,
+                last_modified_by=user_with_house,
                 date=date(2025, 2, 3 + i),  # Feb 3, 4, 5 (Mon, Tue, Wed)
                 adults_meat=0,
                 adults_veg=1,
@@ -1840,6 +1871,7 @@ class TestMonthlyFoodCostReport:
 
         # Create a ticket — this should NOT affect the house bill
         FoodTicket.objects.create(
+            house=user_with_house.house,
             owner=user_with_house,
             date=date(2025, 3, 3),  # A Monday in March 2025
             adults_meat=0,
@@ -1873,8 +1905,8 @@ class TestMonthlyFoodCostReport:
 
         # Create an active meal registration (user ate the meal) - Monday is veg
         MealRegistration.objects.create(
-            user=user_with_house,
             house=house,
+            last_modified_by=user_with_house,
             date=date(2025, 4, 7),  # A Monday in April 2025
             adults_meat=0,
             adults_veg=2,
@@ -1908,8 +1940,8 @@ class TestMonthlyFoodCostReport:
 
         # Create an inactive meal registration (user cancelled without creating ticket)
         MealRegistration.objects.create(
-            user=user_with_house,
             house=house,
+            last_modified_by=user_with_house,
             date=date(2025, 5, 5),  # A Monday in May 2025
             adults_meat=0,
             adults_veg=1,
@@ -1941,8 +1973,8 @@ class TestMonthlyFoodCostReport:
 
         # Day 1: Active registration (user eats)
         MealRegistration.objects.create(
-            user=user_with_house,
             house=house,
+            last_modified_by=user_with_house,
             date=date(2025, 6, 2),  # A Monday
             adults_meat=0,
             adults_veg=1,
@@ -1952,8 +1984,8 @@ class TestMonthlyFoodCostReport:
 
         # Day 2: Active registration + ticket (registration stays active — new model)
         MealRegistration.objects.create(
-            user=user_with_house,
             house=house,
+            last_modified_by=user_with_house,
             date=date(2025, 6, 3),  # A Tuesday
             adults_meat=0,
             adults_veg=1,
@@ -1961,6 +1993,7 @@ class TestMonthlyFoodCostReport:
             is_active=True,  # Registration stays active — ticket is separate
         )
         FoodTicket.objects.create(
+            house=house,
             owner=user_with_house,
             date=date(2025, 6, 3),
             adults_meat=0,
@@ -2026,7 +2059,8 @@ class TestRegistrationLock:
 
         meal_date = date(2025, 12, 22)  # Monday
         registration = MealRegistration.objects.create(
-            user=user_with_house,
+            house=user_with_house.house,
+            last_modified_by=user_with_house,
             date=meal_date,
             adults_veg=2,
             children_count=0,
@@ -2049,7 +2083,8 @@ class TestRegistrationLock:
 
         meal_date = date(2025, 12, 22)  # Monday
         registration = MealRegistration.objects.create(
-            user=user_with_house,
+            house=user_with_house.house,
+            last_modified_by=user_with_house,
             date=meal_date,
             adults_veg=2,
             children_count=0,
@@ -2074,7 +2109,8 @@ class TestRegistrationLock:
 
         meal_date = date(2025, 12, 22)  # Monday
         registration = MealRegistration.objects.create(
-            user=user_with_house,
+            house=user_with_house.house,
+            last_modified_by=user_with_house,
             date=meal_date,
             adults_veg=2,
             children_count=0,
@@ -2100,7 +2136,8 @@ class TestRegistrationLock:
 
         meal_date = date(2025, 12, 22)  # Monday
         registration = MealRegistration.objects.create(
-            user=user_with_house,
+            house=user_with_house.house,
+            last_modified_by=user_with_house,
             date=meal_date,
             adults_veg=2,
             children_count=0,
@@ -2131,7 +2168,8 @@ class TestTicketValidationWithExisting:
 
         meal_date = date(2025, 12, 22)  # Monday
         MealRegistration.objects.create(
-            user=user_with_house,
+            house=user_with_house.house,
+            last_modified_by=user_with_house,
             date=meal_date,
             adults_veg=2,
             children_count=0,
@@ -2140,6 +2178,7 @@ class TestTicketValidationWithExisting:
 
         # First ticket: sell 1 veg
         FoodTicket.objects.create(
+            house=user_with_house.house,
             owner=user_with_house,
             date=meal_date,
             adults_veg=1,
@@ -2169,7 +2208,8 @@ class TestTicketValidationWithExisting:
 
         meal_date = date(2025, 12, 22)  # Monday
         MealRegistration.objects.create(
-            user=user_with_house,
+            house=user_with_house.house,
+            last_modified_by=user_with_house,
             date=meal_date,
             adults_veg=3,
             children_count=0,
@@ -2231,8 +2271,8 @@ class TestEffectiveStats:
         meal_date = date(2025, 12, 22)  # Monday
 
         MealRegistration.objects.create(
-            user=user_with_house,
             house=house,
+            last_modified_by=user_with_house,
             date=meal_date,
             adults_veg=2,
             children_count=0,
@@ -2241,6 +2281,7 @@ class TestEffectiveStats:
 
         # Create an unsold ticket for 1 portion
         FoodTicket.objects.create(
+            house=house,
             owner=user_with_house,
             date=meal_date,
             adults_veg=1,
@@ -2264,8 +2305,8 @@ class TestEffectiveStats:
         meal_date = date(2025, 12, 22)  # Monday
 
         MealRegistration.objects.create(
-            user=user_with_house,
             house=house,
+            last_modified_by=user_with_house,
             date=meal_date,
             adults_veg=2,
             children_count=0,
@@ -2274,6 +2315,7 @@ class TestEffectiveStats:
 
         # Create a claimed ticket — the claimer is eating in place of seller
         FoodTicket.objects.create(
+            house=house,
             owner=user_with_house,
             date=meal_date,
             adults_veg=1,
@@ -2292,38 +2334,19 @@ class TestEffectiveStats:
         assert data["total"]["adults_veg"] == 2
         assert data["total"]["adults"] == 2
 
-    def test_stats_deduplicate_multi_user_households(
+    def test_stats_one_registration_per_house(
         self, authenticated_client, user_with_house, house, admin_user
     ):
-        """Multi-person households are counted once, not once per user.
+        """One registration per house per date (unique constraint: house+date).
 
-        If Alice and Bob both live in house X (2 inhabitants) and both have a
-        registration with adults_veg=2, the stats should report 2, not 4.
+        The unique constraint now prevents duplicate registrations per house.
         """
-        from apps.users.models import User
-
         meal_date = date(2025, 12, 22)  # Monday
 
-        # Assign admin_user to the same house
-        admin_user.house = house
-        admin_user.save()
-
-        # Both users in the same house create a registration with the house count (2)
+        # One registration for the house
         MealRegistration.objects.create(
-            user=user_with_house,
             house=house,
-            date=meal_date,
-            adults_veg=2,
-            is_active=True,
-        )
-        second_user = User.objects.create_user(
-            email="second@example.com",
-            password="testpass123",
-            house=house,
-        )
-        MealRegistration.objects.create(
-            user=second_user,
-            house=house,
+            last_modified_by=user_with_house,
             date=meal_date,
             adults_veg=2,
             is_active=True,
@@ -2334,7 +2357,7 @@ class TestEffectiveStats:
         assert response.status_code == 200
         data = response.json()
 
-        # Should count the house once, not twice → 2 adults, not 4
+        # One registration → 2 adults
         assert data["total"]["adults_veg"] == 2
         assert data["total"]["adults"] == 2
 
@@ -2356,12 +2379,17 @@ class TestMaterializeForHouses:
             email="mat1@example.com", password="pass", first_name="Mat1", house=house
         )
         MealPreference.objects.create(
-            user=user1, day_of_week=0, adults_veg=2, adults_meat=1, children_count=0
+            house=house,
+            last_modified_by=user1,
+            day_of_week=0,
+            adults_veg=2,
+            adults_meat=1,
+            children_count=0,
         )
         past_monday = date(2023, 10, 2)  # A Monday
         created = _materialize_for_houses([past_monday])
         assert created == 1
-        reg = MealRegistration.objects.get(user=user1, date=past_monday)
+        reg = MealRegistration.objects.get(house=house, date=past_monday)
         assert reg.adults_veg == 2
         assert reg.adults_meat == 1
         assert reg.house == house
@@ -2375,12 +2403,12 @@ class TestMaterializeForHouses:
         )
         past_monday = date(2023, 10, 9)
         MealRegistration.objects.create(
-            user=user1, house=house, date=past_monday, adults_veg=5, is_active=True
+            house=house, last_modified_by=user1, date=past_monday, adults_veg=5, is_active=True
         )
         created = _materialize_for_houses([past_monday])
         assert created == 0
         # Original registration unchanged
-        assert MealRegistration.objects.get(user=user1, date=past_monday).adults_veg == 5
+        assert MealRegistration.objects.get(house=house, date=past_monday).adults_veg == 5
 
     def test_skips_weekend_dates(self, house):
         """Weekend dates (weekday > 3) are skipped."""
@@ -2472,7 +2500,8 @@ class TestBillingOnlyUsesRealRegistrations:
         # Set zero preferences so materialization creates inactive registrations
         for day in range(4):
             MealPreference.objects.create(
-                user=user1,
+                house=house,
+                last_modified_by=user1,
                 day_of_week=day,
                 adults_meat=0,
                 adults_veg=0,

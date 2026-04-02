@@ -8,7 +8,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from django.db import transaction
-from django.db.models import Count, F, OuterRef, Q, QuerySet, Subquery, Sum
+from django.db.models import Count, Q, QuerySet, Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -120,10 +120,10 @@ def _materialize_registration(
     """
     meat, veg, children, dining, seating = _get_preference_values(pref, house_count)
     reg, _ = MealRegistration.objects.get_or_create(
-        user=user,
+        house=house,
         date=target_date,
         defaults={
-            "house": house,
+            "last_modified_by": user,
             "adults_meat": meat,
             "adults_veg": veg,
             "children_count": children,
@@ -186,10 +186,8 @@ class DailyRegistrationStatsView(APIView):
         Effective portions = active registrations minus available (unsold) tickets.
         Claimed tickets are NOT subtracted (the claimer eats in place of the seller).
 
-        Deduplication: each house counts once. Multiple users in the same house each
-        have their own registration (each containing the full household count), so we
-        only keep the most recently created registration per house to avoid double-counting.
-        Users without a house are always counted individually.
+        With unique_together = ["house", "date"], each house has exactly one
+        registration per date — no deduplication needed.
         """
         from apps.houses.models import House
 
@@ -200,7 +198,7 @@ class DailyRegistrationStatsView(APIView):
 
             house_count = House.objects.filter(inhabitants__is_active=True).distinct().count()
             covered_counts = dict(
-                MealRegistration.objects.filter(date__in=post_deadline_dates, house__isnull=False)
+                MealRegistration.objects.filter(date__in=post_deadline_dates)
                 .values("date")
                 .annotate(cnt=Count("house_id", distinct=True))
                 .values_list("date", "cnt")
@@ -211,25 +209,8 @@ class DailyRegistrationStatsView(APIView):
             if unmaterialized:
                 _materialize_for_houses(unmaterialized)
 
-        # 2. Deduplicated registrations for all dates (1 query with correlated subquery)
-        # Use updated_at (with id tiebreaker) so the most recently *edited* registration
-        # wins per house — this way a user who changes their dining option immediately
-        # sees the stats reflect the change instead of being shadowed by a housemate's
-        # registration that happened to have a higher PK.
-        latest_per_house = Subquery(
-            MealRegistration.objects.filter(
-                date=OuterRef("date"),
-                house_id=OuterRef("house_id"),
-                is_active=True,
-            )
-            .order_by("-updated_at", "-id")
-            .values("id")[:1]
-        )
-        all_registrations = (
-            MealRegistration.objects.filter(date__in=dates, is_active=True)
-            .annotate(_house_latest=latest_per_house)
-            .filter(Q(house__isnull=True) | Q(id=F("_house_latest")))
-        )
+        # 2. All registrations — one per house per date, no dedup needed
+        all_registrations = MealRegistration.objects.filter(date__in=dates, is_active=True)
 
         # 3. Single conditional aggregate grouped by date (replaces 4 queries × N dates)
         _ta = Q(dining_option="take_away")
@@ -272,21 +253,19 @@ class DailyRegistrationStatsView(APIView):
             # Covered house IDs for all pre-deadline dates (1 query)
             covered_by_date: dict[date, set[int]] = {}
             for d, hid in MealRegistration.objects.filter(
-                date__in=pre_deadline_dates, is_active=True, house__isnull=False
+                date__in=pre_deadline_dates, is_active=True
             ).values_list("date", "house_id"):
                 covered_by_date.setdefault(d, set()).add(hid)
 
             # Preferences for all relevant weekdays (1 query)
             weekdays = {d.weekday() for d in pre_deadline_dates}
             prefs_by_weekday_house: dict[tuple[int, int], MealPreference] = {}
-            for pref in MealPreference.objects.filter(
-                day_of_week__in=weekdays, user__is_active=True
-            ).select_related("user__house"):
-                house = pref.user.house
-                if house:
-                    key = (pref.day_of_week, house.id)
-                    if key not in prefs_by_weekday_house:
-                        prefs_by_weekday_house[key] = pref
+            for pref in MealPreference.objects.filter(day_of_week__in=weekdays).select_related(
+                "house"
+            ):
+                key = (pref.day_of_week, pref.house_id)
+                if key not in prefs_by_weekday_house:
+                    prefs_by_weekday_house[key] = pref
 
             # Load houses once (1 query + 1 prefetch)
             houses = list(House.objects.prefetch_related("inhabitants"))
@@ -368,17 +347,27 @@ class DailyRegistrationStatsView(APIView):
 
         claimed_adj: dict[date, dict[str, dict[str, int]]] = {}
         if claimed_raw:
+            # Collect house IDs for sellers and buyers to look up their dining options
             _uids: set[int] = set()
             for _, oid, cid, _, _, _ in claimed_raw:
                 _uids.add(oid)
                 _uids.add(cid)
 
+            # Map user → house_id for all involved users
+            from apps.users.models import User
+
+            _user_house: dict[int, int | None] = dict(
+                User.objects.filter(id__in=_uids).values_list("id", "house_id")
+            )
+
+            # Map (house_id, date) → (dining_option, seating_time)
+            _house_ids = {hid for hid in _user_house.values() if hid}
             _dining: dict[tuple[int, date], tuple[str, str]] = {}
-            for uid, d_val, dopt, stime in MealRegistration.objects.filter(
-                user_id__in=_uids,
+            for hid, d_val, dopt, stime in MealRegistration.objects.filter(
+                house_id__in=_house_ids,
                 date__in=dates,
-            ).values_list("user_id", "date", "dining_option", "seating_time"):
-                _dining[(uid, d_val)] = (dopt, stime)
+            ).values_list("house_id", "date", "dining_option", "seating_time"):
+                _dining[(hid, d_val)] = (dopt, stime)
 
             def _bkt(dining_opt: str, seat_time: str) -> str:
                 if dining_opt == "take_away":
@@ -386,8 +375,12 @@ class DailyRegistrationStatsView(APIView):
                 return "e17" if seat_time == "17:30" else "e18"
 
             for d_val, oid, cid, c_meat, c_veg, c_ch in claimed_raw:
-                sb = _bkt(*_dining.get((oid, d_val), ("eat_in", "17:30")))
-                bb = _bkt(*_dining.get((cid, d_val), ("eat_in", "17:30")))
+                seller_house = _user_house.get(oid)
+                buyer_house = _user_house.get(cid)
+                if not seller_house or not buyer_house:
+                    continue
+                sb = _bkt(*_dining.get((seller_house, d_val), ("eat_in", "17:30")))
+                bb = _bkt(*_dining.get((buyer_house, d_val), ("eat_in", "17:30")))
                 if sb == bb:
                     continue
                 adj = claimed_adj.setdefault(d_val, {})
@@ -451,7 +444,7 @@ class DailyRegistrationStatsView(APIView):
 
 # Meal Preference Views
 class MealPreferenceListCreateView(generics.ListCreateAPIView):
-    """List or create meal preferences for the current user."""
+    """List or create meal preferences for the current user's house."""
 
     permission_classes = [permissions.IsAuthenticated]
 
@@ -461,7 +454,10 @@ class MealPreferenceListCreateView(generics.ListCreateAPIView):
         return MealPreferenceSerializer
 
     def get_queryset(self) -> QuerySet[MealPreference]:
-        return MealPreference.objects.filter(user=self.request.user)
+        house = self.request.user.house
+        if not house:
+            return MealPreference.objects.none()
+        return MealPreference.objects.filter(house=house)
 
 
 class MealPreferenceDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -475,7 +471,10 @@ class MealPreferenceDetailView(generics.RetrieveUpdateDestroyAPIView):
         return MealPreferenceSerializer
 
     def get_queryset(self) -> QuerySet[MealPreference]:
-        return MealPreference.objects.filter(user=self.request.user)
+        house = self.request.user.house
+        if not house:
+            return MealPreference.objects.none()
+        return MealPreference.objects.filter(house=house)
 
 
 # Meal Registration Views
@@ -496,7 +495,10 @@ class MealRegistrationListCreateView(generics.ListCreateAPIView):
         return MealRegistrationSerializer
 
     def get_queryset(self) -> QuerySet[MealRegistration]:
-        queryset = MealRegistration.objects.filter(user=self.request.user).select_related("house")
+        house = self.request.user.house
+        if not house:
+            return MealRegistration.objects.none()
+        queryset = MealRegistration.objects.filter(house=house).select_related("house")
         week_start = self.request.query_params.get("week_start")
         if week_start:
             try:
@@ -521,7 +523,9 @@ class MealRegistrationListCreateView(generics.ListCreateAPIView):
         user = request.user
         house = user.house
         house_count = house.inhabitants.count() if house else 1
-        prefs = {p.day_of_week: p for p in MealPreference.objects.filter(user=user)}
+        prefs = (
+            {p.day_of_week: p for p in MealPreference.objects.filter(house=house)} if house else {}
+        )
 
         results = []
         for day in range(4):
@@ -532,7 +536,7 @@ class MealRegistrationListCreateView(generics.ListCreateAPIView):
                         real_regs[target_date], context={"request": request}
                     ).data
                 )
-            elif is_after_deadline(target_date):
+            elif is_after_deadline(target_date) and house:
                 reg = _materialize_registration(
                     user, target_date, prefs.get(day), house, house_count
                 )
@@ -557,7 +561,10 @@ class MealRegistrationDetailView(generics.RetrieveUpdateDestroyAPIView):
         return MealRegistrationSerializer
 
     def get_queryset(self) -> QuerySet[MealRegistration]:
-        return MealRegistration.objects.filter(user=self.request.user).select_related("house")
+        house = self.request.user.house
+        if not house:
+            return MealRegistration.objects.none()
+        return MealRegistration.objects.filter(house=house).select_related("house")
 
 
 # Food Ticket Views
@@ -594,9 +601,9 @@ class FoodTicketDetailView(generics.RetrieveDestroyAPIView):
 
     def destroy(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         ticket = self.get_object()
-        if ticket.owner != request.user:
+        if ticket.house_id != request.user.house_id:
             return Response(
-                {"detail": "You can only delete your own tickets."},
+                {"detail": "You can only delete your own house's tickets."},
                 status=status.HTTP_403_FORBIDDEN,
             )
         if not ticket.is_available:
@@ -642,9 +649,9 @@ class ClaimTicketView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            if ticket.owner == request.user:
+            if ticket.house_id == request.user.house_id:
                 return Response(
-                    {"detail": "Du kan ikke købe din egen billet."},
+                    {"detail": "Du kan ikke købe dit eget hus' billet."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -720,6 +727,7 @@ class ClaimTicketView(APIView):
                 ticket.save()
 
                 claimed_ticket = FoodTicket.objects.create(
+                    house=ticket.house,
                     owner=ticket.owner,
                     date=ticket.date,
                     adults_meat=adults_meat,
@@ -764,9 +772,11 @@ class ReleaseTicketView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        if ticket.claimed_by != request.user and ticket.owner != request.user:
+        if ticket.claimed_by != request.user and ticket.house_id != request.user.house_id:
             return Response(
-                {"detail": "You can only release tickets you claimed or own."},
+                {
+                    "detail": "You can only release tickets you claimed or that belong to your house."
+                },
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -786,15 +796,17 @@ class ReleaseTicketView(APIView):
 
 
 class MyTicketsView(generics.ListAPIView):
-    """List tickets owned by or claimed by the current user."""
+    """List tickets belonging to the current user's house or claimed by the user."""
 
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = FoodTicketSerializer
 
     def get_queryset(self) -> QuerySet[FoodTicket]:
         today = timezone.now().date()
+        user = self.request.user
+        house_q = Q(house=user.house) if user.house_id else Q(pk__in=[])
         return (
-            FoodTicket.objects.filter(Q(owner=self.request.user) | Q(claimed_by=self.request.user))
+            FoodTicket.objects.filter(house_q | Q(claimed_by=user))
             .exclude(is_available=True, date__lt=today)
             .select_related("owner", "claimed_by")
         )
@@ -1246,16 +1258,14 @@ class MonthlyFoodCostView(APIView):
             adult_portions = 0
             child_portions = 0
 
-            # Deduplicate: latest registration (active OR inactive) per date per house.
-            # We track inactive registrations to avoid double-billing via preference fallback
-            # when the user explicitly opted out (is_active=False).
+            # One registration per house per date — no dedup needed
             regs_by_date: dict[date, MealRegistration] = {}
             for reg in MealRegistration.objects.filter(
-                user__house=house,
+                house=house,
                 date__gte=first_day,
                 date__lte=last_day,
-            ).order_by("date", "id"):
-                regs_by_date[reg.date] = reg  # latest wins (ascending id order)
+            ):
+                regs_by_date[reg.date] = reg
 
             for billing_date in billing_dates:
                 if billing_date not in regs_by_date:

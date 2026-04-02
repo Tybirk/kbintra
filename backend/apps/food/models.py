@@ -39,12 +39,19 @@ class SeatingTime(models.TextChoices):
 
 
 class MealPreference(models.Model):
-    """Default meal preferences per user per day of week."""
+    """Default meal preferences per house per day of week."""
 
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
+    house = models.ForeignKey(
+        "houses.House",
         on_delete=models.CASCADE,
         related_name="meal_preferences",
+    )
+    last_modified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="modified_preferences",
     )
     day_of_week = models.IntegerField(choices=DayOfWeek.choices)
     adults_meat = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)])
@@ -67,32 +74,30 @@ class MealPreference(models.Model):
     )
 
     class Meta:
-        unique_together = ["user", "day_of_week"]
+        unique_together = ["house", "day_of_week"]
 
     @property
     def adults_count(self) -> int:
         return self.adults_meat + self.adults_veg
 
     def __str__(self) -> str:
-        return f"{self.user.email} - {self.get_day_of_week_display()}"
+        return f"House {self.house.name} - {self.get_day_of_week_display()}"
 
 
 class MealRegistration(models.Model):
-    """Actual meal registration for a specific date."""
+    """Meal registration for a specific date, per house."""
 
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
+    house = models.ForeignKey(
+        "houses.House",
         on_delete=models.CASCADE,
         related_name="meal_registrations",
     )
-    # House registration - allows registering on behalf of whole house
-    house = models.ForeignKey(
-        "houses.House",
+    last_modified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="meal_registrations",
-        help_text="If set, this is a registration on behalf of the house",
+        related_name="modified_registrations",
     )
     date = models.DateField()
     adults_meat = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)])
@@ -115,19 +120,17 @@ class MealRegistration(models.Model):
     )
     is_active = models.BooleanField(
         default=True,
-        help_text="False if user cancelled this registration",
+        help_text="False if house cancelled this registration",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ["user", "date"]
+        unique_together = ["house", "date"]
         ordering = ["date"]
 
     def __str__(self) -> str:
-        if self.house:
-            return f"House {self.house.name} - {self.date}"
-        return f"{self.user.email} - {self.date}"
+        return f"House {self.house.name} - {self.date}"
 
     @property
     def adults_count(self) -> int:
@@ -147,10 +150,17 @@ class FoodTicket(models.Model):
     Payment is handled externally (MobilePay etc.).
     """
 
+    house = models.ForeignKey(
+        "houses.House",
+        on_delete=models.CASCADE,
+        related_name="house_food_tickets",
+        help_text="The house whose registration these portions come from",
+    )
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="food_tickets",
+        help_text="The user who created this ticket listing",
     )
     date = models.DateField()
     adults_meat = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)])

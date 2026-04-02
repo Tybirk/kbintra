@@ -375,7 +375,7 @@ export interface MealRegistration {
   children_count: number
   dining_option: DiningOption
   seating_time: SeatingTime
-  house: HouseSimple | null
+  house: HouseSimple
   is_active: boolean
   total_portions: number
   is_locked: boolean
@@ -392,7 +392,6 @@ export interface CreateMealRegistrationData {
   children_count: number
   dining_option: DiningOption
   seating_time: SeatingTime
-  house_id?: number | null
   is_active?: boolean
 }
 

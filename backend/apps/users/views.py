@@ -366,11 +366,17 @@ class DataExportView(APIView):
         try:
             from apps.food.models import MealRegistration
 
-            meal_registrations = list(
-                MealRegistration.objects.filter(user=user).values(
-                    "daily_menu__date", "eaters", "created_at"
+            if user.house_id:
+                meal_registrations = list(
+                    MealRegistration.objects.filter(house_id=user.house_id).values(
+                        "date",
+                        "adults_meat",
+                        "adults_veg",
+                        "children_count",
+                        "dining_option",
+                        "created_at",
+                    )
                 )
-            )
         except Exception:
             pass
 

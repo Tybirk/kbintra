@@ -912,7 +912,6 @@ function DayRegistrationCard({
       children_count: children,
       dining_option: diningOption,
       seating_time: seatingTime,
-      house_id: user?.house ?? null,
       is_active: isActive,
     }
 
