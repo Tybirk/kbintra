@@ -18,6 +18,7 @@ from rest_framework.views import APIView
 
 from .constants import DAY_NAMES, calculate_meal_price
 from .models import (
+    ClosedFoodDay,
     FoodTeam,
     FoodTeamCycle,
     FoodTeamWish,
@@ -28,6 +29,8 @@ from .models import (
     TeamSwapRequest,
 )
 from .serializers import (
+    ClosedFoodDayCreateSerializer,
+    ClosedFoodDaySerializer,
     CreateSwapRequestSerializer,
     DefaultCookingDaysSerializer,
     DriveMenuCacheSerializer,
@@ -154,6 +157,9 @@ class DailyRegistrationStatsView(APIView):
                     {"detail": "Invalid date format. Use YYYY-MM-DD."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            closed_obj = ClosedFoodDay.objects.filter(date=target_date).first()
+            if closed_obj:
+                return Response({"closed": True, "reason": closed_obj.reason})
             stats = self._get_stats_for_date(target_date)
             return Response(stats)
 
@@ -167,7 +173,16 @@ class DailyRegistrationStatsView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             dates = [week_start + timedelta(days=d) for d in range(4)]
-            return Response(self._get_stats_for_dates(dates))
+            closed_days = {c.date: c.reason for c in ClosedFoodDay.objects.filter(date__in=dates)}
+            open_dates = [d for d in dates if d not in closed_days]
+            result = self._get_stats_for_dates(open_dates) if open_dates else {}
+            # Add closed-day markers
+            for d, reason in closed_days.items():
+                result[d.isoformat()] = {
+                    "closed": True,
+                    "reason": reason,
+                }
+            return Response(result)
 
         else:
             return Response(
@@ -527,9 +542,31 @@ class MealRegistrationListCreateView(generics.ListCreateAPIView):
             {p.day_of_week: p for p in MealPreference.objects.filter(house=house)} if house else {}
         )
 
+        from .utils import get_closed_food_dates
+
+        week_dates = [week_start + timedelta(days=d) for d in range(4)]
+        closed = get_closed_food_dates(week_dates)
+        closed_reasons = {}
+        if closed:
+            closed_reasons = {
+                c.date: c.reason for c in ClosedFoodDay.objects.filter(date__in=closed)
+            }
+
         results = []
         for day in range(4):
             target_date = week_start + timedelta(days=day)
+            if target_date in closed:
+                results.append(
+                    {
+                        "id": None,
+                        "date": target_date.isoformat(),
+                        "day_of_week": day,
+                        "day_name": DAY_NAMES[day],
+                        "is_closed": True,
+                        "closed_reason": closed_reasons.get(target_date, ""),
+                    }
+                )
+                continue
             if target_date in real_regs:
                 results.append(
                     MealRegistrationSerializer(
@@ -1237,12 +1274,18 @@ class MonthlyFoodCostView(APIView):
         total_cost = Decimal("0.00")
 
         # Collect Mon-Thu dates in the month where the deadline has already passed
+        from .utils import get_closed_food_dates
+
         billing_dates: list[date] = []
         current = first_day
         while current <= last_day:
             if current.weekday() <= 3 and is_after_deadline(current):
                 billing_dates.append(current)
             current += timedelta(days=1)
+
+        # Exclude closed food days from billing
+        closed = get_closed_food_dates(billing_dates)
+        billing_dates = [d for d in billing_dates if d not in closed]
 
         # Safety net: materialize any missing registrations before computing costs.
         # The periodic Huey task should have already done this, but if it missed any
@@ -1459,3 +1502,48 @@ class DriveMenuRefreshAllView(APIView):
             {"detail": "Menu refresh started in background."},
             status=status.HTTP_202_ACCEPTED,
         )
+
+
+# ── Closed Food Days ──────────────────────────────────────────────
+
+
+class ClosedFoodDayListCreateView(APIView):
+    """List and create closed food days."""
+
+    def get_permissions(self) -> list:
+        if self.request.method == "POST":
+            return [permissions.IsAuthenticated(), permissions.IsAdminUser()]
+        return [permissions.IsAuthenticated()]
+
+    def get(self, request: Request) -> Response:
+        qs = ClosedFoodDay.objects.all()
+        from_date = request.query_params.get("from_date")
+        to_date = request.query_params.get("to_date")
+        if from_date:
+            qs = qs.filter(date__gte=from_date)
+        if to_date:
+            qs = qs.filter(date__lte=to_date)
+        return Response(ClosedFoodDaySerializer(qs, many=True).data)
+
+    def post(self, request: Request) -> Response:
+        serializer = ClosedFoodDayCreateSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        created = serializer.save()
+        return Response(
+            ClosedFoodDaySerializer(created, many=True).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class ClosedFoodDayDeleteView(APIView):
+    """Delete (reopen) a closed food day. Admin only."""
+
+    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
+
+    def delete(self, request: Request, pk: int) -> Response:
+        try:
+            obj = ClosedFoodDay.objects.get(pk=pk)
+        except ClosedFoodDay.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        obj.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

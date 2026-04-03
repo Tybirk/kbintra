@@ -17,6 +17,7 @@ from .constants import (
     calculate_meal_price,
 )
 from .models import (
+    ClosedFoodDay,
     CycleStatus,
     DriveMenuCache,
     FoodTeam,
@@ -203,6 +204,10 @@ class MealRegistrationCreateUpdateSerializer(serializers.ModelSerializer):
         # Only allow Mon-Thu
         if value.weekday() > 3:
             raise serializers.ValidationError("Meals are only served Monday through Thursday.")
+        from .utils import is_closed_food_day
+
+        if is_closed_food_day(value):
+            raise serializers.ValidationError("Denne dag er lukket for fællesspisning.")
         return value
 
     def validate(self, attrs: dict) -> dict:
@@ -319,6 +324,10 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
         # Only allow Mon-Thu
         if value.weekday() > 3:
             raise serializers.ValidationError("Meals are only served Monday through Thursday.")
+        from .utils import is_closed_food_day
+
+        if is_closed_food_day(value):
+            raise serializers.ValidationError("Denne dag er lukket for fællesspisning.")
         # Don't allow past dates
         if value < timezone.now().date():
             raise serializers.ValidationError("Cannot create ticket for past dates.")
@@ -680,6 +689,12 @@ class FoodTeamCycleCreateSerializer(serializers.ModelSerializer):
         fields = ["name", "cooking_dates", "wish_deadline"]
 
     def validate_cooking_dates(self, value: list) -> list:
+        from .utils import get_closed_food_dates
+
+        closed = get_closed_food_dates(value)
+        if closed:
+            closed_strs = ", ".join(sorted(d.isoformat() for d in closed))
+            raise serializers.ValidationError(f"Følgende datoer er lukkede maddage: {closed_strs}")
         # Sort dates and convert to ISO format strings
         sorted_dates = sorted(value)
         return [d.isoformat() for d in sorted_dates]
@@ -738,6 +753,15 @@ class FoodTeamWishCreateUpdateSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(f"Invalid date format: {d}") from e
             elif isinstance(d, date):
                 validated.append(d.isoformat())
+
+        # Filter out any closed food days
+        from .utils import get_closed_food_dates
+
+        date_map = {d: date.fromisoformat(d) for d in validated}
+        closed = get_closed_food_dates(list(date_map.values()))
+        if closed:
+            validated = [d for d, parsed in date_map.items() if parsed not in closed]
+
         return validated
 
     def create(self, validated_data: dict) -> FoodTeamWish:
@@ -878,3 +902,39 @@ class DriveMenuCacheSerializer(serializers.ModelSerializer):
         # Calculate the Monday of the target week
         target_monday = week1_monday + timedelta(weeks=obj.week_number - 1)
         return target_monday.isoformat()
+
+
+class ClosedFoodDaySerializer(serializers.ModelSerializer):
+    day_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ClosedFoodDay
+        fields = ["id", "date", "day_name", "reason", "created_at"]
+
+    def get_day_name(self, obj: ClosedFoodDay) -> str:
+        return DAY_NAMES[obj.date.weekday()]
+
+
+class ClosedFoodDayCreateSerializer(serializers.Serializer):
+    dates = serializers.ListField(child=serializers.DateField(), min_length=1)
+    reason = serializers.CharField(max_length=200, required=False, default="")
+
+    def validate_dates(self, value: list[date]) -> list[date]:
+        for d in value:
+            if d.weekday() > 3:
+                raise serializers.ValidationError(
+                    f"{d.isoformat()} er ikke en maddag (kun mandag-torsdag)."
+                )
+        return sorted(value)
+
+    def create(self, validated_data: dict) -> list[ClosedFoodDay]:
+        user = self.context["request"].user
+        reason = validated_data["reason"]
+        results = []
+        for d in validated_data["dates"]:
+            obj, _created = ClosedFoodDay.objects.get_or_create(
+                date=d,
+                defaults={"reason": reason, "created_by": user},
+            )
+            results.append(obj)
+        return results

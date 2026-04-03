@@ -887,6 +887,14 @@ function CreateCycleModal({
   const [cookingDates, setCookingDates] = useState<Date[]>([])
   const [wishDeadline, setWishDeadline] = useState<Date | null>(null)
 
+  // Fetch closed food days to disable them in the date picker
+  const { data: closedDays } = useQuery({
+    queryKey: ["food", "closed-days"],
+    queryFn: () => foodApi.getClosedDays(dayjs().format("YYYY-MM-DD")),
+    enabled: opened,
+  })
+  const closedDateSet = new Set(closedDays?.map((d) => d.date) ?? [])
+
   const handleSubmit = () => {
     onCreate({
       name,
@@ -904,6 +912,14 @@ function CreateCycleModal({
   }
 
   const isValid = name && cookingDates.length > 0 && wishDeadline
+
+  // Exclude weekends and closed food days (Mantine types say string but runtime passes Date)
+  const excludeDate = (d: Date | string) => {
+    const date = d instanceof Date ? d : new Date(d)
+    const day = date.getDay()
+    if (day === 0 || day === 5 || day === 6) return true
+    return closedDateSet.has(dayjs(date).format("YYYY-MM-DD"))
+  }
 
   return (
     <Modal
@@ -928,6 +944,7 @@ function CreateCycleModal({
           placeholder="Klik for at vælge datoer"
           value={cookingDates}
           onChange={(dates) => setCookingDates(dates as unknown as Date[])}
+          excludeDate={excludeDate}
           required
           description={`${cookingDates.length} dato${
             cookingDates.length !== 1 ? "er" : ""

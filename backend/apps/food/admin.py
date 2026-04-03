@@ -5,6 +5,7 @@ Admin configuration for Food models.
 from django.contrib import admin
 
 from .models import (
+    ClosedFoodDay,
     DriveMenuCache,
     FoodTeam,
     FoodTeamCycle,
@@ -109,3 +110,12 @@ class TeamSwapRequestAdmin(admin.ModelAdmin):
     list_filter = ["status"]
     search_fields = ["requester__email", "message"]
     raw_id_fields = ["requester", "requester_membership", "target_membership"]
+
+
+@admin.register(ClosedFoodDay)
+class ClosedFoodDayAdmin(admin.ModelAdmin):
+    list_display = ["date", "reason", "created_by", "created_at"]
+    list_filter = ["date"]
+    search_fields = ["reason"]
+    date_hierarchy = "date"
+    raw_id_fields = ["created_by"]

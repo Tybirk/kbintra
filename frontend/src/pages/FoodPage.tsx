@@ -29,6 +29,7 @@ import {
   UnstyledButton,
   Divider,
   Anchor,
+  TextInput,
 } from "@mantine/core"
 import {
   useDisclosure,
@@ -36,8 +37,10 @@ import {
   useClipboard,
 } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
+import { DatePickerInput } from "@mantine/dates"
 import {
   IconCalendar,
+  IconCalendarOff,
   IconTicket,
   IconSettings,
   IconChevronLeft,
@@ -79,7 +82,9 @@ import type {
   DriveMenu,
   FoodTicket,
   DailyRegistrationStats,
+  ClosedDayPlaceholder,
 } from "../types"
+import { isClosedDayPlaceholder } from "../types"
 
 export default function FoodPage() {
   const navigate = useNavigate()
@@ -256,10 +261,18 @@ export default function FoodPage() {
   const isLoading = regsLoading
 
   // Create a map of registrations by date for registration tab
+  // The API returns closed-day placeholders with is_closed: true
   const registrationsByDate = new Map<string, MealRegistration>()
-  registrations?.forEach((reg) => {
-    registrationsByDate.set(reg.date, reg)
-  })
+  const closedDaysByDate = new Map<string, ClosedDayPlaceholder>()
+  ;(registrations as (MealRegistration | ClosedDayPlaceholder)[] | undefined)?.forEach(
+    (reg) => {
+      if (isClosedDayPlaceholder(reg)) {
+        closedDaysByDate.set(reg.date, reg)
+      } else {
+        registrationsByDate.set(reg.date, reg)
+      }
+    },
+  )
 
   // Helper to get week label
   const getWeekLabel = (offset: number) => {
@@ -408,6 +421,33 @@ export default function FoodPage() {
                 {[0, 1, 2, 3].map((dayOffset) => {
                   const date = regWeekStart.add(dayOffset, "day")
                   const dateStr = date.format("YYYY-MM-DD")
+                  const closedDay = closedDaysByDate.get(dateStr)
+
+                  if (closedDay) {
+                    return (
+                      <Paper
+                        key={dateStr}
+                        withBorder
+                        p="md"
+                        radius="md"
+                        opacity={0.6}
+                      >
+                        <Group justify="space-between">
+                          <Text fw={500}>{date.format("dddd")}</Text>
+                          <Badge color="gray">Lukket</Badge>
+                        </Group>
+                        <Text size="xs" c="dimmed">
+                          {date.format("D. MMMM")}
+                        </Text>
+                        {closedDay.closed_reason && (
+                          <Text size="sm" c="dimmed" mt="xs">
+                            {closedDay.closed_reason}
+                          </Text>
+                        )}
+                      </Paper>
+                    )
+                  }
+
                   const registration = registrationsByDate.get(dateStr)
                   const menuText = getMenuTextForDay(regDriveMenu, dayOffset)
                   const isWednesday = dayOffset === 2
@@ -541,11 +581,161 @@ export default function FoodPage() {
 
         {user?.is_staff && (
           <Tabs.Panel value="admin">
-            <MonthlyCostReport />
+            <Stack gap="xl">
+              <ClosedDaysAdmin />
+              <Divider />
+              <MonthlyCostReport />
+            </Stack>
           </Tabs.Panel>
         )}
       </Tabs>
     </>
+  )
+}
+
+// Closed Days Admin Component
+function ClosedDaysAdmin() {
+  const queryClient = useQueryClient()
+  const [selectedDates, setSelectedDates] = useState<Date[]>([])
+  const [reason, setReason] = useState("")
+
+  const { data: closedDays, isLoading } = useQuery({
+    queryKey: ["food", "closed-days"],
+    queryFn: () => foodApi.getClosedDays(dayjs().format("YYYY-MM-DD")),
+  })
+
+  const createMutation = useMutation({
+    mutationFn: foodApi.createClosedDays,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["food", "closed-days"] })
+      queryClient.invalidateQueries({ queryKey: ["food", "registrations"] })
+      queryClient.invalidateQueries({ queryKey: ["food", "stats"] })
+      setSelectedDates([])
+      setReason("")
+      notifications.show({
+        color: "green",
+        message: "Lukkede dage er blevet oprettet.",
+      })
+    },
+    onError: () => {
+      notifications.show({
+        color: "red",
+        message: "Kunne ikke oprette lukkede dage.",
+      })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: foodApi.deleteClosedDay,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["food", "closed-days"] })
+      queryClient.invalidateQueries({ queryKey: ["food", "registrations"] })
+      queryClient.invalidateQueries({ queryKey: ["food", "stats"] })
+      notifications.show({
+        color: "green",
+        message: "Dagen er blevet genåbnet.",
+      })
+    },
+  })
+
+  const handleCreate = () => {
+    if (selectedDates.length === 0) return
+    const dates = selectedDates.map((d) => dayjs(d).format("YYYY-MM-DD"))
+    createMutation.mutate({ dates, reason: reason || undefined })
+  }
+
+  // Only allow Mon-Thu selection (Mantine types say string but runtime passes Date)
+  const excludeDate = (d: Date | string) => {
+    const date = d instanceof Date ? d : new Date(d)
+    return date.getDay() === 0 || date.getDay() === 5 || date.getDay() === 6
+  }
+
+  return (
+    <Stack gap="md">
+      <Title order={3}>
+        <Group gap="xs">
+          <IconCalendarOff size={24} />
+          Lukkede maddage
+        </Group>
+      </Title>
+
+      <Paper withBorder p="md" radius="md">
+        <Stack gap="sm">
+          <DatePickerInput<"multiple">
+            type="multiple"
+            label="Vælg datoer der skal lukkes"
+            placeholder="Klik for at vælge datoer"
+            value={selectedDates}
+            onChange={(dates) => setSelectedDates(dates as unknown as Date[])}
+            excludeDate={excludeDate}
+            valueFormat="ddd, D. MMM"
+            description={`${selectedDates.length} dato${
+              selectedDates.length !== 1 ? "er" : ""
+            } valgt`}
+            clearable
+          />
+          <TextInput
+            label="Begrundelse (valgfrit)"
+            placeholder="F.eks. Påske, Sommerferie"
+            value={reason}
+            onChange={(e) => setReason(e.currentTarget.value)}
+          />
+          <Button
+            onClick={handleCreate}
+            loading={createMutation.isPending}
+            disabled={selectedDates.length === 0}
+          >
+            Luk {selectedDates.length} dag
+            {selectedDates.length !== 1 ? "e" : ""}
+          </Button>
+        </Stack>
+      </Paper>
+
+      {isLoading ? (
+        <Center h={100}>
+          <Loader size="md" />
+        </Center>
+      ) : closedDays && closedDays.length > 0 ? (
+        <Paper withBorder p="md" radius="md">
+          <Text fw={600} mb="sm">
+            Kommende lukkede dage
+          </Text>
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Dato</Table.Th>
+                <Table.Th>Dag</Table.Th>
+                <Table.Th>Begrundelse</Table.Th>
+                <Table.Th w={50} />
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {closedDays.map((cd) => (
+                <Table.Tr key={cd.id}>
+                  <Table.Td>{dayjs(cd.date).format("D. MMMM YYYY")}</Table.Td>
+                  <Table.Td>{cd.day_name}</Table.Td>
+                  <Table.Td>{cd.reason || "-"}</Table.Td>
+                  <Table.Td>
+                    <ActionIcon
+                      color="red"
+                      variant="subtle"
+                      onClick={() => deleteMutation.mutate(cd.id)}
+                      loading={deleteMutation.isPending}
+                    >
+                      <IconTrash size={16} />
+                    </ActionIcon>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Paper>
+      ) : (
+        <Text c="dimmed" ta="center">
+          Ingen kommende lukkede dage.
+        </Text>
+      )}
+    </Stack>
   )
 }
 

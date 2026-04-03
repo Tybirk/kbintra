@@ -65,7 +65,9 @@ import type {
   CreateFoodTicketData,
   FoodTicket,
   DailyRegistrationStats,
+  ClosedDayPlaceholder,
 } from "../types"
+import { isClosedDayPlaceholder } from "../types"
 
 dayjs.extend(isoWeek)
 
@@ -208,13 +210,23 @@ export default function DashboardPage() {
   const todayDayOfWeek = today.isoWeekday()
   const todayStr = today.format("YYYY-MM-DD")
 
-  // Check if today is a food day (Mon-Thu)
-  const isTodayFoodDay = todayDayOfWeek >= 1 && todayDayOfWeek <= 4
+  // Build set of closed food days from registration data
+  const allRegs = [
+    ...(currentWeekRegistrations || []),
+    ...(nextWeekRegistrations || []),
+  ] as (MealRegistration | ClosedDayPlaceholder)[]
+  const closedDateSet = new Set<string>(
+    allRegs.filter(isClosedDayPlaceholder).map((r) => r.date),
+  )
+
+  // Check if today is a food day (Mon-Thu and not closed)
+  const isTodayFoodDay =
+    todayDayOfWeek >= 1 && todayDayOfWeek <= 4 && !closedDateSet.has(todayStr)
   const todayMenuText = isTodayFoodDay
     ? getDayMenu(currentDriveMenu, todayDayOfWeek)
     : ""
 
-  // Find next food day
+  // Find next food day (skipping closed days)
   const getNextFoodDay = (): {
     date: dayjs.Dayjs
     menuText: string
@@ -222,6 +234,8 @@ export default function DashboardPage() {
   } | null => {
     // Check remaining days this week (Mon-Thu only)
     for (let d = todayDayOfWeek + 1; d <= 4; d++) {
+      const dateStr = currentWeekStart.add(d - 1, "day").format("YYYY-MM-DD")
+      if (closedDateSet.has(dateStr)) continue
       const menuText = getDayMenu(currentDriveMenu, d)
       if (menuText || currentDriveMenu) {
         return {
@@ -233,6 +247,8 @@ export default function DashboardPage() {
     }
     // Check next week (Mon-Thu)
     for (let d = 1; d <= 4; d++) {
+      const dateStr = nextWeekStart.add(d - 1, "day").format("YYYY-MM-DD")
+      if (closedDateSet.has(dateStr)) continue
       const menuText = getDayMenu(nextDriveMenu, d)
       if (menuText || nextDriveMenu) {
         return {
@@ -247,11 +263,10 @@ export default function DashboardPage() {
 
   const nextFoodDay = getNextFoodDay()
 
-  // Find registrations
-  const allRegistrations = [
-    ...(currentWeekRegistrations || []),
-    ...(nextWeekRegistrations || []),
-  ]
+  // Find registrations (exclude closed-day placeholders)
+  const allRegistrations = allRegs.filter(
+    (r): r is MealRegistration => !isClosedDayPlaceholder(r),
+  )
   const todayRegistration = allRegistrations.find((r) => r.date === todayStr)
   const nextFoodDayRegistration = nextFoodDay
     ? allRegistrations.find(

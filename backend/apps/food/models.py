@@ -533,3 +533,30 @@ class DriveMenuCache(models.Model):
         from django.utils import timezone
 
         return timezone.now() - self.fetched_at > timedelta(hours=max_age_hours)
+
+
+class ClosedFoodDay(models.Model):
+    """A date when no dinner is served (holiday, vacation, etc.)."""
+
+    date = models.DateField(unique=True)
+    reason = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Valgfri begrundelse (f.eks. 'Helligdag', 'Ferie')",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="created_closed_food_days",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["date"]
+
+    def __str__(self) -> str:
+        label = f"Lukket: {self.date}"
+        if self.reason:
+            label += f" ({self.reason})"
+        return label

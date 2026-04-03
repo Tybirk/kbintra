@@ -7,6 +7,8 @@ from django.urls import path
 from .views import (
     ActiveCycleView,
     ClaimTicketView,
+    ClosedFoodDayDeleteView,
+    ClosedFoodDayListCreateView,
     CycleWishesListView,
     DailyRegistrationStatsView,
     DefaultCookingDaysView,
@@ -88,4 +90,7 @@ urlpatterns = [
     path(
         "drive-menu/refresh-all/", DriveMenuRefreshAllView.as_view(), name="drive-menu-refresh-all"
     ),
+    # Closed Food Days
+    path("closed-days/", ClosedFoodDayListCreateView.as_view(), name="closed-day-list"),
+    path("closed-days/<int:pk>/", ClosedFoodDayDeleteView.as_view(), name="closed-day-detail"),
 ]

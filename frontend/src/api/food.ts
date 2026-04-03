@@ -11,6 +11,7 @@ import type {
   FoodTicket,
   CreateFoodTicketData,
   ClaimFoodTicketData,
+  ClosedFoodDay,
   DailyRegistrationStats,
   WeeklyRegistrationStats,
   FoodTeam,
@@ -314,5 +315,29 @@ export const foodApi = {
   }> => {
     const response = await apiClient.post("/food/drive-menu/refresh-all/")
     return response.data
+  },
+
+  // Closed Food Days
+  getClosedDays: async (
+    fromDate?: string,
+    toDate?: string,
+  ): Promise<ClosedFoodDay[]> => {
+    const params: Record<string, string> = {}
+    if (fromDate) params.from_date = fromDate
+    if (toDate) params.to_date = toDate
+    const response = await apiClient.get("/food/closed-days/", { params })
+    return response.data
+  },
+
+  createClosedDays: async (data: {
+    dates: string[]
+    reason?: string
+  }): Promise<ClosedFoodDay[]> => {
+    const response = await apiClient.post("/food/closed-days/", data)
+    return response.data
+  },
+
+  deleteClosedDay: async (id: number): Promise<void> => {
+    await apiClient.delete(`/food/closed-days/${id}/`)
   },
 }

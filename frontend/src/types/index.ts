@@ -470,6 +470,29 @@ export interface DriveMenu {
   drive_folder_url: string
 }
 
+export interface ClosedFoodDay {
+  id: number
+  date: string
+  day_name: string
+  reason: string
+  created_at: string
+}
+
+export interface ClosedDayPlaceholder {
+  id: null
+  date: string
+  day_of_week: number
+  day_name: string
+  is_closed: true
+  closed_reason: string
+}
+
+export function isClosedDayPlaceholder(
+  r: MealRegistration | ClosedDayPlaceholder,
+): r is ClosedDayPlaceholder {
+  return "is_closed" in r && r.is_closed === true
+}
+
 // Event Types (unified: community events + private room bookings)
 export type EventVisibility = "community" | "private"
 

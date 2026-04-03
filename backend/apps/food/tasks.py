@@ -30,8 +30,10 @@ def _materialize_for_houses(dates: list[date]) -> int:
     from apps.houses.models import House
 
     from .models import MealPreference, MealRegistration
+    from .utils import get_closed_food_dates
 
     created = 0
+    closed = get_closed_food_dates(dates)
 
     # Pre-fetch all preferences keyed by (house_id, day_of_week)
     all_prefs: dict[tuple[int, int], MealPreference] = {}
@@ -46,7 +48,7 @@ def _materialize_for_houses(dates: list[date]) -> int:
         house_count = len(inhabitants)
 
         for target_date in dates:
-            if target_date.weekday() > 3:
+            if target_date.weekday() > 3 or target_date in closed:
                 continue
 
             # Skip if house already has a registration for this date
