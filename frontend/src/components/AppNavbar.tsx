@@ -10,7 +10,6 @@ import {
   IconUsers,
   IconBuildingCommunity,
   IconBell,
-  IconUsersGroup,
   IconDoor,
   IconLink,
   IconSettings,
@@ -42,7 +41,7 @@ const navItems: NavItem[] = [
   },
   { icon: IconMessageCircle, label: "Forum", path: "/forum" },
   { icon: IconSoup, label: "Mad", path: "/mad" },
-  { icon: IconUsersGroup, label: "Madhold", path: "/madhold" },
+  //{ icon: IconUsersGroup, label: "Madhold", path: "/madhold" },
   { icon: IconCalendar, label: "Kalender", path: "/kalender" },
   {
     icon: IconBuildingCommunity,
