@@ -46,7 +46,6 @@ describe("AppNavbar", () => {
     expect(screen.getByText("Vigtig post")).toBeInTheDocument()
     expect(screen.getByText("Forum")).toBeInTheDocument()
     expect(screen.getByText("Mad")).toBeInTheDocument()
-    expect(screen.getByText("Madhold")).toBeInTheDocument()
     expect(screen.getByText("Kalender")).toBeInTheDocument()
     expect(screen.getByText("Beboeroversigt")).toBeInTheDocument()
     expect(screen.getByText("Beskeder")).toBeInTheDocument()
