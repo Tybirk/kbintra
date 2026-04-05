@@ -429,11 +429,14 @@ export default function DashboardPage() {
                   dayName={nextFoodDay.date.format("dddd")}
                   menuText={nextFoodDay.menuText}
                   registration={nextFoodDayRegistration}
-                  label={
-                    nextFoodDay.date.isSame(dayjs().add(1, "day"), "day")
-                      ? "I morgen"
-                      : nextFoodDay.date.format("dddd")
-                  }
+                  label={(() => {
+                    const daysUntil = nextFoodDay.date.diff(
+                      dayjs().startOf("day"),
+                      "day",
+                    )
+                    if (daysUntil === 1) return "I morgen"
+                    return `Om ${daysUntil} dage`
+                  })()}
                   isToday={false}
                   ticketsForSale={
                     ticketsForSaleByDate.get(
@@ -913,7 +916,15 @@ function FoodDayWidget({
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
   const [isSaving, setIsSaving] = useState(false)
+  const [lastSaved, setLastSaved] = useState<Date | null>(null)
   const [statsOpen, setStatsOpen] = useState(true)
+
+  // Fade out "Gemt" indicator after 3 seconds
+  useEffect(() => {
+    if (!lastSaved) return
+    const timer = setTimeout(() => setLastSaved(null), 3000)
+    return () => clearTimeout(timer)
+  }, [lastSaved])
 
   // Local state for registration controls
   const [isActive, setIsActive] = useState(registration?.is_active ?? true)
@@ -967,6 +978,7 @@ function FoodDayWidget({
       queryClient.invalidateQueries({
         queryKey: ["food", "stats"],
       })
+      setLastSaved(new Date())
       setIsSaving(false)
     },
     onError: () => {
@@ -989,6 +1001,7 @@ function FoodDayWidget({
       queryClient.invalidateQueries({
         queryKey: ["food", "stats"],
       })
+      setLastSaved(new Date())
       setIsSaving(false)
     },
     onError: () => {
@@ -1084,34 +1097,56 @@ function FoodDayWidget({
     <>
       <Paper p="sm" radius="sm">
         <Group justify="space-between" mb="xs">
-          <div>
-            <Group gap="xs">
-              <Badge
-                color={isToday ? "green" : "blue"}
-                variant="light"
-                size="sm"
-              >
-                {label}
-              </Badge>
-              {isLocked && (
-                <Badge color="orange" variant="light" size="sm">
-                  Bestilt
-                </Badge>
-              )}
-            </Group>
-            <Text fw={500} size="sm" mt={4}>
-              {dayName}
-            </Text>
-          </div>
-          <Text size="xs" c="dimmed">
-            {dayjs(date).format("D. MMM")}
+          <Text fw={500} tt="capitalize">
+            {dayName}
           </Text>
+          <Group gap="xs">
+            <Badge color={isToday ? "green" : "blue"} variant="light" size="sm">
+              {label}
+            </Badge>
+            {isLocked && (
+              <Badge color="orange" variant="light" size="sm">
+                Bestilt
+              </Badge>
+            )}
+            <Badge variant="light" color="blue" size="sm">
+              {dayjs(date).format("D. MMM")}
+            </Badge>
+          </Group>
         </Group>
 
         {/* Menu description */}
         <Text size="xs" mb="sm">
           {menuText || "Menu kommer snart"}
         </Text>
+
+        {/* Registration summary — matches FoodPage placement */}
+        {registration?.is_active ? (
+          <Text size="sm" c="dimmed" mb="sm">
+            Tilmeldt: {(() => {
+              const parts: string[] = []
+              if (isWednesday && registration.adults_meat > 0)
+                parts.push(`${registration.adults_meat} kød`)
+              if (registration.adults_veg > 0)
+                parts.push(
+                  `${registration.adults_veg} ${
+                    isWednesday ? "vegetar" : "voksne"
+                  }`,
+                )
+              if (registration.children_count > 0)
+                parts.push(`${registration.children_count} børn`)
+              return parts.length > 0 ? parts.join(", ") : "0 portioner"
+            })()}
+          </Text>
+        ) : registration ? (
+          <Text size="sm" c="dimmed" mb="sm">
+            Spiser ikke
+          </Text>
+        ) : (
+          <Text size="sm" c="dimmed" mb="sm">
+            Ikke tilmeldt endnu
+          </Text>
+        )}
 
         <Divider mb="sm" />
 
@@ -1209,48 +1244,15 @@ function FoodDayWidget({
             </>
           )}
 
-          {/* Status indicator */}
-          {isSaving ? (
-            <Text size="xs" c="blue" ta="center">
-              <Group gap={4} justify="center">
-                <Loader size={10} />
-                Gemmer...
-              </Group>
-            </Text>
-          ) : registration?.is_active ? (
-            <Group justify="center" gap="xs">
-              {isWednesday && registration.adults_meat > 0 && (
-                <Text size="sm" fw={600}>
-                  {registration.adults_meat} kød
-                </Text>
-              )}
-              {registration.adults_veg > 0 && (
-                <Text size="sm" fw={600}>
-                  {isWednesday
-                    ? `${registration.adults_veg} vegetar`
-                    : `${registration.adults_veg} voksne`}
-                </Text>
-              )}
-              {registration.children_count > 0 && (
-                <Text size="sm" fw={600}>
-                  {registration.children_count} børn
-                </Text>
-              )}
-              {registration.total_portions === 0 && (
-                <Text size="sm" fw={600} c="dimmed">
-                  0 portioner
-                </Text>
-              )}
-            </Group>
-          ) : registration ? (
-            <Text size="xs" c="dimmed" ta="center">
-              Spiser ikke
-            </Text>
-          ) : (
-            <Text size="xs" c="dimmed" ta="center">
-              Ikke tilmeldt endnu
-            </Text>
-          )}
+          {/* Saving indicator — fixed height to prevent layout jumps */}
+          <Group gap={4} justify="center" h={20}>
+            {isSaving && <Loader size={10} />}
+            {(isSaving || lastSaved) && (
+              <Text size="xs" c={isSaving ? "blue" : "green"}>
+                {isSaving ? "Gemmer..." : "Gemt"}
+              </Text>
+            )}
+          </Group>
         </Stack>
 
         {communityStats && (
