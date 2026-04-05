@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import * as Sentry from "@sentry/react"
 import {
   Title,
   Text,
@@ -1382,6 +1383,16 @@ interface CommunityRegistrationStatsProps {
 function CommunityRegistrationStats({
   stats,
 }: CommunityRegistrationStatsProps) {
+  if (!stats.eat_in_1730 || !stats.eat_in_1830 || !stats.takeaway) {
+    Sentry.captureMessage(
+      "DashboardPage: DailyRegistrationStats missing expected fields",
+      {
+        level: "error",
+        extra: { stats: JSON.stringify(stats).slice(0, 500) },
+      },
+    )
+    return null
+  }
   const hasWednesdayData =
     stats.eat_in_1730.adults_meat > 0 ||
     stats.eat_in_1830.adults_meat > 0 ||

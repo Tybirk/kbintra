@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, memo, type RefObject } from "react"
 import { useParams, useNavigate, useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import * as Sentry from "@sentry/react"
 import {
   Title,
   Text,
@@ -134,8 +135,21 @@ export default function MessagesPage() {
     queryFn: messagingApi.getConversations,
   })
 
+  const reportedBadConversations = useRef(false)
+  if (
+    conversations != null &&
+    !Array.isArray(conversations) &&
+    !reportedBadConversations.current
+  ) {
+    reportedBadConversations.current = true
+    Sentry.captureMessage("MessagesPage: conversations is not an array", {
+      level: "error",
+      extra: { conversations: JSON.stringify(conversations).slice(0, 500) },
+    })
+  }
+  const safeConversations = Array.isArray(conversations) ? conversations : []
   const filteredConversations = conversationSearch.trim()
-    ? (conversations ?? []).filter((conv) => {
+    ? safeConversations.filter((conv) => {
         const term = conversationSearch.trim().toLowerCase()
         if (conv.other_participants.length === 0) {
           return "slettet bruger".includes(term)
@@ -147,7 +161,7 @@ export default function MessagesPage() {
             `${p.first_name} ${p.last_name}`.toLowerCase().includes(term),
         )
       })
-    : (conversations ?? [])
+    : safeConversations
 
   // Fetch selected conversation detail
   const { data: activeConversation, isLoading: conversationLoading } = useQuery(
