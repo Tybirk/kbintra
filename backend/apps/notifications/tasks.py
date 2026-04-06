@@ -106,12 +106,22 @@ def send_password_reset_email_task(
     reset_url: str,
 ) -> None:
     """Send password reset email in background."""
-    from django.conf import settings
-    from django.core.mail import send_mail
+    import os
 
-    send_mail(
-        subject="Nulstil din adgangskode - KB Intra",
-        message=f"""Hej {first_name},
+    from django.conf import settings
+    from django.core.mail import EmailMessage, get_connection
+
+    with get_connection(
+        backend="django.core.mail.backends.smtp.EmailBackend",
+        host=settings.RESEND_SMTP_HOST,
+        port=settings.RESEND_SMTP_PORT,
+        username=settings.RESEND_SMTP_USERNAME,
+        password=os.environ.get("RESEND_API_KEY", ""),
+        use_tls=True,
+    ) as connection:
+        EmailMessage(
+            subject="Nulstil din adgangskode - KB Intra",
+            body=f"""Hej {first_name},
 
 Du har anmodet om at nulstille din adgangskode til KB Intra.
 
@@ -125,9 +135,10 @@ Hvis du ikke har anmodet om at nulstille din adgangskode, kan du ignorere denne 
 Med venlig hilsen,
 KB Intra
 """,
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=[email],
-    )
+            to=[email],
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            connection=connection,
+        ).send()
 
 
 # ---------------------------------------------------------------------------
@@ -142,12 +153,22 @@ def send_email_change_verification_task(
     confirm_url: str,
 ) -> None:
     """Send email change verification email in background."""
-    from django.conf import settings
-    from django.core.mail import send_mail
+    import os
 
-    send_mail(
-        subject="Bekræft din nye emailadresse - KB Intra",
-        message=f"""Hej {first_name},
+    from django.conf import settings
+    from django.core.mail import EmailMessage, get_connection
+
+    with get_connection(
+        backend="django.core.mail.backends.smtp.EmailBackend",
+        host=settings.RESEND_SMTP_HOST,
+        port=settings.RESEND_SMTP_PORT,
+        username=settings.RESEND_SMTP_USERNAME,
+        password=os.environ.get("RESEND_API_KEY", ""),
+        use_tls=True,
+    ) as connection:
+        EmailMessage(
+            subject="Bekræft din nye emailadresse - KB Intra",
+            body=f"""Hej {first_name},
 
 Du har anmodet om at ændre din emailadresse på KB Intra.
 
@@ -161,9 +182,10 @@ Hvis du ikke har anmodet om denne ændring, kan du ignorere denne email.
 Med venlig hilsen,
 KB Intra
 """,
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=[new_email],
-    )
+            to=[new_email],
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            connection=connection,
+        ).send()
 
 
 # ---------------------------------------------------------------------------

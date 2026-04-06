@@ -268,7 +268,7 @@ class DailyRegistrationStatsView(APIView):
             # Covered house IDs for all pre-deadline dates (1 query)
             covered_by_date: dict[date, set[int]] = {}
             for d, hid in MealRegistration.objects.filter(
-                date__in=pre_deadline_dates, is_active=True
+                date__in=pre_deadline_dates,
             ).values_list("date", "house_id"):
                 covered_by_date.setdefault(d, set()).add(hid)
 
