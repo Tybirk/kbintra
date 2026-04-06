@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import * as Sentry from "@sentry/react"
 import {
   Title,
   Text,
@@ -84,8 +83,20 @@ import type {
   FoodTicket,
   DailyRegistrationStats,
   ClosedDayPlaceholder,
+  WeeklyRegistrationStats,
 } from "../types"
-import { isClosedDayPlaceholder } from "../types"
+import { isClosedDayPlaceholder, isClosedDayStats } from "../types"
+
+// The stats endpoint returns a closed-day marker for closed dates.
+// Normalise to `undefined` so widgets treat them as "no stats".
+function getDailyStats(
+  weekly: WeeklyRegistrationStats | undefined,
+  dateStr: string,
+): DailyRegistrationStats | undefined {
+  const entry = weekly?.[dateStr]
+  if (!entry || isClosedDayStats(entry)) return undefined
+  return entry
+}
 
 export default function FoodPage() {
   const navigate = useNavigate()
@@ -468,7 +479,7 @@ export default function FoodPage() {
                       purchasedTicketsForDate={
                         myPurchasedByDate.get(dateStr) ?? []
                       }
-                      communityStats={weeklyStats?.[dateStr]}
+                      communityStats={getDailyStats(weeklyStats, dateStr)}
                     />
                   )
                 })}
@@ -1959,16 +1970,6 @@ interface FoodPageCommunityStatsProps {
 }
 
 function FoodPageCommunityStats({ stats }: FoodPageCommunityStatsProps) {
-  if (!stats.eat_in_1730 || !stats.eat_in_1830 || !stats.takeaway) {
-    Sentry.captureMessage(
-      "FoodPage: DailyRegistrationStats missing expected fields",
-      {
-        level: "error",
-        extra: { stats: JSON.stringify(stats).slice(0, 500) },
-      },
-    )
-    return null
-  }
   const hasWednesdayData =
     stats.eat_in_1730.adults_meat > 0 ||
     stats.eat_in_1830.adults_meat > 0 ||

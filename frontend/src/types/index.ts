@@ -412,8 +412,21 @@ export interface DailyRegistrationStats {
   total: TotalRegistrationCount
 }
 
+// Backend returns this shape (instead of DailyRegistrationStats) for dates
+// that are in ClosedFoodDay. See backend/apps/food/views.py.
+export interface ClosedDayStats {
+  closed: true
+  reason: string
+}
+
 export interface WeeklyRegistrationStats {
-  [date: string]: DailyRegistrationStats
+  [date: string]: DailyRegistrationStats | ClosedDayStats
+}
+
+export function isClosedDayStats(
+  stats: DailyRegistrationStats | ClosedDayStats | undefined,
+): stats is ClosedDayStats {
+  return !!stats && "closed" in stats && stats.closed === true
 }
 
 export interface TicketOwner extends Author {
