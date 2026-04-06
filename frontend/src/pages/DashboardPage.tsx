@@ -49,6 +49,7 @@ import { forumApi } from "../api/forum"
 import { notificationsApi } from "../api/notifications"
 import { usersApi } from "../api/users"
 import UserLink from "../components/UserLink"
+import { ErrorBoundary } from "../components/ErrorBoundary"
 import { calculateDefaultTicketPrice } from "../utils/priceCalculation"
 import { isDateLocked } from "../utils/foodDeadline"
 import type {
@@ -319,275 +320,289 @@ export default function DashboardPage() {
 
       {/* Notifications Widget */}
       {recentNotifications && recentNotifications.length > 0 && (
-        <Paper
-          withBorder
-          p="lg"
-          radius="md"
-          mt="xl"
-          bg="var(--mantine-color-blue-light)"
-        >
-          <Group justify="space-between" mb="md">
-            <Group gap="xs">
-              <ThemeIcon size="sm" color="red" radius="xl">
-                <IconBell size={14} />
-              </ThemeIcon>
-              <Title order={3}>Ulæste notifikationer</Title>
-              <Badge color="red" size="sm">
-                {recentNotifications.length}
-              </Badge>
+        <ErrorBoundary compact title="Kunne ikke vise notifikationer">
+          <Paper
+            withBorder
+            p="lg"
+            radius="md"
+            mt="xl"
+            bg="var(--mantine-color-blue-light)"
+          >
+            <Group justify="space-between" mb="md">
+              <Group gap="xs">
+                <ThemeIcon size="sm" color="red" radius="xl">
+                  <IconBell size={14} />
+                </ThemeIcon>
+                <Title order={3}>Ulæste notifikationer</Title>
+                <Badge color="red" size="sm">
+                  {recentNotifications.length}
+                </Badge>
+              </Group>
+              <Button
+                variant="subtle"
+                size="xs"
+                rightSection={<IconArrowRight size={14} />}
+                onClick={() => navigate("/notifikationer")}
+              >
+                Se alle
+              </Button>
             </Group>
-            <Button
-              variant="subtle"
-              size="xs"
-              rightSection={<IconArrowRight size={14} />}
-              onClick={() => navigate("/notifikationer")}
-            >
-              Se alle
-            </Button>
-          </Group>
-          <Stack gap="sm">
-            {recentNotifications.map((notification) => (
-              <NotificationPreview
-                key={notification.id}
-                notification={notification}
-              />
-            ))}
-          </Stack>
-        </Paper>
+            <Stack gap="sm">
+              {recentNotifications.map((notification) => (
+                <NotificationPreview
+                  key={notification.id}
+                  notification={notification}
+                />
+              ))}
+            </Stack>
+          </Paper>
+        </ErrorBoundary>
       )}
 
       {/* Birthdays and Food Widgets - Side by Side */}
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg" mt="xl">
-        <Paper withBorder p="lg" radius="md">
-          <Group justify="space-between" mb="md">
-            <Title order={3}>Seneste vigtig post</Title>
-            <Button
-              variant="subtle"
-              size="xs"
-              rightSection={<IconArrowRight size={14} />}
-              onClick={() => navigate("/opslag")}
-            >
-              Se alle
-            </Button>
-          </Group>
+        <ErrorBoundary compact title="Kunne ikke vise opslag">
+          <Paper withBorder p="lg" radius="md">
+            <Group justify="space-between" mb="md">
+              <Title order={3}>Seneste vigtig post</Title>
+              <Button
+                variant="subtle"
+                size="xs"
+                rightSection={<IconArrowRight size={14} />}
+                onClick={() => navigate("/opslag")}
+              >
+                Se alle
+              </Button>
+            </Group>
 
-          {announcementsLoading ? (
-            <Loader size="sm" />
-          ) : recentAnnouncements && recentAnnouncements.length > 0 ? (
-            <Stack gap="md">
-              {recentAnnouncements.map((announcement) => (
-                <AnnouncementPreview
-                  key={announcement.id}
-                  announcement={announcement}
-                />
-              ))}
-            </Stack>
-          ) : (
-            <Text c="dimmed">Ingen opslag endnu.</Text>
-          )}
-        </Paper>
+            {announcementsLoading ? (
+              <Loader size="sm" />
+            ) : recentAnnouncements && recentAnnouncements.length > 0 ? (
+              <Stack gap="md">
+                {recentAnnouncements.map((announcement) => (
+                  <AnnouncementPreview
+                    key={announcement.id}
+                    announcement={announcement}
+                  />
+                ))}
+              </Stack>
+            ) : (
+              <Text c="dimmed">Ingen opslag endnu.</Text>
+            )}
+          </Paper>
+        </ErrorBoundary>
 
         {/* Food Widget */}
-        <Paper withBorder p="lg" radius="md">
-          <Group justify="space-between" mb="md">
-            <Group gap="xs">
-              <ThemeIcon size="sm" color="green" radius="xl">
-                <IconSoup size={14} />
-              </ThemeIcon>
-              <Title order={3}>Mad</Title>
-              {currentDriveMenu?.drive_folder_url && (
-                <Anchor
-                  href={currentDriveMenu.drive_folder_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  size="xs"
-                  c="dimmed"
-                >
-                  <Group gap={4}>
-                    <IconExternalLink size={12} />
-                    Drive
-                  </Group>
-                </Anchor>
-              )}
-            </Group>
-            <Button
-              variant="subtle"
-              size="xs"
-              rightSection={<IconArrowRight size={14} />}
-              onClick={() => navigate("/mad")}
-            >
-              Se mere
-            </Button>
-          </Group>
-          {(isTodayFoodDay && currentDriveMenu) || nextFoodDay ? (
-            <Stack gap="md">
-              {isTodayFoodDay && currentDriveMenu && (
-                <FoodDayWidget
-                  date={todayStr}
-                  dayName={today.format("dddd")}
-                  menuText={todayMenuText}
-                  registration={todayRegistration}
-                  label="I dag"
-                  isToday
-                  ticketsForSale={ticketsForSaleByDate.get(todayStr) ?? []}
-                  purchasedTickets={purchasedTicketsByDate.get(todayStr) ?? []}
-                  communityStats={getDailyStats(currentWeekStats, todayStr)}
-                />
-              )}
-              {nextFoodDay && (
-                <FoodDayWidget
-                  date={nextFoodDay.date.format("YYYY-MM-DD")}
-                  dayName={nextFoodDay.date.format("dddd")}
-                  menuText={nextFoodDay.menuText}
-                  registration={nextFoodDayRegistration}
-                  label={(() => {
-                    const daysUntil = nextFoodDay.date.diff(
-                      dayjs().startOf("day"),
-                      "day",
-                    )
-                    if (daysUntil === 1) return "I morgen"
-                    return `Om ${daysUntil} dage`
-                  })()}
-                  isToday={false}
-                  ticketsForSale={
-                    ticketsForSaleByDate.get(
-                      nextFoodDay.date.format("YYYY-MM-DD"),
-                    ) ?? []
-                  }
-                  purchasedTickets={
-                    purchasedTicketsByDate.get(
-                      nextFoodDay.date.format("YYYY-MM-DD"),
-                    ) ?? []
-                  }
-                  communityStats={getDailyStats(
-                    nextFoodDay.date.isoWeek() === currentWeekNumber
-                      ? currentWeekStats
-                      : nextWeekStats,
-                    nextFoodDay.date.format("YYYY-MM-DD"),
-                  )}
-                />
-              )}
-            </Stack>
-          ) : (
-            <Stack align="center" py="md" gap="xs">
-              <ThemeIcon size="xl" color="gray" variant="light" radius="xl">
-                <IconSoup size={24} />
-              </ThemeIcon>
-              <Text c="dimmed" size="sm" ta="center">
-                Ingen menu tilgængelig
-              </Text>
+        <ErrorBoundary compact title="Kunne ikke vise mad">
+          <Paper withBorder p="lg" radius="md">
+            <Group justify="space-between" mb="md">
+              <Group gap="xs">
+                <ThemeIcon size="sm" color="green" radius="xl">
+                  <IconSoup size={14} />
+                </ThemeIcon>
+                <Title order={3}>Mad</Title>
+                {currentDriveMenu?.drive_folder_url && (
+                  <Anchor
+                    href={currentDriveMenu.drive_folder_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    size="xs"
+                    c="dimmed"
+                  >
+                    <Group gap={4}>
+                      <IconExternalLink size={12} />
+                      Drive
+                    </Group>
+                  </Anchor>
+                )}
+              </Group>
               <Button
-                variant="light"
+                variant="subtle"
                 size="xs"
+                rightSection={<IconArrowRight size={14} />}
                 onClick={() => navigate("/mad")}
               >
-                Se madplan
+                Se mere
               </Button>
-            </Stack>
-          )}
-        </Paper>
+            </Group>
+            {(isTodayFoodDay && currentDriveMenu) || nextFoodDay ? (
+              <Stack gap="md">
+                {isTodayFoodDay && currentDriveMenu && (
+                  <FoodDayWidget
+                    date={todayStr}
+                    dayName={today.format("dddd")}
+                    menuText={todayMenuText}
+                    registration={todayRegistration}
+                    label="I dag"
+                    isToday
+                    ticketsForSale={ticketsForSaleByDate.get(todayStr) ?? []}
+                    purchasedTickets={
+                      purchasedTicketsByDate.get(todayStr) ?? []
+                    }
+                    communityStats={getDailyStats(currentWeekStats, todayStr)}
+                  />
+                )}
+                {nextFoodDay && (
+                  <FoodDayWidget
+                    date={nextFoodDay.date.format("YYYY-MM-DD")}
+                    dayName={nextFoodDay.date.format("dddd")}
+                    menuText={nextFoodDay.menuText}
+                    registration={nextFoodDayRegistration}
+                    label={(() => {
+                      const daysUntil = nextFoodDay.date.diff(
+                        dayjs().startOf("day"),
+                        "day",
+                      )
+                      if (daysUntil === 1) return "I morgen"
+                      return `Om ${daysUntil} dage`
+                    })()}
+                    isToday={false}
+                    ticketsForSale={
+                      ticketsForSaleByDate.get(
+                        nextFoodDay.date.format("YYYY-MM-DD"),
+                      ) ?? []
+                    }
+                    purchasedTickets={
+                      purchasedTicketsByDate.get(
+                        nextFoodDay.date.format("YYYY-MM-DD"),
+                      ) ?? []
+                    }
+                    communityStats={getDailyStats(
+                      nextFoodDay.date.isoWeek() === currentWeekNumber
+                        ? currentWeekStats
+                        : nextWeekStats,
+                      nextFoodDay.date.format("YYYY-MM-DD"),
+                    )}
+                  />
+                )}
+              </Stack>
+            ) : (
+              <Stack align="center" py="md" gap="xs">
+                <ThemeIcon size="xl" color="gray" variant="light" radius="xl">
+                  <IconSoup size={24} />
+                </ThemeIcon>
+                <Text c="dimmed" size="sm" ta="center">
+                  Ingen menu tilgængelig
+                </Text>
+                <Button
+                  variant="light"
+                  size="xs"
+                  onClick={() => navigate("/mad")}
+                >
+                  Se madplan
+                </Button>
+              </Stack>
+            )}
+          </Paper>
+        </ErrorBoundary>
       </SimpleGrid>
 
       {/* Recent Forum Activity Widget */}
-      <Paper withBorder p="lg" radius="md" mt="xl">
-        <Group justify="space-between" mb="md">
-          <Group gap="xs">
-            <ThemeIcon size="sm" color="blue" radius="xl">
-              <IconMessageCircle size={14} />
-            </ThemeIcon>
-            <Title order={3}>Seneste forumaktivitet</Title>
-          </Group>
-          <Button
-            variant="subtle"
-            size="xs"
-            rightSection={<IconArrowRight size={14} />}
-            onClick={() => navigate("/forum")}
-          >
-            Se forum
-          </Button>
-        </Group>
-        {activityLoading ? (
-          <Loader size="sm" />
-        ) : recentActivity && recentActivity.length > 0 ? (
-          <Stack gap="sm">
-            {recentActivity.map((activity) => (
-              <ActivityPreview key={activity.id} activity={activity} />
-            ))}
-          </Stack>
-        ) : (
-          <Text c="dimmed">Ingen forumaktivitet endnu.</Text>
-        )}
-      </Paper>
-
-      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg" mt="xl">
-        {/* Birthdays Widget */}
-        <Paper withBorder p="lg" radius="md">
+      <ErrorBoundary compact title="Kunne ikke vise forumaktivitet">
+        <Paper withBorder p="lg" radius="md" mt="xl">
           <Group justify="space-between" mb="md">
             <Group gap="xs">
-              <ThemeIcon size="sm" color="pink" radius="xl">
-                <IconCake size={14} />
+              <ThemeIcon size="sm" color="blue" radius="xl">
+                <IconMessageCircle size={14} />
               </ThemeIcon>
-              <Title order={3}>Fødselsdage</Title>
-              {upcomingBirthdays && upcomingBirthdays.length > 0 && (
-                <Badge color="pink" size="sm">
-                  {upcomingBirthdays.length}
-                </Badge>
-              )}
+              <Title order={3}>Seneste forumaktivitet</Title>
             </Group>
             <Button
               variant="subtle"
               size="xs"
               rightSection={<IconArrowRight size={14} />}
-              onClick={() => navigate("/beboere")}
+              onClick={() => navigate("/forum")}
             >
-              Se beboere
+              Se forum
             </Button>
           </Group>
-          {birthdaysLoading ? (
+          {activityLoading ? (
             <Loader size="sm" />
-          ) : upcomingBirthdays && upcomingBirthdays.length > 0 ? (
+          ) : recentActivity && recentActivity.length > 0 ? (
             <Stack gap="sm">
-              {upcomingBirthdays.map((birthday) => (
-                <BirthdayPreview key={birthday.user.id} birthday={birthday} />
+              {recentActivity.map((activity) => (
+                <ActivityPreview key={activity.id} activity={activity} />
               ))}
             </Stack>
           ) : (
-            <Stack align="center" py="md" gap="xs">
-              <ThemeIcon size="xl" color="gray" variant="light" radius="xl">
-                <IconCake size={24} />
-              </ThemeIcon>
-              <Text c="dimmed" size="sm" ta="center">
-                Ingen fødselsdage de næste 7 dage
-              </Text>
-            </Stack>
+            <Text c="dimmed">Ingen forumaktivitet endnu.</Text>
           )}
         </Paper>
+      </ErrorBoundary>
 
-        <Paper withBorder p="lg" radius="md">
-          <Group justify="space-between" mb="md">
-            <Title order={3}>Kommende arrangementer</Title>
-            <Button
-              variant="subtle"
-              size="xs"
-              rightSection={<IconArrowRight size={14} />}
-              onClick={() => navigate("/kalender")}
-            >
-              Se alle
-            </Button>
-          </Group>
+      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg" mt="xl">
+        {/* Birthdays Widget */}
+        <ErrorBoundary compact title="Kunne ikke vise fødselsdage">
+          <Paper withBorder p="lg" radius="md">
+            <Group justify="space-between" mb="md">
+              <Group gap="xs">
+                <ThemeIcon size="sm" color="pink" radius="xl">
+                  <IconCake size={14} />
+                </ThemeIcon>
+                <Title order={3}>Fødselsdage</Title>
+                {upcomingBirthdays && upcomingBirthdays.length > 0 && (
+                  <Badge color="pink" size="sm">
+                    {upcomingBirthdays.length}
+                  </Badge>
+                )}
+              </Group>
+              <Button
+                variant="subtle"
+                size="xs"
+                rightSection={<IconArrowRight size={14} />}
+                onClick={() => navigate("/beboere")}
+              >
+                Se beboere
+              </Button>
+            </Group>
+            {birthdaysLoading ? (
+              <Loader size="sm" />
+            ) : upcomingBirthdays && upcomingBirthdays.length > 0 ? (
+              <Stack gap="sm">
+                {upcomingBirthdays.map((birthday) => (
+                  <BirthdayPreview key={birthday.user.id} birthday={birthday} />
+                ))}
+              </Stack>
+            ) : (
+              <Stack align="center" py="md" gap="xs">
+                <ThemeIcon size="xl" color="gray" variant="light" radius="xl">
+                  <IconCake size={24} />
+                </ThemeIcon>
+                <Text c="dimmed" size="sm" ta="center">
+                  Ingen fødselsdage de næste 7 dage
+                </Text>
+              </Stack>
+            )}
+          </Paper>
+        </ErrorBoundary>
 
-          {eventsLoading ? (
-            <Loader size="sm" />
-          ) : upcomingEvents && upcomingEvents.length > 0 ? (
-            <Stack gap="md">
-              {upcomingEvents.map((event) => (
-                <EventPreview key={event.id} event={event} />
-              ))}
-            </Stack>
-          ) : (
-            <Text c="dimmed">Ingen kommende arrangementer.</Text>
-          )}
-        </Paper>
+        <ErrorBoundary compact title="Kunne ikke vise arrangementer">
+          <Paper withBorder p="lg" radius="md">
+            <Group justify="space-between" mb="md">
+              <Title order={3}>Kommende arrangementer</Title>
+              <Button
+                variant="subtle"
+                size="xs"
+                rightSection={<IconArrowRight size={14} />}
+                onClick={() => navigate("/kalender")}
+              >
+                Se alle
+              </Button>
+            </Group>
+
+            {eventsLoading ? (
+              <Loader size="sm" />
+            ) : upcomingEvents && upcomingEvents.length > 0 ? (
+              <Stack gap="md">
+                {upcomingEvents.map((event) => (
+                  <EventPreview key={event.id} event={event} />
+                ))}
+              </Stack>
+            ) : (
+              <Text c="dimmed">Ingen kommende arrangementer.</Text>
+            )}
+          </Paper>
+        </ErrorBoundary>
       </SimpleGrid>
     </>
   )

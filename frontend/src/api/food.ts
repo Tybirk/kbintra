@@ -267,6 +267,28 @@ export const foodApi = {
     return response.data
   },
 
+  // My Expenses
+  getMyExpenses: async (year: number, month: number): Promise<{
+    year: number
+    month: number
+    month_name: string
+    house_name: string
+    total_cost: string
+    days: Array<{
+      date: string
+      day_name: string
+      adults_meat: number
+      adults_veg: number
+      children_count: number
+      cost: string
+    }>
+  }> => {
+    const response = await apiClient.get("/food/my-expenses/", {
+      params: { year, month },
+    })
+    return response.data
+  },
+
   // Admin Reports
   getMonthlyFoodCost: async (year: number, month: number): Promise<{
     year: number
@@ -277,8 +299,8 @@ export const foodApi = {
       house_id: number
       house_name: string
       total_cost: string
-      ticket_count: number
-      adult_portions: number
+      adult_meat_portions: number
+      adult_veg_portions: number
       child_portions: number
     }>
   }> => {

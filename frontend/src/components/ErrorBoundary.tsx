@@ -1,50 +1,77 @@
 import { Component } from "react"
-import type { ReactNode } from "react"
-import {
-  Container,
-  Title,
-  Text,
-  Button,
-  Stack,
-  Paper,
-  Code,
-} from "@mantine/core"
-import { IconAlertTriangle } from "@tabler/icons-react"
+import type { ErrorInfo, ReactNode } from "react"
 import * as Sentry from "@sentry/react"
+
+import { ErrorFallback } from "./ErrorFallback"
 
 interface Props {
   children: ReactNode
+  /** Custom fallback UI. Overrides the default ErrorFallback. */
   fallback?: ReactNode
+  /** Render as a compact inline alert suitable for wrapping subcomponents. */
+  compact?: boolean
+  title?: string
+  description?: string
+  /** Called when the error boundary resets via the "Prøv igen" button. */
+  onReset?: () => void
+  /**
+   * If any entry in this array changes between renders, the boundary
+   * automatically resets. Use this to recover when the underlying data
+   * that caused the error has changed (e.g. after a successful refetch).
+   */
+  resetKeys?: ReadonlyArray<unknown>
 }
 
 interface State {
   hasError: boolean
   error: Error | null
+  componentStack: string | null
+}
+
+function keysChanged(
+  prev: ReadonlyArray<unknown> | undefined,
+  next: ReadonlyArray<unknown> | undefined,
+): boolean {
+  if (prev === next) return false
+  if (!prev || !next) return true
+  if (prev.length !== next.length) return true
+  for (let i = 0; i < prev.length; i++) {
+    if (!Object.is(prev[i], next[i])) return true
+  }
+  return false
 }
 
 export class ErrorBoundary extends Component<Props, State> {
-  constructor(props: Props) {
-    super(props)
-    this.state = { hasError: false, error: null }
-  }
+  state: State = { hasError: false, error: null, componentStack: null }
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): Partial<State> {
     return { hasError: true, error }
   }
 
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("ErrorBoundary caught an error:", error, errorInfo)
+    this.setState({ componentStack: errorInfo.componentStack ?? null })
     Sentry.captureException(error, {
       extra: { componentStack: errorInfo.componentStack },
     })
   }
 
-  handleReload = () => {
-    window.location.reload()
+  componentDidUpdate(prevProps: Props) {
+    if (
+      this.state.hasError &&
+      keysChanged(prevProps.resetKeys, this.props.resetKeys)
+    ) {
+      this.resetState()
+    }
   }
 
-  handleGoHome = () => {
-    window.location.href = "/"
+  resetState() {
+    this.setState({ hasError: false, error: null, componentStack: null })
+  }
+
+  handleReset = () => {
+    this.resetState()
+    this.props.onReset?.()
   }
 
   render() {
@@ -54,39 +81,14 @@ export class ErrorBoundary extends Component<Props, State> {
       }
 
       return (
-        <Container size="sm" py="xl">
-          <Paper withBorder p="xl" radius="md">
-            <Stack align="center" gap="md">
-              <IconAlertTriangle size={64} color="var(--mantine-color-red-6)" />
-              <Title order={2} ta="center">
-                Noget gik galt
-              </Title>
-              <Text c="dimmed" ta="center">
-                Der opstod en uventet fejl. Prøv at genindlæse siden eller gå
-                til forsiden.
-              </Text>
-              {import.meta.env.DEV && this.state.error && (
-                <Code
-                  block
-                  w="100%"
-                  style={{ maxHeight: 200, overflow: "auto" }}
-                >
-                  {this.state.error.message}
-                  {"\n\n"}
-                  {this.state.error.stack}
-                </Code>
-              )}
-              <Button.Group>
-                <Button onClick={this.handleReload} variant="filled">
-                  Genindlæs side
-                </Button>
-                <Button onClick={this.handleGoHome} variant="light">
-                  Gå til forsiden
-                </Button>
-              </Button.Group>
-            </Stack>
-          </Paper>
-        </Container>
+        <ErrorFallback
+          error={this.state.error}
+          componentStack={this.state.componentStack}
+          resetErrorBoundary={this.handleReset}
+          compact={this.props.compact}
+          title={this.props.title}
+          description={this.props.description}
+        />
       )
     }
 

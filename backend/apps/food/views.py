@@ -1298,7 +1298,8 @@ class MonthlyFoodCostView(APIView):
         for house in houses:
             house_total = Decimal("0.00")
             registration_count = 0
-            adult_portions = 0
+            adult_meat_portions = 0
+            adult_veg_portions = 0
             child_portions = 0
 
             # One registration per house per date — no dedup needed
@@ -1327,7 +1328,8 @@ class MonthlyFoodCostView(APIView):
                 )
                 house_total += cost
                 registration_count += 1
-                adult_portions += meat + veg
+                adult_meat_portions += meat
+                adult_veg_portions += veg
                 child_portions += children
 
             house_costs.append(
@@ -1336,15 +1338,21 @@ class MonthlyFoodCostView(APIView):
                     "house_name": house.name,
                     "total_cost": house_total,
                     "registration_count": registration_count,
-                    "ticket_count": 0,
-                    "adult_portions": adult_portions,
+                    "adult_meat_portions": adult_meat_portions,
+                    "adult_veg_portions": adult_veg_portions,
                     "child_portions": child_portions,
                 }
             )
             total_cost += house_total
 
-        # Sort by house name
-        house_costs.sort(key=lambda x: x["house_name"])
+        # Sort by house number numerically (extract trailing number from name)
+        import re
+
+        def _house_sort_key(h: dict) -> int:
+            m = re.search(r"(\d+)$", h["house_name"])
+            return int(m.group(1)) if m else 0
+
+        house_costs.sort(key=_house_sort_key)
 
         # Get month name
         month_names = [
@@ -1372,6 +1380,128 @@ class MonthlyFoodCostView(APIView):
         }
 
         return Response(MonthlyFoodCostReportSerializer(result).data)
+
+
+class MyMonthlyExpensesView(APIView):
+    """Get monthly food expense breakdown for the authenticated user's house."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        year = request.query_params.get("year")
+        month = request.query_params.get("month")
+
+        if not year or not month:
+            return Response(
+                {"detail": "Please provide 'year' and 'month' query parameters."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            year = int(year)
+            month = int(month)
+        except ValueError:
+            return Response(
+                {"detail": "Year and month must be integers."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = MonthlyFoodCostSerializer(data={"year": year, "month": month})
+        serializer.is_valid(raise_exception=True)
+
+        house = request.user.house
+        if not house:
+            return Response(
+                {"detail": "Du er ikke tilknyttet et hus."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from calendar import monthrange
+        from decimal import Decimal
+
+        from .utils import get_closed_food_dates
+
+        first_day = date(year, month, 1)
+        _, last_day_num = monthrange(year, month)
+        last_day = date(year, month, last_day_num)
+
+        # Collect Mon-Thu dates where deadline has passed
+        billing_dates: list[date] = []
+        current = first_day
+        while current <= last_day:
+            if current.weekday() <= 3 and is_after_deadline(current):
+                billing_dates.append(current)
+            current += timedelta(days=1)
+
+        closed = get_closed_food_dates(billing_dates)
+        billing_dates = [d for d in billing_dates if d not in closed]
+
+        # Materialize any missing registrations
+        from .tasks import _materialize_for_houses
+
+        _materialize_for_houses(billing_dates)
+
+        regs_by_date: dict[date, MealRegistration] = {}
+        for reg in MealRegistration.objects.filter(
+            house=house,
+            date__gte=first_day,
+            date__lte=last_day,
+        ):
+            regs_by_date[reg.date] = reg
+
+        days: list[dict] = []
+        total_cost = Decimal("0.00")
+
+        for billing_date in billing_dates:
+            if billing_date not in regs_by_date:
+                continue
+            reg = regs_by_date[billing_date]
+            if not reg.is_active:
+                continue
+            meat = reg.adults_meat
+            veg = reg.adults_veg
+            children = reg.children_count
+            if meat == 0 and veg == 0 and children == 0:
+                continue
+            cost = calculate_meal_price(meat, veg, children)
+            total_cost += cost
+            days.append(
+                {
+                    "date": billing_date.isoformat(),
+                    "day_name": DAY_NAMES[billing_date.weekday()],
+                    "adults_meat": meat,
+                    "adults_veg": veg,
+                    "children_count": children,
+                    "cost": str(cost),
+                }
+            )
+
+        month_names = [
+            "",
+            "Januar",
+            "Februar",
+            "Marts",
+            "April",
+            "Maj",
+            "Juni",
+            "Juli",
+            "August",
+            "September",
+            "Oktober",
+            "November",
+            "December",
+        ]
+
+        return Response(
+            {
+                "year": year,
+                "month": month,
+                "month_name": month_names[month],
+                "house_name": house.name,
+                "total_cost": str(total_cost),
+                "days": days,
+            }
+        )
 
 
 # Drive Menu Views

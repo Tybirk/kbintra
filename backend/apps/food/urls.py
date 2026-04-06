@@ -26,6 +26,7 @@ from .views import (
     MealRegistrationDetailView,
     MealRegistrationListCreateView,
     MonthlyFoodCostView,
+    MyMonthlyExpensesView,
     MyTeamsView,
     MyTicketsView,
     MyWishView,
@@ -79,6 +80,8 @@ urlpatterns = [
         DefaultCookingDaysView.as_view(),
         name="default-cooking-days",
     ),
+    # Expenses (user-facing)
+    path("my-expenses/", MyMonthlyExpensesView.as_view(), name="my-expenses"),
     # Admin Reports
     path(
         "admin/monthly-cost/",

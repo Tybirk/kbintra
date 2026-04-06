@@ -105,7 +105,7 @@ export default function FoodPage() {
   const { user } = useAuthStore()
 
   // Path-based tab state
-  const validTabs = ["tilmelding", "billetter", "admin"]
+  const validTabs = ["tilmelding", "billetter", "okonomi", "admin"]
   const activeTab = tab && validTabs.includes(tab) ? tab : "tilmelding"
   const setActiveTab = (newTab: string | null) => {
     if (newTab && newTab !== "tilmelding") {
@@ -322,6 +322,9 @@ export default function FoodPage() {
           </Tabs.Tab>
           <Tabs.Tab value="billetter" leftSection={<IconTicket size={16} />}>
             Billetter
+          </Tabs.Tab>
+          <Tabs.Tab value="okonomi" leftSection={<IconWallet size={16} />}>
+            Økonomi
           </Tabs.Tab>
           {user?.is_staff && (
             <Tabs.Tab value="admin" leftSection={<IconSettings size={16} />}>
@@ -591,6 +594,10 @@ export default function FoodPage() {
           </Stack>
         </Tabs.Panel>
 
+        <Tabs.Panel value="okonomi">
+          <MyFoodExpenses />
+        </Tabs.Panel>
+
         {user?.is_staff && (
           <Tabs.Panel value="admin">
             <Stack gap="xl">
@@ -751,6 +758,159 @@ function ClosedDaysAdmin() {
   )
 }
 
+// My Food Expenses Component (user-facing)
+function MyFoodExpenses() {
+  const currentDate = dayjs()
+  const [selectedYear, setSelectedYear] = useState(
+    currentDate.year().toString(),
+  )
+  const [selectedMonth, setSelectedMonth] = useState(
+    (currentDate.month() + 1).toString(),
+  )
+
+  const { data: expenses, isLoading } = useQuery({
+    queryKey: ["food", "my-expenses", selectedYear, selectedMonth],
+    queryFn: () =>
+      foodApi.getMyExpenses(parseInt(selectedYear), parseInt(selectedMonth)),
+    enabled: !!selectedYear && !!selectedMonth,
+  })
+
+  const years = Array.from({ length: 5 }, (_, i) => {
+    const year = currentDate.year() - 2 + i
+    return { value: year.toString(), label: year.toString() }
+  })
+
+  const months = [
+    { value: "1", label: "Januar" },
+    { value: "2", label: "Februar" },
+    { value: "3", label: "Marts" },
+    { value: "4", label: "April" },
+    { value: "5", label: "Maj" },
+    { value: "6", label: "Juni" },
+    { value: "7", label: "Juli" },
+    { value: "8", label: "August" },
+    { value: "9", label: "September" },
+    { value: "10", label: "Oktober" },
+    { value: "11", label: "November" },
+    { value: "12", label: "December" },
+  ]
+
+  return (
+    <Stack gap="lg">
+      <Group justify="space-between">
+        <Title order={3}>
+          <Group gap="xs">
+            <IconWallet size={24} />
+            Madudgifter
+          </Group>
+        </Title>
+        <Group>
+          <Select
+            value={selectedMonth}
+            onChange={(val) => val && setSelectedMonth(val)}
+            data={months}
+            w={140}
+          />
+          <Select
+            value={selectedYear}
+            onChange={(val) => val && setSelectedYear(val)}
+            data={years}
+            w={100}
+          />
+        </Group>
+      </Group>
+
+      {isLoading ? (
+        <Center h={200}>
+          <Loader size="lg" />
+        </Center>
+      ) : expenses ? (
+        <Card withBorder p="md" radius="md">
+          <Stack gap="md">
+            <Group justify="space-between">
+              <Text fw={600} size="lg">
+                {expenses.month_name} {expenses.year}
+              </Text>
+              <Badge size="lg" color="blue">
+                Total: {parseFloat(expenses.total_cost).toFixed(0)}&nbsp;kr
+              </Badge>
+            </Group>
+
+            {expenses.days.length === 0 ? (
+              <Text c="dimmed">Ingen madudgifter denne måned.</Text>
+            ) : (
+              <Table.ScrollContainer minWidth={350}>
+                <Table striped highlightOnHover>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Dato</Table.Th>
+                      <Table.Th>Dag</Table.Th>
+                      <Table.Th ta="right">Kød</Table.Th>
+                      <Table.Th ta="right">Vegetar</Table.Th>
+                      <Table.Th ta="right">Børn</Table.Th>
+                      <Table.Th ta="right">Pris</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {expenses.days.map((day) => (
+                      <Table.Tr key={day.date}>
+                        <Table.Td>{dayjs(day.date).format("D/M")}</Table.Td>
+                        <Table.Td>{day.day_name}</Table.Td>
+                        <Table.Td ta="right">{day.adults_meat}</Table.Td>
+                        <Table.Td ta="right">{day.adults_veg}</Table.Td>
+                        <Table.Td ta="right">{day.children_count}</Table.Td>
+                        <Table.Td
+                          ta="right"
+                          fw={500}
+                          style={{ whiteSpace: "nowrap" }}
+                        >
+                          {parseFloat(day.cost).toFixed(0)} kr
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                  <Table.Tfoot>
+                    <Table.Tr>
+                      <Table.Td colSpan={2} fw={600}>
+                        Total
+                      </Table.Td>
+                      <Table.Td ta="right" fw={600}>
+                        {expenses.days.reduce(
+                          (sum, d) => sum + d.adults_meat,
+                          0,
+                        )}
+                      </Table.Td>
+                      <Table.Td ta="right" fw={600}>
+                        {expenses.days.reduce(
+                          (sum, d) => sum + d.adults_veg,
+                          0,
+                        )}
+                      </Table.Td>
+                      <Table.Td ta="right" fw={600}>
+                        {expenses.days.reduce(
+                          (sum, d) => sum + d.children_count,
+                          0,
+                        )}
+                      </Table.Td>
+                      <Table.Td
+                        ta="right"
+                        fw={600}
+                        style={{ whiteSpace: "nowrap" }}
+                      >
+                        {parseFloat(expenses.total_cost).toFixed(0)} kr
+                      </Table.Td>
+                    </Table.Tr>
+                  </Table.Tfoot>
+                </Table>
+              </Table.ScrollContainer>
+            )}
+          </Stack>
+        </Card>
+      ) : null}
+    </Stack>
+  )
+}
+
 // Monthly Cost Report Component (Admin only)
 function MonthlyCostReport() {
   const currentDate = dayjs()
@@ -827,21 +987,21 @@ function MonthlyCostReport() {
               <Text fw={600} size="lg">
                 {costReport.month_name} {costReport.year}
               </Text>
-              <Badge size="lg" color="blue">
-                Total: {parseFloat(costReport.total_cost).toFixed(2)} kr
+              <Badge size="lg" color="blue" style={{ whiteSpace: "nowrap" }}>
+                Total: {parseFloat(costReport.total_cost).toFixed(0)}&nbsp;kr
               </Badge>
             </Group>
 
             {costReport.houses.length === 0 ? (
-              <Text c="dimmed">Ingen madbilletter taget denne måned.</Text>
+              <Text c="dimmed">Ingen registreringer denne måned.</Text>
             ) : (
               <Table.ScrollContainer minWidth={400}>
                 <Table striped highlightOnHover>
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Hus</Table.Th>
-                      <Table.Th ta="right">Billetter</Table.Th>
-                      <Table.Th ta="right">Voksne</Table.Th>
+                      <Table.Th ta="right">Kød</Table.Th>
+                      <Table.Th ta="right">Vegetar</Table.Th>
                       <Table.Th ta="right">Børn</Table.Th>
                       <Table.Th ta="right">Total pris</Table.Th>
                     </Table.Tr>
@@ -849,12 +1009,22 @@ function MonthlyCostReport() {
                   <Table.Tbody>
                     {costReport.houses.map((house) => (
                       <Table.Tr key={house.house_id}>
-                        <Table.Td>{house.house_name}</Table.Td>
-                        <Table.Td ta="right">{house.ticket_count}</Table.Td>
-                        <Table.Td ta="right">{house.adult_portions}</Table.Td>
+                        <Table.Td>
+                          {house.house_name.replace(/^\D+/, "")}
+                        </Table.Td>
+                        <Table.Td ta="right">
+                          {house.adult_meat_portions}
+                        </Table.Td>
+                        <Table.Td ta="right">
+                          {house.adult_veg_portions}
+                        </Table.Td>
                         <Table.Td ta="right">{house.child_portions}</Table.Td>
-                        <Table.Td ta="right" fw={500}>
-                          {parseFloat(house.total_cost).toFixed(2)} kr
+                        <Table.Td
+                          ta="right"
+                          fw={500}
+                          style={{ whiteSpace: "nowrap" }}
+                        >
+                          {parseFloat(house.total_cost).toFixed(0)} kr
                         </Table.Td>
                       </Table.Tr>
                     ))}
@@ -864,13 +1034,13 @@ function MonthlyCostReport() {
                       <Table.Td fw={600}>Total</Table.Td>
                       <Table.Td ta="right" fw={600}>
                         {costReport.houses.reduce(
-                          (sum, h) => sum + h.ticket_count,
+                          (sum, h) => sum + h.adult_meat_portions,
                           0,
                         )}
                       </Table.Td>
                       <Table.Td ta="right" fw={600}>
                         {costReport.houses.reduce(
-                          (sum, h) => sum + h.adult_portions,
+                          (sum, h) => sum + h.adult_veg_portions,
                           0,
                         )}
                       </Table.Td>
@@ -880,8 +1050,12 @@ function MonthlyCostReport() {
                           0,
                         )}
                       </Table.Td>
-                      <Table.Td ta="right" fw={600}>
-                        {parseFloat(costReport.total_cost).toFixed(2)} kr
+                      <Table.Td
+                        ta="right"
+                        fw={600}
+                        style={{ whiteSpace: "nowrap" }}
+                      >
+                        {parseFloat(costReport.total_cost).toFixed(0)} kr
                       </Table.Td>
                     </Table.Tr>
                   </Table.Tfoot>

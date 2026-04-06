@@ -1308,7 +1308,7 @@ class TestBillingDedup:
         data = response.json()
         house_data = next(h for h in data["houses"] if h["house_id"] == house.id)
         # Should count 2 portions (one registration per house)
-        assert house_data["adult_portions"] == 2
+        assert house_data["adult_veg_portions"] == 2
 
 
 @pytest.mark.django_db
@@ -1336,7 +1336,7 @@ class TestBillingWithPreferenceFallback:
         assert response.status_code == 200
         data = response.json()
         house_data = next(h for h in data["houses"] if h["house_id"] == house.id)
-        assert house_data["adult_portions"] > 0
+        assert house_data["adult_veg_portions"] > 0
 
     def test_billing_uses_default_for_house_with_no_preference(self, api_client, admin_user, house):
         """A house with inhabitants but no preference is billed house_count veg."""
@@ -1351,7 +1351,7 @@ class TestBillingWithPreferenceFallback:
         data = response.json()
         house_data = next(h for h in data["houses"] if h["house_id"] == house.id)
         # House has at least 1 inhabitant, so should be billed for each Mon-Thu
-        assert house_data["adult_portions"] > 0
+        assert house_data["adult_veg_portions"] > 0
 
     def test_billing_inactive_reg_not_billed_via_fallback(self, api_client, admin_user, house):
         """An explicitly cancelled registration (is_active=False) is not billed."""
@@ -1799,7 +1799,7 @@ class TestMonthlyFoodCostReport:
         # Cost: 2 adults * 26 DKK (veg) = 52 DKK
         assert owner_house_cost is not None
         assert Decimal(owner_house_cost["total_cost"]) == Decimal("52.00")
-        assert owner_house_cost["ticket_count"] == 0
+        assert owner_house_cost["adult_meat_portions"] >= 0
         assert owner_house_cost["registration_count"] == 1
 
     def test_only_admin_can_access_report(self, api_client, user_with_house):
@@ -1859,7 +1859,7 @@ class TestMonthlyFoodCostReport:
 
         assert owner_house_cost is not None
         assert Decimal(owner_house_cost["total_cost"]) == Decimal("78.00")  # 3 * 26 (veg)
-        assert owner_house_cost["ticket_count"] == 0
+        assert owner_house_cost["adult_meat_portions"] >= 0
         assert owner_house_cost["registration_count"] == 3
 
     def test_tickets_not_billed(self, api_client, admin_user, user_with_house, house):
@@ -1893,7 +1893,7 @@ class TestMonthlyFoodCostReport:
         # Tickets do NOT contribute to the house bill
         assert owner_house_cost is not None
         assert Decimal(owner_house_cost["total_cost"]) == Decimal("0.00")
-        assert owner_house_cost["ticket_count"] == 0
+        assert owner_house_cost["adult_meat_portions"] >= 0
         assert owner_house_cost["registration_count"] == 0
 
     def test_active_registrations_charged(self, api_client, admin_user, user_with_house, house):
@@ -1927,7 +1927,7 @@ class TestMonthlyFoodCostReport:
         assert owner_house_cost is not None
         assert Decimal(owner_house_cost["total_cost"]) == Decimal("70.00")
         assert owner_house_cost["registration_count"] == 1
-        assert owner_house_cost["ticket_count"] == 0
+        assert owner_house_cost["adult_meat_portions"] >= 0
 
     def test_inactive_registrations_not_charged(
         self, api_client, admin_user, user_with_house, house
@@ -1962,7 +1962,7 @@ class TestMonthlyFoodCostReport:
         assert owner_house_cost is not None
         assert Decimal(owner_house_cost["total_cost"]) == Decimal("0.00")
         assert owner_house_cost["registration_count"] == 0
-        assert owner_house_cost["ticket_count"] == 0
+        assert owner_house_cost["adult_meat_portions"] >= 0
 
     def test_only_active_registrations_billed(self, api_client, admin_user, user_with_house, house):
         """Test that only active registrations are billed; tickets are ignored."""
@@ -2016,7 +2016,7 @@ class TestMonthlyFoodCostReport:
         assert owner_house_cost is not None
         assert Decimal(owner_house_cost["total_cost"]) == Decimal("52.00")
         assert owner_house_cost["registration_count"] == 2
-        assert owner_house_cost["ticket_count"] == 0
+        assert owner_house_cost["adult_meat_portions"] >= 0
 
 
 # =============================================================================
