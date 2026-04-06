@@ -37,6 +37,7 @@ import {
   useClipboard,
 } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
+import { showErrorNotification } from "../utils/errorNotification"
 import { DatePickerInput } from "@mantine/dates"
 import {
   IconCalendar,
@@ -146,11 +147,11 @@ export default function FoodPage() {
         message: "Menuen er blevet opdateret fra Google Drive.",
       })
     },
-    onError: () => {
-      notifications.show({
-        color: "red",
-        message: "Kunne ikke opdatere menuen fra Google Drive.",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(
+        error,
+        "Kunne ikke opdatere menuen fra Google Drive.",
+      )
     },
   })
 
@@ -261,12 +262,8 @@ export default function FoodPage() {
         color: "green",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke nulstille tilmeldinger.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke nulstille tilmeldinger.")
     },
   })
 
@@ -636,11 +633,8 @@ function ClosedDaysAdmin() {
         message: "Lukkede dage er blevet oprettet.",
       })
     },
-    onError: () => {
-      notifications.show({
-        color: "red",
-        message: "Kunne ikke oprette lukkede dage.",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke oprette lukkede dage.")
     },
   })
 
@@ -1181,12 +1175,11 @@ function DayRegistrationCard({
       setLastSaved(new Date())
       setIsSaving(false)
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke gemme tilmelding. Prøv venligst igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(
+        error,
+        "Kunne ikke gemme tilmelding. Prøv venligst igen.",
+      )
       setIsSaving(false)
     },
   })
@@ -1202,12 +1195,11 @@ function DayRegistrationCard({
       setLastSaved(new Date())
       setIsSaving(false)
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke gemme tilmelding. Prøv venligst igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(
+        error,
+        "Kunne ikke gemme tilmelding. Prøv venligst igen.",
+      )
       setIsSaving(false)
     },
   })
@@ -1227,12 +1219,11 @@ function DayRegistrationCard({
         color: "green",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke oprette billet. Prøv venligst igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(
+        error,
+        "Kunne ikke oprette billet. Prøv venligst igen.",
+      )
     },
   })
 
@@ -1249,12 +1240,11 @@ function DayRegistrationCard({
         color: "green",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke slette billet. Prøv venligst igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(
+        error,
+        "Kunne ikke slette billet. Prøv venligst igen.",
+      )
     },
   })
 
@@ -1777,12 +1767,8 @@ function TicketCard({ ticket }: TicketCardProps) {
         })
       }
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke købe billet.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke købe billet.")
     },
   })
 
@@ -1796,12 +1782,8 @@ function TicketCard({ ticket }: TicketCardProps) {
         color: "blue",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke frigive billet.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke frigive billet.")
     },
   })
 
@@ -1815,12 +1797,8 @@ function TicketCard({ ticket }: TicketCardProps) {
         color: "blue",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke slette billet.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke slette billet.")
     },
   })
 

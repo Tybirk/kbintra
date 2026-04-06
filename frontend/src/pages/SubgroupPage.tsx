@@ -25,6 +25,7 @@ import {
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
+import { showErrorNotification } from "../utils/errorNotification"
 import {
   IconPlus,
   IconPin,
@@ -329,12 +330,8 @@ Skip any that are too vague to act on, and note why at the end.
         message: `${nonClosedThreads.length} tråde kopieret til udklipsholderen`,
         color: "green",
       })
-    } catch {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke kopiere indhold",
-        color: "red",
-      })
+    } catch (error) {
+      showErrorNotification(error, "Kunne ikke kopiere indhold")
     } finally {
       setIsCopying(false)
     }
@@ -767,12 +764,8 @@ function CreateThreadModal({
       clearDraft("new-thread-title-" + subgroupSlug)
       onSuccess(thread)
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke oprette tråd. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke oprette tråd. Prøv igen.")
     },
   })
 
@@ -1052,12 +1045,11 @@ function DocumentsTab({
           await forumApi.uploadRootFile(subgroupSlug, file)
         }
         successCount++
-      } catch {
-        notifications.show({
-          title: "Fejl",
-          message: `Kunne ikke uploade "${file.name}". Prøv igen.`,
-          color: "red",
-        })
+      } catch (error) {
+        showErrorNotification(
+          error,
+          `Kunne ikke uploade "${file.name}". Prøv igen.`,
+        )
       }
     }
     setUploading(false)
@@ -1385,13 +1377,11 @@ function FolderRow({
               title="Download mappe som zip"
               onClick={(e: React.MouseEvent) => {
                 e.stopPropagation()
-                forumApi.downloadFolder(folder.id, folder.name).catch(() => {
-                  notifications.show({
-                    title: "Fejl",
-                    message: "Kunne ikke downloade mappen.",
-                    color: "red",
+                forumApi
+                  .downloadFolder(folder.id, folder.name)
+                  .catch((error: unknown) => {
+                    showErrorNotification(error, "Kunne ikke downloade mappen.")
                   })
-                })
               }}
             >
               <IconDownload size={16} />
@@ -1443,12 +1433,8 @@ function FileRow({
       })
       onDelete()
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke slette filen. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke slette filen. Prøv igen.")
     },
   })
 
@@ -1650,12 +1636,8 @@ function CreateFolderModal({
       setName("")
       onSuccess()
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke oprette mappen. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke oprette mappen. Prøv igen.")
     },
   })
 
@@ -1733,12 +1715,8 @@ function MoveFileModal({
       setSelectedFolderId(null)
       onSuccess()
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke flytte filen. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke flytte filen. Prøv igen.")
     },
   })
 

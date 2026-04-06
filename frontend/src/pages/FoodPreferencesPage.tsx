@@ -12,7 +12,7 @@ import {
   SegmentedControl,
 } from "@mantine/core"
 import { useDebouncedCallback } from "@mantine/hooks"
-import { notifications } from "@mantine/notifications"
+import { showErrorNotification } from "../utils/errorNotification"
 
 import { foodApi } from "../api/food"
 import { BackButton } from "../components/BackButton"
@@ -136,12 +136,8 @@ function PreferenceCard({
       setIsSaving(false)
       onSaved()
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke gemme præferencer.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke gemme præferencer.")
       setIsSaving(false)
     },
   })
@@ -155,12 +151,8 @@ function PreferenceCard({
       setIsSaving(false)
       onSaved()
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke opdatere præferencer.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke opdatere præferencer.")
       setIsSaving(false)
     },
   })

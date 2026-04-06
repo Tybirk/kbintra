@@ -26,6 +26,7 @@ import {
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
+import { showErrorNotification } from "../utils/errorNotification"
 import { DatePickerInput, DateTimePicker } from "@mantine/dates"
 import {
   IconUsers,
@@ -368,12 +369,8 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
         color: "green",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke indsende ønsker. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke indsende ønsker. Prøv igen.")
     },
   })
 
@@ -633,12 +630,8 @@ function AdminPanel() {
       })
       closeCreateModal()
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke oprette periode.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke oprette periode.")
     },
   })
 
@@ -658,12 +651,8 @@ function AdminPanel() {
         })
       }
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke generere hold.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke generere hold.")
     },
   })
 
@@ -1045,12 +1034,8 @@ function MyTeamCard({
       setSelectedTargetMemberId(null)
       setSwapMessage("")
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke oprette bytteanmodning.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke oprette bytteanmodning.")
     },
   })
 
@@ -1374,12 +1359,8 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
         color: variables.action === "accept" ? "green" : "orange",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke svare på bytteanmodning.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke svare på bytteanmodning.")
     },
   })
 
@@ -1393,12 +1374,8 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
         color: "blue",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke annullere bytteanmodning.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke annullere bytteanmodning.")
     },
   })
 

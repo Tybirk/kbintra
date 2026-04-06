@@ -12,6 +12,7 @@ import {
   Typography,
 } from "@mantine/core"
 import { notifications } from "@mantine/notifications"
+import { showErrorNotification } from "../utils/errorNotification"
 import { IconEdit, IconLink } from "@tabler/icons-react"
 
 import { linksApi } from "../api/links"
@@ -44,12 +45,8 @@ export default function LinksPage() {
         color: "green",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke gemme. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke gemme. Prøv igen.")
     },
   })
 

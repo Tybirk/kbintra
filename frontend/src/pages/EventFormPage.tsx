@@ -18,6 +18,7 @@ import {
 } from "@mantine/core"
 import { DateInput, DatePickerInput, TimePicker } from "@mantine/dates"
 import { notifications } from "@mantine/notifications"
+import { showErrorNotification } from "../utils/errorNotification"
 import { IconMapPin, IconAlertCircle } from "@tabler/icons-react"
 import dayjs from "dayjs"
 
@@ -365,15 +366,14 @@ export default function EventFormPage() {
       })
       navigate(`/kalender/${result.slug}`)
     },
-    onError: (error) => {
+    onError: (error: unknown) => {
       const fieldErrors = parseDrfErrors(error)
       setErrors(fieldErrors)
       if (Object.keys(fieldErrors).length === 0) {
-        notifications.show({
-          title: "Fejl",
-          message: "Kunne ikke oprette begivenhed. Prøv igen.",
-          color: "red",
-        })
+        showErrorNotification(
+          error,
+          "Kunne ikke oprette begivenhed. Prøv igen.",
+        )
       }
     },
   })
@@ -392,15 +392,14 @@ export default function EventFormPage() {
       })
       navigate(`/kalender/${slug}`)
     },
-    onError: (error) => {
+    onError: (error: unknown) => {
       const fieldErrors = parseDrfErrors(error)
       setErrors(fieldErrors)
       if (Object.keys(fieldErrors).length === 0) {
-        notifications.show({
-          title: "Fejl",
-          message: "Kunne ikke opdatere begivenhed. Prøv igen.",
-          color: "red",
-        })
+        showErrorNotification(
+          error,
+          "Kunne ikke opdatere begivenhed. Prøv igen.",
+        )
       }
     },
   })
@@ -483,11 +482,10 @@ export default function EventFormPage() {
         const fieldErrors = parseDrfErrors(error)
         setErrors(fieldErrors)
         if (Object.keys(fieldErrors).length === 0) {
-          notifications.show({
-            title: "Fejl",
-            message: "Kunne ikke oprette begivenheder. Prøv igen.",
-            color: "red",
-          })
+          showErrorNotification(
+            error,
+            "Kunne ikke oprette begivenheder. Prøv igen.",
+          )
         }
       } finally {
         setMultiDatePending(false)

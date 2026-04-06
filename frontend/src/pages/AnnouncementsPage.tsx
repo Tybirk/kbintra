@@ -23,6 +23,7 @@ import {
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
+import { showErrorNotification } from "../utils/errorNotification"
 import {
   IconPlus,
   IconSpeakerphone,
@@ -122,12 +123,8 @@ export default function AnnouncementsPage() {
         color: "blue",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke slette opslag. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke slette opslag. Prøv igen.")
     },
   })
 
@@ -268,12 +265,8 @@ function AnnouncementCard({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["announcements"] })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke opdatere opslag. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke opdatere opslag. Prøv igen.")
     },
   })
 
@@ -477,12 +470,8 @@ function CreateAnnouncementModal({
       clearDraft("new-announcement-title")
       onSuccess()
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke oprette opslag. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke oprette opslag. Prøv igen.")
     },
   })
 
@@ -606,12 +595,8 @@ function EditAnnouncementModal({
       })
       onSuccess()
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke opdatere opslag. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke opdatere opslag. Prøv igen.")
     },
   })
 

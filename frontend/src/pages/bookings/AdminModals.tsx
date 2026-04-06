@@ -25,7 +25,8 @@ import { IconPlus } from "@tabler/icons-react"
 import dayjs from "dayjs"
 
 import { bookingsApi } from "../../api/bookings"
-import { extractErrorMessage, TIME_PRESETS } from "./BookingModals"
+import { showErrorNotification } from "../../utils/errorNotification"
+import { TIME_PRESETS } from "./BookingModals"
 import type {
   Room,
   RecurringBooking,
@@ -188,15 +189,8 @@ function CreateRoomModal({
       resetForm()
       onSuccess()
     },
-    onError: (error: any) => {
-      notifications.show({
-        title: "Fejl",
-        message: extractErrorMessage(
-          error,
-          "Kunne ikke oprette lokale. Prøv igen.",
-        ),
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke oprette lokale. Prøv igen.")
     },
   })
 
@@ -285,15 +279,8 @@ function EditRoomModal({
       })
       onSuccess()
     },
-    onError: (error: any) => {
-      notifications.show({
-        title: "Fejl",
-        message: extractErrorMessage(
-          error,
-          "Kunne ikke opdatere lokale. Prøv igen.",
-        ),
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke opdatere lokale. Prøv igen.")
     },
   })
 
@@ -378,15 +365,8 @@ function RecurringBookingsAdmin({
         color: "blue",
       })
     },
-    onError: (error: any) => {
-      notifications.show({
-        title: "Fejl",
-        message: extractErrorMessage(
-          error,
-          "Kunne ikke slette booking. Prøv igen.",
-        ),
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke slette booking. Prøv igen.")
     },
   })
 
@@ -531,15 +511,8 @@ function EditRecurringBookingModal({
       })
       onSuccess()
     },
-    onError: (error: any) => {
-      notifications.show({
-        title: "Fejl",
-        message: extractErrorMessage(
-          error,
-          "Kunne ikke opdatere booking. Prøv igen.",
-        ),
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke opdatere booking. Prøv igen.")
     },
   })
 
@@ -709,15 +682,8 @@ function CreateRecurringBookingModal({
       resetForm()
       onSuccess()
     },
-    onError: (error: any) => {
-      notifications.show({
-        title: "Fejl",
-        message: extractErrorMessage(
-          error,
-          "Kunne ikke oprette booking. Prøv igen.",
-        ),
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke oprette booking. Prøv igen.")
     },
   })
 

@@ -26,6 +26,7 @@ import {
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
+import { showErrorNotification } from "../utils/errorNotification"
 import {
   IconDotsVertical,
   IconEdit,
@@ -357,12 +358,8 @@ export default function ThreadPage() {
         color: "green",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke oprette svar. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke oprette svar. Prøv igen.")
     },
   })
 
@@ -403,12 +400,8 @@ export default function ThreadPage() {
         color: "green",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke opdatere indlægget. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke opdatere indlægget. Prøv igen.")
     },
   })
 
@@ -424,12 +417,8 @@ export default function ThreadPage() {
         color: "blue",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke slette indlægget. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke slette indlægget. Prøv igen.")
     },
   })
 
@@ -443,12 +432,8 @@ export default function ThreadPage() {
       })
       navigate("/forum")
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke slette tråden. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke slette tråden. Prøv igen.")
     },
   })
 
@@ -466,12 +451,11 @@ export default function ThreadPage() {
         color: data.is_muted ? "gray" : "green",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke opdatere notifikationsindstillingen. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(
+        error,
+        "Kunne ikke opdatere notifikationsindstillingen. Prøv igen.",
+      )
     },
   })
 
@@ -488,12 +472,11 @@ export default function ThreadPage() {
         color: data.is_closed ? "orange" : "green",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke opdatere trådens status. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(
+        error,
+        "Kunne ikke opdatere trådens status. Prøv igen.",
+      )
     },
   })
 
@@ -509,12 +492,11 @@ export default function ThreadPage() {
         color: data.is_pinned ? "blue" : "gray",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke opdatere trådens status. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(
+        error,
+        "Kunne ikke opdatere trådens status. Prøv igen.",
+      )
     },
   })
 
@@ -531,15 +513,8 @@ export default function ThreadPage() {
       })
       navigate(`/forum/${data.subgroup_slug}/traad/${data.thread_slug}`)
     },
-    onError: (err: unknown) => {
-      const detail =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail ?? "Kunne ikke flytte tråden. Prøv igen."
-      notifications.show({
-        title: "Fejl",
-        message: detail,
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke flytte tråden. Prøv igen.")
     },
   })
 

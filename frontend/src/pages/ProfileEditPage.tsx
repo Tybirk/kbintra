@@ -22,6 +22,7 @@ import {
 import { DateInput } from "@mantine/dates"
 import { Dropzone, IMAGE_MIME_TYPE } from "@mantine/dropzone"
 import { notifications } from "@mantine/notifications"
+import { showErrorNotification } from "../utils/errorNotification"
 import {
   IconUpload,
   IconPhoto,
@@ -91,12 +92,8 @@ export default function ProfileEditPage() {
       })
       navigate("/profil")
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke opdatere profilen. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke opdatere profilen. Prøv igen.")
     },
   })
 
@@ -116,18 +113,8 @@ export default function ProfileEditPage() {
         autoClose: 8000,
       })
     },
-    onError: (error: { response?: { data?: Record<string, string[]> } }) => {
-      const data = error.response?.data
-      const msg =
-        data?.new_email?.[0] ??
-        data?.current_password?.[0] ??
-        data?.non_field_errors?.[0] ??
-        "Noget gik galt. Prøv igen."
-      notifications.show({
-        title: "Fejl",
-        message: msg,
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Noget gik galt. Prøv igen.")
     },
   })
 
@@ -136,27 +123,15 @@ export default function ProfileEditPage() {
     onSuccess: () => {
       logout()
     },
-    onError: (error: { response?: { data?: Record<string, string[]> } }) => {
-      const msg =
-        error.response?.data?.password?.[0] ??
-        error.response?.data?.non_field_errors?.[0] ??
-        "Noget gik galt. Prøv igen."
-      notifications.show({
-        title: "Fejl",
-        message: msg,
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Noget gik galt. Prøv igen.")
     },
   })
 
   const exportDataMutation = useMutation({
     mutationFn: () => usersApi.exportData(),
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke eksportere data. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke eksportere data. Prøv igen.")
     },
   })
 
@@ -166,12 +141,8 @@ export default function ProfileEditPage() {
       updateUser(updatedUser)
       queryClient.invalidateQueries({ queryKey: ["user"] })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke uploade billede. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke uploade billede. Prøv igen.")
     },
   })
 

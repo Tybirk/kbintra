@@ -25,6 +25,7 @@ import {
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
+import { showErrorNotification } from "../utils/errorNotification"
 import {
   IconDotsVertical,
   IconEdit,
@@ -118,12 +119,8 @@ export default function EventDetailPage() {
       })
       navigate("/kalender")
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke slette begivenhed. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke slette begivenhed. Prøv igen.")
     },
   })
 
@@ -141,12 +138,11 @@ export default function EventDetailPage() {
         color: "orange",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke aflyse arrangementet. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(
+        error,
+        "Kunne ikke aflyse arrangementet. Prøv igen.",
+      )
     },
   })
 
@@ -641,12 +637,8 @@ function RsvpSection({ event }: { event: Event }) {
         color: "green",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke gemme tilmelding. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke gemme tilmelding. Prøv igen.")
     },
   })
 
@@ -798,12 +790,8 @@ function DiscussionSection({
       setContent("")
       clearDraft("event-reply-" + threadId)
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke sende indlæg. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke sende indlæg. Prøv igen.")
     },
   })
 
@@ -815,12 +803,8 @@ function DiscussionSection({
       setEditingPostId(null)
       setEditContent("")
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke opdatere indlæg. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke opdatere indlæg. Prøv igen.")
     },
   })
 
@@ -829,12 +813,8 @@ function DiscussionSection({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke slette indlæg. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke slette indlæg. Prøv igen.")
     },
   })
 

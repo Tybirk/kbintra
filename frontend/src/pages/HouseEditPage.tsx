@@ -25,6 +25,7 @@ import { DateInput } from "@mantine/dates"
 import { Dropzone, IMAGE_MIME_TYPE } from "@mantine/dropzone"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
+import { showErrorNotification } from "../utils/errorNotification"
 import {
   IconUpload,
   IconPhoto,
@@ -117,12 +118,8 @@ export default function HouseEditPage() {
         color: "green",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke opdatere huset. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke opdatere huset. Prøv igen.")
     },
   })
 
@@ -137,12 +134,8 @@ export default function HouseEditPage() {
         color: "green",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke uploade billedet. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke uploade billedet. Prøv igen.")
     },
   })
 
@@ -159,12 +152,8 @@ export default function HouseEditPage() {
       closeChildModal()
       resetChildForm()
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke tilføje barnet. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke tilføje barnet. Prøv igen.")
     },
   })
 
@@ -182,12 +171,8 @@ export default function HouseEditPage() {
       closeChildModal()
       resetChildForm()
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke opdatere barnet. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke opdatere barnet. Prøv igen.")
     },
   })
 
@@ -204,12 +189,8 @@ export default function HouseEditPage() {
       closeDeleteModal()
       setChildToDelete(null)
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke fjerne barnet. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke fjerne barnet. Prøv igen.")
     },
   })
 
@@ -226,12 +207,8 @@ export default function HouseEditPage() {
       closeCarModal()
       resetCarForm()
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke tilføje bilen. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke tilføje bilen. Prøv igen.")
     },
   })
 
@@ -249,12 +226,8 @@ export default function HouseEditPage() {
       closeCarModal()
       resetCarForm()
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke opdatere bilen. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke opdatere bilen. Prøv igen.")
     },
   })
 
@@ -271,12 +244,8 @@ export default function HouseEditPage() {
       closeDeleteCarModal()
       setCarToDelete(null)
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke fjerne bilen. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke fjerne bilen. Prøv igen.")
     },
   })
 

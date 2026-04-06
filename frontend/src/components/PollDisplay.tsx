@@ -14,6 +14,7 @@ import {
   Modal,
 } from "@mantine/core"
 import { notifications } from "@mantine/notifications"
+import { showErrorNotification } from "../utils/errorNotification"
 import { IconTrash, IconCheck } from "@tabler/icons-react"
 
 import { forumApi } from "../api/forum"
@@ -232,12 +233,8 @@ export default function PollDisplay({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: threadQueryKey })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke stemme. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke stemme. Prøv igen.")
     },
   })
 
@@ -251,12 +248,8 @@ export default function PollDisplay({
         color: "blue",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke slette afstemningen. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke slette afstemningen. Prøv igen.")
     },
   })
 

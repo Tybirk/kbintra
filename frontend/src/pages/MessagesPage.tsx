@@ -32,6 +32,7 @@ import {
 } from "@mantine/core"
 import { useDisclosure, useMediaQuery } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
+import { showErrorNotification } from "../utils/errorNotification"
 import {
   IconPlus,
   IconMessage,
@@ -378,12 +379,8 @@ export default function MessagesPage() {
       setSelectedConversation(null)
       navigate("/beskeder", { replace: true })
       queryClient.invalidateQueries({ queryKey: ["conversations"] })
-    } catch {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke forlade samtalen",
-        color: "red",
-      })
+    } catch (error) {
+      showErrorNotification(error, "Kunne ikke forlade samtalen")
     }
   }
 
@@ -916,11 +913,8 @@ function ChatArea({
       })
       queryClient.invalidateQueries({ queryKey: ["conversations"] })
       closeRename()
-    } catch {
-      notifications.show({
-        color: "red",
-        message: "Kunne ikke omdøbe samtalen",
-      })
+    } catch (error) {
+      showErrorNotification(error, "Kunne ikke omdøbe samtalen")
     } finally {
       setIsRenaming(false)
     }
@@ -1359,12 +1353,8 @@ const MessageBubble = memo(function MessageBubble({
     mutationFn: (reactionType: ReactionType) =>
       messagingApi.toggleMessageReaction(message.id, reactionType),
     onSuccess: () => setReactionPickerOpened(false),
-    onError: () =>
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke tilføje reaktion",
-        color: "red",
-      }),
+    onError: (error: unknown) =>
+      showErrorNotification(error, "Kunne ikke tilføje reaktion"),
   })
 
   const handleTouchStart = () => {
@@ -1407,12 +1397,8 @@ const MessageBubble = memo(function MessageBubble({
         updated.edited_at ?? new Date().toISOString(),
       )
       setIsEditing(false)
-    } catch {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke redigere besked",
-        color: "red",
-      })
+    } catch (error) {
+      showErrorNotification(error, "Kunne ikke redigere besked")
     } finally {
       setIsSavingEdit(false)
     }
@@ -1422,12 +1408,8 @@ const MessageBubble = memo(function MessageBubble({
     try {
       await messagingApi.unsendMessage(message.id)
       onUnsend?.(message.id)
-    } catch {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke fortryde afsendelse",
-        color: "red",
-      })
+    } catch (error) {
+      showErrorNotification(error, "Kunne ikke fortryde afsendelse")
     }
   }
 
@@ -2048,12 +2030,8 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
       queryClient.invalidateQueries({ queryKey: ["conversations"] })
       onSuccess(data.id)
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke starte samtale",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke starte samtale")
     },
   })
 
@@ -2332,12 +2310,8 @@ function AddParticipantsModal({
       setSearch("")
       setSelectedUsers([])
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke tilføje deltagere",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke tilføje deltagere")
     },
   })
 

@@ -16,6 +16,7 @@ import {
   Divider,
 } from "@mantine/core"
 import { notifications } from "@mantine/notifications"
+import { showErrorNotification } from "../utils/errorNotification"
 import {
   IconBell,
   IconMessage,
@@ -82,15 +83,14 @@ export default function NotificationPreferencesPage() {
       )
       return { previous }
     },
-    onError: (_err, _newData, context) => {
+    onError: (error: unknown, _newData, context) => {
       if (context?.previous) {
         queryClient.setQueryData(["notification-preferences"], context.previous)
       }
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke opdatere indstillinger. Prøv igen.",
-        color: "red",
-      })
+      showErrorNotification(
+        error,
+        "Kunne ikke opdatere indstillinger. Prøv igen.",
+      )
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["notification-preferences"] })

@@ -16,6 +16,7 @@ import { IconAlertCircle } from "@tabler/icons-react"
 import dayjs from "dayjs"
 
 import { eventsApi } from "../../api/events"
+import { showErrorNotification } from "../../utils/errorNotification"
 import type { Room, CalendarBooking, CreateEventData } from "../../types"
 
 // Generate half-hour time presets
@@ -72,31 +73,6 @@ export const TIME_PRESETS = [
     ],
   },
 ]
-
-/** Extract error messages from Django REST Framework responses */
-export function extractErrorMessage(error: any, fallback: string): string {
-  const data = error?.response?.data
-  if (!data) return fallback
-  if (typeof data.detail === "string") return data.detail
-  if (
-    Array.isArray(data.non_field_errors) &&
-    data.non_field_errors.length > 0
-  ) {
-    return data.non_field_errors.join(" ")
-  }
-  const fieldErrors: string[] = []
-  for (const key of Object.keys(data)) {
-    if (key === "non_field_errors" || key === "detail") continue
-    const value = data[key]
-    if (Array.isArray(value)) {
-      fieldErrors.push(...value)
-    } else if (typeof value === "string") {
-      fieldErrors.push(value)
-    }
-  }
-  if (fieldErrors.length > 0) return fieldErrors.join(" ")
-  return fallback
-}
 
 interface CreateBookingModalProps {
   opened: boolean
@@ -163,12 +139,8 @@ export function CreateBookingModal({
       resetForm()
       onSuccess()
     },
-    onError: (error: any) => {
-      const errorMessage = extractErrorMessage(
-        error,
-        "Kunne ikke oprette booking. Prøv igen.",
-      )
-      notifications.show({ title: "Fejl", message: errorMessage, color: "red" })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke oprette booking. Prøv igen.")
     },
   })
 
@@ -382,12 +354,8 @@ export function EditBookingModal({
       })
       onSuccess()
     },
-    onError: (error: any) => {
-      const errorMessage = extractErrorMessage(
-        error,
-        "Kunne ikke opdatere booking. Prøv igen.",
-      )
-      notifications.show({ title: "Fejl", message: errorMessage, color: "red" })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke opdatere booking. Prøv igen.")
     },
   })
 

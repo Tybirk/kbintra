@@ -18,6 +18,7 @@ import {
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
+import { showErrorNotification } from "../utils/errorNotification"
 import {
   IconSearch,
   IconBell,
@@ -62,12 +63,8 @@ export default function ForumPage() {
         color: "green",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke tilmelde. Prøv venligst igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke tilmelde. Prøv venligst igen.")
     },
   })
 
@@ -81,12 +78,8 @@ export default function ForumPage() {
         color: "blue",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke afmelde. Prøv venligst igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke afmelde. Prøv venligst igen.")
     },
   })
 
@@ -116,12 +109,11 @@ export default function ForumPage() {
       closeCreate()
       navigate(`/forum/${subgroup.slug}`)
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke oprette gruppen. Prøv venligst igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(
+        error,
+        "Kunne ikke oprette gruppen. Prøv venligst igen.",
+      )
     },
   })
 

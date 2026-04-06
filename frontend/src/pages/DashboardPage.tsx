@@ -25,6 +25,7 @@ import {
 } from "@mantine/core"
 import { useDebouncedCallback, useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
+import { showErrorNotification } from "../utils/errorNotification"
 import {
   IconMessageCircle,
   IconCalendar,
@@ -1006,12 +1007,8 @@ function FoodDayWidget({
       setLastSaved(new Date())
       setIsSaving(false)
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke gemme tilmelding.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke gemme tilmelding.")
       setIsSaving(false)
     },
   })
@@ -1029,12 +1026,8 @@ function FoodDayWidget({
       setLastSaved(new Date())
       setIsSaving(false)
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke gemme tilmelding.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke gemme tilmelding.")
       setIsSaving(false)
     },
   })
@@ -1052,12 +1045,11 @@ function FoodDayWidget({
         color: "green",
       })
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke oprette billet. Prøv venligst igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(
+        error,
+        "Kunne ikke oprette billet. Prøv venligst igen.",
+      )
     },
   })
 

@@ -39,11 +39,8 @@ import {
   bookingToScheduleData,
   DA_SCHEDULE_LABELS,
 } from "../utils/scheduleHelpers"
-import {
-  CreateBookingModal,
-  EditBookingModal,
-  extractErrorMessage,
-} from "./bookings/BookingModals"
+import { CreateBookingModal, EditBookingModal } from "./bookings/BookingModals"
+import { showErrorNotification } from "../utils/errorNotification"
 import { AdminModal } from "./bookings/AdminModals"
 import { BookingDetailsModal } from "./bookings/BookingDetailsModal"
 import { DeleteBookingModal } from "./bookings/DeleteBookingModal"
@@ -180,15 +177,8 @@ export default function BookingsPage() {
         color: "blue",
       })
     },
-    onError: (error: any) => {
-      notifications.show({
-        title: "Fejl",
-        message: extractErrorMessage(
-          error,
-          "Kunne ikke slette booking. Prøv igen.",
-        ),
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke slette booking. Prøv igen.")
     },
   })
 

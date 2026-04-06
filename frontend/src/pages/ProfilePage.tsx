@@ -29,7 +29,7 @@ import { usersApi } from "../api/users"
 import { messagingApi } from "../api/messaging"
 import { useAuthStore } from "../store/authStore"
 import { useAccessibilityMode } from "../hooks/useAccessibilityMode"
-import { notifications } from "@mantine/notifications"
+import { showErrorNotification } from "../utils/errorNotification"
 
 function ThemeSettings() {
   const { colorScheme, setColorScheme } = useMantineColorScheme()
@@ -84,12 +84,8 @@ export default function ProfilePage() {
     onSuccess: (conversation) => {
       navigate(`/beskeder/${conversation.id}`)
     },
-    onError: () => {
-      notifications.show({
-        title: "Fejl",
-        message: "Kunne ikke oprette samtale. Prøv igen.",
-        color: "red",
-      })
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke oprette samtale. Prøv igen.")
     },
   })
 
