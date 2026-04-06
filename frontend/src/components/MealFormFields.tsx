@@ -87,7 +87,7 @@ export function MealFormFields({
                 disabled={disabled}
               />
               <NumberInput
-                label="Voksne (vegetar)"
+                label="Voksne (veg)"
                 value={adultsVegInput}
                 onChange={(val) => {
                   setAdultsVegInput(val)
