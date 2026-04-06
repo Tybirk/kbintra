@@ -1,3 +1,4 @@
+import { webcrypto } from "node:crypto"
 import "@testing-library/jest-dom"
 import { afterEach, vi } from "vitest"
 import { cleanup } from "@testing-library/react"
@@ -12,6 +13,13 @@ dayjs.extend(relativeTime)
 afterEach(() => {
   cleanup()
 })
+
+// Polyfill crypto.subtle for jsdom (Node provides it but jsdom strips it)
+if (!globalThis.crypto?.subtle) {
+  Object.defineProperty(globalThis, "crypto", {
+    value: webcrypto,
+  })
+}
 
 // Mock window.matchMedia
 Object.defineProperty(window, "matchMedia", {
