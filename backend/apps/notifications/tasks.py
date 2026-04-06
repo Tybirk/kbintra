@@ -106,19 +106,12 @@ def send_password_reset_email_task(
     reset_url: str,
 ) -> None:
     """Send password reset email in background."""
-    import os
-
     from django.conf import settings
-    from django.core.mail import EmailMessage, get_connection
+    from django.core.mail import EmailMessage
 
-    with get_connection(
-        backend="django.core.mail.backends.smtp.EmailBackend",
-        host=settings.RESEND_SMTP_HOST,
-        port=settings.RESEND_SMTP_PORT,
-        username=settings.RESEND_SMTP_USERNAME,
-        password=os.environ.get("RESEND_API_KEY", ""),
-        use_tls=True,
-    ) as connection:
+    from .email_service import get_resend_connection
+
+    with get_resend_connection() as connection:
         EmailMessage(
             subject="Nulstil din adgangskode - KB Intra",
             body=f"""Hej {first_name},
@@ -153,19 +146,12 @@ def send_email_change_verification_task(
     confirm_url: str,
 ) -> None:
     """Send email change verification email in background."""
-    import os
-
     from django.conf import settings
-    from django.core.mail import EmailMessage, get_connection
+    from django.core.mail import EmailMessage
 
-    with get_connection(
-        backend="django.core.mail.backends.smtp.EmailBackend",
-        host=settings.RESEND_SMTP_HOST,
-        port=settings.RESEND_SMTP_PORT,
-        username=settings.RESEND_SMTP_USERNAME,
-        password=os.environ.get("RESEND_API_KEY", ""),
-        use_tls=True,
-    ) as connection:
+    from .email_service import get_resend_connection
+
+    with get_resend_connection() as connection:
         EmailMessage(
             subject="Bekræft din nye emailadresse - KB Intra",
             body=f"""Hej {first_name},

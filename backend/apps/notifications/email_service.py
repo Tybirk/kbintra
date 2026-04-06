@@ -16,6 +16,18 @@ from .models import NotificationPreference, NotificationType
 logger = logging.getLogger(__name__)
 
 
+def get_resend_connection():
+    """Return an SMTP connection to Resend. Use as a context manager."""
+    return get_connection(
+        backend="django.core.mail.backends.smtp.EmailBackend",
+        host=settings.RESEND_SMTP_HOST,
+        port=settings.RESEND_SMTP_PORT,
+        username=settings.RESEND_SMTP_USERNAME,
+        password=os.environ.get("RESEND_API_KEY", ""),
+        use_tls=True,
+    )
+
+
 def should_send_email(user: User, notification_type: NotificationType) -> bool:
     """Check if user wants to receive email for this notification type."""
     try:
@@ -97,14 +109,7 @@ def send_notification_email(
         html_message = render_to_string("notifications/email_notification.html", context)
         subject = f"[KB Intra] {title}"
 
-        with get_connection(
-            backend="django.core.mail.backends.smtp.EmailBackend",
-            host=settings.RESEND_SMTP_HOST,
-            port=settings.RESEND_SMTP_PORT,
-            username=settings.RESEND_SMTP_USERNAME,
-            password=os.environ.get("RESEND_API_KEY", ""),
-            use_tls=True,
-        ) as connection:
+        with get_resend_connection() as connection:
             email = EmailMessage(
                 subject=subject,
                 body=html_message,
