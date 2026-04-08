@@ -82,6 +82,17 @@ export function GlobalSearch({ onAction }: GlobalSearchProps) {
   // Prevent the close handler from calling history.back() when back button triggered the close
   const closingFromHistoryRef = useRef(false)
 
+  // Track visual viewport height so the actions list fits above the keyboard
+  const [vpHeight, setVpHeight] = useState<number | null>(null)
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!isMobile || !vv) return
+    const update = () => setVpHeight(vv.height)
+    update()
+    vv.addEventListener("resize", update)
+    return () => vv.removeEventListener("resize", update)
+  }, [isMobile])
+
   useEffect(() => {
     const handlePopState = () => {
       if (historyPushedRef.current) {
@@ -243,8 +254,8 @@ export function GlobalSearch({ onAction }: GlobalSearchProps) {
         scrollable
         maxHeight={400}
         styles={
-          isMobile
-            ? { actionsList: { maxHeight: "calc(100dvh - 4rem)" } }
+          isMobile && vpHeight
+            ? { actionsList: { maxHeight: `${vpHeight - 64}px` } }
             : undefined
         }
       />
