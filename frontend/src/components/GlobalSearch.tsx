@@ -244,7 +244,7 @@ export function GlobalSearch({ onAction }: GlobalSearchProps) {
         maxHeight={400}
         styles={
           isMobile
-            ? { actionsList: { maxHeight: "calc(100vh - 4rem)" } }
+            ? { actionsList: { maxHeight: "calc(100dvh - 4rem)" } }
             : undefined
         }
       />
