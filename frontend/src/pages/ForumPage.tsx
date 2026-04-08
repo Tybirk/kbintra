@@ -414,10 +414,12 @@ function SubgroupCard({
         </Group>
 
         {subgroup.description && (
-          <Text size="sm" c="dimmed" lineClamp={2}>
-            {subgroup.description
-              .replace(/<[^>]*>/g, " ")
-              .replace(/\s+/g, " ")
+          <Text size="sm" c="dimmed" lineClamp={1}>
+            {(
+              subgroup.description.match(/<p[^>]*>(.*?)<\/p>/)?.[1] ??
+              subgroup.description
+            )
+              .replace(/<[^>]*>/g, "")
               .trim()}
           </Text>
         )}
