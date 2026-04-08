@@ -5,6 +5,7 @@
 import { apiClient } from "./client"
 import type {
   Subgroup,
+  SubgroupMember,
   SubgroupSubscription,
   Thread,
   ThreadDetail,
@@ -23,8 +24,16 @@ import type {
 interface SubgroupUpdateData {
   description?: string
   icon?: string
+  allows_members?: boolean
 }
-
+interface updateFileData {
+  members_only?: boolean
+  name?: string
+}
+interface updateThreadData {
+  title?: string
+  members_only?: boolean
+}
 export const forumApi = {
   // Recent activity
   getRecentActivity: async (limit = 10): Promise<RecentActivity[]> => {
@@ -41,8 +50,48 @@ export const forumApi = {
   createSubgroup: async (data: {
     name: string
     description: string
+    allows_members?: boolean
   }): Promise<Subgroup> => {
     const response = await apiClient.post("/forum/subgroups/", data)
+    return response.data
+  },
+
+  // Members
+  addMembers: async (
+    slug: string,
+    user_ids: number[],
+  ): Promise<SubgroupMember[]> => {
+    const response = await apiClient.post(`/forum/subgroups/${slug}/members/`, {
+      user_ids,
+    })
+    return response.data
+  },
+
+  removeMember: async (slug: string, userId: number): Promise<void> => {
+    await apiClient.delete(`/forum/subgroups/${slug}/members/${userId}/`)
+  },
+
+  updateMemberRole: async (
+    slug: string,
+    userId: number,
+    role: string,
+  ): Promise<SubgroupMember> => {
+    const response = await apiClient.patch(
+      `/forum/subgroups/${slug}/members/${userId}/`,
+      { role },
+    )
+    return response.data
+  },
+
+  leaveSubgroup: async (slug: string): Promise<void> => {
+    await apiClient.post(`/forum/subgroups/${slug}/leave/`)
+  },
+
+  updateFile: async (
+    fileId: number,
+    data: updateFileData,
+  ): Promise<ForumFile> => {
+    const response = await apiClient.patch(`/forum/files/${fileId}/`, data)
     return response.data
   },
 
@@ -101,6 +150,9 @@ export const forumApi = {
       const formData = new FormData()
       formData.append("title", data.title)
       formData.append("content", data.content)
+      if (data.members_only) {
+        formData.append("members_only", "true")
+      }
       attachments.forEach((file) => {
         formData.append("attachments", file)
       })
@@ -216,7 +268,7 @@ export const forumApi = {
 
   updateThread: async (
     threadId: number,
-    data: { title: string },
+    data: updateThreadData,
   ): Promise<void> => {
     await apiClient.patch(`/forum/threads/${threadId}/update/`, data)
   },
@@ -323,11 +375,15 @@ export const forumApi = {
     folderId: number,
     file: File,
     name?: string,
+    membersOnly?: boolean,
   ): Promise<ForumFile> => {
     const formData = new FormData()
     formData.append("file", file)
     if (name) {
       formData.append("name", name)
+    }
+    if (membersOnly) {
+      formData.append("members_only", "true")
     }
     // Don't set Content-Type header - let browser set it with boundary
     const response = await apiClient.post(
@@ -346,11 +402,15 @@ export const forumApi = {
     subgroupSlug: string,
     file: File,
     name?: string,
+    membersOnly?: boolean,
   ): Promise<ForumFile> => {
     const formData = new FormData()
     formData.append("file", file)
     if (name) {
       formData.append("name", name)
+    }
+    if (membersOnly) {
+      formData.append("members_only", "true")
     }
     // Don't set Content-Type header - let browser set it with boundary
     const response = await apiClient.post(

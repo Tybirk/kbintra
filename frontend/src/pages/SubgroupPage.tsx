@@ -22,6 +22,8 @@ import {
   Select,
   SimpleGrid,
   Typography,
+  Checkbox,
+  Tooltip,
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -47,6 +49,9 @@ import {
   IconEdit,
   IconX,
   IconCheck,
+  IconEyeOff,
+  IconUsers,
+  IconUserPlus,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 
@@ -69,6 +74,7 @@ import {
 import { AttachmentBadge } from "../components/AttachmentBadge"
 import EmojiPicker from "../components/EmojiPicker"
 import UserLink from "../components/UserLink"
+import UserPickerModal from "../components/UserPickerModal"
 import { useAuthStore } from "../store/authStore"
 import type {
   Thread,
@@ -76,6 +82,8 @@ import type {
   CreatePollData,
   Folder,
   ForumFile,
+  Subgroup,
+  SubgroupMember,
 } from "../types"
 
 interface CreateThreadParams {
@@ -446,6 +454,10 @@ Skip any that are too vague to act on, and note why at the end.
         </Group>
       </Group>
 
+      {subgroup.allows_members && (
+        <MembersSection subgroup={subgroup} currentUserId={user?.id ?? null} />
+      )}
+
       {upcomingEvents && upcomingEvents.length > 0 && (
         <SimpleGrid cols={{ base: 1, sm: 2 }} mb="md">
           {upcomingEvents.slice(0, 2).map((event) => (
@@ -567,6 +579,7 @@ Skip any that are too vague to act on, and note why at the end.
         <Tabs.Panel value="documents" pt="md">
           <DocumentsTab
             subgroupSlug={slug!}
+            allowsMembers={subgroup?.allows_members ?? false}
             initialFolderSlug={initialFolderSlug}
             onFolderChange={(folderSlug) => {
               if (folderSlug === null) navigate(`/forum/${slug}/dokumenter`)
@@ -580,6 +593,7 @@ Skip any that are too vague to act on, and note why at the end.
         opened={createThreadModalOpened}
         onClose={closeCreateThreadModal}
         subgroupSlug={slug!}
+        allowsMembers={subgroup?.allows_members ?? false}
         onSuccess={(thread) => {
           queryClient.invalidateQueries({ queryKey: ["threads", slug] })
           closeCreateThreadModal()
@@ -636,6 +650,15 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
                   color="var(--mantine-color-orange-6)"
                   style={{ flexShrink: 0 }}
                 />
+              )}
+              {thread.members_only && (
+                <Tooltip label="Kun for medlemmer">
+                  <IconEyeOff
+                    size={14}
+                    color="var(--mantine-color-grape-6)"
+                    style={{ flexShrink: 0 }}
+                  />
+                </Tooltip>
               )}
               <Text fw={thread.is_unread ? 700 : 500} lineClamp={3}>
                 {thread.title}
@@ -715,6 +738,7 @@ interface CreateThreadModalProps {
   opened: boolean
   onClose: () => void
   subgroupSlug: string
+  allowsMembers: boolean
   onSuccess: (thread: Thread) => void
 }
 
@@ -722,12 +746,14 @@ function CreateThreadModal({
   opened,
   onClose,
   subgroupSlug,
+  allowsMembers,
   onSuccess,
 }: CreateThreadModalProps) {
   const [title, setTitle] = useState("")
   const [content, setContent] = useState("")
   const [attachments, setAttachments] = useState<File[]>([])
   const [pollData, setPollData] = useState<CreatePollData | null>(null)
+  const [membersOnly, setMembersOnly] = useState(false)
 
   const titleDraftKey = "new-thread-title-" + subgroupSlug
 
@@ -760,6 +786,7 @@ function CreateThreadModal({
       setContent("")
       setAttachments([])
       setPollData(null)
+      setMembersOnly(false)
       clearDraft("new-thread-" + subgroupSlug)
       clearDraft("new-thread-title-" + subgroupSlug)
       onSuccess(thread)
@@ -773,7 +800,11 @@ function CreateThreadModal({
     e?.preventDefault()
     if (!title.trim() || !content.trim()) return
     createMutation.mutate({
-      data: { title: title.trim(), content: content.trim() },
+      data: {
+        title: title.trim(),
+        content: content.trim(),
+        ...(allowsMembers && membersOnly ? { members_only: true } : {}),
+      },
       files: attachments,
       pollData: pollData || undefined,
     })
@@ -847,6 +878,15 @@ function CreateThreadModal({
               )}
             </AttachmentArea>
 
+            {allowsMembers && (
+              <Checkbox
+                label="Kun for medlemmer"
+                description="Kun synlig for medlemmer af gruppen"
+                checked={membersOnly}
+                onChange={(e) => setMembersOnly(e.currentTarget.checked)}
+              />
+            )}
+
             <Group justify="space-between">
               <Group gap="xs">
                 {!pollData && (
@@ -904,15 +944,18 @@ interface FolderAncestor {
 
 interface DocumentsTabProps {
   subgroupSlug: string
+  allowsMembers: boolean
   initialFolderSlug?: string | null
   onFolderChange?: (folderSlug: string | null) => void
 }
 
 function DocumentsTab({
   subgroupSlug,
+  allowsMembers,
   initialFolderSlug,
   onFolderChange,
 }: DocumentsTabProps) {
+  const [uploadMembersOnly, setUploadMembersOnly] = useState(false)
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -1040,9 +1083,19 @@ function DocumentsTab({
       setUploadProgress(`${i + 1} / ${filesToUpload.length}`)
       try {
         if (folderId !== null) {
-          await forumApi.uploadFile(folderId, file)
+          await forumApi.uploadFile(
+            folderId,
+            file,
+            undefined,
+            allowsMembers && uploadMembersOnly,
+          )
         } else {
-          await forumApi.uploadRootFile(subgroupSlug, file)
+          await forumApi.uploadRootFile(
+            subgroupSlug,
+            file,
+            undefined,
+            allowsMembers && uploadMembersOnly,
+          )
         }
         successCount++
       } catch (error) {
@@ -1156,6 +1209,16 @@ function DocumentsTab({
           ))}
         </Breadcrumbs>
         <Group gap="xs">
+          {allowsMembers && (
+            <Tooltip label="Næste upload markeres som kun synlig for medlemmer">
+              <Checkbox
+                label="Upload som privat"
+                checked={uploadMembersOnly}
+                onChange={(e) => setUploadMembersOnly(e.currentTarget.checked)}
+                size="sm"
+              />
+            </Tooltip>
+          )}
           <Button
             variant="light"
             leftSection={<IconFolderPlus size={16} />}
@@ -1203,8 +1266,10 @@ function DocumentsTab({
                 file={file}
                 subgroupSlug={subgroupSlug}
                 canModify={canModify}
+                allowsMembers={allowsMembers}
                 onDelete={invalidateFiles}
                 onMove={invalidateFiles}
+                onUpdate={invalidateFiles}
               />
             )
           })}
@@ -1398,17 +1463,39 @@ interface FileRowProps {
   file: ForumFile
   subgroupSlug: string
   canModify: boolean
+  allowsMembers?: boolean
   onDelete: () => void
   onMove: () => void
+  onUpdate?: () => void
 }
 
 function FileRow({
   file,
   subgroupSlug,
   canModify,
+  allowsMembers,
   onDelete,
   onMove,
+  onUpdate,
 }: FileRowProps) {
+  const togglePrivacyMutation = useMutation({
+    mutationFn: (membersOnly: boolean) =>
+      forumApi.updateFile(file.id, { members_only: membersOnly }),
+    onSuccess: () => {
+      notifications.show({
+        title: "Fil opdateret",
+        message: "Filens synlighed er blevet ændret.",
+        color: "green",
+      })
+      onUpdate?.()
+    },
+    onError: (error: unknown) => {
+      showErrorNotification(
+        error,
+        "Kunne ikke ændre filens synlighed. Prøv igen.",
+      )
+    },
+  })
   const [moveModalOpened, { open: openMoveModal, close: closeMoveModal }] =
     useDisclosure(false)
   const [previewOpened, { open: openPreview, close: closePreview }] =
@@ -1483,14 +1570,24 @@ function FileRow({
               />
             )}
             <div>
-              <Text
-                fw={500}
-                style={{ cursor: "pointer" }}
-                onClick={openPreview}
-                c="blue"
-              >
-                {file.name}
-              </Text>
+              <Group gap={6} wrap="nowrap">
+                {file.members_only && (
+                  <Tooltip label="Kun for medlemmer">
+                    <IconEyeOff
+                      size={14}
+                      color="var(--mantine-color-grape-6)"
+                    />
+                  </Tooltip>
+                )}
+                <Text
+                  fw={500}
+                  style={{ cursor: "pointer" }}
+                  onClick={openPreview}
+                  c="blue"
+                >
+                  {file.name}
+                </Text>
+              </Group>
               <Text size="xs" c="dimmed">
                 Uploadet af{" "}
                 {file.uploaded_by
@@ -1537,6 +1634,26 @@ function FileRow({
             >
               <IconDownload size={16} />
             </ActionIcon>
+            {canModify && allowsMembers && (
+              <ActionIcon
+                variant="light"
+                color="grape"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  const next = !file.members_only
+                  const confirmMsg = next
+                    ? "Gør denne fil privat? Den vil kun være synlig for medlemmer af gruppen."
+                    : "Gør denne fil offentlig? Den vil blive synlig for alle."
+                  if (window.confirm(confirmMsg)) {
+                    togglePrivacyMutation.mutate(next)
+                  }
+                }}
+                loading={togglePrivacyMutation.isPending}
+                title={file.members_only ? "Gør offentlig" : "Gør privat"}
+              >
+                <IconEyeOff size={16} />
+              </ActionIcon>
+            )}
             {canModify && (
               <>
                 <ActionIcon
@@ -1764,5 +1881,285 @@ function MoveFileModal({
         </Stack>
       </form>
     </Modal>
+  )
+}
+
+interface MembersSectionProps {
+  subgroup: Subgroup
+  currentUserId: number | null
+}
+
+const ROLE_SUGGESTIONS = ["Medlem", "Formand", "Kasserer", "Næstformand"]
+
+function MembersSection({ subgroup, currentUserId }: MembersSectionProps) {
+  const queryClient = useQueryClient()
+  const { user } = useAuthStore()
+  const [expanded, setExpanded] = useState(false)
+  const [pickerOpened, { open: openPicker, close: closePicker }] =
+    useDisclosure(false)
+  const [removeTarget, setRemoveTarget] = useState<SubgroupMember | null>(null)
+  const [leaveOpened, { open: openLeave, close: closeLeave }] =
+    useDisclosure(false)
+
+  const canManage = subgroup.is_member || !!user?.is_staff
+
+  const sortedMembers = [...subgroup.members].sort((a, b) => {
+    const an = `${a.user.first_name} ${a.user.last_name}`.toLowerCase()
+    const bn = `${b.user.first_name} ${b.user.last_name}`.toLowerCase()
+    return an.localeCompare(bn, "da")
+  })
+
+  const invalidateSubgroup = () => {
+    queryClient.invalidateQueries({ queryKey: ["subgroup", subgroup.slug] })
+  }
+
+  const addMutation = useMutation({
+    mutationFn: (userIds: number[]) =>
+      forumApi.addMembers(subgroup.slug, userIds),
+    onSuccess: () => {
+      notifications.show({
+        title: "Medlemmer tilføjet",
+        message: "Medlemmerne er blevet tilføjet.",
+        color: "green",
+      })
+      invalidateSubgroup()
+      closePicker()
+    },
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke tilføje medlemmer.")
+    },
+  })
+
+  const removeMutation = useMutation({
+    mutationFn: (userId: number) =>
+      forumApi.removeMember(subgroup.slug, userId),
+    onSuccess: () => {
+      notifications.show({
+        title: "Medlem fjernet",
+        message: "Medlemmet er blevet fjernet fra gruppen.",
+        color: "green",
+      })
+      invalidateSubgroup()
+      setRemoveTarget(null)
+    },
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke fjerne medlem.")
+    },
+  })
+
+  interface mutationFnEntry {
+    userId: number
+    role: string
+  }
+  const roleMutation = useMutation({
+    mutationFn: ({ userId, role }: mutationFnEntry) =>
+      forumApi.updateMemberRole(subgroup.slug, userId, role),
+    onSuccess: () => {
+      invalidateSubgroup()
+    },
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke opdatere rolle.")
+    },
+  })
+
+  const leaveMutation = useMutation({
+    mutationFn: () => forumApi.leaveSubgroup(subgroup.slug),
+    onSuccess: () => {
+      notifications.show({
+        title: "Du har forladt gruppen",
+        message: `Du er ikke længere medlem af ${subgroup.name}.`,
+        color: "green",
+      })
+      invalidateSubgroup()
+      closeLeave()
+    },
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke forlade gruppen.")
+    },
+  })
+
+  return (
+    <Paper withBorder p="md" radius="md" mb="md">
+      <Group justify="space-between" wrap="nowrap">
+        <Group
+          gap="sm"
+          wrap="nowrap"
+          style={{ cursor: "pointer", flex: 1, minWidth: 0 }}
+          onClick={() => setExpanded((e) => !e)}
+        >
+          <IconUsers size={20} color="var(--mantine-color-grape-6)" />
+          <Text fw={600}>Medlemmer</Text>
+          <Badge variant="light" color="grape">
+            {subgroup.members.length}
+          </Badge>
+          {!expanded && sortedMembers.length > 0 && (
+            <Avatar.Group>
+              {sortedMembers.slice(0, 5).map((m) => (
+                <Avatar
+                  key={m.id}
+                  src={m.user.profile_picture}
+                  radius="xl"
+                  size="sm"
+                >
+                  {m.user.first_name?.[0]}
+                  {m.user.last_name?.[0]}
+                </Avatar>
+              ))}
+              {sortedMembers.length > 5 && (
+                <Avatar radius="xl" size="sm">
+                  +{sortedMembers.length - 5}
+                </Avatar>
+              )}
+            </Avatar.Group>
+          )}
+        </Group>
+        {canManage && (
+          <Button
+            size="xs"
+            variant="light"
+            color="grape"
+            leftSection={<IconUserPlus size={14} />}
+            onClick={openPicker}
+          >
+            Tilføj medlem
+          </Button>
+        )}
+      </Group>
+
+      {expanded && (
+        <Stack gap="xs" mt="md">
+          {sortedMembers.length === 0 && (
+            <Text c="dimmed" size="sm">
+              Ingen medlemmer endnu. Tilføj det første medlem for at komme i
+              gang.
+            </Text>
+          )}
+          {sortedMembers.map((m) => (
+            <Group key={m.id} justify="space-between" wrap="nowrap">
+              <Group gap="sm" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+                <Anchor
+                  href={`/profil/${m.user.id}`}
+                  style={{ display: "flex" }}
+                >
+                  <Avatar src={m.user.profile_picture} radius="xl" size="sm">
+                    {m.user.first_name?.[0]}
+                    {m.user.last_name?.[0]}
+                  </Avatar>
+                </Anchor>
+                <Text truncate style={{ minWidth: 0 }}>
+                  {m.user.first_name} {m.user.last_name}
+                </Text>
+              </Group>
+              <Group gap="xs" wrap="nowrap">
+                {canManage ? (
+                  <Select
+                    size="xs"
+                    data={ROLE_SUGGESTIONS}
+                    value={m.role || "Medlem"}
+                    searchable
+                    allowDeselect={false}
+                    onChange={(value) => {
+                      if (value && value !== m.role) {
+                        roleMutation.mutate({ userId: m.user.id, role: value })
+                      }
+                    }}
+                    w={140}
+                  />
+                ) : (
+                  <Badge variant="light" color="gray">
+                    {m.role || "Medlem"}
+                  </Badge>
+                )}
+                {canManage && (
+                  <ActionIcon
+                    color="red"
+                    variant="subtle"
+                    size="sm"
+                    onClick={() => setRemoveTarget(m)}
+                    aria-label={`Fjern ${m.user.first_name}`}
+                  >
+                    <IconTrash size={14} />
+                  </ActionIcon>
+                )}
+              </Group>
+            </Group>
+          ))}
+          {subgroup.is_member && currentUserId !== null && (
+            <Group justify="flex-end" mt="xs">
+              <Button size="xs" variant="light" color="red" onClick={openLeave}>
+                Forlad gruppe
+              </Button>
+            </Group>
+          )}
+        </Stack>
+      )}
+
+      <UserPickerModal
+        opened={pickerOpened}
+        onClose={closePicker}
+        onConfirm={(userIds) => addMutation.mutate(userIds)}
+        title={`Tilføj medlem til ${subgroup.name}`}
+        confirmLabel="Tilføj"
+        excludeUserIds={subgroup.members.map((m) => m.user.id)}
+        loading={addMutation.isPending}
+      />
+
+      <Modal
+        opened={removeTarget !== null}
+        onClose={() => setRemoveTarget(null)}
+        title="Fjern medlem"
+        size="sm"
+      >
+        <Stack gap="md">
+          <Text>
+            Er du sikker på, at du vil fjerne{" "}
+            <strong>
+              {removeTarget?.user.first_name} {removeTarget?.user.last_name}
+            </strong>{" "}
+            fra gruppen?
+          </Text>
+          <Group justify="flex-end">
+            <Button variant="light" onClick={() => setRemoveTarget(null)}>
+              Annuller
+            </Button>
+            <Button
+              color="red"
+              loading={removeMutation.isPending}
+              onClick={() => {
+                if (removeTarget) removeMutation.mutate(removeTarget.user.id)
+              }}
+            >
+              Fjern
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={leaveOpened}
+        onClose={closeLeave}
+        title="Forlad gruppe"
+        size="sm"
+      >
+        <Stack gap="md">
+          <Text>
+            Er du sikker på, at du vil forlade <strong>{subgroup.name}</strong>?
+            Dit abonnement bevares — du kan stadig følge med i gruppen.
+          </Text>
+          <Group justify="flex-end">
+            <Button variant="light" onClick={closeLeave}>
+              Annuller
+            </Button>
+            <Button
+              color="red"
+              loading={leaveMutation.isPending}
+              onClick={() => leaveMutation.mutate()}
+            >
+              Forlad
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+    </Paper>
   )
 }

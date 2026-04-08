@@ -222,6 +222,7 @@ def notify_new_thread_task(
     thread_slug: str,
     initial_post_content: str,
     exclude_user_ids: list[int] | None = None,
+    members_only: bool = False,
 ) -> None:
     """Send new-thread notifications to subscribers in background."""
     logger.info("notify_new_thread_task STARTED: author=%d thread='%s'", author_id, thread_title)
@@ -239,6 +240,17 @@ def notify_new_thread_task(
         subgroup_subscriptions__subgroup_id=subgroup_id,
         subgroup_subscriptions__notify_new_threads=True,
     )
+    if members_only:
+        # Restrict to (current members of subgroup ∪ {author}).
+        from apps.forum.models import SubgroupMembership
+
+        member_ids = set(
+            SubgroupMembership.objects.filter(subgroup_id=subgroup_id).values_list(
+                "user_id", flat=True
+            )
+        )
+        member_ids.add(author_id)
+        subscribers = subscribers.filter(id__in=member_ids)
     if exclude_user_ids:
         subscribers = subscribers.exclude(id__in=exclude_user_ids)
     count = notify_new_thread(
@@ -598,6 +610,7 @@ def notify_subgroup_activity_task(
     post_id: int,
     participant_ids: list[int],
     mentioned_ids: list[int],
+    members_only: bool = False,
 ) -> None:
     """Notify subgroup subscribers about new thread activity in background.
 
@@ -648,6 +661,21 @@ def notify_subgroup_activity_task(
         .exclude(id__in=ThreadMuteStatus.objects.filter(thread_id=thread_id).values("user_id"))
         .distinct()
     )
+    if members_only:
+        from apps.forum.models import SubgroupMembership, Thread
+
+        member_ids = set(
+            SubgroupMembership.objects.filter(subgroup_id=subgroup_id).values_list(
+                "user_id", flat=True
+            )
+        )
+        # Author of the thread is always allowed to receive replies.
+        thread_author_id = (
+            Thread.objects.filter(id=thread_id).values_list("author_id", flat=True).first()
+        )
+        if thread_author_id:
+            member_ids.add(thread_author_id)
+        subscribers = subscribers.filter(id__in=member_ids)
 
     count = notify_subgroup_activity(
         subscribers=subscribers,
@@ -675,6 +703,7 @@ def notify_subgroup_activity_new_thread_task(
     initial_post_content: str,
     post_id: int,
     exclude_user_ids: list[int],
+    members_only: bool = False,
 ) -> None:
     """Notify subgroup subscribers with notify_subgroup_activity about a new thread.
 
@@ -724,6 +753,16 @@ def notify_subgroup_activity_new_thread_task(
         .exclude(id__in=final_exclude)
         .distinct()
     )
+    if members_only:
+        from apps.forum.models import SubgroupMembership
+
+        member_ids = set(
+            SubgroupMembership.objects.filter(subgroup_id=subgroup_id).values_list(
+                "user_id", flat=True
+            )
+        )
+        member_ids.add(author_id)
+        subscribers = subscribers.filter(id__in=member_ids)
 
     count = notify_subgroup_activity(
         subscribers=subscribers,
@@ -745,6 +784,58 @@ def notify_subgroup_activity_new_thread_task(
 # ---------------------------------------------------------------------------
 # Drive menu refresh
 # ---------------------------------------------------------------------------
+
+
+@db_task(retries=1, retry_delay=60)
+def notify_subgroup_member_added_task(
+    user_id: int,
+    actor_id: int,
+    subgroup_id: int,
+    subgroup_name: str,
+    subgroup_slug: str,
+) -> None:
+    """Notify a user that they were added to a subgroup."""
+    from apps.users.models import User
+
+    from .services import notify_subgroup_member_added
+
+    try:
+        user = User.objects.get(id=user_id)
+        actor = User.objects.get(id=actor_id)
+    except User.DoesNotExist:
+        return
+    notify_subgroup_member_added(
+        user=user,
+        actor=actor,
+        subgroup_name=subgroup_name,
+        subgroup_slug=subgroup_slug,
+    )
+
+
+@db_task(retries=1, retry_delay=60)
+def notify_subgroup_member_removed_task(
+    user_id: int,
+    actor_id: int,
+    subgroup_id: int,
+    subgroup_name: str,
+    subgroup_slug: str,
+) -> None:
+    """Notify a user that they were removed from a subgroup."""
+    from apps.users.models import User
+
+    from .services import notify_subgroup_member_removed
+
+    try:
+        user = User.objects.get(id=user_id)
+        actor = User.objects.get(id=actor_id)
+    except User.DoesNotExist:
+        return
+    notify_subgroup_member_removed(
+        user=user,
+        actor=actor,
+        subgroup_name=subgroup_name,
+        subgroup_slug=subgroup_slug,
+    )
 
 
 @db_task(retries=1, retry_delay=60)

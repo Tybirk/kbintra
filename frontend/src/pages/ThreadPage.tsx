@@ -34,6 +34,7 @@ import {
   IconSend,
   IconLock,
   IconLockOpen,
+  IconEyeOff,
   IconChartBar,
   IconMessage,
   IconDeviceMobileMessage,
@@ -500,6 +501,25 @@ export default function ThreadPage() {
     },
   })
 
+  const togglePrivacyMutation = useMutation({
+    mutationFn: (membersOnly: boolean) =>
+      forumApi.updateThread(thread!.id, { members_only: membersOnly }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: threadQueryKey })
+      notifications.show({
+        title: "Tråd opdateret",
+        message: "Trådens synlighed er blevet ændret.",
+        color: "green",
+      })
+    },
+    onError: (error: unknown) => {
+      showErrorNotification(
+        error,
+        "Kunne ikke ændre trådens synlighed. Prøv igen.",
+      )
+    },
+  })
+
   const moveThreadMutation = useMutation({
     mutationFn: (subgroupSlug: string) =>
       forumApi.moveThread(thread!.id, subgroupSlug),
@@ -621,6 +641,11 @@ export default function ThreadPage() {
                       Lukket
                     </Badge>
                   )}
+                  {thread.members_only && (
+                    <Badge color="grape" leftSection={<IconEyeOff size={12} />}>
+                      Kun for medlemmer af {thread.subgroup_name}
+                    </Badge>
+                  )}
                 </Group>
               </div>
               <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
@@ -687,6 +712,22 @@ export default function ThreadPage() {
                         onClick={openMoveModal}
                       >
                         Flyt tråd
+                      </Menu.Item>
+                    )}
+                    {thread.can_edit && (
+                      <Menu.Item
+                        leftSection={<IconEyeOff size={14} />}
+                        onClick={() => {
+                          const next = !thread.members_only
+                          const confirmMsg = next
+                            ? "Gør denne tråd privat? Den vil kun være synlig for medlemmer af gruppen (og forfatteren)."
+                            : "Gør denne tråd offentlig? Den vil blive synlig for alle."
+                          if (window.confirm(confirmMsg)) {
+                            togglePrivacyMutation.mutate(next)
+                          }
+                        }}
+                      >
+                        {thread.members_only ? "Gør offentlig" : "Gør privat"}
                       </Menu.Item>
                     )}
                     {thread.can_edit && (

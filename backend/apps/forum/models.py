@@ -24,6 +24,10 @@ class Subgroup(models.Model):
         default=False,
         help_text="If true, this subgroup is a committee (Udvalg).",
     )
+    allows_members = models.BooleanField(
+        default=False,
+        help_text="If true, this subgroup has formal members and can host members-only threads/files.",
+    )
     is_main = models.BooleanField(
         default=False,
         help_text="If true, this subgroup appears at the very top (e.g., Fælles).",
@@ -106,6 +110,10 @@ class Thread(models.Model):
     is_closed = models.BooleanField(
         default=False,
         help_text="If true, no new posts can be added to this thread.",
+    )
+    members_only = models.BooleanField(
+        default=False,
+        help_text="If true, only members of the subgroup (and the author) can see this thread.",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -448,6 +456,10 @@ class File(models.Model):
         blank=True,
         help_text="HTML preview for DOCX files, generated on upload.",
     )
+    members_only = models.BooleanField(
+        default=False,
+        help_text="If true, only members of the subgroup (and the uploader) can see this file.",
+    )
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -460,3 +472,41 @@ class File(models.Model):
         """Delete the file from storage when the model instance is deleted."""
         self.file.delete(save=False)
         return super().delete(*args, **kwargs)
+
+
+class SubgroupMembership(models.Model):
+    """
+    Membership of a user in a forum subgroup.
+
+    Distinct from SubgroupSubscription: subscription = notification preference,
+    membership = formal participation. Membership implies subscription (auto-created).
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="subgroup_memberships",
+    )
+    subgroup = models.ForeignKey(
+        Subgroup,
+        on_delete=models.CASCADE,
+        related_name="memberships",
+    )
+    role = models.CharField(
+        max_length=100,
+        default="Medlem",
+        blank=True,
+        help_text="Free-text role label, e.g., 'Medlem', 'Formand', 'Kasserer'.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "subgroup"], name="unique_user_subgroup_membership"
+            ),
+        ]
+        ordering = ["created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.user} member of {self.subgroup}"

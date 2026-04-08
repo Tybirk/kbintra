@@ -5,7 +5,7 @@ URL configuration for forum endpoints.
 from django.urls import path
 
 from .views import (
-    FileDeleteView,
+    FileDetailView,
     FileListCreateView,
     FileMoveView,
     FolderBySlugView,
@@ -25,7 +25,10 @@ from .views import (
     RecentActivityView,
     SubgroupDetailView,
     SubgroupFileListCreateView,
+    SubgroupLeaveView,
     SubgroupListView,
+    SubgroupMemberDetailView,
+    SubgroupMemberListCreateView,
     SubgroupUpdateView,
     SubscribeView,
     ThreadCloseView,
@@ -52,6 +55,22 @@ urlpatterns = [
     path("subgroups/<slug:slug>/subscribe/", SubscribeView.as_view(), name="subscribe"),
     path("subgroups/<slug:slug>/unsubscribe/", UnsubscribeView.as_view(), name="unsubscribe"),
     path("subgroups/<slug:slug>/update/", SubgroupUpdateView.as_view(), name="subgroup-update"),
+    # Membership
+    path(
+        "subgroups/<slug:slug>/members/",
+        SubgroupMemberListCreateView.as_view(),
+        name="subgroup-members",
+    ),
+    path(
+        "subgroups/<slug:slug>/members/<int:user_id>/",
+        SubgroupMemberDetailView.as_view(),
+        name="subgroup-member-detail",
+    ),
+    path(
+        "subgroups/<slug:slug>/leave/",
+        SubgroupLeaveView.as_view(),
+        name="subgroup-leave",
+    ),
     path(
         "subgroups/<slug:slug>/mark-read/",
         MarkSubgroupReadView.as_view(),
@@ -94,7 +113,7 @@ urlpatterns = [
         name="subgroup-file-list",
     ),
     path("folders/<int:folder_id>/files/", FileListCreateView.as_view(), name="file-list"),
-    path("files/<int:pk>/", FileDeleteView.as_view(), name="file-delete"),
+    path("files/<int:pk>/", FileDetailView.as_view(), name="file-detail"),
     path("files/<int:pk>/move/", FileMoveView.as_view(), name="file-move"),
     # Polls
     path("polls/<int:poll_id>/vote/", PollVoteView.as_view(), name="poll-vote"),

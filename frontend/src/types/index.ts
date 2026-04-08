@@ -122,6 +122,13 @@ export interface Author {
   phone_number?: string
 }
 
+export interface SubgroupMember {
+  id: number
+  user: Author
+  role: string
+  created_at: string
+}
+
 export interface Subgroup {
   id: number
   name: string
@@ -137,6 +144,9 @@ export interface Subgroup {
   latest_thread_title: string | null
   created_at: string
   last_activity_at: string | null
+  allows_members: boolean
+  is_member: boolean
+  members: SubgroupMember[]
 }
 
 export interface SubgroupSubscription {
@@ -234,6 +244,7 @@ export interface Thread {
   author: Author | null
   is_pinned: boolean
   is_closed: boolean
+  members_only: boolean
   post_count: number
   last_post_at: string | null
   last_post_author: Author | null
@@ -257,6 +268,7 @@ export interface ThreadDetail extends Thread {
 export interface CreateThreadData {
   title: string
   content: string
+  members_only?: boolean
 }
 
 export interface CreatePostData {
@@ -294,6 +306,7 @@ export interface ForumFile {
   uploaded_by: Author | null
   is_own: boolean
   uploaded_at: string
+  members_only: boolean
 }
 
 // Announcement Types
@@ -796,6 +809,8 @@ export interface NotificationPreference {
   notify_event_reminders: boolean
   notify_food_tickets: boolean
   notify_mentions: boolean
+  notify_subgroup_member_added: boolean
+  notify_subgroup_member_removed: boolean
   // Email preferences
   email_messages: boolean
   email_announcements: boolean
@@ -808,6 +823,8 @@ export interface NotificationPreference {
   email_event_reminders: boolean
   email_food_tickets: boolean
   email_mentions: boolean
+  email_subgroup_member_added: boolean
+  email_subgroup_member_removed: boolean
   // Push preferences
   push_messages: boolean
   push_announcements: boolean
@@ -820,6 +837,8 @@ export interface NotificationPreference {
   push_event_reminders: boolean
   push_food_tickets: boolean
   push_mentions: boolean
+  push_subgroup_member_added: boolean
+  push_subgroup_member_removed: boolean
   created_at: string
   updated_at: string
 }
@@ -858,6 +877,12 @@ export interface UpdateNotificationPreferenceData {
   push_event_reminders?: boolean
   push_food_tickets?: boolean
   push_mentions?: boolean
+  notify_subgroup_member_added?: boolean
+  notify_subgroup_member_removed?: boolean
+  email_subgroup_member_added?: boolean
+  email_subgroup_member_removed?: boolean
+  push_subgroup_member_added?: boolean
+  push_subgroup_member_removed?: boolean
 }
 
 // Food Team Types

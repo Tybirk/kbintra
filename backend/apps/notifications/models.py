@@ -24,6 +24,8 @@ class NotificationType(models.TextChoices):
     EVENT_REMINDER = "event_reminder", "Begivenhedsreminder"
     FOOD_TICKET = "food_ticket", "Madbillet tilgængelig"
     MENTION = "mention", "Omtale"
+    SUBGROUP_MEMBER_ADDED = "subgroup_member_added", "Tilføjet som medlem"
+    SUBGROUP_MEMBER_REMOVED = "subgroup_member_removed", "Fjernet som medlem"
 
 
 class Notification(models.Model):
@@ -84,6 +86,8 @@ class NotificationPreference(models.Model):
     notify_event_reminders = models.BooleanField(default=True)
     notify_food_tickets = models.BooleanField(default=True)
     notify_mentions = models.BooleanField(default=True)
+    notify_subgroup_member_added = models.BooleanField(default=True)
+    notify_subgroup_member_removed = models.BooleanField(default=True)
 
     # Email notification preferences (per notification type)
     email_messages = models.BooleanField(default=False)
@@ -97,6 +101,8 @@ class NotificationPreference(models.Model):
     email_event_reminders = models.BooleanField(default=False)
     email_food_tickets = models.BooleanField(default=False)
     email_mentions = models.BooleanField(default=False)
+    email_subgroup_member_added = models.BooleanField(default=False)
+    email_subgroup_member_removed = models.BooleanField(default=False)
 
     # Push notification preferences (per notification type)
     push_messages = models.BooleanField(default=True)
@@ -110,6 +116,8 @@ class NotificationPreference(models.Model):
     push_event_reminders = models.BooleanField(default=True)
     push_food_tickets = models.BooleanField(default=True)
     push_mentions = models.BooleanField(default=True)
+    push_subgroup_member_added = models.BooleanField(default=True)
+    push_subgroup_member_removed = models.BooleanField(default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

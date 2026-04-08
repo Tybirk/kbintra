@@ -164,6 +164,7 @@ class Command(BaseCommand):
                         "description": committee_data.get("description", ""),
                         "is_main": False,
                         "is_committee": True,
+                        "allows_members": True,
                         "is_default": committee_data.get("is_default", False),
                     },
                 )

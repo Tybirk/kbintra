@@ -16,6 +16,7 @@ from .models import (
     PostAttachment,
     Reaction,
     Subgroup,
+    SubgroupMembership,
     SubgroupSubscription,
     Thread,
 )
@@ -53,13 +54,26 @@ class PostAttachmentSerializer(serializers.ModelSerializer):
         return ""
 
 
+class SubgroupMembershipSerializer(serializers.ModelSerializer):
+    """Serializer for a single membership row (used inside subgroup detail)."""
+
+    user = AuthorSerializer(read_only=True)
+    user_id = serializers.IntegerField(source="user.id", read_only=True)
+
+    class Meta:
+        model = SubgroupMembership
+        fields = ["id", "user", "user_id", "role", "created_at"]
+
+
 class SubgroupSerializer(serializers.ModelSerializer):
     """Serializer for Subgroup model."""
 
     thread_count = serializers.SerializerMethodField()
     is_subscribed = serializers.SerializerMethodField()
+    is_member = serializers.SerializerMethodField()
     unread_thread_count = serializers.SerializerMethodField()
     latest_thread_title = serializers.SerializerMethodField()
+    members = serializers.SerializerMethodField()
 
     class Meta:
         model = Subgroup
@@ -71,21 +85,65 @@ class SubgroupSerializer(serializers.ModelSerializer):
             "is_default",
             "is_committee",
             "is_main",
+            "allows_members",
             "icon",
             "thread_count",
             "unread_thread_count",
             "is_subscribed",
+            "is_member",
             "latest_thread_title",
+            "members",
             "created_at",
             "last_activity_at",
         ]
 
+    def get_members(self, obj: Subgroup) -> list[dict]:
+        if not obj.allows_members:
+            return []
+        qs = (
+            SubgroupMembership.objects.filter(subgroup=obj)
+            .select_related("user")
+            .order_by("user__first_name", "user__last_name")
+        )
+        return SubgroupMembershipSerializer(qs, many=True).data
+
+    def get_is_member(self, obj: Subgroup) -> bool:
+        member_ids = self.context.get("member_subgroup_ids")
+        if member_ids is not None:
+            return obj.id in member_ids
+        request = self.context.get("request")
+        if request and request.user.is_authenticated:
+            return SubgroupMembership.objects.filter(user=request.user, subgroup=obj).exists()
+        return False
+
+    def _visible_threads(self, obj: Subgroup) -> list[Thread]:
+        """Return threads visible to the requesting user."""
+        request = self.context.get("request")
+        user = request.user if request and request.user.is_authenticated else None
+        member_ids = self.context.get("member_subgroup_ids")
+        is_member = (
+            obj.id in member_ids
+            if member_ids is not None
+            else (
+                user is not None
+                and SubgroupMembership.objects.filter(user=user, subgroup=obj).exists()
+            )
+        )
+        result: list[Thread] = []
+        for thread in obj.threads.all():
+            if not thread.members_only:
+                result.append(thread)
+                continue
+            if user and (is_member or thread.author_id == user.id):
+                result.append(thread)
+        return result
+
     def get_thread_count(self, obj: Subgroup) -> int:
-        return len([t for t in obj.threads.all() if not t.is_closed])
+        return len([t for t in self._visible_threads(obj) if not t.is_closed])
 
     def get_latest_thread_title(self, obj: Subgroup) -> str | None:
         latest = None
-        for thread in obj.threads.all():
+        for thread in self._visible_threads(obj):
             if thread.is_closed:
                 continue
             if latest is None or thread.updated_at > latest.updated_at:
@@ -106,7 +164,7 @@ class SubgroupSerializer(serializers.ModelSerializer):
         if read_status_map is None:
             return 0
         count = 0
-        for thread in obj.threads.all():
+        for thread in self._visible_threads(obj):
             if thread.is_closed:
                 continue
             last_read = read_status_map.get(thread.id)
@@ -116,19 +174,19 @@ class SubgroupSerializer(serializers.ModelSerializer):
 
 
 class SubgroupUpdateSerializer(serializers.ModelSerializer):
-    """Serializer for updating subgroup description and icon."""
+    """Serializer for updating subgroup description, icon, or membership flag."""
 
     class Meta:
         model = Subgroup
-        fields = ["description", "icon"]
+        fields = ["description", "icon", "allows_members"]
 
 
 class SubgroupCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating a new subgroup (name + description only)."""
+    """Serializer for creating a new subgroup."""
 
     class Meta:
         model = Subgroup
-        fields = ["name", "description"]
+        fields = ["name", "description", "allows_members"]
 
 
 class SubgroupSubscriptionSerializer(serializers.ModelSerializer):
@@ -489,6 +547,16 @@ class PostCreateSerializer(serializers.ModelSerializer):
 
         mentioned_ids = set(extract_mention_ids(post.content)) if post.content else set()
 
+        # For members-only threads, drop mentions of users who aren't members of the
+        # subgroup (silently — non-members can't see the thread).
+        if thread.members_only and mentioned_ids:
+            allowed_member_ids = set(
+                SubgroupMembership.objects.filter(
+                    subgroup_id=thread.subgroup_id, user_id__in=mentioned_ids
+                ).values_list("user_id", flat=True)
+            )
+            mentioned_ids = {mid for mid in mentioned_ids if mid in allowed_member_ids}
+
         # Only exclude mentioned users who will actually receive MENTION.
         # Users with notify_mentions=False won't get MENTION, so they should fall back
         # to lower-priority notifications (thread_reply, post_reply, subgroup_activity).
@@ -556,6 +624,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
             post_id=post.id,
             participant_ids=list(notified_users),
             mentioned_ids=list(effective_mentioned_ids),
+            members_only=thread.members_only,
         )
 
         # Store mention IDs for the view's perform_create to send mention notifications
@@ -583,6 +652,7 @@ class ThreadSerializer(serializers.ModelSerializer):
             "author",
             "is_pinned",
             "is_closed",
+            "members_only",
             "post_count",
             "last_post_at",
             "last_post_author",
@@ -652,6 +722,7 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
             "author",
             "is_pinned",
             "is_closed",
+            "members_only",
             "is_own",
             "can_edit",
             "can_close",
@@ -704,11 +775,11 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
 
 
 class ThreadUpdateSerializer(serializers.ModelSerializer):
-    """Serializer for updating a thread title."""
+    """Serializer for updating a thread title and/or members_only flag."""
 
     class Meta:
         model = Thread
-        fields = ["title"]
+        fields = ["title", "members_only"]
 
 
 class ThreadCreateSerializer(serializers.ModelSerializer):
@@ -725,8 +796,16 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Thread
-        fields = ["id", "title", "slug", "content", "attachments", "poll_data"]
+        fields = ["id", "title", "slug", "content", "attachments", "poll_data", "members_only"]
         read_only_fields = ["slug"]
+
+    def validate(self, attrs: dict) -> dict:
+        members_only = attrs.get("members_only", False)
+        if members_only and not self.context["subgroup"].allows_members:
+            raise serializers.ValidationError(
+                {"members_only": "Denne gruppe tillader ikke private tråde."}
+            )
+        return attrs
 
     def validate_attachments(self, value: list) -> list:
         from .utils import validate_file_size
@@ -820,6 +899,17 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
         else:
             effective_mention_ids = []
 
+        # For members-only threads, drop mention IDs that aren't members of the subgroup
+        # (silently — non-members get no mention notification, since they can't see the thread).
+        if thread.members_only and mention_ids:
+            allowed_member_ids = set(
+                SubgroupMembership.objects.filter(
+                    subgroup=thread.subgroup, user_id__in=mention_ids
+                ).values_list("user_id", flat=True)
+            )
+            mention_ids = [m for m in mention_ids if m in allowed_member_ids]
+            effective_mention_ids = [m for m in effective_mention_ids if m in allowed_member_ids]
+
         notify_new_thread_task(
             author_id=thread.author.id,
             thread_title=thread.title,
@@ -830,6 +920,7 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
             thread_slug=thread.slug,
             initial_post_content=content,
             exclude_user_ids=effective_mention_ids if effective_mention_ids else None,
+            members_only=thread.members_only,
         )
 
         # Notify subgroup subscribers with subgroup_activity but not forum_subscriptions.
@@ -845,6 +936,7 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
             initial_post_content=content,
             post_id=post.id,
             exclude_user_ids=[thread.author.id] + list(effective_mention_ids),
+            members_only=thread.members_only,
         )
 
         if mention_ids:
@@ -913,6 +1005,7 @@ class FileSerializer(serializers.ModelSerializer):
             "preview_html",
             "uploaded_by",
             "is_own",
+            "members_only",
             "uploaded_at",
         ]
 
@@ -935,13 +1028,22 @@ class FileUploadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = File
-        fields = ["file", "name"]
+        fields = ["file", "name", "members_only"]
 
     def validate_file(self, value):
         from .utils import validate_file_size
 
         validate_file_size(value)
         return value
+
+    def validate(self, attrs: dict) -> dict:
+        members_only = attrs.get("members_only", False)
+        subgroup = self.context.get("subgroup")
+        if members_only and subgroup is not None and not subgroup.allows_members:
+            raise serializers.ValidationError(
+                {"members_only": "Denne gruppe tillader ikke private filer."}
+            )
+        return attrs
 
     def create(self, validated_data: dict) -> File:
         from .utils import generate_docx_preview
@@ -955,6 +1057,14 @@ class FileUploadSerializer(serializers.ModelSerializer):
             validated_data["name"] = validated_data["file"].name
         validated_data["preview_html"] = generate_docx_preview(validated_data["file"])
         return super().create(validated_data)
+
+
+class FilePartialUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for PATCHing a file's metadata (currently just members_only)."""
+
+    class Meta:
+        model = File
+        fields = ["members_only"]
 
 
 class RecentActivitySerializer(serializers.ModelSerializer):

@@ -127,6 +127,7 @@ export function GlobalSearch({ onAction }: GlobalSearchProps) {
           },
           is_own: false,
           uploaded_at: "",
+          members_only: false,
         })
         spotlight.close()
       } else {

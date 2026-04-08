@@ -12,6 +12,7 @@ from .models import (
     PollVote,
     Post,
     Subgroup,
+    SubgroupMembership,
     SubgroupSubscription,
     Thread,
     ThreadReadStatus,
@@ -30,6 +31,14 @@ class SubgroupAdmin(admin.ModelAdmin):
 class SubgroupSubscriptionAdmin(admin.ModelAdmin):
     list_display = ["user", "subgroup", "notify_new_threads", "notify_replies", "created_at"]
     list_filter = ["subgroup", "notify_new_threads", "notify_replies"]
+    search_fields = ["user__first_name", "user__last_name", "user__email", "subgroup__name"]
+    raw_id_fields = ["user", "subgroup"]
+
+
+@admin.register(SubgroupMembership)
+class SubgroupMembershipAdmin(admin.ModelAdmin):
+    list_display = ["user", "subgroup", "role", "created_at"]
+    list_filter = ["subgroup", "role"]
     search_fields = ["user__first_name", "user__last_name", "user__email", "subgroup__name"]
     raw_id_fields = ["user", "subgroup"]
 

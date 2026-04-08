@@ -133,6 +133,8 @@ def get_user_preference(user: User, notification_type: NotificationType) -> bool
         NotificationType.EVENT_REMINDER: prefs.notify_event_reminders,
         NotificationType.FOOD_TICKET: prefs.notify_food_tickets,
         NotificationType.MENTION: prefs.notify_mentions,
+        NotificationType.SUBGROUP_MEMBER_ADDED: prefs.notify_subgroup_member_added,
+        NotificationType.SUBGROUP_MEMBER_REMOVED: prefs.notify_subgroup_member_removed,
     }
 
     return preference_map.get(notification_type, True)
@@ -162,6 +164,8 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
         NotificationType.EVENT_REMINDER: prefs.push_event_reminders,
         NotificationType.FOOD_TICKET: prefs.push_food_tickets,
         NotificationType.MENTION: prefs.push_mentions,
+        NotificationType.SUBGROUP_MEMBER_ADDED: prefs.push_subgroup_member_added,
+        NotificationType.SUBGROUP_MEMBER_REMOVED: prefs.push_subgroup_member_removed,
     }
 
     return preference_map.get(notification_type, True)
@@ -1092,6 +1096,44 @@ def notify_post_reaction(
         link=link,
         related_user=reactor,
         group_key=link,  # Aggregate all reactions to same specific post
+    )
+
+
+def notify_subgroup_member_added(
+    user: User,
+    actor: User,
+    subgroup_name: str,
+    subgroup_slug: str,
+) -> Notification | None:
+    """Notify a user that they were added to a subgroup."""
+    if user.id == actor.id:
+        return None
+    return create_notification(
+        user=user,
+        notification_type=NotificationType.SUBGROUP_MEMBER_ADDED,
+        title=f"Du er nu medlem af {subgroup_name}",
+        message=f"{actor.first_name} tilføjede dig til gruppen.",
+        link=f"/forum/{subgroup_slug}",
+        related_user=actor,
+    )
+
+
+def notify_subgroup_member_removed(
+    user: User,
+    actor: User,
+    subgroup_name: str,
+    subgroup_slug: str,
+) -> Notification | None:
+    """Notify a user that they were removed from a subgroup."""
+    if user.id == actor.id:
+        return None
+    return create_notification(
+        user=user,
+        notification_type=NotificationType.SUBGROUP_MEMBER_REMOVED,
+        title=f"Du er ikke længere medlem af {subgroup_name}",
+        message=f"{actor.first_name} fjernede dig fra gruppen.",
+        link=f"/forum/{subgroup_slug}",
+        related_user=actor,
     )
 
 

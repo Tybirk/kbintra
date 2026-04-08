@@ -24,12 +24,14 @@ from .models import (
     Post,
     Reaction,
     Subgroup,
+    SubgroupMembership,
     SubgroupSubscription,
     Thread,
     ThreadMuteStatus,
     ThreadReadStatus,
 )
 from .serializers import (
+    FilePartialUpdateSerializer,
     FileSerializer,
     FileUploadSerializer,
     FolderCreateSerializer,
@@ -40,6 +42,7 @@ from .serializers import (
     PostSerializer,
     RecentActivitySerializer,
     SubgroupCreateSerializer,
+    SubgroupMembershipSerializer,
     SubgroupSerializer,
     SubgroupSubscriptionSerializer,
     SubgroupUpdateSerializer,
@@ -47,6 +50,15 @@ from .serializers import (
     ThreadDetailSerializer,
     ThreadSerializer,
     ThreadUpdateSerializer,
+)
+from .services import (
+    add_member,
+    can_view_file,
+    can_view_thread,
+    filter_visible_files,
+    filter_visible_threads,
+    remove_member,
+    visible_threads_q,
 )
 
 
@@ -80,6 +92,32 @@ class IsOwnerOrAdmin(permissions.BasePermission):
         return False
 
 
+def _is_member(user: Any, subgroup: Subgroup) -> bool:
+    if not user or not user.is_authenticated:
+        return False
+    return SubgroupMembership.objects.filter(user=user, subgroup=subgroup).exists()
+
+
+class IsMemberOrAdmin(permissions.BasePermission):
+    """Permission for users who are either staff or members of a given subgroup.
+
+    The subgroup is resolved via the URL kwarg `slug`.
+    """
+
+    def has_permission(self, request: Request, view: Any) -> bool:
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if request.user.is_staff:
+            return True
+        slug = view.kwargs.get("slug")
+        if not slug:
+            return False
+        subgroup = Subgroup.objects.filter(slug=slug).first()
+        if subgroup is None:
+            return False
+        return SubgroupMembership.objects.filter(user=request.user, subgroup=subgroup).exists()
+
+
 # Subgroup Views
 class SubgroupListView(generics.ListCreateAPIView):
     """List all subgroups or create a new one."""
@@ -109,6 +147,9 @@ class SubgroupListView(generics.ListCreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         subgroup = serializer.save()
+        # If the new group allows members, auto-enroll the creator (and subscribe).
+        if subgroup.allows_members:
+            add_member(subgroup, request.user)
         out = SubgroupSerializer(subgroup, context=self.get_serializer_context())
         return Response(out.data, status=status.HTTP_201_CREATED)
 
@@ -176,15 +217,50 @@ class UnsubscribeView(APIView):
 
 
 class SubgroupUpdateView(APIView):
-    """Update subgroup description."""
+    """Update subgroup description, icon, or membership flag."""
 
     permission_classes = [permissions.IsAuthenticated]
 
     def patch(self, request: Request, slug: str) -> Response:
         subgroup = get_object_or_404(Subgroup, slug=slug)
+        was_allowing = subgroup.allows_members
         serializer = SubgroupUpdateSerializer(subgroup, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
+        will_allow = serializer.validated_data.get("allows_members", was_allowing)
+
+        # Disabling membership: block if any private content remains in the group.
+        if was_allowing and not will_allow:
+            if Thread.objects.filter(subgroup=subgroup, members_only=True).exists():
+                return Response(
+                    {
+                        "detail": (
+                            "Kan ikke deaktivere medlemskab: gruppen indeholder private "
+                            "tråde. Gør dem offentlige først."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if File.objects.filter(subgroup=subgroup, members_only=True).exists():
+                return Response(
+                    {
+                        "detail": (
+                            "Kan ikke deaktivere medlemskab: gruppen indeholder private "
+                            "filer. Gør dem offentlige først."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         serializer.save()
+
+        # Enabling membership: auto-enroll the actor as the first member.
+        if not was_allowing and will_allow:
+            add_member(subgroup, request.user)
+
+        # Disabling membership: clear all memberships (private content already gone).
+        if was_allowing and not will_allow:
+            SubgroupMembership.objects.filter(subgroup=subgroup).delete()
+
         return Response({"detail": "Gruppe opdateret."}, status=status.HTTP_200_OK)
 
 
@@ -198,6 +274,140 @@ class MySubscriptionsView(generics.ListAPIView):
         return SubgroupSubscription.objects.filter(user=self.request.user).select_related(
             "subgroup"
         )
+
+
+# Membership Views
+
+
+def _members_payload(subgroup: Subgroup) -> list[dict]:
+    qs = (
+        SubgroupMembership.objects.filter(subgroup=subgroup)
+        .select_related("user")
+        .order_by("user__first_name", "user__last_name")
+    )
+    return SubgroupMembershipSerializer(qs, many=True).data
+
+
+class SubgroupMemberListCreateView(APIView):
+    """List members of a subgroup or add new ones."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: Request, slug: str) -> Response:
+        subgroup = get_object_or_404(Subgroup, slug=slug)
+        return Response(_members_payload(subgroup))
+
+    def post(self, request: Request, slug: str) -> Response:
+        subgroup = get_object_or_404(Subgroup, slug=slug)
+        if not subgroup.allows_members:
+            return Response(
+                {"detail": "Denne gruppe tillader ikke medlemmer."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Permission: admin or current member
+        is_actor_member = SubgroupMembership.objects.filter(
+            user=request.user, subgroup=subgroup
+        ).exists()
+        if not (request.user.is_staff or is_actor_member):
+            return Response(
+                {"detail": "Kun medlemmer eller administratorer kan tilføje medlemmer."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        user_ids = request.data.get("user_ids") or []
+        if not isinstance(user_ids, list) or not user_ids:
+            return Response(
+                {"detail": "user_ids skal være en ikke-tom liste."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from apps.users.models import User as UserModel
+
+        users = list(UserModel.objects.filter(id__in=user_ids, is_active=True))
+        added_user_ids: list[int] = []
+        for user in users:
+            existed = SubgroupMembership.objects.filter(user=user, subgroup=subgroup).exists()
+            add_member(subgroup, user)
+            if not existed:
+                added_user_ids.append(user.id)
+
+        # Notify added users (not the actor themselves)
+        from apps.notifications.tasks import notify_subgroup_member_added_task
+
+        for uid in added_user_ids:
+            if uid == request.user.id:
+                continue
+            notify_subgroup_member_added_task(
+                user_id=uid,
+                actor_id=request.user.id,
+                subgroup_id=subgroup.id,
+                subgroup_name=subgroup.name,
+                subgroup_slug=subgroup.slug,
+            )
+        return Response(_members_payload(subgroup), status=status.HTTP_200_OK)
+
+
+class SubgroupMemberDetailView(APIView):
+    """Update or delete a single membership."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request: Request, slug: str, user_id: int) -> Response:
+        subgroup = get_object_or_404(Subgroup, slug=slug)
+        # Any current member or admin can edit any role
+        is_actor_member = SubgroupMembership.objects.filter(
+            user=request.user, subgroup=subgroup
+        ).exists()
+        if not (request.user.is_staff or is_actor_member):
+            return Response(
+                {"detail": "Kun medlemmer eller administratorer kan ændre roller."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        membership = get_object_or_404(SubgroupMembership, subgroup=subgroup, user_id=user_id)
+        role = request.data.get("role", "").strip() or "Medlem"
+        membership.role = role[:100]
+        membership.save(update_fields=["role"])
+        return Response(_members_payload(subgroup))
+
+    def delete(self, request: Request, slug: str, user_id: int) -> Response:
+        subgroup = get_object_or_404(Subgroup, slug=slug)
+        is_actor_member = SubgroupMembership.objects.filter(
+            user=request.user, subgroup=subgroup
+        ).exists()
+        if not (request.user.is_staff or is_actor_member):
+            return Response(
+                {"detail": "Kun medlemmer eller administratorer kan fjerne medlemmer."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        membership = get_object_or_404(SubgroupMembership, subgroup=subgroup, user_id=user_id)
+        removed_user_id = membership.user_id
+        membership.delete()
+        # Notify the removed user unless they removed themselves
+        if removed_user_id != request.user.id:
+            from apps.notifications.tasks import notify_subgroup_member_removed_task
+
+            notify_subgroup_member_removed_task(
+                user_id=removed_user_id,
+                actor_id=request.user.id,
+                subgroup_id=subgroup.id,
+                subgroup_name=subgroup.name,
+                subgroup_slug=subgroup.slug,
+            )
+        return Response(_members_payload(subgroup))
+
+
+class SubgroupLeaveView(APIView):
+    """Leave a group (self-removal)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request, slug: str) -> Response:
+        subgroup = get_object_or_404(Subgroup, slug=slug)
+        deleted = remove_member(subgroup, request.user)
+        if not deleted:
+            return Response(
+                {"detail": "Du er ikke medlem af denne gruppe."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response({"detail": "Du har forladt gruppen."})
 
 
 # Thread Views
@@ -214,7 +424,9 @@ class ThreadListCreateView(generics.ListCreateAPIView):
     def get_queryset(self) -> Any:
         self._subgroup = get_object_or_404(Subgroup, slug=self.kwargs["slug"])
         return (
-            Thread.objects.filter(subgroup=self._subgroup)
+            filter_visible_threads(
+                Thread.objects.filter(subgroup=self._subgroup), self.request.user
+            )
             .select_related("author")
             .annotate(post_count_annotation=Count("posts"))
         )
@@ -265,6 +477,14 @@ class ThreadDetailView(generics.RetrieveAPIView):
         "posts__poll__options__votes__user",
     ).select_related("author", "subgroup")
 
+    def get_object(self) -> Thread:
+        obj = super().get_object()
+        if not can_view_thread(self.request.user, obj):
+            from django.http import Http404
+
+            raise Http404
+        return obj
+
     def retrieve(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         response = super().retrieve(request, *args, **kwargs)
         thread = self.get_object()
@@ -300,6 +520,11 @@ class ThreadDetailBySlugView(generics.RetrieveAPIView):
         if thread is None:
             thread = get_object_or_404(qs, slug=thread_slug)
 
+        if not can_view_thread(self.request.user, thread):
+            from django.http import Http404
+
+            raise Http404
+
         now = timezone.now()
         ThreadReadStatus.objects.bulk_create(
             [ThreadReadStatus(user=self.request.user, thread=thread, last_read_at=now)],
@@ -318,12 +543,48 @@ class ThreadUpdateView(generics.UpdateAPIView):
     queryset = Thread.objects.all()
     http_method_names = ["patch"]
 
+    def get_object(self) -> Thread:
+        obj = super().get_object()
+        if not can_view_thread(self.request.user, obj):
+            from django.http import Http404
+
+            raise Http404
+        return obj
+
+    def perform_update(self, serializer: Any) -> None:
+        # Permission check for flipping members_only: must be author or current member.
+        new_members_only = serializer.validated_data.get("members_only")
+        instance = serializer.instance
+        if new_members_only is not None and new_members_only != instance.members_only:
+            user = self.request.user
+            is_author = instance.author_id == user.id
+            is_member = SubgroupMembership.objects.filter(
+                user=user, subgroup_id=instance.subgroup_id
+            ).exists()
+            if not (is_author or is_member):
+                from rest_framework.exceptions import PermissionDenied
+
+                raise PermissionDenied("Du kan ikke ændre denne tråds synlighed.")
+            if new_members_only and not instance.subgroup.allows_members:
+                from rest_framework.exceptions import ValidationError
+
+                raise ValidationError("Denne gruppe tillader ikke private tråde.")
+        serializer.save()
+
 
 class ThreadDeleteView(generics.DestroyAPIView):
     """Delete a thread (owner or admin)."""
 
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrAdmin]
     queryset = Thread.objects.all()
+
+    def get_object(self) -> Thread:
+        obj = super().get_object()
+        if not can_view_thread(self.request.user, obj):
+            from django.http import Http404
+
+            raise Http404
+        return obj
 
 
 class ThreadMoveView(APIView):
@@ -333,6 +594,10 @@ class ThreadMoveView(APIView):
 
     def get_object(self, pk: int) -> Thread:
         obj = get_object_or_404(Thread, pk=pk)
+        if not can_view_thread(self.request.user, obj):
+            from django.http import Http404
+
+            raise Http404
         self.check_object_permissions(self.request, obj)
         return obj
 
@@ -375,6 +640,10 @@ class ThreadPinView(APIView):
     def post(self, request: Request, pk: int) -> Response:
         """Toggle the pinned state of a thread."""
         thread = get_object_or_404(Thread, pk=pk)
+        if not can_view_thread(request.user, thread):
+            from django.http import Http404
+
+            raise Http404
         if "is_pinned" in request.data:
             value = request.data["is_pinned"]
             if isinstance(value, str):
@@ -402,6 +671,10 @@ class ThreadCloseView(APIView):
 
     def get_object(self, pk: int) -> Thread:
         obj = get_object_or_404(Thread, pk=pk)
+        if not can_view_thread(self.request.user, obj):
+            from django.http import Http404
+
+            raise Http404
         self.check_object_permissions(self.request, obj)
         return obj
 
@@ -443,6 +716,10 @@ class PostListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self) -> Any:
         thread = get_object_or_404(Thread, pk=self.kwargs["thread_id"])
+        if not can_view_thread(self.request.user, thread):
+            from django.http import Http404
+
+            raise Http404
         return (
             Post.objects.filter(thread=thread)
             .select_related("author")
@@ -460,6 +737,10 @@ class PostListCreateView(generics.ListCreateAPIView):
     def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """Override create to check if thread is closed."""
         thread = get_object_or_404(Thread, pk=self.kwargs["thread_id"])
+        if not can_view_thread(request.user, thread):
+            from django.http import Http404
+
+            raise Http404
         if thread.is_closed:
             return Response(
                 {"detail": "Denne tråd er lukket og accepterer ikke længere nye svar."},
@@ -597,9 +878,10 @@ class SubgroupFileListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self) -> Any:
         subgroup = get_object_or_404(Subgroup, slug=self.kwargs["slug"])
-        return File.objects.filter(subgroup=subgroup, folder__isnull=True).select_related(
-            "uploaded_by"
-        )
+        return filter_visible_files(
+            File.objects.filter(subgroup=subgroup, folder__isnull=True),
+            self.request.user,
+        ).select_related("uploaded_by")
 
     def get_serializer_context(self) -> dict:
         context = super().get_serializer_context()
@@ -621,7 +903,9 @@ class FileListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self) -> Any:
         folder = get_object_or_404(Folder, pk=self.kwargs["folder_id"])
-        return File.objects.filter(folder=folder).select_related("uploaded_by")
+        return filter_visible_files(
+            File.objects.filter(folder=folder), self.request.user
+        ).select_related("uploaded_by")
 
     def get_serializer_context(self) -> dict:
         context = super().get_serializer_context()
@@ -632,14 +916,58 @@ class FileListCreateView(generics.ListCreateAPIView):
         return context
 
 
-class FileDeleteView(generics.DestroyAPIView):
-    """Delete a file (owner only)."""
+class FileDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Retrieve, partially update (members_only), or delete a file."""
 
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
     queryset = File.objects.all()
+    http_method_names = ["get", "patch", "delete"]
+
+    def get_serializer_class(self) -> type:
+        if self.request.method == "PATCH":
+            return FilePartialUpdateSerializer
+        return FileSerializer
+
+    def get_permissions(self) -> list:
+        if self.request.method == "DELETE":
+            return [permissions.IsAuthenticated(), IsOwnerOrReadOnly()]
+        return [permissions.IsAuthenticated()]
+
+    def get_object(self) -> File:
+        obj = super().get_object()
+        if self.request.method == "GET" and not can_view_file(self.request.user, obj):
+            from django.http import Http404
+
+            raise Http404
+        return obj
+
+    def perform_update(self, serializer: Any) -> None:
+        instance = serializer.instance
+        # Only the uploader or members of the subgroup can flip privacy.
+        user = self.request.user
+        is_uploader = instance.uploaded_by_id == user.id
+        is_member = (
+            instance.subgroup_id is not None
+            and SubgroupMembership.objects.filter(
+                user=user, subgroup_id=instance.subgroup_id
+            ).exists()
+        )
+        if not (is_uploader or is_member):
+            from rest_framework.exceptions import PermissionDenied
+
+            raise PermissionDenied("Du har ikke tilladelse til at ændre denne fil.")
+        # Disallow setting members_only=True on a group that doesn't allow members.
+        new_members_only = serializer.validated_data.get("members_only")
+        if (
+            new_members_only is True
+            and instance.subgroup_id is not None
+            and not instance.subgroup.allows_members
+        ):
+            from rest_framework.exceptions import ValidationError
+
+            raise ValidationError("Denne gruppe tillader ikke private filer.")
+        serializer.save()
 
     def perform_destroy(self, instance: File) -> None:
-        # Delete the actual file from storage
         if instance.file:
             instance.file.delete(save=False)
         instance.delete()
@@ -652,6 +980,10 @@ class FileMoveView(APIView):
 
     def get_object(self, pk: int) -> File:
         obj = get_object_or_404(File, pk=pk)
+        if not can_view_file(self.request.user, obj):
+            from django.http import Http404
+
+            raise Http404
         self.check_object_permissions(self.request, obj)
         return obj
 
@@ -707,7 +1039,8 @@ class FolderDownloadView(APIView):
 
     def _add_folder(self, zf: zipfile.ZipFile, folder: Folder, prefix: str, total_size: int) -> int:
         path = f"{prefix}{folder.name}/"
-        for file_obj in File.objects.filter(folder=folder):
+        files_qs = filter_visible_files(File.objects.filter(folder=folder), self.request.user)
+        for file_obj in files_qs:
             if file_obj.file and file_obj.file.storage.exists(file_obj.file.name):
                 with file_obj.file.open("rb") as f:
                     data = f.read()
@@ -740,9 +1073,15 @@ class RecentActivityView(generics.ListAPIView):
             limit = 10
         limit = min(max(limit, 1), 50)  # Clamp between 1 and 50
 
-        return Post.objects.select_related("author", "thread", "thread__subgroup").order_by(
-            "-created_at"
-        )[:limit]
+        # Filter by visibility on the parent thread.
+        visible_thread_ids = Thread.objects.filter(visible_threads_q(self.request.user)).values(
+            "id"
+        )
+        return (
+            Post.objects.filter(thread_id__in=visible_thread_ids)
+            .select_related("author", "thread", "thread__subgroup")
+            .order_by("-created_at")[:limit]
+        )
 
 
 class ReactionToggleView(APIView):
@@ -936,7 +1275,7 @@ class MarkAllForumReadView(APIView):
         from apps.notifications.models import Notification, NotificationType
 
         now = timezone.now()
-        threads = Thread.objects.all()
+        threads = Thread.objects.filter(visible_threads_q(request.user))
         records = [
             ThreadReadStatus(user=request.user, thread=thread, last_read_at=now)
             for thread in threads
@@ -973,7 +1312,7 @@ class MarkSubgroupReadView(APIView):
 
         subgroup = get_object_or_404(Subgroup, slug=slug)
         now = timezone.now()
-        threads = Thread.objects.filter(subgroup=subgroup)
+        threads = Thread.objects.filter(subgroup=subgroup).filter(visible_threads_q(request.user))
         records = [
             ThreadReadStatus(user=request.user, thread=thread, last_read_at=now)
             for thread in threads
@@ -1008,9 +1347,11 @@ class ForumUnreadCountView(APIView):
             )
         )
         count = 0
-        for thread in Thread.objects.filter(
-            subgroup_id__in=subscribed_since.keys(), is_closed=False
-        ).only("id", "subgroup_id", "updated_at"):
+        for thread in (
+            Thread.objects.filter(subgroup_id__in=subscribed_since.keys(), is_closed=False)
+            .filter(visible_threads_q(request.user))
+            .only("id", "subgroup_id", "updated_at")
+        ):
             # Only count threads updated after the user subscribed
             if thread.updated_at <= subscribed_since[thread.subgroup_id]:
                 continue
@@ -1027,6 +1368,10 @@ class ThreadMuteToggleView(APIView):
 
     def post(self, request: Request, pk: int) -> Response:
         thread = get_object_or_404(Thread, pk=pk)
+        if not can_view_thread(request.user, thread):
+            from django.http import Http404
+
+            raise Http404
         mute, created = ThreadMuteStatus.objects.get_or_create(user=request.user, thread=thread)
         if not created:
             mute.delete()

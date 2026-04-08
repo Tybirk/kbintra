@@ -15,6 +15,7 @@ import {
   Box,
   ThemeIcon,
   Modal,
+  Tooltip,
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -58,13 +59,13 @@ export default function ForumPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["subgroups"] })
       notifications.show({
-        title: "Tilmeldt",
+        title: "Abonnerer",
         message: "Du modtager nu opdateringer fra denne gruppe.",
         color: "green",
       })
     },
     onError: (error: unknown) => {
-      showErrorNotification(error, "Kunne ikke tilmelde. Prøv venligst igen.")
+      showErrorNotification(error, "Kunne ikke abonnere. Prøv venligst igen.")
     },
   })
 
@@ -122,36 +123,45 @@ export default function ForumPage() {
     [subgroups],
   )
 
-  // Split subgroups: subscribed groups first, then remaining committees and regular groups
-  const { subscribedGroups, committees, regularGroups } = useMemo(() => {
-    const filtered =
-      subgroups?.filter((subgroup) =>
-        subgroup.name.toLowerCase().includes(search.toLowerCase()),
-      ) || []
+  // Split subgroups by precedence: member > subscribed > committee > regular
+  const { memberGroups, subscribedGroups, committees, regularGroups } =
+    useMemo(() => {
+      const filtered =
+        subgroups?.filter((subgroup) =>
+          subgroup.name.toLowerCase().includes(search.toLowerCase()),
+        ) || []
 
-    const byActivity = (a: Subgroup, b: Subgroup) => {
-      const aTime = a.last_activity_at
-        ? new Date(a.last_activity_at).getTime()
-        : 0
-      const bTime = b.last_activity_at
-        ? new Date(b.last_activity_at).getTime()
-        : 0
-      return bTime - aTime
-    }
+      const byActivity = (a: Subgroup, b: Subgroup) => {
+        const aTime = a.last_activity_at
+          ? new Date(a.last_activity_at).getTime()
+          : 0
+        const bTime = b.last_activity_at
+          ? new Date(b.last_activity_at).getTime()
+          : 0
+        return bTime - aTime
+      }
 
-    const subscribed = filtered.filter((s) => s.is_subscribed).sort(byActivity)
-    const subscribedIds = new Set(subscribed.map((s) => s.id))
+      const members = filtered.filter((s) => s.is_member).sort(byActivity)
+      const memberIds = new Set(members.map((s) => s.id))
 
-    return {
-      subscribedGroups: subscribed,
-      committees: filtered.filter(
-        (s) => s.is_committee && !subscribedIds.has(s.id),
-      ),
-      regularGroups: filtered.filter(
-        (s) => !s.is_committee && !subscribedIds.has(s.id),
-      ),
-    }
-  }, [subgroups, search])
+      const subscribed = filtered
+        .filter((s) => s.is_subscribed && !memberIds.has(s.id))
+        .sort(byActivity)
+      const subscribedIds = new Set(subscribed.map((s) => s.id))
+
+      return {
+        memberGroups: members,
+        subscribedGroups: subscribed,
+        committees: filtered.filter(
+          (s) =>
+            s.is_committee && !subscribedIds.has(s.id) && !memberIds.has(s.id),
+        ),
+        regularGroups: filtered.filter(
+          (s) =>
+            !s.is_committee && !subscribedIds.has(s.id) && !memberIds.has(s.id),
+        ),
+      }
+    }, [subgroups, search])
 
   if (isLoading) {
     return (
@@ -169,7 +179,7 @@ export default function ForumPage() {
     )
   }
 
-  const renderSubgroupCard = (subgroup: Subgroup) => (
+  const renderSubgroupCard = (subgroup: Subgroup, hideBell = false) => (
     <SubgroupCard
       key={subgroup.id}
       subgroup={subgroup}
@@ -178,6 +188,7 @@ export default function ForumPage() {
       onUnsubscribe={() => unsubscribeMutation.mutate(subgroup.slug)}
       isSubscribing={subscribeMutation.isPending}
       isUnsubscribing={unsubscribeMutation.isPending}
+      hideBell={hideBell}
     />
   )
 
@@ -258,12 +269,30 @@ export default function ForumPage() {
         style={{ maxWidth: 300 }}
       />
 
-      {subscribedGroups.length === 0 &&
+      {memberGroups.length === 0 &&
+      subscribedGroups.length === 0 &&
       committees.length === 0 &&
       regularGroups.length === 0 ? (
         <Text c="dimmed">Ingen grupper fundet.</Text>
       ) : (
         <Stack gap="xl">
+          {/* Member Groups Section */}
+          {memberGroups.length > 0 && (
+            <Box>
+              <Group gap="sm" mb="lg">
+                <ThemeIcon size="lg" radius="md" variant="filled" color="grape">
+                  <IconUsers size={20} />
+                </ThemeIcon>
+                <div>
+                  <Title order={3}>Grupper du er medlem af</Title>
+                </div>
+              </Group>
+              <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
+                {memberGroups.map((sg) => renderSubgroupCard(sg, true))}
+              </SimpleGrid>
+            </Box>
+          )}
+
           {/* Subscribed Groups Section */}
           {subscribedGroups.length > 0 && (
             <Box>
@@ -274,12 +303,12 @@ export default function ForumPage() {
                 <div>
                   <Title order={3}>Mine grupper</Title>
                   <Text size="sm" c="dimmed">
-                    Grupper du er tilmeldt
+                    Grupper du abonnerer på
                   </Text>
                 </div>
               </Group>
               <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
-                {subscribedGroups.map(renderSubgroupCard)}
+                {subscribedGroups.map((sg) => renderSubgroupCard(sg))}
               </SimpleGrid>
             </Box>
           )}
@@ -299,7 +328,7 @@ export default function ForumPage() {
                 </div>
               </Group>
               <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
-                {committees.map(renderSubgroupCard)}
+                {committees.map((sg) => renderSubgroupCard(sg))}
               </SimpleGrid>
             </Box>
           )}
@@ -319,7 +348,7 @@ export default function ForumPage() {
                 </div>
               </Group>
               <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
-                {regularGroups.map(renderSubgroupCard)}
+                {regularGroups.map((sg) => renderSubgroupCard(sg))}
               </SimpleGrid>
             </Box>
           )}
@@ -336,6 +365,7 @@ interface SubgroupCardProps {
   onUnsubscribe: () => void
   isSubscribing: boolean
   isUnsubscribing: boolean
+  hideBell?: boolean
 }
 
 function SubgroupCard({
@@ -345,6 +375,7 @@ function SubgroupCard({
   onUnsubscribe,
   isSubscribing,
   isUnsubscribing,
+  hideBell = false,
 }: SubgroupCardProps) {
   const handleSubscriptionClick = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -396,21 +427,28 @@ function SubgroupCard({
             )}
             <Text fw={500}>{subgroup.name}</Text>
           </Group>
-          <Group gap="xs">
-            <ActionIcon
-              variant={subgroup.is_subscribed ? "filled" : "light"}
-              color={subgroup.is_subscribed ? "blue" : "gray"}
-              onClick={handleSubscriptionClick}
-              loading={isSubscribing || isUnsubscribing}
-              title={subgroup.is_subscribed ? "Afmeld" : "Tilmeld"}
-            >
-              {subgroup.is_subscribed ? (
-                <IconBell size={16} />
-              ) : (
-                <IconBellOff size={16} />
-              )}
-            </ActionIcon>
-          </Group>
+          {!hideBell && (
+            <Group gap="xs">
+              <Tooltip
+                label={subgroup.is_subscribed ? "Afmeld" : "Abonnér"}
+                withArrow
+              >
+                <ActionIcon
+                  variant={subgroup.is_subscribed ? "filled" : "light"}
+                  color={subgroup.is_subscribed ? "blue" : "gray"}
+                  onClick={handleSubscriptionClick}
+                  loading={isSubscribing || isUnsubscribing}
+                  aria-label={subgroup.is_subscribed ? "Afmeld" : "Abonnér"}
+                >
+                  {subgroup.is_subscribed ? (
+                    <IconBell size={16} />
+                  ) : (
+                    <IconBellOff size={16} />
+                  )}
+                </ActionIcon>
+              </Tooltip>
+            </Group>
+          )}
         </Group>
 
         {subgroup.description && (

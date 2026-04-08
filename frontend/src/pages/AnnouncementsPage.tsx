@@ -279,6 +279,7 @@ function AnnouncementCard({
     uploaded_by: attachment.uploaded_by,
     is_own: false,
     uploaded_at: attachment.uploaded_at,
+    members_only: false,
   })
 
   return (

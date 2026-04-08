@@ -10,7 +10,8 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.forum.models import Subgroup
+from apps.forum.models import File, Post, Subgroup, Thread
+from apps.forum.services import member_subgroup_ids
 from apps.houses.models import Car, House
 from apps.users.models import User
 
@@ -194,6 +195,11 @@ class GlobalSearchView(APIView):
                     )
             results["cars"] = (injected + results["cars"])[:limit]
 
+        # Filter out members-only content the user can't see.
+        # We do this after collection (rather than at FTS time) because the FTS
+        # index doesn't store members_only state.
+        self._apply_visibility_filters(results, request.user)
+
         # Ensure all expected keys exist
         for key in GROUP_DISPLAY_ORDER:
             results.setdefault(key, [])
@@ -213,3 +219,75 @@ class GlobalSearchView(APIView):
                 "group_order": group_order,
             }
         )
+
+    def _apply_visibility_filters(self, results: dict[str, list[dict]], user: User) -> None:
+        """Drop members-only threads/posts/files from results when user can't see them."""
+        member_ids = set(member_subgroup_ids(user)) if user and user.is_authenticated else set()
+
+        # Threads
+        thread_items = results.get("threads") or []
+        if thread_items:
+            ids = [item["id"] for item in thread_items]
+            private = dict(
+                Thread.objects.filter(id__in=ids, members_only=True).values_list(
+                    "id", "subgroup_id"
+                )
+            )
+            authored = (
+                set(
+                    Thread.objects.filter(id__in=private.keys(), author=user).values_list(
+                        "id", flat=True
+                    )
+                )
+                if user and user.is_authenticated
+                else set()
+            )
+            results["threads"] = [
+                item
+                for item in thread_items
+                if item["id"] not in private
+                or private[item["id"]] in member_ids
+                or item["id"] in authored
+            ]
+
+        # Posts (visible iff their thread is visible)
+        post_items = results.get("posts") or []
+        if post_items:
+            ids = [item["id"] for item in post_items]
+            posts = dict(Post.objects.filter(id__in=ids).values_list("id", "thread_id"))
+            thread_ids = list({tid for tid in posts.values() if tid is not None})
+            private_threads = dict(
+                Thread.objects.filter(id__in=thread_ids, members_only=True).values_list(
+                    "id", "subgroup_id"
+                )
+            )
+            authored_threads = (
+                set(
+                    Thread.objects.filter(id__in=private_threads.keys(), author=user).values_list(
+                        "id", flat=True
+                    )
+                )
+                if user and user.is_authenticated
+                else set()
+            )
+            results["posts"] = [
+                item
+                for item in post_items
+                if (tid := posts.get(item["id"])) is None
+                or tid not in private_threads
+                or private_threads[tid] in member_ids
+                or tid in authored_threads
+            ]
+
+        # Files
+        file_items = results.get("files") or []
+        if file_items:
+            ids = [item["id"] for item in file_items]
+            private = dict(
+                File.objects.filter(id__in=ids, members_only=True).values_list("id", "subgroup_id")
+            )
+            results["files"] = [
+                item
+                for item in file_items
+                if item["id"] not in private or private[item["id"]] in member_ids
+            ]

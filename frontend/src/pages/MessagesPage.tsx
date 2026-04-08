@@ -53,6 +53,7 @@ import dayjs from "dayjs"
 
 import { messagingApi, chatWs } from "../api/messaging"
 import { apiClient } from "../api/client"
+import UserPickerModal from "../components/UserPickerModal"
 import { useAuthStore } from "../store/authStore"
 import type {
   Conversation,
@@ -893,6 +894,18 @@ function ChatArea({
   const prevConversationIdRef = useRef<number | null>(null)
   const highlightedHashRef = useRef<string | null>(null)
 
+  const addParticipantsMutation = useMutation({
+    mutationFn: (userIds: number[]) =>
+      messagingApi.addParticipants(conversation.id, userIds),
+    onSuccess: () => {
+      closeAddParticipants()
+      onParticipantsAdded?.()
+    },
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke tilføje deltagere")
+    },
+  })
+
   const otherParticipants = conversation.other_participants
   const isGroupChat = otherParticipants.length > 1
   const hasNoParticipants = otherParticipants.length === 0
@@ -1128,14 +1141,14 @@ function ChatArea({
         </Group>
       </Box>
 
-      <AddParticipantsModal
+      <UserPickerModal
         opened={addParticipantsOpened}
         onClose={closeAddParticipants}
-        conversation={conversation}
-        onSuccess={() => {
-          closeAddParticipants()
-          onParticipantsAdded?.()
-        }}
+        title="Tilføj deltagere"
+        confirmLabel="Tilføj"
+        excludeUserIds={conversation.participants.map((p) => p.id)}
+        loading={addParticipantsMutation.isPending}
+        onConfirm={(ids) => addParticipantsMutation.mutate(ids)}
       />
 
       <Modal
@@ -2268,190 +2281,5 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
         />
       </Box>
     </>
-  )
-}
-
-interface AddParticipantsModalProps {
-  opened: boolean
-  onClose: () => void
-  conversation: ConversationDetail
-  onSuccess: () => void
-}
-
-function AddParticipantsModal({
-  opened,
-  onClose,
-  conversation,
-  onSuccess,
-}: AddParticipantsModalProps) {
-  const [search, setSearch] = useState("")
-  const [selectedUsers, setSelectedUsers] = useState<User[]>([])
-
-  // Get existing participant IDs
-  const existingParticipantIds = new Set(
-    conversation.participants.map((p) => p.id),
-  )
-
-  // Fetch users for search
-  const { data: users } = useQuery({
-    queryKey: ["users"],
-    queryFn: async () => {
-      const response = await apiClient.get("/users/")
-      return (response.data.results ?? response.data) as User[]
-    },
-    enabled: opened,
-  })
-
-  const addMutation = useMutation({
-    mutationFn: (userIds: number[]) =>
-      messagingApi.addParticipants(conversation.id, userIds),
-    onSuccess: () => {
-      onSuccess()
-      setSearch("")
-      setSelectedUsers([])
-    },
-    onError: (error: unknown) => {
-      showErrorNotification(error, "Kunne ikke tilføje deltagere")
-    },
-  })
-
-  const searchTerm = search.trim().toLowerCase()
-  const filteredUsers = users?.filter((u) => {
-    // Exclude users already in the conversation
-    if (existingParticipantIds.has(u.id)) return false
-    // Exclude already selected users
-    if (selectedUsers.some((s) => s.id === u.id)) return false
-    // If no search term, show all
-    if (!searchTerm) return true
-    // Search in first name, last name, and full name
-    const firstName = (u.first_name || "").toLowerCase()
-    const lastName = (u.last_name || "").toLowerCase()
-    const fullName = `${firstName} ${lastName}`
-    return (
-      firstName.includes(searchTerm) ||
-      lastName.includes(searchTerm) ||
-      fullName.includes(searchTerm)
-    )
-  })
-
-  const handleSelectUser = (user: User) => {
-    setSelectedUsers((prev) => [...prev, user])
-    setSearch("")
-  }
-
-  const handleRemoveUser = (userId: number) => {
-    setSelectedUsers((prev) => prev.filter((u) => u.id !== userId))
-  }
-
-  const handleAdd = () => {
-    if (selectedUsers.length === 0) return
-    addMutation.mutate(selectedUsers.map((u) => u.id))
-  }
-
-  const handleClose = () => {
-    setSearch("")
-    setSelectedUsers([])
-    onClose()
-  }
-
-  return (
-    <Modal
-      opened={opened}
-      onClose={handleClose}
-      title="Tilføj deltagere"
-      size="md"
-    >
-      <Stack gap="md">
-        {/* Selected users as badges */}
-        {selectedUsers.length > 0 && (
-          <Group gap="xs">
-            {selectedUsers.map((u) => (
-              <Badge
-                key={u.id}
-                size="lg"
-                variant="light"
-                leftSection={
-                  <Avatar src={u.profile_picture} size={20} radius="xl">
-                    {u.first_name?.[0]}
-                  </Avatar>
-                }
-                rightSection={
-                  <Box
-                    component="span"
-                    style={{ cursor: "pointer", marginLeft: 4 }}
-                    onClick={() => handleRemoveUser(u.id)}
-                  >
-                    x
-                  </Box>
-                }
-                styles={{
-                  root: { paddingLeft: 4, paddingRight: 8 },
-                  section: { marginRight: 4 },
-                }}
-              >
-                {u.first_name} {u.last_name}
-              </Badge>
-            ))}
-          </Group>
-        )}
-
-        {/* Search and user list */}
-        <TextInput
-          placeholder="Søg brugere..."
-          leftSection={<IconSearch size={16} />}
-          value={search}
-          onChange={(e) => setSearch(e.currentTarget.value)}
-        />
-
-        <ScrollArea h={200}>
-          <Stack gap="xs">
-            {filteredUsers?.map((u) => (
-              <Paper
-                key={u.id}
-                p="sm"
-                withBorder
-                style={{ cursor: "pointer" }}
-                onClick={() => handleSelectUser(u)}
-              >
-                <Group gap="sm">
-                  <Avatar src={u.profile_picture} radius="xl" size="md">
-                    {u.first_name?.[0]}
-                    {u.last_name?.[0]}
-                  </Avatar>
-                  <div>
-                    <Text fw={500}>
-                      {u.first_name} {u.last_name}
-                    </Text>
-                    {u.house_name && (
-                      <Text size="xs" c="dimmed">
-                        {u.house_name}
-                      </Text>
-                    )}
-                  </div>
-                </Group>
-              </Paper>
-            ))}
-            {filteredUsers?.length === 0 && (
-              <Text c="dimmed" ta="center" py="md">
-                Ingen brugere fundet
-              </Text>
-            )}
-          </Stack>
-        </ScrollArea>
-
-        <Group justify="flex-end">
-          <Button variant="light" onClick={handleClose}>
-            Annuller
-          </Button>
-          <Button
-            onClick={handleAdd}
-            loading={addMutation.isPending}
-            disabled={selectedUsers.length === 0}
-          >
-            Tilføj {selectedUsers.length > 0 ? `(${selectedUsers.length})` : ""}
-          </Button>
-        </Group>
-      </Stack>
-    </Modal>
   )
 }
