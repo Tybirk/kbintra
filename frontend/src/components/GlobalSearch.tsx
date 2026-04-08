@@ -242,6 +242,11 @@ export function GlobalSearch({ onAction }: GlobalSearchProps) {
         shortcut={["mod + K"]}
         scrollable
         maxHeight={400}
+        styles={
+          isMobile
+            ? { actionsList: { maxHeight: "calc(100vh - 4rem)" } }
+            : undefined
+        }
       />
       <FilePreviewModal
         file={previewFile}
