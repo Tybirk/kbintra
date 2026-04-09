@@ -639,6 +639,7 @@ Skip any that are too vague to act on, and note why at the end.
         opened={createThreadModalOpened}
         onClose={closeCreateThreadModal}
         subgroupSlug={slug!}
+        subgroupName={subgroup?.name ?? ""}
         allowsMembers={subgroup?.allows_members ?? false}
         onSuccess={(thread) => {
           queryClient.invalidateQueries({ queryKey: ["threads", slug] })
@@ -803,6 +804,7 @@ interface CreateThreadModalProps {
   opened: boolean
   onClose: () => void
   subgroupSlug: string
+  subgroupName: string
   allowsMembers: boolean
   onSuccess: (thread: Thread) => void
 }
@@ -811,6 +813,7 @@ function CreateThreadModal({
   opened,
   onClose,
   subgroupSlug,
+  subgroupName,
   allowsMembers,
   onSuccess,
 }: CreateThreadModalProps) {
@@ -946,7 +949,7 @@ function CreateThreadModal({
             {allowsMembers && (
               <Checkbox
                 label="Kun for medlemmer"
-                description="Kun synlig for medlemmer af gruppen"
+                description={`Kun synlig for medlemmer af ${subgroupName}`}
                 checked={membersOnly}
                 onChange={(e) => setMembersOnly(e.currentTarget.checked)}
               />

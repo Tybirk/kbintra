@@ -51,8 +51,6 @@ def should_send_email(user: User, notification_type: NotificationType) -> bool:
         NotificationType.EVENT_REMINDER: prefs.email_event_reminders,
         NotificationType.FOOD_TICKET: prefs.email_food_tickets,
         NotificationType.MENTION: prefs.email_mentions,
-        NotificationType.SUBGROUP_MEMBER_ADDED: prefs.email_subgroup_member_added,
-        NotificationType.SUBGROUP_MEMBER_REMOVED: prefs.email_subgroup_member_removed,
     }
 
     return preference_map.get(notification_type, False)

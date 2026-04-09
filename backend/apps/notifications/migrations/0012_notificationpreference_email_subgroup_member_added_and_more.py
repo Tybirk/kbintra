@@ -9,36 +9,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
-            model_name="notificationpreference",
-            name="email_subgroup_member_added",
-            field=models.BooleanField(default=False),
-        ),
-        migrations.AddField(
-            model_name="notificationpreference",
-            name="email_subgroup_member_removed",
-            field=models.BooleanField(default=False),
-        ),
-        migrations.AddField(
-            model_name="notificationpreference",
-            name="notify_subgroup_member_added",
-            field=models.BooleanField(default=True),
-        ),
-        migrations.AddField(
-            model_name="notificationpreference",
-            name="notify_subgroup_member_removed",
-            field=models.BooleanField(default=True),
-        ),
-        migrations.AddField(
-            model_name="notificationpreference",
-            name="push_subgroup_member_added",
-            field=models.BooleanField(default=True),
-        ),
-        migrations.AddField(
-            model_name="notificationpreference",
-            name="push_subgroup_member_removed",
-            field=models.BooleanField(default=True),
-        ),
         migrations.AlterField(
             model_name="notification",
             name="notification_type",

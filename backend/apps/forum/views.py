@@ -57,6 +57,7 @@ from .services import (
     can_view_thread,
     filter_visible_files,
     filter_visible_threads,
+    member_subgroup_ids,
     remove_member,
     visible_threads_q,
 )
@@ -141,6 +142,7 @@ class SubgroupListView(generics.ListCreateAPIView):
             context["subscribed_subgroup_ids"] = set(
                 SubgroupSubscription.objects.filter(user=user).values_list("subgroup_id", flat=True)
             )
+            context["member_subgroup_ids"] = set(member_subgroup_ids(user))
         return context
 
     def create(self, request: Request, *args: object, **kwargs: object) -> Response:
@@ -169,6 +171,7 @@ class SubgroupDetailView(generics.RetrieveAPIView):
             context["subscribed_subgroup_ids"] = set(
                 SubgroupSubscription.objects.filter(user=user).values_list("subgroup_id", flat=True)
             )
+            context["member_subgroup_ids"] = set(member_subgroup_ids(user))
         return context
 
 
@@ -227,6 +230,16 @@ class SubgroupUpdateView(APIView):
         serializer = SubgroupUpdateSerializer(subgroup, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         will_allow = serializer.validated_data.get("allows_members", was_allowing)
+
+        if (
+            "allows_members" in serializer.validated_data
+            and will_allow != was_allowing
+            and not (request.user.is_staff or _is_member(request.user, subgroup))
+        ):
+            return Response(
+                {"detail": "Du har ikke tilladelse til at ændre medlemskab for denne gruppe."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         # Disabling membership: block if any private content remains in the group.
         if was_allowing and not will_allow:

@@ -286,8 +286,19 @@ class GlobalSearchView(APIView):
             private = dict(
                 File.objects.filter(id__in=ids, members_only=True).values_list("id", "subgroup_id")
             )
+            uploaded_by = (
+                set(
+                    File.objects.filter(id__in=private.keys(), uploaded_by=user).values_list(
+                        "id", flat=True
+                    )
+                )
+                if user and user.is_authenticated
+                else set()
+            )
             results["files"] = [
                 item
                 for item in file_items
-                if item["id"] not in private or private[item["id"]] in member_ids
+                if item["id"] not in private
+                or private[item["id"]] in member_ids
+                or item["id"] in uploaded_by
             ]

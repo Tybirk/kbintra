@@ -133,8 +133,10 @@ def get_user_preference(user: User, notification_type: NotificationType) -> bool
         NotificationType.EVENT_REMINDER: prefs.notify_event_reminders,
         NotificationType.FOOD_TICKET: prefs.notify_food_tickets,
         NotificationType.MENTION: prefs.notify_mentions,
-        NotificationType.SUBGROUP_MEMBER_ADDED: prefs.notify_subgroup_member_added,
-        NotificationType.SUBGROUP_MEMBER_REMOVED: prefs.notify_subgroup_member_removed,
+        # Subgroup membership notifications are not user-configurable: always
+        # delivered in-app so users know when their access changes.
+        NotificationType.SUBGROUP_MEMBER_ADDED: True,
+        NotificationType.SUBGROUP_MEMBER_REMOVED: True,
     }
 
     return preference_map.get(notification_type, True)
@@ -164,9 +166,30 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
         NotificationType.EVENT_REMINDER: prefs.push_event_reminders,
         NotificationType.FOOD_TICKET: prefs.push_food_tickets,
         NotificationType.MENTION: prefs.push_mentions,
-        NotificationType.SUBGROUP_MEMBER_ADDED: prefs.push_subgroup_member_added,
-        NotificationType.SUBGROUP_MEMBER_REMOVED: prefs.push_subgroup_member_removed,
     }
+
+    # Subgroup membership pushes piggyback on whatever push channels the user
+    # already has enabled — if they've opted into any push at all, they get
+    # pushed about being added to / removed from a group.
+    if notification_type in (
+        NotificationType.SUBGROUP_MEMBER_ADDED,
+        NotificationType.SUBGROUP_MEMBER_REMOVED,
+    ):
+        return any(
+            (
+                prefs.push_messages,
+                prefs.push_announcements,
+                prefs.push_announcement_updates,
+                prefs.push_forum_subscriptions,
+                prefs.push_thread_replies,
+                prefs.push_subgroup_activity,
+                prefs.push_post_reactions,
+                prefs.push_events,
+                prefs.push_event_reminders,
+                prefs.push_food_tickets,
+                prefs.push_mentions,
+            )
+        )
 
     return preference_map.get(notification_type, True)
 

@@ -299,30 +299,6 @@ export default function NotificationPreferencesPage() {
                   )
                 }
               />
-              <Divider my="xs" label="Medlemskab" labelPosition="center" />
-              <Switch
-                label="Tilføjet til en gruppe"
-                description="Når du bliver tilføjet til en gruppe"
-                checked={preferences.notify_subgroup_member_added}
-                onChange={(e) =>
-                  handleToggle(
-                    "notify_subgroup_member_added",
-                    e.currentTarget.checked,
-                  )
-                }
-              />
-              <Switch
-                label="Fjernet fra en gruppe"
-                description="Når du bliver fjernet fra en gruppe"
-                checked={preferences.notify_subgroup_member_removed}
-                onChange={(e) =>
-                  handleToggle(
-                    "notify_subgroup_member_removed",
-                    e.currentTarget.checked,
-                  )
-                }
-              />
-              <Divider my="xs" />
               <Switch
                 label="Trådsvar"
                 description="Når nogen svarer på din tråd"
@@ -424,30 +400,6 @@ export default function NotificationPreferencesPage() {
                   )
                 }
               />
-              <Divider my="xs" label="Medlemskab" labelPosition="center" />
-              <Switch
-                label="Tilføjet til en gruppe"
-                description="E-mail når du bliver tilføjet til en gruppe"
-                checked={preferences.email_subgroup_member_added}
-                onChange={(e) =>
-                  handleToggle(
-                    "email_subgroup_member_added",
-                    e.currentTarget.checked,
-                  )
-                }
-              />
-              <Switch
-                label="Fjernet fra en gruppe"
-                description="E-mail når du bliver fjernet fra en gruppe"
-                checked={preferences.email_subgroup_member_removed}
-                onChange={(e) =>
-                  handleToggle(
-                    "email_subgroup_member_removed",
-                    e.currentTarget.checked,
-                  )
-                }
-              />
-              <Divider my="xs" />
               <Switch
                 label="Trådsvar"
                 description="E-mail når nogen svarer på din tråd"
@@ -580,34 +532,6 @@ export default function NotificationPreferencesPage() {
                           )
                         }
                       />
-                      <Divider
-                        my="xs"
-                        label="Medlemskab"
-                        labelPosition="center"
-                      />
-                      <Switch
-                        label="Tilføjet til en gruppe"
-                        description="Push-notifikation når du bliver tilføjet til en gruppe"
-                        checked={preferences.push_subgroup_member_added}
-                        onChange={(e) =>
-                          handleToggle(
-                            "push_subgroup_member_added",
-                            e.currentTarget.checked,
-                          )
-                        }
-                      />
-                      <Switch
-                        label="Fjernet fra en gruppe"
-                        description="Push-notifikation når du bliver fjernet fra en gruppe"
-                        checked={preferences.push_subgroup_member_removed}
-                        onChange={(e) =>
-                          handleToggle(
-                            "push_subgroup_member_removed",
-                            e.currentTarget.checked,
-                          )
-                        }
-                      />
-                      <Divider my="xs" />
                       <Switch
                         label="Trådsvar"
                         description="Push-notifikation når nogen svarer på din tråd"
