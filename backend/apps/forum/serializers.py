@@ -178,7 +178,7 @@ class SubgroupUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Subgroup
-        fields = ["description", "icon", "allows_members"]
+        fields = ["name", "description", "icon", "allows_members"]
 
 
 class SubgroupCreateSerializer(serializers.ModelSerializer):
@@ -706,6 +706,7 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
     is_own = serializers.SerializerMethodField()
     can_edit = serializers.SerializerMethodField()
     can_close = serializers.SerializerMethodField()
+    can_toggle_privacy = serializers.SerializerMethodField()
     event_id = serializers.SerializerMethodField()
     event_slug = serializers.SerializerMethodField()
     is_muted = serializers.SerializerMethodField()
@@ -726,6 +727,7 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
             "is_own",
             "can_edit",
             "can_close",
+            "can_toggle_privacy",
             "is_muted",
             "event_id",
             "event_slug",
@@ -745,6 +747,19 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             return obj.author_id == request.user.id or request.user.is_staff
         return False
+
+    def get_can_toggle_privacy(self, obj: Thread) -> bool:
+        request = self.context.get("request")
+        if not (request and request.user.is_authenticated):
+            return False
+        if not obj.subgroup.allows_members:
+            return False
+        user = request.user
+        if obj.author_id == user.id or user.is_staff:
+            return True
+        from .models import SubgroupMembership
+
+        return SubgroupMembership.objects.filter(user=user, subgroup_id=obj.subgroup_id).exists()
 
     def get_can_close(self, obj: Thread) -> bool:
         """Check if current user can close/reopen this thread (owner or admin)."""
@@ -993,6 +1008,7 @@ class FileSerializer(serializers.ModelSerializer):
 
     uploaded_by = AuthorSerializer(read_only=True)
     is_own = serializers.SerializerMethodField()
+    can_toggle_privacy = serializers.SerializerMethodField()
     file_url = serializers.SerializerMethodField()
 
     class Meta:
@@ -1005,6 +1021,7 @@ class FileSerializer(serializers.ModelSerializer):
             "preview_html",
             "uploaded_by",
             "is_own",
+            "can_toggle_privacy",
             "members_only",
             "uploaded_at",
         ]
@@ -1014,6 +1031,19 @@ class FileSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             return obj.uploaded_by_id == request.user.id
         return False
+
+    def get_can_toggle_privacy(self, obj: File) -> bool:
+        request = self.context.get("request")
+        if not (request and request.user.is_authenticated):
+            return False
+        if obj.subgroup_id is None or not obj.subgroup.allows_members:
+            return False
+        user = request.user
+        if obj.uploaded_by_id == user.id or user.is_staff:
+            return True
+        from .models import SubgroupMembership
+
+        return SubgroupMembership.objects.filter(user=user, subgroup_id=obj.subgroup_id).exists()
 
     def get_file_url(self, obj: File) -> str:
         if obj.file:

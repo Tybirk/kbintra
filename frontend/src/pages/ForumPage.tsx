@@ -16,6 +16,7 @@ import {
   ThemeIcon,
   Modal,
   Tooltip,
+  Checkbox,
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -44,6 +45,7 @@ export default function ForumPage() {
     useDisclosure(false)
   const [newName, setNewName] = useState("")
   const [newDescription, setNewDescription] = useState("")
+  const [newAllowsMembers, setNewAllowsMembers] = useState(false)
 
   const {
     data: subgroups,
@@ -107,6 +109,7 @@ export default function ForumPage() {
       })
       setNewName("")
       setNewDescription("")
+      setNewAllowsMembers(false)
       closeCreate()
       navigate(`/forum/${subgroup.slug}`)
     },
@@ -218,6 +221,12 @@ export default function ForumPage() {
               minHeight={100}
             />
           </Box>
+          <Checkbox
+            label="Tillad medlemskab"
+            description="Relevant hvis der ønskes mulighed for private tråde."
+            checked={newAllowsMembers}
+            onChange={(e) => setNewAllowsMembers(e.currentTarget.checked)}
+          />
           <Group justify="flex-end">
             <Button variant="default" onClick={closeCreate}>
               Annuller
@@ -227,6 +236,7 @@ export default function ForumPage() {
                 createSubgroupMutation.mutate({
                   name: newName,
                   description: newDescription,
+                  allows_members: newAllowsMembers,
                 })
               }
               loading={createSubgroupMutation.isPending}
@@ -301,10 +311,7 @@ export default function ForumPage() {
                   <IconBell size={20} />
                 </ThemeIcon>
                 <div>
-                  <Title order={3}>Mine grupper</Title>
-                  <Text size="sm" c="dimmed">
-                    Grupper du abonnerer på
-                  </Text>
+                  <Title order={3}>Grupper du abonnerer på</Title>
                 </div>
               </Group>
               <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
@@ -322,9 +329,6 @@ export default function ForumPage() {
                 </ThemeIcon>
                 <div>
                   <Title order={3}>Udvalg</Title>
-                  <Text size="sm" c="dimmed">
-                    Fællesskabets udvalg og arbejdsgrupper
-                  </Text>
                 </div>
               </Group>
               <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
@@ -341,10 +345,7 @@ export default function ForumPage() {
                   <IconMessageCircle size={20} />
                 </ThemeIcon>
                 <div>
-                  <Title order={3}>Grupper</Title>
-                  <Text size="sm" c="dimmed">
-                    Øvrige fora og diskussionsgrupper
-                  </Text>
+                  <Title order={3}>Grupper og Arbejdsgrupper</Title>
                 </div>
               </Group>
               <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">

@@ -259,6 +259,7 @@ export interface ThreadDetail extends Thread {
   is_own: boolean
   can_edit: boolean
   can_close: boolean
+  can_toggle_privacy: boolean
   is_muted: boolean
   event_id: number | null
   event_slug: string | null
@@ -305,6 +306,7 @@ export interface ForumFile {
   preview_html?: string
   uploaded_by: Author | null
   is_own: boolean
+  can_toggle_privacy?: boolean
   uploaded_at: string
   members_only: boolean
 }

@@ -1363,3 +1363,391 @@ class TestForumAdminRights:
         post_data = next(p for p in response.data["posts"] if p["id"] == post.id)
         assert post_data["is_own"] is False
         assert post_data["can_edit"] is True
+
+
+# =============================================================================
+# Membership + Private Threads/Files Tests
+# =============================================================================
+
+
+@pytest.fixture
+def member_subgroup(db):
+    """A subgroup that allows members."""
+    return Subgroup.objects.create(
+        name="Grønt udvalg",
+        description="Green committee",
+        slug="gront-udvalg",
+        is_committee=True,
+        allows_members=True,
+    )
+
+
+@pytest.fixture
+def third_user(db):
+    return __import__("apps.users.models", fromlist=["User"]).User.objects.create_user(
+        email="third@example.com",
+        password="testpass123",
+        first_name="Third",
+        last_name="User",
+    )
+
+
+@pytest.fixture
+def member_client(api_client, user, member_subgroup):
+    """Authenticated client where user is a member of member_subgroup."""
+    from apps.forum.models import SubgroupMembership
+
+    SubgroupMembership.objects.create(user=user, subgroup=member_subgroup)
+    SubgroupSubscription.objects.get_or_create(user=user, subgroup=member_subgroup)
+    api_client.force_authenticate(user=user)
+    return api_client
+
+
+@pytest.fixture
+def second_authenticated_client(api_client, second_user):
+    api_client.force_authenticate(user=second_user)
+    return api_client
+
+
+class TestMembershipCRUD:
+    """Tests for membership add/remove/role/leave endpoints."""
+
+    def test_member_can_add_members(self, member_client, member_subgroup, second_user):
+        response = member_client.post(
+            f"/api/forum/subgroups/{member_subgroup.slug}/members/",
+            {"user_ids": [second_user.id]},
+            format="json",
+        )
+        assert response.status_code in (200, 201)
+        from apps.forum.models import SubgroupMembership
+
+        assert SubgroupMembership.objects.filter(
+            user=second_user, subgroup=member_subgroup
+        ).exists()
+
+    def test_admin_can_add_members(self, admin_client, member_subgroup, second_user):
+        response = admin_client.post(
+            f"/api/forum/subgroups/{member_subgroup.slug}/members/",
+            {"user_ids": [second_user.id]},
+            format="json",
+        )
+        assert response.status_code in (200, 201)
+
+    def test_non_member_cannot_add_members(
+        self, second_authenticated_client, member_subgroup, user
+    ):
+        response = second_authenticated_client.post(
+            f"/api/forum/subgroups/{member_subgroup.slug}/members/",
+            {"user_ids": [user.id]},
+            format="json",
+        )
+        assert response.status_code == 403
+
+    def test_adding_members_to_non_member_group_fails(self, admin_client, subgroup, second_user):
+        """Adding members to a group with allows_members=False should be rejected."""
+        response = admin_client.post(
+            f"/api/forum/subgroups/{subgroup.slug}/members/",
+            {"user_ids": [second_user.id]},
+            format="json",
+        )
+        assert response.status_code == 400
+
+    def test_add_member_auto_creates_subscription(self, admin_client, member_subgroup, second_user):
+        assert not SubgroupSubscription.objects.filter(
+            user=second_user, subgroup=member_subgroup
+        ).exists()
+        admin_client.post(
+            f"/api/forum/subgroups/{member_subgroup.slug}/members/",
+            {"user_ids": [second_user.id]},
+            format="json",
+        )
+        assert SubgroupSubscription.objects.filter(
+            user=second_user, subgroup=member_subgroup
+        ).exists()
+
+    def test_remove_member_keeps_subscription(
+        self, member_client, member_subgroup, second_user, admin_user
+    ):
+        from apps.forum.models import SubgroupMembership
+
+        SubgroupMembership.objects.create(user=second_user, subgroup=member_subgroup)
+        SubgroupSubscription.objects.get_or_create(user=second_user, subgroup=member_subgroup)
+        response = member_client.delete(
+            f"/api/forum/subgroups/{member_subgroup.slug}/members/{second_user.id}/"
+        )
+        assert response.status_code in (200, 204)
+        assert not SubgroupMembership.objects.filter(
+            user=second_user, subgroup=member_subgroup
+        ).exists()
+        assert SubgroupSubscription.objects.filter(
+            user=second_user, subgroup=member_subgroup
+        ).exists()
+
+    def test_self_leave_shortcut(self, member_client, member_subgroup, user):
+        from apps.forum.models import SubgroupMembership
+
+        response = member_client.post(f"/api/forum/subgroups/{member_subgroup.slug}/leave/")
+        assert response.status_code in (200, 204)
+        assert not SubgroupMembership.objects.filter(user=user, subgroup=member_subgroup).exists()
+
+    def test_member_can_edit_role(self, member_client, member_subgroup, second_user):
+        from apps.forum.models import SubgroupMembership
+
+        SubgroupMembership.objects.create(user=second_user, subgroup=member_subgroup)
+        response = member_client.patch(
+            f"/api/forum/subgroups/{member_subgroup.slug}/members/{second_user.id}/",
+            {"role": "Formand"},
+            format="json",
+        )
+        assert response.status_code == 200
+        m = SubgroupMembership.objects.get(user=second_user, subgroup=member_subgroup)
+        assert m.role == "Formand"
+
+    def test_non_member_cannot_edit_role(self, second_authenticated_client, member_subgroup, user):
+        from apps.forum.models import SubgroupMembership
+
+        SubgroupMembership.objects.create(user=user, subgroup=member_subgroup)
+        response = second_authenticated_client.patch(
+            f"/api/forum/subgroups/{member_subgroup.slug}/members/{user.id}/",
+            {"role": "Formand"},
+            format="json",
+        )
+        assert response.status_code == 403
+
+    def test_creating_group_with_allows_members_auto_enrolls_creator(
+        self, admin_client, admin_user
+    ):
+        from apps.forum.models import SubgroupMembership
+
+        response = admin_client.post(
+            "/api/forum/subgroups/",
+            {
+                "name": "Nyt udvalg",
+                "description": "Test",
+                "allows_members": True,
+            },
+            format="json",
+        )
+        assert response.status_code == 201
+        assert SubgroupMembership.objects.filter(
+            user=admin_user, subgroup__slug="nyt-udvalg"
+        ).exists()
+
+    def test_enabling_allows_members_auto_enrolls_editor(self, admin_client, admin_user, subgroup):
+        from apps.forum.models import SubgroupMembership
+
+        response = admin_client.patch(
+            f"/api/forum/subgroups/{subgroup.slug}/update/",
+            {"allows_members": True},
+            format="json",
+        )
+        assert response.status_code == 200
+        assert SubgroupMembership.objects.filter(user=admin_user, subgroup=subgroup).exists()
+
+    def test_disable_allows_members_blocked_when_private_thread_exists(
+        self, admin_client, member_subgroup, user
+    ):
+        Thread.objects.create(
+            subgroup=member_subgroup,
+            title="Privat",
+            author=user,
+            members_only=True,
+        )
+        response = admin_client.patch(
+            f"/api/forum/subgroups/{member_subgroup.slug}/update/",
+            {"allows_members": False},
+            format="json",
+        )
+        assert response.status_code == 400
+
+    def test_disable_allows_members_clears_memberships(self, admin_client, member_subgroup, user):
+        from apps.forum.models import SubgroupMembership
+
+        SubgroupMembership.objects.create(user=user, subgroup=member_subgroup)
+        response = admin_client.patch(
+            f"/api/forum/subgroups/{member_subgroup.slug}/update/",
+            {"allows_members": False},
+            format="json",
+        )
+        assert response.status_code == 200
+        assert not SubgroupMembership.objects.filter(subgroup=member_subgroup).exists()
+
+
+class TestPrivateThreadVisibility:
+    """Tests for members-only thread visibility."""
+
+    @pytest.fixture
+    def private_thread(self, db, user, member_subgroup):
+        return Thread.objects.create(
+            subgroup=member_subgroup,
+            title="Privat tråd",
+            author=user,
+            members_only=True,
+        )
+
+    def test_non_member_cannot_see_private_thread_in_list(
+        self, second_authenticated_client, member_subgroup, private_thread
+    ):
+        response = second_authenticated_client.get(
+            f"/api/forum/subgroups/{member_subgroup.slug}/threads/"
+        )
+        assert response.status_code == 200
+        ids = [t["id"] for t in get_results(response.data)]
+        assert private_thread.id not in ids
+
+    def test_non_member_gets_404_on_private_thread_detail(
+        self, second_authenticated_client, private_thread
+    ):
+        response = second_authenticated_client.get(f"/api/forum/threads/{private_thread.id}/")
+        assert response.status_code == 404
+
+    def test_member_sees_private_thread_in_list(
+        self, member_client, member_subgroup, private_thread
+    ):
+        response = member_client.get(f"/api/forum/subgroups/{member_subgroup.slug}/threads/")
+        assert response.status_code == 200
+        ids = [t["id"] for t in get_results(response.data)]
+        assert private_thread.id in ids
+
+    def test_non_member_author_sees_own_private_thread(
+        self, api_client, second_user, member_subgroup
+    ):
+        """Non-member author can still see their own private thread (key affordance)."""
+        thread = Thread.objects.create(
+            subgroup=member_subgroup,
+            title="Ansøgning",
+            author=second_user,
+            members_only=True,
+        )
+        api_client.force_authenticate(user=second_user)
+        response = api_client.get(f"/api/forum/threads/{thread.id}/")
+        assert response.status_code == 200
+
+    def test_admin_non_member_gets_404(self, admin_client, private_thread):
+        """is_staff does NOT grant bypass access to private threads."""
+        response = admin_client.get(f"/api/forum/threads/{private_thread.id}/")
+        assert response.status_code == 404
+
+    def test_non_member_cannot_delete_private_thread(
+        self, second_authenticated_client, private_thread
+    ):
+        response = second_authenticated_client.delete(
+            f"/api/forum/threads/{private_thread.id}/delete/"
+        )
+        assert response.status_code == 404
+
+    def test_public_thread_still_visible_to_everyone(self, second_authenticated_client, thread):
+        response = second_authenticated_client.get(f"/api/forum/threads/{thread.id}/")
+        assert response.status_code == 200
+
+
+class TestPrivateFileVisibility:
+    @pytest.fixture
+    def private_file(self, db, user, member_subgroup):
+        return File.objects.create(
+            subgroup=member_subgroup,
+            uploaded_by=user,
+            name="hemmeligt.pdf",
+            file=SimpleUploadedFile("hemmeligt.pdf", b"secret content"),
+            members_only=True,
+        )
+
+    def test_non_member_does_not_see_private_file_in_list(
+        self, second_authenticated_client, member_subgroup, private_file
+    ):
+        response = second_authenticated_client.get(
+            f"/api/forum/subgroups/{member_subgroup.slug}/files/"
+        )
+        assert response.status_code == 200
+        ids = [f["id"] for f in get_results(response.data)]
+        assert private_file.id not in ids
+
+    def test_member_sees_private_file_in_list(self, member_client, member_subgroup, private_file):
+        response = member_client.get(f"/api/forum/subgroups/{member_subgroup.slug}/files/")
+        assert response.status_code == 200
+        ids = [f["id"] for f in get_results(response.data)]
+        assert private_file.id in ids
+
+
+class TestMembershipNotifications:
+    """Test that membership adds/removes trigger the right notifications."""
+
+    def test_adding_user_creates_added_notification(
+        self, admin_client, admin_user, member_subgroup, second_user
+    ):
+        from apps.notifications.models import Notification, NotificationType
+
+        admin_client.post(
+            f"/api/forum/subgroups/{member_subgroup.slug}/members/",
+            {"user_ids": [second_user.id]},
+            format="json",
+        )
+        assert Notification.objects.filter(
+            user=second_user,
+            notification_type=NotificationType.SUBGROUP_MEMBER_ADDED,
+        ).exists()
+
+    def test_self_leave_does_not_notify(self, member_client, user, member_subgroup):
+        from apps.notifications.models import Notification, NotificationType
+
+        before = Notification.objects.filter(
+            user=user,
+            notification_type=NotificationType.SUBGROUP_MEMBER_REMOVED,
+        ).count()
+        member_client.post(f"/api/forum/subgroups/{member_subgroup.slug}/leave/")
+        after = Notification.objects.filter(
+            user=user,
+            notification_type=NotificationType.SUBGROUP_MEMBER_REMOVED,
+        ).count()
+        assert after == before
+
+    def test_self_auto_enroll_on_create_does_not_notify(self, admin_client, admin_user):
+        from apps.notifications.models import Notification, NotificationType
+
+        admin_client.post(
+            "/api/forum/subgroups/",
+            {"name": "Auto udvalg", "description": "x", "allows_members": True},
+            format="json",
+        )
+        assert not Notification.objects.filter(
+            user=admin_user,
+            notification_type=NotificationType.SUBGROUP_MEMBER_ADDED,
+        ).exists()
+
+
+class TestPrivateThreadNotificationFanout:
+    def test_non_member_subscriber_gets_no_notification_for_private_thread(
+        self, member_client, second_user, member_subgroup
+    ):
+        """A subscriber who is not a member should NOT be notified about a private thread."""
+        from apps.notifications.models import Notification
+
+        # second_user is subscribed but NOT a member
+        SubgroupSubscription.objects.create(user=second_user, subgroup=member_subgroup)
+
+        response = member_client.post(
+            f"/api/forum/subgroups/{member_subgroup.slug}/threads/",
+            {
+                "title": "Privat diskussion",
+                "content": "Fortroligt",
+                "members_only": True,
+            },
+            format="json",
+        )
+        assert response.status_code == 201
+
+        # second_user should have no notifications about this thread
+        assert not Notification.objects.filter(
+            user=second_user, title__icontains="Privat diskussion"
+        ).exists()
+
+
+class TestCreatePrivateThreadValidation:
+    def test_cannot_create_private_thread_in_non_member_group(self, authenticated_client, subgroup):
+        """Creating members_only thread in a group without allows_members should fail."""
+        response = authenticated_client.post(
+            f"/api/forum/subgroups/{subgroup.slug}/threads/",
+            {"title": "X", "content": "Y", "members_only": True},
+            format="json",
+        )
+        assert response.status_code == 400

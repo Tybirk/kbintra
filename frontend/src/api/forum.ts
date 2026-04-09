@@ -22,6 +22,7 @@ import type {
 } from "../types"
 
 interface SubgroupUpdateData {
+  name?: string
   description?: string
   icon?: string
   allows_members?: boolean

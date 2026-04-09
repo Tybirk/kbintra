@@ -561,7 +561,7 @@ class ThreadUpdateView(generics.UpdateAPIView):
             is_member = SubgroupMembership.objects.filter(
                 user=user, subgroup_id=instance.subgroup_id
             ).exists()
-            if not (is_author or is_member):
+            if not (is_author or is_member or user.is_staff):
                 from rest_framework.exceptions import PermissionDenied
 
                 raise PermissionDenied("Du kan ikke ændre denne tråds synlighed.")
@@ -579,11 +579,14 @@ class ThreadDeleteView(generics.DestroyAPIView):
     queryset = Thread.objects.all()
 
     def get_object(self) -> Thread:
-        obj = super().get_object()
+        # Visibility check BEFORE permission check so invisible threads
+        # return 404, not 403 (prevents leaking existence).
+        obj = get_object_or_404(Thread, pk=self.kwargs[self.lookup_field or "pk"])
         if not can_view_thread(self.request.user, obj):
             from django.http import Http404
 
             raise Http404
+        self.check_object_permissions(self.request, obj)
         return obj
 
 
@@ -951,7 +954,7 @@ class FileDetailView(generics.RetrieveUpdateDestroyAPIView):
                 user=user, subgroup_id=instance.subgroup_id
             ).exists()
         )
-        if not (is_uploader or is_member):
+        if not (is_uploader or is_member or user.is_staff):
             from rest_framework.exceptions import PermissionDenied
 
             raise PermissionDenied("Du har ikke tilladelse til at ændre denne fil.")

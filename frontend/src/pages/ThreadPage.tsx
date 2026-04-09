@@ -714,7 +714,7 @@ export default function ThreadPage() {
                         Flyt tråd
                       </Menu.Item>
                     )}
-                    {thread.can_edit && (
+                    {thread.can_toggle_privacy && (
                       <Menu.Item
                         leftSection={<IconEyeOff size={14} />}
                         onClick={() => {

@@ -24,8 +24,9 @@ import {
   Typography,
   Checkbox,
   Tooltip,
+  Menu,
 } from "@mantine/core"
-import { useDisclosure } from "@mantine/hooks"
+import { useDisclosure, useMediaQuery } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
 import { showErrorNotification } from "../utils/errorNotification"
 import {
@@ -46,12 +47,13 @@ import {
   IconCalendarEvent,
   IconLink,
   IconCopy,
-  IconEdit,
-  IconX,
-  IconCheck,
   IconEyeOff,
   IconUsers,
   IconUserPlus,
+  IconChevronDown,
+  IconChevronUp,
+  IconDots,
+  IconSettings,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 
@@ -149,24 +151,40 @@ export default function SubgroupPage() {
 
   const { user } = useAuthStore()
   const [isCopying, setIsCopying] = useState(false)
-  const [isEditingDescription, setIsEditingDescription] = useState(false)
-  const [editedDescription, setEditedDescription] = useState("")
-
-  const updateDescriptionMutation = useMutation({
-    mutationFn: (description: string) =>
-      forumApi.updateSubgroup(slug!, { description }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["subgroup", slug] })
-      queryClient.invalidateQueries({ queryKey: ["subgroups"] })
-      setIsEditingDescription(false)
-    },
-  })
 
   const updateIconMutation = useMutation({
     mutationFn: (icon: string) => forumApi.updateSubgroup(slug!, { icon }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["subgroup", slug] })
       queryClient.invalidateQueries({ queryKey: ["subgroups"] })
+    },
+  })
+
+  const isMobile = useMediaQuery("(max-width: 48em)")
+  const [editGroupOpened, { open: openEditGroup, close: closeEditGroup }] =
+    useDisclosure(false)
+  const [editName, setEditName] = useState("")
+  const [editDescriptionFull, setEditDescriptionFull] = useState("")
+  const [editAllowsMembers, setEditAllowsMembers] = useState(false)
+
+  const updateSubgroupMutation = useMutation({
+    mutationFn: (data: {
+      name?: string
+      description?: string
+      allows_members?: boolean
+    }) => forumApi.updateSubgroup(slug!, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["subgroup", slug] })
+      queryClient.invalidateQueries({ queryKey: ["subgroups"] })
+      notifications.show({
+        title: "Gruppe opdateret",
+        message: "Ændringerne er gemt.",
+        color: "green",
+      })
+      closeEditGroup()
+    },
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke opdatere gruppen.")
     },
   })
 
@@ -358,6 +376,57 @@ Skip any that are too vague to act on, and note why at the end.
     <>
       <BackButton to="/forum" label="Tilbage til forum" />
 
+      <Modal
+        opened={editGroupOpened}
+        onClose={closeEditGroup}
+        title="Rediger gruppe"
+        fullScreen={isMobile}
+      >
+        <Stack>
+          <TextInput
+            label="Navn"
+            value={editName}
+            onChange={(e) => setEditName(e.currentTarget.value)}
+            required
+          />
+          <Box>
+            <Text size="sm" fw={500} mb={4}>
+              Beskrivelse
+            </Text>
+            <RichTextEditor
+              content={editDescriptionFull}
+              onChange={setEditDescriptionFull}
+              placeholder="Beskriv gruppen..."
+              minHeight={120}
+            />
+          </Box>
+          <Checkbox
+            label="Tillad medlemskab"
+            description="Relevant hvis der ønskes mulighed for private tråde."
+            checked={editAllowsMembers}
+            onChange={(e) => setEditAllowsMembers(e.currentTarget.checked)}
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={closeEditGroup}>
+              Annuller
+            </Button>
+            <Button
+              loading={updateSubgroupMutation.isPending}
+              disabled={!editName.trim()}
+              onClick={() =>
+                updateSubgroupMutation.mutate({
+                  name: editName,
+                  description: editDescriptionFull,
+                  allows_members: editAllowsMembers,
+                })
+              }
+            >
+              Gem
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
       <Group justify="space-between" mb="md">
         <div>
           <Group gap="xs">
@@ -366,70 +435,45 @@ Skip any that are too vague to act on, and note why at the end.
               icon={subgroup.icon || "💬"}
               size="lg"
             />
-            <Title order={1}>{subgroup.name}</Title>
-            {subgroup.is_committee && (
-              <Badge variant="filled" color="teal">
-                Udvalg
-              </Badge>
-            )}
-            <Text size="sm" c="dimmed">
-              {subgroup.thread_count} tråde
-            </Text>
-          </Group>
-          {isEditingDescription ? (
-            <Stack gap="xs" mt="sm">
-              <RichTextEditor
-                content={editedDescription}
-                onChange={setEditedDescription}
-                placeholder="Beskriv gruppen..."
-                minHeight={120}
-              />
-              <Group gap="xs">
+            <Title order={1} style={{ flex: 1, minWidth: 0 }}>
+              {subgroup.name}
+            </Title>
+            <Menu position="bottom-end" withinPortal>
+              <Menu.Target>
                 <ActionIcon
-                  color="green"
-                  variant="light"
-                  onClick={() =>
-                    updateDescriptionMutation.mutate(editedDescription)
-                  }
-                  loading={updateDescriptionMutation.isPending}
-                >
-                  <IconCheck size={16} />
-                </ActionIcon>
-                <ActionIcon
+                  variant="subtle"
                   color="gray"
-                  variant="light"
-                  onClick={() => setIsEditingDescription(false)}
+                  aria-label="Gruppemenu"
                 >
-                  <IconX size={16} />
+                  <IconDots size={18} />
                 </ActionIcon>
-              </Group>
-            </Stack>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item
+                  leftSection={<IconSettings size={14} />}
+                  onClick={() => {
+                    setEditName(subgroup.name)
+                    setEditDescriptionFull(subgroup.description || "")
+                    setEditAllowsMembers(subgroup.allows_members)
+                    openEditGroup()
+                  }}
+                >
+                  Rediger gruppe
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          </Group>
+          {subgroup.description ? (
+            <Typography mt="sm">
+              <div
+                className="description-content"
+                dangerouslySetInnerHTML={{ __html: subgroup.description }}
+              />
+            </Typography>
           ) : (
-            <Group gap="xs" align="flex-start" mt="sm">
-              {subgroup.description ? (
-                <Typography style={{ flex: 1 }}>
-                  <div
-                    className="description-content"
-                    dangerouslySetInnerHTML={{ __html: subgroup.description }}
-                  />
-                </Typography>
-              ) : (
-                <Text c="dimmed" size="sm" style={{ flex: 1 }}>
-                  Ingen beskrivelse
-                </Text>
-              )}
-              <ActionIcon
-                variant="subtle"
-                color="gray"
-                size="sm"
-                onClick={() => {
-                  setEditedDescription(subgroup.description || "")
-                  setIsEditingDescription(true)
-                }}
-              >
-                <IconEdit size={14} />
-              </ActionIcon>
-            </Group>
+            <Text c="dimmed" size="sm" mt="sm">
+              Ingen beskrivelse
+            </Text>
           )}
         </div>
         <Group gap="xs">
@@ -444,13 +488,6 @@ Skip any that are too vague to act on, and note why at the end.
               Kopier til LLM
             </Button>
           )}
-          <Button
-            variant="light"
-            leftSection={<IconCalendarEvent size={16} />}
-            onClick={() => navigate(`/kalender/opret?subgroup=${subgroup.id}`)}
-          >
-            Opret begivenhed
-          </Button>
         </Group>
       </Group>
 
@@ -530,6 +567,15 @@ Skip any that are too vague to act on, and note why at the end.
                 Markér som læst
               </Button>
             )}
+            <Button
+              variant="light"
+              leftSection={<IconCalendarEvent size={16} />}
+              onClick={() =>
+                navigate(`/kalender/opret?subgroup=${subgroup.id}`)
+              }
+            >
+              Opret begivenhed
+            </Button>
             <Button
               leftSection={<IconPlus size={16} />}
               onClick={openCreateThreadModal}
@@ -615,9 +661,37 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
       withBorder
       p="md"
       radius="md"
-      style={{ cursor: "pointer" }}
+      style={{
+        cursor: "pointer",
+        position: "relative",
+        ...(thread.members_only && {
+          borderColor: "var(--mantine-color-grape-8)",
+          borderWidth: 2,
+        }),
+      }}
       onClick={onClick}
     >
+      {thread.members_only && (
+        <Tooltip label="Kun for medlemmer">
+          <Box
+            style={{
+              position: "absolute",
+              top: -10,
+              left: -10,
+              width: 22,
+              height: 22,
+              borderRadius: "50%",
+              backgroundColor: "var(--mantine-color-grape-8)",
+              color: "white",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <IconEyeOff size={14} />
+          </Box>
+        </Tooltip>
+      )}
       <Group gap="md" wrap="nowrap">
         <Avatar src={thread.author?.profile_picture} radius="xl" size="md">
           {thread.author?.first_name?.[0]}
@@ -650,15 +724,6 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
                   color="var(--mantine-color-orange-6)"
                   style={{ flexShrink: 0 }}
                 />
-              )}
-              {thread.members_only && (
-                <Tooltip label="Kun for medlemmer">
-                  <IconEyeOff
-                    size={14}
-                    color="var(--mantine-color-grape-6)"
-                    style={{ flexShrink: 0 }}
-                  />
-                </Tooltip>
               )}
               <Text fw={thread.is_unread ? 700 : 500} lineClamp={3}>
                 {thread.title}
@@ -1473,7 +1538,6 @@ function FileRow({
   file,
   subgroupSlug,
   canModify,
-  allowsMembers,
   onDelete,
   onMove,
   onUpdate,
@@ -1558,7 +1622,39 @@ function FileRow({
 
   return (
     <>
-      <Paper withBorder p="md" radius="md">
+      <Paper
+        withBorder
+        p="md"
+        radius="md"
+        style={{
+          position: "relative",
+          ...(file.members_only && {
+            borderColor: "var(--mantine-color-grape-8)",
+            borderWidth: 2,
+          }),
+        }}
+      >
+        {file.members_only && (
+          <Tooltip label="Kun for medlemmer">
+            <Box
+              style={{
+                position: "absolute",
+                top: -10,
+                left: -10,
+                width: 22,
+                height: 22,
+                borderRadius: "50%",
+                backgroundColor: "var(--mantine-color-grape-8)",
+                color: "white",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <IconEyeOff size={14} />
+            </Box>
+          </Tooltip>
+        )}
         <Group justify="space-between">
           <Group gap="md">
             {isImage ? (
@@ -1571,14 +1667,6 @@ function FileRow({
             )}
             <div>
               <Group gap={6} wrap="nowrap">
-                {file.members_only && (
-                  <Tooltip label="Kun for medlemmer">
-                    <IconEyeOff
-                      size={14}
-                      color="var(--mantine-color-grape-6)"
-                    />
-                  </Tooltip>
-                )}
                 <Text
                   fw={500}
                   style={{ cursor: "pointer" }}
@@ -1634,10 +1722,9 @@ function FileRow({
             >
               <IconDownload size={16} />
             </ActionIcon>
-            {canModify && allowsMembers && (
+            {file.can_toggle_privacy && (
               <ActionIcon
                 variant="light"
-                color="grape"
                 onClick={(e) => {
                   e.stopPropagation()
                   const next = !file.members_only
@@ -1980,50 +2067,24 @@ function MembersSection({ subgroup, currentUserId }: MembersSectionProps) {
 
   return (
     <Paper withBorder p="md" radius="md" mb="md">
-      <Group justify="space-between" wrap="nowrap">
-        <Group
-          gap="sm"
-          wrap="nowrap"
-          style={{ cursor: "pointer", flex: 1, minWidth: 0 }}
-          onClick={() => setExpanded((e) => !e)}
-        >
-          <IconUsers size={20} color="var(--mantine-color-grape-6)" />
+      <Group
+        justify="space-between"
+        wrap="nowrap"
+        style={{ cursor: "pointer" }}
+        onClick={() => setExpanded((e) => !e)}
+      >
+        <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+          <IconUsers size={20} />
           <Text fw={600}>Medlemmer</Text>
-          <Badge variant="light" color="grape">
-            {subgroup.members.length}
-          </Badge>
-          {!expanded && sortedMembers.length > 0 && (
-            <Avatar.Group>
-              {sortedMembers.slice(0, 5).map((m) => (
-                <Avatar
-                  key={m.id}
-                  src={m.user.profile_picture}
-                  radius="xl"
-                  size="sm"
-                >
-                  {m.user.first_name?.[0]}
-                  {m.user.last_name?.[0]}
-                </Avatar>
-              ))}
-              {sortedMembers.length > 5 && (
-                <Avatar radius="xl" size="sm">
-                  +{sortedMembers.length - 5}
-                </Avatar>
-              )}
-            </Avatar.Group>
-          )}
+          <Badge variant="light">{subgroup.members.length}</Badge>
         </Group>
-        {canManage && (
-          <Button
-            size="xs"
-            variant="light"
-            color="grape"
-            leftSection={<IconUserPlus size={14} />}
-            onClick={openPicker}
-          >
-            Tilføj medlem
-          </Button>
-        )}
+        <ActionIcon variant="subtle" color="gray" aria-label="Vis medlemmer">
+          {expanded ? (
+            <IconChevronUp size={18} />
+          ) : (
+            <IconChevronDown size={18} />
+          )}
+        </ActionIcon>
       </Group>
 
       {expanded && (
@@ -2084,13 +2145,25 @@ function MembersSection({ subgroup, currentUserId }: MembersSectionProps) {
               </Group>
             </Group>
           ))}
-          {subgroup.is_member && currentUserId !== null && (
-            <Group justify="flex-end" mt="xs">
+          <Group justify="space-between" mt="xs">
+            {canManage ? (
+              <Button
+                size="xs"
+                variant="light"
+                leftSection={<IconUserPlus size={14} />}
+                onClick={openPicker}
+              >
+                Tilføj medlem
+              </Button>
+            ) : (
+              <span />
+            )}
+            {subgroup.is_member && currentUserId !== null && (
               <Button size="xs" variant="light" color="red" onClick={openLeave}>
                 Forlad gruppe
               </Button>
-            </Group>
-          )}
+            )}
+          </Group>
         </Stack>
       )}
 
