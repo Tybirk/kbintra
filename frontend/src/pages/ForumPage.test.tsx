@@ -160,7 +160,7 @@ describe("ForumPage", () => {
     render(<ForumPage />)
 
     await waitFor(() => {
-      expect(screen.getByText("Mine grupper")).toBeInTheDocument()
+      expect(screen.getByText("Grupper du abonnerer på")).toBeInTheDocument()
     })
   })
 
