@@ -15,6 +15,7 @@ export interface User {
   house_name: string | null
   house_inhabitant_count: number
   is_staff: boolean
+  is_food_admin: boolean
   date_joined: string
   accessibility_mode: boolean
   rainbow_mode: boolean

@@ -48,7 +48,6 @@ from .serializers import (
     MealRegistrationCreateUpdateSerializer,
     MealRegistrationSerializer,
     MonthlyFoodCostReportSerializer,
-    MonthlyFoodCostSerializer,
     RespondSwapRequestSerializer,
     TeamGenerationResultSerializer,
     TeamSwapRequestSerializer,
@@ -57,6 +56,14 @@ from .serializers import (
 from .services.team_generator import TeamGenerator
 
 logger = logging.getLogger(__name__)
+
+
+class IsFoodAdmin(permissions.BasePermission):
+    """Allow access to staff or users with is_food_admin set."""
+
+    def has_permission(self, request: Request, view) -> bool:  # type: ignore[no-untyped-def]
+        u = request.user
+        return bool(u and u.is_authenticated and (u.is_staff or getattr(u, "is_food_admin", False)))
 
 
 def get_week_start(d: date) -> date:
@@ -1057,7 +1064,7 @@ class FoodTeamCycleListCreateView(generics.ListCreateAPIView):
 
     def get_permissions(self) -> list:
         if self.request.method == "POST":
-            return [permissions.IsAuthenticated(), permissions.IsAdminUser()]
+            return [permissions.IsAuthenticated(), IsFoodAdmin()]
         return [permissions.IsAuthenticated()]
 
     def get_serializer_class(self) -> type:
@@ -1073,7 +1080,7 @@ class FoodTeamCycleDetailView(generics.RetrieveUpdateAPIView):
 
     def get_permissions(self) -> list:
         if self.request.method in ["PUT", "PATCH"]:
-            return [permissions.IsAuthenticated(), permissions.IsAdminUser()]
+            return [permissions.IsAuthenticated(), IsFoodAdmin()]
         return [permissions.IsAuthenticated()]
 
     def get_serializer_class(self) -> type:
@@ -1163,7 +1170,7 @@ class MyWishView(APIView):
 class CycleWishesListView(generics.ListAPIView):
     """List all wishes for a cycle (admin only)."""
 
-    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
+    permission_classes = [permissions.IsAuthenticated, IsFoodAdmin]
     serializer_class = FoodTeamWishSerializer
 
     def get_queryset(self) -> QuerySet[FoodTeamWish]:
@@ -1181,7 +1188,7 @@ class CycleWishesListView(generics.ListAPIView):
 class GenerateTeamsView(APIView):
     """Generate food teams for a cycle."""
 
-    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
+    permission_classes = [permissions.IsAuthenticated, IsFoodAdmin]
 
     def post(self, request: Request) -> Response:
         serializer = GenerateTeamsSerializer(data=request.data)
@@ -1228,45 +1235,51 @@ class DefaultCookingDaysView(APIView):
         return Response({"default_cooking_days": request.user.default_cooking_days})
 
 
-class MonthlyFoodCostView(APIView):
-    """Get monthly food cost breakdown per house (admin only)."""
+def _parse_date_range(request: Request, default_weeks: int) -> tuple[date, date] | Response:
+    """Parse start_date/end_date query params, defaulting to the last N full weeks ending today."""
+    start_str = request.query_params.get("start_date")
+    end_str = request.query_params.get("end_date")
+    today = timezone.localdate()
+    if not start_str and not end_str:
+        # Default: the last `default_weeks` ISO weeks ending with the current week.
+        monday_this_week = today - timedelta(days=today.weekday())
+        start = monday_this_week - timedelta(weeks=default_weeks - 1)
+        end = monday_this_week + timedelta(days=6)
+        return start, end
+    try:
+        start = (
+            date.fromisoformat(start_str) if start_str else today - timedelta(weeks=default_weeks)
+        )
+        end = date.fromisoformat(end_str) if end_str else today
+    except ValueError:
+        return Response(
+            {"detail": "start_date and end_date must be ISO dates (YYYY-MM-DD)."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if end < start:
+        return Response(
+            {"detail": "end_date must be on or after start_date."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return start, end
 
-    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
+
+class MonthlyFoodCostView(APIView):
+    """Get food cost breakdown per house over a date range (food admin only)."""
+
+    permission_classes = [permissions.IsAuthenticated, IsFoodAdmin]
 
     def get(self, request: Request) -> Response:
-        """Get monthly food cost report for a specific month."""
-        # Validate query params
-        year = request.query_params.get("year")
-        month = request.query_params.get("month")
+        parsed = _parse_date_range(request, default_weeks=4)
+        if isinstance(parsed, Response):
+            return parsed
+        first_day, last_day = parsed
 
-        if not year or not month:
-            return Response(
-                {"detail": "Please provide 'year' and 'month' query parameters."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        try:
-            year = int(year)
-            month = int(month)
-        except ValueError:
-            return Response(
-                {"detail": "Year and month must be integers."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        serializer = MonthlyFoodCostSerializer(data={"year": year, "month": month})
-        serializer.is_valid(raise_exception=True)
-
-        from calendar import monthrange
         from decimal import Decimal
 
         from apps.houses.models import House
 
         from .constants import PRICE_ADULT_MEAT, PRICE_ADULT_VEG, PRICE_CHILD
-
-        first_day = date(year, month, 1)
-        _, last_day_num = monthrange(year, month)
-        last_day = date(year, month, last_day_num)
 
         # Get all houses
         houses = House.objects.prefetch_related("inhabitants")
@@ -1354,60 +1367,45 @@ class MonthlyFoodCostView(APIView):
 
         house_costs.sort(key=_house_sort_key)
 
-        # Get month name
-        month_names = [
-            "",
-            "Januar",
-            "Februar",
-            "Marts",
-            "April",
-            "Maj",
-            "Juni",
-            "Juli",
-            "August",
-            "September",
-            "Oktober",
-            "November",
-            "December",
-        ]
-
         result = {
-            "year": year,
-            "month": month,
-            "month_name": month_names[month],
+            "start_date": first_day.isoformat(),
+            "end_date": last_day.isoformat(),
             "total_cost": total_cost,
             "houses": house_costs,
         }
+
+        if request.query_params.get("download") == "csv":
+            import csv
+            import io
+
+            from django.http import HttpResponse
+
+            buf = io.StringIO()
+            writer = csv.writer(buf)
+            writer.writerow(["Hus", "Total pris"])
+            for h in house_costs:
+                m = re.search(r"(\d+)$", h["house_name"])
+                house_num = m.group(1) if m else h["house_name"]
+                writer.writerow([house_num, f"{h['total_cost']:.0f}"])
+            resp = HttpResponse(buf.getvalue(), content_type="text/csv; charset=utf-8")
+            resp["Content-Disposition"] = (
+                f'attachment; filename="madomkostninger_{first_day}_{last_day}.csv"'
+            )
+            return resp
 
         return Response(MonthlyFoodCostReportSerializer(result).data)
 
 
 class MyMonthlyExpensesView(APIView):
-    """Get monthly food expense breakdown for the authenticated user's house."""
+    """Get weekly food expense breakdown for the authenticated user's house."""
 
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request: Request) -> Response:
-        year = request.query_params.get("year")
-        month = request.query_params.get("month")
-
-        if not year or not month:
-            return Response(
-                {"detail": "Please provide 'year' and 'month' query parameters."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        try:
-            year = int(year)
-            month = int(month)
-        except ValueError:
-            return Response(
-                {"detail": "Year and month must be integers."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        serializer = MonthlyFoodCostSerializer(data={"year": year, "month": month})
-        serializer.is_valid(raise_exception=True)
+        parsed = _parse_date_range(request, default_weeks=5)
+        if isinstance(parsed, Response):
+            return parsed
+        first_day, last_day = parsed
 
         house = request.user.house
         if not house:
@@ -1416,14 +1414,9 @@ class MyMonthlyExpensesView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        from calendar import monthrange
         from decimal import Decimal
 
         from .utils import get_closed_food_dates
-
-        first_day = date(year, month, 1)
-        _, last_day_num = monthrange(year, month)
-        last_day = date(year, month, last_day_num)
 
         # Collect Mon-Thu dates where deadline has passed
         billing_dates: list[date] = []
@@ -1449,10 +1442,24 @@ class MyMonthlyExpensesView(APIView):
         ):
             regs_by_date[reg.date] = reg
 
-        days: list[dict] = []
+        weeks_map: dict[tuple[int, int], dict] = {}
         total_cost = Decimal("0.00")
 
         for billing_date in billing_dates:
+            iso_year, iso_week, _ = billing_date.isocalendar()
+            key = (iso_year, iso_week)
+            if key not in weeks_map:
+                monday = billing_date - timedelta(days=billing_date.weekday())
+                weeks_map[key] = {
+                    "year": iso_year,
+                    "week_number": iso_week,
+                    "week_start": monday.isoformat(),
+                    "week_end": (monday + timedelta(days=6)).isoformat(),
+                    "total_cost": Decimal("0.00"),
+                    "days": [],
+                }
+            week_entry = weeks_map[key]
+
             if billing_date not in regs_by_date:
                 continue
             reg = regs_by_date[billing_date]
@@ -1465,7 +1472,8 @@ class MyMonthlyExpensesView(APIView):
                 continue
             cost = calculate_meal_price(meat, veg, children)
             total_cost += cost
-            days.append(
+            week_entry["total_cost"] += cost
+            week_entry["days"].append(
                 {
                     "date": billing_date.isoformat(),
                     "day_name": DAY_NAMES[billing_date.weekday()],
@@ -1476,30 +1484,17 @@ class MyMonthlyExpensesView(APIView):
                 }
             )
 
-        month_names = [
-            "",
-            "Januar",
-            "Februar",
-            "Marts",
-            "April",
-            "Maj",
-            "Juni",
-            "Juli",
-            "August",
-            "September",
-            "Oktober",
-            "November",
-            "December",
-        ]
+        weeks = sorted(weeks_map.values(), key=lambda w: (w["year"], w["week_number"]))
+        for w in weeks:
+            w["total_cost"] = str(w["total_cost"])
 
         return Response(
             {
-                "year": year,
-                "month": month,
-                "month_name": month_names[month],
+                "start_date": first_day.isoformat(),
+                "end_date": last_day.isoformat(),
                 "house_name": house.name,
                 "total_cost": str(total_cost),
-                "days": days,
+                "weeks": weeks,
             }
         )
 
@@ -1517,7 +1512,7 @@ class DriveMenuView(APIView):
 
     def get_permissions(self) -> list:
         if self.request.method == "POST":
-            return [permissions.IsAuthenticated(), permissions.IsAdminUser()]
+            return [permissions.IsAuthenticated(), IsFoodAdmin()]
         return [permissions.IsAuthenticated()]
 
     def get(self, request: Request) -> Response:
@@ -1619,7 +1614,7 @@ class DriveMenuView(APIView):
 class DriveMenuRefreshAllView(APIView):
     """Refresh all menus from Google Drive (admin only)."""
 
-    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
+    permission_classes = [permissions.IsAuthenticated, IsFoodAdmin]
 
     def post(self, request: Request) -> Response:
         """Refresh all available menus from Drive (runs in background)."""
@@ -1642,7 +1637,7 @@ class ClosedFoodDayListCreateView(APIView):
 
     def get_permissions(self) -> list:
         if self.request.method == "POST":
-            return [permissions.IsAuthenticated(), permissions.IsAdminUser()]
+            return [permissions.IsAuthenticated(), IsFoodAdmin()]
         return [permissions.IsAuthenticated()]
 
     def get(self, request: Request) -> Response:
@@ -1668,7 +1663,7 @@ class ClosedFoodDayListCreateView(APIView):
 class ClosedFoodDayDeleteView(APIView):
     """Delete (reopen) a closed food day. Admin only."""
 
-    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
+    permission_classes = [permissions.IsAuthenticated, IsFoodAdmin]
 
     def delete(self, request: Request, pk: int) -> Response:
         try:

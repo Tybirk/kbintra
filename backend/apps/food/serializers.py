@@ -848,11 +848,10 @@ class HouseFoodCostSerializer(serializers.Serializer):
 
 
 class MonthlyFoodCostReportSerializer(serializers.Serializer):
-    """Serializer for monthly food cost report result."""
+    """Serializer for food cost report result over a date range."""
 
-    year = serializers.IntegerField()
-    month = serializers.IntegerField()
-    month_name = serializers.CharField()
+    start_date = serializers.CharField()
+    end_date = serializers.CharField()
     total_cost = serializers.DecimalField(max_digits=10, decimal_places=2)
     houses = HouseFoodCostSerializer(many=True)
 
