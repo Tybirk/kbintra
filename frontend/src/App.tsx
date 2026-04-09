@@ -331,6 +331,16 @@ function App() {
                 }
               />
               <Route
+                path="/forum/:slug/info"
+                element={
+                  <ProtectedRoute>
+                    <ErrorBoundary>
+                      <SubgroupPage />
+                    </ErrorBoundary>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/forum/:slug"
                 element={
                   <ProtectedRoute>

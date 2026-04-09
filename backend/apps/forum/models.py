@@ -15,6 +15,11 @@ class Subgroup(models.Model):
 
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
+    links_info = models.TextField(
+        blank=True,
+        default="",
+        help_text="Rich text content for the 'Links og info' tab.",
+    )
     slug = models.SlugField(max_length=100, unique=True, blank=True)
     is_default = models.BooleanField(
         default=False,

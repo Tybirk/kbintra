@@ -231,6 +231,16 @@ class SubgroupUpdateView(APIView):
         serializer.is_valid(raise_exception=True)
         will_allow = serializer.validated_data.get("allows_members", was_allowing)
 
+        if "links_info" in serializer.validated_data:
+            can_edit_links = request.user.is_staff or (
+                subgroup.allows_members and _is_member(request.user, subgroup)
+            )
+            if not can_edit_links:
+                return Response(
+                    {"detail": "Du har ikke tilladelse til at redigere links og info."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
         if (
             "allows_members" in serializer.validated_data
             and will_allow != was_allowing

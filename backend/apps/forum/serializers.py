@@ -81,6 +81,7 @@ class SubgroupSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "description",
+            "links_info",
             "slug",
             "is_default",
             "is_committee",
@@ -178,7 +179,7 @@ class SubgroupUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Subgroup
-        fields = ["name", "description", "icon", "allows_members"]
+        fields = ["name", "description", "links_info", "icon", "allows_members"]
 
 
 class SubgroupCreateSerializer(serializers.ModelSerializer):

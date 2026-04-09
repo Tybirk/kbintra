@@ -107,7 +107,9 @@ export default function SubgroupPage() {
     ? "documents"
     : location.pathname.includes("/lukkede")
       ? "closed-threads"
-      : "threads"
+      : location.pathname.includes("/info")
+        ? "info"
+        : "threads"
   const [
     createThreadModalOpened,
     { open: openCreateThreadModal, close: closeCreateThreadModal },
@@ -166,6 +168,28 @@ export default function SubgroupPage() {
   const [editName, setEditName] = useState("")
   const [editDescriptionFull, setEditDescriptionFull] = useState("")
   const [editAllowsMembers, setEditAllowsMembers] = useState(false)
+  const [
+    editLinksInfoOpened,
+    { open: openEditLinksInfo, close: closeEditLinksInfo },
+  ] = useDisclosure(false)
+  const [editLinksInfoContent, setEditLinksInfoContent] = useState("")
+
+  const updateLinksInfoMutation = useMutation({
+    mutationFn: (links_info: string) =>
+      forumApi.updateSubgroup(slug!, { links_info }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["subgroup", slug] })
+      notifications.show({
+        title: "Gemt",
+        message: "Links og info er opdateret.",
+        color: "green",
+      })
+      closeEditLinksInfo()
+    },
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke gemme links og info.")
+    },
+  })
 
   const updateSubgroupMutation = useMutation({
     mutationFn: (data: {
@@ -508,6 +532,7 @@ Skip any that are too vague to act on, and note why at the end.
         onChange={(tab) => {
           if (tab === "documents") navigate(`/forum/${slug}/dokumenter`)
           else if (tab === "closed-threads") navigate(`/forum/${slug}/lukkede`)
+          else if (tab === "info") navigate(`/forum/${slug}/info`)
           else navigate(`/forum/${slug}`)
         }}
         mb="md"
@@ -531,6 +556,9 @@ Skip any that are too vague to act on, and note why at the end.
           </Tabs.Tab>
           <Tabs.Tab value="documents" leftSection={<IconFolder size={16} />}>
             Dokumenter
+          </Tabs.Tab>
+          <Tabs.Tab value="info" leftSection={<IconLink size={16} />}>
+            Links og info
           </Tabs.Tab>
           {closedThreads.length > 0 && (
             <Tabs.Tab
@@ -633,7 +661,79 @@ Skip any that are too vague to act on, and note why at the end.
             }}
           />
         </Tabs.Panel>
+
+        <Tabs.Panel value="info" pt="md">
+          {(() => {
+            const canEditLinksInfo =
+              !!user &&
+              (user.is_staff || (subgroup.allows_members && subgroup.is_member))
+            return (
+              <Stack>
+                <Group justify="flex-end">
+                  {canEditLinksInfo && (
+                    <Button
+                      variant="light"
+                      leftSection={<IconSettings size={16} />}
+                      onClick={() => {
+                        setEditLinksInfoContent(subgroup.links_info || "")
+                        openEditLinksInfo()
+                      }}
+                    >
+                      Rediger
+                    </Button>
+                  )}
+                </Group>
+                {subgroup.links_info ? (
+                  <Typography>
+                    <div
+                      className="description-content"
+                      dangerouslySetInnerHTML={{
+                        __html: subgroup.links_info,
+                      }}
+                    />
+                  </Typography>
+                ) : (
+                  <Paper withBorder p="xl" radius="md">
+                    <Center>
+                      <Text c="dimmed">Intet indhold endnu.</Text>
+                    </Center>
+                  </Paper>
+                )}
+              </Stack>
+            )
+          })()}
+        </Tabs.Panel>
       </Tabs>
+
+      <Modal
+        opened={editLinksInfoOpened}
+        onClose={closeEditLinksInfo}
+        title="Rediger links og info"
+        fullScreen={isMobile}
+        size="lg"
+      >
+        <Stack>
+          <RichTextEditor
+            content={editLinksInfoContent}
+            onChange={setEditLinksInfoContent}
+            placeholder="Tilføj links og information..."
+            minHeight={240}
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={closeEditLinksInfo}>
+              Annuller
+            </Button>
+            <Button
+              loading={updateLinksInfoMutation.isPending}
+              onClick={() =>
+                updateLinksInfoMutation.mutate(editLinksInfoContent)
+              }
+            >
+              Gem
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
 
       <CreateThreadModal
         opened={createThreadModalOpened}

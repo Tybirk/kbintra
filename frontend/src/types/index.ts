@@ -133,6 +133,7 @@ export interface Subgroup {
   id: number
   name: string
   description: string
+  links_info: string
   slug: string
   is_default: boolean
   is_committee: boolean
