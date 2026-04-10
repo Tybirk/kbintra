@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
@@ -946,7 +946,7 @@ function ActivityPreview({ activity }: ActivityPreviewProps) {
   )
 }
 
-interface FoodDayWidgetProps {
+export interface FoodDayWidgetProps {
   date: string
   dayName: string
   menuText: string
@@ -958,7 +958,7 @@ interface FoodDayWidgetProps {
   communityStats?: DailyRegistrationStats
 }
 
-function FoodDayWidget({
+export function FoodDayWidget({
   date,
   dayName,
   menuText,
@@ -1012,28 +1012,14 @@ function FoodDayWidget({
     availablePortions.children_count > 0
   const sellPrice = calculateDefaultTicketPrice(sellMeat, sellVeg, sellChildren)
 
-  // Track whether we are syncing server data into local state.
-  // Skips auto-save when state changes originate from the sync effect, not from user input.
-  const isSyncingRef = useRef(true)
-
-  // Sync state when registration changes (initial load or refetch).
-  // Only flag as syncing when values actually differ — if they already match
-  // (e.g. after our own save is refetched), the auto-save effect won't fire
-  // and the flag would never get cleared, silently skipping the next real change.
+  // Sync local state when registration data arrives or changes (initial load,
+  // refetch after save, another household member editing, etc.).
   useEffect(() => {
     if (registration) {
-      const willChange =
-        isActive !== registration.is_active ||
-        diningOption !== registration.dining_option ||
-        seatingTime !== registration.seating_time
-      if (willChange) {
-        isSyncingRef.current = true
-        setIsActive(registration.is_active)
-        setDiningOption(registration.dining_option)
-        setSeatingTime(registration.seating_time)
-      }
+      setIsActive(registration.is_active)
+      setDiningOption(registration.dining_option)
+      setSeatingTime(registration.seating_time)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registration])
 
   const createMutation = useMutation({
@@ -1108,28 +1094,39 @@ function FoodDayWidget({
     500,
   )
 
-  // Auto-save when values change (skip when syncing server data into local state)
+  // Auto-save when user changes values.  Skip when local state matches the
+  // server data (i.e. the change was triggered by the sync effect above, not
+  // by user input).  This replaces the old isSyncingRef approach which could
+  // get permanently stuck when setState was a no-op.
   useEffect(() => {
-    if (isSyncingRef.current) {
-      isSyncingRef.current = false
+    // Registration not loaded yet — nothing to save against
+    if (!registration) return
+
+    // If local state matches what the server returned, this render was caused
+    // by the sync effect (or initial mount) — not a user interaction.
+    if (
+      isActive === registration.is_active &&
+      diningOption === registration.dining_option &&
+      seatingTime === registration.seating_time
+    ) {
       return
     }
 
     // After the deadline only UPDATEs are allowed — never attempt a CREATE
-    if (isDateLocked(date) && !registration?.id) return
+    if (isDateLocked(date) && !registration.id) return
 
     const defaultAdults = user?.house_inhabitant_count || 1
     const data: CreateMealRegistrationData = {
       date,
-      adults_meat: registration?.adults_meat ?? 0,
-      adults_veg: registration?.adults_veg ?? defaultAdults,
-      children_count: registration?.children_count ?? 0,
+      adults_meat: registration.adults_meat ?? 0,
+      adults_veg: registration.adults_veg ?? defaultAdults,
+      children_count: registration.children_count ?? 0,
       dining_option: diningOption,
       seating_time: seatingTime,
       is_active: isActive,
     }
 
-    debouncedSave(data, registration?.id)
+    debouncedSave(data, registration.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, diningOption, seatingTime])
 

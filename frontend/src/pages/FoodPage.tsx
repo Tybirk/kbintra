@@ -1189,9 +1189,6 @@ function DayRegistrationCard({
 
   const sellPrice = calculateDefaultTicketPrice(sellMeat, sellVeg, sellChildren)
 
-  // Track if initial mount to prevent auto-save on mount
-  const [hasInitialized, setHasInitialized] = useState(false)
-
   const createMutation = useMutation({
     mutationFn: (data: CreateMealRegistrationData) =>
       foodApi.createRegistration(data),
@@ -1289,18 +1286,26 @@ function DayRegistrationCard({
     500,
   )
 
-  // Auto-save when values change. When locked, only dining_option and seating_time
-  // can actually change (portions and isActive are read-only), so the save still works.
+  // Auto-save when user changes values.  Skip when local state matches server
+  // data (sync-triggered change or initial mount — not a user interaction).
   useEffect(() => {
-    if (!hasInitialized) {
-      setHasInitialized(true)
+    if (!registration) return
+    if (isPast) return
+
+    // If local state matches what the server returned, nothing to save.
+    if (
+      adultsMeat === registration.adults_meat &&
+      adultsVeg === registration.adults_veg &&
+      children === registration.children_count &&
+      diningOption === registration.dining_option &&
+      seatingTime === registration.seating_time &&
+      isActive === registration.is_active
+    ) {
       return
     }
 
-    if (isPast) return
-
     // After the deadline only UPDATEs are allowed — never attempt a CREATE
-    if (isLocked && !registration?.id) return
+    if (isLocked && !registration.id) return
 
     const data: CreateMealRegistrationData = {
       date,
@@ -1312,7 +1317,7 @@ function DayRegistrationCard({
       is_active: isActive,
     }
 
-    debouncedSave(data, registration?.id)
+    debouncedSave(data, registration.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adultsMeat, adultsVeg, children, diningOption, seatingTime, isActive])
 
