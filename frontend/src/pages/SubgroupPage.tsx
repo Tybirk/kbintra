@@ -459,7 +459,7 @@ Skip any that are too vague to act on, and note why at the end.
               icon={subgroup.icon || "💬"}
               size="lg"
             />
-            <Title order={1} style={{ flex: 1, minWidth: 0 }}>
+            <Title order={2} style={{ flex: 1, minWidth: 0 }}>
               {subgroup.name}
             </Title>
             <Menu position="bottom-end" withinPortal>
