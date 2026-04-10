@@ -211,24 +211,24 @@ export default function Reactions({
                   key={emoji}
                   variant={existingReaction?.has_reacted ? "filled" : "subtle"}
                   color={existingReaction?.has_reacted ? "blue" : "gray"}
-                  size="xl"
+                  size="md"
                   onClick={() => handleReaction(emoji)}
                   loading={
                     toggleMutation.isPending &&
                     toggleMutation.variables === emoji
                   }
                 >
-                  <Text size="xl">{emoji}</Text>
+                  <Text size="md">{emoji}</Text>
                 </ActionIcon>
               )
             })}
             <ActionIcon
               variant="subtle"
               color="gray"
-              size="xl"
+              size="lg"
               onClick={handleOpenFullPicker}
             >
-              <IconDots size={20} />
+              <IconDots size={18} />
             </ActionIcon>
           </Group>
         </Popover.Dropdown>
