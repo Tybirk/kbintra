@@ -1685,7 +1685,7 @@ const MessageBubble = memo(function MessageBubble({
         />
       </Popover.Target>
       <Popover.Dropdown p="xs">
-        <Group gap={4}>
+        <Group gap={2}>
           {DEFAULT_EMOJIS.map((emoji) => {
             const existing = (message.reactions ?? []).find(
               (r) => r.reaction_type === emoji,
@@ -1695,21 +1695,21 @@ const MessageBubble = memo(function MessageBubble({
                 key={emoji}
                 variant={existing?.has_reacted ? "filled" : "subtle"}
                 color={existing?.has_reacted ? "blue" : "gray"}
-                size="lg"
+                size="md"
                 onClick={() => reactionMutation.mutate(emoji)}
                 loading={
                   reactionMutation.isPending &&
                   reactionMutation.variables === emoji
                 }
               >
-                <Text size="lg">{emoji}</Text>
+                <Text size="md">{emoji}</Text>
               </ActionIcon>
             )
           })}
           <ActionIcon
             variant="subtle"
             color="gray"
-            size="lg"
+            size="md"
             onClick={() => {
               setReactionPickerOpened(false)
               handleOpenFullEmojiPicker()
