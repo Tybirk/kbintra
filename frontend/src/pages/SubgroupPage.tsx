@@ -654,6 +654,7 @@ Skip any that are too vague to act on, and note why at the end.
           <DocumentsTab
             subgroupSlug={slug!}
             allowsMembers={subgroup?.allows_members ?? false}
+            defaultMembersOnly={subgroup?.default_members_only ?? false}
             initialFolderSlug={initialFolderSlug}
             onFolderChange={(folderSlug) => {
               if (folderSlug === null) navigate(`/forum/${slug}/dokumenter`)
@@ -741,6 +742,7 @@ Skip any that are too vague to act on, and note why at the end.
         subgroupSlug={slug!}
         subgroupName={subgroup?.name ?? ""}
         allowsMembers={subgroup?.allows_members ?? false}
+        defaultMembersOnly={subgroup?.default_members_only ?? false}
         onSuccess={(thread) => {
           queryClient.invalidateQueries({ queryKey: ["threads", slug] })
           closeCreateThreadModal()
@@ -906,6 +908,7 @@ interface CreateThreadModalProps {
   subgroupSlug: string
   subgroupName: string
   allowsMembers: boolean
+  defaultMembersOnly: boolean
   onSuccess: (thread: Thread) => void
 }
 
@@ -915,13 +918,14 @@ function CreateThreadModal({
   subgroupSlug,
   subgroupName,
   allowsMembers,
+  defaultMembersOnly,
   onSuccess,
 }: CreateThreadModalProps) {
   const [title, setTitle] = useState("")
   const [content, setContent] = useState("")
   const [attachments, setAttachments] = useState<File[]>([])
   const [pollData, setPollData] = useState<CreatePollData | null>(null)
-  const [membersOnly, setMembersOnly] = useState(false)
+  const [membersOnly, setMembersOnly] = useState(defaultMembersOnly)
 
   const titleDraftKey = "new-thread-title-" + subgroupSlug
 
@@ -1113,6 +1117,7 @@ interface FolderAncestor {
 interface DocumentsTabProps {
   subgroupSlug: string
   allowsMembers: boolean
+  defaultMembersOnly: boolean
   initialFolderSlug?: string | null
   onFolderChange?: (folderSlug: string | null) => void
 }
@@ -1120,10 +1125,11 @@ interface DocumentsTabProps {
 function DocumentsTab({
   subgroupSlug,
   allowsMembers,
+  defaultMembersOnly,
   initialFolderSlug,
   onFolderChange,
 }: DocumentsTabProps) {
-  const [uploadMembersOnly, setUploadMembersOnly] = useState(false)
+  const [uploadMembersOnly, setUploadMembersOnly] = useState(defaultMembersOnly)
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
   const fileInputRef = useRef<HTMLInputElement>(null)

@@ -147,6 +147,7 @@ export interface Subgroup {
   created_at: string
   last_activity_at: string | null
   allows_members: boolean
+  default_members_only: boolean
   is_member: boolean
   members: SubgroupMember[]
 }
@@ -287,6 +288,7 @@ export interface RecentActivity {
   thread_slug: string
   subgroup_slug: string
   subgroup_name: string
+  members_only: boolean
   created_at: string
 }
 

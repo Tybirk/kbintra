@@ -21,8 +21,15 @@ from .models import (
 
 @admin.register(Subgroup)
 class SubgroupAdmin(admin.ModelAdmin):
-    list_display = ["name", "slug", "is_default", "created_at"]
-    list_filter = ["is_default"]
+    list_display = [
+        "name",
+        "slug",
+        "is_default",
+        "allows_members",
+        "default_members_only",
+        "created_at",
+    ]
+    list_filter = ["is_default", "allows_members", "default_members_only"]
     search_fields = ["name", "description"]
     prepopulated_fields = {"slug": ("name",)}
 

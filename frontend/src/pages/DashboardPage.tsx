@@ -22,6 +22,8 @@ import {
   Collapse,
   UnstyledButton,
   Anchor,
+  Tooltip,
+  Box,
 } from "@mantine/core"
 import { useDebouncedCallback, useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -38,6 +40,7 @@ import {
   IconChevronUp,
   IconUsers,
   IconExternalLink,
+  IconEyeOff,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import isoWeek from "dayjs/plugin/isoWeek"
@@ -866,6 +869,12 @@ function ActivityPreview({ activity }: ActivityPreviewProps) {
       style={{
         cursor: "pointer",
         transition: "background-color 150ms ease",
+        position: "relative",
+        ...(activity.members_only && {
+          borderColor: "var(--mantine-color-grape-8)",
+          borderWidth: 2,
+          borderStyle: "solid",
+        }),
       }}
       onClick={() =>
         navigate(
@@ -873,6 +882,27 @@ function ActivityPreview({ activity }: ActivityPreviewProps) {
         )
       }
     >
+      {activity.members_only && (
+        <Tooltip label="Kun for medlemmer">
+          <Box
+            style={{
+              position: "absolute",
+              top: -10,
+              left: -10,
+              width: 22,
+              height: 22,
+              borderRadius: "50%",
+              backgroundColor: "var(--mantine-color-grape-8)",
+              color: "white",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <IconEyeOff size={14} />
+          </Box>
+        </Tooltip>
+      )}
       <Group justify="space-between" wrap="nowrap" mb={4} gap="xs">
         <Badge variant="outline" color="blue">
           {activity.subgroup_name}

@@ -87,6 +87,7 @@ class SubgroupSerializer(serializers.ModelSerializer):
             "is_committee",
             "is_main",
             "allows_members",
+            "default_members_only",
             "icon",
             "thread_count",
             "unread_thread_count",
@@ -1107,6 +1108,7 @@ class RecentActivitySerializer(serializers.ModelSerializer):
     thread_slug = serializers.CharField(source="thread.slug", read_only=True)
     subgroup_slug = serializers.CharField(source="thread.subgroup.slug", read_only=True)
     subgroup_name = serializers.CharField(source="thread.subgroup.name", read_only=True)
+    members_only = serializers.BooleanField(source="thread.members_only", read_only=True)
 
     class Meta:
         model = Post
@@ -1119,5 +1121,6 @@ class RecentActivitySerializer(serializers.ModelSerializer):
             "thread_slug",
             "subgroup_slug",
             "subgroup_name",
+            "members_only",
             "created_at",
         ]

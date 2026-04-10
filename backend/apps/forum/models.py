@@ -33,6 +33,10 @@ class Subgroup(models.Model):
         default=False,
         help_text="If true, this subgroup has formal members and can host members-only threads/files.",
     )
+    default_members_only = models.BooleanField(
+        default=False,
+        help_text="If true, the 'Privat tråd' checkbox is checked by default when creating threads/files.",
+    )
     is_main = models.BooleanField(
         default=False,
         help_text="If true, this subgroup appears at the very top (e.g., Fælles).",
