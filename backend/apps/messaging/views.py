@@ -591,11 +591,10 @@ class MessageReactionToggleView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        reaction_type = request.data.get("reaction_type")
-        valid_types = [choice[0] for choice in MessageReaction.REACTION_CHOICES]
-        if reaction_type not in valid_types:
+        reaction_type = (request.data.get("reaction_type") or "").strip()
+        if not reaction_type or len(reaction_type) > 50:
             return Response(
-                {"detail": f"Ugyldig reaktionstype. Skal være en af: {valid_types}"},
+                {"detail": "Ugyldig reaktionstype."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -615,23 +614,21 @@ class MessageReactionToggleView(APIView):
             if message.sender_id != request.user.id:
                 from apps.notifications.tasks import notify_message_reaction_task
 
-                emoji_map = dict(MessageReaction.REACTION_CHOICES)
                 notify_message_reaction_task(
                     message_author_id=message.sender_id,
                     reactor_id=request.user.id,
-                    reaction_emoji=emoji_map.get(reaction_type, reaction_type),
+                    reaction_emoji=reaction_type,
                     conversation_id=message.conversation_id,
                     message_id=message.id,
                 )
 
         # Build updated reactions payload for WS broadcast
-        emoji_map = dict(MessageReaction.REACTION_CHOICES)
         reaction_map: dict[str, dict] = {}
         for r in MessageReaction.objects.filter(message=message).select_related("user"):
             if r.reaction_type not in reaction_map:
                 reaction_map[r.reaction_type] = {
                     "reaction_type": r.reaction_type,
-                    "emoji": emoji_map.get(r.reaction_type, ""),
+                    "emoji": r.reaction_type,
                     "count": 0,
                     "user_ids": [],
                     "users": [],

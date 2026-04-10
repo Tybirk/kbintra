@@ -82,16 +82,6 @@ class MessageReadStatus(models.Model):
 class MessageReaction(models.Model):
     """A reaction (emoji) on a message."""
 
-    REACTION_CHOICES = [
-        ("like", "👍"),
-        ("heart", "❤️"),
-        ("laugh", "😂"),
-        ("surprised", "😮"),
-        ("sad", "😢"),
-        ("celebrate", "🎉"),
-        ("claim", "🙋"),
-    ]
-
     message = models.ForeignKey(
         Message,
         on_delete=models.CASCADE,
@@ -102,7 +92,7 @@ class MessageReaction(models.Model):
         on_delete=models.CASCADE,
         related_name="message_reactions",
     )
-    reaction_type = models.CharField(max_length=20, choices=REACTION_CHOICES)
+    reaction_type = models.CharField(max_length=50)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

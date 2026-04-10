@@ -171,7 +171,7 @@ export interface PostAttachment {
   uploaded_at: string
 }
 
-export type ReactionType = "like" | "heart" | "laugh" | "surprised" | "sad" | "celebrate" | "claim"
+export type ReactionType = string
 
 export interface ReactionUser {
   id: number
@@ -189,7 +189,7 @@ export interface ReactionSummary {
 }
 
 export interface ReactionTypeInfo {
-  type: ReactionType
+  type: string
   emoji: string
 }
 

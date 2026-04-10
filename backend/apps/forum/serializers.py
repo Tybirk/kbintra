@@ -14,7 +14,6 @@ from .models import (
     PollVote,
     Post,
     PostAttachment,
-    Reaction,
     Subgroup,
     SubgroupMembership,
     SubgroupSubscription,
@@ -383,14 +382,13 @@ class PostSerializer(serializers.ModelSerializer):
 
         # Get all reactions for this post grouped by type
         reaction_counts: dict[str, dict] = {}
-        emoji_map = dict(Reaction.REACTION_CHOICES)
 
         for reaction in obj.reactions.all():
             r_type = reaction.reaction_type
             if r_type not in reaction_counts:
                 reaction_counts[r_type] = {
                     "reaction_type": r_type,
-                    "emoji": emoji_map.get(r_type, ""),
+                    "emoji": r_type,
                     "count": 0,
                     "has_reacted": False,
                     "users": [],

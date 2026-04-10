@@ -280,16 +280,6 @@ class Reaction(models.Model):
     A reaction (emoji) on a forum post.
     """
 
-    REACTION_CHOICES = [
-        ("like", "👍"),
-        ("heart", "❤️"),
-        ("laugh", "😂"),
-        ("surprised", "😮"),
-        ("sad", "😢"),
-        ("celebrate", "🎉"),
-        ("claim", "🙋"),
-    ]
-
     post = models.ForeignKey(
         Post,
         on_delete=models.CASCADE,
@@ -300,7 +290,7 @@ class Reaction(models.Model):
         on_delete=models.CASCADE,
         related_name="post_reactions",
     )
-    reaction_type = models.CharField(max_length=20, choices=REACTION_CHOICES)
+    reaction_type = models.CharField(max_length=50)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

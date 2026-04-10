@@ -1,4 +1,12 @@
-import { useState, useEffect, useRef, memo, type RefObject } from "react"
+import {
+  useState,
+  useEffect,
+  useRef,
+  memo,
+  lazy,
+  Suspense,
+  type RefObject,
+} from "react"
 import { useParams, useNavigate, useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import * as Sentry from "@sentry/react"
@@ -26,8 +34,6 @@ import {
   Anchor,
   Divider,
   Popover,
-  SimpleGrid,
-  Tooltip,
   UnstyledButton,
 } from "@mantine/core"
 import { useDisclosure, useMediaQuery } from "@mantine/hooks"
@@ -77,25 +83,22 @@ import { AttachmentCarousel } from "../components/AttachmentCarousel"
 import FileDropzone from "../components/FileDropzone"
 import { filterFilesBySize } from "../config"
 
-const REACTION_EMOJIS: Record<ReactionType, string> = {
-  like: "👍",
-  heart: "❤️",
-  laugh: "😂",
-  surprised: "😮",
-  sad: "😢",
-  celebrate: "🎉",
-  claim: "🙋",
-}
+const LazyPicker = lazy(() => import("@emoji-mart/react"))
+const emojiDataPromise = () => import("@emoji-mart/data").then((m) => m.default)
 
-const ALL_REACTION_TYPES: ReactionType[] = [
-  "like",
-  "heart",
-  "laugh",
-  "surprised",
-  "sad",
-  "celebrate",
-  "claim",
+// Default quick-reaction emojis
+const DEFAULT_EMOJIS: string[] = [
+  "\u{1F44D}",
+  "\u2764\uFE0F",
+  "\u{1F602}",
+  "\u{1F62E}",
+  "\u{1F622}",
+  "\u{1F389}",
 ]
+
+interface EmojiPickerData {
+  native: string
+}
 
 export default function MessagesPage() {
   const { user } = useAuthStore()
@@ -1355,6 +1358,8 @@ const MessageBubble = memo(function MessageBubble({
   const [carouselInitialIndex, setCarouselInitialIndex] = useState(0)
   const [menuOpened, setMenuOpened] = useState(false)
   const [reactionPickerOpened, setReactionPickerOpened] = useState(false)
+  const [fullEmojiPickerOpened, setFullEmojiPickerOpened] = useState(false)
+  const [emojiData, setEmojiData] = useState<object | null>(null)
   const [isHovered, setIsHovered] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editContent, setEditContent] = useState(message.content)
@@ -1365,7 +1370,10 @@ const MessageBubble = memo(function MessageBubble({
   const reactionMutation = useMutation({
     mutationFn: (reactionType: ReactionType) =>
       messagingApi.toggleMessageReaction(message.id, reactionType),
-    onSuccess: () => setReactionPickerOpened(false),
+    onSuccess: () => {
+      setReactionPickerOpened(false)
+      setFullEmojiPickerOpened(false)
+    },
     onError: (error: unknown) =>
       showErrorNotification(error, "Kunne ikke tilføje reaktion"),
   })
@@ -1543,58 +1551,117 @@ const MessageBubble = memo(function MessageBubble({
     </Menu>
   )
 
+  const handleOpenFullEmojiPicker = () => {
+    if (!emojiData) {
+      emojiDataPromise().then(setEmojiData)
+    }
+    setReactionPickerOpened(false)
+    setFullEmojiPickerOpened((o) => !o)
+  }
+
+  const handleFullEmojiSelect = (emoji: EmojiPickerData) => {
+    reactionMutation.mutate(emoji.native)
+  }
+
   const emojiPickerButton = (
-    <Popover
-      opened={reactionPickerOpened}
-      onChange={setReactionPickerOpened}
-      position="top"
-      withArrow
-      withinPortal
-    >
-      <Popover.Target>
-        <ActionIcon
-          variant="subtle"
-          size="sm"
-          color="gray"
-          style={{
-            display: isMobileDevice ? "none" : undefined,
-            opacity: isHovered || reactionPickerOpened ? 1 : 0,
-            transition: "opacity 0.1s",
-            flexShrink: 0,
-          }}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => setReactionPickerOpened((o) => !o)}
-          aria-label="Tilføj reaktion"
-        >
-          <IconMoodSmile size={14} />
-        </ActionIcon>
-      </Popover.Target>
-      <Popover.Dropdown p="xs">
-        <SimpleGrid cols={6} spacing={4}>
-          {ALL_REACTION_TYPES.map((type) => {
-            const existing = (message.reactions ?? []).find(
-              (r) => r.reaction_type === type,
-            )
-            return (
-              <Tooltip key={type} label={type}>
+    <>
+      <Popover
+        opened={reactionPickerOpened}
+        onChange={setReactionPickerOpened}
+        position="top"
+        withArrow
+        withinPortal
+      >
+        <Popover.Target>
+          <ActionIcon
+            variant="subtle"
+            size="sm"
+            color="gray"
+            style={{
+              display: isMobileDevice ? "none" : undefined,
+              opacity:
+                isHovered || reactionPickerOpened || fullEmojiPickerOpened
+                  ? 1
+                  : 0,
+              transition: "opacity 0.1s",
+              flexShrink: 0,
+            }}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              setFullEmojiPickerOpened(false)
+              setReactionPickerOpened((o) => !o)
+            }}
+            aria-label="Tilf\u00f8j reaktion"
+          >
+            <IconMoodSmile size={14} />
+          </ActionIcon>
+        </Popover.Target>
+        <Popover.Dropdown p="xs">
+          <Group gap={4}>
+            {DEFAULT_EMOJIS.map((emoji) => {
+              const existing = (message.reactions ?? []).find(
+                (r) => r.reaction_type === emoji,
+              )
+              return (
                 <ActionIcon
+                  key={emoji}
                   variant={existing?.has_reacted ? "filled" : "subtle"}
                   color={existing?.has_reacted ? "blue" : "gray"}
                   size="lg"
-                  onClick={() => reactionMutation.mutate(type)}
+                  onClick={() => reactionMutation.mutate(emoji)}
                   loading={
                     reactionMutation.isPending &&
-                    reactionMutation.variables === type
+                    reactionMutation.variables === emoji
                   }
                 >
-                  <Text size="lg">{REACTION_EMOJIS[type]}</Text>
+                  <Text size="lg">{emoji}</Text>
                 </ActionIcon>
-              </Tooltip>
-            )
-          })}
-        </SimpleGrid>
-      </Popover.Dropdown>
-    </Popover>
+              )
+            })}
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              size="lg"
+              onClick={handleOpenFullEmojiPicker}
+            >
+              <IconDots size={16} />
+            </ActionIcon>
+          </Group>
+        </Popover.Dropdown>
+      </Popover>
+      <Popover
+        opened={fullEmojiPickerOpened}
+        onChange={setFullEmojiPickerOpened}
+        position="top"
+        width="auto"
+        shadow="md"
+        withinPortal
+      >
+        <Popover.Target>
+          <Box style={{ width: 0, height: 0 }} />
+        </Popover.Target>
+        <Popover.Dropdown p={0} style={{ border: "none", background: "none" }}>
+          {fullEmojiPickerOpened && (
+            <Suspense fallback={<Loader size="sm" m="md" />}>
+              <LazyPicker
+                data={emojiData}
+                onEmojiSelect={handleFullEmojiSelect}
+                locale="da"
+                theme="light"
+                previewPosition="none"
+                skinTonePosition="search"
+                searchPosition="sticky"
+                navPosition="top"
+                perLine={9}
+                emojiSize={22}
+                emojiButtonSize={32}
+                maxFrequentRows={2}
+              />
+            </Suspense>
+          )}
+        </Popover.Dropdown>
+      </Popover>
+    </>
   )
 
   // Mobile reaction picker — anchor is fixed bottom-right so popup always appears on-screen
@@ -1618,28 +1685,39 @@ const MessageBubble = memo(function MessageBubble({
         />
       </Popover.Target>
       <Popover.Dropdown p="xs">
-        <SimpleGrid cols={6} spacing={4}>
-          {ALL_REACTION_TYPES.map((type) => {
+        <Group gap={4}>
+          {DEFAULT_EMOJIS.map((emoji) => {
             const existing = (message.reactions ?? []).find(
-              (r) => r.reaction_type === type,
+              (r) => r.reaction_type === emoji,
             )
             return (
               <ActionIcon
-                key={type}
+                key={emoji}
                 variant={existing?.has_reacted ? "filled" : "subtle"}
                 color={existing?.has_reacted ? "blue" : "gray"}
                 size="lg"
-                onClick={() => reactionMutation.mutate(type)}
+                onClick={() => reactionMutation.mutate(emoji)}
                 loading={
                   reactionMutation.isPending &&
-                  reactionMutation.variables === type
+                  reactionMutation.variables === emoji
                 }
               >
-                <Text size="lg">{REACTION_EMOJIS[type]}</Text>
+                <Text size="lg">{emoji}</Text>
               </ActionIcon>
             )
           })}
-        </SimpleGrid>
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            size="lg"
+            onClick={() => {
+              setReactionPickerOpened(false)
+              handleOpenFullEmojiPicker()
+            }}
+          >
+            <IconDots size={16} />
+          </ActionIcon>
+        </Group>
         <Divider my="xs" />
         <Stack gap={0}>
           <UnstyledButton
