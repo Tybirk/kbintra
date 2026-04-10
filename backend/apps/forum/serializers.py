@@ -59,10 +59,11 @@ class SubgroupMembershipSerializer(serializers.ModelSerializer):
 
     user = AuthorSerializer(read_only=True)
     user_id = serializers.IntegerField(source="user.id", read_only=True)
+    house_name = serializers.CharField(source="user.house.name", read_only=True, default="")
 
     class Meta:
         model = SubgroupMembership
-        fields = ["id", "user", "user_id", "role", "created_at"]
+        fields = ["id", "user", "user_id", "role", "house_name", "created_at"]
 
 
 class SubgroupSerializer(serializers.ModelSerializer):

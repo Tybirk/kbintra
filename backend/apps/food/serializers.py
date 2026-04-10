@@ -14,6 +14,7 @@ from apps.users.models import User
 
 from .constants import (
     DAY_NAMES,
+    TICKET_SALE_CUTOFF_TIME,
     calculate_meal_price,
 )
 from .models import (
@@ -331,6 +332,13 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
         # Don't allow past dates
         if value < timezone.now().date():
             raise serializers.ValidationError("Cannot create ticket for past dates.")
+
+        # Don't allow selling tickets after the cutoff time on the meal day
+        now = timezone.now()
+        if value == now.date() and now.time() >= TICKET_SALE_CUTOFF_TIME:
+            raise serializers.ValidationError(
+                "Salg af billetter er lukket efter kl. 18:30 på maddagen."
+            )
 
         # Tickets can only be created after the registration deadline
         deadline = get_registration_deadline(value)

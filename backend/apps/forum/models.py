@@ -505,7 +505,7 @@ class SubgroupMembership(models.Model):
         max_length=100,
         default="Medlem",
         blank=True,
-        help_text="Free-text role label, e.g., 'Medlem', 'Formand', 'Kasserer'.",
+        help_text="Free-text role label, e.g., 'Medlem', 'Leder', 'Kasserer'.",
     )
     created_at = models.DateTimeField(auto_now_add=True)
 

@@ -13,6 +13,7 @@ import {
   Text,
   Button,
 } from "@mantine/core"
+import { useMediaQuery } from "@mantine/hooks"
 import { IconSearch } from "@tabler/icons-react"
 import { apiClient } from "../api/client"
 import type { User } from "../types"
@@ -36,6 +37,7 @@ export default function UserPickerModal({
   excludeUserIds,
   loading,
 }: UserPickerModalProps) {
+  const isMobile = useMediaQuery("(max-width: 48em)")
   const [search, setSearch] = useState("")
   const [selectedUsers, setSelectedUsers] = useState<User[]>([])
 
@@ -86,7 +88,13 @@ export default function UserPickerModal({
   }
 
   return (
-    <Modal opened={opened} onClose={handleClose} title={title} size="md">
+    <Modal
+      opened={opened}
+      onClose={handleClose}
+      title={title}
+      size="md"
+      fullScreen={isMobile}
+    >
       <Stack gap="md">
         {selectedUsers.length > 0 && (
           <Group gap="xs">

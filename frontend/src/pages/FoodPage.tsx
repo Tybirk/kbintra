@@ -29,6 +29,7 @@ import {
   Divider,
   Anchor,
   TextInput,
+  Tooltip,
 } from "@mantine/core"
 import {
   useDisclosure,
@@ -73,7 +74,7 @@ import {
   PRICE_ADULT_VEG,
   PRICE_CHILD,
 } from "../utils/priceCalculation"
-import { isDateLocked } from "../utils/foodDeadline"
+import { isDateLocked, isAfterTicketSaleCutoff } from "../utils/foodDeadline"
 import type {
   MealRegistration,
   CreateMealRegistrationData,
@@ -1133,6 +1134,7 @@ function DayRegistrationCard({
   }, [lastSaved])
 
   const isLocked = isDateLocked(date)
+  const isAfterCutoff = isAfterTicketSaleCutoff(date)
 
   // Default to house inhabitant count if no registration exists
   const houseCount = user?.house_inhabitant_count || 1
@@ -1421,15 +1423,21 @@ function DayRegistrationCard({
 
               {/* Sell ticket button */}
               {hasSomethingToSell && !isPast && (
-                <Button
-                  variant="light"
-                  color="orange"
-                  size="sm"
-                  leftSection={<IconTicket size={16} />}
-                  onClick={handleOpenSellModal}
+                <Tooltip
+                  label="Salg lukket efter kl. 18:30"
+                  disabled={!isAfterCutoff}
                 >
-                  Sælg billet
-                </Button>
+                  <Button
+                    variant="light"
+                    color="orange"
+                    size="sm"
+                    leftSection={<IconTicket size={16} />}
+                    onClick={handleOpenSellModal}
+                    disabled={isAfterCutoff}
+                  >
+                    Sælg billet
+                  </Button>
+                </Tooltip>
               )}
 
               {/* Ticket status */}

@@ -1,3 +1,4 @@
+from datetime import time
 from decimal import Decimal
 
 # Danish day names (Monday–Sunday)
@@ -7,6 +8,9 @@ DAY_NAMES = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Sø
 PRICE_ADULT_MEAT = Decimal("37.00")
 PRICE_ADULT_VEG = Decimal("26.00")
 PRICE_CHILD = Decimal("18.00")
+
+# Cutoff time for selling food tickets on the meal day (18:30)
+TICKET_SALE_CUTOFF_TIME = time(18, 30)
 
 
 def calculate_meal_price(adults_meat: int, adults_veg: int, children: int) -> Decimal:

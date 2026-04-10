@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
@@ -55,7 +55,7 @@ import { usersApi } from "../api/users"
 import UserLink from "../components/UserLink"
 import { ErrorBoundary } from "../components/ErrorBoundary"
 import { calculateDefaultTicketPrice } from "../utils/priceCalculation"
-import { isDateLocked } from "../utils/foodDeadline"
+import { isDateLocked, isAfterTicketSaleCutoff } from "../utils/foodDeadline"
 import type {
   Announcement,
   Event,
@@ -1012,12 +1012,14 @@ function FoodDayWidget({
     availablePortions.children_count > 0
   const sellPrice = calculateDefaultTicketPrice(sellMeat, sellVeg, sellChildren)
 
-  // Track if initial mount to prevent auto-save on mount
-  const [hasInitialized, setHasInitialized] = useState(false)
+  // Track whether we are syncing server data into local state.
+  // Skips auto-save when state changes originate from the sync effect, not from user input.
+  const isSyncingRef = useRef(true)
 
-  // Sync state when registration changes
+  // Sync state when registration changes (initial load or refetch)
   useEffect(() => {
     if (registration) {
+      isSyncingRef.current = true
       setIsActive(registration.is_active)
       setDiningOption(registration.dining_option)
       setSeatingTime(registration.seating_time)
@@ -1096,10 +1098,10 @@ function FoodDayWidget({
     500,
   )
 
-  // Auto-save when values change
+  // Auto-save when values change (skip when syncing server data into local state)
   useEffect(() => {
-    if (!hasInitialized) {
-      setHasInitialized(true)
+    if (isSyncingRef.current) {
+      isSyncingRef.current = false
       return
     }
 
@@ -1119,6 +1121,7 @@ function FoodDayWidget({
 
   const isLocked = isDateLocked(date)
   const isPast = dayjs(date).isBefore(dayjs(), "day")
+  const isAfterCutoff = isAfterTicketSaleCutoff(date)
 
   const handleOpenSellModal = () => {
     setSellMeat(availablePortions.adults_meat)
@@ -1244,15 +1247,21 @@ function FoodDayWidget({
                   )}
 
                   {isLocked && hasSomethingToSell && !isPast && (
-                    <Button
-                      variant="light"
-                      color="orange"
-                      size="xs"
-                      leftSection={<IconTicket size={14} />}
-                      onClick={handleOpenSellModal}
+                    <Tooltip
+                      label="Salg lukket efter kl. 18:30"
+                      disabled={!isAfterCutoff}
                     >
-                      Sælg billet
-                    </Button>
+                      <Button
+                        variant="light"
+                        color="orange"
+                        size="xs"
+                        leftSection={<IconTicket size={14} />}
+                        onClick={handleOpenSellModal}
+                        disabled={isAfterCutoff}
+                      >
+                        Sælg billet
+                      </Button>
+                    </Tooltip>
                   )}
 
                   {ticketsForSale && ticketsForSale.length > 0 && (

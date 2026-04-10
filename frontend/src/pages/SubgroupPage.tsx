@@ -921,6 +921,7 @@ function CreateThreadModal({
   defaultMembersOnly,
   onSuccess,
 }: CreateThreadModalProps) {
+  const isMobile = useMediaQuery("(max-width: 48em)")
   const [title, setTitle] = useState("")
   const [content, setContent] = useState("")
   const [attachments, setAttachments] = useState<File[]>([])
@@ -1006,7 +1007,13 @@ function CreateThreadModal({
   }
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Opret ny tråd" size="lg">
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title="Opret ny tråd"
+      size="lg"
+      fullScreen={isMobile}
+    >
       <FileDropzone onDrop={handleAddFiles}>
         <form onSubmit={handleSubmit}>
           <Stack gap="md">
@@ -2085,7 +2092,7 @@ interface MembersSectionProps {
   currentUserId: number | null
 }
 
-const ROLE_SUGGESTIONS = ["Medlem", "Formand", "Kasserer", "Næstformand"]
+const ROLE_SUGGESTIONS = ["Medlem", "Leder", "Kasserer", "Viseleder"]
 
 function MembersSection({ subgroup, currentUserId }: MembersSectionProps) {
   const queryClient = useQueryClient()
@@ -2175,7 +2182,7 @@ function MembersSection({ subgroup, currentUserId }: MembersSectionProps) {
   })
 
   return (
-    <Paper withBorder p="md" radius="md" mb="md">
+    <Paper withBorder p={{ base: "xs", sm: "md" }} radius="md" mb="md">
       <Group
         justify="space-between"
         wrap="nowrap"
@@ -2197,7 +2204,7 @@ function MembersSection({ subgroup, currentUserId }: MembersSectionProps) {
       </Group>
 
       {expanded && (
-        <Stack gap="xs" mt="md">
+        <Stack gap="xs" mt="sm">
           {sortedMembers.length === 0 && (
             <Text c="dimmed" size="sm">
               Ingen medlemmer endnu. Tilføj det første medlem for at komme i
@@ -2205,38 +2212,55 @@ function MembersSection({ subgroup, currentUserId }: MembersSectionProps) {
             </Text>
           )}
           {sortedMembers.map((m) => (
-            <Group key={m.id} justify="space-between" wrap="nowrap">
-              <Group gap="sm" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+            <Group key={m.id} justify="space-between" wrap="nowrap" gap="xs">
+              <Group gap="xs" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
                 <Anchor
                   href={`/profil/${m.user.id}`}
-                  style={{ display: "flex" }}
+                  style={{ display: "flex", flexShrink: 0 }}
                 >
                   <Avatar src={m.user.profile_picture} radius="xl" size="sm">
                     {m.user.first_name?.[0]}
                     {m.user.last_name?.[0]}
                   </Avatar>
                 </Anchor>
-                <Text truncate style={{ minWidth: 0 }}>
+                <Text truncate size="sm" style={{ minWidth: 0 }}>
                   {m.user.first_name} {m.user.last_name}
                 </Text>
               </Group>
-              <Group gap="xs" wrap="nowrap">
+              <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
                 {canManage ? (
-                  <Select
-                    size="xs"
-                    data={ROLE_SUGGESTIONS}
-                    value={m.role || "Medlem"}
-                    searchable
-                    allowDeselect={false}
-                    onChange={(value) => {
-                      if (value && value !== m.role) {
-                        roleMutation.mutate({ userId: m.user.id, role: value })
-                      }
-                    }}
-                    w={140}
-                  />
+                  <Menu position="bottom-end" withinPortal>
+                    <Menu.Target>
+                      <Badge
+                        variant="light"
+                        color="gray"
+                        size="sm"
+                        style={{ cursor: "pointer" }}
+                      >
+                        {m.role || "Medlem"}
+                      </Badge>
+                    </Menu.Target>
+                    <Menu.Dropdown>
+                      {ROLE_SUGGESTIONS.map((role) => (
+                        <Menu.Item
+                          key={role}
+                          onClick={() => {
+                            if (role !== m.role) {
+                              roleMutation.mutate({
+                                userId: m.user.id,
+                                role,
+                              })
+                            }
+                          }}
+                          fw={(m.role || "Medlem") === role ? 700 : undefined}
+                        >
+                          {role}
+                        </Menu.Item>
+                      ))}
+                    </Menu.Dropdown>
+                  </Menu>
                 ) : (
-                  <Badge variant="light" color="gray">
+                  <Badge variant="light" color="gray" size="sm">
                     {m.role || "Medlem"}
                   </Badge>
                 )}

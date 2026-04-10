@@ -21,7 +21,7 @@ import {
   Checkbox,
   Tooltip,
 } from "@mantine/core"
-import { useDisclosure } from "@mantine/hooks"
+import { useDisclosure, useMediaQuery } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
 import { showErrorNotification } from "../utils/errorNotification"
 import {
@@ -431,6 +431,7 @@ function CreateAnnouncementModal({
   onClose,
   onSuccess,
 }: CreateAnnouncementModalProps) {
+  const isMobile = useMediaQuery("(max-width: 48em)")
   const [title, setTitle] = useState("")
   const [content, setContent] = useState("")
   const [attachments, setAttachments] = useState<File[]>([])
@@ -509,7 +510,13 @@ function CreateAnnouncementModal({
   }
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Opret opslag" size="lg">
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title="Opret opslag"
+      size="lg"
+      fullScreen={isMobile}
+    >
       <FileDropzone onDrop={handleAddFiles}>
         <form onSubmit={handleSubmit}>
           <Stack gap="md">
@@ -582,6 +589,7 @@ function EditAnnouncementModal({
   announcement,
   onSuccess,
 }: EditAnnouncementModalProps) {
+  const isMobile = useMediaQuery("(max-width: 48em)")
   const [title, setTitle] = useState(announcement.title)
   const [content, setContent] = useState(announcement.content)
 
@@ -608,7 +616,13 @@ function EditAnnouncementModal({
   }
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Rediger opslag" size="lg">
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title="Rediger opslag"
+      size="lg"
+      fullScreen={isMobile}
+    >
       <form onSubmit={handleSubmit}>
         <Stack gap="md">
           <TextInput

@@ -159,7 +159,7 @@ def index_post(sender, instance, **kwargs):
             object_id=instance.id,
             title=thread.title,
             body=strip_html(instance.content),
-            url=f"/forum/{thread.subgroup.slug}/traad/{thread.slug}",
+            url=f"/forum/{thread.subgroup.slug}/traad/{thread.slug}#post-{instance.id}",
             subtitle=create_excerpt(instance.content, 80),
             extra=json.dumps({"thread_id": thread.id}),
             created_at=_isoformat(instance.created_at),

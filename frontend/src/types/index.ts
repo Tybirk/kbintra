@@ -127,6 +127,7 @@ export interface SubgroupMember {
   id: number
   user: Author
   role: string
+  house_name: string
   created_at: string
 }
 
