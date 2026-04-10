@@ -1286,7 +1286,7 @@ function DayRegistrationCard({
         createMutation.mutate(data)
       }
     },
-    2000,
+    500,
   )
 
   // Auto-save when values change. When locked, only dining_option and seating_time
@@ -1298,6 +1298,9 @@ function DayRegistrationCard({
     }
 
     if (isPast) return
+
+    // After the deadline only UPDATEs are allowed — never attempt a CREATE
+    if (isLocked && !registration?.id) return
 
     const data: CreateMealRegistrationData = {
       date,

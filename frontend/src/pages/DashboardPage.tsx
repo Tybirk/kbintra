@@ -1016,14 +1016,24 @@ function FoodDayWidget({
   // Skips auto-save when state changes originate from the sync effect, not from user input.
   const isSyncingRef = useRef(true)
 
-  // Sync state when registration changes (initial load or refetch)
+  // Sync state when registration changes (initial load or refetch).
+  // Only flag as syncing when values actually differ — if they already match
+  // (e.g. after our own save is refetched), the auto-save effect won't fire
+  // and the flag would never get cleared, silently skipping the next real change.
   useEffect(() => {
     if (registration) {
-      isSyncingRef.current = true
-      setIsActive(registration.is_active)
-      setDiningOption(registration.dining_option)
-      setSeatingTime(registration.seating_time)
+      const willChange =
+        isActive !== registration.is_active ||
+        diningOption !== registration.dining_option ||
+        seatingTime !== registration.seating_time
+      if (willChange) {
+        isSyncingRef.current = true
+        setIsActive(registration.is_active)
+        setDiningOption(registration.dining_option)
+        setSeatingTime(registration.seating_time)
+      }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registration])
 
   const createMutation = useMutation({
@@ -1105,6 +1115,9 @@ function FoodDayWidget({
       return
     }
 
+    // After the deadline only UPDATEs are allowed — never attempt a CREATE
+    if (isDateLocked(date) && !registration?.id) return
+
     const defaultAdults = user?.house_inhabitant_count || 1
     const data: CreateMealRegistrationData = {
       date,
@@ -1117,6 +1130,7 @@ function FoodDayWidget({
     }
 
     debouncedSave(data, registration?.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, diningOption, seatingTime])
 
   const isLocked = isDateLocked(date)
