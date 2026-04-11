@@ -22,6 +22,7 @@ import {
   Textarea,
   Alert,
   Anchor,
+  Checkbox,
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -48,6 +49,7 @@ import { BackButton } from "../components/BackButton"
 import { notificationsApi } from "../api/notifications"
 import { forumApi } from "../api/forum"
 import { clearDraft } from "../utils/draftStorage"
+import { useAuthStore } from "../store/authStore"
 import RichTextEditor from "../components/RichTextEditor"
 import Reactions from "../components/Reactions"
 import PostDate from "../components/PostDate"
@@ -758,9 +760,13 @@ function DiscussionSection({
 }: DiscussionSectionProps) {
   const queryClient = useQueryClient()
   const location = useLocation()
+  const { user: currentUser } = useAuthStore()
   const [content, setContent] = useState("")
   const [editingPostId, setEditingPostId] = useState<number | null>(null)
   const [editContent, setEditContent] = useState("")
+  const [consentModalOpened, setConsentModalOpened] = useState(false)
+  const [consentChecked, setConsentChecked] = useState(false)
+  const [pendingEditPost, setPendingEditPost] = useState<Post | null>(null)
 
   const { data: thread, isLoading } = useQuery({
     queryKey: ["thread", threadId],
@@ -825,8 +831,14 @@ function DiscussionSection({
   }
 
   const handleStartEdit = (post: Post) => {
-    setEditingPostId(post.id)
-    setEditContent(post.content)
+    if (currentUser?.is_staff && post.author?.id !== currentUser.id) {
+      setPendingEditPost(post)
+      setConsentChecked(false)
+      setConsentModalOpened(true)
+    } else {
+      setEditingPostId(post.id)
+      setEditContent(post.content)
+    }
   }
 
   const handleCancelEdit = () => {
@@ -999,6 +1011,49 @@ function DiscussionSection({
           </Paper>
         </Stack>
       )}
+
+      <Modal
+        opened={consentModalOpened}
+        onClose={() => setConsentModalOpened(false)}
+        title="Rediger en anden brugers indhold"
+        centered
+        fullScreen={false}
+      >
+        <Stack>
+          <Alert color="orange" variant="light">
+            <Text size="sm">
+              Indholdet tilhører en anden bruger. Ændringer må kun foretages med
+              forudgående samtykke fra forfatteren.
+            </Text>
+          </Alert>
+          <Checkbox
+            label="Samtykke fra forfatteren er indhentet forud for denne ændring"
+            checked={consentChecked}
+            onChange={(event) => setConsentChecked(event.currentTarget.checked)}
+          />
+          <Group justify="flex-end">
+            <Button
+              variant="default"
+              onClick={() => setConsentModalOpened(false)}
+            >
+              Annuller
+            </Button>
+            <Button
+              disabled={!consentChecked}
+              onClick={() => {
+                setConsentModalOpened(false)
+                if (pendingEditPost) {
+                  setEditingPostId(pendingEditPost.id)
+                  setEditContent(pendingEditPost.content)
+                  setPendingEditPost(null)
+                }
+              }}
+            >
+              Fortsæt
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Paper>
   )
 }

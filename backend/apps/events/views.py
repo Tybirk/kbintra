@@ -221,6 +221,17 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
                 link=f"/kalender/{event.slug}",
             )
 
+        # Notify event creator when an admin edits their event
+        if event.created_by_id != self.request.user.id and self.request.user.is_staff:
+            from apps.notifications.tasks import notify_event_edited_by_admin_task
+
+            notify_event_edited_by_admin_task(
+                event_creator_id=event.created_by_id,
+                editor_id=self.request.user.id,
+                event_title=event.title,
+                event_slug=event.slug,
+            )
+
     def perform_destroy(self, instance: Event) -> None:
         if instance.thread_id:
             instance.thread.delete()

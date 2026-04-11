@@ -75,3 +75,14 @@ class AnnouncementDetailView(generics.RetrieveUpdateDestroyAPIView):
                 announcement_title=announcement.title,
                 announcement_id=announcement.id,
             )
+
+        # Notify author when an admin edits their announcement
+        if announcement.author_id != self.request.user.id and self.request.user.is_staff:
+            from apps.notifications.tasks import notify_announcement_edited_by_admin_task
+
+            notify_announcement_edited_by_admin_task(
+                announcement_author_id=announcement.author_id,
+                editor_id=self.request.user.id,
+                announcement_title=announcement.title,
+                announcement_id=announcement.id,
+            )

@@ -15,6 +15,7 @@ import {
   Select,
   TagsInput,
   Alert,
+  Checkbox,
 } from "@mantine/core"
 import { DateInput, DatePickerInput, TimePicker } from "@mantine/dates"
 import { notifications } from "@mantine/notifications"
@@ -23,6 +24,7 @@ import { IconMapPin, IconAlertCircle } from "@tabler/icons-react"
 import dayjs from "dayjs"
 
 import { clearDraft, loadDraft, saveDraft } from "../utils/draftStorage"
+import { useAuthStore } from "../store/authStore"
 import { BackButton } from "../components/BackButton"
 import { eventsApi } from "../api/events"
 import { bookingsApi } from "../api/bookings"
@@ -118,7 +120,9 @@ export default function EventFormPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { user: currentUser } = useAuthStore()
   const isEditMode = !!slug
+  const [consentChecked, setConsentChecked] = useState(false)
 
   // Form state
   const [title, setTitle] = useState("")
@@ -495,6 +499,12 @@ export default function EventFormPage() {
     run()
   }
 
+  const isAdminEditingOther =
+    isEditMode &&
+    currentUser?.is_staff &&
+    !!existingEvent &&
+    existingEvent.created_by.id !== currentUser.id
+
   const handleSubmit = () => {
     setErrors({})
     if (!title.trim() || !startDatetime || !endDatetime) return
@@ -807,6 +817,24 @@ export default function EventFormPage() {
               </Alert>
             )}
 
+            {isAdminEditingOther && (
+              <Alert color="orange" variant="light" mt="md">
+                <Stack gap="xs">
+                  <Text size="sm">
+                    Indholdet tilhører en anden bruger. Ændringer må kun
+                    foretages med forudgående samtykke fra forfatteren.
+                  </Text>
+                  <Checkbox
+                    label="Samtykke fra forfatteren er indhentet forud for denne ændring"
+                    checked={consentChecked}
+                    onChange={(event) =>
+                      setConsentChecked(event.currentTarget.checked)
+                    }
+                  />
+                </Stack>
+              </Alert>
+            )}
+
             <Group justify="flex-end" mt="md">
               <Button
                 variant="light"
@@ -822,7 +850,9 @@ export default function EventFormPage() {
                 type="button"
                 onClick={handleSubmit}
                 loading={isPending}
-                disabled={!isFormValid}
+                disabled={
+                  !isFormValid || (isAdminEditingOther && !consentChecked)
+                }
               >
                 {isEditMode ? "Gem ændringer" : "Opret begivenhed"}
               </Button>
