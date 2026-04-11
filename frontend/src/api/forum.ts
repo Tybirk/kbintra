@@ -24,6 +24,7 @@ import type {
 interface SubgroupUpdateData {
   name?: string
   description?: string
+  links_info?: string
   icon?: string
   allows_members?: boolean
 }

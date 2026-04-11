@@ -3,40 +3,36 @@ import {
   ActionIcon,
   Text,
   Popover,
-  SimpleGrid,
   Tooltip,
   UnstyledButton,
   Box,
   Stack,
   Avatar,
+  Loader,
 } from "@mantine/core"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { IconMoodSmile } from "@tabler/icons-react"
-import { useState } from "react"
+import { IconMoodSmile, IconDots } from "@tabler/icons-react"
+import { lazy, Suspense, useState } from "react"
 
 import { forumApi } from "../api/forum"
 import type { ReactionSummary, ReactionType } from "../types"
 import UserLink from "./UserLink"
 
-// Emoji map for reactions
-const REACTION_EMOJIS: Record<ReactionType, string> = {
-  like: "\u{1F44D}",
-  heart: "\u2764\uFE0F",
-  laugh: "\u{1F602}",
-  surprised: "\u{1F62E}",
-  sad: "\u{1F622}",
-  celebrate: "\u{1F389}",
-  claim: "\u{1F64B}",
-}
+const LazyPicker = lazy(() => import("@emoji-mart/react"))
+const emojiDataPromise = () => import("@emoji-mart/data").then((m) => m.default)
 
-const REACTION_LABELS: Record<ReactionType, string> = {
-  like: "Synes godt om",
-  heart: "Elsker",
-  laugh: "Sjovt",
-  surprised: "Overrasket",
-  sad: "Ked af det",
-  celebrate: "Fejrer",
-  claim: "Jeg tager den",
+// Default quick-reaction emojis (first 6)
+const DEFAULT_EMOJIS: string[] = [
+  "\u{1F44D}",
+  "\u2764\uFE0F",
+  "\u{1F602}",
+  "\u{1F62E}",
+  "\u{1F622}",
+  "\u{1F389}",
+]
+
+interface EmojiData {
+  native: string
 }
 
 interface ReactionsProps {
@@ -52,6 +48,8 @@ export default function Reactions({
 }: ReactionsProps) {
   const queryClient = useQueryClient()
   const [pickerOpened, setPickerOpened] = useState(false)
+  const [fullPickerOpened, setFullPickerOpened] = useState(false)
+  const [emojiData, setEmojiData] = useState<object | null>(null)
   const [openReactionType, setOpenReactionType] = useState<ReactionType | null>(
     null,
   )
@@ -62,6 +60,7 @@ export default function Reactions({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: threadQueryKey })
       setPickerOpened(false)
+      setFullPickerOpened(false)
       setOpenReactionType(null)
     },
   })
@@ -70,16 +69,17 @@ export default function Reactions({
     toggleMutation.mutate(reactionType)
   }
 
-  // Get all reaction types for the picker
-  const allReactionTypes: ReactionType[] = [
-    "like",
-    "heart",
-    "laugh",
-    "surprised",
-    "sad",
-    "celebrate",
-    "claim",
-  ]
+  const handleOpenFullPicker = () => {
+    if (!emojiData) {
+      emojiDataPromise().then(setEmojiData)
+    }
+    setPickerOpened(false)
+    setFullPickerOpened((o) => !o)
+  }
+
+  const handleFullPickerSelect = (emoji: EmojiData) => {
+    handleReaction(emoji.native)
+  }
 
   return (
     <Group gap="sm">
@@ -142,7 +142,7 @@ export default function Reactions({
           <Popover.Dropdown p="sm">
             <Stack gap="xs">
               <Text size="xs" fw={600} c="dimmed">
-                {REACTION_LABELS[reaction.reaction_type]}
+                {reaction.emoji}
               </Text>
               {reaction.users.map((user) => (
                 <Group key={user.id} gap="xs">
@@ -170,7 +170,7 @@ export default function Reactions({
                 >
                   {reaction.has_reacted
                     ? "Fjern din reaktion"
-                    : "Tilføj din reaktion"}
+                    : "Tilf\u00f8j din reaktion"}
                 </Text>
               </UnstyledButton>
             </Stack>
@@ -178,7 +178,7 @@ export default function Reactions({
         </Popover>
       ))}
 
-      {/* Add reaction button */}
+      {/* Quick reaction picker */}
       <Popover
         opened={pickerOpened}
         onChange={setPickerOpened}
@@ -186,43 +186,84 @@ export default function Reactions({
         withArrow
       >
         <Popover.Target>
-          <Tooltip label="Tilføj reaktion">
+          <Tooltip label="Tilf\u00f8j reaktion">
             <ActionIcon
               variant="subtle"
               color="gray"
               size="md"
-              onClick={() => setPickerOpened((o) => !o)}
+              onClick={() => {
+                setFullPickerOpened(false)
+                setPickerOpened((o) => !o)
+              }}
             >
               <IconMoodSmile size={18} />
             </ActionIcon>
           </Tooltip>
         </Popover.Target>
         <Popover.Dropdown p="xs">
-          <SimpleGrid cols={7} spacing="xs">
-            {allReactionTypes.map((type) => {
+          <Group gap={4}>
+            {DEFAULT_EMOJIS.map((emoji) => {
               const existingReaction = reactions.find(
-                (r) => r.reaction_type === type,
+                (r) => r.reaction_type === emoji,
               )
               return (
-                <Tooltip key={type} label={REACTION_LABELS[type]}>
-                  <ActionIcon
-                    variant={
-                      existingReaction?.has_reacted ? "filled" : "subtle"
-                    }
-                    color={existingReaction?.has_reacted ? "blue" : "gray"}
-                    size="xl"
-                    onClick={() => handleReaction(type)}
-                    loading={
-                      toggleMutation.isPending &&
-                      toggleMutation.variables === type
-                    }
-                  >
-                    <Text size="xl">{REACTION_EMOJIS[type]}</Text>
-                  </ActionIcon>
-                </Tooltip>
+                <ActionIcon
+                  key={emoji}
+                  variant={existingReaction?.has_reacted ? "filled" : "subtle"}
+                  color={existingReaction?.has_reacted ? "blue" : "gray"}
+                  size="md"
+                  onClick={() => handleReaction(emoji)}
+                  loading={
+                    toggleMutation.isPending &&
+                    toggleMutation.variables === emoji
+                  }
+                >
+                  <Text size="md">{emoji}</Text>
+                </ActionIcon>
               )
             })}
-          </SimpleGrid>
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              size="lg"
+              onClick={handleOpenFullPicker}
+            >
+              <IconDots size={18} />
+            </ActionIcon>
+          </Group>
+        </Popover.Dropdown>
+      </Popover>
+
+      {/* Full emoji picker */}
+      <Popover
+        opened={fullPickerOpened}
+        onChange={setFullPickerOpened}
+        position="top"
+        width="auto"
+        shadow="md"
+      >
+        <Popover.Target>
+          <Box style={{ width: 0, height: 0 }} />
+        </Popover.Target>
+        <Popover.Dropdown p={0} style={{ border: "none", background: "none" }}>
+          {fullPickerOpened && (
+            <Suspense fallback={<Loader size="sm" m="md" />}>
+              <LazyPicker
+                data={emojiData}
+                onEmojiSelect={handleFullPickerSelect}
+                locale="da"
+                theme="light"
+                previewPosition="none"
+                skinTonePosition="search"
+                searchPosition="sticky"
+                navPosition="top"
+                perLine={9}
+                emojiSize={22}
+                emojiButtonSize={32}
+                maxFrequentRows={2}
+              />
+            </Suspense>
+          )}
         </Popover.Dropdown>
       </Popover>
     </Group>

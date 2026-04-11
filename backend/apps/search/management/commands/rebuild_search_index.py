@@ -113,7 +113,7 @@ class Command(BaseCommand):
                     object_id=post.id,
                     title=post.thread.title,
                     body=strip_html(post.content),
-                    url=f"/forum/{post.thread.subgroup.slug}/traad/{post.thread.slug}",
+                    url=f"/forum/{post.thread.subgroup.slug}/traad/{post.thread.slug}#post-{post.id}",
                     subtitle=create_excerpt(post.content, 80),
                     extra=json.dumps({"thread_id": post.thread.id}),
                     created_at=_isoformat(post.created_at),

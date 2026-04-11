@@ -32,11 +32,12 @@ class UserSerializer(serializers.ModelSerializer):
             "house_name",
             "house_inhabitant_count",
             "is_staff",
+            "is_food_admin",
             "date_joined",
             "default_cooking_days",
             "accessibility_mode",
         ]
-        read_only_fields = ["id", "email", "is_staff", "date_joined"]
+        read_only_fields = ["id", "email", "is_staff", "is_food_admin", "date_joined"]
 
     def get_house_inhabitant_count(self, obj: User) -> int:
         """Get the number of inhabitants in the user's house."""

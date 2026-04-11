@@ -1303,7 +1303,13 @@ class TestBillingDedup:
 
         api_client.force_authenticate(user=admin_user)
         url = reverse("food:monthly-food-cost")
-        response = api_client.get(url, {"year": past_monday.year, "month": past_monday.month})
+        first = past_monday.replace(day=1)
+        import calendar as _cal
+
+        last = past_monday.replace(day=_cal.monthrange(past_monday.year, past_monday.month)[1])
+        response = api_client.get(
+            url, {"start_date": first.isoformat(), "end_date": last.isoformat()}
+        )
         assert response.status_code == 200
         data = response.json()
         house_data = next(h for h in data["houses"] if h["house_id"] == house.id)
@@ -1332,7 +1338,7 @@ class TestBillingWithPreferenceFallback:
         )
         api_client.force_authenticate(user=admin_user)
         url = reverse("food:monthly-food-cost")
-        response = api_client.get(url, {"year": 2024, "month": 4})
+        response = api_client.get(url, {"start_date": "2024-04-01", "end_date": "2024-04-30"})
         assert response.status_code == 200
         data = response.json()
         house_data = next(h for h in data["houses"] if h["house_id"] == house.id)
@@ -1346,7 +1352,7 @@ class TestBillingWithPreferenceFallback:
         api_client.force_authenticate(user=admin_user)
         url = reverse("food:monthly-food-cost")
         # Use a past month so all Mon-Thu dates have passed the deadline
-        response = api_client.get(url, {"year": 2024, "month": 4})
+        response = api_client.get(url, {"start_date": "2024-04-01", "end_date": "2024-04-30"})
         assert response.status_code == 200
         data = response.json()
         house_data = next(h for h in data["houses"] if h["house_id"] == house.id)
@@ -1377,7 +1383,7 @@ class TestBillingWithPreferenceFallback:
         )
         api_client.force_authenticate(user=admin_user)
         url = reverse("food:monthly-food-cost")
-        response = api_client.get(url, {"year": 2024, "month": 5})
+        response = api_client.get(url, {"start_date": "2024-05-01", "end_date": "2024-05-31"})
         assert response.status_code == 200
         data = response.json()
         house_data = next(h for h in data["houses"] if h["house_id"] == house.id)
@@ -1789,7 +1795,7 @@ class TestMonthlyFoodCostReport:
         # Get the monthly cost report as admin
         api_client.force_authenticate(user=admin_user)
         url = reverse("food:monthly-food-cost")
-        response = api_client.get(url, {"year": 2025, "month": 1})
+        response = api_client.get(url, {"start_date": "2025-01-01", "end_date": "2025-01-31"})
 
         assert response.status_code == 200
         data = response.json()
@@ -1806,25 +1812,27 @@ class TestMonthlyFoodCostReport:
         """Test that non-admin users cannot access the cost report."""
         api_client.force_authenticate(user=user_with_house)
         url = reverse("food:monthly-food-cost")
-        response = api_client.get(url, {"year": 2025, "month": 1})
+        response = api_client.get(url, {"start_date": "2025-01-01", "end_date": "2025-01-31"})
 
         assert response.status_code == 403
 
-    def test_report_requires_year_and_month(self, api_client, admin_user):
-        """Test that year and month parameters are required."""
+    def test_report_defaults_and_validation(self, api_client, admin_user):
+        """No params → default range (last 4 weeks); bad inputs → 400."""
         api_client.force_authenticate(user=admin_user)
         url = reverse("food:monthly-food-cost")
 
-        # Missing both
+        # No params: returns default range (last 4 weeks)
         response = api_client.get(url)
+        assert response.status_code == 200
+        body = response.json()
+        assert "start_date" in body and "end_date" in body
+
+        # Invalid date format
+        response = api_client.get(url, {"start_date": "not-a-date"})
         assert response.status_code == 400
 
-        # Missing month
-        response = api_client.get(url, {"year": 2025})
-        assert response.status_code == 400
-
-        # Missing year
-        response = api_client.get(url, {"month": 1})
+        # end_date before start_date
+        response = api_client.get(url, {"start_date": "2025-02-01", "end_date": "2025-01-01"})
         assert response.status_code == 400
 
     def test_report_totals_multiple_registrations(
@@ -1850,7 +1858,7 @@ class TestMonthlyFoodCostReport:
 
         api_client.force_authenticate(user=admin_user)
         url = reverse("food:monthly-food-cost")
-        response = api_client.get(url, {"year": 2025, "month": 2})
+        response = api_client.get(url, {"start_date": "2025-02-01", "end_date": "2025-02-28"})
 
         assert response.status_code == 200
         data = response.json()
@@ -1883,7 +1891,7 @@ class TestMonthlyFoodCostReport:
 
         api_client.force_authenticate(user=admin_user)
         url = reverse("food:monthly-food-cost")
-        response = api_client.get(url, {"year": 2025, "month": 3})
+        response = api_client.get(url, {"start_date": "2025-03-01", "end_date": "2025-03-31"})
 
         assert response.status_code == 200
         data = response.json()
@@ -1916,7 +1924,7 @@ class TestMonthlyFoodCostReport:
 
         api_client.force_authenticate(user=admin_user)
         url = reverse("food:monthly-food-cost")
-        response = api_client.get(url, {"year": 2025, "month": 4})
+        response = api_client.get(url, {"start_date": "2025-04-01", "end_date": "2025-04-30"})
 
         assert response.status_code == 200
         data = response.json()
@@ -1951,7 +1959,7 @@ class TestMonthlyFoodCostReport:
 
         api_client.force_authenticate(user=admin_user)
         url = reverse("food:monthly-food-cost")
-        response = api_client.get(url, {"year": 2025, "month": 5})
+        response = api_client.get(url, {"start_date": "2025-05-01", "end_date": "2025-05-31"})
 
         assert response.status_code == 200
         data = response.json()
@@ -2005,7 +2013,7 @@ class TestMonthlyFoodCostReport:
 
         api_client.force_authenticate(user=admin_user)
         url = reverse("food:monthly-food-cost")
-        response = api_client.get(url, {"year": 2025, "month": 6})
+        response = api_client.get(url, {"start_date": "2025-06-01", "end_date": "2025-06-30"})
 
         assert response.status_code == 200
         data = response.json()
@@ -2511,7 +2519,7 @@ class TestBillingOnlyUsesRealRegistrations:
             )
         api_client.force_authenticate(user=admin_user)
         url = reverse("food:monthly-food-cost")
-        response = api_client.get(url, {"year": 2024, "month": 6})
+        response = api_client.get(url, {"start_date": "2024-06-01", "end_date": "2024-06-30"})
         assert response.status_code == 200
         data = response.json()
         house_data = next(h for h in data["houses"] if h["house_id"] == house.id)

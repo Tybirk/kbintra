@@ -15,6 +15,7 @@ export interface User {
   house_name: string | null
   house_inhabitant_count: number
   is_staff: boolean
+  is_food_admin: boolean
   date_joined: string
   accessibility_mode: boolean
   rainbow_mode: boolean
@@ -126,6 +127,7 @@ export interface SubgroupMember {
   id: number
   user: Author
   role: string
+  house_name: string
   created_at: string
 }
 
@@ -133,6 +135,7 @@ export interface Subgroup {
   id: number
   name: string
   description: string
+  links_info: string
   slug: string
   is_default: boolean
   is_committee: boolean
@@ -145,6 +148,7 @@ export interface Subgroup {
   created_at: string
   last_activity_at: string | null
   allows_members: boolean
+  default_members_only: boolean
   is_member: boolean
   members: SubgroupMember[]
 }
@@ -167,7 +171,7 @@ export interface PostAttachment {
   uploaded_at: string
 }
 
-export type ReactionType = "like" | "heart" | "laugh" | "surprised" | "sad" | "celebrate" | "claim"
+export type ReactionType = string
 
 export interface ReactionUser {
   id: number
@@ -185,7 +189,7 @@ export interface ReactionSummary {
 }
 
 export interface ReactionTypeInfo {
-  type: ReactionType
+  type: string
   emoji: string
 }
 
@@ -285,6 +289,7 @@ export interface RecentActivity {
   thread_slug: string
   subgroup_slug: string
   subgroup_name: string
+  members_only: boolean
   created_at: string
 }
 

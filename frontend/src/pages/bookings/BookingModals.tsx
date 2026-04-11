@@ -10,6 +10,7 @@ import {
   MultiSelect,
   Alert,
 } from "@mantine/core"
+import { useMediaQuery } from "@mantine/hooks"
 import { DateInput, TimePicker } from "@mantine/dates"
 import { notifications } from "@mantine/notifications"
 import { IconAlertCircle } from "@tabler/icons-react"
@@ -316,6 +317,7 @@ export function EditBookingModal({
   booking,
   onSuccess,
 }: EditBookingModalProps) {
+  const isMobile = useMediaQuery("(max-width: 48em)")
   const [title, setTitle] = useState(booking.title)
   const [description, setDescription] = useState(booking.description)
   const [startDate, setStartDate] = useState<Date | null>(
@@ -378,7 +380,13 @@ export function EditBookingModal({
   const isDurationValid = durationHours > 0 && durationHours <= 30
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Rediger booking" size="md">
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title="Rediger booking"
+      size="md"
+      fullScreen={isMobile}
+    >
       <form onSubmit={handleSubmit}>
         <Stack gap="md">
           <TextInput label="Lokale" value={booking.room.name} disabled />

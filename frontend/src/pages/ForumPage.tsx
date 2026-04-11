@@ -18,7 +18,7 @@ import {
   Tooltip,
   Checkbox,
 } from "@mantine/core"
-import { useDisclosure } from "@mantine/hooks"
+import { useDisclosure, useMediaQuery } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
 import { showErrorNotification } from "../utils/errorNotification"
 import {
@@ -40,6 +40,7 @@ import type { Subgroup } from "../types"
 export default function ForumPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const isMobile = useMediaQuery("(max-width: 48em)")
   const [search, setSearch] = useState("")
   const [createOpened, { open: openCreate, close: closeCreate }] =
     useDisclosure(false)
@@ -201,6 +202,7 @@ export default function ForumPage() {
         opened={createOpened}
         onClose={closeCreate}
         title="Opret ny gruppe"
+        fullScreen={isMobile}
       >
         <Stack>
           <TextInput
@@ -453,10 +455,12 @@ function SubgroupCard({
         </Group>
 
         {subgroup.description && (
-          <Text size="sm" c="dimmed" lineClamp={2}>
-            {subgroup.description
-              .replace(/<[^>]*>/g, " ")
-              .replace(/\s+/g, " ")
+          <Text size="sm" c="dimmed" lineClamp={1}>
+            {(
+              subgroup.description.match(/<p[^>]*>(.*?)<\/p>/)?.[1] ??
+              subgroup.description
+            )
+              .replace(/<[^>]*>/g, "")
               .trim()}
           </Text>
         )}

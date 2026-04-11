@@ -774,7 +774,7 @@ def notify_subgroup_activity_new_thread_task(
         thread_slug=thread_slug,
         reply_content=initial_post_content,
         post_id=post_id,
-        title=f"{author.first_name} oprettede en ny tråd i {subgroup_name}",
+        title=f"Ny tråd: {thread_title}",
     )
     logger.info(
         "notify_subgroup_activity_new_thread_task COMPLETED: %d notifications created", count

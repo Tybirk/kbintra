@@ -27,6 +27,49 @@ import type {
   DriveMenu,
 } from "../types"
 
+export interface ExpenseDay {
+  date: string
+  day_name: string
+  adults_meat: number
+  adults_veg: number
+  children_count: number
+  cost: string
+}
+
+export interface ExpenseWeek {
+  year: number
+  week_number: number
+  week_start: string
+  week_end: string
+  total_cost: string
+  days: ExpenseDay[]
+}
+
+export interface MyFoodExpensesResponse {
+  start_date: string
+  end_date: string
+  house_name: string
+  total_cost: string
+  weeks: ExpenseWeek[]
+}
+
+export interface HouseFoodCost {
+  house_id: number
+  house_name: string
+  total_cost: string
+  registration_count: number
+  adult_meat_portions: number
+  adult_veg_portions: number
+  child_portions: number
+}
+
+export interface FoodCostReportResponse {
+  start_date: string
+  end_date: string
+  total_cost: string
+  houses: HouseFoodCost[]
+}
+
 export const foodApi = {
   // Meal Preferences
   getPreferences: async (): Promise<MealPreference[]> => {
@@ -267,45 +310,42 @@ export const foodApi = {
     return response.data
   },
 
-  // My Expenses
-  getMyExpenses: async (year: number, month: number): Promise<{
-    year: number
-    month: number
-    month_name: string
-    house_name: string
-    total_cost: string
-    days: Array<{
-      date: string
-      day_name: string
-      adults_meat: number
-      adults_veg: number
-      children_count: number
-      cost: string
-    }>
-  }> => {
-    const response = await apiClient.get("/food/my-expenses/", {
-      params: { year, month },
-    })
+  // My Expenses (weekly buckets)
+  getMyExpenses: async (
+    startDate?: string,
+    endDate?: string,
+  ): Promise<MyFoodExpensesResponse> => {
+    const params: Record<string, string> = {}
+    if (startDate) params.start_date = startDate
+    if (endDate) params.end_date = endDate
+    const response = await apiClient.get("/food/my-expenses/", { params })
     return response.data
   },
 
   // Admin Reports
-  getMonthlyFoodCost: async (year: number, month: number): Promise<{
-    year: number
-    month: number
-    month_name: string
-    total_cost: string
-    houses: Array<{
-      house_id: number
-      house_name: string
-      total_cost: string
-      adult_meat_portions: number
-      adult_veg_portions: number
-      child_portions: number
-    }>
-  }> => {
+  getMonthlyFoodCost: async (
+    startDate?: string,
+    endDate?: string,
+  ): Promise<FoodCostReportResponse> => {
+    const params: Record<string, string> = {}
+    if (startDate) params.start_date = startDate
+    if (endDate) params.end_date = endDate
     const response = await apiClient.get("/food/admin/monthly-cost/", {
-      params: { year, month },
+      params,
+    })
+    return response.data
+  },
+
+  downloadMonthlyFoodCostCsv: async (
+    startDate?: string,
+    endDate?: string,
+  ): Promise<Blob> => {
+    const params: Record<string, string> = { download: "csv" }
+    if (startDate) params.start_date = startDate
+    if (endDate) params.end_date = endDate
+    const response = await apiClient.get("/food/admin/monthly-cost/", {
+      params,
+      responseType: "blob",
     })
     return response.data
   },

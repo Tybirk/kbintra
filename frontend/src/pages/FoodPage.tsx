@@ -19,7 +19,6 @@ import {
   ActionIcon,
   Table,
   Card,
-  Select,
   NumberInput,
   Avatar,
   Menu,
@@ -30,6 +29,7 @@ import {
   Divider,
   Anchor,
   TextInput,
+  Tooltip,
 } from "@mantine/core"
 import {
   useDisclosure,
@@ -57,6 +57,7 @@ import {
   IconUsers,
   IconExternalLink,
   IconRefresh,
+  IconDownload,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import isoWeek from "dayjs/plugin/isoWeek"
@@ -73,7 +74,7 @@ import {
   PRICE_ADULT_VEG,
   PRICE_CHILD,
 } from "../utils/priceCalculation"
-import { isDateLocked } from "../utils/foodDeadline"
+import { isDateLocked, isAfterTicketSaleCutoff } from "../utils/foodDeadline"
 import type {
   MealRegistration,
   CreateMealRegistrationData,
@@ -104,6 +105,7 @@ export default function FoodPage() {
   const { tab } = useParams<{ tab?: string }>()
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
+  const canFoodAdmin = !!(user?.is_staff || user?.is_food_admin)
 
   // Path-based tab state
   const validTabs = ["tilmelding", "billetter", "okonomi", "admin"]
@@ -283,6 +285,25 @@ export default function FoodPage() {
     },
   )
 
+  // Whole-week lock state (deadline is the same Wed for all 4 days of the week)
+  const weekIsLocked = isDateLocked(regWeekStart.format("YYYY-MM-DD"))
+
+  // Aggregate weekly budget and per-day shopping numbers from stats
+  const purchaseClipboard = useClipboard({ timeout: 1500 })
+  let weeklyBudget = 0
+  const purchaseColumns: number[] = []
+  for (let i = 0; i < 4; i++) {
+    const dateStr = regWeekStart.add(i, "day").format("YYYY-MM-DD")
+    const stats = getDailyStats(weeklyStats, dateStr)
+    const veg = stats?.total.adults_veg ?? 0
+    const meat = stats?.total.adults_meat ?? 0
+    const kids = stats?.total.children ?? 0
+    weeklyBudget +=
+      meat * PRICE_ADULT_MEAT + veg * PRICE_ADULT_VEG + kids * PRICE_CHILD
+    purchaseColumns.push(veg, 0, meat, kids)
+  }
+  const purchaseTSV = purchaseColumns.join("\t")
+
   // Helper to get week label
   const getWeekLabel = (offset: number) => {
     if (offset === 0) return "Denne uge"
@@ -296,9 +317,7 @@ export default function FoodPage() {
       <Group justify="space-between" mb="md">
         <div>
           <Title order={1}>Mad</Title>
-          <Badge color="red" size="xl">
-            DETTE MODUL ER IKKE FÆRDIGT; VENT MED AT TESTE
-          </Badge>
+
           <Text c="dimmed">Ugemenu og måltidstilmelding</Text>
         </div>
         <Group>
@@ -323,7 +342,7 @@ export default function FoodPage() {
           <Tabs.Tab value="okonomi" leftSection={<IconWallet size={16} />}>
             Økonomi
           </Tabs.Tab>
-          {user?.is_staff && (
+          {canFoodAdmin && (
             <Tabs.Tab value="admin" leftSection={<IconSettings size={16} />}>
               Admin
             </Tabs.Tab>
@@ -390,7 +409,7 @@ export default function FoodPage() {
             </Paper>
 
             <Group justify="space-between">
-              {user?.is_staff ? (
+              {canFoodAdmin ? (
                 <Group gap="xs">
                   {regDriveMenu?.is_stale && (
                     <Badge color="yellow" variant="light" size="sm">
@@ -410,18 +429,43 @@ export default function FoodPage() {
               ) : (
                 <div />
               )}
-              {registrations?.some(
-                (r) => r.id !== null && !isDateLocked(r.date),
-              ) && (
-                <Button
-                  variant="light"
-                  size="sm"
-                  onClick={() => resetToDefaultsMutation.mutate()}
-                  loading={resetToDefaultsMutation.isPending}
-                >
-                  Nulstil til standardpræferencer
-                </Button>
-              )}
+              <Group gap="xs">
+                {canFoodAdmin && (
+                  <Text size="xs" c="dimmed" style={{ lineHeight: 1.1 }}>
+                    Budget
+                    <br />
+                    {weeklyBudget} kr.
+                  </Text>
+                )}
+                {canFoodAdmin && weekIsLocked && (
+                  <Button
+                    variant="light"
+                    size="sm"
+                    leftSection={<IconCopy size={14} />}
+                    onClick={() => {
+                      purchaseClipboard.copy(purchaseTSV)
+                      notifications.show({
+                        color: "green",
+                        message: "Indkøbstal kopieret til udklipsholder.",
+                      })
+                    }}
+                  >
+                    Kopier indkøbstal
+                  </Button>
+                )}
+                {registrations?.some(
+                  (r) => r.id !== null && !isDateLocked(r.date),
+                ) && (
+                  <Button
+                    variant="light"
+                    size="sm"
+                    onClick={() => resetToDefaultsMutation.mutate()}
+                    loading={resetToDefaultsMutation.isPending}
+                  >
+                    Nulstil til standardpræferencer
+                  </Button>
+                )}
+              </Group>
             </Group>
 
             {isLoading ? (
@@ -595,7 +639,7 @@ export default function FoodPage() {
           <MyFoodExpenses />
         </Tabs.Panel>
 
-        {user?.is_staff && (
+        {canFoodAdmin && (
           <Tabs.Panel value="admin">
             <Stack gap="xl">
               <ClosedDaysAdmin />
@@ -752,66 +796,44 @@ function ClosedDaysAdmin() {
   )
 }
 
-// My Food Expenses Component (user-facing)
+// My Food Expenses Component (user-facing) — weekly buckets
 function MyFoodExpenses() {
-  const currentDate = dayjs()
-  const [selectedYear, setSelectedYear] = useState(
-    currentDate.year().toString(),
-  )
-  const [selectedMonth, setSelectedMonth] = useState(
-    (currentDate.month() + 1).toString(),
-  )
+  const defaultEnd = dayjs().endOf("isoWeek")
+  const defaultStart = defaultEnd.subtract(4, "week").startOf("isoWeek")
+  const [range, setRange] = useState<[Date | null, Date | null]>([
+    defaultStart.toDate(),
+    defaultEnd.toDate(),
+  ])
+
+  const startStr = range[0] ? dayjs(range[0]).format("YYYY-MM-DD") : undefined
+  const endStr = range[1] ? dayjs(range[1]).format("YYYY-MM-DD") : undefined
 
   const { data: expenses, isLoading } = useQuery({
-    queryKey: ["food", "my-expenses", selectedYear, selectedMonth],
-    queryFn: () =>
-      foodApi.getMyExpenses(parseInt(selectedYear), parseInt(selectedMonth)),
-    enabled: !!selectedYear && !!selectedMonth,
+    queryKey: ["food", "my-expenses", startStr, endStr],
+    queryFn: () => foodApi.getMyExpenses(startStr, endStr),
+    enabled: !!startStr && !!endStr,
   })
-
-  const years = Array.from({ length: 5 }, (_, i) => {
-    const year = currentDate.year() - 2 + i
-    return { value: year.toString(), label: year.toString() }
-  })
-
-  const months = [
-    { value: "1", label: "Januar" },
-    { value: "2", label: "Februar" },
-    { value: "3", label: "Marts" },
-    { value: "4", label: "April" },
-    { value: "5", label: "Maj" },
-    { value: "6", label: "Juni" },
-    { value: "7", label: "Juli" },
-    { value: "8", label: "August" },
-    { value: "9", label: "September" },
-    { value: "10", label: "Oktober" },
-    { value: "11", label: "November" },
-    { value: "12", label: "December" },
-  ]
 
   return (
     <Stack gap="lg">
-      <Group justify="space-between">
+      <Group justify="space-between" wrap="wrap">
         <Title order={3}>
           <Group gap="xs">
             <IconWallet size={24} />
             Madudgifter
           </Group>
         </Title>
-        <Group>
-          <Select
-            value={selectedMonth}
-            onChange={(val) => val && setSelectedMonth(val)}
-            data={months}
-            w={140}
-          />
-          <Select
-            value={selectedYear}
-            onChange={(val) => val && setSelectedYear(val)}
-            data={years}
-            w={100}
-          />
-        </Group>
+        <DatePickerInput
+          type="range"
+          value={range}
+          onChange={(val) =>
+            setRange(val as unknown as [Date | null, Date | null])
+          }
+          placeholder="Vælg datointerval"
+          valueFormat="D/M YYYY"
+          w={260}
+          clearable={false}
+        />
       </Group>
 
       {isLoading ? (
@@ -819,154 +841,158 @@ function MyFoodExpenses() {
           <Loader size="lg" />
         </Center>
       ) : expenses ? (
-        <Card withBorder p="md" radius="md">
-          <Stack gap="md">
-            <Group justify="space-between">
-              <Text fw={600} size="lg">
-                {expenses.month_name} {expenses.year}
-              </Text>
-              <Badge size="lg" color="blue">
-                Total: {parseFloat(expenses.total_cost).toFixed(0)}&nbsp;kr
-              </Badge>
-            </Group>
+        <Stack gap="md">
+          <Group justify="space-between">
+            <Text c="dimmed" size="sm">
+              {dayjs(expenses.start_date).format("D/M YYYY")} –{" "}
+              {dayjs(expenses.end_date).format("D/M YYYY")}
+            </Text>
+            <Badge size="lg" color="blue">
+              Total: {parseFloat(expenses.total_cost).toFixed(0)}&nbsp;kr
+            </Badge>
+          </Group>
 
-            {expenses.days.length === 0 ? (
-              <Text c="dimmed">Ingen madudgifter denne måned.</Text>
-            ) : (
-              <Table.ScrollContainer minWidth={350}>
-                <Table striped highlightOnHover>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>Dato</Table.Th>
-                      <Table.Th>Dag</Table.Th>
-                      <Table.Th ta="right">Kød</Table.Th>
-                      <Table.Th ta="right">Vegetar</Table.Th>
-                      <Table.Th ta="right">Børn</Table.Th>
-                      <Table.Th ta="right">Pris</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {expenses.days.map((day) => (
-                      <Table.Tr key={day.date}>
-                        <Table.Td>{dayjs(day.date).format("D/M")}</Table.Td>
-                        <Table.Td>{day.day_name}</Table.Td>
-                        <Table.Td ta="right">{day.adults_meat}</Table.Td>
-                        <Table.Td ta="right">{day.adults_veg}</Table.Td>
-                        <Table.Td ta="right">{day.children_count}</Table.Td>
-                        <Table.Td
-                          ta="right"
-                          fw={500}
-                          style={{ whiteSpace: "nowrap" }}
-                        >
-                          {parseFloat(day.cost).toFixed(0)} kr
-                        </Table.Td>
-                      </Table.Tr>
-                    ))}
-                  </Table.Tbody>
-                  <Table.Tfoot>
-                    <Table.Tr>
-                      <Table.Td colSpan={2} fw={600}>
-                        Total
-                      </Table.Td>
-                      <Table.Td ta="right" fw={600}>
-                        {expenses.days.reduce(
-                          (sum, d) => sum + d.adults_meat,
-                          0,
-                        )}
-                      </Table.Td>
-                      <Table.Td ta="right" fw={600}>
-                        {expenses.days.reduce(
-                          (sum, d) => sum + d.adults_veg,
-                          0,
-                        )}
-                      </Table.Td>
-                      <Table.Td ta="right" fw={600}>
-                        {expenses.days.reduce(
-                          (sum, d) => sum + d.children_count,
-                          0,
-                        )}
-                      </Table.Td>
-                      <Table.Td
-                        ta="right"
-                        fw={600}
-                        style={{ whiteSpace: "nowrap" }}
-                      >
-                        {parseFloat(expenses.total_cost).toFixed(0)} kr
-                      </Table.Td>
-                    </Table.Tr>
-                  </Table.Tfoot>
-                </Table>
-              </Table.ScrollContainer>
-            )}
-          </Stack>
-        </Card>
+          {expenses.weeks.length === 0 ? (
+            <Text c="dimmed">Ingen madudgifter i denne periode.</Text>
+          ) : (
+            expenses.weeks.map((week) => (
+              <Card
+                key={`${week.year}-${week.week_number}`}
+                withBorder
+                p="md"
+                radius="md"
+              >
+                <Stack gap="sm">
+                  <Group justify="space-between">
+                    <Group gap="xs">
+                      <Badge color="grape" variant="light" size="lg">
+                        Uge {week.week_number}
+                      </Badge>
+                      <Text size="sm" c="dimmed">
+                        {dayjs(week.week_start).format("D/M")} –{" "}
+                        {dayjs(week.week_end).format("D/M")}
+                      </Text>
+                    </Group>
+                    <Badge size="lg" color="blue">
+                      {parseFloat(week.total_cost).toFixed(0)}&nbsp;kr
+                    </Badge>
+                  </Group>
+
+                  {week.days.length === 0 ? (
+                    <Text c="dimmed" size="sm">
+                      Ingen madudgifter denne uge.
+                    </Text>
+                  ) : (
+                    <Table.ScrollContainer minWidth={350}>
+                      <Table striped highlightOnHover>
+                        <Table.Thead>
+                          <Table.Tr>
+                            <Table.Th>Dato</Table.Th>
+                            <Table.Th>Dag</Table.Th>
+                            <Table.Th ta="right">Kød</Table.Th>
+                            <Table.Th ta="right">Vegetar</Table.Th>
+                            <Table.Th ta="right">Børn</Table.Th>
+                            <Table.Th ta="right">Pris</Table.Th>
+                          </Table.Tr>
+                        </Table.Thead>
+                        <Table.Tbody>
+                          {week.days.map((day) => (
+                            <Table.Tr key={day.date}>
+                              <Table.Td>
+                                {dayjs(day.date).format("D/M")}
+                              </Table.Td>
+                              <Table.Td>{day.day_name}</Table.Td>
+                              <Table.Td ta="right">{day.adults_meat}</Table.Td>
+                              <Table.Td ta="right">{day.adults_veg}</Table.Td>
+                              <Table.Td ta="right">
+                                {day.children_count}
+                              </Table.Td>
+                              <Table.Td
+                                ta="right"
+                                fw={500}
+                                style={{ whiteSpace: "nowrap" }}
+                              >
+                                {parseFloat(day.cost).toFixed(0)} kr
+                              </Table.Td>
+                            </Table.Tr>
+                          ))}
+                        </Table.Tbody>
+                      </Table>
+                    </Table.ScrollContainer>
+                  )}
+                </Stack>
+              </Card>
+            ))
+          )}
+        </Stack>
       ) : null}
     </Stack>
   )
 }
 
-// Monthly Cost Report Component (Admin only)
+// Cost Report Component (food admin only) — date range + CSV
 function MonthlyCostReport() {
-  const currentDate = dayjs()
-  const [selectedYear, setSelectedYear] = useState(
-    currentDate.year().toString(),
-  )
-  const [selectedMonth, setSelectedMonth] = useState(
-    (currentDate.month() + 1).toString(),
-  )
+  const defaultEnd = dayjs().endOf("isoWeek")
+  const defaultStart = defaultEnd.subtract(3, "week").startOf("isoWeek")
+  const [range, setRange] = useState<[Date | null, Date | null]>([
+    defaultStart.toDate(),
+    defaultEnd.toDate(),
+  ])
+
+  const startStr = range[0] ? dayjs(range[0]).format("YYYY-MM-DD") : undefined
+  const endStr = range[1] ? dayjs(range[1]).format("YYYY-MM-DD") : undefined
 
   const { data: costReport, isLoading } = useQuery({
-    queryKey: ["food", "monthly-cost", selectedYear, selectedMonth],
-    queryFn: () =>
-      foodApi.getMonthlyFoodCost(
-        parseInt(selectedYear),
-        parseInt(selectedMonth),
-      ),
-    enabled: !!selectedYear && !!selectedMonth,
+    queryKey: ["food", "monthly-cost", startStr, endStr],
+    queryFn: () => foodApi.getMonthlyFoodCost(startStr, endStr),
+    enabled: !!startStr && !!endStr,
   })
 
-  const years = Array.from({ length: 5 }, (_, i) => {
-    const year = currentDate.year() - 2 + i
-    return { value: year.toString(), label: year.toString() }
-  })
-
-  const months = [
-    { value: "1", label: "Januar" },
-    { value: "2", label: "Februar" },
-    { value: "3", label: "Marts" },
-    { value: "4", label: "April" },
-    { value: "5", label: "Maj" },
-    { value: "6", label: "Juni" },
-    { value: "7", label: "Juli" },
-    { value: "8", label: "August" },
-    { value: "9", label: "September" },
-    { value: "10", label: "Oktober" },
-    { value: "11", label: "November" },
-    { value: "12", label: "December" },
-  ]
+  const handleDownloadCsv = async () => {
+    try {
+      const blob = await foodApi.downloadMonthlyFoodCostCsv(startStr, endStr)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `madomkostninger_${startStr}_${endStr}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      showErrorNotification(err, "Kunne ikke hente CSV.")
+    }
+  }
 
   return (
     <Stack gap="lg">
-      <Group justify="space-between">
+      <Group justify="space-between" wrap="wrap">
         <Title order={3}>
           <Group gap="xs">
             <IconReceipt size={24} />
-            Månedlig madomkostningsrapport
+            Madomkostningsrapport
           </Group>
         </Title>
         <Group>
-          <Select
-            value={selectedMonth}
-            onChange={(val) => val && setSelectedMonth(val)}
-            data={months}
-            w={140}
+          <DatePickerInput
+            type="range"
+            value={range}
+            onChange={(val) =>
+              setRange(val as unknown as [Date | null, Date | null])
+            }
+            placeholder="Vælg datointerval"
+            valueFormat="D/M YYYY"
+            w={260}
+            clearable={false}
           />
-          <Select
-            value={selectedYear}
-            onChange={(val) => val && setSelectedYear(val)}
-            data={years}
-            w={100}
-          />
+          <Button
+            variant="light"
+            leftSection={<IconDownload size={16} />}
+            onClick={handleDownloadCsv}
+            disabled={!startStr || !endStr}
+          >
+            CSV
+          </Button>
         </Group>
       </Group>
 
@@ -979,7 +1005,8 @@ function MonthlyCostReport() {
           <Stack gap="md">
             <Group justify="space-between">
               <Text fw={600} size="lg">
-                {costReport.month_name} {costReport.year}
+                {dayjs(costReport.start_date).format("D/M YYYY")} –{" "}
+                {dayjs(costReport.end_date).format("D/M YYYY")}
               </Text>
               <Badge size="lg" color="blue" style={{ whiteSpace: "nowrap" }}>
                 Total: {parseFloat(costReport.total_cost).toFixed(0)}&nbsp;kr
@@ -987,7 +1014,7 @@ function MonthlyCostReport() {
             </Group>
 
             {costReport.houses.length === 0 ? (
-              <Text c="dimmed">Ingen registreringer denne måned.</Text>
+              <Text c="dimmed">Ingen registreringer i denne periode.</Text>
             ) : (
               <Table.ScrollContainer minWidth={400}>
                 <Table striped highlightOnHover>
@@ -1107,6 +1134,7 @@ function DayRegistrationCard({
   }, [lastSaved])
 
   const isLocked = isDateLocked(date)
+  const isAfterCutoff = isAfterTicketSaleCutoff(date)
 
   // Default to house inhabitant count if no registration exists
   const houseCount = user?.house_inhabitant_count || 1
@@ -1160,9 +1188,6 @@ function DayRegistrationCard({
   const allPortionsSold = ticketsForDate.length > 0 && !hasSomethingToSell
 
   const sellPrice = calculateDefaultTicketPrice(sellMeat, sellVeg, sellChildren)
-
-  // Track if initial mount to prevent auto-save on mount
-  const [hasInitialized, setHasInitialized] = useState(false)
 
   const createMutation = useMutation({
     mutationFn: (data: CreateMealRegistrationData) =>
@@ -1258,18 +1283,29 @@ function DayRegistrationCard({
         createMutation.mutate(data)
       }
     },
-    2000,
+    500,
   )
 
-  // Auto-save when values change. When locked, only dining_option and seating_time
-  // can actually change (portions and isActive are read-only), so the save still works.
+  // Auto-save when user changes values.  Skip when local state matches server
+  // data (sync-triggered change or initial mount — not a user interaction).
   useEffect(() => {
-    if (!hasInitialized) {
-      setHasInitialized(true)
+    if (!registration) return
+    if (isPast) return
+
+    // If local state matches what the server returned, nothing to save.
+    if (
+      adultsMeat === registration.adults_meat &&
+      adultsVeg === registration.adults_veg &&
+      children === registration.children_count &&
+      diningOption === registration.dining_option &&
+      seatingTime === registration.seating_time &&
+      isActive === registration.is_active
+    ) {
       return
     }
 
-    if (isPast) return
+    // After the deadline only UPDATEs are allowed — never attempt a CREATE
+    if (isLocked && !registration.id) return
 
     const data: CreateMealRegistrationData = {
       date,
@@ -1281,7 +1317,7 @@ function DayRegistrationCard({
       is_active: isActive,
     }
 
-    debouncedSave(data, registration?.id)
+    debouncedSave(data, registration.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adultsMeat, adultsVeg, children, diningOption, seatingTime, isActive])
 
@@ -1395,15 +1431,21 @@ function DayRegistrationCard({
 
               {/* Sell ticket button */}
               {hasSomethingToSell && !isPast && (
-                <Button
-                  variant="light"
-                  color="orange"
-                  size="sm"
-                  leftSection={<IconTicket size={16} />}
-                  onClick={handleOpenSellModal}
+                <Tooltip
+                  label="Salg lukket efter kl. 18:30"
+                  disabled={!isAfterCutoff}
                 >
-                  Sælg billet
-                </Button>
+                  <Button
+                    variant="light"
+                    color="orange"
+                    size="sm"
+                    leftSection={<IconTicket size={16} />}
+                    onClick={handleOpenSellModal}
+                    disabled={isAfterCutoff}
+                  >
+                    Sælg billet
+                  </Button>
+                </Tooltip>
               )}
 
               {/* Ticket status */}

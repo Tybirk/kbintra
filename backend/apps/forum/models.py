@@ -15,6 +15,11 @@ class Subgroup(models.Model):
 
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
+    links_info = models.TextField(
+        blank=True,
+        default="",
+        help_text="Rich text content for the 'Links og info' tab.",
+    )
     slug = models.SlugField(max_length=100, unique=True, blank=True)
     is_default = models.BooleanField(
         default=False,
@@ -27,6 +32,10 @@ class Subgroup(models.Model):
     allows_members = models.BooleanField(
         default=False,
         help_text="If true, this subgroup has formal members and can host members-only threads/files.",
+    )
+    default_members_only = models.BooleanField(
+        default=False,
+        help_text="If true, the 'Privat tråd' checkbox is checked by default when creating threads/files.",
     )
     is_main = models.BooleanField(
         default=False,
@@ -271,16 +280,6 @@ class Reaction(models.Model):
     A reaction (emoji) on a forum post.
     """
 
-    REACTION_CHOICES = [
-        ("like", "👍"),
-        ("heart", "❤️"),
-        ("laugh", "😂"),
-        ("surprised", "😮"),
-        ("sad", "😢"),
-        ("celebrate", "🎉"),
-        ("claim", "🙋"),
-    ]
-
     post = models.ForeignKey(
         Post,
         on_delete=models.CASCADE,
@@ -291,7 +290,7 @@ class Reaction(models.Model):
         on_delete=models.CASCADE,
         related_name="post_reactions",
     )
-    reaction_type = models.CharField(max_length=20, choices=REACTION_CHOICES)
+    reaction_type = models.CharField(max_length=50)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -496,7 +495,7 @@ class SubgroupMembership(models.Model):
         max_length=100,
         default="Medlem",
         blank=True,
-        help_text="Free-text role label, e.g., 'Medlem', 'Formand', 'Kasserer'.",
+        help_text="Free-text role label, e.g., 'Medlem', 'Leder', 'Kasserer'.",
     )
     created_at = models.DateTimeField(auto_now_add=True)
 

@@ -41,20 +41,17 @@ AGGREGATABLE_TYPES = frozenset(
 def _make_aggregate_title(notification_type: str, count: int, existing_title: str) -> str:
     """Return an updated notification title reflecting the aggregated count."""
     if notification_type == NotificationType.THREAD_REPLY:
-        return f"{count} nye svar på din tråd"
+        # Title is the thread name; keep it and add count
+        return f"{existing_title} ({count} nye svar)"
     if notification_type == NotificationType.POST_REPLY:
-        return f"{count} nye svar i en tråd du følger"
+        return f"{existing_title} ({count} nye svar)"
     if notification_type == NotificationType.POST_REACTION:
         return f"{count} reaktioner på dit indlæg"
     if notification_type == NotificationType.MESSAGE_REACTION:
         return f"{count} reaktioner på din besked"
-    if notification_type in (NotificationType.NEW_THREAD, NotificationType.SUBGROUP_ACTIVITY):
-        # Extract the subgroup name from the existing title (e.g. "Ny tråd i Fællesrum")
-        parts = existing_title.rsplit(" i ", 1)
-        subgroup_name = parts[-1] if len(parts) > 1 else "gruppen"
-        if notification_type == NotificationType.NEW_THREAD:
-            return f"{count} nye tråde i {subgroup_name}"
-        return f"{count} nye opslag i {subgroup_name}"
+    if notification_type == NotificationType.SUBGROUP_ACTIVITY:
+        # Title is the thread name; keep it and add count
+        return f"{existing_title} ({count} nye svar)"
     return existing_title
 
 
@@ -514,8 +511,8 @@ def notify_new_announcement(
             notification = create_notification(
                 user=user,
                 notification_type=NotificationType.NEW_ANNOUNCEMENT,
-                title="Nyt opslag",
-                message=announcement_title,
+                title=announcement_title,
+                message=f"{author.first_name} oprettede et nyt opslag",
                 link="/opslag",
                 related_user=author,
                 html_content=f"<h3>{announcement_title}</h3>{announcement_content}"
@@ -552,7 +549,6 @@ def notify_new_thread(
     Returns the count of notifications created.
     """
     thread_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
-    subgroup_link = f"/forum/{subgroup_slug}"
 
     count = 0
     with transaction.atomic():
@@ -560,14 +556,13 @@ def notify_new_thread(
             notification = create_notification(
                 user=user,
                 notification_type=NotificationType.NEW_THREAD,
-                title=f"Ny tråd i {subgroup_name}",
-                message=thread_title,
+                title=f"{thread_title} ({subgroup_name})",
+                message=f"{author.first_name} oprettede en ny tråd",
                 link=thread_link,
                 related_user=author,
                 html_content=f"<h3>{thread_title}</h3>{initial_post_content}"
                 if initial_post_content
                 else None,
-                group_key=subgroup_link,  # Aggregate new threads in same subgroup
             )
             if notification:
                 count += 1
@@ -623,8 +618,8 @@ def notify_thread_reply(
     return create_notification(
         user=thread_author,
         notification_type=NotificationType.THREAD_REPLY,
-        title=f"{replier.first_name} svarede på din tråd",
-        message=f'"{thread_title}": {preview}',
+        title=thread_title,
+        message=f"{replier.first_name}: {preview}",
         link=link,
         related_user=replier,
         html_content=f"<p><strong>I tråden: {thread_title}</strong></p>{reply_content}",
@@ -681,8 +676,8 @@ def notify_post_reply(
     return create_notification(
         user=post_author,
         notification_type=NotificationType.POST_REPLY,
-        title=f"{replier.first_name} svarede i en tråd du følger",
-        message=f'"{thread_title}": {preview}',
+        title=thread_title,
+        message=f"{replier.first_name}: {preview}",
         link=link,
         related_user=replier,
         html_content=f"<p><strong>I tråden: {thread_title}</strong></p>{reply_content}",
@@ -994,8 +989,8 @@ def notify_mentions(
             notification = create_notification(
                 user=user,
                 notification_type=NotificationType.MENTION,
-                title="Du er blevet nævnt",
-                message=f"{author.first_name} nævnte dig i {context_label}",
+                title=f"{author.first_name} nævnte dig i {context_label}",
+                message="Du er blevet nævnt",
                 link=link,
                 related_user=author,
             )
@@ -1022,8 +1017,8 @@ def notify_announcement_updated(
             notification = create_notification(
                 user=user,
                 notification_type=NotificationType.ANNOUNCEMENT_UPDATED,
-                title="Vigtig post opdateret",
-                message=announcement_title,
+                title=f"Opdateret: {announcement_title}",
+                message=f"{editor.first_name} opdaterede opslaget",
                 link="/opslag",
                 related_user=editor,
             )
@@ -1058,9 +1053,8 @@ def notify_subgroup_activity(
 
     thread_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
     link = thread_link + (f"#post-{post_id}" if post_id else "")
-    subgroup_link = f"/forum/{subgroup_slug}"
 
-    notification_title = title or f"{replier.first_name} svarede i {subgroup_name}"
+    notification_title = title or thread_title
 
     count = 0
     with transaction.atomic():
@@ -1069,10 +1063,10 @@ def notify_subgroup_activity(
                 user=user,
                 notification_type=NotificationType.SUBGROUP_ACTIVITY,
                 title=notification_title,
-                message=f'"{thread_title}": {preview}',
+                message=f"{replier.first_name}: {preview}",
                 link=link,
                 related_user=replier,
-                group_key=subgroup_link,  # Aggregate activity in same subgroup
+                group_key=thread_link,  # Aggregate activity in same thread
             )
             if notification:
                 count += 1

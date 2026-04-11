@@ -22,6 +22,8 @@ import {
   Collapse,
   UnstyledButton,
   Anchor,
+  Tooltip,
+  Box,
 } from "@mantine/core"
 import { useDebouncedCallback, useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -38,6 +40,7 @@ import {
   IconChevronUp,
   IconUsers,
   IconExternalLink,
+  IconEyeOff,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import isoWeek from "dayjs/plugin/isoWeek"
@@ -52,7 +55,7 @@ import { usersApi } from "../api/users"
 import UserLink from "../components/UserLink"
 import { ErrorBoundary } from "../components/ErrorBoundary"
 import { calculateDefaultTicketPrice } from "../utils/priceCalculation"
-import { isDateLocked } from "../utils/foodDeadline"
+import { isDateLocked, isAfterTicketSaleCutoff } from "../utils/foodDeadline"
 import type {
   Announcement,
   Event,
@@ -866,6 +869,12 @@ function ActivityPreview({ activity }: ActivityPreviewProps) {
       style={{
         cursor: "pointer",
         transition: "background-color 150ms ease",
+        position: "relative",
+        ...(activity.members_only && {
+          borderColor: "var(--mantine-color-grape-8)",
+          borderWidth: 2,
+          borderStyle: "solid",
+        }),
       }}
       onClick={() =>
         navigate(
@@ -873,6 +882,27 @@ function ActivityPreview({ activity }: ActivityPreviewProps) {
         )
       }
     >
+      {activity.members_only && (
+        <Tooltip label="Kun for medlemmer">
+          <Box
+            style={{
+              position: "absolute",
+              top: -10,
+              left: -10,
+              width: 22,
+              height: 22,
+              borderRadius: "50%",
+              backgroundColor: "var(--mantine-color-grape-8)",
+              color: "white",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <IconEyeOff size={14} />
+          </Box>
+        </Tooltip>
+      )}
       <Group justify="space-between" wrap="nowrap" mb={4} gap="xs">
         <Badge variant="outline" color="blue">
           {activity.subgroup_name}
@@ -916,7 +946,7 @@ function ActivityPreview({ activity }: ActivityPreviewProps) {
   )
 }
 
-interface FoodDayWidgetProps {
+export interface FoodDayWidgetProps {
   date: string
   dayName: string
   menuText: string
@@ -928,7 +958,7 @@ interface FoodDayWidgetProps {
   communityStats?: DailyRegistrationStats
 }
 
-function FoodDayWidget({
+export function FoodDayWidget({
   date,
   dayName,
   menuText,
@@ -982,10 +1012,8 @@ function FoodDayWidget({
     availablePortions.children_count > 0
   const sellPrice = calculateDefaultTicketPrice(sellMeat, sellVeg, sellChildren)
 
-  // Track if initial mount to prevent auto-save on mount
-  const [hasInitialized, setHasInitialized] = useState(false)
-
-  // Sync state when registration changes
+  // Sync local state when registration data arrives or changes (initial load,
+  // refetch after save, another household member editing, etc.).
   useEffect(() => {
     if (registration) {
       setIsActive(registration.is_active)
@@ -1066,29 +1094,45 @@ function FoodDayWidget({
     500,
   )
 
-  // Auto-save when values change
+  // Auto-save when user changes values.  Skip when local state matches the
+  // server data (i.e. the change was triggered by the sync effect above, not
+  // by user input).  This replaces the old isSyncingRef approach which could
+  // get permanently stuck when setState was a no-op.
   useEffect(() => {
-    if (!hasInitialized) {
-      setHasInitialized(true)
+    // Registration not loaded yet — nothing to save against
+    if (!registration) return
+
+    // If local state matches what the server returned, this render was caused
+    // by the sync effect (or initial mount) — not a user interaction.
+    if (
+      isActive === registration.is_active &&
+      diningOption === registration.dining_option &&
+      seatingTime === registration.seating_time
+    ) {
       return
     }
+
+    // After the deadline only UPDATEs are allowed — never attempt a CREATE
+    if (isDateLocked(date) && !registration.id) return
 
     const defaultAdults = user?.house_inhabitant_count || 1
     const data: CreateMealRegistrationData = {
       date,
-      adults_meat: registration?.adults_meat ?? 0,
-      adults_veg: registration?.adults_veg ?? defaultAdults,
-      children_count: registration?.children_count ?? 0,
+      adults_meat: registration.adults_meat ?? 0,
+      adults_veg: registration.adults_veg ?? defaultAdults,
+      children_count: registration.children_count ?? 0,
       dining_option: diningOption,
       seating_time: seatingTime,
       is_active: isActive,
     }
 
-    debouncedSave(data, registration?.id)
+    debouncedSave(data, registration.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, diningOption, seatingTime])
 
   const isLocked = isDateLocked(date)
   const isPast = dayjs(date).isBefore(dayjs(), "day")
+  const isAfterCutoff = isAfterTicketSaleCutoff(date)
 
   const handleOpenSellModal = () => {
     setSellMeat(availablePortions.adults_meat)
@@ -1214,15 +1258,21 @@ function FoodDayWidget({
                   )}
 
                   {isLocked && hasSomethingToSell && !isPast && (
-                    <Button
-                      variant="light"
-                      color="orange"
-                      size="xs"
-                      leftSection={<IconTicket size={14} />}
-                      onClick={handleOpenSellModal}
+                    <Tooltip
+                      label="Salg lukket efter kl. 18:30"
+                      disabled={!isAfterCutoff}
                     >
-                      Sælg billet
-                    </Button>
+                      <Button
+                        variant="light"
+                        color="orange"
+                        size="xs"
+                        leftSection={<IconTicket size={14} />}
+                        onClick={handleOpenSellModal}
+                        disabled={isAfterCutoff}
+                      >
+                        Sælg billet
+                      </Button>
+                    </Tooltip>
                   )}
 
                   {ticketsForSale && ticketsForSale.length > 0 && (

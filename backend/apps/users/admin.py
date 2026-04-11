@@ -138,6 +138,7 @@ class UserAdmin(BaseUserAdmin):
                 "fields": (
                     "is_active",
                     "is_staff",
+                    "is_food_admin",
                     "is_superuser",
                     "groups",
                     "user_permissions",

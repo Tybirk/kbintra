@@ -231,6 +231,16 @@ class SubgroupUpdateView(APIView):
         serializer.is_valid(raise_exception=True)
         will_allow = serializer.validated_data.get("allows_members", was_allowing)
 
+        if "links_info" in serializer.validated_data:
+            can_edit_links = request.user.is_staff or (
+                subgroup.allows_members and _is_member(request.user, subgroup)
+            )
+            if not can_edit_links:
+                return Response(
+                    {"detail": "Du har ikke tilladelse til at redigere links og info."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
         if (
             "allows_members" in serializer.validated_data
             and will_allow != was_allowing
@@ -1123,13 +1133,11 @@ class ReactionToggleView(APIView):
         from apps.notifications.services import notify_post_reaction
 
         post = get_object_or_404(Post, pk=post_id)
-        reaction_type = request.data.get("reaction_type")
+        reaction_type = request.data.get("reaction_type", "").strip()
 
-        # Validate reaction type
-        valid_types = [choice[0] for choice in Reaction.REACTION_CHOICES]
-        if reaction_type not in valid_types:
+        if not reaction_type or len(reaction_type) > 50:
             return Response(
-                {"detail": f"Invalid reaction type. Must be one of: {valid_types}"},
+                {"detail": "Invalid reaction type."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -1148,7 +1156,6 @@ class ReactionToggleView(APIView):
             Reaction.objects.create(post=post, user=request.user, reaction_type=reaction_type)
             # Notify the post author
             if post.author:
-                emoji_map = dict(Reaction.REACTION_CHOICES)
                 notify_post_reaction(
                     post_author=post.author,
                     reactor=request.user,
@@ -1156,7 +1163,7 @@ class ReactionToggleView(APIView):
                     thread_id=post.thread.id,
                     subgroup_slug=post.thread.subgroup.slug,
                     thread_slug=post.thread.slug,
-                    reaction_emoji=emoji_map.get(reaction_type, ""),
+                    reaction_emoji=reaction_type,
                     post_id=post.id,
                 )
             return Response(
@@ -1171,11 +1178,16 @@ class ReactionTypesView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request: Request) -> Response:
-        """Return list of available reaction types with their emojis."""
-        reaction_types = [
-            {"type": choice[0], "emoji": choice[1]} for choice in Reaction.REACTION_CHOICES
+        """Return default quick-reaction emojis."""
+        defaults = [
+            "\U0001f44d",
+            "\u2764\ufe0f",
+            "\U0001f602",
+            "\U0001f62e",
+            "\U0001f622",
+            "\U0001f389",
         ]
-        return Response(reaction_types)
+        return Response([{"type": e, "emoji": e} for e in defaults])
 
 
 # Poll Views

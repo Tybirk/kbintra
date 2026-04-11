@@ -256,10 +256,13 @@ describe("foodApi", () => {
       }
       vi.mocked(apiClient.get).mockResolvedValue({ data: mockReport })
 
-      const result = await foodApi.getMonthlyFoodCost(2025, 1)
+      const result = await foodApi.getMonthlyFoodCost(
+        "2025-01-01",
+        "2025-01-31",
+      )
 
       expect(apiClient.get).toHaveBeenCalledWith("/food/admin/monthly-cost/", {
-        params: { year: 2025, month: 1 },
+        params: { start_date: "2025-01-01", end_date: "2025-01-31" },
       })
       expect(result).toEqual(mockReport)
     })

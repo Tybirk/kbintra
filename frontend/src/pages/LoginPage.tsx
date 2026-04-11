@@ -50,7 +50,7 @@ export default function LoginPage() {
         KB Intra
       </Title>
       <Text c="dimmed" size="sm" ta="center" mt={5}>
-        Fællesskabets kommunikationsplatform
+        Kløverbakkens kommunikationsplatform
       </Text>
 
       <Paper withBorder shadow="md" p={30} mt={30} radius="md">

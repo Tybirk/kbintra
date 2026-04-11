@@ -6,7 +6,7 @@ from rest_framework import serializers
 
 from apps.users.models import User
 
-from .models import Conversation, Message, MessageAttachment, MessageReaction
+from .models import Conversation, Message, MessageAttachment
 
 
 class ParticipantSerializer(serializers.ModelSerializer):
@@ -74,13 +74,12 @@ class MessageSerializer(serializers.ModelSerializer):
     def get_reactions(self, obj: Message) -> list:
         request = self.context.get("request")
         current_user_id = request.user.id if request and request.user.is_authenticated else None
-        emoji_map = dict(MessageReaction.REACTION_CHOICES)
         reaction_map: dict[str, dict] = {}
         for r in obj.reactions.all():
             if r.reaction_type not in reaction_map:
                 reaction_map[r.reaction_type] = {
                     "reaction_type": r.reaction_type,
-                    "emoji": emoji_map.get(r.reaction_type, ""),
+                    "emoji": r.reaction_type,
                     "count": 0,
                     "has_reacted": False,
                     "users": [],

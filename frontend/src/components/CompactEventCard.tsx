@@ -3,6 +3,7 @@ import { Paper, Group, Box, Text, Badge, Avatar } from "@mantine/core"
 import { IconMapPin } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import type { Event } from "../types"
+import { LocationText } from "./LocationText"
 
 interface CompactEventCardProps {
   event: Event
@@ -99,11 +100,14 @@ export function CompactEventCard({
               : `${dayjs(event.start_datetime).format("ddd D. MMM")} kl. ${dayjs(event.start_datetime).format("HH:mm")} – ${dayjs(event.end_datetime).format("ddd D. MMM")} kl. ${dayjs(event.end_datetime).format("HH:mm")}`}
           </Text>
           {event.resolved_location && (
-            <Group gap={4} mt={4}>
-              <IconMapPin size={14} color="gray" />
-              <Text size="sm" c="dimmed" truncate>
-                {event.resolved_location}
-              </Text>
+            <Group gap={4} mt={4} wrap="nowrap">
+              <IconMapPin size={14} color="gray" style={{ flexShrink: 0 }} />
+              <LocationText
+                location={event.resolved_location}
+                size="sm"
+                c="dimmed"
+                truncate
+              />
             </Group>
           )}
           {showCreator && (

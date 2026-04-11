@@ -15,6 +15,27 @@ from .models import NotificationPreference, NotificationType
 
 logger = logging.getLogger(__name__)
 
+# Type-specific email subject prefixes (more informative than generic [KB Intra])
+EMAIL_SUBJECT_PREFIX: dict[str, str] = {
+    NotificationType.NEW_ANNOUNCEMENT: "[Vigtig post]",
+    NotificationType.ANNOUNCEMENT_UPDATED: "[Vigtig post]",
+    NotificationType.NEW_THREAD: "[Forum]",
+    NotificationType.THREAD_REPLY: "[Forum]",
+    NotificationType.POST_REPLY: "[Forum]",
+    NotificationType.POST_REACTION: "[Forum]",
+    NotificationType.SUBGROUP_ACTIVITY: "[Forum]",
+    NotificationType.SUBGROUP_MEMBER_ADDED: "[Forum]",
+    NotificationType.SUBGROUP_MEMBER_REMOVED: "[Forum]",
+    NotificationType.NEW_MESSAGE: "[Besked]",
+    NotificationType.MESSAGE_REACTION: "[Besked]",
+    NotificationType.FOOD_TICKET: "[Mad]",
+    NotificationType.EVENT_CREATED: "[Kalender]",
+    NotificationType.EVENT_UPDATED: "[Kalender]",
+    NotificationType.EVENT_CANCELLED: "[Kalender]",
+    NotificationType.EVENT_REMINDER: "[Kalender]",
+    NotificationType.MENTION: "[Omtale]",
+}
+
 
 def get_resend_connection():
     """Return an SMTP connection to Resend. Use as a context manager."""
@@ -107,7 +128,8 @@ def send_notification_email(
 
     try:
         html_message = render_to_string("notifications/email_notification.html", context)
-        subject = f"[KB Intra] {title}"
+        prefix = EMAIL_SUBJECT_PREFIX.get(notification_type, "[KB Intra]")
+        subject = f"{prefix} {title}"
 
         with get_resend_connection() as connection:
             email = EmailMessage(

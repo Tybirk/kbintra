@@ -14,7 +14,6 @@ from .models import (
     PollVote,
     Post,
     PostAttachment,
-    Reaction,
     Subgroup,
     SubgroupMembership,
     SubgroupSubscription,
@@ -59,10 +58,11 @@ class SubgroupMembershipSerializer(serializers.ModelSerializer):
 
     user = AuthorSerializer(read_only=True)
     user_id = serializers.IntegerField(source="user.id", read_only=True)
+    house_name = serializers.CharField(source="user.house.name", read_only=True, default="")
 
     class Meta:
         model = SubgroupMembership
-        fields = ["id", "user", "user_id", "role", "created_at"]
+        fields = ["id", "user", "user_id", "role", "house_name", "created_at"]
 
 
 class SubgroupSerializer(serializers.ModelSerializer):
@@ -81,11 +81,13 @@ class SubgroupSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "description",
+            "links_info",
             "slug",
             "is_default",
             "is_committee",
             "is_main",
             "allows_members",
+            "default_members_only",
             "icon",
             "thread_count",
             "unread_thread_count",
@@ -178,7 +180,7 @@ class SubgroupUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Subgroup
-        fields = ["name", "description", "icon", "allows_members"]
+        fields = ["name", "description", "links_info", "icon", "allows_members"]
 
 
 class SubgroupCreateSerializer(serializers.ModelSerializer):
@@ -380,14 +382,13 @@ class PostSerializer(serializers.ModelSerializer):
 
         # Get all reactions for this post grouped by type
         reaction_counts: dict[str, dict] = {}
-        emoji_map = dict(Reaction.REACTION_CHOICES)
 
         for reaction in obj.reactions.all():
             r_type = reaction.reaction_type
             if r_type not in reaction_counts:
                 reaction_counts[r_type] = {
                     "reaction_type": r_type,
-                    "emoji": emoji_map.get(r_type, ""),
+                    "emoji": r_type,
                     "count": 0,
                     "has_reacted": False,
                     "users": [],
@@ -1106,6 +1107,7 @@ class RecentActivitySerializer(serializers.ModelSerializer):
     thread_slug = serializers.CharField(source="thread.slug", read_only=True)
     subgroup_slug = serializers.CharField(source="thread.subgroup.slug", read_only=True)
     subgroup_name = serializers.CharField(source="thread.subgroup.name", read_only=True)
+    members_only = serializers.BooleanField(source="thread.members_only", read_only=True)
 
     class Meta:
         model = Post
@@ -1118,5 +1120,6 @@ class RecentActivitySerializer(serializers.ModelSerializer):
             "thread_slug",
             "subgroup_slug",
             "subgroup_name",
+            "members_only",
             "created_at",
         ]

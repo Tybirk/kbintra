@@ -31,6 +31,7 @@ import dayjs from "dayjs"
 
 import { eventsApi } from "../api/events"
 import { forumApi } from "../api/forum"
+import { LocationText } from "../components/LocationText"
 import {
   eventToScheduleData,
   DA_SCHEDULE_LABELS,
@@ -303,77 +304,85 @@ export default function CalendarPage() {
                         key={ev.id}
                         withBorder
                         p="sm"
+                        radius="md"
                         style={{ cursor: "pointer" }}
                         onClick={() => navigate(`/kalender/${ev.slug}`)}
                       >
-                        <Group
-                          justify="space-between"
-                          wrap="nowrap"
-                          align="flex-start"
-                        >
-                          <div style={{ minWidth: 0, flex: 1 }}>
+                        <Stack gap={6}>
+                          <Group
+                            justify="space-between"
+                            wrap="nowrap"
+                            align="flex-start"
+                          >
                             <Text
-                              fw={500}
+                              fw={600}
+                              size="md"
                               lineClamp={2}
                               td={ev.is_cancelled ? "line-through" : undefined}
                               c={ev.is_cancelled ? "dimmed" : undefined}
+                              style={{ minWidth: 0, flex: 1 }}
                             >
                               {ev.title}
                             </Text>
-                            <Group gap="xs" mt={4} wrap="wrap">
-                              <Group gap={4} wrap="nowrap">
-                                <IconClock
-                                  size={12}
-                                  color="var(--mantine-color-dimmed)"
-                                />
-                                <Text size="xs" c="dimmed">
-                                  {dayjs(ev.start_datetime).format("HH:mm")}
-                                  {" – "}
-                                  {dayjs(ev.end_datetime).isSame(
-                                    dayjs(ev.start_datetime),
-                                    "day",
-                                  )
-                                    ? dayjs(ev.end_datetime).format("HH:mm")
-                                    : dayjs(ev.end_datetime).format(
-                                        "D. MMM HH:mm",
-                                      )}
-                                </Text>
-                              </Group>
-                              {ev.resolved_location && (
-                                <Group gap={4} wrap="nowrap">
-                                  <IconMapPin
-                                    size={12}
-                                    color="var(--mantine-color-dimmed)"
-                                  />
-                                  <Text size="xs" c="dimmed" lineClamp={1}>
-                                    {ev.resolved_location}
-                                  </Text>
-                                </Group>
-                              )}
-                            </Group>
-                          </div>
-                          <Group
-                            gap="xs"
-                            wrap="nowrap"
-                            style={{ flexShrink: 0 }}
-                          >
                             {ev.is_cancelled && (
-                              <Badge color="gray" size="xs" variant="light">
+                              <Badge
+                                color="red"
+                                size="xs"
+                                variant="light"
+                                style={{ flexShrink: 0 }}
+                              >
                                 Aflyst
                               </Badge>
                             )}
-                            {ev.subgroup && (
-                              <Badge color="blue" size="xs" variant="light">
-                                {ev.subgroup.name}
-                              </Badge>
-                            )}
-                            {ev.rsvp_enabled && ev.rsvp_summary && (
-                              <Badge color="green" size="xs" variant="light">
-                                {ev.rsvp_summary.attending} deltager
-                              </Badge>
-                            )}
                           </Group>
-                        </Group>
+                          <Group gap={4} wrap="nowrap">
+                            <IconClock
+                              size={14}
+                              color="var(--mantine-color-dimmed)"
+                              style={{ flexShrink: 0 }}
+                            />
+                            <Text size="sm" c="dimmed">
+                              {dayjs(ev.start_datetime).format("HH:mm")}
+                              {" – "}
+                              {dayjs(ev.end_datetime).isSame(
+                                dayjs(ev.start_datetime),
+                                "day",
+                              )
+                                ? dayjs(ev.end_datetime).format("HH:mm")
+                                : dayjs(ev.end_datetime).format("D. MMM HH:mm")}
+                            </Text>
+                          </Group>
+                          {ev.resolved_location && (
+                            <Group gap={4} wrap="nowrap">
+                              <IconMapPin
+                                size={14}
+                                color="var(--mantine-color-dimmed)"
+                                style={{ flexShrink: 0 }}
+                              />
+                              <LocationText
+                                location={ev.resolved_location}
+                                size="sm"
+                                c="dimmed"
+                                lineClamp={1}
+                              />
+                            </Group>
+                          )}
+                          {(ev.subgroup ||
+                            (ev.rsvp_enabled && ev.rsvp_summary)) && (
+                            <Group gap="xs">
+                              {ev.subgroup && (
+                                <Badge color="blue" size="xs" variant="light">
+                                  {ev.subgroup.name}
+                                </Badge>
+                              )}
+                              {ev.rsvp_enabled && ev.rsvp_summary && (
+                                <Badge color="green" size="xs" variant="light">
+                                  {ev.rsvp_summary.attending} deltager
+                                </Badge>
+                              )}
+                            </Group>
+                          )}
+                        </Stack>
                       </Paper>
                     ))}
                   </Stack>
