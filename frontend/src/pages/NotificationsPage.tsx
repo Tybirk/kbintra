@@ -36,6 +36,7 @@ import {
   IconHeart,
   IconAt,
   IconMailOpened,
+  IconEdit,
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 
@@ -56,6 +57,9 @@ const notificationIcons: Record<NotificationType, React.ReactNode> = {
   event_cancelled: <IconCalendar size={20} />,
   food_ticket: <IconToolsKitchen2 size={20} />,
   mention: <IconAt size={20} />,
+  post_edited_by_admin: <IconEdit size={20} />,
+  event_edited_by_admin: <IconEdit size={20} />,
+  announcement_edited_by_admin: <IconEdit size={20} />,
 }
 
 const notificationColors: Record<NotificationType, string> = {
@@ -71,6 +75,9 @@ const notificationColors: Record<NotificationType, string> = {
   event_cancelled: "red",
   food_ticket: "teal",
   mention: "blue",
+  post_edited_by_admin: "orange",
+  event_edited_by_admin: "orange",
+  announcement_edited_by_admin: "orange",
 }
 
 export default function NotificationsPage() {

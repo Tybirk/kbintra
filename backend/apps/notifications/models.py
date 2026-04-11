@@ -26,6 +26,15 @@ class NotificationType(models.TextChoices):
     MENTION = "mention", "Omtale"
     SUBGROUP_MEMBER_ADDED = "subgroup_member_added", "Tilføjet som medlem"
     SUBGROUP_MEMBER_REMOVED = "subgroup_member_removed", "Fjernet som medlem"
+    POST_EDITED_BY_ADMIN = "post_edited_by_admin", "Dit indhold blev redigeret af en administrator"
+    EVENT_EDITED_BY_ADMIN = (
+        "event_edited_by_admin",
+        "Din begivenhed blev redigeret af en administrator",
+    )
+    ANNOUNCEMENT_EDITED_BY_ADMIN = (
+        "announcement_edited_by_admin",
+        "Dit opslag blev redigeret af en administrator",
+    )
 
 
 class Notification(models.Model):

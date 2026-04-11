@@ -798,14 +798,15 @@ class PostUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
         return PostSerializer
 
     def perform_update(self, serializer: Any) -> None:
-        from apps.notifications.tasks import notify_mentions_task
+        from apps.notifications.tasks import notify_mentions_task, notify_post_edited_by_admin_task
         from apps.notifications.utils import extract_mention_ids
 
         old_content = serializer.instance.content or ""
         old_mention_ids = set(extract_mention_ids(old_content))
 
         post = serializer.instance
-        if post.author_id != self.request.user.id:
+        is_admin_edit = post.author_id != self.request.user.id
+        if is_admin_edit:
             serializer.save(edited_by=self.request.user)
         else:
             serializer.save()
@@ -822,6 +823,18 @@ class PostUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
                 mentioned_user_ids=new_mentions,
                 context_label=f"indlæg i '{thread.title}'",
                 link=link,
+            )
+
+        if is_admin_edit and post.author_id and self.request.user.is_staff:
+            thread = post.thread
+            notify_post_edited_by_admin_task(
+                post_author_id=post.author_id,
+                editor_id=self.request.user.id,
+                thread_title=thread.title,
+                thread_id=thread.id,
+                subgroup_slug=thread.subgroup.slug,
+                thread_slug=thread.slug,
+                post_id=post.id,
             )
 
     def perform_destroy(self, instance: Any) -> None:

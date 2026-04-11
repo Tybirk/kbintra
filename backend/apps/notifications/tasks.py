@@ -839,6 +839,141 @@ def notify_subgroup_member_removed_task(
 
 
 @db_task(retries=1, retry_delay=60)
+def notify_post_edited_by_admin_task(
+    post_author_id: int,
+    editor_id: int,
+    thread_title: str,
+    thread_id: int,
+    subgroup_slug: str,
+    thread_slug: str,
+    post_id: int,
+) -> None:
+    """Notify post author when an admin edits their content."""
+    logger.info(
+        "notify_post_edited_by_admin_task STARTED: author=%d editor=%d",
+        post_author_id,
+        editor_id,
+    )
+    from apps.users.models import User
+
+    from .services import notify_post_edited_by_admin
+
+    try:
+        post_author = User.objects.get(id=post_author_id)
+    except User.DoesNotExist:
+        logger.warning("notify_post_edited_by_admin_task: Author %d not found", post_author_id)
+        return
+
+    try:
+        editor = User.objects.get(id=editor_id)
+    except User.DoesNotExist:
+        logger.warning("notify_post_edited_by_admin_task: Editor %d not found", editor_id)
+        return
+
+    notify_post_edited_by_admin(
+        post_author=post_author,
+        editor=editor,
+        thread_title=thread_title,
+        thread_id=thread_id,
+        subgroup_slug=subgroup_slug,
+        thread_slug=thread_slug,
+        post_id=post_id,
+    )
+    logger.info(
+        "notify_post_edited_by_admin_task COMPLETED: author=%d editor=%d",
+        post_author_id,
+        editor_id,
+    )
+
+
+@db_task(retries=1, retry_delay=60)
+def notify_event_edited_by_admin_task(
+    event_creator_id: int,
+    editor_id: int,
+    event_title: str,
+    event_slug: str,
+) -> None:
+    """Notify event creator when an admin edits their event."""
+    logger.info(
+        "notify_event_edited_by_admin_task STARTED: creator=%d editor=%d",
+        event_creator_id,
+        editor_id,
+    )
+    from apps.users.models import User
+
+    from .services import notify_event_edited_by_admin
+
+    try:
+        event_creator = User.objects.get(id=event_creator_id)
+    except User.DoesNotExist:
+        logger.warning("notify_event_edited_by_admin_task: Creator %d not found", event_creator_id)
+        return
+
+    try:
+        editor = User.objects.get(id=editor_id)
+    except User.DoesNotExist:
+        logger.warning("notify_event_edited_by_admin_task: Editor %d not found", editor_id)
+        return
+
+    notify_event_edited_by_admin(
+        event_creator=event_creator,
+        editor=editor,
+        event_title=event_title,
+        event_slug=event_slug,
+    )
+    logger.info(
+        "notify_event_edited_by_admin_task COMPLETED: creator=%d editor=%d",
+        event_creator_id,
+        editor_id,
+    )
+
+
+@db_task(retries=1, retry_delay=60)
+def notify_announcement_edited_by_admin_task(
+    announcement_author_id: int,
+    editor_id: int,
+    announcement_title: str,
+    announcement_id: int,
+) -> None:
+    """Notify announcement author when an admin edits their announcement."""
+    logger.info(
+        "notify_announcement_edited_by_admin_task STARTED: author=%d editor=%d",
+        announcement_author_id,
+        editor_id,
+    )
+    from apps.users.models import User
+
+    from .services import notify_announcement_edited_by_admin
+
+    try:
+        announcement_author = User.objects.get(id=announcement_author_id)
+    except User.DoesNotExist:
+        logger.warning(
+            "notify_announcement_edited_by_admin_task: Author %d not found",
+            announcement_author_id,
+        )
+        return
+
+    try:
+        editor = User.objects.get(id=editor_id)
+    except User.DoesNotExist:
+        logger.warning("notify_announcement_edited_by_admin_task: Editor %d not found", editor_id)
+        return
+
+    notify_announcement_edited_by_admin(
+        announcement_author=announcement_author,
+        editor=editor,
+        announcement_title=announcement_title,
+        announcement_id=announcement_id,
+    )
+    logger.info(
+        "notify_announcement_edited_by_admin_task COMPLETED: author=%d editor=%d",
+        announcement_author_id,
+        editor_id,
+    )
+
+
+@db_task(retries=1, retry_delay=60)
 def refresh_all_drive_menus_task() -> None:
     """Refresh all Google Drive menus in background."""
     from apps.food.services.drive_menu import DriveMenuService
