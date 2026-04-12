@@ -1,28 +1,39 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
+
 import { screen, waitFor, fireEvent } from "@testing-library/react"
+
 import { render } from "../test/testUtils"
+
 import RegisterPage from "./RegisterPage"
 
 const mockNavigate = vi.fn()
+
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual("react-router-dom")
+
   return {
     ...actual,
+
     useNavigate: () => mockNavigate,
+
     useSearchParams: () => [new URLSearchParams("token=testtoken123"), vi.fn()],
   }
 })
 
 vi.mock("@mantine/notifications", () => ({
   notifications: { show: vi.fn() },
+
   Notifications: () => null,
 }))
 
 const mockValidateInvitation = vi.fn()
+
 const mockRegister = vi.fn()
+
 vi.mock("../api/auth", () => ({
   authApi: {
     validateInvitation: (...args: unknown[]) => mockValidateInvitation(...args),
+
     register: (...args: unknown[]) => mockRegister(...args),
   },
 }))
@@ -30,9 +41,12 @@ vi.mock("../api/auth", () => ({
 describe("RegisterPage", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+
     mockValidateInvitation.mockResolvedValue({
       valid: true,
+
       email: "inviteret@example.com",
+
       expires_at: "2026-12-31T00:00:00Z",
     })
   })
@@ -42,6 +56,7 @@ describe("RegisterPage", () => {
 
     await waitFor(() => {
       const emailInput = screen.getByLabelText(/e-mail/i)
+
       expect(emailInput).toHaveValue("inviteret@example.com")
     })
   })
@@ -51,6 +66,7 @@ describe("RegisterPage", () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText(/fornavn/i)).toBeInTheDocument()
+
       expect(screen.getByLabelText(/efternavn/i)).toBeInTheDocument()
     })
   })
@@ -60,6 +76,7 @@ describe("RegisterPage", () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText(/^adgangskode/i)).toBeInTheDocument()
+
       expect(screen.getByLabelText(/bekræft adgangskode/i)).toBeInTheDocument()
     })
   })
@@ -74,12 +91,17 @@ describe("RegisterPage", () => {
     fireEvent.change(screen.getByLabelText(/^adgangskode/i), {
       target: { value: "password123" },
     })
+
     fireEvent.change(screen.getByLabelText(/bekræft adgangskode/i), {
       target: { value: "differentpassword" },
     })
+
     // Use fireEvent.submit on the form directly as fireEvent.click on submit button
+
     // may not trigger form submission in jsdom when the form has no previously-changed TextInput
+
     const form = document.querySelector("form")!
+
     fireEvent.submit(form)
 
     await waitFor(() => {
@@ -111,20 +133,28 @@ describe("RegisterPage", () => {
     })
 
     // Use fireEvent to avoid React concurrent mode issues with e.currentTarget
+
     const firstNameInput = screen.getByLabelText(/fornavn/i)
+
     const lastNameInput = screen.getByLabelText(/efternavn/i)
+
     const passwordInput = screen.getByLabelText(/^adgangskode/i)
+
     const confirmInput = screen.getByLabelText(/bekræft adgangskode/i)
 
     fireEvent.change(firstNameInput, { target: { value: "Anders" } })
+
     fireEvent.change(lastNameInput, { target: { value: "Jensen" } })
+
     fireEvent.change(passwordInput, { target: { value: "sikkertkodeord" } })
+
     fireEvent.change(confirmInput, { target: { value: "sikkertkodeord" } })
 
     fireEvent.click(screen.getByRole("button", { name: /opret konto/i }))
 
     await waitFor(() => {
       expect(mockRegister).toHaveBeenCalledOnce()
+
       expect(mockNavigate).toHaveBeenCalledWith("/login")
     })
   })

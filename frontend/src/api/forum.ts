@@ -3,6 +3,7 @@
  */
 
 import { apiClient } from "./client"
+
 import type {
   Subgroup,
   SubgroupMember,
@@ -23,49 +24,68 @@ import type {
 
 interface SubgroupUpdateData {
   name?: string
+
   description?: string
+
   links_info?: string
+
   icon?: string
+
   allows_members?: boolean
 }
+
 interface updateFileData {
   members_only?: boolean
+
   name?: string
 }
+
 interface updateThreadData {
   title?: string
+
   members_only?: boolean
 }
+
 export const forumApi = {
   // Recent activity
+
   getRecentActivity: async (limit = 10): Promise<RecentActivity[]> => {
     const response = await apiClient.get(`/forum/recent/?limit=${limit}`)
+
     return response.data
   },
 
   // Subgroups
+
   getSubgroups: async (): Promise<Subgroup[]> => {
     const response = await apiClient.get("/forum/subgroups/")
+
     return response.data.results ?? response.data
   },
 
   createSubgroup: async (data: {
     name: string
+
     description: string
+
     allows_members?: boolean
   }): Promise<Subgroup> => {
     const response = await apiClient.post("/forum/subgroups/", data)
+
     return response.data
   },
 
   // Members
+
   addMembers: async (
     slug: string,
+
     user_ids: number[],
   ): Promise<SubgroupMember[]> => {
     const response = await apiClient.post(`/forum/subgroups/${slug}/members/`, {
       user_ids,
     })
+
     return response.data
   },
 
@@ -75,13 +95,17 @@ export const forumApi = {
 
   updateMemberRole: async (
     slug: string,
+
     userId: number,
+
     role: string,
   ): Promise<SubgroupMember> => {
     const response = await apiClient.patch(
       `/forum/subgroups/${slug}/members/${userId}/`,
+
       { role },
     )
+
     return response.data
   },
 
@@ -91,19 +115,23 @@ export const forumApi = {
 
   updateFile: async (
     fileId: number,
+
     data: updateFileData,
   ): Promise<ForumFile> => {
     const response = await apiClient.patch(`/forum/files/${fileId}/`, data)
+
     return response.data
   },
 
   getSubgroup: async (slug: string): Promise<Subgroup> => {
     const response = await apiClient.get(`/forum/subgroups/${slug}/`)
+
     return response.data
   },
 
   subscribe: async (slug: string): Promise<{ detail: string }> => {
     const response = await apiClient.post(`/forum/subgroups/${slug}/subscribe/`)
+
     return response.data
   },
 
@@ -111,76 +139,101 @@ export const forumApi = {
     const response = await apiClient.post(
       `/forum/subgroups/${slug}/unsubscribe/`,
     )
+
     return response.data
   },
 
   getMySubscriptions: async (): Promise<SubgroupSubscription[]> => {
     const response = await apiClient.get("/forum/subscriptions/")
+
     return response.data.results ?? response.data
   },
 
   // Threads
+
   getThreads: async (subgroupSlug: string): Promise<Thread[]> => {
     const response = await apiClient.get(
       `/forum/subgroups/${subgroupSlug}/threads/`,
     )
+
     return response.data.results ?? response.data
   },
 
   getThread: async (threadId: number): Promise<ThreadDetail> => {
     const response = await apiClient.get(`/forum/threads/${threadId}/`)
+
     return response.data
   },
 
   getThreadBySlug: async (
     subgroupSlug: string,
+
     threadSlug: string,
   ): Promise<ThreadDetail> => {
     const response = await apiClient.get(
       `/forum/subgroups/${subgroupSlug}/threads/${threadSlug}/`,
     )
+
     return response.data
   },
 
   createThread: async (
     subgroupSlug: string,
+
     data: CreateThreadData,
+
     attachments?: File[],
+
     pollData?: CreatePollData,
   ): Promise<Thread> => {
     if (attachments && attachments.length > 0) {
       const formData = new FormData()
+
       formData.append("title", data.title)
+
       formData.append("content", data.content)
+
       if (data.members_only) {
         formData.append("members_only", "true")
       }
+
       attachments.forEach((file) => {
         formData.append("attachments", file)
       })
+
       if (pollData) {
         formData.append("poll_data", JSON.stringify(pollData))
       }
+
       // Don't set Content-Type header - let browser set it with boundary
+
       const response = await apiClient.post(
         `/forum/subgroups/${subgroupSlug}/threads/`,
+
         formData,
+
         {
           headers: {
             "Content-Type": undefined,
           },
         },
       )
+
       return response.data
     }
+
     const payload: Record<string, unknown> = { ...data }
+
     if (pollData) {
       payload.poll_data = pollData
     }
+
     const response = await apiClient.post(
       `/forum/subgroups/${subgroupSlug}/threads/`,
+
       payload,
     )
+
     return response.data
   },
 
@@ -190,86 +243,113 @@ export const forumApi = {
 
   closeThread: async (threadId: number, isClosed?: boolean): Promise<{
     detail: string
+
     is_closed: boolean
   }> => {
     const response = await apiClient.post(`/forum/threads/${threadId}/close/`, {
       is_closed: isClosed,
     })
+
     return response.data
   },
 
   pinThread: async (threadId: number, isPinned?: boolean): Promise<{
     detail: string
+
     is_pinned: boolean
   }> => {
     const response = await apiClient.post(`/forum/threads/${threadId}/pin/`, {
       is_pinned: isPinned,
     })
+
     return response.data
   },
 
   moveThread: async (threadId: number, subgroupSlug: string): Promise<{
     detail: string
+
     subgroup_slug: string
+
     thread_slug: string
   }> => {
     const response = await apiClient.post(`/forum/threads/${threadId}/move/`, {
       subgroup_slug: subgroupSlug,
     })
+
     return response.data
   },
 
   muteThread: async (threadId: number): Promise<{ is_muted: boolean }> => {
     const response = await apiClient.post(`/forum/threads/${threadId}/mute/`)
+
     return response.data
   },
 
   // Posts
+
   getPosts: async (threadId: number): Promise<Post[]> => {
     const response = await apiClient.get(`/forum/threads/${threadId}/posts/`)
+
     return response.data.results ?? response.data
   },
 
   createPost: async (
     threadId: number,
+
     data: CreatePostData,
+
     attachments?: File[],
+
     pollData?: CreatePollData,
   ): Promise<Post> => {
     if (attachments && attachments.length > 0) {
       const formData = new FormData()
+
       formData.append("content", data.content)
+
       attachments.forEach((file) => {
         formData.append("attachments", file)
       })
+
       if (pollData) {
         formData.append("poll_data", JSON.stringify(pollData))
       }
+
       // Don't set Content-Type header - let browser set it with boundary
+
       const response = await apiClient.post(
         `/forum/threads/${threadId}/posts/`,
+
         formData,
+
         {
           headers: {
             "Content-Type": undefined,
           },
         },
       )
+
       return response.data
     }
+
     const payload: Record<string, unknown> = { ...data }
+
     if (pollData) {
       payload.poll_data = pollData
     }
+
     const response = await apiClient.post(
       `/forum/threads/${threadId}/posts/`,
+
       payload,
     )
+
     return response.data
   },
 
   updateThread: async (
     threadId: number,
+
     data: updateThreadData,
   ): Promise<void> => {
     await apiClient.patch(`/forum/threads/${threadId}/update/`, data)
@@ -277,39 +357,55 @@ export const forumApi = {
 
   updatePost: async (
     postId: number,
+
     data: CreatePostData,
+
     attachments?: File[],
+
     removeAttachmentIds?: number[],
   ): Promise<Post> => {
     const hasFiles = attachments && attachments.length > 0
+
     const hasRemovals = removeAttachmentIds && removeAttachmentIds.length > 0
+
     if (hasFiles) {
       const formData = new FormData()
+
       formData.append("content", data.content)
+
       attachments.forEach((file) => {
         formData.append("attachments", file)
       })
+
       if (hasRemovals) {
         removeAttachmentIds.forEach((id) => {
           formData.append("remove_attachment_ids", String(id))
         })
       }
+
       const response = await apiClient.patch(
         `/forum/posts/${postId}/`,
+
         formData,
+
         {
           headers: {
             "Content-Type": undefined,
           },
         },
       )
+
       return response.data
     }
+
     const payload: Record<string, unknown> = { ...data }
+
     if (hasRemovals) {
       payload.remove_attachment_ids = removeAttachmentIds
     }
+
     const response = await apiClient.patch(`/forum/posts/${postId}/`, payload)
+
     return response.data
   },
 
@@ -318,51 +414,66 @@ export const forumApi = {
   },
 
   // Folders
+
   getFolders: async (
     subgroupSlug: string,
+
     parentId?: number,
   ): Promise<Folder[]> => {
     const params = parentId ? { parent: parentId } : {}
+
     const response = await apiClient.get(
       `/forum/subgroups/${subgroupSlug}/folders/`,
+
       { params },
     )
+
     return response.data.results ?? response.data
   },
 
   getFolder: async (folderId: number): Promise<Folder> => {
     const response = await apiClient.get(`/forum/folders/${folderId}/`)
+
     return response.data
   },
 
   getFolderBySlug: async (
     subgroupSlug: string,
+
     folderSlug: string,
   ): Promise<Folder> => {
     const response = await apiClient.get(
       `/forum/subgroups/${subgroupSlug}/folder/${folderSlug}/`,
     )
+
     return response.data
   },
 
   createFolder: async (
     subgroupSlug: string,
+
     name: string,
+
     parentId?: number,
   ): Promise<Folder> => {
     const response = await apiClient.post(
       `/forum/subgroups/${subgroupSlug}/folders/`,
+
       {
         name,
+
         parent: parentId || null,
       },
     )
+
     return response.data
   },
 
   // Files
+
   getFiles: async (folderId: number): Promise<ForumFile[]> => {
     const response = await apiClient.get(`/forum/folders/${folderId}/files/`)
+
     return response.data.results ?? response.data
   },
 
@@ -370,60 +481,83 @@ export const forumApi = {
     const response = await apiClient.get(
       `/forum/subgroups/${subgroupSlug}/files/`,
     )
+
     return response.data.results ?? response.data
   },
 
   uploadFile: async (
     folderId: number,
+
     file: File,
+
     name?: string,
+
     membersOnly?: boolean,
   ): Promise<ForumFile> => {
     const formData = new FormData()
+
     formData.append("file", file)
+
     if (name) {
       formData.append("name", name)
     }
+
     if (membersOnly) {
       formData.append("members_only", "true")
     }
+
     // Don't set Content-Type header - let browser set it with boundary
+
     const response = await apiClient.post(
       `/forum/folders/${folderId}/files/`,
+
       formData,
+
       {
         headers: {
           "Content-Type": undefined,
         },
       },
     )
+
     return response.data
   },
 
   uploadRootFile: async (
     subgroupSlug: string,
+
     file: File,
+
     name?: string,
+
     membersOnly?: boolean,
   ): Promise<ForumFile> => {
     const formData = new FormData()
+
     formData.append("file", file)
+
     if (name) {
       formData.append("name", name)
     }
+
     if (membersOnly) {
       formData.append("members_only", "true")
     }
+
     // Don't set Content-Type header - let browser set it with boundary
+
     const response = await apiClient.post(
       `/forum/subgroups/${subgroupSlug}/files/`,
+
       formData,
+
       {
         headers: {
           "Content-Type": undefined,
         },
       },
     )
+
     return response.data
   },
 
@@ -433,19 +567,29 @@ export const forumApi = {
 
   downloadFolder: async (
     folderId: number,
+
     folderName: string,
   ): Promise<void> => {
     const response = await apiClient.get(
       `/forum/folders/${folderId}/download/`,
+
       { responseType: "blob" },
     )
+
     const url = URL.createObjectURL(response.data as Blob)
+
     const a = document.createElement("a")
+
     a.href = url
+
     a.download = `${folderName}.zip`
+
     document.body.appendChild(a)
+
     a.click()
+
     document.body.removeChild(a)
+
     setTimeout(() => URL.revokeObjectURL(url), 100)
   },
 
@@ -455,19 +599,26 @@ export const forumApi = {
     const response = await apiClient.patch(`/forum/files/${fileId}/move/`, {
       folder_id: folderId,
     })
+
     return response.data
   },
 
   // Get all folders in a subgroup (flat list for move dialog)
+
   getAllFolders: async (subgroupSlug: string): Promise<Folder[]> => {
     // Get root folders first, then recursively get subfolders
+
     const rootFolders = await forumApi.getFolders(subgroupSlug)
+
     const allFolders: Folder[] = [...rootFolders]
 
     // Helper to get subfolders recursively
+
     const getSubfolders = async (parentId: number): Promise<void> => {
       const subfolders = await forumApi.getFolders(subgroupSlug, parentId)
+
       allFolders.push(...subfolders)
+
       for (const folder of subfolders) {
         if (folder.subfolder_count > 0) {
           await getSubfolders(folder.id)
@@ -485,34 +636,42 @@ export const forumApi = {
   },
 
   // Reactions
+
   toggleReaction: async (postId: number, reactionType: ReactionType): Promise<{
     detail: string
+
     action: "added" | "removed"
   }> => {
     const response = await apiClient.post(`/forum/posts/${postId}/react/`, {
       reaction_type: reactionType,
     })
+
     return response.data
   },
 
   getReactionTypes: async (): Promise<ReactionTypeInfo[]> => {
     const response = await apiClient.get("/forum/reactions/types/")
+
     return response.data
   },
 
   // Polls
+
   votePoll: async (pollId: number, optionId: number): Promise<{
     detail: string
+
     action: "added" | "removed"
   }> => {
     const response = await apiClient.post(`/forum/polls/${pollId}/vote/`, {
       option_id: optionId,
     })
+
     return response.data
   },
 
   updatePoll: async (pollId: number, data: CreatePollData): Promise<Poll> => {
     const response = await apiClient.patch(`/forum/polls/${pollId}/`, data)
+
     return response.data
   },
 
@@ -521,29 +680,36 @@ export const forumApi = {
   },
 
   // Subgroup management
+
   updateSubgroup: async (slug: string, data: SubgroupUpdateData): Promise<{
     detail: string
   }> => {
     const response = await apiClient.patch(
       `/forum/subgroups/${slug}/update/`,
+
       data,
     )
+
     return response.data
   },
 
   // Read status
+
   markAllRead: async (): Promise<{ detail: string }> => {
     const response = await apiClient.post("/forum/mark-all-read/")
+
     return response.data
   },
 
   markSubgroupRead: async (slug: string): Promise<{ detail: string }> => {
     const response = await apiClient.post(`/forum/subgroups/${slug}/mark-read/`)
+
     return response.data
   },
 
   getUnreadCount: async (): Promise<{ unread_count: number }> => {
     const response = await apiClient.get("/forum/unread-count/")
+
     return response.data
   },
 }

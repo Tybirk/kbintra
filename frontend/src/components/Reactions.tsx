@@ -10,24 +10,36 @@ import {
   Avatar,
   Loader,
 } from "@mantine/core"
+
 import { useMutation, useQueryClient } from "@tanstack/react-query"
+
 import { IconMoodSmile, IconDots } from "@tabler/icons-react"
+
 import { lazy, Suspense, useState } from "react"
 
 import { forumApi } from "../api/forum"
+
 import type { ReactionSummary, ReactionType } from "../types"
+
 import UserLink from "./UserLink"
 
 const LazyPicker = lazy(() => import("@emoji-mart/react"))
+
 const emojiDataPromise = () => import("@emoji-mart/data").then((m) => m.default)
 
 // Default quick-reaction emojis (first 6)
+
 const DEFAULT_EMOJIS: string[] = [
   "\u{1F44D}",
+
   "\u2764\uFE0F",
+
   "\u{1F602}",
+
   "\u{1F62E}",
+
   "\u{1F622}",
+
   "\u{1F389}",
 ]
 
@@ -37,19 +49,27 @@ interface EmojiData {
 
 interface ReactionsProps {
   postId: number
+
   threadQueryKey: (string | number)[]
+
   reactions: ReactionSummary[]
 }
 
 export default function Reactions({
   postId,
+
   threadQueryKey,
+
   reactions,
 }: ReactionsProps) {
   const queryClient = useQueryClient()
+
   const [pickerOpened, setPickerOpened] = useState(false)
+
   const [fullPickerOpened, setFullPickerOpened] = useState(false)
+
   const [emojiData, setEmojiData] = useState<object | null>(null)
+
   const [openReactionType, setOpenReactionType] = useState<ReactionType | null>(
     null,
   )
@@ -57,10 +77,14 @@ export default function Reactions({
   const toggleMutation = useMutation({
     mutationFn: (reactionType: ReactionType) =>
       forumApi.toggleReaction(postId, reactionType),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: threadQueryKey })
+
       setPickerOpened(false)
+
       setFullPickerOpened(false)
+
       setOpenReactionType(null)
     },
   })
@@ -73,7 +97,9 @@ export default function Reactions({
     if (!emojiData) {
       emojiDataPromise().then(setEmojiData)
     }
+
     setPickerOpened(false)
+
     setFullPickerOpened((o) => !o)
   }
 
@@ -111,18 +137,25 @@ export default function Reactions({
                 py={4}
                 style={{
                   display: "flex",
+
                   alignItems: "center",
+
                   gap: "var(--mantine-spacing-xs)",
+
                   borderRadius: "var(--mantine-radius-md)",
+
                   backgroundColor: reaction.has_reacted
                     ? "var(--mantine-color-blue-light)"
                     : "var(--mantine-color-default-hover)",
+
                   border: `1px solid ${
                     reaction.has_reacted
                       ? "var(--mantine-color-blue-light-color)"
                       : "var(--mantine-color-default-border)"
                   }`,
+
                   cursor: "pointer",
+
                   transition: "all 0.15s ease",
                 }}
               >
@@ -193,6 +226,7 @@ export default function Reactions({
               size="md"
               onClick={() => {
                 setFullPickerOpened(false)
+
                 setPickerOpened((o) => !o)
               }}
             >
@@ -206,6 +240,7 @@ export default function Reactions({
               const existingReaction = reactions.find(
                 (r) => r.reaction_type === emoji,
               )
+
               return (
                 <ActionIcon
                   key={emoji}

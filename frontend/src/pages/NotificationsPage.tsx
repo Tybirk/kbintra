@@ -3,7 +3,9 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query"
+
 import { useNavigate } from "react-router-dom"
+
 import {
   Title,
   Text,
@@ -20,8 +22,11 @@ import {
   Box,
   Tooltip,
 } from "@mantine/core"
+
 import { useDisclosure } from "@mantine/hooks"
+
 import { notifications } from "@mantine/notifications"
+
 import {
   IconCheck,
   IconChecks,
@@ -38,65 +43,106 @@ import {
   IconMailOpened,
   IconEdit,
 } from "@tabler/icons-react"
+
 import dayjs from "dayjs"
 
 import { notificationsApi } from "../api/notifications"
+
 import { invalidateCacheForLink } from "../utils/cacheInvalidation"
+
 import type { Notification, NotificationType } from "../types"
 
 const notificationIcons: Record<NotificationType, React.ReactNode> = {
   new_message: <IconMessage size={20} />,
+
   new_announcement: <IconSpeakerphone size={20} />,
+
   new_thread: <IconMessageCircle size={20} />,
+
   thread_reply: <IconMessageCircle size={20} />,
+
   post_reply: <IconMessageCircle size={20} />,
+
   post_reaction: <IconHeart size={20} />,
+
   event_reminder: <IconCalendar size={20} />,
+
   event_created: <IconCalendar size={20} />,
+
   event_updated: <IconCalendar size={20} />,
+
   event_cancelled: <IconCalendar size={20} />,
+
   food_ticket: <IconToolsKitchen2 size={20} />,
+
   mention: <IconAt size={20} />,
+
   post_edited_by_admin: <IconEdit size={20} />,
+
   event_edited_by_admin: <IconEdit size={20} />,
+
   announcement_edited_by_admin: <IconEdit size={20} />,
 }
 
 const notificationColors: Record<NotificationType, string> = {
   new_message: "blue",
+
   new_announcement: "orange",
+
   new_thread: "green",
+
   thread_reply: "green",
+
   post_reply: "green",
+
   post_reaction: "pink",
+
   event_reminder: "violet",
+
   event_created: "violet",
+
   event_updated: "violet",
+
   event_cancelled: "red",
+
   food_ticket: "teal",
+
   mention: "blue",
+
   post_edited_by_admin: "orange",
+
   event_edited_by_admin: "orange",
+
   announcement_edited_by_admin: "orange",
 }
 
 export default function NotificationsPage() {
   const queryClient = useQueryClient()
+
   const navigate = useNavigate()
+
   const [clearAllOpened, { open: openClearAll, close: closeClearAll }] =
     useDisclosure(false)
 
   const {
     data,
+
     isLoading,
+
     error,
+
     hasNextPage,
+
     fetchNextPage,
+
     isFetchingNextPage,
   } = useInfiniteQuery({
     queryKey: ["notifications"],
+
     queryFn: ({ pageParam }) => notificationsApi.getNotifications(pageParam),
+
     initialPageParam: 1,
+
     getNextPageParam: (lastPage, allPages) =>
       lastPage.next ? allPages.length + 1 : undefined,
   })
@@ -105,14 +151,19 @@ export default function NotificationsPage() {
 
   const markAllReadMutation = useMutation({
     mutationFn: () => notificationsApi.markAsRead(),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] })
+
       queryClient.invalidateQueries({
         queryKey: ["notifications", "unread-count"],
       })
+
       notifications.show({
         title: "Alle markeret som læst",
+
         message: "Alle notifikationer er nu markeret som læst.",
+
         color: "blue",
       })
     },
@@ -120,8 +171,10 @@ export default function NotificationsPage() {
 
   const markOneReadMutation = useMutation({
     mutationFn: (id: number) => notificationsApi.markAsRead([id]),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] })
+
       queryClient.invalidateQueries({
         queryKey: ["notifications", "unread-count"],
       })
@@ -130,8 +183,10 @@ export default function NotificationsPage() {
 
   const markOneUnreadMutation = useMutation({
     mutationFn: (id: number) => notificationsApi.markAsUnread([id]),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] })
+
       queryClient.invalidateQueries({
         queryKey: ["notifications", "unread-count"],
       })
@@ -140,14 +195,19 @@ export default function NotificationsPage() {
 
   const deleteOneMutation = useMutation({
     mutationFn: notificationsApi.deleteNotification,
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] })
+
       queryClient.invalidateQueries({
         queryKey: ["notifications", "unread-count"],
       })
+
       notifications.show({
         title: "Notifikation slettet",
+
         message: "Notifikationen er blevet slettet.",
+
         color: "blue",
       })
     },
@@ -155,15 +215,21 @@ export default function NotificationsPage() {
 
   const clearAllMutation = useMutation({
     mutationFn: notificationsApi.clearAll,
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] })
+
       queryClient.invalidateQueries({
         queryKey: ["notifications", "unread-count"],
       })
+
       closeClearAll()
+
       notifications.show({
         title: "Alle notifikationer ryddet",
+
         message: "Alle notifikationer er blevet slettet.",
+
         color: "blue",
       })
     },
@@ -173,8 +239,10 @@ export default function NotificationsPage() {
     if (!notification.is_read) {
       markOneReadMutation.mutate(notification.id)
     }
+
     if (notification.link) {
       invalidateCacheForLink(queryClient, notification.link)
+
       navigate(notification.link)
     }
   }
@@ -310,20 +378,29 @@ export default function NotificationsPage() {
 
 interface NotificationCardProps {
   notification: Notification
+
   onClick: () => void
+
   onMarkRead: () => void
+
   onMarkUnread: () => void
+
   onDelete: () => void
 }
 
 function NotificationCard({
   notification,
+
   onClick,
+
   onMarkRead,
+
   onMarkUnread,
+
   onDelete,
 }: NotificationCardProps) {
   const icon = notificationIcons[notification.notification_type]
+
   const color = notificationColors[notification.notification_type]
 
   return (
@@ -333,7 +410,9 @@ function NotificationCard({
       radius="md"
       style={{
         cursor: notification.link ? "pointer" : "default",
+
         opacity: notification.is_read ? 0.7 : 1,
+
         backgroundColor: notification.is_read
           ? undefined
           : "var(--mantine-color-blue-light)",
@@ -397,6 +476,7 @@ function NotificationCard({
                 aria-label="Markér som læst"
                 onClick={(e) => {
                   e.stopPropagation()
+
                   onMarkRead()
                 }}
               >
@@ -411,6 +491,7 @@ function NotificationCard({
                 aria-label="Markér som ulæst"
                 onClick={(e) => {
                   e.stopPropagation()
+
                   onMarkUnread()
                 }}
               >
@@ -425,6 +506,7 @@ function NotificationCard({
               aria-label="Slet"
               onClick={(e) => {
                 e.stopPropagation()
+
                 onDelete()
               }}
             >

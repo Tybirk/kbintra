@@ -1,5 +1,7 @@
 import { useState } from "react"
+
 import { useNavigate, useLocation, Link } from "react-router-dom"
+
 import {
   Container,
   Paper,
@@ -12,7 +14,9 @@ import {
   Anchor,
   Alert,
 } from "@mantine/core"
+
 import { useAuthStore } from "../store/authStore"
+
 import { isAxiosError } from "axios"
 
 interface LocationState {
@@ -21,21 +25,27 @@ interface LocationState {
 
 export default function LoginPage() {
   const navigate = useNavigate()
+
   const location = useLocation()
+
   const { login, isLoading, error, clearError } = useAuthStore()
 
   const [email, setEmail] = useState("")
+
   const [password, setPassword] = useState("")
+
   const [rateLimited, setRateLimited] = useState(false)
 
   const from = (location.state as LocationState)?.from?.pathname || "/"
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
     setRateLimited(false)
 
     try {
       await login(email, password)
+
       navigate(from, { replace: true })
     } catch (err) {
       if (isAxiosError(err) && err.response?.status === 429) {

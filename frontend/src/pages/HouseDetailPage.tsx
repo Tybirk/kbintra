@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
+
 import { useParams, useNavigate } from "react-router-dom"
+
 import {
   Title,
   Text,
@@ -15,24 +17,33 @@ import {
   Anchor,
   Badge,
 } from "@mantine/core"
+
 import { IconHome, IconCar, IconPhone, IconMail } from "@tabler/icons-react"
+
 import dayjs from "dayjs"
 
 import { housesApi } from "../api/houses"
+
 import { BackButton } from "../components/BackButton"
+
 import type { Car, Child, UserSummary } from "../types"
 
 export default function HouseDetailPage() {
   const { id } = useParams<{ id: string }>()
+
   const navigate = useNavigate()
 
   const {
     data: house,
+
     isLoading,
+
     error,
   } = useQuery({
     queryKey: ["house", id],
+
     queryFn: () => housesApi.getHouse(Number(id)),
+
     enabled: !!id,
   })
 
@@ -140,6 +151,7 @@ export default function HouseDetailPage() {
 
 interface InhabitantCardProps {
   inhabitant: UserSummary
+
   onClick: () => void
 }
 
@@ -196,7 +208,9 @@ interface ChildCardProps {
 function ChildCard({ child }: ChildCardProps) {
   const getAge = (birthdate: string | null) => {
     if (!birthdate) return null
+
     const years = dayjs().diff(dayjs(birthdate), "year")
+
     return years
   }
 

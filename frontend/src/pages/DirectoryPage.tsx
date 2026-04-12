@@ -1,5 +1,7 @@
 import { useState } from "react"
+
 import { useQuery } from "@tanstack/react-query"
+
 import {
   Title,
   Text,
@@ -13,36 +15,49 @@ import {
   Center,
   Stack,
 } from "@mantine/core"
+
 import { IconSearch, IconHome } from "@tabler/icons-react"
+
 import { useNavigate } from "react-router-dom"
 
 import { housesApi } from "../api/houses"
+
 import UserLink from "../components/UserLink"
+
 import type { Child, House, UserSummary } from "../types"
 
 export default function DirectoryPage() {
   const navigate = useNavigate()
+
   const [search, setSearch] = useState("")
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["houses"],
+
     queryFn: housesApi.getHouses,
   })
 
   const filteredHouses = data?.filter((house) => {
     const searchLower = search.toLowerCase()
+
     // Search by house name
+
     if (house.name.toLowerCase().includes(searchLower)) return true
+
     // Search by inhabitant names
+
     if (
       house.inhabitants?.some((i) =>
         `${i.first_name} ${i.last_name}`.toLowerCase().includes(searchLower),
       )
     )
       return true
+
     // Search by children names
+
     if (house.children?.some((c) => c.name.toLowerCase().includes(searchLower)))
       return true
+
     return false
   })
 
@@ -106,6 +121,7 @@ export default function DirectoryPage() {
 
 interface HouseCardProps {
   house: House
+
   onClick: () => void
 }
 

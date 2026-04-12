@@ -1,6 +1,9 @@
 import { useState } from "react"
+
 import { Link } from "react-router-dom"
+
 import { useMutation } from "@tanstack/react-query"
+
 import {
   Container,
   Paper,
@@ -12,16 +15,19 @@ import {
   Anchor,
   Alert,
 } from "@mantine/core"
+
 import { IconArrowLeft, IconCheck } from "@tabler/icons-react"
 
 import { authApi } from "../api/auth"
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("")
+
   const [submitted, setSubmitted] = useState(false)
 
   const forgotPasswordMutation = useMutation({
     mutationFn: () => authApi.forgotPassword({ email }),
+
     onSuccess: () => {
       setSubmitted(true)
     },
@@ -29,6 +35,7 @@ export default function ForgotPasswordPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
     if (email.trim()) {
       forgotPasswordMutation.mutate()
     }

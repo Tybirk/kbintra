@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState } from "react"
+
 import {
   Popover,
   ActionIcon,
@@ -6,46 +7,63 @@ import {
   Loader,
   type MantineSize,
 } from "@mantine/core"
+
 import { IconMoodSmile } from "@tabler/icons-react"
 
 const LazyPicker = lazy(() => import("@emoji-mart/react"))
+
 const emojiDataPromise = () => import("@emoji-mart/data").then((m) => m.default)
 
 interface EmojiPickerProps {
   onSelect: (emoji: string) => void
+
   size?: MantineSize
+
   iconSize?: number
+
   disabled?: boolean
+
   icon?: string
 }
 
 interface EmojiData {
   native: string
+
   id: string
+
   name: string
+
   unified: string
+
   shortcodes: string
 }
 
 export default function EmojiPicker({
   onSelect,
+
   size = "lg",
+
   iconSize = 20,
+
   disabled = false,
+
   icon,
 }: EmojiPickerProps) {
   const [opened, setOpened] = useState(false)
+
   const [data, setData] = useState<object | null>(null)
 
   const handleOpen = () => {
     if (!data) {
       emojiDataPromise().then(setData)
     }
+
     setOpened((o) => !o)
   }
 
   const handleEmojiSelect = (emoji: EmojiData) => {
     onSelect(emoji.native)
+
     setOpened(false)
   }
 

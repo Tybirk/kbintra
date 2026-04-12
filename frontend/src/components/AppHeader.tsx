@@ -1,4 +1,5 @@
 import { useEffect } from "react"
+
 import {
   Group,
   Burger,
@@ -12,6 +13,7 @@ import {
   Kbd,
   Box,
 } from "@mantine/core"
+
 import {
   IconLogout,
   IconUser,
@@ -21,47 +23,66 @@ import {
   IconHome,
   IconSearch,
 } from "@tabler/icons-react"
+
 import { useNavigate, useLocation } from "react-router-dom"
+
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+
 import { notifications } from "@mantine/notifications"
 
 import { useAuthStore } from "../store/authStore"
+
 import { spotlight, focusSpotlightSearch } from "./GlobalSearch"
+
 import { notificationsApi } from "../api/notifications"
+
 import { chatWs, messagingApi } from "../api/messaging"
+
 import { invalidateCacheForLink } from "../utils/cacheInvalidation"
+
 import type { WsMessage } from "../types"
 
 interface AppHeaderProps {
   navbarOpened: boolean
+
   toggleNavbar: () => void
 }
 
 export default function AppHeader({
   navbarOpened,
+
   toggleNavbar,
 }: AppHeaderProps) {
   const navigate = useNavigate()
+
   const location = useLocation()
+
   const queryClient = useQueryClient()
+
   const { user, logout } = useAuthStore()
 
   const { data: unreadNotificationsData } = useQuery({
     queryKey: ["notifications", "unread-count"],
+
     queryFn: notificationsApi.getUnreadCount,
+
     refetchInterval: 30000, // Refetch every 30 seconds
   })
 
   const { data: unreadMessagesData } = useQuery({
     queryKey: ["messages", "unread-count"],
+
     queryFn: messagingApi.getUnreadCount,
+
     refetchInterval: 30000, // Refetch every 30 seconds
   })
 
   const unreadNotificationsCount = unreadNotificationsData?.unread_count ?? 0
+
   const unreadMessagesCount = unreadMessagesData?.unread_count ?? 0
 
   // Connect shared WebSocket for real-time notifications
+
   useEffect(() => {
     if (!user) return
 
@@ -72,6 +93,7 @@ export default function AppHeader({
         queryClient.invalidateQueries({
           queryKey: ["notifications", "unread-count"],
         })
+
         queryClient.invalidateQueries({
           queryKey: ["messages", "unread-count"],
         })
@@ -85,12 +107,17 @@ export default function AppHeader({
         queryClient.invalidateQueries({
           queryKey: ["notifications", "unread-count"],
         })
+
         queryClient.invalidateQueries({ queryKey: ["notifications"] })
 
         const notificationLink = wsData.notification.link
+
         const notificationPathname = notificationLink?.split("#")[0]
+
         // Decode location.pathname because browsers percent-encode non-ASCII chars
+
         // (e.g. æ → %C3%A6) while notification links are stored decoded.
+
         const decodedPathname = (() => {
           try {
             return decodeURIComponent(location.pathname)
@@ -98,20 +125,26 @@ export default function AppHeader({
             return location.pathname
           }
         })()
+
         const isAlreadyViewing =
           notificationPathname && decodedPathname === notificationPathname
 
         // Invalidate cached data so the destination page shows fresh content
+
         if (notificationLink) {
           invalidateCacheForLink(queryClient, notificationLink)
         }
 
         // If already on the destination page, mark the notification as read immediately
+
         if (isAlreadyViewing && notificationPathname) {
           void notificationsApi
+
             .markReadByLink(notificationPathname)
+
             .then(() => {
               queryClient.invalidateQueries({ queryKey: ["notifications"] })
+
               queryClient.invalidateQueries({
                 queryKey: ["notifications", "unread-count"],
               })
@@ -121,9 +154,13 @@ export default function AppHeader({
         if (!isAlreadyViewing) {
           notifications.show({
             title: wsData.notification.title,
+
             message: wsData.notification.message,
+
             color: "blue",
+
             autoClose: 5000,
+
             onClick: () => {
               if (notificationLink) {
                 navigate(notificationLink)
@@ -144,6 +181,7 @@ export default function AppHeader({
 
     return () => {
       unsubConnection()
+
       unsubMessage()
     }
   }, [queryClient, navigate, location.pathname, user])
@@ -154,7 +192,9 @@ export default function AppHeader({
 
   const handleLogout = () => {
     chatWs.disconnect()
+
     logout()
+
     navigate("/login")
   }
 
@@ -178,20 +218,32 @@ export default function AppHeader({
         <UnstyledButton
           onClick={() => {
             closeNavbar()
+
             // iOS/PWA: focus() is only allowed synchronously within a gesture handler.
+
             // We focus a temporary off-screen input immediately (opens keyboard), open
+
             // the spotlight, then transfer focus once its input is in the DOM.
+
             // Since focus is never lost, the keyboard stays open throughout.
+
             if (navigator.maxTouchPoints > 0) {
               const tmp = document.createElement("input")
+
               tmp.setAttribute("type", "text")
+
               tmp.style.cssText =
                 "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0.01;pointer-events:none;"
+
               document.body.appendChild(tmp)
+
               tmp.focus()
+
               spotlight.open()
+
               setTimeout(() => {
                 focusSpotlightSearch()
+
                 tmp.remove()
               }, 0)
             } else {
@@ -201,11 +253,17 @@ export default function AppHeader({
           w="100%"
           style={{
             display: "flex",
+
             alignItems: "center",
+
             gap: rem(8),
+
             padding: `${rem(8)} ${rem(14)}`,
+
             borderRadius: rem(8),
+
             backgroundColor: "var(--mantine-color-default-hover)",
+
             border: "1px solid var(--mantine-color-default-border)",
           }}
         >
@@ -236,6 +294,7 @@ export default function AppHeader({
             size="lg"
             onClick={() => {
               closeNavbar()
+
               navigate("/beskeder")
             }}
             aria-label="Beskeder"
@@ -258,6 +317,7 @@ export default function AppHeader({
             size="lg"
             onClick={() => {
               closeNavbar()
+
               navigate("/notifikationer")
             }}
             aria-label="Notifikationer"

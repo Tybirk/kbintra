@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react"
+
 import { useSearchParams } from "react-router-dom"
+
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+
 import {
   Title,
   Text,
@@ -15,8 +18,11 @@ import {
   Code,
   Divider,
 } from "@mantine/core"
+
 import { notifications } from "@mantine/notifications"
+
 import { showErrorNotification } from "../utils/errorNotification"
+
 import {
   IconBell,
   IconMessage,
@@ -26,7 +32,9 @@ import {
 } from "@tabler/icons-react"
 
 import { notificationsApi, type TestPushResult } from "../api/notifications"
+
 import { BackButton } from "../components/BackButton"
+
 import {
   isPushSupported,
   getNotificationPermission,
@@ -35,63 +43,87 @@ import {
   subscribeToPushNotificationsWithReason,
   unsubscribeFromPushNotifications,
 } from "../utils/pushNotifications"
+
 import type { NotificationPreference } from "../types"
 
 export default function NotificationPreferencesPage() {
   const [searchParams] = useSearchParams()
+
   const queryClient = useQueryClient()
+
   const [pushSupported] = useState(isPushSupported())
+
   const [pushPermission, setPushPermission] = useState(
     getNotificationPermission(),
   )
+
   const [pushSubscribed, setPushSubscribed] = useState(false)
+
   const [pushConfigured, setPushConfigured] = useState<boolean | null>(null)
+
   const [pushLoading, setPushLoading] = useState(false)
+
   const [testPushLoading, setTestPushLoading] = useState(false)
+
   const [testPushDelayedLoading, setTestPushDelayedLoading] = useState(false)
+
   const [testPushResult, setTestPushResult] = useState<TestPushResult | null>(
     null,
   )
+
   const [testPushError, setTestPushError] = useState<string | null>(null)
 
   // Check push subscription status and server configuration on mount
+
   useEffect(() => {
     if (pushSupported) {
       isPushSubscribed().then(setPushSubscribed)
+
       isPushConfigured().then(setPushConfigured)
+
       setPushPermission(getNotificationPermission())
     }
   }, [pushSupported])
 
   const { data: preferences, isLoading } = useQuery({
     queryKey: ["notification-preferences"],
+
     queryFn: notificationsApi.getPreferences,
   })
 
   const updateMutation = useMutation({
     mutationFn: notificationsApi.updatePreferences,
+
     onMutate: async (newData) => {
       await queryClient.cancelQueries({
         queryKey: ["notification-preferences"],
       })
+
       const previous = queryClient.getQueryData<NotificationPreference>([
         "notification-preferences",
       ])
+
       queryClient.setQueryData<NotificationPreference>(
         ["notification-preferences"],
+
         (old) => (old ? { ...old, ...newData } : old),
       )
+
       return { previous }
     },
+
     onError: (error: unknown, _newData, context) => {
       if (context?.previous) {
         queryClient.setQueryData(["notification-preferences"], context.previous)
       }
+
       showErrorNotification(
         error,
+
         "Kunne ikke opdatere indstillinger. Prøv igen.",
       )
     },
+
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["notification-preferences"] })
     },
@@ -103,79 +135,124 @@ export default function NotificationPreferencesPage() {
 
   const handlePushToggle = async () => {
     setPushLoading(true)
+
     try {
       if (pushSubscribed) {
         const success = await unsubscribeFromPushNotifications()
+
         if (success) {
           setPushSubscribed(false)
+
           // Also disable all server-side push preferences so that even if
+
           // the browser re-subscribes (e.g. after localStorage is cleared),
+
           // no push notifications will be sent.
+
           updateMutation.mutate({
             push_messages: false,
+
             push_announcements: false,
+
             push_announcement_updates: false,
+
             push_forum_subscriptions: false,
+
             push_thread_replies: false,
+
             push_subgroup_activity: false,
+
             push_post_reactions: false,
+
             push_events: false,
+
             push_event_reminders: false,
+
             push_food_tickets: false,
+
             push_mentions: false,
           })
+
           notifications.show({
             title: "Push-notifikationer deaktiveret",
+
             message: "Du modtager ikke længere push-notifikationer.",
+
             color: "blue",
           })
         }
       } else {
         const result = await subscribeToPushNotificationsWithReason()
+
         if (result.success) {
           setPushSubscribed(true)
+
           setPushPermission("granted")
+
           // Re-enable default push preferences on the server so the user
+
           // actually receives push notifications after activating.
+
           updateMutation.mutate({
             push_messages: true,
+
             push_announcements: true,
+
             push_announcement_updates: false,
+
             push_forum_subscriptions: true,
+
             push_thread_replies: true,
+
             push_subgroup_activity: false,
+
             push_post_reactions: true,
+
             push_events: true,
+
             push_event_reminders: true,
+
             push_food_tickets: true,
+
             push_mentions: true,
           })
+
           notifications.show({
             title: "Push-notifikationer aktiveret",
+
             message: "Du modtager nu push-notifikationer på denne enhed.",
+
             color: "green",
           })
         } else {
           setPushPermission(getNotificationPermission())
+
           if (result.reason === "permission_denied") {
             notifications.show({
               title: "Tilladelse nægtet",
+
               message:
                 "Du har blokeret notifikationer. Tillad dem i browserindstillinger.",
+
               color: "red",
             })
           } else if (result.reason === "not_configured") {
             setPushConfigured(false)
+
             notifications.show({
               title: "Ikke konfigureret",
+
               message:
                 "Push-notifikationer er ikke konfigureret på serveren endnu.",
+
               color: "yellow",
             })
           } else if (result.reason === "error") {
             notifications.show({
               title: "Fejl",
+
               message: "Der opstod en fejl. Prøv igen senere.",
+
               color: "red",
             })
           }
@@ -188,13 +265,18 @@ export default function NotificationPreferencesPage() {
 
   const handleTestPush = async () => {
     setTestPushLoading(true)
+
     setTestPushResult(null)
+
     setTestPushError(null)
+
     try {
       const result = await notificationsApi.testPush()
+
       setTestPushResult(result)
     } catch (err) {
       const error = err as { response?: { data?: { error?: string } } }
+
       setTestPushError(
         error.response?.data?.error || "Failed to send test notification",
       )
@@ -205,20 +287,28 @@ export default function NotificationPreferencesPage() {
 
   const handleTestPushDelayed = async () => {
     setTestPushDelayedLoading(true)
+
     setTestPushResult(null)
+
     setTestPushError(null)
+
     try {
       const result = await notificationsApi.testPush(10)
+
       setTestPushResult(result)
+
       if (result.scheduled) {
         notifications.show({
           title: "Push-notifikation planlagt",
+
           message: `Test push sendes om ${result.delay} sekunder. Du kan lukke appen nu.`,
+
           color: "blue",
         })
       }
     } catch (err) {
       const error = err as { response?: { data?: { error?: string } } }
+
       setTestPushError(
         error.response?.data?.error || "Failed to schedule test notification",
       )
@@ -273,6 +363,7 @@ export default function NotificationPreferencesPage() {
                 onChange={(e) =>
                   handleToggle(
                     "notify_announcement_updates",
+
                     e.currentTarget.checked,
                   )
                 }
@@ -284,6 +375,7 @@ export default function NotificationPreferencesPage() {
                 onChange={(e) =>
                   handleToggle(
                     "notify_forum_subscriptions",
+
                     e.currentTarget.checked,
                   )
                 }
@@ -295,6 +387,7 @@ export default function NotificationPreferencesPage() {
                 onChange={(e) =>
                   handleToggle(
                     "notify_subgroup_activity",
+
                     e.currentTarget.checked,
                   )
                 }
@@ -322,6 +415,7 @@ export default function NotificationPreferencesPage() {
                 onChange={(e) =>
                   handleToggle(
                     "notify_event_reminders",
+
                     e.currentTarget.checked,
                   )
                 }
@@ -374,6 +468,7 @@ export default function NotificationPreferencesPage() {
                 onChange={(e) =>
                   handleToggle(
                     "email_announcement_updates",
+
                     e.currentTarget.checked,
                   )
                 }
@@ -385,6 +480,7 @@ export default function NotificationPreferencesPage() {
                 onChange={(e) =>
                   handleToggle(
                     "email_forum_subscriptions",
+
                     e.currentTarget.checked,
                   )
                 }
@@ -396,6 +492,7 @@ export default function NotificationPreferencesPage() {
                 onChange={(e) =>
                   handleToggle(
                     "email_subgroup_activity",
+
                     e.currentTarget.checked,
                   )
                 }
@@ -495,6 +592,7 @@ export default function NotificationPreferencesPage() {
                         onChange={(e) =>
                           handleToggle(
                             "push_announcements",
+
                             e.currentTarget.checked,
                           )
                         }
@@ -506,6 +604,7 @@ export default function NotificationPreferencesPage() {
                         onChange={(e) =>
                           handleToggle(
                             "push_announcement_updates",
+
                             e.currentTarget.checked,
                           )
                         }
@@ -517,6 +616,7 @@ export default function NotificationPreferencesPage() {
                         onChange={(e) =>
                           handleToggle(
                             "push_forum_subscriptions",
+
                             e.currentTarget.checked,
                           )
                         }
@@ -528,6 +628,7 @@ export default function NotificationPreferencesPage() {
                         onChange={(e) =>
                           handleToggle(
                             "push_subgroup_activity",
+
                             e.currentTarget.checked,
                           )
                         }
@@ -539,6 +640,7 @@ export default function NotificationPreferencesPage() {
                         onChange={(e) =>
                           handleToggle(
                             "push_thread_replies",
+
                             e.currentTarget.checked,
                           )
                         }
@@ -550,6 +652,7 @@ export default function NotificationPreferencesPage() {
                         onChange={(e) =>
                           handleToggle(
                             "push_post_reactions",
+
                             e.currentTarget.checked,
                           )
                         }
@@ -561,6 +664,7 @@ export default function NotificationPreferencesPage() {
                         onChange={(e) =>
                           handleToggle(
                             "push_event_reminders",
+
                             e.currentTarget.checked,
                           )
                         }

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+
 import {
   Modal,
   Image,
@@ -12,6 +13,7 @@ import {
   ScrollArea,
   Box,
 } from "@mantine/core"
+
 import {
   IconDownload,
   IconExternalLink,
@@ -22,38 +24,60 @@ import {
   IconFileText,
   IconFile,
 } from "@tabler/icons-react"
+
 import type { ForumFile } from "../types"
 
 // File type detection utilities
+
 const IMAGE_EXTENSIONS = [
   "jpg",
+
   "jpeg",
+
   "png",
+
   "gif",
+
   "webp",
+
   "svg",
+
   "bmp",
+
   "ico",
 ]
+
 const PDF_EXTENSIONS = ["pdf"]
+
 const TEXT_EXTENSIONS = [
   "txt",
+
   "md",
+
   "json",
+
   "xml",
+
   "csv",
+
   "log",
+
   "ini",
+
   "yaml",
+
   "yml",
 ]
+
 const WORD_EXTENSIONS = ["doc", "docx", "odt", "rtf"]
+
 const POWERPOINT_EXTENSIONS = ["ppt", "pptx", "odp"]
 
 type FileType = "image" | "pdf" | "text" | "word" | "powerpoint" | "other"
 
 export function getFileExtension(filename: string): string {
   const parts = filename.toLowerCase().split(".")
+
   return parts.length > 1 ? parts[parts.length - 1] : ""
 }
 
@@ -61,10 +85,15 @@ export function getFileType(filename: string): FileType {
   const ext = getFileExtension(filename)
 
   if (IMAGE_EXTENSIONS.includes(ext)) return "image"
+
   if (PDF_EXTENSIONS.includes(ext)) return "pdf"
+
   if (TEXT_EXTENSIONS.includes(ext)) return "text"
+
   if (WORD_EXTENSIONS.includes(ext)) return "word"
+
   if (POWERPOINT_EXTENSIONS.includes(ext)) return "powerpoint"
+
   return "other"
 }
 
@@ -74,14 +103,19 @@ export function getFileIcon(filename: string) {
   switch (type) {
     case "image":
       return IconPhoto
+
     case "pdf":
       return IconFileTypePdf
+
     case "text":
       return IconFileText
+
     case "word":
       return IconFileTypeDoc
+
     case "powerpoint":
       return IconFileTypePpt
+
     default:
       return IconFile
   }
@@ -93,14 +127,19 @@ export function getFileTypeColor(filename: string): string {
   switch (type) {
     case "image":
       return "green"
+
     case "pdf":
       return "red"
+
     case "text":
       return "gray"
+
     case "word":
       return "blue"
+
     case "powerpoint":
       return "orange"
+
     default:
       return "gray"
   }
@@ -108,45 +147,62 @@ export function getFileTypeColor(filename: string): string {
 
 interface FilePreviewModalProps {
   file: ForumFile | null
+
   opened: boolean
+
   onClose: () => void
 }
 
 export function FilePreviewModal({
   file,
+
   opened,
+
   onClose,
 }: FilePreviewModalProps) {
   const [textContent, setTextContent] = useState<string | null>(null)
+
   const [loading, setLoading] = useState(false)
+
   const [error, setError] = useState<string | null>(null)
 
   const fileType = file ? getFileType(file.name) : "other"
+
   const isPwa = window.matchMedia("(display-mode: standalone)").matches
 
   // Fetch file content when needed
+
   useEffect(() => {
     if (!file || !opened) {
       setTextContent(null)
+
       setError(null)
+
       return
     }
 
     if (fileType === "text") {
       setLoading(true)
+
       setError(null)
 
       fetch(file.file_url)
+
         .then((res) => {
           if (!res.ok) throw new Error("Failed to load file")
+
           return res.text()
         })
+
         .then((text) => {
           setTextContent(text)
+
           setLoading(false)
         })
+
         .catch(() => {
           setError("Kunne ikke indlæse filindholdet")
+
           setLoading(false)
         })
     }
@@ -156,15 +212,24 @@ export function FilePreviewModal({
 
   const handleDownload = () => {
     fetch(file.file_url)
+
       .then((res) => res.blob())
+
       .then((blob) => {
         const blobUrl = URL.createObjectURL(blob)
+
         const a = document.createElement("a")
+
         a.href = blobUrl
+
         a.download = file.name
+
         document.body.appendChild(a)
+
         a.click()
+
         document.body.removeChild(a)
+
         URL.revokeObjectURL(blobUrl)
       })
   }
@@ -217,6 +282,7 @@ export function FilePreviewModal({
             </Stack>
           )
         }
+
         return (
           <Stack gap="md">
             <Box style={{ width: "100%", height: "65vh" }}>
@@ -224,8 +290,11 @@ export function FilePreviewModal({
                 src={file.file_url}
                 style={{
                   width: "100%",
+
                   height: "100%",
+
                   border: "none",
+
                   borderRadius: "8px",
                 }}
                 title={file.name}
@@ -251,6 +320,7 @@ export function FilePreviewModal({
             </Center>
           )
         }
+
         if (error) {
           return (
             <Center h={200}>
@@ -258,6 +328,7 @@ export function FilePreviewModal({
             </Center>
           )
         }
+
         return (
           <Stack gap="md">
             <ScrollArea h="60vh">
@@ -289,8 +360,11 @@ export function FilePreviewModal({
                   p="md"
                   style={{
                     backgroundColor: "#ffffff",
+
                     color: "#000000",
+
                     borderRadius: "var(--mantine-radius-md)",
+
                     overflowWrap: "break-word",
                   }}
                   dangerouslySetInnerHTML={{ __html: file.preview_html }}
@@ -308,6 +382,7 @@ export function FilePreviewModal({
             </Stack>
           )
         }
+
         return (
           <Stack align="center" gap="lg" py="xl">
             <IconFileTypeDoc size={80} color="var(--mantine-color-blue-6)" />
@@ -378,12 +453,16 @@ export function FilePreviewModal({
     switch (fileType) {
       case "pdf":
         return isPwa ? "md" : "80%"
+
       case "text":
         return "xl"
+
       case "word":
         return file?.preview_html ? "xl" : "md"
+
       case "image":
         return "auto"
+
       default:
         return "md"
     }
@@ -404,19 +483,24 @@ export function FilePreviewModal({
 
 interface ImageThumbnailProps {
   file: ForumFile
+
   size?: number
+
   onClick?: () => void
 }
 
 export function ImageThumbnail({
   file,
+
   size = 48,
+
   onClick,
 }: ImageThumbnailProps) {
   const fileType = getFileType(file.name)
 
   if (fileType !== "image") {
     const Icon = getFileIcon(file.name)
+
     return (
       <Icon
         size={size}
