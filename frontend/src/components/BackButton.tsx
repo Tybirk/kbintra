@@ -1,28 +1,41 @@
 import { Button, Box, Group } from "@mantine/core"
+
 import { IconArrowLeft } from "@tabler/icons-react"
+
 import { useNavigate, useLocation } from "react-router-dom"
+
 import { getPreviousPathname } from "../utils/navigationHistory"
 
 interface BackButtonProps {
   to: string
+
   label: string
 }
 
 export function BackButton({ to, label }: BackButtonProps) {
   const navigate = useNavigate()
+
   const location = useLocation()
+
   const canGoBack = location.key !== "default"
+
   const showBoth = canGoBack && getPreviousPathname() !== to
 
   return (
     <Box
       style={{
         position: "sticky",
+
         top: "var(--app-shell-header-height, 60px)",
+
         zIndex: 100,
+
         backgroundColor: "var(--mantine-color-body)",
+
         paddingTop: "var(--mantine-spacing-xs)",
+
         paddingBottom: "var(--mantine-spacing-xs)",
+
         marginBottom: "var(--mantine-spacing-md)",
       }}
     >

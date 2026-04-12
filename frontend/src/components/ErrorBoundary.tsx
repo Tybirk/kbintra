@@ -1,43 +1,62 @@
 import { Component } from "react"
+
 import type { ErrorInfo, ReactNode } from "react"
+
 import * as Sentry from "@sentry/react"
 
 import { ErrorFallback } from "./ErrorFallback"
 
 interface Props {
   children: ReactNode
+
   /** Custom fallback UI. Overrides the default ErrorFallback. */
+
   fallback?: ReactNode
+
   /** Render as a compact inline alert suitable for wrapping subcomponents. */
+
   compact?: boolean
+
   title?: string
+
   description?: string
+
   /** Called when the error boundary resets via the "Prøv igen" button. */
+
   onReset?: () => void
+
   /**
    * If any entry in this array changes between renders, the boundary
    * automatically resets. Use this to recover when the underlying data
    * that caused the error has changed (e.g. after a successful refetch).
    */
+
   resetKeys?: ReadonlyArray<unknown>
 }
 
 interface State {
   hasError: boolean
+
   error: Error | null
+
   componentStack: string | null
 }
 
 function keysChanged(
   prev: ReadonlyArray<unknown> | undefined,
+
   next: ReadonlyArray<unknown> | undefined,
 ): boolean {
   if (prev === next) return false
+
   if (!prev || !next) return true
+
   if (prev.length !== next.length) return true
+
   for (let i = 0; i < prev.length; i++) {
     if (!Object.is(prev[i], next[i])) return true
   }
+
   return false
 }
 
@@ -50,7 +69,9 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("ErrorBoundary caught an error:", error, errorInfo)
+
     this.setState({ componentStack: errorInfo.componentStack ?? null })
+
     Sentry.captureException(error, {
       extra: { componentStack: errorInfo.componentStack },
     })
@@ -71,6 +92,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   handleReset = () => {
     this.resetState()
+
     this.props.onReset?.()
   }
 

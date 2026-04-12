@@ -1,5 +1,7 @@
 import { useState } from "react"
+
 import { useMutation, useQueryClient } from "@tanstack/react-query"
+
 import {
   Paper,
   Text,
@@ -13,15 +15,20 @@ import {
   Box,
   Modal,
 } from "@mantine/core"
+
 import { notifications } from "@mantine/notifications"
+
 import { showErrorNotification } from "../utils/errorNotification"
+
 import { IconTrash, IconCheck } from "@tabler/icons-react"
 
 import { forumApi } from "../api/forum"
+
 import type { Poll, PollOption } from "../types"
 
 interface PollDisplayProps {
   poll: Poll
+
   threadQueryKey: (string | number)[]
 }
 
@@ -30,17 +37,25 @@ function RadioIndicator({ checked }: { checked: boolean }) {
     <Box
       style={{
         width: 20,
+
         height: 20,
+
         borderRadius: "50%",
+
         border: `2px solid ${
           checked
             ? "var(--mantine-color-blue-6)"
             : "var(--mantine-color-gray-4)"
         }`,
+
         display: "flex",
+
         alignItems: "center",
+
         justifyContent: "center",
+
         flexShrink: 0,
+
         transition: "border-color 150ms ease",
       }}
     >
@@ -48,8 +63,11 @@ function RadioIndicator({ checked }: { checked: boolean }) {
         <Box
           style={{
             width: 10,
+
             height: 10,
+
             borderRadius: "50%",
+
             backgroundColor: "var(--mantine-color-blue-6)",
           }}
         />
@@ -63,20 +81,29 @@ function CheckboxIndicator({ checked }: { checked: boolean }) {
     <Box
       style={{
         width: 20,
+
         height: 20,
+
         borderRadius: 4,
+
         border: `2px solid ${
           checked
             ? "var(--mantine-color-blue-6)"
             : "var(--mantine-color-gray-4)"
         }`,
+
         backgroundColor: checked
           ? "var(--mantine-color-blue-6)"
           : "transparent",
+
         display: "flex",
+
         alignItems: "center",
+
         justifyContent: "center",
+
         flexShrink: 0,
+
         transition: "all 150ms ease",
       }}
     >
@@ -87,13 +114,19 @@ function CheckboxIndicator({ checked }: { checked: boolean }) {
 
 function OptionBar({
   option,
+
   poll,
+
   onVote,
+
   onShowVoters,
 }: {
   option: PollOption
+
   poll: Poll
+
   onVote: () => void
+
   onShowVoters: () => void
 }) {
   const percentage =
@@ -111,13 +144,17 @@ function OptionBar({
     <Box
       style={{
         position: "relative",
+
         border: `1.5px solid ${
           option.has_voted
             ? "var(--mantine-color-blue-5)"
             : "var(--mantine-color-gray-3)"
         }`,
+
         borderRadius: "var(--mantine-radius-md)",
+
         overflow: "hidden",
+
         transition: "border-color 150ms ease",
       }}
     >
@@ -125,14 +162,21 @@ function OptionBar({
       <Box
         style={{
           position: "absolute",
+
           top: 0,
+
           left: 0,
+
           height: "100%",
+
           width: `${percentage}%`,
+
           backgroundColor: option.has_voted
             ? "var(--mantine-color-blue-light)"
             : "var(--mantine-color-default-hover)",
+
           transition: "width 400ms ease",
+
           zIndex: 0,
         }}
       />
@@ -141,8 +185,11 @@ function OptionBar({
       <Box
         style={{
           display: "flex",
+
           alignItems: "stretch",
+
           position: "relative",
+
           zIndex: 1,
         }}
       >
@@ -223,16 +270,20 @@ function OptionBar({
 
 export default function PollDisplay({
   poll,
+
   threadQueryKey,
 }: PollDisplayProps) {
   const queryClient = useQueryClient()
+
   const [votersOption, setVotersOption] = useState<PollOption | null>(null)
 
   const voteMutation = useMutation({
     mutationFn: (optionId: number) => forumApi.votePoll(poll.id, optionId),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: threadQueryKey })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke stemme. Prøv igen.")
     },
@@ -240,14 +291,19 @@ export default function PollDisplay({
 
   const deleteMutation = useMutation({
     mutationFn: () => forumApi.deletePoll(poll.id),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: threadQueryKey })
+
       notifications.show({
         title: "Afstemning slettet",
+
         message: "Afstemningen er blevet fjernet.",
+
         color: "blue",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke slette afstemningen. Prøv igen.")
     },

@@ -1,60 +1,103 @@
 import { lazy, Suspense, useEffect, useState } from "react"
+
 import { Routes, Route, Navigate, useLocation } from "react-router-dom"
+
 import { LoadingOverlay, AppShell } from "@mantine/core"
+
 import * as Sentry from "@sentry/react"
 
 // Wrapping Routes enables Sentry to name transactions by route pattern (e.g. /forum/:slug)
+
 // instead of the raw URL, which makes the Performance dashboard far more useful.
+
 const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes)
 
 import { useAuthStore } from "./store/authStore"
+
 import { getAccessToken } from "./api/client"
+
 import { trackNavigation } from "./utils/navigationHistory"
+
 import { ErrorBoundary } from "./components/ErrorBoundary"
+
 import { useVersionCheck } from "./hooks/useVersionCheck"
+
 import { usePushSubscriptionSync } from "./hooks/usePushSubscriptionSync"
 
 // Eager-loaded pages (most used)
+
 import DashboardPage from "./pages/DashboardPage"
+
 import ForumPage from "./pages/ForumPage"
+
 import SubgroupPage from "./pages/SubgroupPage"
+
 import ThreadPage from "./pages/ThreadPage"
+
 import MessagesPage from "./pages/MessagesPage"
+
 import LinksPage from "./pages/LinksPage"
+
 import NotificationsPage from "./pages/NotificationsPage"
 
 // Lazy-loaded pages
+
 const LoginPage = lazy(() => import("./pages/LoginPage"))
+
 const RegisterPage = lazy(() => import("./pages/RegisterPage"))
+
 const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"))
+
 const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"))
+
 const ChangePasswordPage = lazy(() => import("./pages/ChangePasswordPage"))
+
 const DirectoryPage = lazy(() => import("./pages/DirectoryPage"))
+
 const HouseDetailPage = lazy(() => import("./pages/HouseDetailPage"))
+
 const HouseEditPage = lazy(() => import("./pages/HouseEditPage"))
+
 const ProfilePage = lazy(() => import("./pages/ProfilePage"))
+
 const ProfileEditPage = lazy(() => import("./pages/ProfileEditPage"))
+
 const AnnouncementsPage = lazy(() => import("./pages/AnnouncementsPage"))
+
 const FoodPage = lazy(() => import("./pages/FoodPage"))
+
 const FoodPreferencesPage = lazy(() => import("./pages/FoodPreferencesPage"))
+
 const FoodTeamsPage = lazy(() => import("./pages/FoodTeamsPage"))
+
 const CalendarPage = lazy(() => import("./pages/CalendarPage"))
+
 const EventDetailPage = lazy(() => import("./pages/EventDetailPage"))
+
 const EventFormPage = lazy(() => import("./pages/EventFormPage"))
+
 const BookingsPage = lazy(() => import("./pages/BookingsPage"))
+
 const NotificationPreferencesPage = lazy(
   () => import("./pages/NotificationPreferencesPage"),
 )
+
 const AdminPage = lazy(() => import("./pages/AdminPage"))
+
 const ConfirmEmailChangePage = lazy(
   () => import("./pages/ConfirmEmailChangePage"),
 )
+
 const PrivacyPolicyPage = lazy(() => import("./pages/PrivacyPolicyPage"))
 
 import AppHeader from "./components/AppHeader"
+
 import AppNavbar from "./components/AppNavbar"
+
 import { GlobalSearch } from "./components/GlobalSearch"
+
 import { InstallPrompt } from "./components/InstallPrompt"
+
 import { PushNotificationPrompt } from "./components/PushNotificationPrompt"
 
 interface ProtectedRouteProps {
@@ -63,6 +106,7 @@ interface ProtectedRouteProps {
 
 function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { isAuthenticated } = useAuthStore()
+
   const location = useLocation()
 
   if (!isAuthenticated) {
@@ -74,27 +118,35 @@ function ProtectedRoute({ children }: ProtectedRouteProps) {
 
 function App() {
   const { checkAuth, isAuthenticated } = useAuthStore()
+
   const [isInitializing, setIsInitializing] = useState(true)
+
   const [navbarOpened, setNavbarOpened] = useState(false)
+
   const location = useLocation()
 
   useEffect(() => {
     trackNavigation(location.pathname)
+
     setNavbarOpened(false)
   }, [location.pathname])
 
   // Check for app updates when user returns to the app
+
   useVersionCheck()
 
   // Re-sync push subscription if it was invalidated (e.g. Android force-close)
+
   usePushSubscriptionSync()
 
   useEffect(() => {
     const initAuth = async () => {
       const token = getAccessToken()
+
       if (token) {
         await checkAuth()
       }
+
       setIsInitializing(false)
     }
 
@@ -106,6 +158,7 @@ function App() {
   }
 
   // Public routes (login, register, password reset)
+
   if (!isAuthenticated) {
     return (
       <ErrorBoundary>
@@ -167,6 +220,7 @@ function App() {
   }
 
   // Authenticated routes with app shell
+
   return (
     <ErrorBoundary>
       <GlobalSearch onAction={() => setNavbarOpened(false)} />
@@ -176,7 +230,9 @@ function App() {
         header={{ height: 60 }}
         navbar={{
           width: 280,
+
           breakpoint: "sm",
+
           collapsed: { mobile: !navbarOpened },
         }}
         padding="md"

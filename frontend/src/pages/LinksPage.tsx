@@ -1,5 +1,7 @@
 import { useState } from "react"
+
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+
 import {
   Title,
   Text,
@@ -11,40 +13,57 @@ import {
   Stack,
   Typography,
 } from "@mantine/core"
+
 import { notifications } from "@mantine/notifications"
+
 import { showErrorNotification } from "../utils/errorNotification"
+
 import { IconEdit, IconLink } from "@tabler/icons-react"
 
 import { linksApi } from "../api/links"
+
 import { useAuthStore } from "../store/authStore"
+
 import RichTextEditor from "../components/RichTextEditor"
 
 export default function LinksPage() {
   const queryClient = useQueryClient()
+
   const { user } = useAuthStore()
+
   const [editing, setEditing] = useState(false)
+
   const [content, setContent] = useState("")
 
   const {
     data: links,
+
     isLoading,
+
     error,
   } = useQuery({
     queryKey: ["links"],
+
     queryFn: linksApi.getLinks,
   })
 
   const updateMutation = useMutation({
     mutationFn: linksApi.updateLinks,
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["links"] })
+
       setEditing(false)
+
       notifications.show({
         title: "Gemt",
+
         message: "Links er blevet opdateret.",
+
         color: "green",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke gemme. Prøv igen.")
     },
@@ -52,6 +71,7 @@ export default function LinksPage() {
 
   const handleEdit = () => {
     setContent(links?.content ?? "")
+
     setEditing(true)
   }
 

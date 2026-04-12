@@ -1,5 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query"
+
 import { useParams, useNavigate } from "react-router-dom"
+
 import {
   Title,
   Text,
@@ -15,6 +17,7 @@ import {
   Switch,
   useMantineColorScheme,
 } from "@mantine/core"
+
 import {
   IconPhone,
   IconMail,
@@ -23,16 +26,22 @@ import {
   IconEdit,
   IconMessage,
 } from "@tabler/icons-react"
+
 import dayjs from "dayjs"
 
 import { usersApi } from "../api/users"
+
 import { messagingApi } from "../api/messaging"
+
 import { useAuthStore } from "../store/authStore"
+
 import { useAccessibilityMode } from "../hooks/useAccessibilityMode"
+
 import { showErrorNotification } from "../utils/errorNotification"
 
 function ThemeSettings() {
   const { colorScheme, setColorScheme } = useMantineColorScheme()
+
   const { isAccessibilityMode, setIsAccessibilityMode, isPending } =
     useAccessibilityMode()
 
@@ -53,7 +62,9 @@ function ThemeSettings() {
             }
             data={[
               { label: "Lys", value: "light" },
+
               { label: "Mørk", value: "dark" },
+
               { label: "Auto", value: "auto" },
             ]}
           />
@@ -72,18 +83,23 @@ function ThemeSettings() {
 
 export default function ProfilePage() {
   const { userId } = useParams<{ userId: string }>()
+
   const navigate = useNavigate()
+
   const { user: currentUser } = useAuthStore()
 
   // If no userId, show current user's profile
+
   const isOwnProfile = !userId || Number(userId) === currentUser?.id
 
   const sendMessageMutation = useMutation({
     mutationFn: (participantId: number) =>
       messagingApi.createConversation({ participant_ids: [participantId] }),
+
     onSuccess: (conversation) => {
       navigate(`/beskeder/${conversation.id}`)
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke oprette samtale. Prøv igen.")
     },
@@ -91,10 +107,13 @@ export default function ProfilePage() {
 
   const {
     data: user,
+
     isLoading,
+
     error,
   } = useQuery({
     queryKey: ["user", userId || "me"],
+
     queryFn: () =>
       userId ? usersApi.getUser(Number(userId)) : usersApi.getCurrentUser(),
   })

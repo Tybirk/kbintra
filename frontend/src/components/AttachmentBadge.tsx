@@ -1,10 +1,14 @@
 import { useState, useEffect, memo } from "react"
+
 import { Badge, ActionIcon, Image } from "@mantine/core"
+
 import { IconX } from "@tabler/icons-react"
+
 import { getFileIcon, getFileType, getFileTypeColor } from "./FilePreview"
 
 interface AttachmentBadgeProps {
   file: File
+
   onRemove: () => void
 }
 
@@ -12,23 +16,30 @@ interface AttachmentBadgeProps {
  * Memoized attachment badge that properly manages blob URLs for image previews.
  * This prevents creating new blob URLs on every render, which causes lag on mobile.
  */
+
 export const AttachmentBadge = memo(function AttachmentBadge({
   file,
+
   onRemove,
 }: AttachmentBadgeProps) {
   const [imageUrl, setImageUrl] = useState<string | null>(null)
 
   const FileIcon = getFileIcon(file.name)
+
   const fileColor = getFileTypeColor(file.name)
+
   const isImage = getFileType(file.name) === "image"
 
   // Create blob URL once when component mounts (for images only)
+
   useEffect(() => {
     if (isImage) {
       const url = URL.createObjectURL(file)
+
       setImageUrl(url)
 
       // Cleanup: revoke the blob URL when component unmounts or file changes
+
       return () => {
         URL.revokeObjectURL(url)
       }

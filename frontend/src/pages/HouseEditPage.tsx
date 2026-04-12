@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react"
+
 import { useNavigate } from "react-router-dom"
+
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+
 import {
   Title,
   Text,
@@ -21,11 +24,17 @@ import {
   Switch,
   Badge,
 } from "@mantine/core"
+
 import { DateInput } from "@mantine/dates"
+
 import { Dropzone, IMAGE_MIME_TYPE } from "@mantine/dropzone"
+
 import { useDisclosure } from "@mantine/hooks"
+
 import { notifications } from "@mantine/notifications"
+
 import { showErrorNotification } from "../utils/errorNotification"
+
 import {
   IconUpload,
   IconPhoto,
@@ -36,6 +45,7 @@ import {
   IconTrash,
   IconAlertCircle,
 } from "@tabler/icons-react"
+
 import dayjs from "dayjs"
 
 import {
@@ -45,58 +55,77 @@ import {
   type CreateCarData,
   type UpdateCarData,
 } from "../api/houses"
+
 import type { Car, Child } from "../types"
+
 import { BackButton } from "../components/BackButton"
 
 interface UpdateChildParams {
   id: number
+
   data: UpdateChildData
 }
 
 interface UpdateCarParams {
   id: number
+
   data: UpdateCarData
 }
 
 export default function HouseEditPage() {
   const navigate = useNavigate()
+
   const queryClient = useQueryClient()
 
   const [description, setDescription] = useState("")
+
   const [editingChild, setEditingChild] = useState<Child | null>(null)
+
   const [childModalOpened, { open: openChildModal, close: closeChildModal }] =
     useDisclosure(false)
+
   const [
     deleteModalOpened,
+
     { open: openDeleteModal, close: closeDeleteModal },
   ] = useDisclosure(false)
+
   const [childToDelete, setChildToDelete] = useState<Child | null>(null)
 
   const [childForm, setChildForm] = useState({
     name: "",
+
     birthdate: null as Date | null,
   })
 
   const [editingCar, setEditingCar] = useState<Car | null>(null)
+
   const [carModalOpened, { open: openCarModal, close: closeCarModal }] =
     useDisclosure(false)
+
   const [
     deleteCarModalOpened,
+
     { open: openDeleteCarModal, close: closeDeleteCarModal },
   ] = useDisclosure(false)
+
   const [carToDelete, setCarToDelete] = useState<Car | null>(null)
 
   const [carForm, setCarForm] = useState({
     license_plate: "",
+
     is_electric: false,
   })
 
   const {
     data: house,
+
     isLoading,
+
     error,
   } = useQuery({
     queryKey: ["house", "my"],
+
     queryFn: housesApi.getMyHouse,
   })
 
@@ -109,15 +138,21 @@ export default function HouseEditPage() {
   const updateHouseMutation = useMutation({
     mutationFn: (data: { description: string }) =>
       housesApi.updateMyHouse(data),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["house"] })
+
       queryClient.invalidateQueries({ queryKey: ["houses"] })
+
       notifications.show({
         title: "Hus opdateret",
+
         message: "Dit hus er blevet opdateret.",
+
         color: "green",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke opdatere huset. Prøv igen.")
     },
@@ -125,15 +160,21 @@ export default function HouseEditPage() {
 
   const uploadPictureMutation = useMutation({
     mutationFn: (file: File) => housesApi.updateMyHousePicture(file),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["house"] })
+
       queryClient.invalidateQueries({ queryKey: ["houses"] })
+
       notifications.show({
         title: "Billede opdateret",
+
         message: "Husets billede er blevet opdateret.",
+
         color: "green",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke uploade billedet. Prøv igen.")
     },
@@ -141,17 +182,25 @@ export default function HouseEditPage() {
 
   const createChildMutation = useMutation({
     mutationFn: (data: CreateChildData) => housesApi.createChild(data),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["house"] })
+
       queryClient.invalidateQueries({ queryKey: ["houses"] })
+
       notifications.show({
         title: "Barn tilføjet",
+
         message: "Barnet er blevet tilføjet til husstanden.",
+
         color: "green",
       })
+
       closeChildModal()
+
       resetChildForm()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke tilføje barnet. Prøv igen.")
     },
@@ -160,17 +209,25 @@ export default function HouseEditPage() {
   const updateChildMutation = useMutation({
     mutationFn: ({ id, data }: UpdateChildParams) =>
       housesApi.updateChild(id, data),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["house"] })
+
       queryClient.invalidateQueries({ queryKey: ["houses"] })
+
       notifications.show({
         title: "Barn opdateret",
+
         message: "Barnets oplysninger er blevet opdateret.",
+
         color: "green",
       })
+
       closeChildModal()
+
       resetChildForm()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke opdatere barnet. Prøv igen.")
     },
@@ -178,17 +235,25 @@ export default function HouseEditPage() {
 
   const deleteChildMutation = useMutation({
     mutationFn: (id: number) => housesApi.deleteChild(id),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["house"] })
+
       queryClient.invalidateQueries({ queryKey: ["houses"] })
+
       notifications.show({
         title: "Barn fjernet",
+
         message: "Barnet er blevet fjernet fra husstanden.",
+
         color: "green",
       })
+
       closeDeleteModal()
+
       setChildToDelete(null)
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke fjerne barnet. Prøv igen.")
     },
@@ -196,17 +261,25 @@ export default function HouseEditPage() {
 
   const createCarMutation = useMutation({
     mutationFn: (data: CreateCarData) => housesApi.createCar(data),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["house"] })
+
       queryClient.invalidateQueries({ queryKey: ["houses"] })
+
       notifications.show({
         title: "Bil tilføjet",
+
         message: "Bilen er blevet tilføjet til husstanden.",
+
         color: "green",
       })
+
       closeCarModal()
+
       resetCarForm()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke tilføje bilen. Prøv igen.")
     },
@@ -215,17 +288,25 @@ export default function HouseEditPage() {
   const updateCarMutation = useMutation({
     mutationFn: ({ id, data }: UpdateCarParams) =>
       housesApi.updateCar(id, data),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["house"] })
+
       queryClient.invalidateQueries({ queryKey: ["houses"] })
+
       notifications.show({
         title: "Bil opdateret",
+
         message: "Bilens oplysninger er blevet opdateret.",
+
         color: "green",
       })
+
       closeCarModal()
+
       resetCarForm()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke opdatere bilen. Prøv igen.")
     },
@@ -233,17 +314,25 @@ export default function HouseEditPage() {
 
   const deleteCarMutation = useMutation({
     mutationFn: (id: number) => housesApi.deleteCar(id),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["house"] })
+
       queryClient.invalidateQueries({ queryKey: ["houses"] })
+
       notifications.show({
         title: "Bil fjernet",
+
         message: "Bilen er blevet fjernet fra husstanden.",
+
         color: "green",
       })
+
       closeDeleteCarModal()
+
       setCarToDelete(null)
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke fjerne bilen. Prøv igen.")
     },
@@ -251,31 +340,38 @@ export default function HouseEditPage() {
 
   const resetChildForm = () => {
     setChildForm({ name: "", birthdate: null })
+
     setEditingChild(null)
   }
 
   const handleOpenAddChild = () => {
     resetChildForm()
+
     openChildModal()
   }
 
   const handleOpenEditChild = (child: Child) => {
     setEditingChild(child)
+
     setChildForm({
       name: child.name,
+
       birthdate: child.birthdate ? new Date(child.birthdate) : null,
     })
+
     openChildModal()
   }
 
   const handleOpenDeleteChild = (child: Child) => {
     setChildToDelete(child)
+
     openDeleteModal()
   }
 
   const handleSaveChild = () => {
     const data = {
       name: childForm.name,
+
       birthdate: childForm.birthdate
         ? dayjs(childForm.birthdate).format("YYYY-MM-DD")
         : null,
@@ -296,31 +392,38 @@ export default function HouseEditPage() {
 
   const resetCarForm = () => {
     setCarForm({ license_plate: "", is_electric: false })
+
     setEditingCar(null)
   }
 
   const handleOpenAddCar = () => {
     resetCarForm()
+
     openCarModal()
   }
 
   const handleOpenEditCar = (car: Car) => {
     setEditingCar(car)
+
     setCarForm({
       license_plate: car.license_plate,
+
       is_electric: car.is_electric,
     })
+
     openCarModal()
   }
 
   const handleOpenDeleteCar = (car: Car) => {
     setCarToDelete(car)
+
     openDeleteCarModal()
   }
 
   const handleSaveCar = () => {
     const data = {
       license_plate: carForm.license_plate,
+
       is_electric: carForm.is_electric,
     }
 
@@ -339,6 +442,7 @@ export default function HouseEditPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
     updateHouseMutation.mutate({ description })
   }
 
@@ -437,7 +541,9 @@ export default function HouseEditPage() {
                 <IconUpload
                   style={{
                     width: rem(52),
+
                     height: rem(52),
+
                     color: "var(--mantine-color-blue-6)",
                   }}
                   stroke={1.5}
@@ -447,7 +553,9 @@ export default function HouseEditPage() {
                 <IconX
                   style={{
                     width: rem(52),
+
                     height: rem(52),
+
                     color: "var(--mantine-color-red-6)",
                   }}
                   stroke={1.5}
@@ -457,7 +565,9 @@ export default function HouseEditPage() {
                 <IconPhoto
                   style={{
                     width: rem(52),
+
                     height: rem(52),
+
                     color: "var(--mantine-color-dimmed)",
                   }}
                   stroke={1.5}
@@ -649,6 +759,7 @@ export default function HouseEditPage() {
         opened={childModalOpened}
         onClose={() => {
           closeChildModal()
+
           resetChildForm()
         }}
         title={editingChild ? "Rediger barn" : "Tilføj barn"}
@@ -670,6 +781,7 @@ export default function HouseEditPage() {
             value={childForm.birthdate}
             onChange={(value) => {
               const date = value ? new Date(value) : null
+
               setChildForm((prev) => ({ ...prev, birthdate: date }))
             }}
             maxDate={new Date()}
@@ -682,6 +794,7 @@ export default function HouseEditPage() {
               variant="light"
               onClick={() => {
                 closeChildModal()
+
                 resetChildForm()
               }}
             >
@@ -705,6 +818,7 @@ export default function HouseEditPage() {
         opened={deleteModalOpened}
         onClose={() => {
           closeDeleteModal()
+
           setChildToDelete(null)
         }}
         title="Fjern barn"
@@ -718,6 +832,7 @@ export default function HouseEditPage() {
             variant="light"
             onClick={() => {
               closeDeleteModal()
+
               setChildToDelete(null)
             }}
           >
@@ -738,6 +853,7 @@ export default function HouseEditPage() {
         opened={carModalOpened}
         onClose={() => {
           closeCarModal()
+
           resetCarForm()
         }}
         title={editingCar ? "Rediger bil" : "Tilføj bil"}
@@ -750,6 +866,7 @@ export default function HouseEditPage() {
             onChange={(e) =>
               setCarForm((prev) => ({
                 ...prev,
+
                 license_plate: e.target.value,
               }))
             }
@@ -761,8 +878,10 @@ export default function HouseEditPage() {
             checked={carForm.is_electric}
             onChange={(e) => {
               const checked = e.currentTarget.checked
+
               setCarForm((prev) => ({
                 ...prev,
+
                 is_electric: checked,
               }))
             }}
@@ -773,6 +892,7 @@ export default function HouseEditPage() {
               variant="light"
               onClick={() => {
                 closeCarModal()
+
                 resetCarForm()
               }}
             >
@@ -796,6 +916,7 @@ export default function HouseEditPage() {
         opened={deleteCarModalOpened}
         onClose={() => {
           closeDeleteCarModal()
+
           setCarToDelete(null)
         }}
         title="Fjern bil"
@@ -809,6 +930,7 @@ export default function HouseEditPage() {
             variant="light"
             onClick={() => {
               closeDeleteCarModal()
+
               setCarToDelete(null)
             }}
           >

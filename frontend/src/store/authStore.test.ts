@@ -1,47 +1,71 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+
 import { useAuthStore } from "./authStore"
+
 import { authApi } from "../api/auth"
+
 import * as clientModule from "../api/client"
 
 // Mock the API modules
+
 vi.mock("../api/auth", () => ({
   authApi: {
     login: vi.fn(),
+
     logout: vi.fn(),
+
     getCurrentUser: vi.fn(),
   },
 }))
 
 vi.mock("../api/client", () => ({
   getAccessToken: vi.fn(),
+
   clearTokens: vi.fn(),
 }))
 
 const mockUser = {
   id: 1,
+
   email: "test@example.com",
+
   first_name: "Test",
+
   last_name: "User",
+
   phone_number: "",
+
   birthdate: null,
+
   profile_picture: null,
+
   bio: "",
+
   house: 1,
+
   house_name: "House 1",
+
   house_inhabitant_count: 2,
+
   is_staff: false,
+
   date_joined: "2024-01-01T00:00:00Z",
 }
 
 describe("authStore", () => {
   beforeEach(() => {
     // Reset the store state before each test
+
     useAuthStore.setState({
       user: null,
+
       isAuthenticated: false,
+
       isLoading: false,
+
       error: null,
     })
+
     vi.clearAllMocks()
   })
 
@@ -52,9 +76,13 @@ describe("authStore", () => {
   describe("initial state", () => {
     it("should have correct initial state", () => {
       const state = useAuthStore.getState()
+
       expect(state.user).toBeNull()
+
       expect(state.isAuthenticated).toBe(false)
+
       expect(state.isLoading).toBe(false)
+
       expect(state.error).toBeNull()
     })
   })
@@ -63,15 +91,20 @@ describe("authStore", () => {
     it("should set loading state while logging in", async () => {
       vi.mocked(authApi.login).mockResolvedValue({
         access: "token",
+
         refresh: "refresh",
       })
+
       vi.mocked(authApi.getCurrentUser).mockResolvedValue(mockUser)
 
       const loginPromise = useAuthStore
+
         .getState()
+
         .login("test@example.com", "password")
 
       // Check loading state is set immediately
+
       expect(useAuthStore.getState().isLoading).toBe(true)
 
       await loginPromise
@@ -80,16 +113,22 @@ describe("authStore", () => {
     it("should set user and isAuthenticated on successful login", async () => {
       vi.mocked(authApi.login).mockResolvedValue({
         access: "token",
+
         refresh: "refresh",
       })
+
       vi.mocked(authApi.getCurrentUser).mockResolvedValue(mockUser)
 
       await useAuthStore.getState().login("test@example.com", "password")
 
       const state = useAuthStore.getState()
+
       expect(state.user).toEqual(mockUser)
+
       expect(state.isAuthenticated).toBe(true)
+
       expect(state.isLoading).toBe(false)
+
       expect(state.error).toBeNull()
     })
 
@@ -103,9 +142,13 @@ describe("authStore", () => {
       ).rejects.toThrow("Invalid credentials")
 
       const state = useAuthStore.getState()
+
       expect(state.user).toBeNull()
+
       expect(state.isAuthenticated).toBe(false)
+
       expect(state.isLoading).toBe(false)
+
       expect(state.error).toBe("Invalid credentials")
     })
   })
@@ -113,17 +156,23 @@ describe("authStore", () => {
   describe("logout", () => {
     it("should clear user and authentication state", () => {
       // Set up authenticated state
+
       useAuthStore.setState({
         user: mockUser,
+
         isAuthenticated: true,
       })
 
       useAuthStore.getState().logout()
 
       const state = useAuthStore.getState()
+
       expect(state.user).toBeNull()
+
       expect(state.isAuthenticated).toBe(false)
+
       expect(state.error).toBeNull()
+
       expect(authApi.logout).toHaveBeenCalled()
     })
   })
@@ -135,8 +184,11 @@ describe("authStore", () => {
       await useAuthStore.getState().fetchCurrentUser()
 
       const state = useAuthStore.getState()
+
       expect(state.user).toEqual(mockUser)
+
       expect(state.isAuthenticated).toBe(true)
+
       expect(state.isLoading).toBe(false)
     })
 
@@ -148,8 +200,11 @@ describe("authStore", () => {
       await useAuthStore.getState().fetchCurrentUser()
 
       const state = useAuthStore.getState()
+
       expect(state.user).toBeNull()
+
       expect(state.isAuthenticated).toBe(false)
+
       expect(state.isLoading).toBe(false)
     })
   })
@@ -161,7 +216,9 @@ describe("authStore", () => {
       useAuthStore.getState().updateUser({ first_name: "Updated" })
 
       const state = useAuthStore.getState()
+
       expect(state.user?.first_name).toBe("Updated")
+
       expect(state.user?.last_name).toBe("User") // Unchanged
     })
 
@@ -191,23 +248,29 @@ describe("authStore", () => {
       const result = await useAuthStore.getState().checkAuth()
 
       expect(result).toBe(false)
+
       expect(useAuthStore.getState().isAuthenticated).toBe(false)
+
       expect(useAuthStore.getState().user).toBeNull()
     })
 
     it("should return true and set user if token is valid", async () => {
       vi.mocked(clientModule.getAccessToken).mockReturnValue("valid-token")
+
       vi.mocked(authApi.getCurrentUser).mockResolvedValue(mockUser)
 
       const result = await useAuthStore.getState().checkAuth()
 
       expect(result).toBe(true)
+
       expect(useAuthStore.getState().isAuthenticated).toBe(true)
+
       expect(useAuthStore.getState().user).toEqual(mockUser)
     })
 
     it("should return false and clear state if token is invalid", async () => {
       vi.mocked(clientModule.getAccessToken).mockReturnValue("invalid-token")
+
       vi.mocked(authApi.getCurrentUser).mockRejectedValue(
         new Error("Unauthorized"),
       )
@@ -215,7 +278,9 @@ describe("authStore", () => {
       const result = await useAuthStore.getState().checkAuth()
 
       expect(result).toBe(false)
+
       expect(useAuthStore.getState().isAuthenticated).toBe(false)
+
       expect(useAuthStore.getState().user).toBeNull()
     })
   })

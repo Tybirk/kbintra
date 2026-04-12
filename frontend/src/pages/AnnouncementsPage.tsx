@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react"
+
 import { useLocation } from "react-router-dom"
+
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+
 import {
   Title,
   Text,
@@ -22,9 +25,13 @@ import {
   Tooltip,
   Alert,
 } from "@mantine/core"
+
 import { useDisclosure, useMediaQuery } from "@mantine/hooks"
+
 import { notifications } from "@mantine/notifications"
+
 import { showErrorNotification } from "../utils/errorNotification"
+
 import {
   IconPlus,
   IconSpeakerphone,
@@ -32,17 +39,27 @@ import {
   IconEdit,
   IconTrash,
 } from "@tabler/icons-react"
+
 import dayjs from "dayjs"
 
 import { useAuthStore } from "../store/authStore"
+
 import { announcementsApi } from "../api/announcements"
+
 import { notificationsApi } from "../api/notifications"
+
 import { filterFilesBySize } from "../config"
+
 import { clearDraft, loadDraft, saveDraft } from "../utils/draftStorage"
+
 import RichTextEditor from "../components/RichTextEditor"
+
 import FileDropzone, { AttachmentArea } from "../components/FileDropzone"
+
 import { AttachmentBadge } from "../components/AttachmentBadge"
+
 import UserLink from "../components/UserLink"
+
 import {
   getFileIcon,
   getFileTypeColor,
@@ -50,6 +67,7 @@ import {
   ImageThumbnail,
   getFileType,
 } from "../components/FilePreview"
+
 import type {
   Announcement,
   CreateAnnouncementData,
@@ -58,34 +76,47 @@ import type {
 
 export default function AnnouncementsPage() {
   const queryClient = useQueryClient()
+
   const { hash } = useLocation()
+
   const scrolledRef = useRef("")
+
   const [
     createModalOpened,
+
     { open: openCreateModal, close: closeCreateModal },
   ] = useDisclosure(false)
+
   const [editingAnnouncement, setEditingAnnouncement] =
     useState<Announcement | null>(null)
+
   const [
     deleteModalOpened,
+
     { open: openDeleteModal, close: closeDeleteModal },
   ] = useDisclosure(false)
+
   const [announcementToDelete, setAnnouncementToDelete] =
     useState<number | null>(null)
 
   const {
     data: announcements,
+
     isLoading,
+
     error,
   } = useQuery({
     queryKey: ["announcements"],
+
     queryFn: () => announcementsApi.getAnnouncements(),
   })
 
   // Auto-mark announcement notifications as read when visiting the page
+
   useEffect(() => {
     void notificationsApi.markReadByLink("/opslag").then(() => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] })
+
       queryClient.invalidateQueries({
         queryKey: ["notifications", "unread-count"],
       })
@@ -93,38 +124,58 @@ export default function AnnouncementsPage() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scroll to and highlight a specific announcement when navigating from search
+
   useEffect(() => {
     if (!hash || !announcements || scrolledRef.current === hash) return
+
     const el = document.getElementById(hash.slice(1))
+
     if (!el) return
+
     const currentHash = hash
+
     window.history.replaceState(null, "", window.location.pathname)
+
     const timer = setTimeout(() => {
       if (scrolledRef.current === currentHash) return
+
       scrolledRef.current = currentHash
+
       el.scrollIntoView({ behavior: "smooth", block: "center" })
+
       el.style.borderRadius = "var(--mantine-radius-md)"
+
       el.style.transition = "box-shadow 0.3s ease"
+
       el.style.boxShadow = "0 0 0 3px var(--mantine-color-blue-4)"
+
       setTimeout(() => {
         el.style.boxShadow = ""
       }, 2000)
     }, 100)
+
     return () => clearTimeout(timer)
   }, [hash, announcements])
 
   const deleteMutation = useMutation({
     mutationFn: announcementsApi.deleteAnnouncement,
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["announcements"] })
+
       closeDeleteModal()
+
       setAnnouncementToDelete(null)
+
       notifications.show({
         title: "Opslag slettet",
+
         message: "Opslaget er blevet slettet.",
+
         color: "blue",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke slette opslag. Prøv igen.")
     },
@@ -132,6 +183,7 @@ export default function AnnouncementsPage() {
 
   const handleDeleteClick = (id: number) => {
     setAnnouncementToDelete(id)
+
     openDeleteModal()
   }
 
@@ -200,6 +252,7 @@ export default function AnnouncementsPage() {
         onClose={closeCreateModal}
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ["announcements"] })
+
           closeCreateModal()
         }}
       />
@@ -211,6 +264,7 @@ export default function AnnouncementsPage() {
           announcement={editingAnnouncement}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ["announcements"] })
+
             setEditingAnnouncement(null)
           }}
         />
@@ -245,16 +299,21 @@ export default function AnnouncementsPage() {
 
 interface AnnouncementCardProps {
   announcement: Announcement
+
   onEdit: () => void
+
   onDelete: () => void
 }
 
 function AnnouncementCard({
   announcement,
+
   onEdit,
+
   onDelete,
 }: AnnouncementCardProps) {
   const queryClient = useQueryClient()
+
   const [previewFile, setPreviewFile] = useState<AnnouncementAttachment | null>(
     null,
   )
@@ -264,23 +323,33 @@ function AnnouncementCard({
       announcementsApi.updateAnnouncement(announcement.id, {
         show_on_dashboard: show,
       }),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["announcements"] })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke opdatere opslag. Prøv igen.")
     },
   })
 
   // Convert attachment to ForumFile format for FilePreviewModal
+
   const toForumFile = (attachment: AnnouncementAttachment) => ({
     id: attachment.id,
+
     name: attachment.name,
+
     file: attachment.file,
+
     file_url: attachment.file_url,
+
     uploaded_by: attachment.uploaded_by,
+
     is_own: false,
+
     uploaded_at: attachment.uploaded_at,
+
     members_only: false,
   })
 
@@ -375,7 +444,9 @@ function AnnouncementCard({
           <Group gap="xs">
             {announcement.attachments.map((attachment) => {
               const fileType = getFileType(attachment.name)
+
               const FileIcon = getFileIcon(attachment.name)
+
               const fileColor = getFileTypeColor(attachment.name)
 
               if (fileType === "image") {
@@ -424,18 +495,25 @@ function AnnouncementCard({
 
 interface CreateAnnouncementModalProps {
   opened: boolean
+
   onClose: () => void
+
   onSuccess: () => void
 }
 
 function CreateAnnouncementModal({
   opened,
+
   onClose,
+
   onSuccess,
 }: CreateAnnouncementModalProps) {
   const isMobile = useMediaQuery("(max-width: 48em)")
+
   const [title, setTitle] = useState("")
+
   const [content, setContent] = useState("")
+
   const [attachments, setAttachments] = useState<File[]>([])
 
   useEffect(() => {
@@ -446,34 +524,48 @@ function CreateAnnouncementModal({
 
   useEffect(() => {
     const t = setTimeout(() => saveDraft("new-announcement-title", title), 1500)
+
     return () => clearTimeout(t)
   }, [title])
 
   const createMutation = useMutation({
     mutationFn: ({
       data,
+
       files,
     }: {
       data: CreateAnnouncementData
+
       files: File[]
     }) =>
       announcementsApi.createAnnouncement(
         data,
+
         files.length > 0 ? files : undefined,
       ),
+
     onSuccess: () => {
       notifications.show({
         title: "Opslag oprettet",
+
         message: "Dit opslag er blevet offentliggjort.",
+
         color: "green",
       })
+
       setTitle("")
+
       setContent("")
+
       setAttachments([])
+
       clearDraft("new-announcement")
+
       clearDraft("new-announcement-title")
+
       onSuccess()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke oprette opslag. Prøv igen.")
     },
@@ -481,27 +573,35 @@ function CreateAnnouncementModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
     if (!title.trim() || !content.trim()) return
+
     createMutation.mutate({
       data: { title: title.trim(), content: content.trim() },
+
       files: attachments,
     })
   }
 
   const handleAddFiles = (files: File[]) => {
     const { validFiles, errors } = filterFilesBySize(files)
+
     if (errors.length > 0) {
       errors.forEach((error) => {
         notifications.show({
           title: "File too large",
+
           message: error,
+
           color: "red",
         })
       })
     }
+
     if (validFiles.length > 0) {
       setAttachments((prev) => [
         ...prev,
+
         ...validFiles.filter((f) => !prev.some((p) => p.name === f.name)),
       ])
     }
@@ -580,21 +680,31 @@ function CreateAnnouncementModal({
 
 interface EditAnnouncementModalProps {
   opened: boolean
+
   onClose: () => void
+
   announcement: Announcement
+
   onSuccess: () => void
 }
 
 function EditAnnouncementModal({
   opened,
+
   onClose,
+
   announcement,
+
   onSuccess,
 }: EditAnnouncementModalProps) {
   const { user: currentUser } = useAuthStore()
+
   const isMobile = useMediaQuery("(max-width: 48em)")
+
   const [title, setTitle] = useState(announcement.title)
+
   const [content, setContent] = useState(announcement.content)
+
   const [consentChecked, setConsentChecked] = useState(false)
 
   const isAdminEditingOther =
@@ -603,14 +713,19 @@ function EditAnnouncementModal({
   const updateMutation = useMutation({
     mutationFn: (data: Partial<CreateAnnouncementData>) =>
       announcementsApi.updateAnnouncement(announcement.id, data),
+
     onSuccess: () => {
       notifications.show({
         title: "Opslag opdateret",
+
         message: "Dit opslag er blevet opdateret.",
+
         color: "green",
       })
+
       onSuccess()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke opdatere opslag. Prøv igen.")
     },
@@ -618,7 +733,9 @@ function EditAnnouncementModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
     if (!title.trim() || !content.trim()) return
+
     updateMutation.mutate({ title: title.trim(), content: content.trim() })
   }
 
