@@ -1,4 +1,5 @@
 import { useState } from "react"
+
 import {
   Container,
   Title,
@@ -11,7 +12,9 @@ import {
   Code,
   List,
 } from "@mantine/core"
+
 import { IconDatabase, IconPhoto, IconInfoCircle } from "@tabler/icons-react"
+
 import { getAccessToken } from "../api/client"
 
 function useFileDownload() {
@@ -19,18 +22,28 @@ function useFileDownload() {
 
   const download = async (path: string, filename: string) => {
     setLoading(path)
+
     try {
       const token = getAccessToken()
+
       const response = await fetch(path, {
         headers: { Authorization: `Bearer ${token}` },
       })
+
       if (!response.ok) throw new Error("Download fejlede")
+
       const blob = await response.blob()
+
       const url = URL.createObjectURL(blob)
+
       const link = document.createElement("a")
+
       link.href = url
+
       link.download = filename
+
       link.click()
+
       URL.revokeObjectURL(url)
     } finally {
       setLoading(null)

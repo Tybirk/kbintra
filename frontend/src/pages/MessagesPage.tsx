@@ -7,9 +7,13 @@ import {
   Suspense,
   type RefObject,
 } from "react"
+
 import { useParams, useNavigate, useLocation } from "react-router-dom"
+
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+
 import * as Sentry from "@sentry/react"
+
 import {
   Title,
   Text,
@@ -36,9 +40,13 @@ import {
   Popover,
   UnstyledButton,
 } from "@mantine/core"
+
 import { useDisclosure, useMediaQuery } from "@mantine/hooks"
+
 import { notifications } from "@mantine/notifications"
+
 import { showErrorNotification } from "../utils/errorNotification"
+
 import {
   IconPlus,
   IconMessage,
@@ -55,12 +63,17 @@ import {
   IconCopy,
   IconMoodSmile,
 } from "@tabler/icons-react"
+
 import dayjs from "dayjs"
 
 import { messagingApi, chatWs } from "../api/messaging"
+
 import { apiClient } from "../api/client"
+
 import UserPickerModal from "../components/UserPickerModal"
+
 import { useAuthStore } from "../store/authStore"
+
 import type {
   Conversation,
   ConversationDetail,
@@ -76,23 +89,36 @@ import type {
   User,
   MessageAttachment,
 } from "../types"
+
 import ChatRichTextEditor from "../components/ChatRichTextEditor"
+
 import { clearDraft } from "../utils/draftStorage"
+
 import { getFileIcon, getFileTypeColor } from "../components/FilePreview"
+
 import { AttachmentCarousel } from "../components/AttachmentCarousel"
+
 import FileDropzone from "../components/FileDropzone"
+
 import { filterFilesBySize } from "../config"
 
 const LazyPicker = lazy(() => import("@emoji-mart/react"))
+
 const emojiDataPromise = () => import("@emoji-mart/data").then((m) => m.default)
 
 // Default quick-reaction emojis
+
 const DEFAULT_EMOJIS: string[] = [
   "\u{1F44D}",
+
   "\u2764\uFE0F",
+
   "\u{1F602}",
+
   "\u{1F62E}",
+
   "\u{1F622}",
+
   "\u{1F389}",
 ]
 
@@ -102,63 +128,89 @@ interface EmojiPickerData {
 
 export default function MessagesPage() {
   const { user } = useAuthStore()
+
   const { conversationId } = useParams<{ conversationId?: string }>()
+
   const navigate = useNavigate()
+
   const queryClient = useQueryClient()
+
   const [selectedConversation, setSelectedConversation] =
     useState<number | null>(
       conversationId ? parseInt(conversationId, 10) : null,
     )
+
   const [isComposingNew, setIsComposingNew] = useState(false)
+
   const [isWsConnected, setIsWsConnected] = useState(chatWs.isConnected)
+
   const [conversationSearch, setConversationSearch] = useState("")
+
   const isMobile = useMediaQuery("(max-width: 768px)")
+
   const inConversationMobile =
     !!isMobile && (!!selectedConversation || isComposingNew)
+
   const selectedConversationRef = useRef(selectedConversation)
+
   const lastMarkedReadConversation = useRef<number | null>(null)
 
   // Sync URL param to state when URL changes (e.g., from notification link)
+
   useEffect(() => {
     const urlConversationId = conversationId
       ? parseInt(conversationId, 10)
       : null
+
     if (urlConversationId !== selectedConversation) {
       setSelectedConversation(urlConversationId)
+
       if (urlConversationId) {
         setIsComposingNew(false)
       }
     }
+
     // Note: selectedConversation is intentionally excluded to prevent sync loops.
+
     // This effect syncs URL -> state, not the other way around.
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId])
 
   // Fetch conversations
+
   const { data: conversations, isLoading: conversationsLoading } = useQuery({
     queryKey: ["conversations"],
+
     queryFn: messagingApi.getConversations,
   })
 
   const reportedBadConversations = useRef(false)
+
   if (
     conversations != null &&
     !Array.isArray(conversations) &&
     !reportedBadConversations.current
   ) {
     reportedBadConversations.current = true
+
     Sentry.captureMessage("MessagesPage: conversations is not an array", {
       level: "error",
+
       extra: { conversations: JSON.stringify(conversations).slice(0, 500) },
     })
   }
+
   const safeConversations = Array.isArray(conversations) ? conversations : []
+
   const filteredConversations = conversationSearch.trim()
     ? safeConversations.filter((conv) => {
         const term = conversationSearch.trim().toLowerCase()
+
         if (conv.other_participants.length === 0) {
           return "slettet bruger".includes(term)
         }
+
         return conv.other_participants.some(
           (p) =>
             p.first_name.toLowerCase().includes(term) ||
@@ -169,23 +221,28 @@ export default function MessagesPage() {
     : safeConversations
 
   // Fetch selected conversation detail
+
   const { data: activeConversation, isLoading: conversationLoading } = useQuery(
     {
       queryKey: ["conversation", selectedConversation],
+
       queryFn: () =>
         selectedConversation
           ? messagingApi.getConversation(selectedConversation)
           : null,
+
       enabled: !!selectedConversation,
     },
   )
 
   // Keep ref in sync with state
+
   useEffect(() => {
     selectedConversationRef.current = selectedConversation
   }, [selectedConversation])
 
   // Connect WebSocket on mount (stable — does not reconnect on conversation switch)
+
   useEffect(() => {
     chatWs.connect()
 
@@ -198,32 +255,45 @@ export default function MessagesPage() {
 
       if (wsData.type === "new_message") {
         // Update conversation list
+
         queryClient.invalidateQueries({ queryKey: ["conversations"] })
+
         // Update active conversation if it matches
+
         const currentConv = selectedConversationRef.current
+
         if (wsData.message.conversation === currentConv) {
           queryClient.setQueryData<ConversationDetail>(
             ["conversation", currentConv],
+
             (old) => {
               if (!old) return old
+
               // Check if message already exists to prevent duplicates
+
               if (old.messages.some((m) => m.id === wsData.message.id)) {
                 return old
               }
+
               return {
                 ...old,
+
                 messages: [...old.messages, wsData.message],
               }
             },
           )
+
           // Mark as read immediately since we're actively viewing this conversation
+
           chatWs.markRead(currentConv)
+
           queryClient.invalidateQueries({
             queryKey: ["messages", "unread-count"],
           })
         }
       } else if (wsData.type === "messages_read") {
         // Update read status in active conversation
+
         queryClient.invalidateQueries({
           queryKey: ["conversation", wsData.conversation_id],
         })
@@ -231,17 +301,23 @@ export default function MessagesPage() {
         queryClient.invalidateQueries({ queryKey: ["conversations"] })
       } else if (wsData.type === "message_edited") {
         const editedData = wsData as WsMessageEdited
+
         queryClient.setQueryData<ConversationDetail>(
           ["conversation", editedData.conversation_id],
+
           (old) => {
             if (!old) return old
+
             return {
               ...old,
+
               messages: old.messages.map((m) =>
                 m.id === editedData.message_id
                   ? {
                       ...m,
+
                       content: editedData.content,
+
                       edited_at: editedData.edited_at,
                     }
                   : m,
@@ -251,12 +327,16 @@ export default function MessagesPage() {
         )
       } else if (wsData.type === "message_deleted") {
         const deletedData = wsData as WsMessageDeleted
+
         queryClient.setQueryData<ConversationDetail>(
           ["conversation", deletedData.conversation_id],
+
           (old) => {
             if (!old) return old
+
             return {
               ...old,
+
               messages: old.messages.map((m) =>
                 m.id === deletedData.message_id
                   ? { ...m, is_deleted: true, content: "" }
@@ -267,25 +347,35 @@ export default function MessagesPage() {
         )
       } else if (wsData.type === "message_reacted") {
         const reactedData = wsData as WsMessageReacted
+
         const currentUserId = user?.id ?? -1
+
         queryClient.setQueryData<ConversationDetail>(
           ["conversation", reactedData.conversation_id],
+
           (old) => {
             if (!old) return old
+
             return {
               ...old,
+
               messages: old.messages.map((m) =>
                 m.id === reactedData.message_id
                   ? {
                       ...m,
+
                       reactions: reactedData.reactions.map(
                         (
                           r: WsMessageReactionEntry,
                         ): MessageReactionSummary => ({
                           reaction_type: r.reaction_type as ReactionType,
+
                           emoji: r.emoji,
+
                           count: r.count,
+
                           has_reacted: r.user_ids.includes(currentUserId),
+
                           users: r.users,
                         }),
                       ),
@@ -297,15 +387,20 @@ export default function MessagesPage() {
         )
       } else if (wsData.type === "conversation_renamed") {
         const renameData = wsData as WsConversationRenamed
+
         queryClient.setQueryData<ConversationDetail>(
           ["conversation", renameData.conversation_id],
+
           (old) => {
             if (!old) return old
+
             return { ...old, name: renameData.name }
           },
         )
+
         queryClient.setQueryData<Conversation[]>(["conversations"], (old) => {
           if (!old) return old
+
           return old.map((c) =>
             c.id === renameData.conversation_id
               ? { ...c, name: renameData.name }
@@ -317,35 +412,49 @@ export default function MessagesPage() {
 
     return () => {
       unsubConnection()
+
       unsubMessage()
     }
   }, [queryClient])
 
   // Mark messages as read when opening a conversation.
+
   // The backend auto-marks messages as read when the conversation is fetched,
+
   // so unread_count in the response is always 0 — we cannot rely on it as a
+
   // condition. Instead, run once per conversation selection (tracked via ref)
+
   // and invalidate the sidebar list and header badge caches.
+
   useEffect(() => {
     if (!selectedConversation || !activeConversation) return
+
     if (lastMarkedReadConversation.current === selectedConversation) return
+
     lastMarkedReadConversation.current = selectedConversation
+
     chatWs.markRead(selectedConversation)
+
     queryClient.invalidateQueries({ queryKey: ["conversations"] })
+
     queryClient.invalidateQueries({ queryKey: ["messages", "unread-count"] })
   }, [selectedConversation, activeConversation, queryClient])
 
   // Polling fallback when WebSocket is disconnected
+
   useEffect(() => {
     if (isWsConnected || !selectedConversation) {
       return
     }
 
     // Poll for new messages every 5 seconds when WebSocket is down
+
     const pollInterval = setInterval(() => {
       queryClient.invalidateQueries({
         queryKey: ["conversation", selectedConversation],
       })
+
       queryClient.invalidateQueries({ queryKey: ["conversations"] })
     }, 5000)
 
@@ -354,21 +463,29 @@ export default function MessagesPage() {
 
   const handleSelectConversation = (id: number) => {
     setSelectedConversation(id)
+
     setIsComposingNew(false)
+
     navigate(`/beskeder/${id}`, { replace: true })
   }
 
   const handleStartNewMessage = () => {
     setSelectedConversation(null)
+
     setIsComposingNew(true)
+
     navigate("/beskeder", { replace: true })
   }
 
   const handleNewConversationCreated = (newConversationId: number) => {
     setIsComposingNew(false)
+
     chatWs.joinConversation(newConversationId)
+
     setSelectedConversation(newConversationId)
+
     navigate(`/beskeder/${newConversationId}`, { replace: true })
+
     queryClient.invalidateQueries({ queryKey: ["conversations"] })
   }
 
@@ -378,10 +495,14 @@ export default function MessagesPage() {
 
   const handleLeaveConversation = async () => {
     if (!selectedConversation) return
+
     try {
       await messagingApi.leaveConversation(selectedConversation)
+
       setSelectedConversation(null)
+
       navigate("/beskeder", { replace: true })
+
       queryClient.invalidateQueries({ queryKey: ["conversations"] })
     } catch (error) {
       showErrorNotification(error, "Kunne ikke forlade samtalen")
@@ -392,15 +513,23 @@ export default function MessagesPage() {
     <Box
       style={{
         display: "flex",
+
         flexDirection: "column",
+
         overflow: "hidden",
+
         ...(inConversationMobile
           ? {
               // Full-screen overlay for mobile conversation view
+
               position: "fixed",
+
               top: "var(--app-shell-header-height, 60px)",
+
               left: 0,
+
               right: 0,
+
               bottom: 0,
             }
           : { height: "100%" }),
@@ -433,8 +562,11 @@ export default function MessagesPage() {
         radius={inConversationMobile ? 0 : "md"}
         style={{
           flex: 1,
+
           minHeight: inConversationMobile ? undefined : "400px",
+
           display: "flex",
+
           overflow: "hidden",
         }}
       >
@@ -442,13 +574,16 @@ export default function MessagesPage() {
         <Box
           style={{
             width: isMobile ? "100%" : 320,
+
             borderRight: isMobile
               ? "none"
               : "1px solid var(--mantine-color-default-border)",
+
             display:
               isMobile && (selectedConversation || isComposingNew)
                 ? "none"
                 : "flex",
+
             flexDirection: "column",
           }}
         >
@@ -502,11 +637,14 @@ export default function MessagesPage() {
         <Box
           style={{
             flex: 1,
+
             minWidth: 0,
+
             display:
               isMobile && !selectedConversation && !isComposingNew
                 ? "none"
                 : "flex",
+
             flexDirection: "column",
           }}
         >
@@ -528,25 +666,34 @@ export default function MessagesPage() {
                   isMobile
                     ? () => {
                         setSelectedConversation(null)
+
                         navigate("/beskeder", { replace: true })
                       }
                     : undefined
                 }
                 onSendMessage={async (
                   content,
+
                   attachments,
+
                   mentionedUserIds,
                 ) => {
                   const success = await chatWs.sendMessage(
                     selectedConversation,
+
                     content,
+
                     attachments,
+
                     mentionedUserIds,
                   )
+
                   if (!success) {
                     notifications.show({
                       title: "Fejl",
+
                       message: "Kunne ikke sende besked. Prøv igen.",
+
                       color: "red",
                     })
                   } else if (
@@ -555,9 +702,11 @@ export default function MessagesPage() {
                     mentionedUserIds.length > 0
                   ) {
                     // If we used REST fallback or sent attachments/mentions, refresh to get the new message
+
                     queryClient.invalidateQueries({
                       queryKey: ["conversation", selectedConversation],
                     })
+
                     queryClient.invalidateQueries({
                       queryKey: ["conversations"],
                     })
@@ -567,6 +716,7 @@ export default function MessagesPage() {
                   queryClient.invalidateQueries({
                     queryKey: ["conversation", selectedConversation],
                   })
+
                   queryClient.invalidateQueries({
                     queryKey: ["conversations"],
                   })
@@ -576,10 +726,13 @@ export default function MessagesPage() {
                 onMessageUpdated={(messageId, content, editedAt) => {
                   queryClient.setQueryData<ConversationDetail>(
                     ["conversation", selectedConversation],
+
                     (old) => {
                       if (!old) return old
+
                       return {
                         ...old,
+
                         messages: old.messages.map((m) =>
                           m.id === messageId
                             ? { ...m, content, edited_at: editedAt }
@@ -592,10 +745,13 @@ export default function MessagesPage() {
                 onMessageDeleted={(messageId) => {
                   queryClient.setQueryData<ConversationDetail>(
                     ["conversation", selectedConversation],
+
                     (old) => {
                       if (!old) return old
+
                       return {
                         ...old,
+
                         messages: old.messages.map((m) =>
                           m.id === messageId
                             ? { ...m, is_deleted: true, content: "" }
@@ -623,25 +779,35 @@ export default function MessagesPage() {
 
 interface ConversationItemProps {
   conversation: Conversation
+
   isSelected: boolean
+
   currentUserId?: number
+
   onClick: () => void
 }
 
 function ConversationItem({
   conversation,
+
   isSelected,
+
   currentUserId,
+
   onClick,
 }: ConversationItemProps) {
   const otherParticipants = conversation.other_participants
+
   const isGroupChat = otherParticipants.length > 1
+
   const hasNoParticipants = otherParticipants.length === 0
+
   const displayName = conversation.name
     ? conversation.name
     : hasNoParticipants
       ? "Slettet bruger"
       : otherParticipants.map((p) => p.first_name).join(", ")
+
   const avatar = otherParticipants[0]
 
   const unreadLabel =
@@ -656,9 +822,11 @@ function ConversationItem({
       aria-label={`Samtale med ${displayName}${unreadLabel}`}
       style={{
         cursor: "pointer",
+
         backgroundColor: isSelected
           ? "var(--mantine-color-blue-light)"
           : undefined,
+
         borderBottom: "1px solid var(--mantine-color-default-border)",
       }}
       onClick={onClick}
@@ -720,9 +888,13 @@ function ConversationItem({
                   ? `${otherParticipants.find((p) => p.id === conversation.last_message?.sender_id)?.first_name || ""}: `
                   : ""}
               {conversation.last_message.content
+
                 .replace(/<\/[^>]+>/g, " ")
+
                 .replace(/<[^>]*>/g, "")
+
                 .replace(/\s+/g, " ")
+
                 .trim()}
             </Text>
           )}
@@ -739,34 +911,53 @@ function ConversationItem({
 
 interface ChatAreaProps {
   conversation: ConversationDetail
+
   onSendMessage: (
     content: string,
+
     attachments: File[],
+
     mentionedUserIds: number[],
   ) => Promise<void> | void
+
   onBack?: () => void
+
   onParticipantsAdded?: () => void
+
   onLeave?: () => void
+
   onMessageUpdated?: (
     messageId: number,
+
     content: string,
+
     editedAt: string,
   ) => void
+
   onMessageDeleted?: (messageId: number) => void
+
   isMobile?: boolean
 }
 
 function getDateLabel(date: dayjs.Dayjs): string {
   const today = dayjs().startOf("day")
+
   const msgDay = date.startOf("day")
+
   const diff = today.diff(msgDay, "day")
+
   if (diff === 0) return "I dag"
+
   if (diff === 1) return "I går"
+
   if (diff < 7) {
     const name = date.format("dddd")
+
     return name.charAt(0).toUpperCase() + name.slice(1)
   }
+
   if (date.year() === today.year()) return date.format("D. MMMM")
+
   return date.format("D. MMMM YYYY")
 }
 
@@ -774,17 +965,25 @@ const TIME_GAP_MINUTES = 20
 
 interface MessageListProps {
   messages: Message[]
+
   isMobile: boolean | undefined
+
   onEdit?: (messageId: number, content: string, editedAt: string) => void
+
   onUnsend?: (messageId: number) => void
+
   scrollViewportRef: RefObject<HTMLDivElement | null>
 }
 
 const MessageList = memo(function MessageList({
   messages,
+
   isMobile,
+
   onEdit,
+
   onUnsend,
+
   scrollViewportRef,
 }: MessageListProps) {
   return (
@@ -792,42 +991,57 @@ const MessageList = memo(function MessageList({
       ref={scrollViewportRef}
       style={{
         flex: 1,
+
         overflowY: "auto",
+
         overflowX: "hidden",
+
         scrollbarGutter: "stable",
+
         padding: "var(--mantine-spacing-md)",
+
         overscrollBehavior: "contain",
       }}
     >
       <Stack gap="sm" style={{ width: "100%" }}>
         {messages.map((msg, idx) => {
           const prevMsg = idx > 0 ? messages[idx - 1] : null
+
           const nextMsg = idx < messages.length - 1 ? messages[idx + 1] : null
+
           const sameSenderAsPrev =
             prevMsg != null && prevMsg.sender.id === msg.sender.id
+
           const sameSenderAsNext =
             nextMsg != null && nextMsg.sender.id === msg.sender.id
+
           const timeSincePrev = prevMsg
             ? dayjs(msg.created_at).diff(dayjs(prevMsg.created_at), "minute")
             : Infinity
+
           const timeToNext = nextMsg
             ? dayjs(nextMsg.created_at).diff(dayjs(msg.created_at), "minute")
             : Infinity
+
           const showDateSeparator =
             !prevMsg ||
             !dayjs(msg.created_at).isSame(dayjs(prevMsg.created_at), "day")
+
           const showAvatar =
             !sameSenderAsPrev ||
             timeSincePrev >= TIME_GAP_MINUTES ||
             showDateSeparator
+
           const showTime =
             !sameSenderAsNext ||
             timeToNext >= TIME_GAP_MINUTES ||
             (nextMsg != null &&
               !dayjs(msg.created_at).isSame(dayjs(nextMsg.created_at), "day"))
+
           const dateLabel = showDateSeparator
             ? getDateLabel(dayjs(msg.created_at))
             : null
+
           return (
             <Box key={msg.id}>
               {dateLabel && (
@@ -862,72 +1076,109 @@ const MessageList = memo(function MessageList({
 
 function ChatArea({
   conversation,
+
   onSendMessage,
+
   onBack,
+
   onParticipantsAdded,
+
   onLeave,
+
   onMessageUpdated,
+
   onMessageDeleted,
+
   isMobile,
 }: ChatAreaProps) {
   const location = useLocation()
+
   const [message, setMessage] = useState("")
+
   const [attachments, setAttachments] = useState<File[]>([])
+
   const [mentionedUserIds, setMentionedUserIds] = useState<number[]>([])
+
   const [isSending, setIsSending] = useState(false)
+
   const [
     addParticipantsOpened,
+
     { open: openAddParticipants, close: closeAddParticipants },
   ] = useDisclosure(false)
+
   const [
     leaveConfirmOpened,
+
     { open: openLeaveConfirm, close: closeLeaveConfirm },
   ] = useDisclosure(false)
+
   const [
     participantsPopoverOpened,
+
     { toggle: toggleParticipantsPopover, close: closeParticipantsPopover },
   ] = useDisclosure(false)
+
   const [renameOpened, { open: openRename, close: closeRename }] =
     useDisclosure(false)
+
   const [renameName, setRenameName] = useState(conversation.name || "")
+
   const renameInputRef = useRef<HTMLInputElement>(null)
+
   const [isRenaming, setIsRenaming] = useState(false)
+
   const queryClient = useQueryClient()
+
   const scrollRef = useRef<HTMLDivElement>(null)
+
   const prevConversationIdRef = useRef<number | null>(null)
+
   const highlightedHashRef = useRef<string | null>(null)
 
   const addParticipantsMutation = useMutation({
     mutationFn: (userIds: number[]) =>
       messagingApi.addParticipants(conversation.id, userIds),
+
     onSuccess: () => {
       closeAddParticipants()
+
       onParticipantsAdded?.()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke tilføje deltagere")
     },
   })
 
   const otherParticipants = conversation.other_participants
+
   const isGroupChat = otherParticipants.length > 1
+
   const hasNoParticipants = otherParticipants.length === 0
+
   const displayName = conversation.name
     ? conversation.name
     : hasNoParticipants
       ? "Slettet bruger"
       : otherParticipants
+
           .map((p) => `${p.first_name} ${p.last_name}`)
+
           .join(", ")
 
   const handleRename = async () => {
     setIsRenaming(true)
+
     try {
       await messagingApi.renameConversation(conversation.id, renameName.trim())
+
       queryClient.invalidateQueries({
         queryKey: ["conversation", conversation.id],
       })
+
       queryClient.invalidateQueries({ queryKey: ["conversations"] })
+
       closeRename()
     } catch (error) {
       showErrorNotification(error, "Kunne ikke omdøbe samtalen")
@@ -937,57 +1188,80 @@ function ChatArea({
   }
 
   // Scroll to bottom when opening a conversation (instant) or when new messages arrive (smooth)
+
   useEffect(() => {
     if (scrollRef.current) {
       const isNewConversation =
         prevConversationIdRef.current !== conversation.id
 
       // If navigating with a hash fragment, scroll to that message instead
+
       if (location.hash && highlightedHashRef.current !== location.hash) {
         highlightedHashRef.current = location.hash
+
         const timer = setTimeout(() => {
           const el = document.getElementById(location.hash.slice(1))
+
           if (el) {
             el.scrollIntoView({ behavior: "smooth", block: "center" })
+
             el.style.transition = "box-shadow 0.3s ease"
+
             el.style.boxShadow = "0 0 0 3px var(--mantine-color-blue-4)"
+
             setTimeout(() => {
               el.style.boxShadow = ""
             }, 2000)
           }
         }, 100)
+
         prevConversationIdRef.current = conversation.id
+
         return () => clearTimeout(timer)
       }
 
       scrollRef.current.scrollTo({
         top: scrollRef.current.scrollHeight,
+
         behavior: isNewConversation ? "auto" : "smooth",
       })
+
       prevConversationIdRef.current = conversation.id
     }
   }, [conversation.id, conversation.messages, location.hash])
 
   const handleSend = async () => {
     const textContent = message.trim()
+
     if ((!textContent && attachments.length === 0) || isSending) return
 
     setIsSending(true)
+
     const messageContent = message
+
     const messageAttachments = [...attachments]
+
     const messageMentions = [...mentionedUserIds]
+
     setMessage("") // Clear immediately for better UX
+
     setAttachments([])
+
     setMentionedUserIds([])
+
     clearDraft("msg-" + conversation.id)
 
     try {
       await onSendMessage(messageContent, messageAttachments, messageMentions)
     } catch (error) {
       // Restore message, attachments, and mentions if send failed
+
       setMessage(messageContent)
+
       setAttachments(messageAttachments)
+
       setMentionedUserIds(messageMentions)
+
       console.error("Failed to send message:", error)
     } finally {
       setIsSending(false)
@@ -996,9 +1270,11 @@ function ChatArea({
 
   const handleDrop = (files: File[]) => {
     const { validFiles, errors } = filterFilesBySize(files)
+
     for (const error of errors) {
       notifications.show({ color: "red", message: error })
     }
+
     if (validFiles.length > 0) {
       setAttachments((prev) => [...prev, ...validFiles])
     }
@@ -1009,8 +1285,11 @@ function ChatArea({
       onDrop={handleDrop}
       style={{
         flex: 1,
+
         display: "flex",
+
         flexDirection: "column",
+
         overflow: "hidden",
       }}
     >
@@ -1040,9 +1319,13 @@ function ChatArea({
                   onClick={toggleParticipantsPopover}
                   style={{
                     display: "flex",
+
                     alignItems: "center",
+
                     gap: 8,
+
                     minWidth: 0,
+
                     flex: 1,
                   }}
                 >
@@ -1116,6 +1399,7 @@ function ChatArea({
                 leftSection={<IconPencil size={16} />}
                 onClick={() => {
                   setRenameName(conversation.name || "")
+
                   openRename()
                 }}
               >
@@ -1173,6 +1457,7 @@ function ChatArea({
               color="red"
               onClick={() => {
                 closeLeaveConfirm()
+
                 onLeave?.()
               }}
             >
@@ -1192,6 +1477,7 @@ function ChatArea({
         <form
           onSubmit={(e) => {
             e.preventDefault()
+
             handleRename()
           }}
         >
@@ -1250,6 +1536,7 @@ function ChatArea({
 
 type MessageSegment = {
   type: "text" | "link"
+
   value: string
 }
 
@@ -1266,8 +1553,11 @@ function isGiphyMediaUrl(url: string): boolean {
 function truncateUrl(url: string, maxLen = 40): string {
   try {
     const parsed = new URL(url)
+
     const display = parsed.hostname + parsed.pathname
+
     if (display.length <= maxLen) return display
+
     return display.slice(0, maxLen) + "…"
   } catch {
     return url.length > maxLen ? url.slice(0, maxLen) + "…" : url
@@ -1276,20 +1566,27 @@ function truncateUrl(url: string, maxLen = 40): string {
 
 function MessageContent({
   content,
+
   isOwn,
 }: {
   content: string
+
   isOwn: boolean
 }) {
   const parts: MessageSegment[] = []
+
   let lastIndex = 0
+
   for (const match of content.matchAll(URL_REGEX)) {
     if (match.index > lastIndex) {
       parts.push({ type: "text", value: content.slice(lastIndex, match.index) })
     }
+
     parts.push({ type: "link", value: match[0] })
+
     lastIndex = match.index + match[0].length
   }
+
   if (lastIndex < content.length) {
     parts.push({ type: "text", value: content.slice(lastIndex) })
   }
@@ -1306,9 +1603,13 @@ function MessageContent({
             alt="GIF"
             style={{
               maxWidth: "200px",
+
               borderRadius: "var(--mantine-radius-sm)",
+
               display: "block",
+
               marginTop: 4,
+
               marginBottom: 4,
             }}
           />
@@ -1320,6 +1621,7 @@ function MessageContent({
             rel="noopener noreferrer"
             style={{
               color: isOwn ? "white" : undefined,
+
               textDecoration: "underline",
             }}
           >
@@ -1335,10 +1637,15 @@ function MessageContent({
 
 interface MessageBubbleProps {
   message: Message
+
   showAvatar: boolean
+
   showTime: boolean
+
   showInlineTime?: boolean
+
   onEdit?: (messageId: number, content: string, editedAt: string) => void
+
   onUnsend?: (messageId: number) => void
 }
 
@@ -1348,38 +1655,58 @@ function isImageFile(filename: string): boolean {
 
 const MessageBubble = memo(function MessageBubble({
   message,
+
   showAvatar,
+
   showTime,
+
   showInlineTime,
+
   onEdit,
+
   onUnsend,
 }: MessageBubbleProps) {
   const [carouselOpened, setCarouselOpened] = useState(false)
+
   const [carouselInitialIndex, setCarouselInitialIndex] = useState(0)
+
   const [menuOpened, setMenuOpened] = useState(false)
+
   const [reactionPickerOpened, setReactionPickerOpened] = useState(false)
+
   const [fullEmojiPickerOpened, setFullEmojiPickerOpened] = useState(false)
+
   const [emojiData, setEmojiData] = useState<object | null>(null)
+
   const [isHovered, setIsHovered] = useState(false)
+
   const [isEditing, setIsEditing] = useState(false)
+
   const [editContent, setEditContent] = useState(message.content)
+
   const [isSavingEdit, setIsSavingEdit] = useState(false)
+
   const isMobileDevice = useMediaQuery("(max-width: 768px)")
+
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const reactionMutation = useMutation({
     mutationFn: (reactionType: ReactionType) =>
       messagingApi.toggleMessageReaction(message.id, reactionType),
+
     onSuccess: () => {
       setReactionPickerOpened(false)
+
       setFullEmojiPickerOpened(false)
     },
+
     onError: (error: unknown) =>
       showErrorNotification(error, "Kunne ikke tilføje reaktion"),
   })
 
   const handleTouchStart = () => {
     if (message.is_deleted || message.is_system_message) return
+
     longPressTimer.current = setTimeout(() => {
       setReactionPickerOpened(true)
     }, 500)
@@ -1388,35 +1715,49 @@ const MessageBubble = memo(function MessageBubble({
   const handleTouchEnd = () => {
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current)
+
       longPressTimer.current = null
     }
   }
 
   const handleCopy = () => {
     const plainText = message.content
+
       .replace(/<\/[^>]+>/g, " ")
+
       .replace(/<[^>]*>/g, "")
+
       .replace(/\s+/g, " ")
+
       .trim()
+
     navigator.clipboard.writeText(plainText).catch(() => {})
   }
 
   const handleStartEdit = () => {
     setEditContent(message.content)
+
     setIsEditing(true)
   }
 
   const handleSaveEdit = async () => {
     const trimmed = editContent.trim()
+
     if (!trimmed || isSavingEdit) return
+
     setIsSavingEdit(true)
+
     try {
       const updated = await messagingApi.editMessage(message.id, trimmed)
+
       onEdit?.(
         message.id,
+
         updated.content,
+
         updated.edited_at ?? new Date().toISOString(),
       )
+
       setIsEditing(false)
     } catch (error) {
       showErrorNotification(error, "Kunne ikke redigere besked")
@@ -1428,6 +1769,7 @@ const MessageBubble = memo(function MessageBubble({
   const handleUnsend = async () => {
     try {
       await messagingApi.unsendMessage(message.id)
+
       onUnsend?.(message.id)
     } catch (error) {
       showErrorNotification(error, "Kunne ikke fortryde afsendelse")
@@ -1435,6 +1777,7 @@ const MessageBubble = memo(function MessageBubble({
   }
 
   // Render system messages differently
+
   if (message.is_system_message) {
     return (
       <Center py="xs">
@@ -1446,8 +1789,10 @@ const MessageBubble = memo(function MessageBubble({
   }
 
   // Render deleted messages as a placeholder
+
   if (message.is_deleted) {
     const isOwn = message.is_own
+
     return (
       <Group
         id={`msg-${message.id}`}
@@ -1471,6 +1816,7 @@ const MessageBubble = memo(function MessageBubble({
           radius="lg"
           style={{
             backgroundColor: "var(--mantine-color-default-hover)",
+
             border: "1px dashed var(--mantine-color-default-border)",
           }}
         >
@@ -1483,19 +1829,26 @@ const MessageBubble = memo(function MessageBubble({
   }
 
   const isOwn = message.is_own
+
   const hasContent = message.content.trim().length > 0
+
   const hasAttachments = message.attachments && message.attachments.length > 0
 
   // Sort attachments: images first, then other files
+
   const imageAttachments =
     message.attachments?.filter((att) => isImageFile(att.name)) || []
+
   const otherAttachments =
     message.attachments?.filter((att) => !isImageFile(att.name)) || []
+
   const allAttachments = [...imageAttachments, ...otherAttachments]
 
   const handleAttachmentClick = (attachment: MessageAttachment) => {
     const index = allAttachments.findIndex((att) => att.id === attachment.id)
+
     setCarouselInitialIndex(index >= 0 ? index : 0)
+
     setCarouselOpened(true)
   }
 
@@ -1514,7 +1867,9 @@ const MessageBubble = memo(function MessageBubble({
           color="gray"
           style={{
             opacity: isMobileDevice || isHovered || menuOpened ? 1 : 0,
+
             transition: "opacity 0.1s",
+
             flexShrink: 0,
           }}
           onMouseDown={(e) => e.preventDefault()}
@@ -1555,7 +1910,9 @@ const MessageBubble = memo(function MessageBubble({
     if (!emojiData) {
       emojiDataPromise().then(setEmojiData)
     }
+
     setReactionPickerOpened(false)
+
     setFullEmojiPickerOpened((o) => !o)
   }
 
@@ -1579,16 +1936,20 @@ const MessageBubble = memo(function MessageBubble({
             color="gray"
             style={{
               display: isMobileDevice ? "none" : undefined,
+
               opacity:
                 isHovered || reactionPickerOpened || fullEmojiPickerOpened
                   ? 1
                   : 0,
+
               transition: "opacity 0.1s",
+
               flexShrink: 0,
             }}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
               setFullEmojiPickerOpened(false)
+
               setReactionPickerOpened((o) => !o)
             }}
             aria-label="Tilf\u00f8j reaktion"
@@ -1602,6 +1963,7 @@ const MessageBubble = memo(function MessageBubble({
               const existing = (message.reactions ?? []).find(
                 (r) => r.reaction_type === emoji,
               )
+
               return (
                 <ActionIcon
                   key={emoji}
@@ -1665,6 +2027,7 @@ const MessageBubble = memo(function MessageBubble({
   )
 
   // Mobile reaction picker — anchor is fixed bottom-right so popup always appears on-screen
+
   const mobileReactionPicker = isMobileDevice && (
     <Popover
       opened={reactionPickerOpened}
@@ -1677,9 +2040,13 @@ const MessageBubble = memo(function MessageBubble({
         <Box
           style={{
             position: "fixed",
+
             bottom: 80,
+
             right: 16,
+
             width: 1,
+
             height: 1,
           }}
         />
@@ -1690,6 +2057,7 @@ const MessageBubble = memo(function MessageBubble({
             const existing = (message.reactions ?? []).find(
               (r) => r.reaction_type === emoji,
             )
+
             return (
               <ActionIcon
                 key={emoji}
@@ -1712,6 +2080,7 @@ const MessageBubble = memo(function MessageBubble({
             size="md"
             onClick={() => {
               setReactionPickerOpened(false)
+
               handleOpenFullEmojiPicker()
             }}
           >
@@ -1726,6 +2095,7 @@ const MessageBubble = memo(function MessageBubble({
             style={{ borderRadius: "var(--mantine-radius-sm)" }}
             onClick={() => {
               handleCopy()
+
               setReactionPickerOpened(false)
             }}
           >
@@ -1741,6 +2111,7 @@ const MessageBubble = memo(function MessageBubble({
               style={{ borderRadius: "var(--mantine-radius-sm)" }}
               onClick={() => {
                 handleStartEdit()
+
                 setReactionPickerOpened(false)
               }}
             >
@@ -1757,6 +2128,7 @@ const MessageBubble = memo(function MessageBubble({
               style={{ borderRadius: "var(--mantine-radius-sm)" }}
               onClick={() => {
                 void handleUnsend()
+
                 setReactionPickerOpened(false)
               }}
             >
@@ -1792,8 +2164,10 @@ const MessageBubble = memo(function MessageBubble({
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault()
+
               void handleSaveEdit()
             }
+
             if (e.key === "Escape") {
               setIsEditing(false)
             }
@@ -1832,6 +2206,7 @@ const MessageBubble = memo(function MessageBubble({
         onMouseLeave={() => setIsHovered(false)}
         onContextMenu={(e) => {
           e.preventDefault()
+
           setMenuOpened(true)
         }}
         onTouchStart={handleTouchStart}
@@ -1880,7 +2255,9 @@ const MessageBubble = memo(function MessageBubble({
               ))}
               {otherAttachments.map((attachment) => {
                 const FileIcon = getFileIcon(attachment.name)
+
                 const iconColor = getFileTypeColor(attachment.name)
+
                 return (
                   <Paper
                     key={attachment.id}
@@ -1889,9 +2266,13 @@ const MessageBubble = memo(function MessageBubble({
                     withBorder
                     style={{
                       display: "inline-flex",
+
                       alignItems: "center",
+
                       gap: 8,
+
                       cursor: "pointer",
+
                       maxWidth: "100%",
                     }}
                     onClick={() => handleAttachmentClick(attachment)}
@@ -1932,9 +2313,13 @@ const MessageBubble = memo(function MessageBubble({
             <Box
               style={{
                 display: "flex",
+
                 justifyContent: isOwn ? "flex-end" : "flex-start",
+
                 alignItems: "flex-end",
+
                 gap: 6,
+
                 width: "100%",
               }}
             >
@@ -1967,6 +2352,7 @@ const MessageBubble = memo(function MessageBubble({
                   backgroundColor: isOwn
                     ? "var(--mantine-color-blue-6)"
                     : "var(--mantine-color-default-hover)",
+
                   maxWidth: showInlineTime ? "calc(100% - 40px)" : "100%",
                 }}
               >
@@ -1974,7 +2360,9 @@ const MessageBubble = memo(function MessageBubble({
                   size="sm"
                   style={{
                     color: isOwn ? "white" : "inherit",
+
                     whiteSpace: "pre-wrap",
+
                     overflowWrap: "anywhere",
                   }}
                 >
@@ -2042,17 +2430,23 @@ const MessageBubble = memo(function MessageBubble({
                 py={2}
                 style={{
                   display: "inline-flex",
+
                   alignItems: "center",
+
                   gap: 4,
+
                   borderRadius: "var(--mantine-radius-xl)",
+
                   backgroundColor: reaction.has_reacted
                     ? "var(--mantine-color-blue-light)"
                     : "var(--mantine-color-default-hover)",
+
                   border: `1px solid ${
                     reaction.has_reacted
                       ? "var(--mantine-color-blue-light-color)"
                       : "var(--mantine-color-default-border)"
                   }`,
+
                   cursor: "pointer",
                 }}
               >
@@ -2086,54 +2480,80 @@ const MessageBubble = memo(function MessageBubble({
 
 interface NewConversationAreaProps {
   onBack?: () => void
+
   onSuccess: (conversationId: number) => void
 }
 
 function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
   const { user: currentUser } = useAuthStore()
+
   const queryClient = useQueryClient()
+
   const [search, setSearch] = useState("")
+
   const [selectedUsers, setSelectedUsers] = useState<User[]>([])
+
   const [message, setMessage] = useState("")
+
   const [attachments, setAttachments] = useState<File[]>([])
+
   const [isSearchFocused, setIsSearchFocused] = useState(false)
+
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   // Fetch users for search
+
   const { data: users } = useQuery({
     queryKey: ["users"],
+
     queryFn: async () => {
       const response = await apiClient.get("/users/")
+
       return (response.data.results ?? response.data) as User[]
     },
   })
 
   const createMutation = useMutation({
     mutationFn: messagingApi.createConversation,
+
     onSuccess: (data) => {
       // Seed the conversation cache with the full response so messages are
+
       // visible immediately when navigating to the conversation, without
+
       // waiting for a separate fetch or WebSocket event.
+
       queryClient.setQueryData<ConversationDetail>(
         ["conversation", data.id],
+
         data,
       )
+
       queryClient.invalidateQueries({ queryKey: ["conversations"] })
+
       onSuccess(data.id)
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke starte samtale")
     },
   })
 
   const searchTerm = search.trim().toLowerCase()
+
   const filteredUsers = users?.filter((u) => {
     if (u.id === currentUser?.id) return false
+
     if (selectedUsers.some((s) => s.id === u.id)) return false
+
     if (!searchTerm) return true
+
     const firstName = (u.first_name || "").toLowerCase()
+
     const lastName = (u.last_name || "").toLowerCase()
+
     const fullName = `${firstName} ${lastName}`
+
     return (
       firstName.includes(searchTerm) ||
       lastName.includes(searchTerm) ||
@@ -2143,7 +2563,9 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
 
   const handleSelectUser = (user: User) => {
     setSelectedUsers((prev) => [...prev, user])
+
     setSearch("")
+
     searchInputRef.current?.focus()
   }
 
@@ -2153,9 +2575,12 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
 
   const handleSend = async () => {
     if (selectedUsers.length === 0) return
+
     createMutation.mutate({
       participant_ids: selectedUsers.map((u) => u.id),
+
       initial_message: message.trim() || undefined,
+
       attachments: attachments.length > 0 ? attachments : undefined,
     })
   }
@@ -2208,6 +2633,7 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
                 }
                 styles={{
                   root: { paddingLeft: 4, paddingRight: 2 },
+
                   section: { marginRight: 2 },
                 }}
               >
@@ -2256,6 +2682,7 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
                       p="sm"
                       style={{
                         cursor: "pointer",
+
                         borderBottom:
                           "1px solid var(--mantine-color-default-border)",
                       }}

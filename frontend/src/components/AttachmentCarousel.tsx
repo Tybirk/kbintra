@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+
 import {
   Modal,
   Image,
@@ -12,8 +13,11 @@ import {
   Code,
   ScrollArea,
 } from "@mantine/core"
+
 import { Carousel } from "@mantine/carousel"
+
 import { useMediaQuery } from "@mantine/hooks"
+
 import {
   IconDownload,
   IconChevronLeft,
@@ -23,41 +27,56 @@ import {
   IconFileTypeDoc,
   IconFileTypePpt,
 } from "@tabler/icons-react"
+
 import { getFileType, getFileIcon, getFileTypeColor } from "./FilePreview"
 
 interface Attachment {
   id: number
+
   name: string
+
   file_url: string
+
   preview_html?: string
 }
 
 interface AttachmentCarouselProps {
   attachments: Attachment[]
+
   opened: boolean
+
   onClose: () => void
+
   initialIndex?: number
 }
 
 export function AttachmentCarousel({
   attachments,
+
   opened,
+
   onClose,
+
   initialIndex = 0,
 }: AttachmentCarouselProps) {
   const isMobile = useMediaQuery("(max-width: 768px)")
 
   // Separate images and other files, images come first
+
   const imageAttachments = attachments.filter(
     (att) => getFileType(att.name) === "image",
   )
+
   const otherAttachments = attachments.filter(
     (att) => getFileType(att.name) !== "image",
   )
+
   const orderedAttachments = [...imageAttachments, ...otherAttachments]
 
   // Recalculate initialIndex based on the original attachment's position in ordered list
+
   const originalAttachment = attachments[initialIndex]
+
   const adjustedInitialIndex = originalAttachment
     ? orderedAttachments.findIndex((att) => att.id === originalAttachment.id)
     : 0
@@ -81,10 +100,13 @@ export function AttachmentCarousel({
       styles={{
         body: {
           padding: isMobile ? 0 : undefined,
+
           height: isMobile ? "calc(100vh - 60px)" : "75vh",
         },
+
         content: {
           display: "flex",
+
           flexDirection: "column",
         },
       }}
@@ -107,25 +129,38 @@ export function AttachmentCarousel({
           emblaOptions={{ loop: true }}
           styles={{
             root: { height: "100%" },
+
             viewport: { height: "100%" },
+
             container: { height: "100%" },
+
             slide: { height: "100%" },
+
             control: {
               backgroundColor: "var(--mantine-color-default)",
+
               border: "1px solid var(--mantine-color-default-border)",
+
               boxShadow: "var(--mantine-shadow-sm)",
+
               "&[data-inactive]": {
                 opacity: 0,
+
                 cursor: "default",
               },
             },
+
             indicators: {
               bottom: 10,
             },
+
             indicator: {
               width: 10,
+
               height: 10,
+
               backgroundColor: "var(--mantine-color-gray-4)",
+
               "&[data-active]": {
                 backgroundColor: "var(--mantine-color-blue-6)",
               },
@@ -149,41 +184,56 @@ export function AttachmentCarousel({
 
 interface SlideContentProps {
   attachment: Attachment
+
   isMobile: boolean | undefined
+
   opened: boolean
 }
 
 function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
   const [textContent, setTextContent] = useState<string | null>(null)
+
   const [loading, setLoading] = useState(false)
+
   const [error, setError] = useState<string | null>(null)
 
   const fileType = getFileType(attachment.name)
+
   const isPwa = window.matchMedia("(display-mode: standalone)").matches
 
   // Fetch content for text files
+
   useEffect(() => {
     if (!opened) {
       setTextContent(null)
+
       setError(null)
+
       return
     }
 
     if (fileType === "text") {
       setLoading(true)
+
       setError(null)
 
       fetch(attachment.file_url)
+
         .then((res) => {
           if (!res.ok) throw new Error("Failed to load file")
+
           return res.text()
         })
+
         .then((text) => {
           setTextContent(text)
+
           setLoading(false)
         })
+
         .catch(() => {
           setError("Kunne ikke indlæse filindholdet")
+
           setLoading(false)
         })
     }
@@ -191,29 +241,44 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
 
   const handleDownload = () => {
     fetch(attachment.file_url)
+
       .then((res) => res.blob())
+
       .then((blob) => {
         const blobUrl = URL.createObjectURL(blob)
+
         const a = document.createElement("a")
+
         a.href = blobUrl
+
         a.download = attachment.name
+
         document.body.appendChild(a)
+
         a.click()
+
         document.body.removeChild(a)
+
         URL.revokeObjectURL(blobUrl)
       })
   }
 
   // Image preview
+
   if (fileType === "image") {
     return (
       <Box
         style={{
           display: "flex",
+
           flexDirection: "column",
+
           alignItems: "center",
+
           justifyContent: "center",
+
           height: "100%",
+
           padding: isMobile ? 0 : "1rem",
         }}
       >
@@ -223,6 +288,7 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
           fit="contain"
           style={{
             maxHeight: isMobile ? "calc(100vh - 140px)" : "65vh",
+
             maxWidth: "100%",
           }}
         />
@@ -241,9 +307,11 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
   }
 
   // PDF preview
+
   if (fileType === "pdf") {
     if (isPwa) {
       // In PWA, iframes are unreliable — open in browser/system PDF viewer instead
+
       return (
         <Stack
           align="center"
@@ -268,6 +336,7 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
         </Stack>
       )
     }
+
     return (
       <Stack gap="md" style={{ height: "100%" }} p={isMobile ? "xs" : "md"}>
         <Box style={{ flex: 1, minHeight: 0 }}>
@@ -275,8 +344,11 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
             src={attachment.file_url}
             style={{
               width: "100%",
+
               height: "100%",
+
               border: "none",
+
               borderRadius: "8px",
             }}
             title={attachment.name}
@@ -297,6 +369,7 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
   }
 
   // Text file preview
+
   if (fileType === "text") {
     if (loading) {
       return (
@@ -305,6 +378,7 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
         </Center>
       )
     }
+
     if (error) {
       return (
         <Center h="100%">
@@ -312,6 +386,7 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
         </Center>
       )
     }
+
     return (
       <Stack gap="md" style={{ height: "100%" }} p={isMobile ? "xs" : "md"}>
         <ScrollArea style={{ flex: 1 }}>
@@ -337,6 +412,7 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
   }
 
   // Word document
+
   if (fileType === "word") {
     if (attachment.preview_html) {
       return (
@@ -346,7 +422,9 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
               p="md"
               style={{
                 backgroundColor: "var(--mantine-color-default-hover)",
+
                 borderRadius: "var(--mantine-radius-md)",
+
                 overflowWrap: "break-word",
               }}
               dangerouslySetInnerHTML={{ __html: attachment.preview_html }}
@@ -365,6 +443,7 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
         </Stack>
       )
     }
+
     return (
       <Stack
         align="center"
@@ -393,6 +472,7 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
   }
 
   // PowerPoint presentation
+
   if (fileType === "powerpoint") {
     return (
       <Stack
@@ -422,7 +502,9 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
   }
 
   // Other/unknown file types
+
   const FileIcon = getFileIcon(attachment.name)
+
   const iconColor = getFileTypeColor(attachment.name)
 
   return (

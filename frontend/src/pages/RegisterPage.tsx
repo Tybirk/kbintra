@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react"
+
 import { useNavigate, useSearchParams, Link } from "react-router-dom"
+
 import {
   Container,
   Paper,
@@ -14,26 +16,37 @@ import {
   Loader,
   Center,
 } from "@mantine/core"
+
 import { notifications } from "@mantine/notifications"
 
 import { authApi } from "../api/auth"
 
 export default function RegisterPage() {
   const navigate = useNavigate()
+
   const [searchParams] = useSearchParams()
+
   const token = searchParams.get("token") || ""
 
   const [isValidating, setIsValidating] = useState(true)
+
   const [isValid, setIsValid] = useState(false)
+
   const [invitationEmail, setInvitationEmail] = useState("")
+
   const [error, setError] = useState<string | null>(null)
+
   const [isLoading, setIsLoading] = useState(false)
 
   const [formData, setFormData] = useState({
     email: "",
+
     firstName: "",
+
     lastName: "",
+
     password: "",
+
     passwordConfirm: "",
   })
 
@@ -41,16 +54,21 @@ export default function RegisterPage() {
     const validateToken = async () => {
       if (!token) {
         setIsValidating(false)
+
         setError(
           "Ingen invitationskode angivet. Brug venligst linket fra din invitationsmail.",
         )
+
         return
       }
 
       try {
         const result = await authApi.validateInvitation(token)
+
         setIsValid(result.valid)
+
         setInvitationEmail(result.email)
+
         setFormData((prev) => ({ ...prev, email: result.email }))
       } catch {
         setError("Ugyldig eller udløbet invitationskode.")
@@ -64,15 +82,18 @@ export default function RegisterPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
     setError(null)
 
     if (formData.password !== formData.passwordConfirm) {
       setError("Adgangskoderne matcher ikke.")
+
       return
     }
 
     if (formData.password.length < 8) {
       setError("Adgangskoden skal være mindst 8 tegn.")
+
       return
     }
 
@@ -81,16 +102,23 @@ export default function RegisterPage() {
     try {
       await authApi.register({
         token,
+
         email: formData.email,
+
         password: formData.password,
+
         password_confirm: formData.passwordConfirm,
+
         first_name: formData.firstName,
+
         last_name: formData.lastName,
       })
 
       notifications.show({
         title: "Registrering gennemført!",
+
         message: "Du kan nu logge ind med dine oplysninger.",
+
         color: "green",
       })
 
@@ -100,9 +128,12 @@ export default function RegisterPage() {
         const axiosError = err as {
           response?: { data?: Record<string, string[]> }
         }
+
         const data = axiosError.response?.data
+
         if (data) {
           const messages = Object.values(data).flat().join(" ")
+
           setError(messages)
         } else {
           setError("Registrering mislykkedes. Prøv venligst igen.")
@@ -178,6 +209,7 @@ export default function RegisterPage() {
               value={formData.firstName}
               onChange={(e) => {
                 const value = e.currentTarget.value
+
                 setFormData((prev) => ({ ...prev, firstName: value }))
               }}
             />
@@ -189,6 +221,7 @@ export default function RegisterPage() {
               value={formData.lastName}
               onChange={(e) => {
                 const value = e.currentTarget.value
+
                 setFormData((prev) => ({ ...prev, lastName: value }))
               }}
             />
@@ -200,6 +233,7 @@ export default function RegisterPage() {
               value={formData.password}
               onChange={(e) => {
                 const value = e.currentTarget.value
+
                 setFormData((prev) => ({ ...prev, password: value }))
               }}
               description="Mindst 8 tegn"
@@ -212,6 +246,7 @@ export default function RegisterPage() {
               value={formData.passwordConfirm}
               onChange={(e) => {
                 const value = e.currentTarget.value
+
                 setFormData((prev) => ({ ...prev, passwordConfirm: value }))
               }}
             />

@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react"
+
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+
 import {
   Title,
   Text,
@@ -11,13 +13,19 @@ import {
   SimpleGrid,
   SegmentedControl,
 } from "@mantine/core"
+
 import { useDebouncedCallback } from "@mantine/hooks"
+
 import { showErrorNotification } from "../utils/errorNotification"
 
 import { foodApi } from "../api/food"
+
 import { BackButton } from "../components/BackButton"
+
 import { MealFormFields } from "../components/MealFormFields"
+
 import { useAuthStore } from "../store/authStore"
+
 import type {
   MealPreference,
   CreateMealPreferenceData,
@@ -27,15 +35,20 @@ import type {
 
 const DAYS = [
   { value: 0, label: "Mandag" },
+
   { value: 1, label: "Tirsdag" },
+
   { value: 2, label: "Onsdag" },
+
   { value: 3, label: "Torsdag" },
 ]
 
 export default function FoodPreferencesPage() {
   const queryClient = useQueryClient()
+
   const { data: preferences, isLoading } = useQuery({
     queryKey: ["food", "preferences"],
+
     queryFn: foodApi.getPreferences,
   })
 
@@ -48,7 +61,9 @@ export default function FoodPreferencesPage() {
   }
 
   // Create a map of preferences by day
+
   const prefsByDay = new Map<number, MealPreference>()
+
   preferences?.forEach((pref) => {
     prefsByDay.set(pref.day_of_week, pref)
   })
@@ -87,21 +102,31 @@ export default function FoodPreferencesPage() {
 
 interface PreferenceCardProps {
   dayOfWeek: number
+
   dayName: string
+
   preference?: MealPreference
+
   isWednesday: boolean
+
   onSaved: () => void
 }
 
 function PreferenceCard({
   dayOfWeek,
+
   dayName,
+
   preference,
+
   isWednesday,
+
   onSaved,
 }: PreferenceCardProps) {
   const queryClient = useQueryClient()
+
   const { user } = useAuthStore()
+
   const houseCount = user?.house_inhabitant_count || 1
 
   const isAllZero =
@@ -111,33 +136,46 @@ function PreferenceCard({
     preference !== undefined
 
   const [adultsMeat, setAdultsMeat] = useState(preference?.adults_meat ?? 0)
+
   const [adultsVeg, setAdultsVeg] = useState(
     preference?.adults_veg ?? houseCount,
   )
+
   const [children, setChildren] = useState(preference?.children_count ?? 0)
+
   const [diningOption, setDiningOption] = useState<DiningOption>(
     preference?.dining_option ?? "eat_in",
   )
+
   const [seatingTime, setSeatingTime] = useState<SeatingTime>(
     preference?.seating_time ?? "17:30",
   )
+
   const [isEating, setIsEating] = useState(!isAllZero)
 
   const [isSaving, setIsSaving] = useState(false)
+
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
+
   const [hasInitialized, setHasInitialized] = useState(false)
 
   const createMutation = useMutation({
     mutationFn: (data: CreateMealPreferenceData) =>
       foodApi.createPreference(data),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "preferences"] })
+
       setLastSaved(new Date())
+
       setIsSaving(false)
+
       onSaved()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke gemme præferencer.")
+
       setIsSaving(false)
     },
   })
@@ -145,14 +183,20 @@ function PreferenceCard({
   const updateMutation = useMutation({
     mutationFn: (data: Partial<CreateMealPreferenceData>) =>
       foodApi.updatePreference(preference!.id, data),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "preferences"] })
+
       setLastSaved(new Date())
+
       setIsSaving(false)
+
       onSaved()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke opdatere præferencer.")
+
       setIsSaving(false)
     },
   })
@@ -160,26 +204,35 @@ function PreferenceCard({
   const debouncedSave = useDebouncedCallback(
     (data: CreateMealPreferenceData, prefId: number | undefined) => {
       setIsSaving(true)
+
       if (prefId) {
         updateMutation.mutate(data)
       } else {
         createMutation.mutate(data)
       }
     },
+
     500,
   )
 
   const handleEatingChange = (val: string) => {
     const eating = val === "yes"
+
     setIsEating(eating)
+
     if (!eating) {
       setAdultsMeat(0)
+
       setAdultsVeg(0)
+
       setChildren(0)
     } else {
       // Restore sensible defaults
+
       setAdultsMeat(isWednesday ? houseCount : 0)
+
       setAdultsVeg(isWednesday ? 0 : houseCount)
+
       setChildren(0)
     }
   }
@@ -187,18 +240,25 @@ function PreferenceCard({
   useEffect(() => {
     if (!hasInitialized) {
       setHasInitialized(true)
+
       return
     }
 
     debouncedSave(
       {
         day_of_week: dayOfWeek,
+
         adults_meat: adultsMeat,
+
         adults_veg: adultsVeg,
+
         children_count: children,
+
         dining_option: diningOption,
+
         seating_time: seatingTime,
       },
+
       preference?.id,
     )
   }, [adultsMeat, adultsVeg, children, diningOption, seatingTime])
@@ -215,6 +275,7 @@ function PreferenceCard({
           onChange={handleEatingChange}
           data={[
             { label: "Spiser", value: "yes" },
+
             { label: "Spiser ikke", value: "no" },
           ]}
           fullWidth

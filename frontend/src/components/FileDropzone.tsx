@@ -6,74 +6,105 @@ import {
   type ChangeEvent,
   type CSSProperties,
 } from "react"
+
 import { Box, Group, Text } from "@mantine/core"
+
 import { IconUpload } from "@tabler/icons-react"
 
 function useDragDrop(onDrop: (files: File[]) => void) {
   const [isDragging, setIsDragging] = useState(false)
+
   const dragCounter = useRef(0)
 
   const handleDragEnter = (e: DragEvent) => {
     e.preventDefault()
+
     e.stopPropagation()
+
     dragCounter.current++
+
     if (e.dataTransfer.types.includes("Files")) setIsDragging(true)
   }
 
   const handleDragLeave = (e: DragEvent) => {
     e.preventDefault()
+
     e.stopPropagation()
+
     if (--dragCounter.current === 0) setIsDragging(false)
   }
 
   const handleDragOver = (e: DragEvent) => {
     e.preventDefault()
+
     e.stopPropagation()
   }
 
   const handleDrop = (e: DragEvent) => {
     e.preventDefault()
+
     e.stopPropagation()
+
     dragCounter.current = 0
+
     setIsDragging(false)
+
     const files = Array.from(e.dataTransfer.files)
+
     if (files.length > 0) onDrop(files)
   }
 
   const handleDropCapture = () => {
     dragCounter.current = 0
+
     setIsDragging(false)
   }
 
   return {
     isDragging,
+
     handleDragEnter,
+
     handleDragLeave,
+
     handleDragOver,
+
     handleDrop,
+
     handleDropCapture,
   }
 }
 
 interface FileDropzoneProps {
   onDrop: (files: File[]) => void
+
   children: ReactNode
+
   label?: string
+
   style?: CSSProperties
 }
 
 export default function FileDropzone({
   onDrop,
+
   children,
+
   label,
+
   style,
 }: FileDropzoneProps) {
   const {
     isDragging,
+
     handleDragEnter,
+
     handleDragLeave,
+
     handleDragOver,
+
     handleDrop,
+
     handleDropCapture,
   } = useDragDrop(onDrop)
 
@@ -97,12 +128,19 @@ export default function FileDropzone({
           bottom={0}
           style={{
             border: "2px dashed var(--mantine-color-blue-5)",
+
             borderRadius: "var(--mantine-radius-md)",
+
             backgroundColor: "rgba(34, 139, 230, 0.06)",
+
             display: "flex",
+
             alignItems: "center",
+
             justifyContent: "center",
+
             zIndex: 10,
+
             pointerEvents: "none",
           }}
         >
@@ -117,17 +155,24 @@ export default function FileDropzone({
 
 interface AttachmentAreaProps {
   onAddFiles: (files: File[]) => void
+
   children?: ReactNode
 }
 
 export function AttachmentArea({ onAddFiles, children }: AttachmentAreaProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
+
   const hasChildren = !!children
+
   const {
     isDragging,
+
     handleDragEnter,
+
     handleDragLeave,
+
     handleDragOver,
+
     handleDrop,
   } = useDragDrop(onAddFiles)
 
@@ -136,6 +181,7 @@ export function AttachmentArea({ onAddFiles, children }: AttachmentAreaProps) {
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.length) {
       onAddFiles(Array.from(e.target.files))
+
       e.target.value = ""
     }
   }
@@ -154,9 +200,13 @@ export function AttachmentArea({ onAddFiles, children }: AttachmentAreaProps) {
         border: isDragging
           ? "2px dashed var(--mantine-color-blue-5)"
           : "1px dashed var(--mantine-color-gray-4)",
+
         borderRadius: "var(--mantine-radius-sm)",
+
         backgroundColor: isDragging ? "rgba(34, 139, 230, 0.06)" : undefined,
+
         cursor: "pointer",
+
         transition: "border-color 0.15s, background-color 0.15s",
       }}
     >

@@ -1,12 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
+
 import { screen, waitFor } from "@testing-library/react"
+
 import userEvent from "@testing-library/user-event"
+
 import { render } from "../test/testUtils"
+
 import AppNavbar from "./AppNavbar"
+
 import { messagingApi } from "../api/messaging"
+
 import { notificationsApi } from "../api/notifications"
 
 // Mock the APIs
+
 vi.mock("../api/messaging", () => ({
   messagingApi: {
     getUnreadCount: vi.fn(),
@@ -21,8 +28,10 @@ vi.mock("../api/notifications", () => ({
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual("react-router-dom")
+
   return {
     ...actual,
+
     useLocation: () => ({ pathname: "/" }),
   }
 })
@@ -30,9 +39,11 @@ vi.mock("react-router-dom", async () => {
 describe("AppNavbar", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+
     vi.mocked(messagingApi.getUnreadCount).mockResolvedValue({
       unread_count: 0,
     })
+
     vi.mocked(notificationsApi.getUnreadCount).mockResolvedValue({
       unread_count: 0,
     })
@@ -42,12 +53,19 @@ describe("AppNavbar", () => {
     render(<AppNavbar />)
 
     expect(screen.getByText("Forside")).toBeInTheDocument()
+
     expect(screen.getByText("Notifikationer")).toBeInTheDocument()
+
     expect(screen.getByText("Vigtig post")).toBeInTheDocument()
+
     expect(screen.getByText("Forum")).toBeInTheDocument()
+
     expect(screen.getByText("Mad")).toBeInTheDocument()
+
     expect(screen.getByText("Kalender")).toBeInTheDocument()
+
     expect(screen.getByText("Beboeroversigt")).toBeInTheDocument()
+
     expect(screen.getByText("Beskeder")).toBeInTheDocument()
   })
 
@@ -55,15 +73,19 @@ describe("AppNavbar", () => {
     render(<AppNavbar />)
 
     const forumLink = screen.getByText("Forum").closest("a")
+
     expect(forumLink).toHaveAttribute("href", "/forum")
 
     const kalenderLink = screen.getByText("Kalender").closest("a")
+
     expect(kalenderLink).toHaveAttribute("href", "/kalender")
   })
 
   it("should call onNavigate callback when provided", async () => {
     const user = userEvent.setup()
+
     const onNavigate = vi.fn()
+
     render(<AppNavbar onNavigate={onNavigate} />)
 
     await user.click(screen.getByText("Kalender"))
@@ -80,11 +102,14 @@ describe("AppNavbar", () => {
 
     await waitFor(() => {
       // Find the Beskeder nav item and check for badge
+
       const messagesLink = screen.getByText("Beskeder").closest("a, button")
+
       expect(messagesLink).toBeInTheDocument()
     })
 
     // Badge should show the count
+
     await waitFor(() => {
       expect(screen.getByText("5")).toBeInTheDocument()
     })
@@ -118,6 +143,7 @@ describe("AppNavbar", () => {
     vi.mocked(messagingApi.getUnreadCount).mockResolvedValue({
       unread_count: 0,
     })
+
     vi.mocked(notificationsApi.getUnreadCount).mockResolvedValue({
       unread_count: 0,
     })
@@ -126,10 +152,12 @@ describe("AppNavbar", () => {
 
     await waitFor(() => {
       // Forside should be rendered, meaning API calls completed
+
       expect(screen.getByText("Forside")).toBeInTheDocument()
     })
 
     // No badge elements should be present
+
     expect(screen.queryByText("0")).not.toBeInTheDocument()
   })
 })

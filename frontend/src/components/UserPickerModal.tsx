@@ -1,5 +1,7 @@
 import { useState } from "react"
+
 import { useQuery } from "@tanstack/react-query"
+
 import {
   Modal,
   Stack,
@@ -13,53 +15,81 @@ import {
   Text,
   Button,
 } from "@mantine/core"
+
 import { useMediaQuery } from "@mantine/hooks"
+
 import { IconSearch } from "@tabler/icons-react"
+
 import { apiClient } from "../api/client"
+
 import type { User } from "../types"
 
 interface UserPickerModalProps {
   opened: boolean
+
   onClose: () => void
+
   onConfirm: (userIds: number[]) => void
+
   title: string
+
   confirmLabel: string
+
   excludeUserIds?: number[]
+
   loading?: boolean
 }
 
 export default function UserPickerModal({
   opened,
+
   onClose,
+
   onConfirm,
+
   title,
+
   confirmLabel,
+
   excludeUserIds,
+
   loading,
 }: UserPickerModalProps) {
   const isMobile = useMediaQuery("(max-width: 48em)")
+
   const [search, setSearch] = useState("")
+
   const [selectedUsers, setSelectedUsers] = useState<User[]>([])
 
   const excludedIds = new Set(excludeUserIds ?? [])
 
   const { data: users } = useQuery({
     queryKey: ["users"],
+
     queryFn: async () => {
       const response = await apiClient.get("/users/")
+
       return (response.data.results ?? response.data) as User[]
     },
+
     enabled: opened,
   })
 
   const searchTerm = search.trim().toLowerCase()
+
   const filteredUsers = users?.filter((u) => {
     if (excludedIds.has(u.id)) return false
+
     if (selectedUsers.some((s) => s.id === u.id)) return false
+
     if (!searchTerm) return true
+
     const firstName = (u.first_name || "").toLowerCase()
+
     const lastName = (u.last_name || "").toLowerCase()
+
     const fullName = `${firstName} ${lastName}`
+
     return (
       firstName.includes(searchTerm) ||
       lastName.includes(searchTerm) ||
@@ -69,6 +99,7 @@ export default function UserPickerModal({
 
   const handleSelectUser = (user: User) => {
     setSelectedUsers((prev) => [...prev, user])
+
     setSearch("")
   }
 
@@ -78,12 +109,15 @@ export default function UserPickerModal({
 
   const handleConfirm = () => {
     if (selectedUsers.length === 0) return
+
     onConfirm(selectedUsers.map((u) => u.id))
   }
 
   const handleClose = () => {
     setSearch("")
+
     setSelectedUsers([])
+
     onClose()
   }
 
@@ -119,6 +153,7 @@ export default function UserPickerModal({
                 }
                 styles={{
                   root: { paddingLeft: 4, paddingRight: 8 },
+
                   section: { marginRight: 4 },
                 }}
               >
