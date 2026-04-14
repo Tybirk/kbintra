@@ -134,6 +134,10 @@ def get_user_preference(user: User, notification_type: NotificationType) -> bool
         # delivered in-app so users know when their access changes.
         NotificationType.SUBGROUP_MEMBER_ADDED: True,
         NotificationType.SUBGROUP_MEMBER_REMOVED: True,
+        # Admin-edit notifications are always delivered.
+        NotificationType.POST_EDITED_BY_ADMIN: True,
+        NotificationType.EVENT_EDITED_BY_ADMIN: True,
+        NotificationType.ANNOUNCEMENT_EDITED_BY_ADMIN: True,
     }
 
     return preference_map.get(notification_type, True)
@@ -1175,4 +1179,72 @@ def notify_message_reaction(
         link=link,
         related_user=reactor,
         group_key=link,  # Aggregate all reactions to same specific message
+    )
+
+
+def notify_post_edited_by_admin(
+    post_author: User,
+    editor: User,
+    thread_title: str,
+    thread_id: int,
+    subgroup_slug: str,
+    thread_slug: str,
+    post_id: int,
+) -> Notification | None:
+    """Create notification when an admin edits another user's post."""
+    from apps.forum.models import Thread as ForumThread
+
+    try:
+        event_slug = ForumThread.objects.get(id=thread_id).event.slug
+        base_link = f"/kalender/{event_slug}"
+    except (ForumThread.DoesNotExist, AttributeError):
+        base_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
+
+    link = base_link + f"#post-{post_id}"
+
+    return create_notification(
+        user=post_author,
+        notification_type=NotificationType.POST_EDITED_BY_ADMIN,
+        title=f"{editor.first_name} redigerede dit indlæg",
+        message=f'I tråden "{thread_title}"',
+        link=link,
+        related_user=editor,
+    )
+
+
+def notify_event_edited_by_admin(
+    event_creator: User,
+    editor: User,
+    event_title: str,
+    event_slug: str,
+) -> Notification | None:
+    """Create notification when an admin edits another user's event."""
+    link = f"/kalender/{event_slug}"
+
+    return create_notification(
+        user=event_creator,
+        notification_type=NotificationType.EVENT_EDITED_BY_ADMIN,
+        title=f"{editor.first_name} redigerede din begivenhed",
+        message=f'"{event_title}"',
+        link=link,
+        related_user=editor,
+    )
+
+
+def notify_announcement_edited_by_admin(
+    announcement_author: User,
+    editor: User,
+    announcement_title: str,
+    announcement_id: int,
+) -> Notification | None:
+    """Create notification when an admin edits another user's announcement."""
+    link = f"/opslag#announcement-{announcement_id}"
+
+    return create_notification(
+        user=announcement_author,
+        notification_type=NotificationType.ANNOUNCEMENT_EDITED_BY_ADMIN,
+        title=f"{editor.first_name} redigerede dit opslag",
+        message=f'"{announcement_title}"',
+        link=link,
+        related_user=editor,
     )

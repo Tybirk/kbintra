@@ -23,6 +23,8 @@ import {
   Box,
   TextInput,
   Select,
+  Checkbox,
+  Alert,
 } from "@mantine/core"
 import { useDisclosure } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -962,6 +964,20 @@ function PostCard({
   const { user: currentUser } = useAuthStore()
   const [carouselOpened, setCarouselOpened] = useState(false)
   const [carouselInitialIndex, setCarouselInitialIndex] = useState(0)
+  const [consentModalOpened, setConsentModalOpened] = useState(false)
+  const [consentChecked, setConsentChecked] = useState(false)
+
+  const isAdminEditingOther =
+    currentUser?.is_staff && post.author?.id !== currentUser.id
+
+  const handleEditClick = () => {
+    if (isAdminEditingOther) {
+      setConsentChecked(false)
+      setConsentModalOpened(true)
+    } else {
+      onStartEdit()
+    }
+  }
 
   // Sort attachments: images first, then other files
   const imageAttachments =
@@ -1032,7 +1048,7 @@ function PostCard({
               <Menu.Dropdown>
                 <Menu.Item
                   leftSection={<IconEdit size={14} />}
-                  onClick={onStartEdit}
+                  onClick={handleEditClick}
                 >
                   Rediger
                 </Menu.Item>
@@ -1316,6 +1332,45 @@ function PostCard({
         onClose={() => setCarouselOpened(false)}
         initialIndex={carouselInitialIndex}
       />
+
+      <Modal
+        opened={consentModalOpened}
+        onClose={() => setConsentModalOpened(false)}
+        title="Rediger en anden brugers indhold"
+        centered
+        fullScreen={false}
+      >
+        <Stack>
+          <Alert color="orange" variant="light">
+            <Text size="sm">
+              Indholdet tilhører en anden bruger. Ændringer må kun foretages med
+              forudgående samtykke fra forfatteren.
+            </Text>
+          </Alert>
+          <Checkbox
+            label="Samtykke fra forfatteren er indhentet forud for denne ændring"
+            checked={consentChecked}
+            onChange={(event) => setConsentChecked(event.currentTarget.checked)}
+          />
+          <Group justify="flex-end">
+            <Button
+              variant="default"
+              onClick={() => setConsentModalOpened(false)}
+            >
+              Annuller
+            </Button>
+            <Button
+              disabled={!consentChecked}
+              onClick={() => {
+                setConsentModalOpened(false)
+                onStartEdit()
+              }}
+            >
+              Fortsæt
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </>
   )
 }

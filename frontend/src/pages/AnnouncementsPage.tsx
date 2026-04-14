@@ -20,6 +20,7 @@ import {
   Box,
   Checkbox,
   Tooltip,
+  Alert,
 } from "@mantine/core"
 import { useDisclosure, useMediaQuery } from "@mantine/hooks"
 import { notifications } from "@mantine/notifications"
@@ -33,6 +34,7 @@ import {
 } from "@tabler/icons-react"
 import dayjs from "dayjs"
 
+import { useAuthStore } from "../store/authStore"
 import { announcementsApi } from "../api/announcements"
 import { notificationsApi } from "../api/notifications"
 import { filterFilesBySize } from "../config"
@@ -589,9 +591,14 @@ function EditAnnouncementModal({
   announcement,
   onSuccess,
 }: EditAnnouncementModalProps) {
+  const { user: currentUser } = useAuthStore()
   const isMobile = useMediaQuery("(max-width: 48em)")
   const [title, setTitle] = useState(announcement.title)
   const [content, setContent] = useState(announcement.content)
+  const [consentChecked, setConsentChecked] = useState(false)
+
+  const isAdminEditingOther =
+    currentUser?.is_staff && announcement.author?.id !== currentUser.id
 
   const updateMutation = useMutation({
     mutationFn: (data: Partial<CreateAnnouncementData>) =>
@@ -643,6 +650,23 @@ function EditAnnouncementModal({
               minHeight={200}
             />
           </div>
+          {isAdminEditingOther && (
+            <Alert color="orange" variant="light">
+              <Stack gap="xs">
+                <Text size="sm">
+                  Indholdet tilhører en anden bruger. Ændringer må kun foretages
+                  med forudgående samtykke fra forfatteren.
+                </Text>
+                <Checkbox
+                  label="Samtykke fra forfatteren er indhentet forud for denne ændring"
+                  checked={consentChecked}
+                  onChange={(event) =>
+                    setConsentChecked(event.currentTarget.checked)
+                  }
+                />
+              </Stack>
+            </Alert>
+          )}
           <Group justify="flex-end">
             <Button variant="light" onClick={onClose}>
               Annuller
@@ -651,7 +675,10 @@ function EditAnnouncementModal({
               type="submit"
               loading={updateMutation.isPending}
               disabled={
-                !title.trim() || !content.trim() || content === "<p></p>"
+                !title.trim() ||
+                !content.trim() ||
+                content === "<p></p>" ||
+                (isAdminEditingOther && !consentChecked)
               }
             >
               Gem ændringer
