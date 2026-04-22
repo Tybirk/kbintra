@@ -621,6 +621,45 @@ export default function BookingsPage() {
             withWeekNumbers: true,
 
             monthYearSelectProps: { labels: DA_SCHEDULE_LABELS },
+
+            moreEventsProps: {
+              renderEventBody: (event: ScheduleEventData) => {
+                const payload = event.payload as {
+                  booking: CalendarBooking
+                } | undefined
+
+                const booking = payload?.booking
+
+                return (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation()
+
+                      handleEventClick(event)
+
+                      setTimeout(
+                        () =>
+                          document.body.dispatchEvent(
+                            new MouseEvent("mousedown", { bubbles: true }),
+                          ),
+
+                        0,
+                      )
+                    }}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <Text size="xs" fw={500} lineClamp={2}>
+                      {event.title}
+                    </Text>
+                    {booking && (
+                      <Text size="xs" lineClamp={2} style={{ opacity: 0.7 }}>
+                        {booking.room.name}
+                      </Text>
+                    )}
+                  </div>
+                )
+              },
+            },
           }}
           yearViewProps={{
             monthYearSelectProps: { labels: DA_SCHEDULE_LABELS },
