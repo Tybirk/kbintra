@@ -251,9 +251,21 @@ describe("SubgroupPage", () => {
     vi.clearAllMocks()
 
     mockGetSubgroup.mockResolvedValue(mockSubgroup)
-
-    mockGetThreads.mockResolvedValue(mockThreads)
-
+    mockGetThreads.mockImplementation(
+      async (_slug: string, options: { isClosed?: boolean } = {}) => {
+        const filtered = mockThreads.filter((t) =>
+          options.isClosed === undefined
+            ? true
+            : t.is_closed === options.isClosed,
+        )
+        return {
+          count: filtered.length,
+          next: null,
+          previous: null,
+          results: filtered,
+        }
+      },
+    )
     mockGetEvents.mockResolvedValue([])
   })
 
