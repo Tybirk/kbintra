@@ -11,6 +11,7 @@ from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, permissions, status
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -172,6 +173,12 @@ class SubgroupDetailView(generics.RetrieveAPIView):
                 SubgroupSubscription.objects.filter(user=user).values_list("subgroup_id", flat=True)
             )
             context["member_subgroup_ids"] = set(member_subgroup_ids(user))
+            # Powers subgroup.unread_thread_count on the detail endpoint so the
+            # frontend doesn't have to load every thread to know if the tab dot
+            # should show.
+            context["read_status_map"] = dict(
+                ThreadReadStatus.objects.filter(user=user).values_list("thread_id", "last_read_at")
+            )
         return context
 
 
@@ -434,10 +441,21 @@ class SubgroupLeaveView(APIView):
 
 
 # Thread Views
+class ThreadPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+
 class ThreadListCreateView(generics.ListCreateAPIView):
-    """List threads in a subgroup or create a new thread."""
+    """List threads in a subgroup or create a new thread.
+
+    Supports ?is_closed=true|false to filter open vs closed threads —
+    the open and closed tabs on the frontend paginate independently.
+    """
 
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = ThreadPagination
 
     def get_serializer_class(self) -> type:
         if self.request.method == "POST":
@@ -446,13 +464,34 @@ class ThreadListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self) -> Any:
         self._subgroup = get_object_or_404(Subgroup, slug=self.kwargs["slug"])
-        return (
+        qs = (
             filter_visible_threads(
                 Thread.objects.filter(subgroup=self._subgroup), self.request.user
             )
             .select_related("author")
             .annotate(post_count_annotation=Count("posts"))
+            # Explicit order_by matches Thread.Meta.ordering and silences DRF's
+            # UnorderedObjectListWarning on paginated responses.
+            .order_by("-is_pinned", "-updated_at", "-id")
         )
+        is_closed_param = self.request.query_params.get("is_closed")
+        if is_closed_param is not None:
+            truthy = is_closed_param.strip().lower() in ("true", "1", "yes")
+            qs = qs.filter(is_closed=truthy)
+        return qs
+
+    def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        # Resolve the page first so serializer context can scope unread / last-post
+        # lookups to the current page instead of the whole (potentially huge) subgroup.
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            self._page_threads = list(page)
+            serializer = self.get_serializer(self._page_threads, many=True)
+            return self.get_paginated_response(serializer.data)
+        self._page_threads = list(queryset)
+        serializer = self.get_serializer(self._page_threads, many=True)
+        return Response(serializer.data)
 
     def get_serializer_context(self) -> dict:
         context = super().get_serializer_context()
@@ -462,23 +501,23 @@ class ThreadListCreateView(generics.ListCreateAPIView):
         if self.request.method == "POST":
             context["subgroup"] = subgroup
         elif self.request.user.is_authenticated:
-            # Lightweight query: only id + updated_at needed for unread check
-            thread_dates = dict(
-                Thread.objects.filter(subgroup=subgroup).values_list("id", "updated_at")
-            )
+            page_threads = getattr(self, "_page_threads", None)
+            if page_threads is None:
+                return context
+            thread_ids = [t.id for t in page_threads]
             read_map = dict(
                 ThreadReadStatus.objects.filter(
-                    user=self.request.user, thread__subgroup=subgroup
+                    user=self.request.user, thread_id__in=thread_ids
                 ).values_list("thread_id", "last_read_at")
             )
             context["unread_thread_ids"] = {
-                thread_id
-                for thread_id, updated_at in thread_dates.items()
-                if read_map.get(thread_id) is None or updated_at > read_map[thread_id]
+                t.id
+                for t in page_threads
+                if read_map.get(t.id) is None or t.updated_at > read_map[t.id]
             }
-            # Batch-load last post per thread (avoids N+1 in ThreadSerializer)
+            # Batch-load last post per thread in the current page only.
             latest_post_ids = (
-                Post.objects.filter(thread__subgroup=subgroup)
+                Post.objects.filter(thread_id__in=thread_ids)
                 .values("thread_id")
                 .annotate(latest_id=Max("id"))
                 .values_list("latest_id", flat=True)

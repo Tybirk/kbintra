@@ -4,6 +4,7 @@
 
 import { apiClient } from "./client"
 import type {
+  PaginatedResponse,
   Subgroup,
   SubgroupMember,
   SubgroupSubscription,
@@ -20,6 +21,12 @@ import type {
   ReactionType,
   ReactionTypeInfo,
 } from "../types"
+
+export interface GetThreadsOptions {
+  page?: number
+  pageSize?: number
+  isClosed?: boolean
+}
 
 interface SubgroupUpdateData {
   name?: string
@@ -120,11 +127,24 @@ export const forumApi = {
   },
 
   // Threads
-  getThreads: async (subgroupSlug: string): Promise<Thread[]> => {
-    const response = await apiClient.get(
+  getThreads: async (
+    subgroupSlug: string,
+    options: GetThreadsOptions = {},
+  ): Promise<PaginatedResponse<Thread>> => {
+    const params: Record<string, string | number> = {}
+    if (options.page) params.page = options.page
+    if (options.pageSize) params.page_size = options.pageSize
+    if (options.isClosed !== undefined)
+      params.is_closed = String(options.isClosed)
+    const response = await apiClient.get<PaginatedResponse<Thread> | Thread[]>(
       `/forum/subgroups/${subgroupSlug}/threads/`,
+      { params },
     )
-    return response.data.results ?? response.data
+    const data = response.data
+    if (Array.isArray(data)) {
+      return { count: data.length, next: null, previous: null, results: data }
+    }
+    return data
   },
 
   getThread: async (threadId: number): Promise<ThreadDetail> => {
