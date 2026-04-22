@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react"
+
 import { useNavigate, Link } from "react-router-dom"
+
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+
 import {
   Title,
   Text,
@@ -19,10 +22,15 @@ import {
   Anchor,
   rem,
 } from "@mantine/core"
+
 import { DateInput } from "@mantine/dates"
+
 import { Dropzone, IMAGE_MIME_TYPE } from "@mantine/dropzone"
+
 import { notifications } from "@mantine/notifications"
+
 import { showErrorNotification } from "../utils/errorNotification"
+
 import {
   IconUpload,
   IconPhoto,
@@ -32,38 +40,53 @@ import {
   IconDownload,
   IconTrash,
 } from "@tabler/icons-react"
+
 import dayjs from "dayjs"
 
 import { usersApi } from "../api/users"
+
 import { BackButton } from "../components/BackButton"
+
 import { useAuthStore } from "../store/authStore"
+
 import type { User } from "../types"
 
 export default function ProfileEditPage() {
   const navigate = useNavigate()
+
   const queryClient = useQueryClient()
+
   const { updateUser, logout } = useAuthStore()
 
   const [formData, setFormData] = useState({
     first_name: "",
+
     last_name: "",
+
     phone_number: "",
+
     bio: "",
+
     birthdate: null as Date | null,
+
     house: null as number | null,
   })
 
   const [emailChangeOpen, setEmailChangeOpen] = useState(false)
+
   const [emailChangeData, setEmailChangeData] = useState({
     new_email: "",
+
     current_password: "",
   })
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+
   const [deletePassword, setDeletePassword] = useState("")
 
   const { data: user, isLoading } = useQuery({
     queryKey: ["user", "me"],
+
     queryFn: usersApi.getCurrentUser,
   })
 
@@ -71,10 +94,15 @@ export default function ProfileEditPage() {
     if (user) {
       setFormData({
         first_name: user.first_name || "",
+
         last_name: user.last_name || "",
+
         phone_number: user.phone_number || "",
+
         bio: user.bio || "",
+
         birthdate: user.birthdate ? new Date(user.birthdate) : null,
+
         house: user.house,
       })
     }
@@ -82,16 +110,23 @@ export default function ProfileEditPage() {
 
   const updateProfileMutation = useMutation({
     mutationFn: (data: Partial<User>) => usersApi.updateProfile(data),
+
     onSuccess: (updatedUser) => {
       updateUser(updatedUser)
+
       queryClient.invalidateQueries({ queryKey: ["user"] })
+
       notifications.show({
         title: "Profil opdateret",
+
         message: "Din profil er blevet opdateret.",
+
         color: "green",
       })
+
       navigate("/profil")
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke opdatere profilen. Prøv igen.")
     },
@@ -101,18 +136,26 @@ export default function ProfileEditPage() {
     mutationFn: () =>
       usersApi.requestEmailChange(
         emailChangeData.new_email,
+
         emailChangeData.current_password,
       ),
+
     onSuccess: () => {
       setEmailChangeData({ new_email: "", current_password: "" })
+
       setEmailChangeOpen(false)
+
       notifications.show({
         title: "Bekræftelsesmail sendt",
+
         message: `En bekræftelsesmail er sendt til ${emailChangeData.new_email}. Klik på linket i mailen for at bekræfte ændringen.`,
+
         color: "green",
+
         autoClose: 8000,
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Noget gik galt. Prøv igen.")
     },
@@ -120,9 +163,11 @@ export default function ProfileEditPage() {
 
   const deleteAccountMutation = useMutation({
     mutationFn: () => usersApi.deleteAccount(deletePassword),
+
     onSuccess: () => {
       logout()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Noget gik galt. Prøv igen.")
     },
@@ -130,6 +175,7 @@ export default function ProfileEditPage() {
 
   const exportDataMutation = useMutation({
     mutationFn: () => usersApi.exportData(),
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke eksportere data. Prøv igen.")
     },
@@ -137,10 +183,13 @@ export default function ProfileEditPage() {
 
   const uploadPictureMutation = useMutation({
     mutationFn: (file: File) => usersApi.updateProfilePicture(file),
+
     onSuccess: (updatedUser) => {
       updateUser(updatedUser)
+
       queryClient.invalidateQueries({ queryKey: ["user"] })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke uploade billede. Prøv igen.")
     },
@@ -148,14 +197,20 @@ export default function ProfileEditPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
     updateProfileMutation.mutate({
       first_name: formData.first_name,
+
       last_name: formData.last_name,
+
       phone_number: formData.phone_number,
+
       bio: formData.bio,
+
       birthdate: formData.birthdate
         ? dayjs(formData.birthdate).format("YYYY-MM-DD")
         : null,
+
       house: formData.house,
     })
   }
@@ -210,7 +265,9 @@ export default function ProfileEditPage() {
                 <IconUpload
                   style={{
                     width: rem(52),
+
                     height: rem(52),
+
                     color: "var(--mantine-color-blue-6)",
                   }}
                   stroke={1.5}
@@ -220,7 +277,9 @@ export default function ProfileEditPage() {
                 <IconX
                   style={{
                     width: rem(52),
+
                     height: rem(52),
+
                     color: "var(--mantine-color-red-6)",
                   }}
                   stroke={1.5}
@@ -230,7 +289,9 @@ export default function ProfileEditPage() {
                 <IconPhoto
                   style={{
                     width: rem(52),
+
                     height: rem(52),
+
                     color: "var(--mantine-color-dimmed)",
                   }}
                   stroke={1.5}
@@ -262,6 +323,7 @@ export default function ProfileEditPage() {
                 onChange={(e) =>
                   setFormData((prev) => ({
                     ...prev,
+
                     first_name: e.target.value,
                   }))
                 }
@@ -273,6 +335,7 @@ export default function ProfileEditPage() {
                 onChange={(e) =>
                   setFormData((prev) => ({
                     ...prev,
+
                     last_name: e.target.value,
                   }))
                 }
@@ -287,6 +350,7 @@ export default function ProfileEditPage() {
               onChange={(e) =>
                 setFormData((prev) => ({
                   ...prev,
+
                   phone_number: e.target.value,
                 }))
               }
@@ -298,6 +362,7 @@ export default function ProfileEditPage() {
               value={formData.birthdate}
               onChange={(value) => {
                 const date = value ? new Date(value) : null
+
                 setFormData((prev) => ({ ...prev, birthdate: date }))
               }}
               maxDate={new Date()}
@@ -364,6 +429,7 @@ export default function ProfileEditPage() {
                 onChange={(e) =>
                   setEmailChangeData((prev) => ({
                     ...prev,
+
                     new_email: e.target.value,
                   }))
                 }
@@ -375,6 +441,7 @@ export default function ProfileEditPage() {
                 onChange={(e) =>
                   setEmailChangeData((prev) => ({
                     ...prev,
+
                     current_password: e.target.value,
                   }))
                 }
@@ -395,6 +462,7 @@ export default function ProfileEditPage() {
                   variant="subtle"
                   onClick={() => {
                     setEmailChangeOpen(false)
+
                     setEmailChangeData({ new_email: "", current_password: "" })
                   }}
                 >
@@ -442,6 +510,7 @@ export default function ProfileEditPage() {
         opened={deleteModalOpen}
         onClose={() => {
           setDeleteModalOpen(false)
+
           setDeletePassword("")
         }}
         title="Slet konto"
@@ -463,6 +532,7 @@ export default function ProfileEditPage() {
               variant="subtle"
               onClick={() => {
                 setDeleteModalOpen(false)
+
                 setDeletePassword("")
               }}
             >

@@ -1,6 +1,9 @@
 import { NavLink, Stack, ScrollArea, Badge, Group } from "@mantine/core"
+
 import { useLocation, Link } from "react-router-dom"
+
 import { useQuery } from "@tanstack/react-query"
+
 import {
   IconHome,
   IconMessageCircle,
@@ -14,41 +17,64 @@ import {
   IconLink,
   IconSettings,
 } from "@tabler/icons-react"
+
 import { forumApi } from "../api/forum"
+
 import { messagingApi } from "../api/messaging"
+
 import { notificationsApi } from "../api/notifications"
+
 import { useAuthStore } from "../store/authStore"
 
 interface NavItem {
   icon: typeof IconHome
+
   label: string
+
   path: string
+
   color?: string
 }
 
 const navItems: NavItem[] = [
   { icon: IconHome, label: "Forside", path: "/" },
+
   { icon: IconUsers, label: "Beskeder", path: "/beskeder" },
+
   {
     icon: IconBell,
+
     label: "Notifikationer",
+
     path: "/notifikationer",
   },
+
   {
     icon: IconSpeakerphone,
+
     label: "Vigtig post",
+
     path: "/opslag",
   },
+
   { icon: IconMessageCircle, label: "Forum", path: "/forum" },
+
   { icon: IconSoup, label: "Mad", path: "/mad" },
+
   //{ icon: IconUsersGroup, label: "Madhold", path: "/madhold" },
+
   { icon: IconCalendar, label: "Kalender", path: "/kalender" },
+
   {
     icon: IconBuildingCommunity,
+
     label: "Beboeroversigt",
+
     path: "/beboere",
   },
+
   { icon: IconDoor, label: "Booking", path: "/booking" },
+
   { icon: IconLink, label: "Nyttige links", path: "/links" },
 ]
 
@@ -58,37 +84,52 @@ interface AppNavbarProps {
 
 export default function AppNavbar({ onNavigate }: AppNavbarProps) {
   const location = useLocation()
+
   const user = useAuthStore((s) => s.user)
 
   // Fetch unread message count
+
   const { data: unreadMessagesData } = useQuery({
     queryKey: ["messages", "unread-count"],
+
     queryFn: messagingApi.getUnreadCount,
+
     refetchInterval: 30000,
   })
 
   // Fetch unread notification count
+
   const { data: unreadNotificationsData } = useQuery({
     queryKey: ["notifications", "unread-count"],
+
     queryFn: notificationsApi.getUnreadCount,
+
     refetchInterval: 30000,
   })
 
   // Fetch unread forum thread count
+
   const { data: unreadForumData } = useQuery({
     queryKey: ["forum", "unread-count"],
+
     queryFn: forumApi.getUnreadCount,
+
     refetchInterval: 30000,
   })
 
   const unreadMessages = unreadMessagesData?.unread_count ?? 0
+
   const unreadNotifications = unreadNotificationsData?.unread_count ?? 0
+
   const unreadForum = unreadForumData?.unread_count ?? 0
 
   const getLabel = (item: NavItem) => {
     let badgeCount = 0
+
     if (item.path === "/beskeder") badgeCount = unreadMessages
+
     if (item.path === "/notifikationer") badgeCount = unreadNotifications
+
     if (item.path === "/forum") badgeCount = unreadForum
 
     if (badgeCount > 0) {
@@ -105,6 +146,7 @@ export default function AppNavbar({ onNavigate }: AppNavbarProps) {
         </Group>
       )
     }
+
     return item.label
   }
 

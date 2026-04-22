@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest"
+
 import { render, screen } from "@testing-library/react"
+
 import { MantineProvider } from "@mantine/core"
 
 // A simple component to test
+
 function HelloWorld({ name }: { name: string }) {
   return <div>Hello, {name}!</div>
 }

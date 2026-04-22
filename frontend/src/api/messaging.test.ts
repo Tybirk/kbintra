@@ -1,13 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
+
 import { messagingApi } from "./messaging"
+
 import { apiClient } from "./client"
 
 // Mock the apiClient
+
 vi.mock("./client", () => ({
   apiClient: {
     get: vi.fn(),
+
     post: vi.fn(),
   },
+
   getAccessToken: vi.fn().mockReturnValue("mock-token"),
 }))
 
@@ -20,8 +25,10 @@ describe("messagingApi", () => {
     it("should fetch all conversations", async () => {
       const mockConversations = [
         { id: 1, participants: [], last_message: null },
+
         { id: 2, participants: [], last_message: null },
       ]
+
       vi.mocked(apiClient.get).mockResolvedValue({
         data: { results: mockConversations },
       })
@@ -29,11 +36,13 @@ describe("messagingApi", () => {
       const result = await messagingApi.getConversations()
 
       expect(apiClient.get).toHaveBeenCalledWith("/messages/conversations/")
+
       expect(result).toEqual(mockConversations)
     })
 
     it("should handle non-paginated response", async () => {
       const mockConversations = [{ id: 1, participants: [] }]
+
       vi.mocked(apiClient.get).mockResolvedValue({ data: mockConversations })
 
       const result = await messagingApi.getConversations()
@@ -45,11 +54,13 @@ describe("messagingApi", () => {
   describe("getConversation", () => {
     it("should fetch single conversation", async () => {
       const mockConversation = { id: 1, participants: [], messages: [] }
+
       vi.mocked(apiClient.get).mockResolvedValue({ data: mockConversation })
 
       const result = await messagingApi.getConversation(1)
 
       expect(apiClient.get).toHaveBeenCalledWith("/messages/conversations/1/")
+
       expect(result).toEqual(mockConversation)
     })
   })
@@ -57,17 +68,21 @@ describe("messagingApi", () => {
   describe("createConversation", () => {
     it("should create new conversation", async () => {
       const mockConversation = { id: 1, participants: [1, 2], messages: [] }
+
       vi.mocked(apiClient.post).mockResolvedValue({ data: mockConversation })
 
       const result = await messagingApi.createConversation({
         participant_ids: [2],
+
         initial_message: "Hello!",
       })
 
       expect(apiClient.post).toHaveBeenCalledWith("/messages/conversations/", {
         participant_ids: [2],
+
         initial_message: "Hello!",
       })
+
       expect(result).toEqual(mockConversation)
     })
   })
@@ -76,8 +91,10 @@ describe("messagingApi", () => {
     it("should fetch messages for conversation", async () => {
       const mockMessages = [
         { id: 1, content: "Hello", sender: 1 },
+
         { id: 2, content: "Hi there", sender: 2 },
       ]
+
       vi.mocked(apiClient.get).mockResolvedValue({
         data: { results: mockMessages },
       })
@@ -87,6 +104,7 @@ describe("messagingApi", () => {
       expect(apiClient.get).toHaveBeenCalledWith(
         "/messages/conversations/1/messages/",
       )
+
       expect(result).toEqual(mockMessages)
     })
   })
@@ -94,16 +112,19 @@ describe("messagingApi", () => {
   describe("sendMessage", () => {
     it("should send message to conversation", async () => {
       const mockMessage = { id: 3, content: "New message", sender: 1 }
+
       vi.mocked(apiClient.post).mockResolvedValue({ data: mockMessage })
 
       const result = await messagingApi.sendMessage(1, "New message")
 
       expect(apiClient.post).toHaveBeenCalledWith(
         "/messages/conversations/1/messages/",
+
         {
           content: "New message",
         },
       )
+
       expect(result).toEqual(mockMessage)
     })
   })
@@ -117,6 +138,7 @@ describe("messagingApi", () => {
       expect(apiClient.post).toHaveBeenCalledWith(
         "/messages/conversations/1/read/",
       )
+
       expect(result).toEqual({ marked_read: 5 })
     })
   })
@@ -128,6 +150,7 @@ describe("messagingApi", () => {
       const result = await messagingApi.getUnreadCount()
 
       expect(apiClient.get).toHaveBeenCalledWith("/messages/unread-count/")
+
       expect(result).toEqual({ unread_count: 3 })
     })
 

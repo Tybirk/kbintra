@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react"
+
 import { useNavigate, useParams } from "react-router-dom"
+
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+
 import {
   Title,
   Text,
@@ -31,14 +34,19 @@ import {
   TextInput,
   Tooltip,
 } from "@mantine/core"
+
 import {
   useDisclosure,
   useDebouncedCallback,
   useClipboard,
 } from "@mantine/hooks"
+
 import { notifications } from "@mantine/notifications"
+
 import { showErrorNotification } from "../utils/errorNotification"
+
 import { DatePickerInput } from "@mantine/dates"
+
 import {
   IconCalendar,
   IconCalendarOff,
@@ -59,22 +67,30 @@ import {
   IconRefresh,
   IconDownload,
 } from "@tabler/icons-react"
+
 import dayjs from "dayjs"
+
 import isoWeek from "dayjs/plugin/isoWeek"
 
 dayjs.extend(isoWeek)
 
 import { foodApi } from "../api/food"
+
 import { notificationsApi } from "../api/notifications"
+
 import { MealFormFields } from "../components/MealFormFields"
+
 import { useAuthStore } from "../store/authStore"
+
 import {
   calculateDefaultTicketPrice,
   PRICE_ADULT_MEAT,
   PRICE_ADULT_VEG,
   PRICE_CHILD,
 } from "../utils/priceCalculation"
+
 import { isDateLocked, isAfterTicketSaleCutoff } from "../utils/foodDeadline"
+
 import type {
   MealRegistration,
   CreateMealRegistrationData,
@@ -87,29 +103,42 @@ import type {
   ClosedDayPlaceholder,
   WeeklyRegistrationStats,
 } from "../types"
+
 import { isClosedDayPlaceholder, isClosedDayStats } from "../types"
 
 // The stats endpoint returns a closed-day marker for closed dates.
+
 // Normalise to `undefined` so widgets treat them as "no stats".
+
 function getDailyStats(
   weekly: WeeklyRegistrationStats | undefined,
+
   dateStr: string,
 ): DailyRegistrationStats | undefined {
   const entry = weekly?.[dateStr]
+
   if (!entry || isClosedDayStats(entry)) return undefined
+
   return entry
 }
 
 export default function FoodPage() {
   const navigate = useNavigate()
+
   const { tab } = useParams<{ tab?: string }>()
+
   const queryClient = useQueryClient()
+
   const { user } = useAuthStore()
+
   const canFoodAdmin = !!(user?.is_staff || user?.is_food_admin)
 
   // Path-based tab state
+
   const validTabs = ["tilmelding", "billetter", "okonomi", "admin"]
+
   const activeTab = tab && validTabs.includes(tab) ? tab : "tilmelding"
+
   const setActiveTab = (newTab: string | null) => {
     if (newTab && newTab !== "tilmelding") {
       navigate(`/mad/${newTab}`)
@@ -119,125 +148,165 @@ export default function FoodPage() {
   }
 
   // Get current week's Monday
+
   const today = dayjs()
+
   const currentWeekStart = today.startOf("isoWeek") // Monday
 
   // Week offset state for registration view - defaults to next week (1)
+
   const [regWeekOffset, setRegWeekOffset] = useState(1)
 
   const regWeekStart = currentWeekStart.add(regWeekOffset, "week")
 
   // Calculate week number and year for drive menus
+
   const regWeekNumber = regWeekStart.isoWeek()
+
   const regYear = regWeekStart.isoWeekYear()
 
   // Fetch drive menu for the registration week
+
   const { data: regDriveMenu } = useQuery({
     queryKey: ["food", "drive-menu", regWeekNumber, regYear],
+
     queryFn: () => foodApi.getDriveMenu(regWeekNumber, regYear),
   })
 
   // Mutation to refresh drive menu from Google Drive (admin only)
+
   const refreshDriveMenuMutation = useMutation({
     mutationFn: () => foodApi.refreshDriveMenu(regWeekNumber, regYear),
+
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["food", "drive-menu", regWeekNumber, regYear],
       })
+
       notifications.show({
         color: "green",
+
         message: "Menuen er blevet opdateret fra Google Drive.",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(
         error,
+
         "Kunne ikke opdatere menuen fra Google Drive.",
       )
     },
   })
 
   // Fetch registrations for the selected registration week
+
   const { data: registrations, isLoading: regsLoading } = useQuery({
     queryKey: ["food", "registrations", regWeekStart.format("YYYY-MM-DD")],
+
     queryFn: () => foodApi.getRegistrations(regWeekStart.format("YYYY-MM-DD")),
   })
 
   // Fetch community stats for the selected week
+
   const { data: weeklyStats } = useQuery({
     queryKey: ["food", "stats", regWeekStart.format("YYYY-MM-DD")],
+
     queryFn: () =>
       foodApi.getRegistrationStats(regWeekStart.format("YYYY-MM-DD")),
   })
 
   // Fetch user's tickets to check for active tickets when switching eating status
+
   const { data: myTickets } = useQuery({
     queryKey: ["food", "tickets", "my"],
+
     queryFn: foodApi.getMyTickets,
   })
 
   // Fetch available tickets for the billetter tab
+
   const { data: availableTickets } = useQuery({
     queryKey: ["food", "tickets", "available"],
+
     queryFn: () => foodApi.getTickets(),
   })
 
   // Create a map of my tickets (owned) by date
+
   const myTicketsByDate = new Map<string, FoodTicket[]>()
+
   myTickets?.forEach((ticket) => {
     if (ticket.is_own) {
       const existing = myTicketsByDate.get(ticket.date) ?? []
+
       myTicketsByDate.set(ticket.date, [...existing, ticket])
     }
   })
 
   // Create a map of purchased (claimed by me) tickets by date
+
   const myPurchasedByDate = new Map<string, FoodTicket[]>()
+
   myTickets?.forEach((ticket) => {
     if (!ticket.is_own && !ticket.is_available) {
       const existing = myPurchasedByDate.get(ticket.date) ?? []
+
       myPurchasedByDate.set(ticket.date, [...existing, ticket])
     }
   })
 
   // Filter tickets for billetter tab sections
+
   const myTicketsForSale =
     myTickets?.filter(
       (t) =>
         t.is_own && t.is_available && !dayjs(t.date).isBefore(dayjs(), "day"),
     ) ?? []
+
   const mySoldTickets =
     myTickets?.filter((t) => t.is_own && !t.is_available) ?? []
+
   const myPurchasedTickets =
     myTickets?.filter((t) => !t.is_own && !t.is_available) ?? []
+
   const othersAvailableTickets =
     availableTickets?.filter((t) => !t.is_own && t.is_available) ?? []
 
   // Helper to get menu text for a specific day offset (0=Mon, 1=Tue, 2=Wed, 3=Thu)
+
   const getMenuTextForDay = (
     menu: DriveMenu | undefined,
+
     dayOffset: number,
   ): string => {
     if (!menu) return ""
+
     switch (dayOffset) {
       case 0:
         return menu.monday_menu
+
       case 1:
         return menu.tuesday_menu
+
       case 2:
         return menu.wednesday_menu
+
       case 3:
         return menu.thursday_menu
+
       default:
         return ""
     }
   }
 
   // Auto-mark food-ticket notifications as read when billetter tab is active
+
   useEffect(() => {
     if (activeTab === "billetter") {
       void notificationsApi.markReadByLink("/mad/billetter").then(() => {
         queryClient.invalidateQueries({ queryKey: ["notifications"] })
+
         queryClient.invalidateQueries({
           queryKey: ["notifications", "unread-count"],
         })
@@ -248,22 +317,30 @@ export default function FoodPage() {
   const resetToDefaultsMutation = useMutation({
     mutationFn: async () => {
       if (!registrations) return
+
       const deletable = registrations.filter(
         (r) => r.id !== null && !isDateLocked(r.date),
       )
+
       await Promise.all(
         deletable.map((r) => foodApi.deleteRegistration(r.id as number)),
       )
     },
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "registrations"] })
+
       queryClient.invalidateQueries({ queryKey: ["food", "stats"] })
+
       notifications.show({
         title: "Nulstillet",
+
         message: "Tilmeldinger nulstillet til standardpræferencer.",
+
         color: "green",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke nulstille tilmeldinger.")
     },
@@ -272,8 +349,11 @@ export default function FoodPage() {
   const isLoading = regsLoading
 
   // Create a map of registrations by date for registration tab
+
   // The API returns closed-day placeholders with is_closed: true
+
   const registrationsByDate = new Map<string, MealRegistration>()
+
   const closedDaysByDate = new Map<string, ClosedDayPlaceholder>()
   ;(registrations as (MealRegistration | ClosedDayPlaceholder)[] | undefined)?.forEach(
     (reg) => {
@@ -286,29 +366,45 @@ export default function FoodPage() {
   )
 
   // Whole-week lock state (deadline is the same Wed for all 4 days of the week)
+
   const weekIsLocked = isDateLocked(regWeekStart.format("YYYY-MM-DD"))
 
   // Aggregate weekly budget and per-day shopping numbers from stats
+
   const purchaseClipboard = useClipboard({ timeout: 1500 })
+
   let weeklyBudget = 0
+
   const purchaseColumns: number[] = []
+
   for (let i = 0; i < 4; i++) {
     const dateStr = regWeekStart.add(i, "day").format("YYYY-MM-DD")
+
     const stats = getDailyStats(weeklyStats, dateStr)
+
     const veg = stats?.total.adults_veg ?? 0
+
     const meat = stats?.total.adults_meat ?? 0
+
     const kids = stats?.total.children ?? 0
+
     weeklyBudget +=
       meat * PRICE_ADULT_MEAT + veg * PRICE_ADULT_VEG + kids * PRICE_CHILD
+
     purchaseColumns.push(veg, 0, meat, kids)
   }
+
   const purchaseTSV = purchaseColumns.join("\t")
 
   // Helper to get week label
+
   const getWeekLabel = (offset: number) => {
     if (offset === 0) return "Denne uge"
+
     if (offset === 1) return "Næste uge"
+
     if (offset === -1) return "Sidste uge"
+
     return `${offset > 0 ? "+" : ""}${offset} uger`
   }
 
@@ -444,8 +540,10 @@ export default function FoodPage() {
                     leftSection={<IconCopy size={14} />}
                     onClick={() => {
                       purchaseClipboard.copy(purchaseTSV)
+
                       notifications.show({
                         color: "green",
+
                         message: "Indkøbstal kopieret til udklipsholder.",
                       })
                     }}
@@ -476,7 +574,9 @@ export default function FoodPage() {
               <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
                 {[0, 1, 2, 3].map((dayOffset) => {
                   const date = regWeekStart.add(dayOffset, "day")
+
                   const dateStr = date.format("YYYY-MM-DD")
+
                   const closedDay = closedDaysByDate.get(dateStr)
 
                   if (closedDay) {
@@ -505,8 +605,11 @@ export default function FoodPage() {
                   }
 
                   const registration = registrationsByDate.get(dateStr)
+
                   const menuText = getMenuTextForDay(regDriveMenu, dayOffset)
+
                   const isWednesday = dayOffset === 2
+
                   const isPast = date.isBefore(dayjs(), "day")
 
                   return (
@@ -654,29 +757,41 @@ export default function FoodPage() {
 }
 
 // Closed Days Admin Component
+
 function ClosedDaysAdmin() {
   const queryClient = useQueryClient()
+
   const [selectedDates, setSelectedDates] = useState<Date[]>([])
+
   const [reason, setReason] = useState("")
 
   const { data: closedDays, isLoading } = useQuery({
     queryKey: ["food", "closed-days"],
+
     queryFn: () => foodApi.getClosedDays(dayjs().format("YYYY-MM-DD")),
   })
 
   const createMutation = useMutation({
     mutationFn: foodApi.createClosedDays,
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "closed-days"] })
+
       queryClient.invalidateQueries({ queryKey: ["food", "registrations"] })
+
       queryClient.invalidateQueries({ queryKey: ["food", "stats"] })
+
       setSelectedDates([])
+
       setReason("")
+
       notifications.show({
         color: "green",
+
         message: "Lukkede dage er blevet oprettet.",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke oprette lukkede dage.")
     },
@@ -684,12 +799,17 @@ function ClosedDaysAdmin() {
 
   const deleteMutation = useMutation({
     mutationFn: foodApi.deleteClosedDay,
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "closed-days"] })
+
       queryClient.invalidateQueries({ queryKey: ["food", "registrations"] })
+
       queryClient.invalidateQueries({ queryKey: ["food", "stats"] })
+
       notifications.show({
         color: "green",
+
         message: "Dagen er blevet genåbnet.",
       })
     },
@@ -697,13 +817,17 @@ function ClosedDaysAdmin() {
 
   const handleCreate = () => {
     if (selectedDates.length === 0) return
+
     const dates = selectedDates.map((d) => dayjs(d).format("YYYY-MM-DD"))
+
     createMutation.mutate({ dates, reason: reason || undefined })
   }
 
   // Only allow Mon-Thu selection (Mantine types say string but runtime passes Date)
+
   const excludeDate = (d: Date | string) => {
     const date = d instanceof Date ? d : new Date(d)
+
     return date.getDay() === 0 || date.getDay() === 5 || date.getDay() === 6
   }
 
@@ -797,20 +921,27 @@ function ClosedDaysAdmin() {
 }
 
 // My Food Expenses Component (user-facing) — weekly buckets
+
 function MyFoodExpenses() {
   const defaultEnd = dayjs().endOf("isoWeek")
+
   const defaultStart = defaultEnd.subtract(4, "week").startOf("isoWeek")
+
   const [range, setRange] = useState<[Date | null, Date | null]>([
     defaultStart.toDate(),
+
     defaultEnd.toDate(),
   ])
 
   const startStr = range[0] ? dayjs(range[0]).format("YYYY-MM-DD") : undefined
+
   const endStr = range[1] ? dayjs(range[1]).format("YYYY-MM-DD") : undefined
 
   const { data: expenses, isLoading } = useQuery({
     queryKey: ["food", "my-expenses", startStr, endStr],
+
     queryFn: () => foodApi.getMyExpenses(startStr, endStr),
+
     enabled: !!startStr && !!endStr,
   })
 
@@ -931,33 +1062,48 @@ function MyFoodExpenses() {
 }
 
 // Cost Report Component (food admin only) — date range + CSV
+
 function MonthlyCostReport() {
   const defaultEnd = dayjs().endOf("isoWeek")
+
   const defaultStart = defaultEnd.subtract(3, "week").startOf("isoWeek")
+
   const [range, setRange] = useState<[Date | null, Date | null]>([
     defaultStart.toDate(),
+
     defaultEnd.toDate(),
   ])
 
   const startStr = range[0] ? dayjs(range[0]).format("YYYY-MM-DD") : undefined
+
   const endStr = range[1] ? dayjs(range[1]).format("YYYY-MM-DD") : undefined
 
   const { data: costReport, isLoading } = useQuery({
     queryKey: ["food", "monthly-cost", startStr, endStr],
+
     queryFn: () => foodApi.getMonthlyFoodCost(startStr, endStr),
+
     enabled: !!startStr && !!endStr,
   })
 
   const handleDownloadCsv = async () => {
     try {
       const blob = await foodApi.downloadMonthlyFoodCostCsv(startStr, endStr)
+
       const url = URL.createObjectURL(blob)
+
       const a = document.createElement("a")
+
       a.href = url
+
       a.download = `madomkostninger_${startStr}_${endStr}.csv`
+
       document.body.appendChild(a)
+
       a.click()
+
       document.body.removeChild(a)
+
       URL.revokeObjectURL(url)
     } catch (err) {
       showErrorNotification(err, "Kunne ikke hente CSV.")
@@ -1056,18 +1202,21 @@ function MonthlyCostReport() {
                       <Table.Td ta="right" fw={600}>
                         {costReport.houses.reduce(
                           (sum, h) => sum + h.adult_meat_portions,
+
                           0,
                         )}
                       </Table.Td>
                       <Table.Td ta="right" fw={600}>
                         {costReport.houses.reduce(
                           (sum, h) => sum + h.adult_veg_portions,
+
                           0,
                         )}
                       </Table.Td>
                       <Table.Td ta="right" fw={600}>
                         {costReport.houses.reduce(
                           (sum, h) => sum + h.child_portions,
+
                           0,
                         )}
                       </Table.Td>
@@ -1092,91 +1241,143 @@ function MonthlyCostReport() {
 
 interface DayRegistrationCardProps {
   date: string
+
   dayName: string
+
   registration?: MealRegistration
+
   menuText: string
+
   isWednesday: boolean
+
   isPast: boolean
+
   weekStart: string
+
   ticketsForDate: FoodTicket[]
+
   purchasedTicketsForDate: FoodTicket[]
+
   communityStats?: DailyRegistrationStats
 }
 
 function DayRegistrationCard({
   date,
+
   dayName,
+
   registration,
+
   menuText,
+
   isWednesday,
+
   isPast,
+
   weekStart,
+
   ticketsForDate,
+
   purchasedTicketsForDate,
+
   communityStats,
 }: DayRegistrationCardProps) {
   const queryClient = useQueryClient()
+
   const navigate = useNavigate()
+
   const { user } = useAuthStore()
+
   const [
     ticketModalOpened,
+
     { open: openTicketModal, close: closeTicketModal },
   ] = useDisclosure(false)
+
   const [isSaving, setIsSaving] = useState(false)
+
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
+
   const [statsOpen, setStatsOpen] = useState(true)
 
   // Fade out "Gemt" indicator after 3 seconds
+
   useEffect(() => {
     if (!lastSaved) return
+
     const timer = setTimeout(() => setLastSaved(null), 3000)
+
     return () => clearTimeout(timer)
   }, [lastSaved])
 
   const isLocked = isDateLocked(date)
+
   const isAfterCutoff = isAfterTicketSaleCutoff(date)
 
   // Default to house inhabitant count if no registration exists
+
   const houseCount = user?.house_inhabitant_count || 1
+
   const [adultsMeat, setAdultsMeat] = useState(
     registration?.adults_meat ?? (isWednesday ? houseCount : 0),
   )
+
   const [adultsVeg, setAdultsVeg] = useState(
     registration?.adults_veg ?? (isWednesday ? 0 : houseCount),
   )
+
   const [children, setChildren] = useState(registration?.children_count ?? 0)
+
   const [diningOption, setDiningOption] = useState<DiningOption>(
     registration?.dining_option ?? "eat_in",
   )
+
   const [seatingTime, setSeatingTime] = useState<SeatingTime>(
     registration?.seating_time ?? "17:30",
   )
+
   const [isActive, setIsActive] = useState(registration?.is_active ?? true)
 
   // Sync local state when registration prop changes (e.g. after preference change refetch).
+
   // React bails out of re-renders when primitive state values are identical, so syncing
+
   // to the same values on initial load is a no-op and doesn't trigger auto-save.
+
   useEffect(() => {
     if (!registration) return
+
     setAdultsMeat(registration.adults_meat)
+
     setAdultsVeg(registration.adults_veg)
+
     setChildren(registration.children_count)
+
     setDiningOption(registration.dining_option)
+
     setSeatingTime(registration.seating_time)
+
     setIsActive(registration.is_active)
   }, [registration])
 
   // Sell ticket modal state
+
   const availablePortions = registration?.available_portions ?? {
     adults_meat: 0,
+
     adults_veg: 0,
+
     children_count: 0,
   }
+
   const [sellMeat, setSellMeat] = useState(availablePortions.adults_meat)
+
   const [sellVeg, setSellVeg] = useState(availablePortions.adults_veg)
+
   const [sellChildren, setSellChildren] = useState(
     availablePortions.children_count,
   )
+
   const [sellDescription, setSellDescription] = useState("")
 
   const hasSomethingToSell =
@@ -1185,6 +1386,7 @@ function DayRegistrationCard({
     availablePortions.children_count > 0
 
   // All portions sold via tickets — seller should not control dining/seating
+
   const allPortionsSold = ticketsForDate.length > 0 && !hasSomethingToSell
 
   const sellPrice = calculateDefaultTicketPrice(sellMeat, sellVeg, sellChildren)
@@ -1192,19 +1394,26 @@ function DayRegistrationCard({
   const createMutation = useMutation({
     mutationFn: (data: CreateMealRegistrationData) =>
       foodApi.createRegistration(data),
+
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["food", "registrations", weekStart],
       })
+
       queryClient.invalidateQueries({ queryKey: ["food", "stats"] })
+
       setLastSaved(new Date())
+
       setIsSaving(false)
     },
+
     onError: (error: unknown) => {
       showErrorNotification(
         error,
+
         "Kunne ikke gemme tilmelding. Prøv venligst igen.",
       )
+
       setIsSaving(false)
     },
   })
@@ -1212,41 +1421,57 @@ function DayRegistrationCard({
   const updateMutation = useMutation({
     mutationFn: (data: Partial<CreateMealRegistrationData>) =>
       foodApi.updateRegistration(registration!.id as number, data),
+
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["food", "registrations", weekStart],
       })
+
       queryClient.invalidateQueries({ queryKey: ["food", "stats"] })
+
       setLastSaved(new Date())
+
       setIsSaving(false)
     },
+
     onError: (error: unknown) => {
       showErrorNotification(
         error,
+
         "Kunne ikke gemme tilmelding. Prøv venligst igen.",
       )
+
       setIsSaving(false)
     },
   })
 
   const createTicketMutation = useMutation({
     mutationFn: (data: CreateFoodTicketData) => foodApi.createTicket(data),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "tickets"] })
+
       queryClient.invalidateQueries({
         queryKey: ["food", "registrations", weekStart],
       })
+
       closeTicketModal()
+
       setSellDescription("")
+
       notifications.show({
         title: "Billet oprettet",
+
         message: "Din madbillet er nu tilgængelig for andre.",
+
         color: "green",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(
         error,
+
         "Kunne ikke oprette billet. Prøv venligst igen.",
       )
     },
@@ -1254,45 +1479,59 @@ function DayRegistrationCard({
 
   const deleteTicketMutation = useMutation({
     mutationFn: (ticketId: number) => foodApi.deleteTicket(ticketId),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "tickets"] })
+
       queryClient.invalidateQueries({
         queryKey: ["food", "registrations", weekStart],
       })
+
       notifications.show({
         title: "Billet slettet",
+
         message: "Din billet er slettet.",
+
         color: "green",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(
         error,
+
         "Kunne ikke slette billet. Prøv venligst igen.",
       )
     },
   })
 
   // Debounced save function
+
   const debouncedSave = useDebouncedCallback(
     (data: CreateMealRegistrationData, regId: number | null | undefined) => {
       setIsSaving(true)
+
       if (regId) {
         updateMutation.mutate(data)
       } else {
         createMutation.mutate(data)
       }
     },
+
     500,
   )
 
   // Auto-save when user changes values.  Skip when local state matches server
+
   // data (sync-triggered change or initial mount — not a user interaction).
+
   useEffect(() => {
     if (!registration) return
+
     if (isPast) return
 
     // If local state matches what the server returned, nothing to save.
+
     if (
       adultsMeat === registration.adults_meat &&
       adultsVeg === registration.adults_veg &&
@@ -1305,26 +1544,37 @@ function DayRegistrationCard({
     }
 
     // After the deadline only UPDATEs are allowed — never attempt a CREATE
+
     if (isLocked && !registration.id) return
 
     const data: CreateMealRegistrationData = {
       date,
+
       adults_meat: adultsMeat,
+
       adults_veg: adultsVeg,
+
       children_count: children,
+
       dining_option: diningOption,
+
       seating_time: seatingTime,
+
       is_active: isActive,
     }
 
     debouncedSave(data, registration.id)
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adultsMeat, adultsVeg, children, diningOption, seatingTime, isActive])
 
   const handleEatingChange = (val: string) => {
     const eating = val === "yes"
+
     setIsActive(eating)
+
     // Restore default portions when switching back to eating
+
     if (eating && adultsMeat === 0 && adultsVeg === 0 && children === 0) {
       if (isWednesday) {
         setAdultsMeat(houseCount)
@@ -1335,6 +1585,7 @@ function DayRegistrationCard({
   }
 
   // Auto-switch to "spiser ikke" when all portions are set to 0
+
   useEffect(() => {
     if (isActive && adultsMeat === 0 && adultsVeg === 0 && children === 0) {
       setIsActive(false)
@@ -1343,33 +1594,48 @@ function DayRegistrationCard({
 
   const handleOpenSellModal = () => {
     setSellMeat(availablePortions.adults_meat)
+
     setSellVeg(availablePortions.adults_veg)
+
     setSellChildren(availablePortions.children_count)
+
     setSellDescription("")
+
     openTicketModal()
   }
 
   const handleSellTicket = () => {
     const ticketData: CreateFoodTicketData = {
       date,
+
       adults_meat: sellMeat,
+
       adults_veg: sellVeg,
+
       children_count: sellChildren,
+
       price: sellPrice,
+
       description: sellDescription,
     }
+
     createTicketMutation.mutate(ticketData)
   }
 
   const portionSummary = () => {
     if (!registration) return ""
+
     const parts: string[] = []
+
     if (registration.adults_meat > 0)
       parts.push(`${registration.adults_meat} kød`)
+
     if (registration.adults_veg > 0)
       parts.push(`${registration.adults_veg} vegetar`)
+
     if (registration.children_count > 0)
       parts.push(`${registration.children_count} børn`)
+
     return parts.join(", ")
   }
 
@@ -1507,17 +1773,20 @@ function DayRegistrationCard({
             </>
           ) : isLocked ? (
             /* Locked and not registered */
+
             <Text size="sm" c="dimmed" ta="center">
               Ikke tilmeldt
             </Text>
           ) : (
             /* Normal editable state (before deadline) */
+
             <>
               <SegmentedControl
                 value={isActive ? "yes" : "no"}
                 onChange={handleEatingChange}
                 data={[
                   { label: "Spiser", value: "yes" },
+
                   { label: "Spiser ikke", value: "no" },
                 ]}
                 fullWidth
@@ -1721,14 +1990,18 @@ function DayRegistrationCard({
                 availablePortions.adults_meat > 0
                   ? `${PRICE_ADULT_MEAT} kr/Kødportioner`
                   : null,
+
                 availablePortions.adults_veg > 0
                   ? `${PRICE_ADULT_VEG} kr/Vegetarportioner`
                   : null,
+
                 availablePortions.children_count > 0
                   ? `${PRICE_CHILD} kr/Børneportioner`
                   : null,
               ]
+
                 .filter(Boolean)
+
                 .join(" + ")}
             </Text>
           </Stack>
@@ -1764,20 +2037,29 @@ interface TicketCardProps {
 
 function TicketCard({ ticket }: TicketCardProps) {
   const queryClient = useQueryClient()
+
   const navigate = useNavigate()
+
   const clipboard = useClipboard({ timeout: 2000 })
+
   const [buyModalOpened, { open: openBuyModal, close: closeBuyModal }] =
     useDisclosure(false)
+
   const isWednesdayTicket = dayjs(ticket.date).day() === 3
 
   const [buyMeat, setBuyMeat] = useState(ticket.adults_meat)
+
   const [buyVeg, setBuyVeg] = useState(ticket.adults_veg)
+
   const [buyChildren, setBuyChildren] = useState(ticket.children_count)
 
   const handleOpenBuyModal = () => {
     setBuyMeat(ticket.adults_meat)
+
     setBuyVeg(ticket.adults_veg)
+
     setBuyChildren(ticket.children_count)
+
     openBuyModal()
   }
 
@@ -1789,26 +2071,36 @@ function TicketCard({ ticket }: TicketCardProps) {
     mutationFn: () =>
       foodApi.claimTicket(ticket.id, {
         adults_meat: buyMeat,
+
         adults_veg: buyVeg,
+
         children_count: buyChildren,
       }),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "tickets"] })
+
       closeBuyModal()
+
       if (ticket.is_own) {
         notifications.show({
           title: "Billet fortrudt",
+
           message: "Du har fjernet din billet fra salg.",
+
           color: "green",
         })
       } else {
         notifications.show({
           title: "Billet købt",
+
           message: "Husk at betale ejeren via MobilePay eller kontant.",
+
           color: "green",
         })
       }
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke købe billet.")
     },
@@ -1816,14 +2108,19 @@ function TicketCard({ ticket }: TicketCardProps) {
 
   const releaseMutation = useMutation({
     mutationFn: () => foodApi.releaseTicket(ticket.id),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "tickets"] })
+
       notifications.show({
         title: "Billet frigivet",
+
         message: "Billetten er nu tilgængelig igen.",
+
         color: "blue",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke frigive billet.")
     },
@@ -1831,21 +2128,28 @@ function TicketCard({ ticket }: TicketCardProps) {
 
   const deleteMutation = useMutation({
     mutationFn: () => foodApi.deleteTicket(ticket.id),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "tickets"] })
+
       notifications.show({
         title: "Billet slettet",
+
         message: "Din billet er blevet fjernet.",
+
         color: "blue",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke slette billet.")
     },
   })
 
   const isClaimed = !ticket.is_available
+
   const isOwner = ticket.is_own
+
   const isClaimedByMe = ticket.claimed_by && !isOwner
 
   return (
@@ -1903,14 +2207,18 @@ function TicketCard({ ticket }: TicketCardProps) {
                 {ticket.day_name}, {dayjs(ticket.date).format("D. MMM")} •{" "}
                 {[
                   ticket.adults_meat > 0 ? `${ticket.adults_meat} kød` : null,
+
                   ticket.adults_veg > 0 ? `${ticket.adults_veg} vegetar` : null,
+
                   ticket.children_count > 0
                     ? `${ticket.children_count} ${
                         ticket.children_count === 1 ? "barn" : "børn"
                       }`
                     : null,
                 ]
+
                   .filter(Boolean)
+
                   .join(", ")}
               </Text>
               {ticket.description && (
@@ -2171,19 +2479,26 @@ function FoodPageCommunityStats({ stats }: FoodPageCommunityStatsProps) {
 
   const formatSlot = (slot: DailyRegistrationStats["eat_in_1730"]) => {
     if (slot.adults === 0 && slot.children === 0) return null
+
     const parts: string[] = []
+
     if (hasWednesdayData) {
       if (slot.adults_veg > 0) parts.push(`${slot.adults_veg} veg`)
+
       if (slot.adults_meat > 0) parts.push(`${slot.adults_meat} kød`)
     } else {
       if (slot.adults > 0) parts.push(`${slot.adults} voksne`)
     }
+
     if (slot.children > 0) parts.push(`${slot.children} børn`)
+
     return parts.join(" · ")
   }
 
   const slot1730 = formatSlot(stats.eat_in_1730)
+
   const slot1830 = formatSlot(stats.eat_in_1830)
+
   const slotTakeaway = formatSlot(stats.takeaway)
 
   if (!slot1730 && !slot1830 && !slotTakeaway) {

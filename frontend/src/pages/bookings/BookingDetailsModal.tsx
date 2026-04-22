@@ -1,30 +1,46 @@
 import { Text, Group, Button, Stack, Modal, Badge, Box } from "@mantine/core"
+
 import { IconEdit, IconTrash, IconRepeat } from "@tabler/icons-react"
+
 import dayjs from "dayjs"
 
 import type { CalendarBooking, User } from "../../types"
 
 interface BookingDetailsModalProps {
   opened: boolean
+
   onClose: () => void
+
   booking: CalendarBooking | null
+
   user: User | null
+
   onEdit: (booking: CalendarBooking) => void
+
   onDelete: (
     id: string,
+
     event_slug: string | null,
+
     isRecurring: boolean,
+
     recurringBookingId?: number,
+
     occurrenceDate?: string,
   ) => void
 }
 
 export function BookingDetailsModal({
   opened,
+
   onClose,
+
   booking,
+
   user,
+
   onEdit,
+
   onDelete,
 }: BookingDetailsModalProps) {
   if (!booking) return null
@@ -94,6 +110,7 @@ export function BookingDetailsModal({
                   leftSection={<IconEdit size={16} />}
                   onClick={() => {
                     onClose()
+
                     onEdit(booking)
                   }}
                 >
@@ -106,11 +123,16 @@ export function BookingDetailsModal({
                 leftSection={<IconTrash size={16} />}
                 onClick={() => {
                   onClose()
+
                   onDelete(
                     booking.id,
+
                     booking.event_slug,
+
                     booking.is_recurring,
+
                     booking.recurring_booking_id || undefined,
+
                     dayjs(booking.start_datetime).format("YYYY-MM-DD"),
                   )
                 }}

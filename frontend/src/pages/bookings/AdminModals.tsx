@@ -1,5 +1,7 @@
 import { useState } from "react"
+
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+
 import {
   Text,
   Paper,
@@ -18,15 +20,23 @@ import {
   ColorInput,
   MultiSelect,
 } from "@mantine/core"
+
 import { DateInput, TimePicker } from "@mantine/dates"
+
 import { useDisclosure } from "@mantine/hooks"
+
 import { notifications } from "@mantine/notifications"
+
 import { IconPlus } from "@tabler/icons-react"
+
 import dayjs from "dayjs"
 
 import { bookingsApi } from "../../api/bookings"
+
 import { showErrorNotification } from "../../utils/errorNotification"
+
 import { TIME_PRESETS } from "./BookingModals"
+
 import type {
   Room,
   RecurringBooking,
@@ -35,22 +45,31 @@ import type {
 
 const DAYS_OF_WEEK = [
   { value: "0", label: "Mandag" },
+
   { value: "1", label: "Tirsdag" },
+
   { value: "2", label: "Onsdag" },
+
   { value: "3", label: "Torsdag" },
+
   { value: "4", label: "Fredag" },
+
   { value: "5", label: "Lørdag" },
+
   { value: "6", label: "Søndag" },
 ]
 
 interface AdminModalProps {
   opened: boolean
+
   onClose: () => void
+
   rooms: Room[]
 }
 
 export function AdminModal({ opened, onClose, rooms }: AdminModalProps) {
   const queryClient = useQueryClient()
+
   const [activeTab, setActiveTab] = useState<string | null>("rooms")
 
   return (
@@ -88,14 +107,18 @@ export function AdminModal({ opened, onClose, rooms }: AdminModalProps) {
 
 function RoomsAdmin({
   rooms,
+
   onUpdate,
 }: {
   rooms: Room[]
+
   onUpdate: () => void
 }) {
   const [editingRoom, setEditingRoom] = useState<Room | null>(null)
+
   const [
     createModalOpened,
+
     { open: openCreateModal, close: closeCreateModal },
   ] = useDisclosure(false)
 
@@ -146,6 +169,7 @@ function RoomsAdmin({
         onClose={closeCreateModal}
         onSuccess={() => {
           onUpdate()
+
           closeCreateModal()
         }}
       />
@@ -156,6 +180,7 @@ function RoomsAdmin({
           room={editingRoom}
           onSuccess={() => {
             onUpdate()
+
             setEditingRoom(null)
           }}
         />
@@ -166,29 +191,42 @@ function RoomsAdmin({
 
 function CreateRoomModal({
   opened,
+
   onClose,
+
   onSuccess,
 }: {
   opened: boolean
+
   onClose: () => void
+
   onSuccess: () => void
 }) {
   const [name, setName] = useState("")
+
   const [description, setDescription] = useState("")
+
   const [color, setColor] = useState("#3B82F6")
+
   const [sortOrder, setSortOrder] = useState<number | string>(0)
 
   const createMutation = useMutation({
     mutationFn: (data: Partial<Room>) => bookingsApi.createRoom(data),
+
     onSuccess: () => {
       notifications.show({
         title: "Lokale oprettet",
+
         message: "Lokalet er blevet tilføjet.",
+
         color: "green",
       })
+
       resetForm()
+
       onSuccess()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke oprette lokale. Prøv igen.")
     },
@@ -196,20 +234,29 @@ function CreateRoomModal({
 
   const resetForm = () => {
     setName("")
+
     setDescription("")
+
     setColor("#3B82F6")
+
     setSortOrder(0)
   }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
     if (!name.trim()) return
+
     createMutation.mutate({
       name: name.trim(),
+
       description: description.trim(),
+
       color,
+
       sort_order:
         typeof sortOrder === "string" ? parseInt(sortOrder) : sortOrder,
+
       is_active: true,
     })
   }
@@ -254,31 +301,46 @@ function CreateRoomModal({
 
 function EditRoomModal({
   opened,
+
   onClose,
+
   room,
+
   onSuccess,
 }: {
   opened: boolean
+
   onClose: () => void
+
   room: Room
+
   onSuccess: () => void
 }) {
   const [name, setName] = useState(room.name)
+
   const [description, setDescription] = useState(room.description)
+
   const [color, setColor] = useState(room.color)
+
   const [sortOrder, setSortOrder] = useState<number | string>(room.sort_order)
+
   const [isActive] = useState(room.is_active)
 
   const updateMutation = useMutation({
     mutationFn: (data: Partial<Room>) => bookingsApi.updateRoom(room.id, data),
+
     onSuccess: () => {
       notifications.show({
         title: "Lokale opdateret",
+
         message: "Lokalet er blevet opdateret.",
+
         color: "green",
       })
+
       onSuccess()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke opdatere lokale. Prøv igen.")
     },
@@ -286,13 +348,19 @@ function EditRoomModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
     if (!name.trim()) return
+
     updateMutation.mutate({
       name: name.trim(),
+
       description: description.trim(),
+
       color,
+
       sort_order:
         typeof sortOrder === "string" ? parseInt(sortOrder) : sortOrder,
+
       is_active: isActive,
     })
   }
@@ -337,34 +405,44 @@ function EditRoomModal({
 
 function RecurringBookingsAdmin({
   rooms,
+
   onUpdate,
 }: {
   rooms: Room[]
+
   onUpdate: () => void
 }) {
   const [
     createModalOpened,
+
     { open: openCreateModal, close: closeCreateModal },
   ] = useDisclosure(false)
+
   const [editingBooking, setEditingBooking] = useState<RecurringBooking | null>(
     null,
   )
 
   const { data: recurringBookings, isLoading } = useQuery({
     queryKey: ["bookings", "recurring"],
+
     queryFn: () => bookingsApi.getRecurringBookings(),
   })
 
   const deleteMutation = useMutation({
     mutationFn: bookingsApi.deleteRecurringBooking,
+
     onSuccess: () => {
       onUpdate()
+
       notifications.show({
         title: "Tilbagevendende booking slettet",
+
         message: "Bookingen er blevet slettet.",
+
         color: "blue",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke slette booking. Prøv igen.")
     },
@@ -401,6 +479,7 @@ function RecurringBookingsAdmin({
                     h={16}
                     style={{
                       borderRadius: 4,
+
                       backgroundColor: booking.room.color,
                     }}
                   />
@@ -453,6 +532,7 @@ function RecurringBookingsAdmin({
         rooms={rooms}
         onSuccess={() => {
           onUpdate()
+
           closeCreateModal()
         }}
       />
@@ -464,6 +544,7 @@ function RecurringBookingsAdmin({
           rooms={rooms}
           onSuccess={() => {
             onUpdate()
+
             setEditingBooking(null)
           }}
         />
@@ -474,28 +555,43 @@ function RecurringBookingsAdmin({
 
 function EditRecurringBookingModal({
   opened,
+
   onClose,
+
   booking,
+
   rooms,
+
   onSuccess,
 }: {
   opened: boolean
+
   onClose: () => void
+
   booking: RecurringBooking
+
   rooms: Room[]
+
   onSuccess: () => void
 }) {
   const [roomId, setRoomId] = useState<string | null>(String(booking.room.id))
+
   const [title, setTitle] = useState(booking.title)
+
   const [description, setDescription] = useState(booking.description)
+
   const [daysOfWeek, setDaysOfWeek] = useState<string[]>(
     booking.days_of_week.map(String),
   )
+
   const [startTime, setStartTime] = useState(booking.start_time.slice(0, 5))
+
   const [endTime, setEndTime] = useState(booking.end_time.slice(0, 5))
+
   const [effectiveFrom, setEffectiveFrom] = useState<Date | null>(
     booking.effective_from ? new Date(booking.effective_from) : null,
   )
+
   const [effectiveUntil, setEffectiveUntil] = useState<Date | null>(
     booking.effective_until ? new Date(booking.effective_until) : null,
   )
@@ -503,14 +599,19 @@ function EditRecurringBookingModal({
   const updateMutation = useMutation({
     mutationFn: (data: Partial<CreateRecurringBookingData>) =>
       bookingsApi.updateRecurringBooking(booking.id, data),
+
     onSuccess: () => {
       notifications.show({
         title: "Tilbagevendende booking opdateret",
+
         message: "Bookingen er blevet opdateret.",
+
         color: "green",
       })
+
       onSuccess()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke opdatere booking. Prøv igen.")
     },
@@ -518,6 +619,7 @@ function EditRecurringBookingModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
     if (
       !roomId ||
       !title.trim() ||
@@ -526,16 +628,24 @@ function EditRecurringBookingModal({
       !endTime
     )
       return
+
     updateMutation.mutate({
       room_id: parseInt(roomId),
+
       title: title.trim(),
+
       description: description.trim(),
+
       days_of_week: daysOfWeek.map((d) => parseInt(d)),
+
       start_time: startTime,
+
       end_time: endTime,
+
       effective_from: effectiveFrom
         ? dayjs(effectiveFrom).format("YYYY-MM-DD")
         : null,
+
       effective_until: effectiveUntil
         ? dayjs(effectiveUntil).format("YYYY-MM-DD")
         : null,
@@ -544,6 +654,7 @@ function EditRecurringBookingModal({
 
   const roomOptions = rooms.map((room) => ({
     value: String(room.id),
+
     label: room.name,
   }))
 
@@ -652,36 +763,55 @@ function EditRecurringBookingModal({
 
 function CreateRecurringBookingModal({
   opened,
+
   onClose,
+
   rooms,
+
   onSuccess,
 }: {
   opened: boolean
+
   onClose: () => void
+
   rooms: Room[]
+
   onSuccess: () => void
 }) {
   const [roomId, setRoomId] = useState<string | null>(null)
+
   const [title, setTitle] = useState("")
+
   const [description, setDescription] = useState("")
+
   const [daysOfWeek, setDaysOfWeek] = useState<string[]>([])
+
   const [startTime, setStartTime] = useState("")
+
   const [endTime, setEndTime] = useState("")
+
   const [effectiveFrom, setEffectiveFrom] = useState<Date | null>(null)
+
   const [effectiveUntil, setEffectiveUntil] = useState<Date | null>(null)
 
   const createMutation = useMutation({
     mutationFn: (data: CreateRecurringBookingData) =>
       bookingsApi.createRecurringBooking(data),
+
     onSuccess: () => {
       notifications.show({
         title: "Tilbagevendende booking oprettet",
+
         message: "Bookingen er blevet tilføjet.",
+
         color: "green",
       })
+
       resetForm()
+
       onSuccess()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke oprette booking. Prøv igen.")
     },
@@ -689,17 +819,25 @@ function CreateRecurringBookingModal({
 
   const resetForm = () => {
     setRoomId(null)
+
     setTitle("")
+
     setDescription("")
+
     setDaysOfWeek([])
+
     setStartTime("")
+
     setEndTime("")
+
     setEffectiveFrom(null)
+
     setEffectiveUntil(null)
   }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
     if (
       !roomId ||
       !title.trim() ||
@@ -708,25 +846,35 @@ function CreateRecurringBookingModal({
       !endTime
     )
       return
+
     createMutation.mutate({
       room_id: parseInt(roomId),
+
       title: title.trim(),
+
       description: description.trim(),
+
       days_of_week: daysOfWeek.map((d) => parseInt(d)),
+
       start_time: startTime,
+
       end_time: endTime,
+
       effective_from: effectiveFrom
         ? dayjs(effectiveFrom).format("YYYY-MM-DD")
         : null,
+
       effective_until: effectiveUntil
         ? dayjs(effectiveUntil).format("YYYY-MM-DD")
         : null,
+
       is_active: true,
     })
   }
 
   const roomOptions = rooms.map((room) => ({
     value: String(room.id),
+
     label: room.name,
   }))
 

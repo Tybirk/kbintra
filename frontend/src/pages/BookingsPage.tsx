@@ -1,10 +1,12 @@
 import { useState, useMemo, useCallback, useRef } from "react"
+
 import {
   useQuery,
   useMutation,
   useQueryClient,
   keepPreviousData,
 } from "@tanstack/react-query"
+
 import {
   Title,
   Text,
@@ -18,10 +20,15 @@ import {
   ActionIcon,
   SegmentedControl,
 } from "@mantine/core"
+
 import { Schedule } from "@mantine/schedule"
+
 import type { ScheduleEventData, ScheduleViewLevel } from "@mantine/schedule"
+
 import { useDisclosure, useMediaQuery } from "@mantine/hooks"
+
 import { notifications } from "@mantine/notifications"
+
 import {
   IconPlus,
   IconSettings,
@@ -30,153 +37,230 @@ import {
   IconCalendar,
   IconCalendarWeek,
 } from "@tabler/icons-react"
+
 import dayjs from "dayjs"
 
 import { bookingsApi } from "../api/bookings"
+
 import { eventsApi } from "../api/events"
+
 import { useAuthStore } from "../store/authStore"
+
 import {
   bookingToScheduleData,
   DA_SCHEDULE_LABELS,
 } from "../utils/scheduleHelpers"
+
 import { CreateBookingModal, EditBookingModal } from "./bookings/BookingModals"
+
 import { showErrorNotification } from "../utils/errorNotification"
+
 import { AdminModal } from "./bookings/AdminModals"
+
 import { BookingDetailsModal } from "./bookings/BookingDetailsModal"
+
 import { DeleteBookingModal } from "./bookings/DeleteBookingModal"
+
 import type { CalendarBooking } from "../types"
 
 type MobileViewMode = "oversigt" | "skema"
 
 export default function BookingsPage() {
   const queryClient = useQueryClient()
+
   const { user } = useAuthStore()
+
   const isMobile = useMediaQuery("(max-width: 768px)")
+
   const [currentDate, setCurrentDate] = useState(dayjs().format("YYYY-MM-DD"))
+
   const [currentView, setCurrentView] = useState<ScheduleViewLevel>("month")
+
   const [mobileViewMode, setMobileViewMode] =
     useState<MobileViewMode>("oversigt")
+
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null)
 
   // Modal states
+
   const [
     createModalOpened,
+
     { open: openCreateModal, close: closeCreateModal },
   ] = useDisclosure(false)
+
   const [editingBooking, setEditingBooking] = useState<CalendarBooking | null>(
     null,
   )
+
   const [
     deleteModalOpened,
+
     { open: openDeleteModal, close: closeDeleteModal },
   ] = useDisclosure(false)
+
   const [bookingToDelete, setBookingToDelete] = useState<{
     id: string
+
     event_slug: string | null
+
     isRecurring: boolean
+
     recurringBookingId?: number
+
     occurrenceDate?: string
   } | null>(null)
+
   const [deleteMode, setDeleteMode] = useState<"all" | "single">("all")
+
   const [adminModalOpened, { open: openAdminModal, close: closeAdminModal }] =
     useDisclosure(false)
+
   const [
     detailsModalOpened,
+
     { open: openDetailsModal, close: closeDetailsModal },
   ] = useDisclosure(false)
+
   const [selectedBooking, setSelectedBooking] =
     useState<CalendarBooking | null>(null)
+
   const [initialCreateDate, setInitialCreateDate] = useState<Date | null>(null)
+
   const [initialCreateTime, setInitialCreateTime] = useState<number | null>(
     null,
   )
 
   // Fetch rooms
+
   const { data: rooms, isLoading: roomsLoading } = useQuery({
     queryKey: ["bookings", "rooms"],
+
     queryFn: () => bookingsApi.getRooms(true),
   })
 
   // Fetch bookings with wider range for week/month views
+
   const startDate = dayjs(currentDate)
+
     .subtract(2, "month")
+
     .startOf("month")
+
     .toISOString()
+
   const endDate = dayjs(currentDate)
+
     .add(2, "month")
+
     .endOf("month")
+
     .toISOString()
 
   const {
     data: bookings,
+
     isLoading: bookingsLoading,
+
     error,
   } = useQuery({
     queryKey: ["bookings", "calendar", startDate, endDate, selectedRoomId],
+
     queryFn: () =>
       bookingsApi.getCalendarBookings(
         startDate,
+
         endDate,
+
         selectedRoomId ? parseInt(selectedRoomId) : undefined,
       ),
+
     enabled: !roomsLoading,
+
     placeholderData: keepPreviousData,
   })
 
   // Convert bookings → Schedule events
+
   const scheduleEvents = useMemo(
     () => (bookings || []).map(bookingToScheduleData),
+
     [bookings],
   )
 
   const deleteMutation = useMutation({
     mutationFn: async ({
       id,
+
       event_slug,
+
       isRecurring,
+
       deleteAll,
+
       recurringBookingId,
+
       occurrenceDate,
     }: {
       id: string
+
       event_slug: string | null
+
       isRecurring: boolean
+
       deleteAll: boolean
+
       recurringBookingId?: number
+
       occurrenceDate?: string
     }) => {
       if (isRecurring) {
         if (deleteAll) {
           const recurringId = recurringBookingId || parseInt(id.split("_")[1])
+
           return bookingsApi.deleteRecurringBooking(recurringId)
         } else {
           const recurringId = recurringBookingId || parseInt(id.split("_")[1])
+
           if (!occurrenceDate)
             throw new Error("Occurrence date required for single deletion")
+
           return bookingsApi.createRecurringBookingException(
             recurringId,
+
             occurrenceDate,
           )
         }
       }
+
       if (!event_slug) throw new Error("Event slug missing")
+
       return eventsApi.deleteEvent(event_slug)
     },
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bookings"] })
+
       queryClient.invalidateQueries({ queryKey: ["events"] })
+
       closeDeleteModal()
+
       setBookingToDelete(null)
+
       setDeleteMode("all")
+
       notifications.show({
         title: "Booking slettet",
+
         message:
           deleteMode === "single"
             ? "Denne forekomst er blevet fjernet."
             : "Bookingen er blevet slettet.",
+
         color: "blue",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke slette booking. Prøv igen.")
     },
@@ -185,21 +269,32 @@ export default function BookingsPage() {
   const handleDeleteClick = useCallback(
     (
       id: string,
+
       event_slug: string | null,
+
       isRecurring: boolean,
+
       recurringBookingId?: number,
+
       occurrenceDate?: string,
     ) => {
       setBookingToDelete({
         id,
+
         event_slug,
+
         isRecurring,
+
         recurringBookingId,
+
         occurrenceDate,
       })
+
       setDeleteMode(isRecurring ? "single" : "all")
+
       openDeleteModal()
     },
+
     [openDeleteModal],
   )
 
@@ -207,10 +302,15 @@ export default function BookingsPage() {
     if (bookingToDelete) {
       deleteMutation.mutate({
         id: bookingToDelete.id,
+
         event_slug: bookingToDelete.event_slug,
+
         isRecurring: bookingToDelete.isRecurring,
+
         deleteAll: deleteMode === "all",
+
         recurringBookingId: bookingToDelete.recurringBookingId,
+
         occurrenceDate: bookingToDelete.occurrenceDate,
       })
     }
@@ -219,58 +319,78 @@ export default function BookingsPage() {
   const handleEventClick = useCallback(
     (event: ScheduleEventData) => {
       const payload = event.payload as { booking: CalendarBooking } | undefined
+
       if (payload?.booking) {
         setSelectedBooking(payload.booking)
+
         openDetailsModal()
       }
     },
+
     [openDetailsModal],
   )
 
   const handleTimeSlotClick = useCallback(
     (slotStart: string) => {
       const date = new Date(slotStart.replace(" ", "T"))
+
       setInitialCreateDate(date)
+
       setInitialCreateTime(date.getHours())
+
       openCreateModal()
     },
+
     [openCreateModal],
   )
 
   const handleDayClick = useCallback((date: string) => {
     setCurrentDate(date)
+
     setCurrentView("day")
   }, [])
 
   const touchStartX = useRef<number | null>(null)
+
   const touchStartY = useRef<number | null>(null)
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX
+
     touchStartY.current = e.touches[0].clientY
   }, [])
 
   const handleTouchEnd = useCallback(
     (e: React.TouchEvent) => {
       if (touchStartX.current === null || touchStartY.current === null) return
+
       const deltaX = e.changedTouches[0].clientX - touchStartX.current
+
       const deltaY = e.changedTouches[0].clientY - touchStartY.current
+
       touchStartX.current = null
+
       touchStartY.current = null
+
       if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
         setCurrentDate(
           dayjs(currentDate)
+
             .add(deltaX < 0 ? 1 : -1, "month")
+
             .format("YYYY-MM-DD"),
         )
       }
     },
+
     [currentDate],
   )
 
   const isLoading = roomsLoading || bookingsLoading
+
   const roomOptions = [
     { value: "", label: "Alle lokaler" },
+
     ...(rooms?.map((room) => ({ value: String(room.id), label: room.name })) ||
       []),
   ]
@@ -315,7 +435,9 @@ export default function BookingsPage() {
             leftSection={<IconPlus size={16} />}
             onClick={() => {
               setInitialCreateDate(null)
+
               setInitialCreateTime(null)
+
               openCreateModal()
             }}
             size={isMobile ? "xs" : "sm"}
@@ -339,6 +461,7 @@ export default function BookingsPage() {
           <Group gap="xs" wrap="wrap">
             {rooms.map((room) => {
               const isSelected = selectedRoomId === String(room.id)
+
               return (
                 <Group
                   key={room.id}
@@ -349,14 +472,19 @@ export default function BookingsPage() {
                   }
                   style={{
                     cursor: "pointer",
+
                     padding: "3px 10px",
+
                     borderRadius: 20,
+
                     border: `1.5px solid ${
                       isSelected ? room.color : "var(--mantine-color-gray-3)"
                     }`,
+
                     backgroundColor: isSelected
                       ? `${room.color}22`
                       : "transparent",
+
                     userSelect: "none",
                   }}
                 >
@@ -365,7 +493,9 @@ export default function BookingsPage() {
                     h={10}
                     style={{
                       borderRadius: "50%",
+
                       backgroundColor: room.color,
+
                       flexShrink: 0,
                     }}
                   />
@@ -388,6 +518,7 @@ export default function BookingsPage() {
             data={[
               {
                 value: "oversigt",
+
                 label: (
                   <Group gap={4} wrap="nowrap">
                     <IconCalendar size={14} />
@@ -395,8 +526,10 @@ export default function BookingsPage() {
                   </Group>
                 ),
               },
+
               {
                 value: "skema",
+
                 label: (
                   <Group gap={4} wrap="nowrap">
                     <IconCalendarWeek size={14} />
@@ -425,7 +558,9 @@ export default function BookingsPage() {
           onTouchEnd={handleTouchEnd}
           onEventClick={handleEventClick}
           // Workaround: @mantine/schedule alpha doesn't destructure onTimeSlotClick
+
           // in MonthView/YearView, leaking it to the DOM. Remove conditional when stable.
+
           onTimeSlotClick={
             currentView === "day" || currentView === "week"
               ? handleTimeSlotClick
@@ -436,7 +571,9 @@ export default function BookingsPage() {
             const payload = event.payload as {
               booking: CalendarBooking
             } | undefined
+
             const booking = payload?.booking
+
             return (
               <div>
                 <Text size="xs" fw={500} lineClamp={2}>
@@ -452,24 +589,37 @@ export default function BookingsPage() {
           }}
           weekViewProps={{
             firstDayOfWeek: 1,
+
             withWeekNumber: true,
+
             withCurrentTimeIndicator: true,
+
             highlightToday: true,
+
             startTime: "06:00:00",
+
             endTime: "23:59:59",
+
             intervalMinutes: 60,
+
             weekLabelFormat: "D. MMM",
           }}
           dayViewProps={{
             withCurrentTimeIndicator: true,
+
             startTime: "06:00:00",
+
             endTime: "23:59:59",
+
             intervalMinutes: 30,
+
             headerFormat: "ddd D. MMM YYYY",
           }}
           monthViewProps={{
             firstDayOfWeek: 1,
+
             withWeekNumbers: true,
+
             monthYearSelectProps: { labels: DA_SCHEDULE_LABELS },
           }}
           yearViewProps={{
@@ -477,6 +627,7 @@ export default function BookingsPage() {
           }}
           mobileMonthViewProps={{
             noEventsText: "Ingen reserveringer",
+
             renderHeader: () => (
               <Group justify="space-between" align="center" w="100%">
                 <ActionIcon
@@ -485,7 +636,9 @@ export default function BookingsPage() {
                   onClick={() =>
                     setCurrentDate(
                       dayjs(currentDate)
+
                         .subtract(1, "month")
+
                         .format("YYYY-MM-DD"),
                     )
                   }
@@ -508,31 +661,43 @@ export default function BookingsPage() {
                 </ActionIcon>
               </Group>
             ),
+
             renderEvent: (
               event: ScheduleEventData,
+
               { children: _children, ...buttonProps },
             ) => {
               const payload = event.payload as {
                 booking: CalendarBooking
               } | undefined
+
               const booking = payload?.booking
+
               const startTime = dayjs(event.start).format("HH:mm")
+
               const endTime = dayjs(event.end).format("HH:mm")
+
               const isAllDay = startTime === "00:00" && endTime === "00:00"
+
               return (
                 <UnstyledButton {...buttonProps}>
                   <div
                     style={{
                       display: "flex",
+
                       gap: "var(--mantine-spacing-sm)",
+
                       padding: "var(--mantine-spacing-xs) 0",
                     }}
                   >
                     <div
                       style={{
                         width: "calc(0.25rem * var(--mantine-scale))",
+
                         borderRadius: "calc(0.125rem * var(--mantine-scale))",
+
                         flexShrink: 0,
+
                         backgroundColor: String(event.color),
                       }}
                     />
@@ -565,7 +730,9 @@ export default function BookingsPage() {
         opened={createModalOpened}
         onClose={() => {
           closeCreateModal()
+
           setInitialCreateDate(null)
+
           setInitialCreateTime(null)
         }}
         rooms={rooms || []}
@@ -573,9 +740,13 @@ export default function BookingsPage() {
         initialHour={initialCreateTime}
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ["bookings"] })
+
           queryClient.invalidateQueries({ queryKey: ["events"] })
+
           closeCreateModal()
+
           setInitialCreateDate(null)
+
           setInitialCreateTime(null)
         }}
       />
@@ -587,7 +758,9 @@ export default function BookingsPage() {
           booking={editingBooking}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ["bookings"] })
+
             queryClient.invalidateQueries({ queryKey: ["events"] })
+
             setEditingBooking(null)
           }}
         />
@@ -597,6 +770,7 @@ export default function BookingsPage() {
         opened={deleteModalOpened}
         onClose={() => {
           closeDeleteModal()
+
           setBookingToDelete(null)
         }}
         isRecurring={bookingToDelete?.isRecurring || false}

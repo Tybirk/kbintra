@@ -1,4 +1,5 @@
 import { Text, Anchor } from "@mantine/core"
+
 import type { TextProps } from "@mantine/core"
 
 interface LocationTextProps extends TextProps {
@@ -10,16 +11,21 @@ const URL_REGEX = /https?:\/\/[^\s]+/g
 /**
  * Renders a location string, turning any URLs into clickable links.
  */
+
 export function LocationText({ location, ...textProps }: LocationTextProps) {
   const parts: React.ReactNode[] = []
+
   let lastIndex = 0
 
   for (const match of location.matchAll(URL_REGEX)) {
     const url = match[0]
+
     const start = match.index
+
     if (start > lastIndex) {
       parts.push(location.slice(lastIndex, start))
     }
+
     parts.push(
       <Anchor
         key={start}
@@ -32,6 +38,7 @@ export function LocationText({ location, ...textProps }: LocationTextProps) {
         {url}
       </Anchor>,
     )
+
     lastIndex = start + url.length
   }
 

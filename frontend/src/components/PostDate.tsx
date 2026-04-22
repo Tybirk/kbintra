@@ -1,26 +1,36 @@
 import { Popover, Text, UnstyledButton } from "@mantine/core"
+
 import dayjs from "dayjs"
+
 import { useState } from "react"
 
 interface EditedByInfo {
   first_name: string
+
   last_name: string
 }
 
 interface PostDateProps {
   createdAt: string
+
   updatedAt?: string
+
   editedBy?: EditedByInfo | null
+
   shortFormat?: string
 }
 
 export default function PostDate({
   createdAt,
+
   updatedAt,
+
   editedBy,
+
   shortFormat = "D. MMM YYYY [kl.] HH:mm",
 }: PostDateProps) {
   const [opened, setOpened] = useState(false)
+
   const wasEdited =
     updatedAt !== undefined &&
     Math.abs(dayjs(updatedAt).diff(dayjs(createdAt), "second")) > 1

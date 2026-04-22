@@ -1,4 +1,5 @@
 import { Title, Text, Paper, Stack, Anchor, List } from "@mantine/core"
+
 import { Link } from "react-router-dom"
 
 export default function PrivacyPolicyPage() {

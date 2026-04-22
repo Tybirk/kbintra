@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react"
+
 import { useParams, useNavigate, useLocation } from "react-router-dom"
 import {
   useQuery,
@@ -31,9 +32,13 @@ import {
   Tooltip,
   Menu,
 } from "@mantine/core"
+
 import { useDisclosure, useMediaQuery } from "@mantine/hooks"
+
 import { notifications } from "@mantine/notifications"
+
 import { showErrorNotification } from "../utils/errorNotification"
+
 import {
   IconPlus,
   IconPin,
@@ -60,17 +65,27 @@ import {
   IconDots,
   IconSettings,
 } from "@tabler/icons-react"
+
 import dayjs from "dayjs"
 
 import { eventsApi } from "../api/events"
+
 import { forumApi } from "../api/forum"
+
 import { BackButton } from "../components/BackButton"
+
 import { clearDraft, loadDraft, saveDraft } from "../utils/draftStorage"
+
 import { filterFilesBySize } from "../config"
+
 import { CompactEventCard } from "../components/CompactEventCard"
+
 import RichTextEditor from "../components/RichTextEditor"
+
 import FileDropzone, { AttachmentArea } from "../components/FileDropzone"
+
 import PollCreator from "../components/PollCreator"
+
 import {
   FilePreviewModal,
   ImageThumbnail,
@@ -78,11 +93,17 @@ import {
   getFileType,
   getFileTypeColor,
 } from "../components/FilePreview"
+
 import { AttachmentBadge } from "../components/AttachmentBadge"
+
 import EmojiPicker from "../components/EmojiPicker"
+
 import UserLink from "../components/UserLink"
+
 import UserPickerModal from "../components/UserPickerModal"
+
 import { useAuthStore } from "../store/authStore"
+
 import type {
   Thread,
   CreateThreadData,
@@ -95,19 +116,27 @@ import type {
 
 interface CreateThreadParams {
   data: CreateThreadData
+
   files: File[]
+
   pollData?: CreatePollData
 }
 
 export default function SubgroupPage() {
   const { slug, folderSlug: folderSlugParam } = useParams<{
     slug: string
+
     folderSlug?: string
   }>()
+
   const navigate = useNavigate()
+
   const location = useLocation()
+
   const queryClient = useQueryClient()
+
   const initialFolderSlug = folderSlugParam ?? null
+
   const activeTab = location.pathname.includes("/dokumenter")
     ? "documents"
     : location.pathname.includes("/lukkede")
@@ -115,14 +144,18 @@ export default function SubgroupPage() {
       : location.pathname.includes("/info")
         ? "info"
         : "threads"
+
   const [
     createThreadModalOpened,
+
     { open: openCreateThreadModal, close: closeCreateThreadModal },
   ] = useDisclosure(false)
 
   const { data: subgroup, isLoading: subgroupLoading } = useQuery({
     queryKey: ["subgroup", slug],
+
     queryFn: () => forumApi.getSubgroup(slug!),
+
     enabled: !!slug,
   })
 
@@ -166,22 +199,31 @@ export default function SubgroupPage() {
 
   const { data: upcomingEvents } = useQuery({
     queryKey: ["events", "subgroup", subgroup?.id],
+
     queryFn: () =>
       eventsApi.getEvents({
         subgroup: subgroup!.id,
+
         start: dayjs().toISOString(),
+
         end: dayjs().add(30, "day").toISOString(),
       }),
+
     enabled: !!subgroup,
   })
 
   const markReadMutation = useMutation({
     mutationFn: () => forumApi.markSubgroupRead(slug!),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["threads", slug] })
+
       queryClient.invalidateQueries({ queryKey: ["subgroups"] })
+
       queryClient.invalidateQueries({ queryKey: ["forum", "unread-count"] })
+
       queryClient.invalidateQueries({ queryKey: ["notifications"] })
+
       queryClient.invalidateQueries({
         queryKey: ["notifications", "unread-count"],
       })
@@ -189,40 +231,56 @@ export default function SubgroupPage() {
   })
 
   const { user } = useAuthStore()
+
   const [isCopying, setIsCopying] = useState(false)
 
   const updateIconMutation = useMutation({
     mutationFn: (icon: string) => forumApi.updateSubgroup(slug!, { icon }),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["subgroup", slug] })
+
       queryClient.invalidateQueries({ queryKey: ["subgroups"] })
     },
   })
 
   const isMobile = useMediaQuery("(max-width: 48em)")
+
   const [editGroupOpened, { open: openEditGroup, close: closeEditGroup }] =
     useDisclosure(false)
+
   const [editName, setEditName] = useState("")
+
   const [editDescriptionFull, setEditDescriptionFull] = useState("")
+
   const [editAllowsMembers, setEditAllowsMembers] = useState(false)
+
   const [
     editLinksInfoOpened,
+
     { open: openEditLinksInfo, close: closeEditLinksInfo },
   ] = useDisclosure(false)
+
   const [editLinksInfoContent, setEditLinksInfoContent] = useState("")
 
   const updateLinksInfoMutation = useMutation({
     mutationFn: (links_info: string) =>
       forumApi.updateSubgroup(slug!, { links_info }),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["subgroup", slug] })
+
       notifications.show({
         title: "Gemt",
+
         message: "Links og info er opdateret.",
+
         color: "green",
       })
+
       closeEditLinksInfo()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke gemme links og info.")
     },
@@ -231,19 +289,28 @@ export default function SubgroupPage() {
   const updateSubgroupMutation = useMutation({
     mutationFn: (data: {
       name?: string
+
       description?: string
+
       allows_members?: boolean
     }) => forumApi.updateSubgroup(slug!, data),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["subgroup", slug] })
+
       queryClient.invalidateQueries({ queryKey: ["subgroups"] })
+
       notifications.show({
         title: "Gruppe opdateret",
+
         message: "Ændringerne er gemt.",
+
         color: "green",
       })
+
       closeEditGroup()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke opdatere gruppen.")
     },
@@ -275,58 +342,86 @@ export default function SubgroupPage() {
   function htmlToMarkdown(html: string): string {
     function nodeToMd(node: Node): string {
       if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? ""
+
       if (node.nodeType !== Node.ELEMENT_NODE) return ""
+
       const el = node as Element
+
       const inner = Array.from(el.childNodes).map(nodeToMd).join("")
+
       switch (el.tagName.toLowerCase()) {
         case "p":
           return inner + "\n\n"
+
         case "h1":
           return `# ${inner}\n\n`
+
         case "h2":
           return `## ${inner}\n\n`
+
         case "h3":
           return `### ${inner}\n\n`
+
         case "strong":
+
         case "b":
           return `**${inner}**`
+
         case "em":
+
         case "i":
           return `*${inner}*`
+
         case "code":
           return `\`${inner}\``
+
         case "pre":
           return `\`\`\`\n${inner}\n\`\`\`\n\n`
+
         case "ul":
           return inner + "\n"
+
         case "ol":
           return inner + "\n"
+
         case "li":
           return `- ${inner}\n`
+
         case "a":
           return `[${inner}](${(el as HTMLAnchorElement).href})`
+
         case "br":
           return "\n"
+
         case "blockquote":
           return (
             inner
+
               .trim()
+
               .split("\n")
+
               .map((l) => `> ${l}`)
+
               .join("\n") + "\n\n"
           )
+
         default:
           return inner
       }
     }
+
     const doc = new DOMParser().parseFromString(html, "text/html")
+
     return nodeToMd(doc.body).trim()
   }
 
   function buildLlmPreamble(threadCount: number): string {
     const s = slug!.toLowerCase()
+
     const isBugs =
       s.includes("bug") || s.includes("fejl") || s.includes("problem")
+
     const isFeatures =
       s.includes("feature") ||
       s.includes("ideer") ||
@@ -339,6 +434,7 @@ export default function SubgroupPage() {
       : isFeatures
         ? "feature requests"
         : "issues/requests"
+
     const actionVerb = isBugs ? "fix" : isFeatures ? "implement" : "address"
 
     const capitalize = (str: string) =>
@@ -367,6 +463,7 @@ Skip any that are too vague to act on, and note why at the end.
   async function copyThreadsAsMarkdown() {
     if (!slug || !subgroup) return
     setIsCopying(true)
+
     try {
       // Fetch ALL open thread pages — the visible list may be paginated but
       // the LLM prompt needs the full set.
@@ -383,53 +480,80 @@ Skip any that are too vague to act on, and note why at the end.
         page += 1
       }
       const parts: string[] = [buildLlmPreamble(nonClosedThreads.length)]
+
       for (const thread of nonClosedThreads) {
         const posts = await forumApi.getPosts(thread.id)
+
         const authorName = thread.author
           ? `${thread.author.first_name} ${thread.author.last_name}`
           : "Ukendt"
+
         parts.push(`## ${thread.title}\n\n`)
+
         parts.push(
           `*Oprettet af ${authorName}, ${dayjs(thread.created_at).locale("da").format("D. MMMM YYYY")} · ${posts.length} svar*\n\n`,
         )
+
         for (const post of posts) {
           const postAuthor = post.author
             ? `${post.author.first_name} ${post.author.last_name}`
             : "Ukendt"
+
           parts.push(
             `**${postAuthor}** *(${dayjs(post.created_at).locale("da").format("D. MMMM YYYY")})*:\n\n`,
           )
+
           parts.push(htmlToMarkdown(post.content))
+
           parts.push("\n\n")
+
           if (post.attachments.length > 0) {
             parts.push("Attachments:\n")
+
             for (const att of post.attachments) {
               parts.push(`- \`backend/data/media/${att.file}\` (${att.name})\n`)
             }
+
             parts.push("\n")
           }
         }
+
         parts.push("---\n\n")
       }
+
       const text = parts.join("")
+
       // navigator.clipboard.writeText can fail when the user gesture
+
       // has gone stale after multiple async fetches. Fall back to a
+
       // temporary textarea + execCommand("copy") when that happens.
+
       try {
         await navigator.clipboard.writeText(text)
       } catch {
         const textarea = document.createElement("textarea")
+
         textarea.value = text
+
         textarea.style.position = "fixed"
+
         textarea.style.left = "-9999px"
+
         document.body.appendChild(textarea)
+
         textarea.select()
+
         document.execCommand("copy")
+
         document.body.removeChild(textarea)
       }
+
       notifications.show({
         title: "Kopieret!",
+
         message: `${nonClosedThreads.length} tråde kopieret til udklipsholderen`,
+
         color: "green",
       })
     } catch (error) {
@@ -485,7 +609,9 @@ Skip any that are too vague to act on, and note why at the end.
               onClick={() =>
                 updateSubgroupMutation.mutate({
                   name: editName,
+
                   description: editDescriptionFull,
+
                   allows_members: editAllowsMembers,
                 })
               }
@@ -522,8 +648,11 @@ Skip any that are too vague to act on, and note why at the end.
                   leftSection={<IconSettings size={14} />}
                   onClick={() => {
                     setEditName(subgroup.name)
+
                     setEditDescriptionFull(subgroup.description || "")
+
                     setEditAllowsMembers(subgroup.allows_members)
+
                     openEditGroup()
                   }}
                 >
@@ -590,9 +719,13 @@ Skip any that are too vague to act on, and note why at the end.
                 <Box
                   style={{
                     width: 8,
+
                     height: 8,
+
                     borderRadius: "50%",
+
                     backgroundColor: "var(--mantine-color-red-6)",
+
                     flexShrink: 0,
                   }}
                 />
@@ -616,9 +749,13 @@ Skip any that are too vague to act on, and note why at the end.
                   <Box
                     style={{
                       width: 8,
+
                       height: 8,
+
                       borderRadius: "50%",
+
                       backgroundColor: "var(--mantine-color-red-6)",
+
                       flexShrink: 0,
                     }}
                   />
@@ -735,6 +872,7 @@ Skip any that are too vague to act on, and note why at the end.
             const canEditLinksInfo =
               !!user &&
               (user.is_staff || (subgroup.allows_members && subgroup.is_member))
+
             return (
               <Stack>
                 <Group justify="flex-end">
@@ -744,6 +882,7 @@ Skip any that are too vague to act on, and note why at the end.
                       leftSection={<IconSettings size={16} />}
                       onClick={() => {
                         setEditLinksInfoContent(subgroup.links_info || "")
+
                         openEditLinksInfo()
                       }}
                     >
@@ -812,7 +951,9 @@ Skip any that are too vague to act on, and note why at the end.
         defaultMembersOnly={subgroup?.default_members_only ?? false}
         onSuccess={(thread) => {
           queryClient.invalidateQueries({ queryKey: ["threads", slug] })
+
           closeCreateThreadModal()
+
           navigate(`/forum/${slug}/traad/${thread.slug}`)
         }}
       />
@@ -822,6 +963,7 @@ Skip any that are too vague to act on, and note why at the end.
 
 interface ThreadRowProps {
   thread: Thread
+
   onClick: () => void
 }
 
@@ -833,9 +975,12 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
       radius="md"
       style={{
         cursor: "pointer",
+
         position: "relative",
+
         ...(thread.members_only && {
           borderColor: "var(--mantine-color-grape-8)",
+
           borderWidth: 2,
         }),
       }}
@@ -846,15 +991,25 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
           <Box
             style={{
               position: "absolute",
+
               top: -10,
+
               left: -10,
+
               width: 22,
+
               height: 22,
+
               borderRadius: "50%",
+
               backgroundColor: "var(--mantine-color-grape-8)",
+
               color: "white",
+
               display: "flex",
+
               alignItems: "center",
+
               justifyContent: "center",
             }}
           >
@@ -874,9 +1029,13 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
                 <Box
                   style={{
                     width: 8,
+
                     height: 8,
+
                     borderRadius: "50%",
+
                     backgroundColor: "var(--mantine-color-blue-6)",
+
                     flexShrink: 0,
                   }}
                 />
@@ -939,7 +1098,9 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
                   visibleFrom="sm"
                   style={{
                     overflow: "hidden",
+
                     textOverflow: "ellipsis",
+
                     whiteSpace: "nowrap",
                   }}
                 />
@@ -949,7 +1110,9 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
                   hiddenFrom="sm"
                   style={{
                     overflow: "hidden",
+
                     textOverflow: "ellipsis",
+
                     whiteSpace: "nowrap",
                   }}
                 >
@@ -971,28 +1134,45 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
 
 interface CreateThreadModalProps {
   opened: boolean
+
   onClose: () => void
+
   subgroupSlug: string
+
   subgroupName: string
+
   allowsMembers: boolean
+
   defaultMembersOnly: boolean
+
   onSuccess: (thread: Thread) => void
 }
 
 function CreateThreadModal({
   opened,
+
   onClose,
+
   subgroupSlug,
+
   subgroupName,
+
   allowsMembers,
+
   defaultMembersOnly,
+
   onSuccess,
 }: CreateThreadModalProps) {
   const isMobile = useMediaQuery("(max-width: 48em)")
+
   const [title, setTitle] = useState("")
+
   const [content, setContent] = useState("")
+
   const [attachments, setAttachments] = useState<File[]>([])
+
   const [pollData, setPollData] = useState<CreatePollData | null>(null)
+
   const [membersOnly, setMembersOnly] = useState(defaultMembersOnly)
 
   const titleDraftKey = "new-thread-title-" + subgroupSlug
@@ -1005,6 +1185,7 @@ function CreateThreadModal({
 
   useEffect(() => {
     const t = setTimeout(() => saveDraft(titleDraftKey, title), 1500)
+
     return () => clearTimeout(t)
   }, [title, titleDraftKey])
 
@@ -1012,25 +1193,40 @@ function CreateThreadModal({
     mutationFn: ({ data, files, pollData: pd }: CreateThreadParams) =>
       forumApi.createThread(
         subgroupSlug,
+
         data,
+
         files.length > 0 ? files : undefined,
+
         pd || undefined,
       ),
+
     onSuccess: (thread) => {
       notifications.show({
         title: "Tråd oprettet",
+
         message: "Din tråd er blevet oprettet.",
+
         color: "green",
       })
+
       setTitle("")
+
       setContent("")
+
       setAttachments([])
+
       setPollData(null)
+
       setMembersOnly(false)
+
       clearDraft("new-thread-" + subgroupSlug)
+
       clearDraft("new-thread-title-" + subgroupSlug)
+
       onSuccess(thread)
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke oprette tråd. Prøv igen.")
     },
@@ -1038,32 +1234,43 @@ function CreateThreadModal({
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault()
+
     if (!title.trim() || !content.trim()) return
+
     createMutation.mutate({
       data: {
         title: title.trim(),
+
         content: content.trim(),
+
         ...(allowsMembers && membersOnly ? { members_only: true } : {}),
       },
+
       files: attachments,
+
       pollData: pollData || undefined,
     })
   }
 
   const handleAddFiles = (files: File[]) => {
     const { validFiles, errors } = filterFilesBySize(files)
+
     if (errors.length > 0) {
       errors.forEach((error) => {
         notifications.show({
           title: "Filen er for stor",
+
           message: error,
+
           color: "red",
         })
       })
     }
+
     if (validFiles.length > 0) {
       setAttachments((prev) => [
         ...prev,
+
         ...validFiles.filter((f) => !prev.some((p) => p.name === f.name)),
       ])
     }
@@ -1142,8 +1349,11 @@ function CreateThreadModal({
                     onClick={() =>
                       setPollData({
                         question: "",
+
                         allow_multiple_votes: false,
+
                         is_anonymous: false,
+
                         options: [{ text: "" }, { text: "" }],
                       })
                     }
@@ -1173,101 +1383,151 @@ function CreateThreadModal({
 }
 
 // =============================================================================
+
 // Documents Tab Components
+
 // =============================================================================
 
 interface FolderPathEntry {
   id: number | null
+
   name: string
+
   slug?: string
 }
 
 interface FolderAncestor {
   id: number
+
   name: string
+
   slug?: string
 }
 
 interface DocumentsTabProps {
   subgroupSlug: string
+
   allowsMembers: boolean
+
   defaultMembersOnly: boolean
+
   initialFolderSlug?: string | null
+
   onFolderChange?: (folderSlug: string | null) => void
 }
 
 function DocumentsTab({
   subgroupSlug,
+
   allowsMembers,
+
   defaultMembersOnly,
+
   initialFolderSlug,
+
   onFolderChange,
 }: DocumentsTabProps) {
   const [uploadMembersOnly, setUploadMembersOnly] = useState(defaultMembersOnly)
+
   const queryClient = useQueryClient()
+
   const { user } = useAuthStore()
+
   const fileInputRef = useRef<HTMLInputElement>(null)
+
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(null)
+
   const [folderPath, setFolderPath] = useState<FolderPathEntry[]>([
     { id: null, name: "Dokumenter" },
   ])
+
   // Track which folderSlug we've already processed to avoid re-fetching on our own navigations
+
   const processedFolderSlugRef = useRef<string | null | undefined>(undefined)
+
   const [resolvingSlug, setResolvingSlug] = useState(!!initialFolderSlug)
+
   const [uploading, setUploading] = useState(false)
+
   const [uploadProgress, setUploadProgress] = useState("")
 
   useEffect(() => {
     const targetSlug = initialFolderSlug ?? null
+
     if (processedFolderSlugRef.current === targetSlug) return
+
     processedFolderSlugRef.current = targetSlug
 
     if (targetSlug === null) {
       setCurrentFolderId(null)
+
       setFolderPath([{ id: null, name: "Dokumenter" }])
+
       setResolvingSlug(false)
+
       return
     }
 
     // Resolve folder slug to folder, then reconstruct breadcrumb path
+
     setResolvingSlug(true)
+
     const buildPath = async () => {
       const targetFolder = await forumApi.getFolderBySlug(
         subgroupSlug,
+
         targetSlug,
       )
+
       const ancestors: FolderAncestor[] = []
+
       let currentId: number | null = targetFolder.parent
+
       while (currentId !== null) {
         const folder = await forumApi.getFolder(currentId)
+
         ancestors.unshift({
           id: folder.id,
+
           name: folder.name,
+
           slug: folder.slug,
         })
+
         currentId = folder.parent
       }
+
       ancestors.push({
         id: targetFolder.id,
+
         name: targetFolder.name,
+
         slug: targetFolder.slug,
       })
+
       setCurrentFolderId(targetFolder.id)
+
       setFolderPath([{ id: null, name: "Dokumenter" }, ...ancestors])
+
       setResolvingSlug(false)
     }
 
     buildPath().catch(() => {
       // Folder not found — fall back to root
+
       setCurrentFolderId(null)
+
       setFolderPath([{ id: null, name: "Dokumenter" }])
+
       setResolvingSlug(false)
+
       onFolderChange?.(null)
     })
   }, [initialFolderSlug, subgroupSlug])
 
   const [
     createFolderModalOpened,
+
     { open: openCreateFolderModal, close: closeCreateFolderModal },
   ] = useDisclosure(false)
 
@@ -1285,21 +1545,29 @@ function DocumentsTab({
 
   const handleUploadFiles = async (
     droppedFiles: File[],
+
     targetFolderId?: number,
   ) => {
     const folderId = targetFolderId ?? currentFolderId
+
     const { validFiles, errors } = filterFilesBySize(droppedFiles)
+
     for (const error of errors) {
       notifications.show({
         title: "Filen er for stor",
+
         message: error,
+
         color: "red",
       })
     }
+
     if (validFiles.length === 0) return
 
     // Check for duplicate filenames in the target location
+
     let existingFiles: ForumFile[] = []
+
     try {
       existingFiles =
         folderId !== null
@@ -1310,87 +1578,118 @@ function DocumentsTab({
     }
 
     const existingNames = new Set(existingFiles.map((f) => f.name))
+
     const duplicates = validFiles.filter((f) => existingNames.has(f.name))
+
     let filesToUpload = validFiles
 
     if (duplicates.length > 0) {
       const names = duplicates.map((f) => f.name).join(", ")
+
       const proceed = window.confirm(
         `Følgende filer findes allerede: ${names}\n\nVil du uploade dem alligevel?`,
       )
+
       if (!proceed) {
         filesToUpload = validFiles.filter((f) => !existingNames.has(f.name))
+
         if (filesToUpload.length === 0) return
       }
     }
 
     setUploading(true)
+
     let successCount = 0
+
     for (let i = 0; i < filesToUpload.length; i++) {
       const file = filesToUpload[i]
+
       setUploadProgress(`${i + 1} / ${filesToUpload.length}`)
+
       try {
         if (folderId !== null) {
           await forumApi.uploadFile(
             folderId,
+
             file,
+
             undefined,
+
             allowsMembers && uploadMembersOnly,
           )
         } else {
           await forumApi.uploadRootFile(
             subgroupSlug,
+
             file,
+
             undefined,
+
             allowsMembers && uploadMembersOnly,
           )
         }
+
         successCount++
       } catch (error) {
         showErrorNotification(
           error,
+
           `Kunne ikke uploade "${file.name}". Prøv igen.`,
         )
       }
     }
+
     setUploading(false)
+
     setUploadProgress("")
+
     if (successCount > 0) {
       // Invalidate both current view and the target folder if different
+
       invalidateFiles()
+
       if (targetFolderId !== undefined && targetFolderId !== currentFolderId) {
         queryClient.invalidateQueries({
           queryKey: ["files", targetFolderId],
         })
+
         // Also refresh folder counts
+
         queryClient.invalidateQueries({
           queryKey: ["folders", subgroupSlug],
         })
       }
+
       notifications.show({
         title: "Upload fuldført",
+
         message:
           successCount === 1
             ? "1 fil uploadet."
             : `${successCount} filer uploadet.`,
+
         color: "green",
       })
     }
   }
 
   // Fetch folders for current location
+
   const { data: folders, isLoading: foldersLoading } = useQuery({
     queryKey: ["folders", subgroupSlug, currentFolderId],
+
     queryFn: () =>
       forumApi.getFolders(subgroupSlug, currentFolderId ?? undefined),
   })
 
   // Fetch files - either root level or inside a folder
+
   const { data: files, isLoading: filesLoading } = useQuery({
     queryKey:
       currentFolderId !== null
         ? ["files", currentFolderId]
         : ["rootFiles", subgroupSlug],
+
     queryFn: () =>
       currentFolderId !== null
         ? forumApi.getFiles(currentFolderId)
@@ -1399,30 +1698,40 @@ function DocumentsTab({
 
   const navigateToFolder = (
     folderId: number | null,
+
     folderName: string,
+
     folderSlug?: string,
   ) => {
     // Mark as processed so the effect doesn't re-fetch for this navigation
+
     processedFolderSlugRef.current = folderSlug ?? null
+
     if (folderId === null) {
       setCurrentFolderId(null)
+
       setFolderPath([{ id: null, name: "Dokumenter" }])
     } else {
       setCurrentFolderId(folderId)
+
       const existingIndex = folderPath.findIndex((f) => f.id === folderId)
+
       if (existingIndex >= 0) {
         setFolderPath(folderPath.slice(0, existingIndex + 1))
       } else {
         setFolderPath([
           ...folderPath,
+
           { id: folderId, name: folderName, slug: folderSlug },
         ])
       }
     }
+
     onFolderChange?.(folderSlug ?? null)
   }
 
   const isLoading = resolvingSlug || foldersLoading || filesLoading
+
   const hasContent =
     (folders && folders.length > 0) || (files && files.length > 0)
 
@@ -1437,6 +1746,7 @@ function DocumentsTab({
         onChange={(e) => {
           if (e.target.files?.length) {
             handleUploadFiles(Array.from(e.target.files))
+
             e.target.value = ""
           }
         }}
@@ -1508,6 +1818,7 @@ function DocumentsTab({
           {/* Files */}
           {files?.map((file: ForumFile) => {
             const canModify = file.is_own || user?.is_staff === true
+
             return (
               <FileRow
                 key={file.id}
@@ -1529,6 +1840,7 @@ function DocumentsTab({
             radius="md"
             style={{
               borderStyle: "dashed",
+
               cursor: "pointer",
             }}
             onClick={() => fileInputRef.current?.click()}
@@ -1554,6 +1866,7 @@ function DocumentsTab({
                     variant="light"
                     onClick={(e: React.MouseEvent) => {
                       e.stopPropagation()
+
                       openCreateFolderModal()
                     }}
                     mt="xs"
@@ -1576,6 +1889,7 @@ function DocumentsTab({
           queryClient.invalidateQueries({
             queryKey: ["folders", subgroupSlug, currentFolderId],
           })
+
           closeCreateFolderModal()
         }}
       />
@@ -1585,44 +1899,62 @@ function DocumentsTab({
 
 interface FolderRowProps {
   folder: Folder
+
   subgroupSlug: string
+
   onClick: () => void
+
   onDropFiles: (files: File[]) => void
 }
 
 function FolderRow({
   folder,
+
   subgroupSlug,
+
   onClick,
+
   onDropFiles,
 }: FolderRowProps) {
   const [isDragOver, setIsDragOver] = useState(false)
+
   const dragCounter = useRef(0)
 
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault()
+
     e.stopPropagation()
+
     dragCounter.current++
+
     if (e.dataTransfer.types.includes("Files")) setIsDragOver(true)
   }
 
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault()
+
     e.stopPropagation()
+
     if (--dragCounter.current === 0) setIsDragOver(false)
   }
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
+
     e.stopPropagation()
   }
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
+
     e.stopPropagation()
+
     dragCounter.current = 0
+
     setIsDragOver(false)
+
     const files = Array.from(e.dataTransfer.files)
+
     if (files.length > 0) onDropFiles(files)
   }
 
@@ -1633,10 +1965,13 @@ function FolderRow({
       radius="md"
       style={{
         cursor: "pointer",
+
         backgroundColor: isDragOver
           ? "var(--mantine-color-blue-light)"
           : undefined,
+
         borderColor: isDragOver ? "var(--mantine-color-blue-5)" : undefined,
+
         transition: "background-color 0.15s, border-color 0.15s",
       }}
       onClick={onClick}
@@ -1665,16 +2000,21 @@ function FolderRow({
             title="Kopiér link"
             onClick={(e: React.MouseEvent) => {
               e.stopPropagation()
+
               const url = `${window.location.origin}/forum/${subgroupSlug}/dokumenter/${folder.slug}`
+
               navigator.clipboard.writeText(url).then(
                 () =>
                   notifications.show({
                     message: "Link kopieret",
+
                     color: "green",
                   }),
+
                 () =>
                   notifications.show({
                     message: "Kunne ikke kopiere link",
+
                     color: "red",
                   }),
               )
@@ -1690,8 +2030,11 @@ function FolderRow({
               title="Download mappe som zip"
               onClick={(e: React.MouseEvent) => {
                 e.stopPropagation()
+
                 forumApi
+
                   .downloadFolder(folder.id, folder.name)
+
                   .catch((error: unknown) => {
                     showErrorNotification(error, "Kunne ikke downloade mappen.")
                   })
@@ -1709,64 +2052,93 @@ function FolderRow({
 
 interface FileRowProps {
   file: ForumFile
+
   subgroupSlug: string
+
   canModify: boolean
+
   allowsMembers?: boolean
+
   onDelete: () => void
+
   onMove: () => void
+
   onUpdate?: () => void
 }
 
 function FileRow({
   file,
+
   subgroupSlug,
+
   canModify,
+
   onDelete,
+
   onMove,
+
   onUpdate,
 }: FileRowProps) {
   const togglePrivacyMutation = useMutation({
     mutationFn: (membersOnly: boolean) =>
       forumApi.updateFile(file.id, { members_only: membersOnly }),
+
     onSuccess: () => {
       notifications.show({
         title: "Fil opdateret",
+
         message: "Filens synlighed er blevet ændret.",
+
         color: "green",
       })
+
       onUpdate?.()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(
         error,
+
         "Kunne ikke ændre filens synlighed. Prøv igen.",
       )
     },
   })
+
   const [moveModalOpened, { open: openMoveModal, close: closeMoveModal }] =
     useDisclosure(false)
+
   const [previewOpened, { open: openPreview, close: closePreview }] =
     useDisclosure(false)
+
   const [
     deleteConfirmOpened,
+
     { open: openDeleteConfirm, close: closeDeleteConfirm },
   ] = useDisclosure(false)
 
   const fileType = getFileType(file.name)
+
   const FileIcon = getFileIcon(file.name)
+
   const fileColor = getFileTypeColor(file.name)
+
   const isImage = fileType === "image"
 
   const deleteMutation = useMutation({
     mutationFn: () => forumApi.deleteFile(file.id),
+
     onSuccess: () => {
       notifications.show({
         title: "Fil slettet",
+
         message: "Filen er blevet slettet.",
+
         color: "green",
       })
+
       onDelete()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke slette filen. Prøv igen.")
     },
@@ -1774,32 +2146,45 @@ function FileRow({
 
   const handleDownload = (e: React.MouseEvent) => {
     e.stopPropagation()
+
     fetch(file.file_url)
+
       .then((res) => res.blob())
+
       .then((blob) => {
         const blobUrl = URL.createObjectURL(blob)
+
         const a = document.createElement("a")
+
         a.href = blobUrl
+
         a.download = file.name
+
         document.body.appendChild(a)
+
         a.click()
+
         document.body.removeChild(a)
+
         URL.revokeObjectURL(blobUrl)
       })
   }
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation()
+
     openDeleteConfirm()
   }
 
   const handleOpenMoveModal = (e: React.MouseEvent) => {
     e.stopPropagation()
+
     openMoveModal()
   }
 
   const handleOpenPreview = (e: React.MouseEvent) => {
     e.stopPropagation()
+
     openPreview()
   }
 
@@ -1811,8 +2196,10 @@ function FileRow({
         radius="md"
         style={{
           position: "relative",
+
           ...(file.members_only && {
             borderColor: "var(--mantine-color-grape-8)",
+
             borderWidth: 2,
           }),
         }}
@@ -1822,15 +2209,25 @@ function FileRow({
             <Box
               style={{
                 position: "absolute",
+
                 top: -10,
+
                 left: -10,
+
                 width: 22,
+
                 height: 22,
+
                 borderRadius: "50%",
+
                 backgroundColor: "var(--mantine-color-grape-8)",
+
                 color: "white",
+
                 display: "flex",
+
                 alignItems: "center",
+
                 justifyContent: "center",
               }}
             >
@@ -1873,16 +2270,21 @@ function FileRow({
               variant="light"
               onClick={(e: React.MouseEvent) => {
                 e.stopPropagation()
+
                 const url = `${window.location.origin}${file.file_url}`
+
                 navigator.clipboard.writeText(url).then(
                   () =>
                     notifications.show({
                       message: "Link kopieret",
+
                       color: "green",
                     }),
+
                   () =>
                     notifications.show({
                       message: "Kunne ikke kopiere link",
+
                       color: "red",
                     }),
                 )
@@ -1910,10 +2312,13 @@ function FileRow({
                 variant="light"
                 onClick={(e) => {
                   e.stopPropagation()
+
                   const next = !file.members_only
+
                   const confirmMsg = next
                     ? "Gør denne fil privat? Den vil kun være synlig for medlemmer af gruppen."
                     : "Gør denne fil offentlig? Den vil blive synlig for alle."
+
                   if (window.confirm(confirmMsg)) {
                     togglePrivacyMutation.mutate(next)
                   }
@@ -1962,6 +2367,7 @@ function FileRow({
         subgroupSlug={subgroupSlug}
         onSuccess={() => {
           closeMoveModal()
+
           onMove()
         }}
       />
@@ -1982,6 +2388,7 @@ function FileRow({
             color="red"
             onClick={() => {
               closeDeleteConfirm()
+
               deleteMutation.mutate()
             }}
             loading={deleteMutation.isPending}
@@ -1996,17 +2403,25 @@ function FileRow({
 
 interface CreateFolderModalProps {
   opened: boolean
+
   onClose: () => void
+
   subgroupSlug: string
+
   parentId: number | null
+
   onSuccess: () => void
 }
 
 function CreateFolderModal({
   opened,
+
   onClose,
+
   subgroupSlug,
+
   parentId,
+
   onSuccess,
 }: CreateFolderModalProps) {
   const [name, setName] = useState("")
@@ -2014,15 +2429,21 @@ function CreateFolderModal({
   const createMutation = useMutation({
     mutationFn: () =>
       forumApi.createFolder(subgroupSlug, name, parentId ?? undefined),
+
     onSuccess: () => {
       notifications.show({
         title: "Mappe oprettet",
+
         message: "Den nye mappe er blevet oprettet.",
+
         color: "green",
       })
+
       setName("")
+
       onSuccess()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke oprette mappen. Prøv igen.")
     },
@@ -2030,7 +2451,9 @@ function CreateFolderModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
     if (!name.trim()) return
+
     createMutation.mutate()
   }
 
@@ -2065,25 +2488,36 @@ function CreateFolderModal({
 
 interface MoveFileModalProps {
   opened: boolean
+
   onClose: () => void
+
   file: ForumFile
+
   subgroupSlug: string
+
   onSuccess: () => void
 }
 
 function MoveFileModal({
   opened,
+
   onClose,
+
   file,
+
   subgroupSlug,
+
   onSuccess,
 }: MoveFileModalProps) {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
 
   // Fetch all folders for the subgroup
+
   const { data: folders, isLoading: foldersLoading } = useQuery({
     queryKey: ["allFolders", subgroupSlug],
+
     queryFn: () => forumApi.getAllFolders(subgroupSlug),
+
     enabled: opened,
   })
 
@@ -2091,17 +2525,24 @@ function MoveFileModal({
     mutationFn: () => {
       const folderId =
         selectedFolderId === "root" ? null : parseInt(selectedFolderId!, 10)
+
       return forumApi.moveFile(file.id, folderId)
     },
+
     onSuccess: () => {
       notifications.show({
         title: "Fil flyttet",
+
         message: "Filen er blevet flyttet til den valgte mappe.",
+
         color: "green",
       })
+
       setSelectedFolderId(null)
+
       onSuccess()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke flytte filen. Prøv igen.")
     },
@@ -2109,15 +2550,20 @@ function MoveFileModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
     if (selectedFolderId === null) return
+
     moveMutation.mutate()
   }
 
   // Build folder options with hierarchy indication
+
   const folderOptions = [
     { value: "root", label: "📁 Rodmappe (ingen mappe)" },
+
     ...(folders?.map((folder) => ({
       value: folder.id.toString(),
+
       label: `📂 ${folder.name}`,
     })) ?? []),
   ]
@@ -2156,6 +2602,7 @@ function MoveFileModal({
 
 interface MembersSectionProps {
   subgroup: Subgroup
+
   currentUserId: number | null
 }
 
@@ -2163,11 +2610,16 @@ const ROLE_SUGGESTIONS = ["Medlem", "Leder", "Kasserer", "Viseleder"]
 
 function MembersSection({ subgroup, currentUserId }: MembersSectionProps) {
   const queryClient = useQueryClient()
+
   const { user } = useAuthStore()
+
   const [expanded, setExpanded] = useState(false)
+
   const [pickerOpened, { open: openPicker, close: closePicker }] =
     useDisclosure(false)
+
   const [removeTarget, setRemoveTarget] = useState<SubgroupMember | null>(null)
+
   const [leaveOpened, { open: openLeave, close: closeLeave }] =
     useDisclosure(false)
 
@@ -2175,7 +2627,9 @@ function MembersSection({ subgroup, currentUserId }: MembersSectionProps) {
 
   const sortedMembers = [...subgroup.members].sort((a, b) => {
     const an = `${a.user.first_name} ${a.user.last_name}`.toLowerCase()
+
     const bn = `${b.user.first_name} ${b.user.last_name}`.toLowerCase()
+
     return an.localeCompare(bn, "da")
   })
 
@@ -2186,15 +2640,21 @@ function MembersSection({ subgroup, currentUserId }: MembersSectionProps) {
   const addMutation = useMutation({
     mutationFn: (userIds: number[]) =>
       forumApi.addMembers(subgroup.slug, userIds),
+
     onSuccess: () => {
       notifications.show({
         title: "Medlemmer tilføjet",
+
         message: "Medlemmerne er blevet tilføjet.",
+
         color: "green",
       })
+
       invalidateSubgroup()
+
       closePicker()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke tilføje medlemmer.")
     },
@@ -2203,15 +2663,21 @@ function MembersSection({ subgroup, currentUserId }: MembersSectionProps) {
   const removeMutation = useMutation({
     mutationFn: (userId: number) =>
       forumApi.removeMember(subgroup.slug, userId),
+
     onSuccess: () => {
       notifications.show({
         title: "Medlem fjernet",
+
         message: "Medlemmet er blevet fjernet fra gruppen.",
+
         color: "green",
       })
+
       invalidateSubgroup()
+
       setRemoveTarget(null)
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke fjerne medlem.")
     },
@@ -2219,14 +2685,18 @@ function MembersSection({ subgroup, currentUserId }: MembersSectionProps) {
 
   interface mutationFnEntry {
     userId: number
+
     role: string
   }
+
   const roleMutation = useMutation({
     mutationFn: ({ userId, role }: mutationFnEntry) =>
       forumApi.updateMemberRole(subgroup.slug, userId, role),
+
     onSuccess: () => {
       invalidateSubgroup()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke opdatere rolle.")
     },
@@ -2234,15 +2704,21 @@ function MembersSection({ subgroup, currentUserId }: MembersSectionProps) {
 
   const leaveMutation = useMutation({
     mutationFn: () => forumApi.leaveSubgroup(subgroup.slug),
+
     onSuccess: () => {
       notifications.show({
         title: "Du har forladt gruppen",
+
         message: `Du er ikke længere medlem af ${subgroup.name}.`,
+
         color: "green",
       })
+
       invalidateSubgroup()
+
       closeLeave()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke forlade gruppen.")
     },
@@ -2315,6 +2791,7 @@ function MembersSection({ subgroup, currentUserId }: MembersSectionProps) {
                             if (role !== m.role) {
                               roleMutation.mutate({
                                 userId: m.user.id,
+
                                 role,
                               })
                             }

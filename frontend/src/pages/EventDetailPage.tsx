@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react"
+
 import { useParams, useNavigate, useLocation } from "react-router-dom"
+
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+
 import {
   Title,
   Text,
@@ -24,9 +27,13 @@ import {
   Anchor,
   Checkbox,
 } from "@mantine/core"
+
 import { useDisclosure } from "@mantine/hooks"
+
 import { notifications } from "@mantine/notifications"
+
 import { showErrorNotification } from "../utils/errorNotification"
+
 import {
   IconDotsVertical,
   IconEdit,
@@ -42,18 +49,29 @@ import {
   IconCalendarPlus,
   IconExternalLink,
 } from "@tabler/icons-react"
+
 import dayjs from "dayjs"
 
 import { eventsApi } from "../api/events"
+
 import { BackButton } from "../components/BackButton"
+
 import { notificationsApi } from "../api/notifications"
+
 import { forumApi } from "../api/forum"
+
 import { clearDraft } from "../utils/draftStorage"
+
 import { useAuthStore } from "../store/authStore"
+
 import RichTextEditor from "../components/RichTextEditor"
+
 import Reactions from "../components/Reactions"
+
 import PostDate from "../components/PostDate"
+
 import UserLink from "../components/UserLink"
+
 import type {
   Event,
   EventAttendance,
@@ -67,24 +85,32 @@ const MAX_VISIBLE_AVATARS = 5
 
 export default function EventDetailPage() {
   const { slug } = useParams<{ slug: string }>()
+
   const navigate = useNavigate()
+
   const queryClient = useQueryClient()
 
   const {
     data: event,
+
     isLoading,
+
     error,
   } = useQuery({
     queryKey: ["event", slug],
+
     queryFn: () => eventsApi.getEvent(slug!),
+
     enabled: !!slug,
   })
 
   // Auto-mark event notifications as read when visiting the event page
+
   useEffect(() => {
     if (slug) {
       void notificationsApi.markReadByLink(`/kalender/${slug}`).then(() => {
         queryClient.invalidateQueries({ queryKey: ["notifications"] })
+
         queryClient.invalidateQueries({
           queryKey: ["notifications", "unread-count"],
         })
@@ -94,16 +120,19 @@ export default function EventDetailPage() {
 
   const [
     deleteModalOpened,
+
     { open: openDeleteModal, close: closeDeleteModal },
   ] = useDisclosure(false)
 
   const [
     cancelModalOpened,
+
     { open: openCancelModal, close: closeCancelModal },
   ] = useDisclosure(false)
 
   const [
     attendeesModalOpened,
+
     { open: openAttendeesModal, close: closeAttendeesModal },
   ] = useDisclosure(false)
 
@@ -111,16 +140,23 @@ export default function EventDetailPage() {
 
   const deleteMutation = useMutation({
     mutationFn: () => eventsApi.deleteEvent(event!.slug),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["events"] })
+
       queryClient.invalidateQueries({ queryKey: ["bookings"] })
+
       notifications.show({
         title: "Begivenhed slettet",
+
         message: "Begivenheden er blevet slettet.",
+
         color: "blue",
       })
+
       navigate("/kalender")
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke slette begivenhed. Prøv igen.")
     },
@@ -128,30 +164,42 @@ export default function EventDetailPage() {
 
   const cancelMutation = useMutation({
     mutationFn: () => eventsApi.cancelEvent(event!.slug, cancelMessage),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["event", slug] })
+
       queryClient.invalidateQueries({ queryKey: ["events"] })
+
       queryClient.invalidateQueries({ queryKey: ["calendar"] })
+
       closeCancelModal()
+
       notifications.show({
         title: "Arrangement aflyst",
+
         message:
           "Arrangementet er blevet aflyst og berørte brugere er notificeret.",
+
         color: "orange",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(
         error,
+
         "Kunne ikke aflyse arrangementet. Prøv igen.",
       )
     },
   })
 
   // Fetch attendees for the avatar preview + modal
+
   const { data: attendees } = useQuery({
     queryKey: ["event-attendees", slug],
+
     queryFn: () => eventsApi.getAttendees(slug!),
+
     enabled: !!event?.rsvp_enabled,
   })
 
@@ -177,15 +225,21 @@ export default function EventDetailPage() {
   }
 
   const isPast = dayjs(event.end_datetime).isBefore(dayjs())
+
   const attendingList = attendees?.filter((a) => a.status === "attending") ?? []
+
   const notAttendingList =
     attendees?.filter((a) => a.status === "not_attending") ?? []
+
   const notAnsweredList =
     attendees?.filter((a) => a.status === "not_answered") ?? []
 
   const hasDescription = !!event.description
+
   const hasFiles = !!event.folder
+
   const hasRsvp = event.rsvp_enabled
+
   const hasAttendeeAvatars =
     event.rsvp_enabled && attendees && attendees.length > 0
 
@@ -270,6 +324,7 @@ export default function EventDetailPage() {
             <Text size="sm">
               {dayjs(event.start_datetime).isSame(
                 dayjs(event.end_datetime),
+
                 "day",
               )
                 ? `${dayjs(event.start_datetime).format("dddd D. MMMM YYYY")} kl. ${dayjs(event.start_datetime).format("HH:mm")} – ${dayjs(event.end_datetime).format("HH:mm")}`
@@ -483,17 +538,25 @@ function getAttendeeName(a: EventAttendance): string {
 
 interface AttendeesModalProps {
   opened: boolean
+
   onClose: () => void
+
   attending: EventAttendance[]
+
   notAttending: EventAttendance[]
+
   notAnswered: EventAttendance[]
 }
 
 function AttendeesModal({
   opened,
+
   onClose,
+
   attending,
+
   notAttending,
+
   notAnswered,
 }: AttendeesModalProps) {
   return (
@@ -570,6 +633,7 @@ interface EventFilesSectionProps {
 function EventFilesSection({ eventSlug }: EventFilesSectionProps) {
   const { data: files, isLoading } = useQuery({
     queryKey: ["event-files", eventSlug],
+
     queryFn: () => eventsApi.getFiles(eventSlug),
   })
 
@@ -616,29 +680,37 @@ function EventFilesSection({ eventSlug }: EventFilesSectionProps) {
 
 function RsvpSection({ event }: { event: Event }) {
   const eventSlug = event.slug
+
   const queryClient = useQueryClient()
 
   const { data: householdMembers, isLoading: householdLoading } = useQuery({
     queryKey: ["event-household", eventSlug],
+
     queryFn: () => eventsApi.getHouseholdMembers(eventSlug),
   })
 
   const rsvpMutation = useMutation({
     mutationFn: (data: { attendances: RsvpItem[] }) =>
       eventsApi.submitRsvp(eventSlug, data),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["event", eventSlug] })
+
       queryClient.invalidateQueries({
         queryKey: ["event-household", eventSlug],
       })
+
       queryClient.invalidateQueries({
         queryKey: ["event-attendees", eventSlug],
       })
+
       notifications.show({
         message: "Tilmelding gemt",
+
         color: "green",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke gemme tilmelding. Prøv igen.")
     },
@@ -676,41 +748,54 @@ function RsvpSection({ event }: { event: Event }) {
 
 interface HouseholdRsvpFormProps {
   members: HouseholdMember[]
+
   onChangeStatus: (attendances: RsvpItem[]) => void
+
   isPending: boolean
 }
 
 function HouseholdRsvpForm({
   members,
+
   onChangeStatus,
+
   isPending,
 }: HouseholdRsvpFormProps) {
   const [statuses, setStatuses] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {}
+
     for (const member of members) {
       const key =
         member.type === "adult" ? `user_${member.id}` : `child_${member.id}`
+
       initial[key] = member.current_status || "not_answered"
     }
+
     return initial
   })
 
   const handleChange = (memberKey: string, value: string) => {
     const newStatuses = { ...statuses, [memberKey]: value }
+
     setStatuses(newStatuses)
 
     // Auto-save: build full attendances list and submit immediately
+
     const attendances: RsvpItem[] = members.map((member) => {
       const key =
         member.type === "adult" ? `user_${member.id}` : `child_${member.id}`
+
       const status = (
         key === memberKey ? value : newStatuses[key]
       ) as RsvpItem["status"]
+
       if (member.type === "adult") {
         return { user_id: member.id, status }
       }
+
       return { child_id: member.id, status }
     })
+
     onChangeStatus(attendances)
   }
 
@@ -722,6 +807,7 @@ function HouseholdRsvpForm({
       {members.map((member) => {
         const key =
           member.type === "adult" ? `user_${member.id}` : `child_${member.id}`
+
         return (
           <Group key={key} wrap="nowrap">
             <SegmentedControl
@@ -731,6 +817,7 @@ function HouseholdRsvpForm({
               disabled={isPending}
               data={[
                 { label: "Deltager", value: "attending" },
+
                 { label: "Deltager ikke", value: "not_attending" },
               ]}
             />
@@ -744,58 +831,84 @@ function HouseholdRsvpForm({
 
 interface DiscussionSectionProps {
   threadId: number
+
   subgroupSlug: string | null
+
   threadSlug: string | null
 }
 
 interface UpdatePostMutationProps {
   postId: number
+
   content: string
 }
 
 function DiscussionSection({
   threadId,
+
   subgroupSlug,
+
   threadSlug,
 }: DiscussionSectionProps) {
   const queryClient = useQueryClient()
+
   const location = useLocation()
+
   const { user: currentUser } = useAuthStore()
+
   const [content, setContent] = useState("")
+
   const [editingPostId, setEditingPostId] = useState<number | null>(null)
+
   const [editContent, setEditContent] = useState("")
+
   const [consentModalOpened, setConsentModalOpened] = useState(false)
+
   const [consentChecked, setConsentChecked] = useState(false)
+
   const [pendingEditPost, setPendingEditPost] = useState<Post | null>(null)
 
   const { data: thread, isLoading } = useQuery({
     queryKey: ["thread", threadId],
+
     queryFn: () => forumApi.getThread(threadId),
   })
 
   // Scroll to and highlight a specific post when navigating from a notification
+
   useEffect(() => {
     if (!thread || !location.hash) return
+
     const el = document.getElementById(location.hash.slice(1))
+
     if (!el) return
+
     const timer = setTimeout(() => {
       el.scrollIntoView({ behavior: "smooth", block: "center" })
+
       el.style.transition = "box-shadow 0.3s ease"
+
       el.style.boxShadow = "0 0 0 3px var(--mantine-color-blue-4)"
+
       setTimeout(() => {
         el.style.boxShadow = ""
       }, 2000)
     }, 100)
+
     return () => clearTimeout(timer)
   }, [thread, location.hash])
 
   const createPostMutation = useMutation({
     mutationFn: () => forumApi.createPost(threadId, { content }),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
+
       setContent("")
+
       clearDraft("event-reply-" + threadId)
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke sende indlæg. Prøv igen.")
     },
@@ -804,11 +917,15 @@ function DiscussionSection({
   const updatePostMutation = useMutation({
     mutationFn: ({ postId, content }: UpdatePostMutationProps) =>
       forumApi.updatePost(postId, { content: content }),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
+
       setEditingPostId(null)
+
       setEditContent("")
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke opdatere indlæg. Prøv igen.")
     },
@@ -816,9 +933,11 @@ function DiscussionSection({
 
   const deletePostMutation = useMutation({
     mutationFn: (postId: number) => forumApi.deletePost(postId),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["thread", threadId] })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke slette indlæg. Prøv igen.")
     },
@@ -826,23 +945,29 @@ function DiscussionSection({
 
   const handleSubmit = () => {
     const stripped = content.replace(/<[^>]+>/g, "").trim()
+
     if (!stripped) return
+
     createPostMutation.mutate()
   }
 
   const handleStartEdit = (post: Post) => {
     if (currentUser?.is_staff && post.author?.id !== currentUser.id) {
       setPendingEditPost(post)
+
       setConsentChecked(false)
+
       setConsentModalOpened(true)
     } else {
       setEditingPostId(post.id)
+
       setEditContent(post.content)
     }
   }
 
   const handleCancelEdit = () => {
     setEditingPostId(null)
+
     setEditContent("")
   }
 
@@ -1042,9 +1167,12 @@ function DiscussionSection({
               disabled={!consentChecked}
               onClick={() => {
                 setConsentModalOpened(false)
+
                 if (pendingEditPost) {
                   setEditingPostId(pendingEditPost.id)
+
                   setEditContent(pendingEditPost.content)
+
                   setPendingEditPost(null)
                 }
               }}
