@@ -23,6 +23,8 @@ import { IconAlertCircle } from "@tabler/icons-react"
 
 import dayjs from "dayjs"
 
+import { bookingsApi } from "../../api/bookings"
+
 import { eventsApi } from "../../api/events"
 
 import { showErrorNotification } from "../../utils/errorNotification"
@@ -201,6 +203,50 @@ export function CreateBookingModal({
 
     return dayjs(endDate).hour(hours).minute(minutes).second(0).toDate()
   }, [endDate, endTime])
+
+  // Check availability when rooms, dates, or times change
+
+  useEffect(() => {
+    if (selectedRoomIds.length === 0 || !startDatetime || !endDatetime) {
+      setAvailabilityError(null)
+
+      return
+    }
+
+    if (endDatetime <= startDatetime) return
+
+    const timer = setTimeout(async () => {
+      try {
+        const result = await bookingsApi.checkAvailability({
+          room_ids: selectedRoomIds.map((id) => parseInt(id)),
+
+          start_datetime: startDatetime.toISOString(),
+
+          end_datetime: endDatetime.toISOString(),
+        })
+
+        if (!result.can_book_all) {
+          const messages: string[] = []
+
+          for (const [roomId, conflicts] of Object.entries(
+            result.conflicts_by_room,
+          )) {
+            const room = rooms.find((r) => r.id === parseInt(roomId))
+
+            messages.push(`${room?.name ?? "Lokale"}: ${conflicts.join("; ")}`)
+          }
+
+          setAvailabilityError(messages.join("\n"))
+        } else {
+          setAvailabilityError(null)
+        }
+      } catch {
+        // Silently ignore — server-side validation still catches it on submit
+      }
+    }, 200)
+
+    return () => clearTimeout(timer)
+  }, [selectedRoomIds, startDatetime, endDatetime, rooms])
 
   const createMutation = useMutation({
     mutationFn: (data: CreateEventData) => eventsApi.createEvent(data),
@@ -388,7 +434,8 @@ export function CreateBookingModal({
                 !title.trim() ||
                 !startDatetime ||
                 !endDatetime ||
-                !isDurationValid
+                !isDurationValid ||
+                !!availabilityError
               }
             >
               Opret booking

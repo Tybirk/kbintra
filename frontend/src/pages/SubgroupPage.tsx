@@ -1,9 +1,12 @@
 import { useState, useRef, useEffect } from "react"
 
 import { useParams, useNavigate, useLocation } from "react-router-dom"
-
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  useInfiniteQuery,
+} from "@tanstack/react-query"
 import {
   Title,
   Text,
@@ -156,13 +159,43 @@ export default function SubgroupPage() {
     enabled: !!slug,
   })
 
-  const { data: threads, isLoading: threadsLoading } = useQuery({
-    queryKey: ["threads", slug],
+  const parsePageParam = (url: string | null): number | undefined => {
+    if (!url) return undefined
+    try {
+      const parsed = new URL(url, window.location.origin)
+      const p = parsed.searchParams.get("page")
+      return p ? Number(p) : undefined
+    } catch {
+      return undefined
+    }
+  }
 
-    queryFn: () => forumApi.getThreads(slug!),
-
+  const openThreadsQuery = useInfiniteQuery({
+    queryKey: ["threads", slug, "open"],
+    queryFn: ({ pageParam = 1 }) =>
+      forumApi.getThreads(slug!, { page: pageParam, isClosed: false }),
+    getNextPageParam: (lastPage) => parsePageParam(lastPage.next),
+    initialPageParam: 1,
     enabled: !!slug,
   })
+  const closedThreadsQuery = useInfiniteQuery({
+    queryKey: ["threads", slug, "closed"],
+    queryFn: ({ pageParam = 1 }) =>
+      forumApi.getThreads(slug!, { page: pageParam, isClosed: true }),
+    getNextPageParam: (lastPage) => parsePageParam(lastPage.next),
+    initialPageParam: 1,
+    enabled: !!slug,
+  })
+
+  const openThreads = (openThreadsQuery.data?.pages ?? []).flatMap(
+    (p) => p.results,
+  )
+  const closedThreads = (closedThreadsQuery.data?.pages ?? []).flatMap(
+    (p) => p.results,
+  )
+  const closedCount = closedThreadsQuery.data?.pages[0]?.count ?? 0
+  const threadsLoading =
+    openThreadsQuery.isLoading || closedThreadsQuery.isLoading
 
   const { data: upcomingEvents } = useQuery({
     queryKey: ["events", "subgroup", subgroup?.id],
@@ -283,9 +316,10 @@ export default function SubgroupPage() {
     },
   })
 
-  const openUnread = threads?.some((t) => !t.is_closed && t.is_unread) ?? false
-
-  const closedUnread = threads?.some((t) => t.is_closed && t.is_unread) ?? false
+  // Open-tab dot: trust subgroup.unread_thread_count (counts across all pages);
+  // closed-tab dot: best-effort from the pages we've loaded.
+  const openUnread = (subgroup?.unread_thread_count ?? 0) > 0
+  const closedUnread = closedThreads.some((t) => t.is_unread)
 
   const isLoading = subgroupLoading || threadsLoading
 
@@ -427,13 +461,24 @@ Skip any that are too vague to act on, and note why at the end.
   }
 
   async function copyThreadsAsMarkdown() {
-    if (!threads || !slug || !subgroup) return
-
+    if (!slug || !subgroup) return
     setIsCopying(true)
 
     try {
-      const nonClosedThreads = threads.filter((t) => !t.is_closed)
-
+      // Fetch ALL open thread pages — the visible list may be paginated but
+      // the LLM prompt needs the full set.
+      const nonClosedThreads: Thread[] = []
+      let page = 1
+      while (true) {
+        const res = await forumApi.getThreads(slug, {
+          page,
+          isClosed: false,
+          pageSize: 100,
+        })
+        nonClosedThreads.push(...res.results)
+        if (!res.next) break
+        page += 1
+      }
       const parts: string[] = [buildLlmPreamble(nonClosedThreads.length)]
 
       for (const thread of nonClosedThreads) {
@@ -518,19 +563,7 @@ Skip any that are too vague to act on, and note why at the end.
     }
   }
 
-  // Sort threads: pinned first, then by updated_at
-
-  const sortedThreads = [...(threads || [])].sort((a, b) => {
-    if (a.is_pinned && !b.is_pinned) return -1
-
-    if (!a.is_pinned && b.is_pinned) return 1
-
-    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-  })
-
-  const openThreads = sortedThreads.filter((t) => !t.is_closed)
-
-  const closedThreads = sortedThreads.filter((t) => t.is_closed)
+  // Sort is done on the backend (pinned first, then by updated_at).
 
   return (
     <>
@@ -705,7 +738,7 @@ Skip any that are too vague to act on, and note why at the end.
           <Tabs.Tab value="info" leftSection={<IconLink size={16} />}>
             Links og info
           </Tabs.Tab>
-          {closedThreads.length > 0 && (
+          {closedCount > 0 && (
             <Tabs.Tab
               value="closed-threads"
               leftSection={<IconLock size={16} />}
@@ -761,7 +794,7 @@ Skip any that are too vague to act on, and note why at the end.
             </Button>
           </Group>
           <Stack gap="md">
-            {openThreads.length === 0 ? (
+            {openThreads.length === 0 && !openThreadsQuery.isLoading ? (
               <Paper withBorder p="xl" radius="md">
                 <Center>
                   <Stack align="center" gap="xs">
@@ -784,6 +817,17 @@ Skip any that are too vague to act on, and note why at the end.
                 />
               ))
             )}
+            {openThreadsQuery.hasNextPage && (
+              <Center mt="sm">
+                <Button
+                  variant="light"
+                  onClick={() => openThreadsQuery.fetchNextPage()}
+                  loading={openThreadsQuery.isFetchingNextPage}
+                >
+                  Vis flere tråde
+                </Button>
+              </Center>
+            )}
           </Stack>
         </Tabs.Panel>
 
@@ -796,6 +840,17 @@ Skip any that are too vague to act on, and note why at the end.
                 onClick={() => navigate(`/forum/${slug}/traad/${thread.slug}`)}
               />
             ))}
+            {closedThreadsQuery.hasNextPage && (
+              <Center mt="sm">
+                <Button
+                  variant="light"
+                  onClick={() => closedThreadsQuery.fetchNextPage()}
+                  loading={closedThreadsQuery.isFetchingNextPage}
+                >
+                  Vis flere tråde
+                </Button>
+              </Center>
+            )}
           </Stack>
         </Tabs.Panel>
 

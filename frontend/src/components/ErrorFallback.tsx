@@ -18,8 +18,6 @@ import {
   IconChevronUp,
 } from "@tabler/icons-react"
 
-import { useAuthStore } from "../store/authStore"
-
 interface ErrorFallbackProps {
   error: Error | null
 
@@ -76,13 +74,9 @@ export function ErrorFallback({
 
   description = DEFAULT_DESCRIPTION,
 }: ErrorFallbackProps) {
-  const user = useAuthStore((s) => s.user)
-
-  const isAdmin = user?.is_staff ?? false
-
   const isDev = import.meta.env.DEV
 
-  const canSeeDetails = isAdmin || isDev
+  const canSeeDetails = true
 
   const [showDetails, setShowDetails] = useState(isDev)
 
@@ -98,9 +92,6 @@ export function ErrorFallback({
     canSeeDetails && error ? (
       <Stack gap="xs" w="100%">
         <Group justify="space-between" wrap="nowrap">
-          <Text size="xs" c="dimmed" fw={500}>
-            Fejldetaljer (kun synlige for admins)
-          </Text>
           <Button
             size="compact-xs"
             variant="subtle"
