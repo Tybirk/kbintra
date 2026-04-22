@@ -475,6 +475,17 @@ def _scrub_private_messages(db_copy_path: str, user_id: int) -> None:
         conn.close()
 
 
+def _make_cleanup_close(original_close, tmp_path):
+    """Wrap response.close() to delete the temp file after streaming."""
+
+    def close():
+        original_close()
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
+
+    return close
+
+
 class DownloadDatabaseView(APIView):
     """Download a scrubbed copy of the SQLite database. Staff only.
 
@@ -501,17 +512,15 @@ class DownloadDatabaseView(APIView):
 
         _scrub_private_messages(tmp_name, request.user.id)
 
-        # Open then unlink: on Linux the file stays alive until the fd is closed,
-        # so FileResponse can stream it and the file is cleaned up automatically.
         f = open(tmp_name, "rb")  # noqa: SIM115
-        os.unlink(tmp_name)
-
-        return FileResponse(
+        response = FileResponse(
             f,
             content_type="application/x-sqlite3",
             as_attachment=True,
             filename="db.sqlite3",
         )
+        response.close = _make_cleanup_close(response.close, tmp_name)
+        return response
 
 
 class DownloadMediaView(APIView):
@@ -535,13 +544,12 @@ class DownloadMediaView(APIView):
                     arcname = os.path.relpath(filepath, media_root)
                     zf.write(filepath, arcname)
 
-        # Open then unlink so the file is cleaned up after streaming
         f = open(tmp_name, "rb")  # noqa: SIM115
-        os.unlink(tmp_name)
-
-        return FileResponse(
+        response = FileResponse(
             f,
             content_type="application/zip",
             as_attachment=True,
             filename="media.zip",
         )
+        response.close = _make_cleanup_close(response.close, tmp_name)
+        return response
