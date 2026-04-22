@@ -112,6 +112,7 @@ describe("forumApi", () => {
         "/forum/subgroups/test-group/threads/",
         { params: {} },
       )
+
       expect(result).toEqual(mockThreads)
     })
 
