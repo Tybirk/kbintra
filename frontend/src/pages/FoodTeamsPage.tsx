@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react"
+
 import { useNavigate, useParams } from "react-router-dom"
+
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+
 import {
   Title,
   Text,
@@ -24,10 +27,15 @@ import {
   SimpleGrid,
   TextInput,
 } from "@mantine/core"
+
 import { useDisclosure } from "@mantine/hooks"
+
 import { notifications } from "@mantine/notifications"
+
 import { showErrorNotification } from "../utils/errorNotification"
+
 import { DatePickerInput, DateTimePicker } from "@mantine/dates"
+
 import {
   IconUsers,
   IconCalendar,
@@ -43,10 +51,13 @@ import {
   IconPlayerPlay,
   IconPlus,
 } from "@tabler/icons-react"
+
 import dayjs from "dayjs"
 
 import { foodApi } from "../api/food"
+
 import { useAuthStore } from "../store/authStore"
+
 import type {
   FoodTeam,
   FoodTeamListItem,
@@ -58,22 +69,29 @@ import type {
 
 interface WishSubmitData {
   available_dates: string[]
+
   comment: string
 }
 
 interface GenerateTeamsParams {
   cycleId: number
+
   dryRun: boolean
 }
 
 export default function FoodTeamsPage() {
   const navigate = useNavigate()
+
   const { tab } = useParams<{ tab?: string }>()
+
   const { user } = useAuthStore()
 
   // Path-based tab state
+
   const validTabs = ["mine-hold", "alle-hold", "bytte", "oensker", "admin"]
+
   const activeTab = tab && validTabs.includes(tab) ? tab : "mine-hold"
+
   const setActiveTab = (newTab: string | null) => {
     if (newTab && newTab !== "mine-hold") {
       navigate(`/madhold/${newTab}`)
@@ -83,33 +101,44 @@ export default function FoodTeamsPage() {
   }
 
   // Fetch my teams
+
   const { data: myTeams, isLoading: myTeamsLoading } = useQuery({
     queryKey: ["food", "teams", "my"],
+
     queryFn: foodApi.getMyTeams,
   })
 
   // Fetch all upcoming teams
+
   const { data: allTeams, isLoading: allTeamsLoading } = useQuery({
     queryKey: ["food", "teams", "all"],
+
     queryFn: () => foodApi.getTeams(),
   })
 
   // Fetch swap requests
+
   const { data: swapRequests, isLoading: swapRequestsLoading } = useQuery({
     queryKey: ["food", "swap-requests"],
+
     queryFn: foodApi.getSwapRequests,
   })
 
   // Fetch active cycle for wish submission
+
   const { data: activeCycle, isLoading: cycleLoading } = useQuery({
     queryKey: ["food", "cycles", "active"],
+
     queryFn: foodApi.getActiveCycle,
+
     retry: false,
   })
 
   const pendingRequests =
     swapRequests?.filter((r) => r.status === "pending") ?? []
+
   const incomingRequests = pendingRequests.filter((r) => r.is_incoming)
+
   const outgoingRequests = pendingRequests.filter((r) => r.is_outgoing)
 
   const isLoading = myTeamsLoading || allTeamsLoading || swapRequestsLoading
@@ -282,40 +311,55 @@ export default function FoodTeamsPage() {
 }
 
 // Wish Submission Panel
+
 interface WishSubmissionPanelProps {
   cycle: FoodTeamCycle
 }
 
 function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
   const queryClient = useQueryClient()
+
   const [selectedDates, setSelectedDates] = useState<string[]>([])
+
   const [comment, setComment] = useState("")
+
   const [defaultsApplied, setDefaultsApplied] = useState(false)
 
   // Fetch existing wish
+
   const { data: existingWish, isLoading: wishLoading } = useQuery({
     queryKey: ["food", "wishes", "my", cycle.id],
+
     queryFn: () => foodApi.getMyWish(cycle.id),
+
     retry: false,
+
     refetchOnMount: true,
   })
 
   // Fetch default cooking days
+
   const { data: defaultCookingDaysData } = useQuery({
     queryKey: ["food", "default-cooking-days"],
+
     queryFn: foodApi.getDefaultCookingDays,
   })
 
   // Update default cooking days mutation
+
   const updateDefaultsMutation = useMutation({
     mutationFn: foodApi.updateDefaultCookingDays,
+
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["food", "default-cooking-days"],
       })
+
       notifications.show({
         title: "Standarder gemt",
+
         message: "Dine standard madlavningsdage er blevet gemt.",
+
         color: "green",
       })
     },
@@ -327,46 +371,61 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
     const newDefaults = defaultDays.includes(day)
       ? defaultDays.filter((d) => d !== day)
       : [...defaultDays, day].sort()
+
     updateDefaultsMutation.mutate(newDefaults)
   }
 
   // Apply defaults to selected dates when first loading (if no existing wish)
+
   const applyDefaultsToSelection = () => {
     if (defaultDays.length === 0) return
 
     // Find cooking dates that match the default weekdays
+
     const matchingDates = cycle.cooking_dates.filter((date) => {
       const weekday = dayjs(date).day() // 0=Sunday, 1=Monday, etc.
+
       // Convert to our format: 0=Monday, 1=Tuesday, 2=Wednesday, 3=Thursday
+
       const adjustedDay = weekday === 0 ? 6 : weekday - 1
+
       return defaultDays.includes(adjustedDay)
     })
 
     setSelectedDates(matchingDates)
+
     setDefaultsApplied(true)
   }
 
   // Initialize selected dates from existing wish
+
   useEffect(() => {
     if (existingWish) {
       setSelectedDates(existingWish.available_dates)
+
       setComment(existingWish.comment)
     }
   }, [existingWish])
 
   const submitWishMutation = useMutation({
     mutationFn: (data: WishSubmitData) => foodApi.submitWish(cycle.id, data),
+
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["food", "wishes", "my", cycle.id],
       })
+
       queryClient.invalidateQueries({ queryKey: ["food", "cycles", "active"] })
+
       notifications.show({
         title: "Ønsker indsendt",
+
         message: "Dine datopræferencer er blevet gemt.",
+
         color: "green",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke indsende ønsker. Prøv igen.")
     },
@@ -389,17 +448,20 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
   const handleSubmit = () => {
     submitWishMutation.mutate({
       available_dates: selectedDates,
+
       comment,
     })
   }
 
   // Update selected dates when existing wish loads
+
   if (
     existingWish &&
     selectedDates.length === 0 &&
     existingWish.available_dates.length > 0
   ) {
     setSelectedDates(existingWish.available_dates)
+
     setComment(existingWish.comment)
   }
 
@@ -536,7 +598,9 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
                 <SimpleGrid cols={{ base: 2, sm: 3, md: 4 }} spacing="sm">
                   {cycle.cooking_dates.map((date) => {
                     const isSelected = selectedDates.includes(date)
+
                     const dayName = dayjs(date).format("ddd")
+
                     return (
                       <Paper
                         key={date}
@@ -601,54 +665,75 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
 }
 
 // Admin Panel for managing cycles and generating teams
+
 function AdminPanel() {
   const queryClient = useQueryClient()
+
   const [
     createModalOpened,
+
     { open: openCreateModal, close: closeCreateModal },
   ] = useDisclosure(false)
+
   const [generationResult, setGenerationResult] =
     useState<TeamGenerationResult | null>(null)
 
   // Fetch all cycles
+
   const { data: cycles, isLoading: cyclesLoading } = useQuery({
     queryKey: ["food", "cycles"],
+
     queryFn: foodApi.getCycles,
   })
 
   // Create cycle mutation
+
   const createCycleMutation = useMutation({
     mutationFn: foodApi.createCycle,
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "cycles"] })
+
       notifications.show({
         title: "Periode oprettet",
+
         message: "Den nye madholdsperiode er blevet oprettet.",
+
         color: "green",
       })
+
       closeCreateModal()
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke oprette periode.")
     },
   })
 
   // Generate teams mutation
+
   const generateTeamsMutation = useMutation({
     mutationFn: ({ cycleId, dryRun }: GenerateTeamsParams) =>
       foodApi.generateTeams(cycleId, dryRun),
+
     onSuccess: (result) => {
       setGenerationResult(result)
+
       if (result.success) {
         queryClient.invalidateQueries({ queryKey: ["food", "cycles"] })
+
         queryClient.invalidateQueries({ queryKey: ["food", "teams"] })
+
         notifications.show({
           title: "Hold genereret",
+
           message: `Oprettede ${result.teams_created} hold.`,
+
           color: "green",
         })
       }
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke generere hold.")
     },
@@ -759,21 +844,29 @@ function AdminPanel() {
 }
 
 // Cycle Admin Card
+
 interface CycleAdminCardProps {
   cycle: FoodTeamCycle
+
   onGenerate: (dryRun: boolean) => void
+
   isGenerating: boolean
 }
 
 function CycleAdminCard({
   cycle,
+
   onGenerate,
+
   isGenerating,
 }: CycleAdminCardProps) {
   const statusColors: Record<string, string> = {
     draft: "gray",
+
     collecting_wishes: "blue",
+
     generating: "yellow",
+
     finalized: "green",
   }
 
@@ -793,8 +886,11 @@ function CycleAdminCard({
         <Badge color={statusColors[cycle.status] || "gray"} size="lg">
           {{
             draft: "Kladde",
+
             collecting_wishes: "Indsamler ønsker",
+
             generating: "Genererer",
+
             finalized: "Afsluttet",
           }[cycle.status] || cycle.status}
         </Badge>
@@ -853,58 +949,83 @@ function CycleAdminCard({
 }
 
 // Create Cycle Modal
+
 interface CreateCycleModalProps {
   opened: boolean
+
   onClose: () => void
+
   onCreate: (data: {
     name: string
+
     cooking_dates: string[]
+
     wish_deadline: string
   }) => void
+
   isLoading: boolean
 }
 
 function CreateCycleModal({
   opened,
+
   onClose,
+
   onCreate,
+
   isLoading,
 }: CreateCycleModalProps) {
   const [name, setName] = useState("")
+
   const [cookingDates, setCookingDates] = useState<Date[]>([])
+
   const [wishDeadline, setWishDeadline] = useState<Date | null>(null)
 
   // Fetch closed food days to disable them in the date picker
+
   const { data: closedDays } = useQuery({
     queryKey: ["food", "closed-days"],
+
     queryFn: () => foodApi.getClosedDays(dayjs().format("YYYY-MM-DD")),
+
     enabled: opened,
   })
+
   const closedDateSet = new Set(closedDays?.map((d) => d.date) ?? [])
 
   const handleSubmit = () => {
     onCreate({
       name,
+
       cooking_dates: cookingDates.map((d) => dayjs(d).format("YYYY-MM-DD")),
+
       wish_deadline: wishDeadline ? dayjs(wishDeadline).toISOString() : "",
     })
   }
 
   const handleClose = () => {
     // Reset form on close
+
     setName("")
+
     setCookingDates([])
+
     setWishDeadline(null)
+
     onClose()
   }
 
   const isValid = name && cookingDates.length > 0 && wishDeadline
 
   // Exclude weekends and closed food days (Mantine types say string but runtime passes Date)
+
   const excludeDate = (d: Date | string) => {
     const date = d instanceof Date ? d : new Date(d)
+
     const day = date.getDay()
+
     if (day === 0 || day === 5 || day === 6) return true
+
     return closedDateSet.has(dayjs(date).format("YYYY-MM-DD"))
   }
 
@@ -947,8 +1068,11 @@ function CreateCycleModal({
             </Text>
             <Text size="sm" c="dimmed">
               {[...cookingDates]
+
                 .sort((a, b) => dayjs(a).valueOf() - dayjs(b).valueOf())
+
                 .map((d) => dayjs(d).format("ddd, D. MMM"))
+
                 .join(" - ")}
             </Text>
           </Paper>
@@ -981,57 +1105,84 @@ function CreateCycleModal({
 }
 
 // My Team Card with swap request capability
+
 interface MyTeamCardProps {
   team: FoodTeam
+
   allTeams: FoodTeamListItem[]
+
   myTeams: FoodTeam[]
+
   currentUserId?: number
 }
 
 function MyTeamCard({
   team,
+
   allTeams,
+
   myTeams,
+
   currentUserId,
 }: MyTeamCardProps) {
   const [expanded, setExpanded] = useState(false)
+
   const [swapModalOpened, { open: openSwapModal, close: closeSwapModal }] =
     useDisclosure(false)
+
   const [selectedTargetTeamId, setSelectedTargetTeamId] =
     useState<number | null>(null)
+
   const [selectedTargetMemberId, setSelectedTargetMemberId] =
     useState<number | null>(null)
+
   const [swapMessage, setSwapMessage] = useState("")
+
   const queryClient = useQueryClient()
 
   // Find my membership in this team
+
   const myMembership = team.members.find((m) => m.user.id === currentUserId)
 
   // Get teams I'm not already on (for swap targets)
+
   const myTeamDates = new Set(myTeams.map((t) => t.date))
+
   const availableSwapTeams = allTeams.filter((t) => !myTeamDates.has(t.date))
 
   // Fetch selected team details for swap
+
   const { data: selectedTeamDetails } = useQuery({
     queryKey: ["food", "teams", selectedTargetTeamId],
+
     queryFn: () => foodApi.getTeam(selectedTargetTeamId!),
+
     enabled: !!selectedTargetTeamId,
   })
 
   const createSwapMutation = useMutation({
     mutationFn: foodApi.createSwapRequest,
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "swap-requests"] })
+
       notifications.show({
         title: "Bytte anmodet",
+
         message: "Din bytteanmodning er blevet sendt.",
+
         color: "green",
       })
+
       closeSwapModal()
+
       setSelectedTargetTeamId(null)
+
       setSelectedTargetMemberId(null)
+
       setSwapMessage("")
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke oprette bytteanmodning.")
     },
@@ -1039,9 +1190,12 @@ function MyTeamCard({
 
   const handleRequestSwap = () => {
     if (!myMembership || !selectedTargetMemberId) return
+
     createSwapMutation.mutate({
       requester_membership_id: myMembership.id,
+
       target_membership_id: selectedTargetMemberId,
+
       message: swapMessage,
     })
   }
@@ -1154,6 +1308,7 @@ function MyTeamCard({
                     }
                     onClick={() => {
                       setSelectedTargetTeamId(t.id)
+
                       setSelectedTargetMemberId(null)
                     }}
                   >
@@ -1254,6 +1409,7 @@ function MyTeamCard({
 }
 
 // All Teams Card (compact view)
+
 interface AllTeamCardProps {
   team: FoodTeamListItem
 }
@@ -1297,6 +1453,7 @@ function AllTeamCard({ team }: AllTeamCardProps) {
 }
 
 // Team Member Row
+
 interface TeamMemberRowProps {
   member: FoodTeamMember
 }
@@ -1323,40 +1480,52 @@ function TeamMemberRow({ member }: TeamMemberRowProps) {
 }
 
 // Swap Request Card
+
 interface SwapRequestCardProps {
   request: TeamSwapRequest
 }
 
 function SwapRequestCard({ request }: SwapRequestCardProps) {
   const [responseMessage, setResponseMessage] = useState("")
+
   const [showResponseInput, setShowResponseInput] = useState(false)
+
   const queryClient = useQueryClient()
 
   const respondMutation = useMutation({
     mutationFn: ({
       action,
+
       message,
     }: {
       action: "accept" | "decline"
+
       message: string
     }) =>
       foodApi.respondSwapRequest(request.id, {
         action,
+
         response_message: message,
       }),
+
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["food", "swap-requests"] })
+
       queryClient.invalidateQueries({ queryKey: ["food", "teams"] })
+
       notifications.show({
         title:
           variables.action === "accept" ? "Bytte accepteret" : "Bytte afvist",
+
         message:
           variables.action === "accept"
             ? "Holdbyttet er gennemført."
             : "Bytteanmodningen er blevet afvist.",
+
         color: variables.action === "accept" ? "green" : "orange",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke svare på bytteanmodning.")
     },
@@ -1364,14 +1533,19 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
 
   const cancelMutation = useMutation({
     mutationFn: () => foodApi.cancelSwapRequest(request.id),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "swap-requests"] })
+
       notifications.show({
         title: "Anmodning annulleret",
+
         message: "Din bytteanmodning er blevet annulleret.",
+
         color: "blue",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke annullere bytteanmodning.")
     },
@@ -1427,8 +1601,11 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
           >
             {{
               pending: "Afventer",
+
               accepted: "Accepteret",
+
               declined: "Afvist",
+
               cancelled: "Annulleret",
             }[request.status] || request.status}
           </Badge>

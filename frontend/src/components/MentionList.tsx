@@ -1,4 +1,5 @@
 import { forwardRef, useImperativeHandle, useState, useEffect } from "react"
+
 import {
   Paper,
   Stack,
@@ -7,15 +8,18 @@ import {
   Avatar,
   Text,
 } from "@mantine/core"
+
 import type { MentionUser } from "../types"
 
 export interface MentionCommandItem {
   id: string
+
   label: string
 }
 
 interface MentionListProps {
   items: MentionUser[]
+
   command: (item: MentionCommandItem) => void
 }
 
@@ -33,9 +37,11 @@ const MentionList = forwardRef<MentionListRef, MentionListProps>(
 
     const selectItem = (index: number) => {
       const item = items[index]
+
       if (item) {
         command({
           id: String(item.id),
+
           label: `${item.first_name} ${item.last_name}`,
         })
       }
@@ -44,18 +50,25 @@ const MentionList = forwardRef<MentionListRef, MentionListProps>(
     useImperativeHandle(ref, () => ({
       onKeyDown: (event: KeyboardEvent) => {
         if (items.length === 0) return false
+
         if (event.key === "ArrowUp") {
           setSelectedIndex((i) => (i + items.length - 1) % items.length)
+
           return true
         }
+
         if (event.key === "ArrowDown") {
           setSelectedIndex((i) => (i + 1) % items.length)
+
           return true
         }
+
         if (event.key === "Enter") {
           selectItem(selectedIndex)
+
           return true
         }
+
         return false
       },
     }))

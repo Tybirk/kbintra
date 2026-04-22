@@ -1,6 +1,9 @@
 import { useState } from "react"
+
 import { useNavigate } from "react-router-dom"
+
 import { useMutation } from "@tanstack/react-query"
+
 import {
   Title,
   Paper,
@@ -9,9 +12,13 @@ import {
   Stack,
   Alert,
 } from "@mantine/core"
+
 import { notifications } from "@mantine/notifications"
+
 import { authApi } from "../api/auth"
+
 import { BackButton } from "../components/BackButton"
+
 import type { ChangePasswordData } from "../types"
 
 export default function ChangePasswordPage() {
@@ -19,23 +26,32 @@ export default function ChangePasswordPage() {
 
   const [formData, setFormData] = useState<ChangePasswordData>({
     current_password: "",
+
     new_password: "",
+
     new_password_confirm: "",
   })
+
   const [error, setError] = useState<string | null>(null)
 
   const changePasswordMutation = useMutation({
     mutationFn: (data: ChangePasswordData) => authApi.changePassword(data),
+
     onSuccess: () => {
       notifications.show({
         title: "Adgangskode opdateret",
+
         message: "Din adgangskode er blevet ændret.",
+
         color: "green",
       })
+
       navigate("/profil")
     },
+
     onError: (err: { response?: { data?: Record<string, string[]> } }) => {
       const data = err.response?.data
+
       if (data?.current_password) {
         setError("Den nuværende adgangskode er forkert.")
       } else if (data?.new_password) {
@@ -50,15 +66,18 @@ export default function ChangePasswordPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
     setError(null)
 
     if (formData.new_password !== formData.new_password_confirm) {
       setError("De nye adgangskoder matcher ikke.")
+
       return
     }
 
     if (formData.new_password.length < 8) {
       setError("Den nye adgangskode skal være mindst 8 tegn.")
+
       return
     }
 
@@ -89,6 +108,7 @@ export default function ChangePasswordPage() {
               onChange={(e) =>
                 setFormData((prev) => ({
                   ...prev,
+
                   current_password: e.target.value,
                 }))
               }
@@ -102,6 +122,7 @@ export default function ChangePasswordPage() {
               onChange={(e) =>
                 setFormData((prev) => ({
                   ...prev,
+
                   new_password: e.target.value,
                 }))
               }
@@ -116,6 +137,7 @@ export default function ChangePasswordPage() {
               onChange={(e) =>
                 setFormData((prev) => ({
                   ...prev,
+
                   new_password_confirm: e.target.value,
                 }))
               }

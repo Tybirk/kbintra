@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react"
+
 import { Link, useSearchParams } from "react-router-dom"
+
 import { useMutation } from "@tanstack/react-query"
+
 import {
   Container,
   Paper,
@@ -12,20 +15,26 @@ import {
   Anchor,
   Alert,
 } from "@mantine/core"
+
 import { IconArrowLeft, IconCheck, IconAlertCircle } from "@tabler/icons-react"
 
 import { authApi } from "../api/auth"
+
 import type { ResetPasswordData } from "../types"
 
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams()
+
   const token = searchParams.get("token")
 
   const [formData, setFormData] = useState({
     new_password: "",
+
     new_password_confirm: "",
   })
+
   const [error, setError] = useState<string | null>(null)
+
   const [success, setSuccess] = useState(false)
 
   useEffect(() => {
@@ -36,11 +45,14 @@ export default function ResetPasswordPage() {
 
   const resetPasswordMutation = useMutation({
     mutationFn: (data: ResetPasswordData) => authApi.resetPassword(data),
+
     onSuccess: () => {
       setSuccess(true)
     },
+
     onError: (err: { response?: { data?: Record<string, string[]> } }) => {
       const data = err.response?.data
+
       if (data?.token) {
         setError(
           "Nulstillingslinket er ugyldigt eller udløbet. Anmod venligst om et nyt link.",
@@ -57,26 +69,32 @@ export default function ResetPasswordPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
     setError(null)
 
     if (!token) {
       setError("Ugyldigt eller manglende nulstillingstoken.")
+
       return
     }
 
     if (formData.new_password !== formData.new_password_confirm) {
       setError("Adgangskoderne matcher ikke.")
+
       return
     }
 
     if (formData.new_password.length < 8) {
       setError("Adgangskoden skal være mindst 8 tegn.")
+
       return
     }
 
     resetPasswordMutation.mutate({
       token,
+
       new_password: formData.new_password,
+
       new_password_confirm: formData.new_password_confirm,
     })
   }
@@ -172,6 +190,7 @@ export default function ResetPasswordPage() {
               onChange={(e) =>
                 setFormData((prev) => ({
                   ...prev,
+
                   new_password: e.currentTarget.value,
                 }))
               }
@@ -186,6 +205,7 @@ export default function ResetPasswordPage() {
               onChange={(e) =>
                 setFormData((prev) => ({
                   ...prev,
+
                   new_password_confirm: e.currentTarget.value,
                 }))
               }

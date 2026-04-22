@@ -1,9 +1,13 @@
 import { useState, useEffect } from "react"
+
 import { useNavigate } from "react-router-dom"
+
 import { Modal, Button, Group, Stack, Text, ThemeIcon } from "@mantine/core"
+
 import { IconBell } from "@tabler/icons-react"
 
 import { notificationsApi } from "../api/notifications"
+
 import {
   isPushSupported,
   isPushConfigured,
@@ -15,7 +19,9 @@ import {
 
 export function PushNotificationPrompt() {
   const navigate = useNavigate()
+
   const [visible, setVisible] = useState(false)
+
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -23,23 +29,32 @@ export function PushNotificationPrompt() {
 
     const checkShouldShow = async () => {
       // Check all conditions
+
       if (!isPushSupported()) return
+
       if (localStorage.getItem("push-prompt-status") === "declined") return
+
       if (getPushOptedOut()) return
+
       if (getNotificationPermission() === "denied") return
 
       const [configured, subscribed] = await Promise.all([
         isPushConfigured(),
+
         isPushSubscribed(),
       ])
 
       if (!configured) return
+
       if (subscribed) return
 
       // Don't prompt if the user disabled all push categories on the server
+
       // (e.g. via the "Deaktiver" button). This survives localStorage clearing.
+
       try {
         const prefs = await notificationsApi.getPreferences()
+
         const anyPushEnabled =
           prefs.push_messages ||
           prefs.push_announcements ||
@@ -52,12 +67,14 @@ export function PushNotificationPrompt() {
           prefs.push_event_reminders ||
           prefs.push_food_tickets ||
           prefs.push_mentions
+
         if (!anyPushEnabled) return
       } catch {
         // If we can't fetch preferences, don't block the prompt
       }
 
       // All conditions met — show after 2 second delay
+
       timeout = setTimeout(() => setVisible(true), 2000)
     }
 
@@ -68,16 +85,22 @@ export function PushNotificationPrompt() {
 
   const handleAccept = async () => {
     setLoading(true)
+
     try {
       const result = await subscribeToPushNotificationsWithReason()
+
       if (result.success) {
         localStorage.setItem("push-prompt-status", "accepted")
+
         setVisible(false)
+
         navigate("/notifikationer/indstillinger?tab=push")
       } else if (result.reason === "permission_denied") {
         localStorage.setItem("push-prompt-status", "declined")
+
         setVisible(false)
       }
+
       // On other errors (e.g. "error", "not_configured"), don't persist — prompt reappears next time
     } finally {
       setLoading(false)
@@ -86,6 +109,7 @@ export function PushNotificationPrompt() {
 
   const handleDecline = () => {
     localStorage.setItem("push-prompt-status", "declined")
+
     setVisible(false)
   }
 

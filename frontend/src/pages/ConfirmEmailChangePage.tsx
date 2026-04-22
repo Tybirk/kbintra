@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react"
+
 import { useSearchParams, useNavigate } from "react-router-dom"
+
 import {
   Center,
   Stack,
@@ -9,37 +11,49 @@ import {
   Loader,
   ThemeIcon,
 } from "@mantine/core"
+
 import { IconCheck, IconX } from "@tabler/icons-react"
 
 import { usersApi } from "../api/users"
 
 export default function ConfirmEmailChangePage() {
   const [searchParams] = useSearchParams()
+
   const navigate = useNavigate()
+
   const token = searchParams.get("token")
 
   const [status, setStatus] = useState<"loading" | "success" | "error">(
     "loading",
   )
+
   const [errorMessage, setErrorMessage] = useState("")
 
   useEffect(() => {
     if (!token) {
       setStatus("error")
+
       setErrorMessage("Ugyldigt link. Prøv at anmode om en ny emailændring.")
+
       return
     }
 
     usersApi
+
       .confirmEmailChange(token)
+
       .then(() => setStatus("success"))
+
       .catch((err: { response?: { data?: Record<string, string[]> } }) => {
         const data = err.response?.data
+
         const msg =
           data?.token?.[0] ??
           data?.non_field_errors?.[0] ??
           "Noget gik galt. Linket er måske udløbet."
+
         setErrorMessage(msg)
+
         setStatus("error")
       })
   }, [token])

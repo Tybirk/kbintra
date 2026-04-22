@@ -1,23 +1,31 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
+
 import { screen, waitFor } from "@testing-library/react"
+
 import userEvent from "@testing-library/user-event"
+
 import { render } from "../test/testUtils"
+
 import ForgotPasswordPage from "./ForgotPasswordPage"
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual("react-router-dom")
+
   return {
     ...actual,
+
     useNavigate: () => vi.fn(),
   }
 })
 
 vi.mock("@mantine/notifications", () => ({
   notifications: { show: vi.fn() },
+
   Notifications: () => null,
 }))
 
 const mockForgotPassword = vi.fn()
+
 vi.mock("../api/auth", () => ({
   authApi: {
     forgotPassword: (...args: unknown[]) => mockForgotPassword(...args),
@@ -33,6 +41,7 @@ describe("ForgotPasswordPage", () => {
     render(<ForgotPasswordPage />)
 
     expect(screen.getByLabelText(/e-mail/i)).toBeInTheDocument()
+
     expect(
       screen.getByRole("button", { name: /send nulstillingslink/i }),
     ).toBeInTheDocument()
@@ -40,11 +49,13 @@ describe("ForgotPasswordPage", () => {
 
   it("shows confirmation message after successful submit", async () => {
     const user = userEvent.setup()
+
     mockForgotPassword.mockResolvedValue({})
 
     render(<ForgotPasswordPage />)
 
     await user.type(screen.getByLabelText(/e-mail/i), "bruger@example.com")
+
     await user.click(
       screen.getByRole("button", { name: /send nulstillingslink/i }),
     )
@@ -56,11 +67,13 @@ describe("ForgotPasswordPage", () => {
 
   it("calls forgotPassword API with entered email", async () => {
     const user = userEvent.setup()
+
     mockForgotPassword.mockResolvedValue({})
 
     render(<ForgotPasswordPage />)
 
     await user.type(screen.getByLabelText(/e-mail/i), "test@example.com")
+
     await user.click(
       screen.getByRole("button", { name: /send nulstillingslink/i }),
     )
@@ -74,7 +87,9 @@ describe("ForgotPasswordPage", () => {
     render(<ForgotPasswordPage />)
 
     const loginLink = screen.getByRole("link", { name: /log ind her/i })
+
     expect(loginLink).toBeInTheDocument()
+
     expect(loginLink).toHaveAttribute("href", "/login")
   })
 })

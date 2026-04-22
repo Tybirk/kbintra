@@ -1,4 +1,5 @@
 import { useState } from "react"
+
 import {
   Alert,
   Button,
@@ -10,6 +11,7 @@ import {
   Text,
   Title,
 } from "@mantine/core"
+
 import {
   IconAlertTriangle,
   IconChevronDown,
@@ -18,45 +20,65 @@ import {
 
 interface ErrorFallbackProps {
   error: Error | null
+
   componentStack?: string | null
+
   resetErrorBoundary?: () => void
+
   /** Render as a compact in-page alert instead of a full-page paper. */
+
   compact?: boolean
+
   title?: string
+
   description?: string
 }
 
 const DEFAULT_TITLE = "Noget gik galt"
+
 const DEFAULT_DESCRIPTION =
   "Der opstod en uventet fejl. Prøv at genindlæse siden eller gå til forsiden."
 
 function formatErrorDetails(
   error: Error | null,
+
   componentStack?: string | null,
 ): string {
   const parts: string[] = []
+
   if (error) {
     parts.push(`${error.name || "Error"}: ${error.message}`)
+
     if (error.stack) {
       parts.push("", error.stack)
     }
   }
+
   if (componentStack) {
     parts.push("", "Component stack:", componentStack.trim())
   }
+
   return parts.join("\n")
 }
 
 export function ErrorFallback({
   error,
+
   componentStack,
+
   resetErrorBoundary,
+
   compact = false,
+
   title = DEFAULT_TITLE,
+
   description = DEFAULT_DESCRIPTION,
 }: ErrorFallbackProps) {
+
   const isDev = import.meta.env.DEV
+    
   const canSeeDetails = true
+
   const [showDetails, setShowDetails] = useState(isDev)
 
   const handleReload = () => {
@@ -93,9 +115,13 @@ export function ErrorFallback({
             w="100%"
             style={{
               maxHeight: 300,
+
               overflow: "auto",
+
               fontSize: 11,
+
               whiteSpace: "pre-wrap",
+
               wordBreak: "break-word",
             }}
           >

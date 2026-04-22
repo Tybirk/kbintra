@@ -9,23 +9,29 @@ import {
   CloseButton,
   ActionIcon,
 } from "@mantine/core"
+
 import { IconPlus, IconChevronUp, IconChevronDown } from "@tabler/icons-react"
 
 import type { CreatePollData } from "../types"
 
 interface PollCreatorProps {
   pollData: CreatePollData
+
   onChange: (data: CreatePollData) => void
+
   onClose?: () => void
 }
 
 export default function PollCreator({
   pollData,
+
   onChange,
+
   onClose,
 }: PollCreatorProps) {
   const updateField = <K extends keyof CreatePollData,>(
     key: K,
+
     value: CreatePollData[K],
   ) => {
     onChange({ ...pollData, [key]: value })
@@ -33,7 +39,9 @@ export default function PollCreator({
 
   const updateOption = (index: number, text: string) => {
     const newOptions = [...pollData.options]
+
     newOptions[index] = { ...newOptions[index], text }
+
     onChange({ ...pollData, options: newOptions })
   }
 
@@ -46,16 +54,22 @@ export default function PollCreator({
   const removeOption = (index: number) => {
     if (pollData.options.length > 2) {
       const newOptions = pollData.options.filter((_, i) => i !== index)
+
       onChange({ ...pollData, options: newOptions })
     }
   }
 
   const moveOption = (index: number, direction: -1 | 1) => {
     const newOptions = [...pollData.options]
+
     const target = index + direction
+
     const temp = newOptions[index]
+
     newOptions[index] = newOptions[target]
+
     newOptions[target] = temp
+
     onChange({ ...pollData, options: newOptions })
   }
 

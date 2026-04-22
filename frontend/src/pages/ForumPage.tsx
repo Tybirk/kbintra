@@ -1,5 +1,7 @@
 import { useState, useMemo } from "react"
+
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+
 import {
   Title,
   Text,
@@ -18,9 +20,13 @@ import {
   Tooltip,
   Checkbox,
 } from "@mantine/core"
+
 import { useDisclosure, useMediaQuery } from "@mantine/hooks"
+
 import { notifications } from "@mantine/notifications"
+
 import { showErrorNotification } from "../utils/errorNotification"
+
 import {
   IconSearch,
   IconBell,
@@ -30,43 +36,62 @@ import {
   IconPlus,
   IconMessageCircle,
 } from "@tabler/icons-react"
+
 import { useNavigate } from "react-router-dom"
+
 import dayjs from "dayjs"
 
 import { forumApi } from "../api/forum"
+
 import RichTextEditor from "../components/RichTextEditor"
+
 import type { Subgroup } from "../types"
 
 export default function ForumPage() {
   const navigate = useNavigate()
+
   const queryClient = useQueryClient()
+
   const isMobile = useMediaQuery("(max-width: 48em)")
+
   const [search, setSearch] = useState("")
+
   const [createOpened, { open: openCreate, close: closeCreate }] =
     useDisclosure(false)
+
   const [newName, setNewName] = useState("")
+
   const [newDescription, setNewDescription] = useState("")
+
   const [newAllowsMembers, setNewAllowsMembers] = useState(false)
 
   const {
     data: subgroups,
+
     isLoading,
+
     error,
   } = useQuery({
     queryKey: ["subgroups"],
+
     queryFn: forumApi.getSubgroups,
   })
 
   const subscribeMutation = useMutation({
     mutationFn: forumApi.subscribe,
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["subgroups"] })
+
       notifications.show({
         title: "Abonnerer",
+
         message: "Du modtager nu opdateringer fra denne gruppe.",
+
         color: "green",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke abonnere. Prøv venligst igen.")
     },
@@ -74,14 +99,19 @@ export default function ForumPage() {
 
   const unsubscribeMutation = useMutation({
     mutationFn: forumApi.unsubscribe,
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["subgroups"] })
+
       notifications.show({
         title: "Afmeldt",
+
         message: "Du modtager ikke længere opdateringer fra denne gruppe.",
+
         color: "blue",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke afmelde. Prøv venligst igen.")
     },
@@ -89,10 +119,14 @@ export default function ForumPage() {
 
   const markAllReadMutation = useMutation({
     mutationFn: forumApi.markAllRead,
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["subgroups"] })
+
       queryClient.invalidateQueries({ queryKey: ["forum", "unread-count"] })
+
       queryClient.invalidateQueries({ queryKey: ["notifications"] })
+
       queryClient.invalidateQueries({
         queryKey: ["notifications", "unread-count"],
       })
@@ -101,22 +135,33 @@ export default function ForumPage() {
 
   const createSubgroupMutation = useMutation({
     mutationFn: forumApi.createSubgroup,
+
     onSuccess: (subgroup) => {
       queryClient.invalidateQueries({ queryKey: ["subgroups"] })
+
       notifications.show({
         title: "Gruppe oprettet",
+
         message: `"${subgroup.name}" er nu oprettet.`,
+
         color: "green",
       })
+
       setNewName("")
+
       setNewDescription("")
+
       setNewAllowsMembers(false)
+
       closeCreate()
+
       navigate(`/forum/${subgroup.slug}`)
     },
+
     onError: (error: unknown) => {
       showErrorNotification(
         error,
+
         "Kunne ikke oprette gruppen. Prøv venligst igen.",
       )
     },
@@ -124,10 +169,12 @@ export default function ForumPage() {
 
   const totalUnread = useMemo(
     () => subgroups?.reduce((sum, s) => sum + s.unread_thread_count, 0) ?? 0,
+
     [subgroups],
   )
 
   // Split subgroups by precedence: member > subscribed > committee > regular
+
   const { memberGroups, subscribedGroups, committees, regularGroups } =
     useMemo(() => {
       const filtered =
@@ -139,27 +186,36 @@ export default function ForumPage() {
         const aTime = a.last_activity_at
           ? new Date(a.last_activity_at).getTime()
           : 0
+
         const bTime = b.last_activity_at
           ? new Date(b.last_activity_at).getTime()
           : 0
+
         return bTime - aTime
       }
 
       const members = filtered.filter((s) => s.is_member).sort(byActivity)
+
       const memberIds = new Set(members.map((s) => s.id))
 
       const subscribed = filtered
+
         .filter((s) => s.is_subscribed && !memberIds.has(s.id))
+
         .sort(byActivity)
+
       const subscribedIds = new Set(subscribed.map((s) => s.id))
 
       return {
         memberGroups: members,
+
         subscribedGroups: subscribed,
+
         committees: filtered.filter(
           (s) =>
             s.is_committee && !subscribedIds.has(s.id) && !memberIds.has(s.id),
         ),
+
         regularGroups: filtered.filter(
           (s) =>
             !s.is_committee && !subscribedIds.has(s.id) && !memberIds.has(s.id),
@@ -237,7 +293,9 @@ export default function ForumPage() {
               onClick={() =>
                 createSubgroupMutation.mutate({
                   name: newName,
+
                   description: newDescription,
+
                   allows_members: newAllowsMembers,
                 })
               }
@@ -363,25 +421,38 @@ export default function ForumPage() {
 
 interface SubgroupCardProps {
   subgroup: Subgroup
+
   onClick: () => void
+
   onSubscribe: () => void
+
   onUnsubscribe: () => void
+
   isSubscribing: boolean
+
   isUnsubscribing: boolean
+
   hideBell?: boolean
 }
 
 function SubgroupCard({
   subgroup,
+
   onClick,
+
   onSubscribe,
+
   onUnsubscribe,
+
   isSubscribing,
+
   isUnsubscribing,
+
   hideBell = false,
 }: SubgroupCardProps) {
   const handleSubscriptionClick = (e: React.MouseEvent) => {
     e.stopPropagation()
+
     if (subgroup.is_subscribed) {
       onUnsubscribe()
     } else {
@@ -401,19 +472,33 @@ function SubgroupCard({
         <Box
           style={{
             position: "absolute",
+
             top: -8,
+
             right: -8,
+
             background: "var(--mantine-color-red-filled)",
+
             color: "white",
+
             borderRadius: 10,
+
             minWidth: 20,
+
             height: 20,
+
             padding: "0 6px",
+
             display: "flex",
+
             alignItems: "center",
+
             justifyContent: "center",
+
             fontSize: 11,
+
             fontWeight: 700,
+
             zIndex: 1,
           }}
         >
@@ -460,7 +545,9 @@ function SubgroupCard({
               subgroup.description.match(/<p[^>]*>(.*?)<\/p>/)?.[1] ??
               subgroup.description
             )
+
               .replace(/<[^>]*>/g, "")
+
               .trim()}
           </Text>
         )}

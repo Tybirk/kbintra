@@ -1,24 +1,35 @@
 import { useNavigate } from "react-router-dom"
+
 import { Paper, Group, Box, Text, Badge, Avatar } from "@mantine/core"
+
 import { IconMapPin } from "@tabler/icons-react"
+
 import dayjs from "dayjs"
+
 import type { Event } from "../types"
+
 import { LocationText } from "./LocationText"
 
 interface CompactEventCardProps {
   event: Event
+
   showCreator?: boolean
 }
 
 export function CompactEventCard({
   event,
+
   showCreator = false,
 }: CompactEventCardProps) {
   const navigate = useNavigate()
+
   const isToday = dayjs(event.start_datetime).isSame(dayjs(), "day")
+
   const isPast = dayjs(event.end_datetime).isBefore(dayjs())
+
   const isMultiDay = !dayjs(event.start_datetime).isSame(
     dayjs(event.end_datetime),
+
     "day",
   )
 
@@ -29,6 +40,7 @@ export function CompactEventCard({
       radius="md"
       style={{
         opacity: event.is_cancelled ? 0.5 : isPast ? 0.6 : 1,
+
         cursor: "pointer",
       }}
       onClick={() => navigate(`/kalender/${event.slug}`)}
@@ -37,8 +49,11 @@ export function CompactEventCard({
         <Box
           style={{
             width: 4,
+
             alignSelf: "stretch",
+
             borderRadius: 2,
+
             backgroundColor: event.is_cancelled
               ? "var(--mantine-color-red-4)"
               : event.rooms[0]?.color
@@ -94,6 +109,7 @@ export function CompactEventCard({
           <Text size="sm" c="dimmed">
             {dayjs(event.start_datetime).isSame(
               dayjs(event.end_datetime),
+
               "day",
             )
               ? `${dayjs(event.start_datetime).format("ddd D. MMM")} kl. ${dayjs(event.start_datetime).format("HH:mm")} – ${dayjs(event.end_datetime).format("HH:mm")}`

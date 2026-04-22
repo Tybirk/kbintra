@@ -1,11 +1,14 @@
 import { forwardRef, useImperativeHandle, useState, useEffect } from "react"
+
 import { Paper, Stack, UnstyledButton, Text } from "@mantine/core"
+
 import type { EmojiItem } from "./emojiData"
 
 export type { EmojiItem }
 
 interface EmojiListProps {
   items: EmojiItem[]
+
   command: (item: EmojiItem) => void
 }
 
@@ -23,24 +26,32 @@ const EmojiList = forwardRef<EmojiListRef, EmojiListProps>(
 
     const selectItem = (index: number) => {
       const item = items[index]
+
       if (item) command(item)
     }
 
     useImperativeHandle(ref, () => ({
       onKeyDown: (event: KeyboardEvent) => {
         if (items.length === 0) return false
+
         if (event.key === "ArrowUp") {
           setSelectedIndex((i) => (i + items.length - 1) % items.length)
+
           return true
         }
+
         if (event.key === "ArrowDown") {
           setSelectedIndex((i) => (i + 1) % items.length)
+
           return true
         }
+
         if (event.key === "Enter" || event.key === "Tab") {
           selectItem(selectedIndex)
+
           return true
         }
+
         return false
       },
     }))

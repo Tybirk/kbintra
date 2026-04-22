@@ -2,21 +2,33 @@ import { Text, Group, Button, Stack, Modal, Paper, Box } from "@mantine/core"
 
 interface DeleteBookingModalProps {
   opened: boolean
+
   onClose: () => void
+
   isRecurring: boolean
+
   deleteMode: "all" | "single"
+
   onDeleteModeChange: (mode: "all" | "single") => void
+
   onConfirm: () => void
+
   isPending: boolean
 }
 
 export function DeleteBookingModal({
   opened,
+
   onClose,
+
   isRecurring,
+
   deleteMode,
+
   onDeleteModeChange,
+
   onConfirm,
+
   isPending,
 }: DeleteBookingModalProps) {
   return (
@@ -24,6 +36,7 @@ export function DeleteBookingModal({
       opened={opened}
       onClose={() => {
         onClose()
+
         onDeleteModeChange("all")
       }}
       title="Slet booking"
@@ -42,10 +55,12 @@ export function DeleteBookingModal({
               p="sm"
               style={{
                 cursor: "pointer",
+
                 borderColor:
                   deleteMode === "single"
                     ? "var(--mantine-color-blue-6)"
                     : undefined,
+
                 backgroundColor:
                   deleteMode === "single"
                     ? "var(--mantine-color-blue-0)"
@@ -59,7 +74,9 @@ export function DeleteBookingModal({
                   h={16}
                   style={{
                     borderRadius: "50%",
+
                     border: "2px solid var(--mantine-color-blue-6)",
+
                     backgroundColor:
                       deleteMode === "single"
                         ? "var(--mantine-color-blue-6)"
@@ -81,10 +98,12 @@ export function DeleteBookingModal({
               p="sm"
               style={{
                 cursor: "pointer",
+
                 borderColor:
                   deleteMode === "all"
                     ? "var(--mantine-color-red-6)"
                     : undefined,
+
                 backgroundColor:
                   deleteMode === "all"
                     ? "var(--mantine-color-red-0)"
@@ -98,7 +117,9 @@ export function DeleteBookingModal({
                   h={16}
                   style={{
                     borderRadius: "50%",
+
                     border: "2px solid var(--mantine-color-red-6)",
+
                     backgroundColor:
                       deleteMode === "all"
                         ? "var(--mantine-color-red-6)"
@@ -123,6 +144,7 @@ export function DeleteBookingModal({
             variant="light"
             onClick={() => {
               onClose()
+
               onDeleteModeChange("all")
             }}
           >

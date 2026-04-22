@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, memo, useCallback } from "react"
+
 import { useParams, useNavigate, useLocation } from "react-router-dom"
+
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+
 import {
   Title,
   Text,
@@ -26,9 +29,13 @@ import {
   Checkbox,
   Alert,
 } from "@mantine/core"
+
 import { useDisclosure } from "@mantine/hooks"
+
 import { notifications } from "@mantine/notifications"
+
 import { showErrorNotification } from "../utils/errorNotification"
+
 import {
   IconDotsVertical,
   IconEdit,
@@ -48,27 +55,45 @@ import {
   IconX,
   IconRestore,
 } from "@tabler/icons-react"
+
 import { forumApi } from "../api/forum"
+
 import { messagingApi } from "../api/messaging"
+
 import { BackButton } from "../components/BackButton"
+
 import { useAuthStore } from "../store/authStore"
+
 import { notificationsApi } from "../api/notifications"
+
 import { filterFilesBySize } from "../config"
+
 import { clearDraft } from "../utils/draftStorage"
+
 import RichTextEditor from "../components/RichTextEditor"
+
 import FileDropzone, { AttachmentArea } from "../components/FileDropzone"
+
 import Reactions from "../components/Reactions"
+
 import PostDate from "../components/PostDate"
+
 import UserLink from "../components/UserLink"
+
 import PollDisplay from "../components/PollDisplay"
+
 import PollCreator from "../components/PollCreator"
+
 import {
   getFileIcon,
   getFileType,
   getFileTypeColor,
 } from "../components/FilePreview"
+
 import { AttachmentCarousel } from "../components/AttachmentCarousel"
+
 import { AttachmentBadge } from "../components/AttachmentBadge"
+
 import type {
   Post,
   CreatePostData,
@@ -78,40 +103,57 @@ import type {
 
 interface CreatePostParams {
   data: CreatePostData
+
   files: File[]
+
   pollData?: CreatePollData
 }
 
 interface UpdatePostParams {
   postId: number
+
   data: CreatePostData
+
   attachments?: File[]
+
   removeAttachmentIds?: number[]
+
   threadId?: number
+
   newTitle?: string
 }
 
 interface ReplyFormProps {
   threadId: number
+
   onSubmit: (content: string, files: File[], pollData?: CreatePollData) => void
+
   isPending: boolean
+
   submitKey: number
 }
 
 const ReplyForm = memo(function ReplyForm({
   threadId,
+
   onSubmit,
+
   isPending,
+
   submitKey,
 }: ReplyFormProps) {
   const [content, setContent] = useState("")
+
   const [attachments, setAttachments] = useState<File[]>([])
+
   const [pollData, setPollData] = useState<CreatePollData | null>(null)
 
   useEffect(() => {
     if (submitKey > 0) {
       setContent("")
+
       setAttachments([])
+
       setPollData(null)
     }
   }, [submitKey])
@@ -124,24 +166,31 @@ const ReplyForm = memo(function ReplyForm({
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault()
+
     if (isEmpty) return
+
     onSubmit(content.trim(), attachments, pollData || undefined)
   }
 
   const handleAddFiles = (files: File[]) => {
     const { validFiles, errors } = filterFilesBySize(files)
+
     if (errors.length > 0) {
       errors.forEach((error) => {
         notifications.show({
           title: "Fil for stor",
+
           message: error,
+
           color: "red",
         })
       })
     }
+
     if (validFiles.length > 0) {
       setAttachments((prev) => [
         ...prev,
+
         ...validFiles.filter((f) => !prev.some((p) => p.name === f.name)),
       ])
     }
@@ -195,8 +244,11 @@ const ReplyForm = memo(function ReplyForm({
                     onClick={() =>
                       setPollData({
                         question: "",
+
                         allow_multiple_votes: false,
+
                         is_anonymous: false,
+
                         options: [{ text: "" }, { text: "" }],
                       })
                     }
@@ -224,62 +276,90 @@ const ReplyForm = memo(function ReplyForm({
 export default function ThreadPage() {
   const {
     id,
+
     threadSlug,
+
     slug: subgroupSlug,
   } = useParams<{
     id?: string
+
     threadSlug?: string
+
     slug?: string
   }>()
+
   const navigate = useNavigate()
+
   const location = useLocation()
+
   const queryClient = useQueryClient()
+
   const isSlugRoute = !!threadSlug
+
   const numericId = parseInt(id || "0", 10)
+
   const threadQueryKey: (string | number)[] = isSlugRoute
     ? ["thread", subgroupSlug!, threadSlug!]
     : ["thread", numericId]
 
   const [replySubmitKey, setReplySubmitKey] = useState(0)
+
   const [editingPost, setEditingPost] = useState<Post | null>(null)
+
   const [editContent, setEditContent] = useState("")
+
   const [editTitle, setEditTitle] = useState("")
+
   const [editPollData, setEditPollData] = useState<CreatePollData | null>(null)
+
   const [editAttachments, setEditAttachments] = useState<File[]>([])
+
   const [removedAttachmentIds, setRemovedAttachmentIds] = useState<number[]>([])
+
   const [
     deleteModalOpened,
+
     { open: openDeleteModal, close: closeDeleteModal },
   ] = useDisclosure(false)
+
   const [postToDelete, setPostToDelete] = useState<number | null>(null)
+
   const [moveModalOpened, { open: openMoveModal, close: closeMoveModal }] =
     useDisclosure(false)
+
   const [targetSubgroupSlug, setTargetSubgroupSlug] = useState<string | null>(
     null,
   )
+
   const highlightedHashRef = useRef("")
 
   const {
     data: thread,
+
     isLoading,
+
     error,
   } = useQuery({
     queryKey: isSlugRoute
       ? ["thread", subgroupSlug, threadSlug]
       : ["thread", numericId],
+
     queryFn: () =>
       isSlugRoute
         ? forumApi.getThreadBySlug(subgroupSlug!, threadSlug!)
         : forumApi.getThread(numericId),
+
     enabled: isSlugRoute || !isNaN(numericId),
   })
 
   const { data: subgroups } = useQuery({
     queryKey: ["subgroups"],
+
     queryFn: forumApi.getSubgroups,
   })
 
   // Redirect to event page if this thread is an event discussion thread
+
   useEffect(() => {
     if (thread?.event_slug) {
       navigate(`/kalender/${thread.event_slug}${location.hash}`, {
@@ -289,10 +369,12 @@ export default function ThreadPage() {
   }, [thread?.event_slug]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // If thread was moved to a different subgroup, update the URL to reflect the new location
+
   useEffect(() => {
     if (isSlugRoute && thread && thread.subgroup_slug !== subgroupSlug) {
       navigate(
         `/forum/${thread.subgroup_slug}/traad/${thread.slug}${location.hash}`,
+
         {
           replace: true,
         },
@@ -301,14 +383,20 @@ export default function ThreadPage() {
   }, [thread?.subgroup_slug]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // After thread loads (backend marks it as read), invalidate unread counts
+
   // and auto-mark any notification pointing to this thread as read
+
   useEffect(() => {
     if (thread) {
       queryClient.invalidateQueries({ queryKey: ["forum", "unread-count"] })
+
       queryClient.invalidateQueries({ queryKey: ["subgroups"] })
+
       queryClient.invalidateQueries({ queryKey: ["threads"] })
+
       void notificationsApi.markReadByLink(location.pathname).then(() => {
         queryClient.invalidateQueries({ queryKey: ["notifications"] })
+
         queryClient.invalidateQueries({
           queryKey: ["notifications", "unread-count"],
         })
@@ -317,6 +405,7 @@ export default function ThreadPage() {
   }, [thread?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scroll to and highlight a specific post when navigating from a notification
+
   useEffect(() => {
     if (
       !thread ||
@@ -324,22 +413,35 @@ export default function ThreadPage() {
       highlightedHashRef.current === location.hash
     )
       return
+
     const el = document.getElementById(location.hash.slice(1))
+
     if (!el) return
+
     const hash = location.hash
+
     window.history.replaceState(null, "", location.pathname)
+
     // Small delay to ensure layout is settled. The ref is set inside the timer
+
     // so strict mode's cleanup+re-run cycle doesn't prevent the highlight from firing.
+
     const timer = setTimeout(() => {
       if (highlightedHashRef.current === hash) return
+
       highlightedHashRef.current = hash
+
       el.scrollIntoView({ behavior: "smooth", block: "center" })
+
       el.style.transition = "box-shadow 0.3s ease"
+
       el.style.boxShadow = "0 0 0 3px var(--mantine-color-blue-4)"
+
       setTimeout(() => {
         el.style.boxShadow = ""
       }, 2000)
     }, 100)
+
     return () => clearTimeout(timer)
   }, [thread, location.hash]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -347,20 +449,30 @@ export default function ThreadPage() {
     mutationFn: ({ data, files, pollData: pd }: CreatePostParams) =>
       forumApi.createPost(
         thread!.id,
+
         data,
+
         files.length > 0 ? files : undefined,
+
         pd || undefined,
       ),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: threadQueryKey })
+
       clearDraft("reply-" + thread!.id)
+
       setReplySubmitKey((k) => k + 1)
+
       notifications.show({
         title: "Svar oprettet",
+
         message: "Dit svar er blevet tilføjet.",
+
         color: "green",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke oprette svar. Prøv igen.")
     },
@@ -369,40 +481,62 @@ export default function ThreadPage() {
   const updatePostMutation = useMutation({
     mutationFn: async ({
       postId,
+
       data,
+
       attachments,
+
       removeAttachmentIds: removeIds,
+
       threadId,
+
       newTitle,
     }: UpdatePostParams) => {
       await forumApi.updatePost(postId, data, attachments, removeIds)
+
       // Read current values from state at call time (not closure time)
+
       const currentEditPollData = editPollData
+
       const currentEditingPost = editingPost
+
       if (currentEditPollData && currentEditingPost?.poll) {
         await forumApi.updatePoll(
           currentEditingPost.poll.id,
+
           currentEditPollData,
         )
       }
+
       if (threadId !== undefined && newTitle !== undefined) {
         await forumApi.updateThread(threadId, { title: newTitle })
       }
     },
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: threadQueryKey })
+
       setEditingPost(null)
+
       setEditContent("")
+
       setEditTitle("")
+
       setEditPollData(null)
+
       setEditAttachments([])
+
       setRemovedAttachmentIds([])
+
       notifications.show({
         title: "Indlæg opdateret",
+
         message: "Dit indlæg er blevet opdateret.",
+
         color: "green",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke opdatere indlægget. Prøv igen.")
     },
@@ -410,16 +544,23 @@ export default function ThreadPage() {
 
   const deletePostMutation = useMutation({
     mutationFn: forumApi.deletePost,
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: threadQueryKey })
+
       closeDeleteModal()
+
       setPostToDelete(null)
+
       notifications.show({
         title: "Indlæg slettet",
+
         message: "Dit indlæg er blevet slettet.",
+
         color: "blue",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke slette indlægget. Prøv igen.")
     },
@@ -427,14 +568,19 @@ export default function ThreadPage() {
 
   const deleteThreadMutation = useMutation({
     mutationFn: forumApi.deleteThread,
+
     onSuccess: () => {
       notifications.show({
         title: "Tråd slettet",
+
         message: "Tråden er blevet slettet.",
+
         color: "blue",
       })
+
       navigate("/forum")
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke slette tråden. Prøv igen.")
     },
@@ -442,21 +588,27 @@ export default function ThreadPage() {
 
   const muteThreadMutation = useMutation({
     mutationFn: () => forumApi.muteThread(thread!.id),
+
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: threadQueryKey })
+
       notifications.show({
         title: data.is_muted
           ? "Notifikationer slået fra"
           : "Notifikationer slået til",
+
         message: data.is_muted
           ? "Du modtager ikke længere notifikationer fra denne tråd."
           : "Du modtager igen notifikationer fra denne tråd.",
+
         color: data.is_muted ? "gray" : "green",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(
         error,
+
         "Kunne ikke opdatere notifikationsindstillingen. Prøv igen.",
       )
     },
@@ -465,19 +617,25 @@ export default function ThreadPage() {
   const closeThreadMutation = useMutation({
     mutationFn: (isClosed: boolean) =>
       forumApi.closeThread(thread!.id, isClosed),
+
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: threadQueryKey })
+
       notifications.show({
         title: data.is_closed ? "Tråd lukket" : "Tråd genåbnet",
+
         message: data.is_closed
           ? "Denne tråd accepterer ikke længere nye svar."
           : "Denne tråd er nu åben for nye svar.",
+
         color: data.is_closed ? "orange" : "green",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(
         error,
+
         "Kunne ikke opdatere trådens status. Prøv igen.",
       )
     },
@@ -485,19 +643,25 @@ export default function ThreadPage() {
 
   const pinThreadMutation = useMutation({
     mutationFn: (isPinned: boolean) => forumApi.pinThread(thread!.id, isPinned),
+
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: threadQueryKey })
+
       notifications.show({
         title: data.is_pinned ? "Tråd fastgjort" : "Tråd løsnet",
+
         message: data.is_pinned
           ? "Tråden vises nu øverst i listen."
           : "Tråden er ikke længere fastgjort.",
+
         color: data.is_pinned ? "blue" : "gray",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(
         error,
+
         "Kunne ikke opdatere trådens status. Prøv igen.",
       )
     },
@@ -506,17 +670,23 @@ export default function ThreadPage() {
   const togglePrivacyMutation = useMutation({
     mutationFn: (membersOnly: boolean) =>
       forumApi.updateThread(thread!.id, { members_only: membersOnly }),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: threadQueryKey })
+
       notifications.show({
         title: "Tråd opdateret",
+
         message: "Trådens synlighed er blevet ændret.",
+
         color: "green",
       })
     },
+
     onError: (error: unknown) => {
       showErrorNotification(
         error,
+
         "Kunne ikke ændre trådens synlighed. Prøv igen.",
       )
     },
@@ -525,16 +695,23 @@ export default function ThreadPage() {
   const moveThreadMutation = useMutation({
     mutationFn: (subgroupSlug: string) =>
       forumApi.moveThread(thread!.id, subgroupSlug),
+
     onSuccess: (data) => {
       closeMoveModal()
+
       setTargetSubgroupSlug(null)
+
       notifications.show({
         title: "Tråd flyttet",
+
         message: "Tråden er blevet flyttet til den valgte gruppe.",
+
         color: "green",
       })
+
       navigate(`/forum/${data.subgroup_slug}/traad/${data.thread_slug}`)
     },
+
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke flytte tråden. Prøv igen.")
     },
@@ -544,23 +721,31 @@ export default function ThreadPage() {
     (content: string, files: File[], pollData?: CreatePollData) => {
       createPostMutation.mutate({ data: { content }, files, pollData })
     },
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
+
     [createPostMutation.mutate],
   )
 
   const handleStartEdit = (post: Post) => {
     setEditingPost(post)
+
     setEditContent(post.content)
+
     if (thread && post.id === thread.posts[0]?.id) {
       setEditTitle(thread.title)
     } else {
       setEditTitle("")
     }
+
     if (post.poll) {
       setEditPollData({
         question: post.poll.question,
+
         allow_multiple_votes: post.poll.allow_multiple_votes,
+
         is_anonymous: post.poll.is_anonymous,
+
         options: post.poll.options.map((o) => ({ id: o.id, text: o.text })),
       })
     } else {
@@ -570,14 +755,21 @@ export default function ThreadPage() {
 
   const handleSaveEdit = () => {
     if (!editingPost) return
+
     const isFirstPost = thread && editingPost.id === thread.posts[0]?.id
+
     if (isFirstPost && !editTitle.trim()) return
+
     updatePostMutation.mutate({
       postId: editingPost.id,
+
       data: { content: editContent.trim() },
+
       attachments: editAttachments.length > 0 ? editAttachments : undefined,
+
       removeAttachmentIds:
         removedAttachmentIds.length > 0 ? removedAttachmentIds : undefined,
+
       ...(isFirstPost && thread
         ? { threadId: thread.id, newTitle: editTitle.trim() }
         : {}),
@@ -586,6 +778,7 @@ export default function ThreadPage() {
 
   const handleDeleteClick = (postId: number) => {
     setPostToDelete(postId)
+
     openDeleteModal()
   }
 
@@ -721,9 +914,11 @@ export default function ThreadPage() {
                         leftSection={<IconEyeOff size={14} />}
                         onClick={() => {
                           const next = !thread.members_only
+
                           const confirmMsg = next
                             ? "Gør denne tråd privat? Den vil kun være synlig for medlemmer af gruppen (og forfatteren)."
                             : "Gør denne tråd offentlig? Den vil blive synlig for alle."
+
                           if (window.confirm(confirmMsg)) {
                             togglePrivacyMutation.mutate(next)
                           }
@@ -770,10 +965,15 @@ export default function ThreadPage() {
           onSaveEdit={handleSaveEdit}
           onCancelEdit={() => {
             setEditingPost(null)
+
             setEditContent("")
+
             setEditTitle("")
+
             setEditPollData(null)
+
             setEditAttachments([])
+
             setRemovedAttachmentIds([])
           }}
           onDelete={() => handleDeleteClick(thread.posts[0].id)}
@@ -812,10 +1012,15 @@ export default function ThreadPage() {
                 onSaveEdit={handleSaveEdit}
                 onCancelEdit={() => {
                   setEditingPost(null)
+
                   setEditContent("")
+
                   setEditTitle("")
+
                   setEditPollData(null)
+
                   setEditAttachments([])
+
                   setRemovedAttachmentIds([])
                 }}
                 onDelete={() => handleDeleteClick(post.id)}
@@ -886,7 +1091,9 @@ export default function ThreadPage() {
           placeholder="Vælg gruppe"
           data={
             subgroups
+
               ?.filter((sg) => sg.slug !== thread.subgroup_slug)
+
               .map((sg) => ({ value: sg.slug, label: sg.name })) ?? []
           }
           value={targetSubgroupSlug}
@@ -917,54 +1124,97 @@ export default function ThreadPage() {
 
 interface PostCardProps {
   post: Post
+
   threadQueryKey: (string | number)[]
+
   threadHeader?: React.ReactNode
+
   isEditing: boolean
+
   editContent: string
+
   onEditContentChange: (content: string) => void
+
   editTitle?: string
+
   onEditTitleChange?: (title: string) => void
+
   editPollData: CreatePollData | null
+
   onEditPollDataChange: (data: CreatePollData) => void
+
   editAttachments: File[]
+
   onEditAttachmentsChange: (files: File[]) => void
+
   removedAttachmentIds: number[]
+
   onRemoveExistingAttachment: (id: number) => void
+
   onRestoreExistingAttachment: (id: number) => void
+
   onStartEdit: () => void
+
   onSaveEdit: () => void
+
   onCancelEdit: () => void
+
   onDelete: () => void
+
   isSaving: boolean
 }
 
 function PostCard({
   post,
+
   threadQueryKey,
+
   threadHeader,
+
   isEditing,
+
   editContent,
+
   onEditContentChange,
+
   editTitle,
+
   onEditTitleChange,
+
   editPollData,
+
   onEditPollDataChange,
+
   editAttachments,
+
   onEditAttachmentsChange,
+
   removedAttachmentIds,
+
   onRemoveExistingAttachment,
+
   onRestoreExistingAttachment,
+
   onStartEdit,
+
   onSaveEdit,
+
   onCancelEdit,
+
   onDelete,
+
   isSaving,
 }: PostCardProps) {
   const navigate = useNavigate()
+
   const { user: currentUser } = useAuthStore()
+
   const [carouselOpened, setCarouselOpened] = useState(false)
+
   const [carouselInitialIndex, setCarouselInitialIndex] = useState(0)
+
   const [consentModalOpened, setConsentModalOpened] = useState(false)
+
   const [consentChecked, setConsentChecked] = useState(false)
 
   const isAdminEditingOther =
@@ -973,6 +1223,7 @@ function PostCard({
   const handleEditClick = () => {
     if (isAdminEditingOther) {
       setConsentChecked(false)
+
       setConsentModalOpened(true)
     } else {
       onStartEdit()
@@ -980,21 +1231,27 @@ function PostCard({
   }
 
   // Sort attachments: images first, then other files
+
   const imageAttachments =
     post.attachments?.filter((att) => getFileType(att.name) === "image") || []
+
   const otherAttachments =
     post.attachments?.filter((att) => getFileType(att.name) !== "image") || []
+
   const allAttachments = [...imageAttachments, ...otherAttachments]
 
   const handleAttachmentClick = (attachment: PostAttachment) => {
     const index = allAttachments.findIndex((att) => att.id === attachment.id)
+
     setCarouselInitialIndex(index >= 0 ? index : 0)
+
     setCarouselOpened(true)
   }
 
   const dmMutation = useMutation({
     mutationFn: () =>
       messagingApi.createConversation({ participant_ids: [post.author!.id] }),
+
     onSuccess: (conversation) => {
       navigate(`/beskeder/${conversation.id}`)
     },
@@ -1068,18 +1325,23 @@ function PostCard({
           <FileDropzone
             onDrop={(files) => {
               const { validFiles, errors } = filterFilesBySize(files)
+
               if (errors.length > 0) {
                 errors.forEach((error) => {
                   notifications.show({
                     title: "Fil for stor",
+
                     message: error,
+
                     color: "red",
                   })
                 })
               }
+
               if (validFiles.length > 0) {
                 onEditAttachmentsChange([
                   ...editAttachments,
+
                   ...validFiles.filter(
                     (f) => !editAttachments.some((p) => p.name === f.name),
                   ),
@@ -1104,18 +1366,23 @@ function PostCard({
                 onSubmit={onSaveEdit}
                 onFilePaste={(files) => {
                   const { validFiles, errors } = filterFilesBySize(files)
+
                   if (errors.length > 0) {
                     errors.forEach((error) => {
                       notifications.show({
                         title: "Fil for stor",
+
                         message: error,
+
                         color: "red",
                       })
                     })
                   }
+
                   if (validFiles.length > 0) {
                     onEditAttachmentsChange([
                       ...editAttachments,
+
                       ...validFiles.filter(
                         (f) => !editAttachments.some((p) => p.name === f.name),
                       ),
@@ -1132,18 +1399,23 @@ function PostCard({
               <AttachmentArea
                 onAddFiles={(files) => {
                   const { validFiles, errors } = filterFilesBySize(files)
+
                   if (errors.length > 0) {
                     errors.forEach((error) => {
                       notifications.show({
                         title: "Fil for stor",
+
                         message: error,
+
                         color: "red",
                       })
                     })
                   }
+
                   if (validFiles.length > 0) {
                     onEditAttachmentsChange([
                       ...editAttachments,
+
                       ...validFiles.filter(
                         (f) => !editAttachments.some((p) => p.name === f.name),
                       ),
@@ -1156,8 +1428,11 @@ function PostCard({
                   <Group gap="xs">
                     {post.attachments?.map((att) => {
                       const isRemoved = removedAttachmentIds.includes(att.id)
+
                       const FileIcon = getFileIcon(att.name)
+
                       const fileColor = getFileTypeColor(att.name)
+
                       return (
                         <Badge
                           key={`existing-${att.id}`}
@@ -1185,9 +1460,11 @@ function PostCard({
                           }
                           style={{
                             paddingRight: 4,
+
                             textDecoration: isRemoved
                               ? "line-through"
                               : undefined,
+
                             opacity: isRemoved ? 0.5 : 1,
                           }}
                         >
@@ -1253,7 +1530,9 @@ function PostCard({
               <Group gap="xs" mt="md">
                 {otherAttachments.map((att) => {
                   const FileIcon = getFileIcon(att.name)
+
                   const fileColor = getFileTypeColor(att.name)
+
                   return (
                     <Badge
                       key={att.id}
@@ -1363,6 +1642,7 @@ function PostCard({
               disabled={!consentChecked}
               onClick={() => {
                 setConsentModalOpened(false)
+
                 onStartEdit()
               }}
             >
