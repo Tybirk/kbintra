@@ -19,11 +19,11 @@ from .views import (
 urlpatterns = [
     path("", EventListCreateView.as_view(), name="event-list-create"),
     path("upcoming/", UpcomingEventsView.as_view(), name="event-upcoming"),
-    path("<slug:slug>/", EventDetailView.as_view(), name="event-detail"),
-    path("<slug:slug>/rsvp/", EventRsvpView.as_view(), name="event-rsvp"),
-    path("<slug:slug>/attendees/", EventAttendeesView.as_view(), name="event-attendees"),
-    path("<slug:slug>/household/", EventHouseholdView.as_view(), name="event-household"),
-    path("<slug:slug>/ical/", EventICalView.as_view(), name="event-ical"),
-    path("<slug:slug>/files/", EventFilesView.as_view(), name="event-files"),
-    path("<slug:slug>/cancel/", EventCancelView.as_view(), name="event-cancel"),
+    path("<str:slug>/", EventDetailView.as_view(), name="event-detail"),
+    path("<str:slug>/rsvp/", EventRsvpView.as_view(), name="event-rsvp"),
+    path("<str:slug>/attendees/", EventAttendeesView.as_view(), name="event-attendees"),
+    path("<str:slug>/household/", EventHouseholdView.as_view(), name="event-household"),
+    path("<str:slug>/ical/", EventICalView.as_view(), name="event-ical"),
+    path("<str:slug>/files/", EventFilesView.as_view(), name="event-files"),
+    path("<str:slug>/cancel/", EventCancelView.as_view(), name="event-cancel"),
 ]

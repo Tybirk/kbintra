@@ -187,6 +187,25 @@ class TestEventAPI:
         assert response.status_code == 200
         assert response.json()["title"] == "Test Event"
 
+    def test_get_event_with_danish_chars_in_slug(self, authenticated_client, db, user):
+        """Slugs with æ/ø/å must be routable (str converter, not slug converter)."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.events.models import Event
+
+        ev = Event.objects.create(
+            title="Bålhygge på Ø",
+            created_by=user,
+            start_datetime=timezone.now() + timedelta(days=1),
+            end_datetime=timezone.now() + timedelta(days=1, hours=2),
+        )
+        assert "å" in ev.slug or "ø" in ev.slug
+        response = authenticated_client.get(f"/api/events/{ev.slug}/")
+        assert response.status_code == 200
+        assert response.json()["title"] == "Bålhygge på Ø"
+
     def test_update_own_event(self, authenticated_client, event):
         response = authenticated_client.patch(
             f"/api/events/{event.slug}/",
