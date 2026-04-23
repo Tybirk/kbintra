@@ -1055,6 +1055,61 @@ function MyFoodExpenses() {
               </Card>
             ))
           )}
+
+          <Card withBorder p="md" radius="md">
+            <Stack gap="sm">
+              <Title order={4}>Madbilletter</Title>
+              {!expenses.tickets || expenses.tickets.length === 0 ? (
+                <Text c="dimmed" size="sm">
+                  Ingen madbilletter i denne periode.
+                </Text>
+              ) : (
+                <Table.ScrollContainer minWidth={500}>
+                  <Table striped highlightOnHover>
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>Dato</Table.Th>
+                        <Table.Th>Retning</Table.Th>
+                        <Table.Th>Modpart</Table.Th>
+                        <Table.Th ta="right">Kød</Table.Th>
+                        <Table.Th ta="right">Vegetar</Table.Th>
+                        <Table.Th ta="right">Børn</Table.Th>
+                        <Table.Th ta="right">Pris</Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {expenses.tickets.map((t) => (
+                        <Table.Tr key={`${t.direction}-${t.id}`}>
+                          <Table.Td>{dayjs(t.date).format("D/M")}</Table.Td>
+                          <Table.Td>
+                            <Badge
+                              size="sm"
+                              color={t.direction === "sold" ? "teal" : "orange"}
+                              variant="light"
+                            >
+                              {t.direction === "sold" ? "Solgt" : "Købt"}
+                            </Badge>
+                          </Table.Td>
+                          <Table.Td>
+                            {t.counterparty_house.replace(/^\D+/, "") ||
+                              t.counterparty_house}
+                          </Table.Td>
+                          <Table.Td ta="right">{t.adults_meat}</Table.Td>
+                          <Table.Td ta="right">{t.adults_veg}</Table.Td>
+                          <Table.Td ta="right">{t.children_count}</Table.Td>
+                          <Table.Td ta="right" style={{ whiteSpace: "nowrap" }}>
+                            {t.price == null
+                              ? "Gratis"
+                              : `${parseFloat(t.price).toFixed(0)} kr`}
+                          </Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                </Table.ScrollContainer>
+              )}
+            </Stack>
+          </Card>
         </Stack>
       ) : null}
     </Stack>

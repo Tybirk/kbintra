@@ -56,6 +56,24 @@ export interface ExpenseWeek {
   days: ExpenseDay[]
 }
 
+export interface ExpenseTicket {
+  id: number
+
+  date: string
+
+  direction: "sold" | "bought"
+
+  adults_meat: number
+
+  adults_veg: number
+
+  children_count: number
+
+  price: string | null
+
+  counterparty_house: string
+}
+
 export interface MyFoodExpensesResponse {
   start_date: string
 
@@ -66,6 +84,8 @@ export interface MyFoodExpensesResponse {
   total_cost: string
 
   weeks: ExpenseWeek[]
+
+  tickets: ExpenseTicket[]
 }
 
 export interface HouseFoodCost {

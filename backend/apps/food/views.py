@@ -1488,6 +1488,57 @@ class MyMonthlyExpensesView(APIView):
         for w in weeks:
             w["total_cost"] = str(w["total_cost"])
 
+        tickets: list[dict[str, Any]] = []
+        sold_qs = (
+            FoodTicket.objects.filter(
+                house=house,
+                date__gte=first_day,
+                date__lte=last_day,
+                claimed_by__isnull=False,
+            )
+            .exclude(claimed_by__house=house)
+            .select_related("claimed_by__house", "owner")
+        )
+        for t in sold_qs:
+            tickets.append(
+                {
+                    "id": t.id,
+                    "date": t.date.isoformat(),
+                    "direction": "sold",
+                    "adults_meat": t.adults_meat,
+                    "adults_veg": t.adults_veg,
+                    "children_count": t.children_count,
+                    "price": str(t.price) if t.price is not None else None,
+                    "counterparty_house": (
+                        t.claimed_by.house.name if t.claimed_by and t.claimed_by.house else ""
+                    ),
+                }
+            )
+        bought_qs = (
+            FoodTicket.objects.filter(
+                date__gte=first_day,
+                date__lte=last_day,
+                claimed_by__isnull=False,
+                claimed_by__house=house,
+            )
+            .exclude(house=house)
+            .select_related("house")
+        )
+        for t in bought_qs:
+            tickets.append(
+                {
+                    "id": t.id,
+                    "date": t.date.isoformat(),
+                    "direction": "bought",
+                    "adults_meat": t.adults_meat,
+                    "adults_veg": t.adults_veg,
+                    "children_count": t.children_count,
+                    "price": str(t.price) if t.price is not None else None,
+                    "counterparty_house": t.house.name if t.house else "",
+                }
+            )
+        tickets.sort(key=lambda x: x["date"])
+
         return Response(
             {
                 "start_date": first_day.isoformat(),
@@ -1495,6 +1546,7 @@ class MyMonthlyExpensesView(APIView):
                 "house_name": house.name,
                 "total_cost": str(total_cost),
                 "weeks": weeks,
+                "tickets": tickets,
             }
         )
 
