@@ -440,7 +440,7 @@ export default function DashboardPage() {
             withBorder
             p="lg"
             radius="md"
-            mt="xl"
+            mb="xl"
             bg="var(--mantine-color-blue-light)"
           >
             <Group justify="space-between" mb="md">
@@ -475,7 +475,7 @@ export default function DashboardPage() {
       )}
 
       {/* Birthdays and Food Widgets - Side by Side */}
-      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg" mt="xl">
+      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
         <ErrorBoundary compact title="Kunne ikke vise opslag">
           <Paper withBorder p="lg" radius="md">
             <Group justify="space-between" mb="md">

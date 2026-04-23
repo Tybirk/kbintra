@@ -634,7 +634,7 @@ Then each seperate ${capitalize(actionVerb)} is implemented one at a time where 
               icon={subgroup.icon || "💬"}
               size="lg"
             />
-            <Title order={2} style={{ flex: 1, minWidth: 0 }}>
+            <Title order={3} style={{ flex: 1, minWidth: 0 }}>
               {subgroup.name}
             </Title>
             <Menu position="bottom-end" withinPortal>
@@ -665,7 +665,7 @@ Then each seperate ${capitalize(actionVerb)} is implemented one at a time where 
               </Menu.Dropdown>
             </Menu>
           </Group>
-          {subgroup.description ? (
+          {subgroup.description && subgroup.description !== "<p></p>" ? (
             <Typography mt="sm">
               <div
                 className="description-content"
