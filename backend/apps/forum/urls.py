@@ -29,6 +29,7 @@ from .views import (
     SubgroupListView,
     SubgroupMemberDetailView,
     SubgroupMemberListCreateView,
+    SubgroupRoleListView,
     SubgroupUpdateView,
     SubscribeView,
     ThreadCloseView,
@@ -97,6 +98,8 @@ urlpatterns = [
     # Reactions
     path("posts/<int:post_id>/react/", ReactionToggleView.as_view(), name="reaction-toggle"),
     path("reactions/types/", ReactionTypesView.as_view(), name="reaction-types"),
+    # Role options
+    path("roles/", SubgroupRoleListView.as_view(), name="subgroup-role-list"),
     # Folders
     path("subgroups/<slug:slug>/folders/", FolderListCreateView.as_view(), name="folder-list"),
     path("folders/<int:pk>/", FolderDetailView.as_view(), name="folder-detail"),

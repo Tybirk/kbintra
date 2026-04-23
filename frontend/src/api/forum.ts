@@ -120,6 +120,12 @@ export const forumApi = {
     await apiClient.post(`/forum/subgroups/${slug}/leave/`)
   },
 
+  getRoleOptions: async (): Promise<string[]> => {
+    const response = await apiClient.get<string[]>("/forum/roles/")
+
+    return response.data
+  },
+
   updateFile: async (
     fileId: number,
 

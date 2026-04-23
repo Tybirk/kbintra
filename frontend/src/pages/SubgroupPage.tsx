@@ -2610,12 +2610,21 @@ interface MembersSectionProps {
   currentUserId: number | null
 }
 
-const ROLE_SUGGESTIONS = ["Medlem", "Leder", "Kasserer", "Viseleder"]
+const ROLE_FALLBACK = ["Medlem"]
 
 function MembersSection({ subgroup, currentUserId }: MembersSectionProps) {
   const queryClient = useQueryClient()
 
   const { user } = useAuthStore()
+
+  const { data: roleOptions } = useQuery({
+    queryKey: ["forum-role-options"],
+    queryFn: forumApi.getRoleOptions,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const roleSuggestions =
+    roleOptions && roleOptions.length > 0 ? roleOptions : ROLE_FALLBACK
 
   const [expanded, setExpanded] = useState(false)
 
@@ -2788,7 +2797,7 @@ function MembersSection({ subgroup, currentUserId }: MembersSectionProps) {
                       </Badge>
                     </Menu.Target>
                     <Menu.Dropdown>
-                      {ROLE_SUGGESTIONS.map((role) => (
+                      {roleSuggestions.map((role) => (
                         <Menu.Item
                           key={role}
                           onClick={() => {

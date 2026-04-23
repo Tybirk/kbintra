@@ -26,6 +26,7 @@ from .models import (
     Reaction,
     Subgroup,
     SubgroupMembership,
+    SubgroupRoleOption,
     SubgroupSubscription,
     Thread,
     ThreadMuteStatus,
@@ -1227,6 +1228,16 @@ class ReactionTypesView(APIView):
             "\U0001f389",
         ]
         return Response([{"type": e, "emoji": e} for e in defaults])
+
+
+class SubgroupRoleListView(APIView):
+    """Return the curated list of subgroup role labels (admin-editable)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        names = list(SubgroupRoleOption.objects.values_list("name", flat=True))
+        return Response(names)
 
 
 # Poll Views

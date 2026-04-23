@@ -13,6 +13,7 @@ from .models import (
     Post,
     Subgroup,
     SubgroupMembership,
+    SubgroupRoleOption,
     SubgroupSubscription,
     Thread,
     ThreadReadStatus,
@@ -40,6 +41,14 @@ class SubgroupSubscriptionAdmin(admin.ModelAdmin):
     list_filter = ["subgroup", "notify_new_threads", "notify_replies"]
     search_fields = ["user__first_name", "user__last_name", "user__email", "subgroup__name"]
     raw_id_fields = ["user", "subgroup"]
+
+
+@admin.register(SubgroupRoleOption)
+class SubgroupRoleOptionAdmin(admin.ModelAdmin):
+    list_display = ["name", "order"]
+    list_editable = ["order"]
+    search_fields = ["name"]
+    ordering = ["order", "name"]
 
 
 @admin.register(SubgroupMembership)

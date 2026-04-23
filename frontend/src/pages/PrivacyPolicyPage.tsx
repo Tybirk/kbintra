@@ -21,7 +21,10 @@ export default function PrivacyPolicyPage() {
             Den dataansvarlige for denne platform er bofællesskabet. Har du
             spørgsmål til behandlingen af dine personoplysninger, kan du
             kontakte administratorerne via platformens beskedfunktion eller på{" "}
-            <Anchor href="mailto:[KONTAKT-EMAIL]">[KONTAKT-EMAIL]</Anchor>.
+            <Anchor href="mailto:kloeverbakken@kloeverbakken-odder.dk">
+              kloeverbakken@kloeverbakken-odder.dk
+            </Anchor>
+            .
           </Text>
         </Stack>
 

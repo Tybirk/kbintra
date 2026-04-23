@@ -473,6 +473,26 @@ class File(models.Model):
         return super().delete(*args, **kwargs)
 
 
+class SubgroupRoleOption(models.Model):
+    """
+    Curated list of role labels suggested when assigning roles to subgroup members.
+
+    Admin-editable. The SubgroupMembership.role field remains free-text, so custom
+    roles are still allowed — these are just the standard suggestions shown in the UI.
+    """
+
+    name = models.CharField(max_length=100, unique=True)
+    order = models.IntegerField(
+        default=0, help_text="Lower numbers appear first in the role picker."
+    )
+
+    class Meta:
+        ordering = ["order", "name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class SubgroupMembership(models.Model):
     """
     Membership of a user in a forum subgroup.
