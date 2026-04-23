@@ -513,7 +513,7 @@ def notify_new_announcement(
                 notification_type=NotificationType.NEW_ANNOUNCEMENT,
                 title=announcement_title,
                 message=f"{author.first_name} oprettede et nyt opslag",
-                link="/opslag",
+                link=f"/opslag#announcement-{announcement_id}",
                 related_user=author,
                 html_content=f"<h3>{announcement_title}</h3>{announcement_content}"
                 if announcement_content
@@ -1019,7 +1019,7 @@ def notify_announcement_updated(
                 notification_type=NotificationType.ANNOUNCEMENT_UPDATED,
                 title=f"Opdateret: {announcement_title}",
                 message=f"{editor.first_name} opdaterede opslaget",
-                link="/opslag",
+                link=f"/opslag#announcement-{announcement_id}",
                 related_user=editor,
             )
             if notification:
