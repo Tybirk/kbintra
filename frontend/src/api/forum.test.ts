@@ -96,14 +96,15 @@ describe("forumApi", () => {
   describe("Threads", () => {
     it("should fetch threads for subgroup", async () => {
       const mockThreads = [{ id: 1, title: "Test Thread" }]
+      const mockResponse = {
+        count: 1,
+        next: null,
+        previous: null,
+        results: mockThreads,
+      }
 
       vi.mocked(apiClient.get).mockResolvedValue({
-        data: {
-          count: 1,
-          next: null,
-          previous: null,
-          results: mockThreads,
-        },
+        data: mockResponse,
       })
 
       const result = await forumApi.getThreads("test-group")
@@ -113,7 +114,7 @@ describe("forumApi", () => {
         { params: {} },
       )
 
-      expect(result).toEqual(mockThreads)
+      expect(result).toEqual(mockResponse)
     })
 
     it("should fetch single thread", async () => {
