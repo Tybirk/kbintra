@@ -453,7 +453,11 @@ For each ${taskKind.replace(/s$/, "")}:
 3. Run the relevant checks when done
 
 If multiple ${taskKind} are **independent**, spawn parallel subagents to handle them concurrently.
-Skip any that are too vague to act on, and note why at the end.
+Skip any that are too vague to act on, and note why at the end. The subagents should not do the work, instead gather the
+needed information, and then you as the main agent will act on it.
+
+The process is as follows. You gather all the information from all the subagents and prepare the way you plan to address it.
+Then each seperate ${capitalize(actionVerb)} is implemented one at a time where you ask me for confirmation on your understanding + approach and I commit before continuing.
 
 ---
 
