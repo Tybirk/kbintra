@@ -24,6 +24,8 @@ import { useVersionCheck } from "./hooks/useVersionCheck"
 
 import { usePushSubscriptionSync } from "./hooks/usePushSubscriptionSync"
 
+import { useAccessibilityModeSync } from "./hooks/useAccessibilityMode"
+
 // Eager-loaded pages (most used)
 
 import DashboardPage from "./pages/DashboardPage"
@@ -138,6 +140,10 @@ function App() {
   // Re-sync push subscription if it was invalidated (e.g. Android force-close)
 
   usePushSubscriptionSync()
+
+  // Apply the user's accessibility preference from DB on every page, not only Min profil.
+
+  useAccessibilityModeSync()
 
   useEffect(() => {
     const initAuth = async () => {

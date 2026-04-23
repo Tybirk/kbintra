@@ -12,18 +12,19 @@ const ATTR = "data-accessibility"
 
 const CACHE_KEY = "accessibility-mode"
 
-export function useAccessibilityMode() {
-  const { user, updateUser } = useAuthStore()
+/**
+ * Sync the accessibility DOM attribute + localStorage cache from the logged-in
+ * user's DB preference. Mount at App root so the setting applies on first
+ * login even before the user visits Min profil.
+ */
+export function useAccessibilityModeSync() {
+  const { user } = useAuthStore()
 
   const isEnabled = user?.accessibility_mode ?? false
 
-  // Keep the DOM attribute in sync with the user preference from the store.
-
-  // Also update the localStorage cache so initAccessibilityMode() works on
-
-  // the next page load before the API response arrives.
-
   useEffect(() => {
+    if (!user) return
+
     if (isEnabled) {
       document.documentElement.setAttribute(ATTR, "on")
 
@@ -33,7 +34,15 @@ export function useAccessibilityMode() {
 
       localStorage.setItem(CACHE_KEY, "off")
     }
-  }, [isEnabled])
+  }, [user, isEnabled])
+}
+
+export function useAccessibilityMode() {
+  const { user, updateUser } = useAuthStore()
+
+  const isEnabled = user?.accessibility_mode ?? false
+
+  useAccessibilityModeSync()
 
   const mutation = useMutation({
     mutationFn: (value: boolean) =>
