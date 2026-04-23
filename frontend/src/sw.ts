@@ -129,7 +129,15 @@ self.addEventListener("notificationclick", (event: NotificationEvent) => {
           }
         }
 
-        if (appClients.length > 0) {
+        // On Firefox Android, client.focus() brings the Firefox browser window to the
+        // foreground (showing a random tab) instead of the PWA standalone window.
+        // Skip focus() on Firefox and fall through to openWindow() instead, which
+        // will at least navigate Firefox to the correct page.
+
+        const isFirefox =
+          self.navigator?.userAgent?.includes("Firefox") ?? false
+
+        if (appClients.length > 0 && !isFirefox) {
           try {
             await appClients[0].focus()
           } catch {
@@ -139,7 +147,7 @@ self.addEventListener("notificationclick", (event: NotificationEvent) => {
           return
         }
 
-        // If no existing window, open a new one
+        // If no existing window, or on Firefox, open/navigate to the target URL.
 
         if (self.clients.openWindow) {
           return self.clients.openWindow(absoluteUrl)
