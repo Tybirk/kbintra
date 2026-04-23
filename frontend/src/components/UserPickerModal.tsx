@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 import { useQuery } from "@tanstack/react-query"
 
@@ -60,6 +60,15 @@ export default function UserPickerModal({
   const [search, setSearch] = useState("")
 
   const [selectedUsers, setSelectedUsers] = useState<User[]>([])
+
+  // Reset local state whenever the modal closes — the parent can close us
+  // programmatically (e.g. after a successful save) which skips handleClose.
+  useEffect(() => {
+    if (!opened) {
+      setSelectedUsers([])
+      setSearch("")
+    }
+  }, [opened])
 
   const excludedIds = new Set(excludeUserIds ?? [])
 
