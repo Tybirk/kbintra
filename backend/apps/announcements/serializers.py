@@ -45,6 +45,7 @@ class AnnouncementSerializer(serializers.ModelSerializer):
     """Serializer for Announcement model."""
 
     author = AuthorSerializer(read_only=True)
+    edited_by = AuthorSerializer(read_only=True)
     is_own = serializers.SerializerMethodField()
     can_edit = serializers.SerializerMethodField()
     attachments = AnnouncementAttachmentSerializer(many=True, read_only=True)
@@ -56,6 +57,7 @@ class AnnouncementSerializer(serializers.ModelSerializer):
             "title",
             "content",
             "author",
+            "edited_by",
             "is_active",
             "show_on_dashboard",
             "priority",
@@ -65,7 +67,13 @@ class AnnouncementSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "author", "created_at", "updated_at"]
+        read_only_fields = [
+            "id",
+            "author",
+            "edited_by",
+            "created_at",
+            "updated_at",
+        ]
 
     def get_is_own(self, obj: Announcement) -> bool:
         request = self.context.get("request")

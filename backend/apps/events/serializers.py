@@ -65,6 +65,7 @@ class EventSerializer(serializers.ModelSerializer):
     """Read serializer for Event model."""
 
     created_by = AuthorSerializer(read_only=True)
+    edited_by = AuthorSerializer(read_only=True)
     rooms = RoomInfoSerializer(many=True, read_only=True)
     subgroup = SubgroupInfoSerializer(read_only=True)
     folder = FolderInfoSerializer(read_only=True)
@@ -86,6 +87,7 @@ class EventSerializer(serializers.ModelSerializer):
             "title",
             "description",
             "created_by",
+            "edited_by",
             "visibility",
             "start_datetime",
             "end_datetime",
@@ -114,6 +116,7 @@ class EventSerializer(serializers.ModelSerializer):
             "id",
             "slug",
             "created_by",
+            "edited_by",
             "is_cancelled",
             "cancellation_message",
             "resolved_location",

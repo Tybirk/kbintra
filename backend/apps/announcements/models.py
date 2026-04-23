@@ -16,6 +16,13 @@ class Announcement(models.Model):
         on_delete=models.CASCADE,
         related_name="announcements",
     )
+    edited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="edited_announcements",
+    )
     is_active = models.BooleanField(default=True)
     show_on_dashboard = models.BooleanField(
         default=True,

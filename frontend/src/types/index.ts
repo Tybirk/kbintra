@@ -523,6 +523,8 @@ export interface Announcement {
 
   author: Author
 
+  edited_by: Author | null
+
   is_active: boolean
 
   show_on_dashboard: boolean
@@ -878,6 +880,8 @@ export interface Event {
   description: string
 
   created_by: Author
+
+  edited_by: Author | null
 
   visibility: EventVisibility
 

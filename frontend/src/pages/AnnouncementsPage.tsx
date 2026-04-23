@@ -376,6 +376,13 @@ function AnnouncementCard({
                 c="dimmed"
               />{" "}
               • {dayjs(announcement.created_at).fromNow()}
+              {announcement.edited_by && (
+                <>
+                  {" "}
+                  · redigeret af {announcement.edited_by.first_name}{" "}
+                  {announcement.edited_by.last_name}
+                </>
+              )}
             </Text>
           </div>
         </Group>

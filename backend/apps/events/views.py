@@ -59,7 +59,7 @@ class EventListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self) -> QuerySet[Event]:
         queryset = Event.objects.select_related(
-            "created_by", "subgroup", "folder", "thread", "thread__subgroup"
+            "created_by", "edited_by", "subgroup", "folder", "thread", "thread__subgroup"
         ).prefetch_related("rooms")
 
         # Only show private events to their creator
@@ -189,7 +189,10 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
         old_description = serializer.instance.description or ""
         old_mention_ids = set(extract_mention_ids(old_description))
 
-        event = serializer.save()
+        edited_by = (
+            self.request.user if serializer.instance.created_by_id != self.request.user.id else None
+        )
+        event = serializer.save(edited_by=edited_by) if edited_by else serializer.save()
 
         # Sync thread title if title changed
         if event.thread_id and event.title != old_title:

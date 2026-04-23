@@ -51,7 +51,7 @@ class AnnouncementDetailView(generics.RetrieveUpdateDestroyAPIView):
     """Retrieve, update, or delete an announcement."""
 
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
-    queryset = Announcement.objects.select_related("author").prefetch_related(
+    queryset = Announcement.objects.select_related("author", "edited_by").prefetch_related(
         "attachments__uploaded_by"
     )
 
@@ -64,7 +64,10 @@ class AnnouncementDetailView(generics.RetrieveUpdateDestroyAPIView):
         # Capture old values before saving so we only notify on real content changes
         old_title = serializer.instance.title
         old_content = serializer.instance.content
-        announcement = serializer.save()
+        edited_by = (
+            self.request.user if serializer.instance.author_id != self.request.user.id else None
+        )
+        announcement = serializer.save(edited_by=edited_by) if edited_by else serializer.save()
 
         content_changed = announcement.title != old_title or announcement.content != old_content
         if content_changed:

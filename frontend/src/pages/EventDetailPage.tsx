@@ -374,6 +374,13 @@ export default function EventDetailPage() {
             <Text size="sm" c="dimmed">
               Oprettet af {event.created_by.first_name}{" "}
               {event.created_by.last_name}
+              {event.edited_by && (
+                <>
+                  {" "}
+                  · redigeret af {event.edited_by.first_name}{" "}
+                  {event.edited_by.last_name}
+                </>
+              )}
             </Text>
           </Group>
         </Stack>
