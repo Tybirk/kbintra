@@ -50,7 +50,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "Building new images (old containers keep serving)..."
-docker compose build
+docker compose build --pull
 
 echo "Running startup tasks with new image (old server still serving)..."
 docker compose run --rm -T --entrypoint sh backend -c "
