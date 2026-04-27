@@ -3,6 +3,7 @@
  */
 
 import { apiClient } from "./client"
+import { asArray } from "./helpers"
 
 import type {
   MealPreference,
@@ -120,7 +121,7 @@ export const foodApi = {
   getPreferences: async (): Promise<MealPreference[]> => {
     const response = await apiClient.get("/food/preferences/")
 
-    return response.data.results ?? response.data
+    return asArray(response.data)
   },
 
   createPreference: async (
@@ -152,7 +153,7 @@ export const foodApi = {
 
     const response = await apiClient.get("/food/registrations/", { params })
 
-    return response.data.results ?? response.data
+    return asArray(response.data)
   },
 
   createRegistration: async (
@@ -202,13 +203,13 @@ export const foodApi = {
 
     const response = await apiClient.get("/food/tickets/", { params })
 
-    return response.data.results ?? response.data
+    return asArray(response.data)
   },
 
   getMyTickets: async (): Promise<FoodTicket[]> => {
     const response = await apiClient.get("/food/tickets/my/")
 
-    return response.data.results ?? response.data
+    return asArray(response.data)
   },
 
   getTicket: async (id: number): Promise<FoodTicket> => {
@@ -262,13 +263,13 @@ export const foodApi = {
 
     const response = await apiClient.get("/food/teams/", { params })
 
-    return response.data.results ?? response.data
+    return asArray(response.data)
   },
 
   getMyTeams: async (): Promise<FoodTeam[]> => {
     const response = await apiClient.get("/food/teams/my/")
 
-    return response.data.results ?? response.data
+    return asArray(response.data)
   },
 
   getTeam: async (id: number): Promise<FoodTeam> => {
@@ -282,7 +283,7 @@ export const foodApi = {
   getSwapRequests: async (): Promise<TeamSwapRequest[]> => {
     const response = await apiClient.get("/food/swap-requests/")
 
-    return response.data.results ?? response.data
+    return asArray(response.data)
   },
 
   createSwapRequest: async (
@@ -316,7 +317,7 @@ export const foodApi = {
   getCycles: async (): Promise<FoodTeamCycle[]> => {
     const response = await apiClient.get("/food/cycles/")
 
-    return response.data.results ?? response.data
+    return asArray(response.data)
   },
 
   getActiveCycle: async (): Promise<FoodTeamCycle> => {
@@ -372,7 +373,7 @@ export const foodApi = {
   getCycleWishes: async (cycleId: number): Promise<FoodTeamWish[]> => {
     const response = await apiClient.get(`/food/cycles/${cycleId}/wishes/`)
 
-    return response.data.results ?? response.data
+    return asArray(response.data)
   },
 
   // Team Generation
@@ -526,7 +527,7 @@ export const foodApi = {
 
     const response = await apiClient.get("/food/closed-days/", { params })
 
-    return response.data
+    return asArray(response.data)
   },
 
   createClosedDays: async (data: {

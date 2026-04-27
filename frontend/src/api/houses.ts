@@ -3,6 +3,7 @@
  */
 
 import { apiClient } from "./client"
+import { asArray } from "./helpers"
 
 import type { Car, Child, House } from "../types"
 
@@ -36,9 +37,9 @@ export interface UpdateCarData {
 
 export const housesApi = {
   async getHouses(): Promise<House[]> {
-    const response = await apiClient.get<House[]>("/houses/")
+    const response = await apiClient.get("/houses/")
 
-    return response.data
+    return asArray(response.data)
   },
 
   async getHouse(id: number): Promise<House> {
@@ -70,9 +71,9 @@ export const housesApi = {
   },
 
   async getChildren(): Promise<Child[]> {
-    const response = await apiClient.get<Child[]>("/houses/my/children/")
+    const response = await apiClient.get("/houses/my/children/")
 
-    return response.data
+    return asArray(response.data)
   },
 
   async createChild(data: CreateChildData): Promise<Child> {
@@ -96,9 +97,9 @@ export const housesApi = {
   },
 
   async getCars(): Promise<Car[]> {
-    const response = await apiClient.get<Car[]>("/houses/my/cars/")
+    const response = await apiClient.get("/houses/my/cars/")
 
-    return response.data
+    return asArray(response.data)
   },
 
   async createCar(data: CreateCarData): Promise<Car> {

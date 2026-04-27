@@ -3,6 +3,7 @@
  */
 
 import { apiClient } from "./client"
+import { asArray } from "./helpers"
 
 import type { User, PaginatedResponse, Invitation, MentionUser } from "../types"
 
@@ -14,11 +15,9 @@ export const usersApi = {
   },
 
   async getUpcomingBirthdays(days = 7): Promise<User[]> {
-    const response = await apiClient.get<User[]>(
-      `/users/birthdays/?days=${days}`,
-    )
+    const response = await apiClient.get(`/users/birthdays/?days=${days}`)
 
-    return response.data
+    return asArray(response.data)
   },
 
   async getUser(id: number): Promise<User> {
@@ -85,11 +84,9 @@ export const usersApi = {
   async mentionSearch(q: string): Promise<MentionUser[]> {
     const params = q ? `?q=${encodeURIComponent(q)}` : ""
 
-    const response = await apiClient.get<MentionUser[]>(
-      `/users/mentions/${params}`,
-    )
+    const response = await apiClient.get(`/users/mentions/${params}`)
 
-    return response.data
+    return asArray(response.data)
   },
 
   async deleteAccount(password: string): Promise<void> {

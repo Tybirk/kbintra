@@ -3,6 +3,7 @@
  */
 
 import { apiClient } from "./client"
+import { asArray } from "./helpers"
 
 import type {
   PaginatedResponse,
@@ -59,7 +60,7 @@ export const forumApi = {
   getRecentActivity: async (limit = 10): Promise<RecentActivity[]> => {
     const response = await apiClient.get(`/forum/recent/?limit=${limit}`)
 
-    return response.data
+    return asArray(response.data)
   },
 
   // Subgroups
@@ -67,7 +68,7 @@ export const forumApi = {
   getSubgroups: async (): Promise<Subgroup[]> => {
     const response = await apiClient.get("/forum/subgroups/")
 
-    return response.data.results ?? response.data
+    return asArray(response.data)
   },
 
   createSubgroup: async (data: {
@@ -121,9 +122,9 @@ export const forumApi = {
   },
 
   getRoleOptions: async (): Promise<string[]> => {
-    const response = await apiClient.get<string[]>("/forum/roles/")
+    const response = await apiClient.get("/forum/roles/")
 
-    return response.data
+    return asArray(response.data)
   },
 
   updateFile: async (
@@ -159,7 +160,7 @@ export const forumApi = {
   getMySubscriptions: async (): Promise<SubgroupSubscription[]> => {
     const response = await apiClient.get("/forum/subscriptions/")
 
-    return response.data.results ?? response.data
+    return asArray(response.data)
   },
 
   // Threads
@@ -314,7 +315,7 @@ export const forumApi = {
   getPosts: async (threadId: number): Promise<Post[]> => {
     const response = await apiClient.get(`/forum/threads/${threadId}/posts/`)
 
-    return response.data.results ?? response.data
+    return asArray(response.data)
   },
 
   createPost: async (
@@ -452,7 +453,7 @@ export const forumApi = {
       { params },
     )
 
-    return response.data.results ?? response.data
+    return asArray(response.data)
   },
 
   getFolder: async (folderId: number): Promise<Folder> => {
@@ -498,7 +499,7 @@ export const forumApi = {
   getFiles: async (folderId: number): Promise<ForumFile[]> => {
     const response = await apiClient.get(`/forum/folders/${folderId}/files/`)
 
-    return response.data.results ?? response.data
+    return asArray(response.data)
   },
 
   getRootFiles: async (subgroupSlug: string): Promise<ForumFile[]> => {
@@ -506,7 +507,7 @@ export const forumApi = {
       `/forum/subgroups/${subgroupSlug}/files/`,
     )
 
-    return response.data.results ?? response.data
+    return asArray(response.data)
   },
 
   uploadFile: async (
@@ -676,7 +677,7 @@ export const forumApi = {
   getReactionTypes: async (): Promise<ReactionTypeInfo[]> => {
     const response = await apiClient.get("/forum/reactions/types/")
 
-    return response.data
+    return asArray(response.data)
   },
 
   // Polls

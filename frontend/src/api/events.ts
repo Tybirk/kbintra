@@ -3,6 +3,7 @@
  */
 
 import { apiClient } from "./client"
+import { asArray } from "./helpers"
 
 import type {
   Event,
@@ -46,7 +47,7 @@ export const eventsApi = {
 
     const response = await apiClient.get("/events/", { params: queryParams })
 
-    return response.data.results ?? response.data
+    return asArray(response.data)
   },
 
   // Get upcoming community events (for dashboard widget)
@@ -54,7 +55,7 @@ export const eventsApi = {
   getUpcomingEvents: async (): Promise<Event[]> => {
     const response = await apiClient.get("/events/upcoming/")
 
-    return response.data.results ?? response.data
+    return asArray(response.data)
   },
 
   // Get single event by slug
@@ -112,7 +113,7 @@ export const eventsApi = {
   getAttendees: async (eventSlug: string): Promise<EventAttendance[]> => {
     const response = await apiClient.get(`/events/${eventSlug}/attendees/`)
 
-    return response.data
+    return asArray(response.data)
   },
 
   // Get household members for RSVP
@@ -122,7 +123,7 @@ export const eventsApi = {
   ): Promise<HouseholdMember[]> => {
     const response = await apiClient.get(`/events/${eventSlug}/household/`)
 
-    return response.data
+    return asArray(response.data)
   },
 
   // Download iCal file via authenticated request
@@ -172,7 +173,7 @@ export const eventsApi = {
   getFiles: async (eventSlug: string): Promise<EventFile[]> => {
     const response = await apiClient.get(`/events/${eventSlug}/files/`)
 
-    return response.data
+    return asArray(response.data)
   },
 
   uploadFiles: async (

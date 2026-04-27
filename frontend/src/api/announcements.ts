@@ -3,6 +3,7 @@
  */
 
 import { apiClient } from "./client"
+import { asArray } from "./helpers"
 
 import type { Announcement, CreateAnnouncementData } from "../types"
 
@@ -20,9 +21,7 @@ export const announcementsApi = {
 
     const response = await apiClient.get("/announcements/", { params })
 
-    // Handle paginated response
-
-    return response.data.results ?? response.data
+    return asArray(response.data)
   },
 
   getAnnouncement: async (id: number): Promise<Announcement> => {

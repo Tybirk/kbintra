@@ -3,6 +3,7 @@
  */
 
 import { apiClient, getAccessToken } from "./client"
+import { asArray } from "./helpers"
 
 import type {
   Conversation,
@@ -19,7 +20,7 @@ export const messagingApi = {
 
     // Handle paginated response
 
-    return response.data.results ?? response.data
+    return asArray(response.data)
   },
 
   // Get conversation with messages
@@ -77,7 +78,7 @@ export const messagingApi = {
 
     // Handle paginated response
 
-    return response.data.results ?? response.data
+    return asArray(response.data)
   },
 
   // Send a message (REST API fallback)

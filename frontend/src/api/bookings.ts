@@ -3,6 +3,7 @@
  */
 
 import { apiClient } from "./client"
+import { asArray } from "./helpers"
 
 import type {
   Room,
@@ -21,7 +22,7 @@ export const bookingsApi = {
 
     const response = await apiClient.get("/bookings/rooms/", { params })
 
-    return response.data.results ?? response.data
+    return asArray(response.data)
   },
 
   getRoom: async (id: number): Promise<Room> => {
@@ -63,7 +64,7 @@ export const bookingsApi = {
       params: queryParams,
     })
 
-    return response.data.results ?? response.data
+    return asArray(response.data)
   },
 
   getRecurringBooking: async (id: number): Promise<RecurringBooking> => {
@@ -125,7 +126,7 @@ export const bookingsApi = {
 
     const response = await apiClient.get("/bookings/calendar/", { params })
 
-    return response.data
+    return asArray(response.data)
   },
 
   // Availability check

@@ -28,19 +28,17 @@ export const notificationsApi = {
       params: { page },
     })
 
-    if (Array.isArray(response.data)) {
-      return {
-        count: response.data.length,
+    const data = response.data
 
-        next: null,
-
-        previous: null,
-
-        results: response.data,
-      }
+    if (Array.isArray(data)) {
+      return { count: data.length, next: null, previous: null, results: data }
     }
 
-    return response.data
+    if (data && typeof data === "object" && Array.isArray(data.results)) {
+      return data
+    }
+
+    return { count: 0, next: null, previous: null, results: [] }
   },
 
   // Get single notification
