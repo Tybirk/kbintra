@@ -6,6 +6,11 @@ are immutable — only backup on create, delete on delete.
 
 Image models (User.profile_picture, House.profile_picture, Room.image)
 can be replaced — backup on every save when the field has a value.
+
+NOTE: connects use weak=False because the receivers are closures created in a
+loop with no module-level reference. With the default weak=True, CPython would
+garbage-collect them immediately after registration and the signals would
+silently stop firing.
 """
 
 import logging
@@ -58,8 +63,8 @@ for _model_label, _field_name in ATTACHMENT_MODELS:
 
         return handler
 
-    receiver(post_save, sender=_model_label)(_make_save_handler(_field_name))
-    receiver(post_delete, sender=_model_label)(_make_delete_handler(_field_name))
+    receiver(post_save, sender=_model_label, weak=False)(_make_save_handler(_field_name))
+    receiver(post_delete, sender=_model_label, weak=False)(_make_delete_handler(_field_name))
 
 
 # -- Image models (replaceable files: backup on every save, delete old on replace) --
@@ -132,6 +137,6 @@ for _model_label, _field_name in IMAGE_MODELS:
 
         return handler
 
-    receiver(pre_save, sender=_model_label)(_make_pre_save_handler(_field_name))
-    receiver(post_save, sender=_model_label)(_make_save_handler(_field_name))
-    receiver(post_delete, sender=_model_label)(_make_delete_handler(_field_name))
+    receiver(pre_save, sender=_model_label, weak=False)(_make_pre_save_handler(_field_name))
+    receiver(post_save, sender=_model_label, weak=False)(_make_save_handler(_field_name))
+    receiver(post_delete, sender=_model_label, weak=False)(_make_delete_handler(_field_name))
