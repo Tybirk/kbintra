@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="da">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#228be6" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>KB Intra opdateres</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f8f9fa;
+        --fg: #212529;
+        --muted: #495057;
+        --accent: #228be6;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #1a1b1e;
+          --fg: #c1c2c5;
+          --muted: #909296;
+        }
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--fg);
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+          Ubuntu, Cantarell, sans-serif;
+      }
+      .wrap {
+        min-height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem 1.5rem;
+        box-sizing: border-box;
+      }
+      .card {
+        max-width: 28rem;
+        text-align: center;
+      }
+      h1 {
+        font-size: 1.5rem;
+        margin: 0 0 0.75rem;
+      }
+      p {
+        color: var(--muted);
+        line-height: 1.5;
+        margin: 0 0 1rem;
+      }
+      .spinner {
+        width: 2.5rem;
+        height: 2.5rem;
+        margin: 0 auto 1.5rem;
+        border: 3px solid color-mix(in srgb, var(--accent) 25%, transparent);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.9s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      small {
+        display: block;
+        margin-top: 1.5rem;
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <div class="spinner" aria-hidden="true"></div>
+        <h1>KB Intra bliver opdateret</h1>
+        <p>
+          Vi opdaterer lige siden. Det tager normalt under et minut – prøv igen
+          om et øjeblik.
+        </p>
+        <small>Siden genindlæses automatisk når opdateringen er færdig.</small>
+      </div>
+    </div>
+    <script>
+      // Poll for the real frontend coming back. Use HEAD on /version.json
+      // (served by the frontend container, never cached). When it returns
+      // 200, reload the page so the user lands on the real app.
+      (function () {
+        var attempts = 0
+        function check() {
+          attempts++
+          fetch("/version.json", { cache: "no-store" })
+            .then(function (r) {
+              if (r.ok) {
+                window.location.reload()
+              } else {
+                schedule()
+              }
+            })
+            .catch(schedule)
+        }
+        function schedule() {
+          // Back off slowly so we don't hammer during a long outage.
+          var delay = Math.min(2000 + attempts * 500, 10000)
+          setTimeout(check, delay)
+        }
+        schedule()
+      })()
+    </script>
+  </body>
+</html>

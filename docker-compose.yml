@@ -168,7 +168,10 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.frontend.rule=PathPrefix(`/`)"
       - "traefik.http.routers.frontend.entrypoints=web"
-      - "traefik.http.routers.frontend.priority=1"
+      # Higher than `maintenance` (priority=1) so the real frontend wins
+      # whenever its container is up; the maintenance fallback only catches
+      # traffic during the brief window when this container is being recreated.
+      - "traefik.http.routers.frontend.priority=2"
       - "traefik.http.routers.frontend.middlewares=secheaders"
       - "traefik.http.services.frontend.loadbalancer.server.port=80"
       # Security headers middleware (applied to all frontend responses via Traefik,
@@ -186,6 +189,35 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  # Catch-all fallback shown only when the frontend (and/or backend) container
+  # is unavailable — typically the brief window during a `docker compose up
+  # --build` while a container is being recreated. Without this, users would
+  # see Traefik's default 404 or an HTML 200 from the SPA being served as a
+  # response to /api/*. The page polls /version.json and reloads when the real
+  # frontend is back up.
+  maintenance:
+    image: nginx:alpine
+    volumes:
+      - ./maintenance/index.html:/usr/share/nginx/html/index.html:ro
+      - ./maintenance/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    labels:
+      - "traefik.enable=true"
+      # PathPrefix(`/`) at priority=1 — lower than the real frontend (2),
+      # so this only wins when the frontend router is unregistered.
+      - "traefik.http.routers.maintenance.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.maintenance.entrypoints=web"
+      - "traefik.http.routers.maintenance.priority=1"
+      - "traefik.http.services.maintenance.loadbalancer.server.port=80"
+    networks:
+      - web
+    restart: unless-stopped
+    mem_limit: 64m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
 
   # --- Monitoring ---
 

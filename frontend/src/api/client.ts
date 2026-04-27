@@ -4,7 +4,40 @@
 
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios"
 
+import { notifications } from "@mantine/notifications"
+
 const API_BASE_URL = "/api"
+
+// Show at most one "deploy in progress" toast every 30 seconds, even if many
+// requests fail in a burst. The toast itself auto-dismisses after 5s — the
+// throttle is so a page that fires 8 queries on mount doesn't stack 8 toasts.
+const MAINTENANCE_TOAST_THROTTLE_MS = 30_000
+
+let lastMaintenanceToastAt = 0
+
+const showMaintenanceToast = () => {
+  const now = Date.now()
+  if (now - lastMaintenanceToastAt < MAINTENANCE_TOAST_THROTTLE_MS) return
+  lastMaintenanceToastAt = now
+  notifications.show({
+    id: "kbintra-maintenance",
+    color: "yellow",
+    title: "KB Intra opdateres",
+    message: "KB Intra bliver lige opdateret. Prøv igen om et øjeblik.",
+    autoClose: 5000,
+  })
+}
+
+// True for the failure modes that look like "backend/proxy is briefly down"
+// rather than an application error: 502/503/504 from a proxy, or no response
+// at all (network error, timeout, DNS failure). Cancelled requests (e.g. the
+// user navigated away) are not maintenance errors.
+const isMaintenanceError = (error: AxiosError): boolean => {
+  if (axios.isCancel(error) || error.code === "ERR_CANCELED") return false
+  if (!error.response) return true
+  const status = error.response.status
+  return status === 502 || status === 503 || status === 504
+}
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -180,6 +213,10 @@ apiClient.interceptors.response.use(
       } finally {
         isRefreshing = false
       }
+    }
+
+    if (isMaintenanceError(error)) {
+      showMaintenanceToast()
     }
 
     return Promise.reject(error)
