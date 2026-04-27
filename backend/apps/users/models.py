@@ -69,7 +69,7 @@ class User(AbstractUser):
         null=True,
         blank=True,
     )
-    bio = models.TextField(blank=True, max_length=500)
+    bio = models.TextField(blank=True, max_length=1000)
 
     # House relationship (nullable - user might not be assigned to a house yet)
     house = models.ForeignKey(
