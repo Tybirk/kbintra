@@ -206,12 +206,13 @@ export default function MessagesPage() {
   const filteredConversations = conversationSearch.trim()
     ? safeConversations.filter((conv) => {
         const term = conversationSearch.trim().toLowerCase()
+        const others = conv.other_participants ?? []
 
-        if (conv.other_participants.length === 0) {
+        if (others.length === 0) {
           return "slettet bruger".includes(term)
         }
 
-        return conv.other_participants.some(
+        return others.some(
           (p) =>
             p.first_name.toLowerCase().includes(term) ||
             p.last_name.toLowerCase().includes(term) ||
@@ -234,6 +235,27 @@ export default function MessagesPage() {
       enabled: !!selectedConversation,
     },
   )
+
+  const reportedBadActiveConversation = useRef<number | null>(null)
+
+  if (
+    activeConversation != null &&
+    !Array.isArray(activeConversation.other_participants) &&
+    reportedBadActiveConversation.current !== activeConversation.id
+  ) {
+    reportedBadActiveConversation.current = activeConversation.id
+
+    Sentry.captureMessage(
+      "MessagesPage: activeConversation.other_participants is not an array",
+      {
+        level: "error",
+        extra: {
+          conversation: JSON.stringify(activeConversation).slice(0, 1000),
+          selectedConversation,
+        },
+      },
+    )
+  }
 
   // Keep ref in sync with state
 
@@ -796,7 +818,7 @@ function ConversationItem({
 
   onClick,
 }: ConversationItemProps) {
-  const otherParticipants = conversation.other_participants
+  const otherParticipants = conversation.other_participants ?? []
 
   const isGroupChat = otherParticipants.length > 1
 
@@ -1151,7 +1173,9 @@ function ChatArea({
     },
   })
 
-  const otherParticipants = conversation.other_participants
+  const otherParticipants = conversation.other_participants ?? []
+
+  const allParticipants = conversation.participants ?? []
 
   const isGroupChat = otherParticipants.length > 1
 
@@ -1367,14 +1391,14 @@ function ChatArea({
                       {displayName}
                     </Text>
                     <Text size="xs" c="dimmed">
-                      {conversation.participants.length} deltagere
+                      {allParticipants.length} deltagere
                     </Text>
                   </div>
                 </UnstyledButton>
               </Popover.Target>
               <Popover.Dropdown>
                 <Stack gap="xs">
-                  {conversation.participants.map((p) => (
+                  {allParticipants.map((p) => (
                     <Group key={p.id} gap="sm" wrap="nowrap">
                       <Avatar src={p.profile_picture} radius="xl" size="sm">
                         {p.first_name?.[0]}
@@ -1411,7 +1435,7 @@ function ChatArea({
               >
                 Tilføj personer
               </Menu.Item>
-              {conversation.participants.length > 2 && (
+              {allParticipants.length > 2 && (
                 <>
                   <Menu.Divider />
                   <Menu.Item
@@ -1433,7 +1457,7 @@ function ChatArea({
         onClose={closeAddParticipants}
         title="Tilføj deltagere"
         confirmLabel="Tilføj"
-        excludeUserIds={conversation.participants.map((p) => p.id)}
+        excludeUserIds={allParticipants.map((p) => p.id)}
         loading={addParticipantsMutation.isPending}
         onConfirm={(ids) => addParticipantsMutation.mutate(ids)}
       />
@@ -1526,7 +1550,7 @@ function ChatArea({
           attachments={attachments}
           onAttachmentsChange={setAttachments}
           onMentionedUsersChange={setMentionedUserIds}
-          mentionableUsers={conversation.other_participants}
+          mentionableUsers={otherParticipants}
           draftKey={"msg-" + conversation.id}
         />
       </Box>
