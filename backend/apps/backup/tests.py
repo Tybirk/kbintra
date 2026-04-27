@@ -5,11 +5,42 @@ Tests for the backup app.
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
+from django.apps import apps as django_apps
+from django.db.models.signals import post_delete, post_save, pre_save
 from django.test import TestCase, override_settings
 
 from apps.backup.s3 import is_enabled
+from apps.backup.signals import ATTACHMENT_MODELS, IMAGE_MODELS
 from apps.backup.tasks import _check_litestream_health
 from apps.backup.views import _is_safe_path
+
+
+class SignalRegistrationTest(TestCase):
+    """Regression: signals were registered with closures held only by weakref,
+    so they were silently GC'd and never fired. Verify each model has live
+    receivers attached.
+    """
+
+    def test_attachment_models_have_live_receivers(self):
+        for label, _field in ATTACHMENT_MODELS:
+            model = django_apps.get_model(label)
+            for signal, name in [(post_save, "post_save"), (post_delete, "post_delete")]:
+                live = signal._live_receivers(sender=model)
+                # _live_receivers returns (receivers, sync_receivers) in Django 5
+                flat = [r for group in live for r in group] if isinstance(live, tuple) else live
+                assert flat, f"{label} has no live {name} receivers"
+
+    def test_image_models_have_live_receivers(self):
+        for label, _field in IMAGE_MODELS:
+            model = django_apps.get_model(label)
+            for signal, name in [
+                (pre_save, "pre_save"),
+                (post_save, "post_save"),
+                (post_delete, "post_delete"),
+            ]:
+                live = signal._live_receivers(sender=model)
+                flat = [r for group in live for r in group] if isinstance(live, tuple) else live
+                assert flat, f"{label} has no live {name} receivers"
 
 
 class IsSafePathTest(TestCase):
