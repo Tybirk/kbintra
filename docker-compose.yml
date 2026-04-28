@@ -4,6 +4,7 @@ services:
     command:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.constraints=Label(`com.docker.compose.project`,`${COMPOSE_PROJECT_NAME}`)"
       - "--entrypoints.web.address=:80"
     #ports:
     #  - "127.0.0.1:80:80"  # localhost only — not exposed to public internet
