@@ -7,7 +7,7 @@ import zipfile
 from typing import Any
 
 from django.db.models import Count, Max
-from django.http import FileResponse
+from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -59,8 +59,10 @@ from .services import (
     can_view_thread,
     filter_visible_files,
     filter_visible_threads,
+    folder_subtree_ids,
     member_subgroup_ids,
     remove_member,
+    visible_folder_ids,
     visible_threads_q,
 )
 
@@ -911,7 +913,8 @@ class FolderListCreateView(generics.ListCreateAPIView):
     def get_queryset(self) -> Any:
         subgroup = get_object_or_404(Subgroup, slug=self.kwargs["slug"])
         parent_id = self.request.query_params.get("parent")
-        queryset = Folder.objects.filter(subgroup=subgroup)
+        visible_ids = visible_folder_ids(self.request.user, subgroup)
+        queryset = Folder.objects.filter(subgroup=subgroup, id__in=visible_ids)
         if parent_id:
             queryset = queryset.filter(parent_id=parent_id)
         else:
@@ -922,15 +925,96 @@ class FolderListCreateView(generics.ListCreateAPIView):
         context = super().get_serializer_context()
         if self.request.method == "POST":
             context["subgroup"] = get_object_or_404(Subgroup, slug=self.kwargs["slug"])
+        elif self.request.method == "GET":
+            subgroup = get_object_or_404(Subgroup, slug=self.kwargs["slug"])
+            context["visible_folder_ids"] = visible_folder_ids(self.request.user, subgroup)
         return context
 
+    def perform_create(self, serializer: Any) -> None:
+        # In a members-only subgroup, only formal members may create folders —
+        # otherwise the creator (a non-member) would be unable to see their
+        # own folder, and the directory structure is members' territory.
+        # Open subgroups have no privacy boundary, so anyone authenticated can
+        # create folders (consistent with anyone being able to upload files).
+        subgroup = get_object_or_404(Subgroup, slug=self.kwargs["slug"])
+        if subgroup.allows_members:
+            user = self.request.user
+            is_member = SubgroupMembership.objects.filter(user=user, subgroup=subgroup).exists()
+            if not is_member:
+                from rest_framework.exceptions import PermissionDenied
 
-class FolderDetailView(generics.RetrieveAPIView):
-    """Get folder details with files."""
+                raise PermissionDenied("Kun medlemmer af gruppen kan oprette mapper.")
+        serializer.save()
+
+
+class FolderDetailView(generics.RetrieveDestroyAPIView):
+    """Get folder details, or delete a folder and all its contents."""
 
     serializer_class = FolderSerializer
     permission_classes = [permissions.IsAuthenticated]
-    queryset = Folder.objects.all()
+
+    def get_queryset(self) -> Any:
+        return Folder.objects.all()
+
+    def get_object(self) -> Folder:
+        folder = get_object_or_404(Folder, pk=self.kwargs["pk"])
+        if folder.subgroup_id is not None:
+            visible_ids = visible_folder_ids(self.request.user, folder.subgroup)
+            if folder.id not in visible_ids:
+                raise Http404
+        return folder
+
+    def perform_destroy(self, instance: Folder) -> None:
+        # Same gate as folder creation: in members-only subgroups, only members
+        # may delete; in open subgroups any authenticated user may.
+        subgroup = instance.subgroup
+        if subgroup is not None and subgroup.allows_members:
+            user = self.request.user
+            is_member = SubgroupMembership.objects.filter(user=user, subgroup=subgroup).exists()
+            if not is_member:
+                from rest_framework.exceptions import PermissionDenied
+
+                raise PermissionDenied("Kun medlemmer af gruppen kan slette mapper.")
+
+        # Django's CASCADE does bulk SQL DELETE on descendant files, which
+        # bypasses File.delete() and leaks blobs on disk. Walk the subtree and
+        # delete files individually so storage cleanup runs, then drop the
+        # folder (cascade handles the remaining empty subfolders).
+        for f in File.objects.filter(folder_id__in=folder_subtree_ids(instance)):
+            f.delete()
+
+        instance.delete()
+
+
+class FolderDeletePreviewView(APIView):
+    """Return how many subfolders and files would be deleted with this folder.
+
+    Used by the delete-confirmation UI to inform the user about the cascade
+    impact before they confirm. Gated by the same rule as folder deletion so
+    we don't expose counts to users who couldn't delete the folder anyway.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: Request, pk: int) -> Response:
+        folder = get_object_or_404(Folder, pk=pk)
+        subgroup = folder.subgroup
+        if subgroup is not None and subgroup.allows_members:
+            is_member = SubgroupMembership.objects.filter(
+                user=request.user, subgroup=subgroup
+            ).exists()
+            if not is_member:
+                from rest_framework.exceptions import PermissionDenied
+
+                raise PermissionDenied("Kun medlemmer af gruppen kan slette mapper.")
+
+        ids = folder_subtree_ids(folder)
+        return Response(
+            {
+                "file_count": File.objects.filter(folder_id__in=ids).count(),
+                "subfolder_count": len(ids) - 1,
+            }
+        )
 
 
 class FolderBySlugView(generics.RetrieveAPIView):
@@ -941,7 +1025,11 @@ class FolderBySlugView(generics.RetrieveAPIView):
 
     def get_object(self) -> Folder:
         subgroup = get_object_or_404(Subgroup, slug=self.kwargs["slug"])
-        return get_object_or_404(Folder, subgroup=subgroup, slug=self.kwargs["folder_slug"])
+        folder = get_object_or_404(Folder, subgroup=subgroup, slug=self.kwargs["folder_slug"])
+        visible_ids = visible_folder_ids(self.request.user, subgroup)
+        if folder.id not in visible_ids:
+            raise Http404
+        return folder
 
 
 # File Views
@@ -1096,6 +1184,10 @@ class FolderDownloadView(APIView):
 
     def get(self, request: Request, pk: int) -> FileResponse | Response:
         folder = get_object_or_404(Folder, pk=pk)
+        if folder.subgroup_id is not None:
+            visible_ids = visible_folder_ids(request.user, folder.subgroup)
+            if folder.id not in visible_ids:
+                raise Http404
 
         buf = io.BytesIO()
         total_size = 0
