@@ -12,6 +12,7 @@ from django.db.models import Q
 
 from .models import (
     File,
+    Folder,
     Subgroup,
     SubgroupMembership,
     SubgroupSubscription,
@@ -117,3 +118,59 @@ def filter_visible_threads(qs: QuerySet[Thread], user: User) -> QuerySet[Thread]
 
 def filter_visible_files(qs: QuerySet[File], user: User) -> QuerySet[File]:
     return qs.filter(visible_files_q(user))
+
+
+def folder_subtree_ids(folder: Folder) -> set[int]:
+    """Return the folder's own ID plus all descendant folder IDs."""
+    ids: set[int] = {folder.id}
+    frontier = [folder.id]
+    while frontier:
+        children = list(Folder.objects.filter(parent_id__in=frontier).values_list("id", flat=True))
+        new = [c for c in children if c not in ids]
+        ids.update(new)
+        frontier = new
+    return ids
+
+
+def visible_folder_ids(user: User, subgroup: Subgroup) -> set[int]:
+    """Return folder IDs in `subgroup` that `user` is allowed to see.
+
+    Users with the right to see the full directory structure (formal members,
+    or any authenticated user when the subgroup does not enforce privacy) see
+    every folder, including empty ones — otherwise a freshly created folder
+    would be invisible to its creator until a file is uploaded to it.
+
+    Otherwise, a folder is shown only if it (or any descendant) contains a
+    file the user can view, so the directory structure itself does not leak
+    the existence of private content.
+    """
+    sees_all = (
+        user
+        and user.is_authenticated
+        and (
+            not subgroup.allows_members
+            or SubgroupMembership.objects.filter(user=user, subgroup=subgroup).exists()
+        )
+    )
+    if sees_all:
+        return set(Folder.objects.filter(subgroup=subgroup).values_list("id", flat=True))
+
+    file_folder_ids = set(
+        File.objects.filter(visible_files_q(user), subgroup=subgroup)
+        .exclude(folder__isnull=True)
+        .values_list("folder_id", flat=True)
+        .distinct()
+    )
+
+    if not file_folder_ids:
+        return set()
+
+    parent_map = dict(Folder.objects.filter(subgroup=subgroup).values_list("id", "parent_id"))
+
+    visible: set[int] = set()
+    for fid in file_folder_ids:
+        cur: int | None = fid
+        while cur is not None and cur not in visible:
+            visible.add(cur)
+            cur = parent_map.get(cur)
+    return visible

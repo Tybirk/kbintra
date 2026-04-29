@@ -985,10 +985,21 @@ class FolderSerializer(serializers.ModelSerializer):
         ]
 
     def get_file_count(self, obj: Folder) -> int:
-        return obj.files.count()
+        from .services import visible_files_q
+
+        request = self.context.get("request")
+        user = request.user if request else None
+        return obj.files.filter(visible_files_q(user)).count()
 
     def get_subfolder_count(self, obj: Folder) -> int:
-        return obj.children.count()
+        from .services import visible_folder_ids
+
+        visible_ids = self.context.get("visible_folder_ids")
+        if visible_ids is None:
+            request = self.context.get("request")
+            user = request.user if request else None
+            visible_ids = visible_folder_ids(user, obj.subgroup) if obj.subgroup_id else set()
+        return obj.children.filter(id__in=visible_ids).count()
 
 
 class FolderCreateSerializer(serializers.ModelSerializer):
@@ -998,6 +1009,20 @@ class FolderCreateSerializer(serializers.ModelSerializer):
         model = Folder
         fields = ["name", "slug", "parent"]
         read_only_fields = ["slug"]
+
+    def validate(self, attrs: dict) -> dict:
+        # The model has UniqueConstraint(subgroup, parent, name), but in SQLite
+        # (and PostgreSQL by default) NULL parent_ids are treated as distinct,
+        # so root-level duplicates slip through. Validate here so both cases
+        # return a clean field error rather than an IntegrityError.
+        name = attrs.get("name")
+        parent = attrs.get("parent")
+        subgroup = self.context["subgroup"]
+        if Folder.objects.filter(subgroup=subgroup, parent=parent, name=name).exists():
+            raise serializers.ValidationError(
+                {"name": "Der findes allerede en mappe med dette navn her."}
+            )
+        return attrs
 
     def create(self, validated_data: dict) -> Folder:
         validated_data["subgroup"] = self.context["subgroup"]

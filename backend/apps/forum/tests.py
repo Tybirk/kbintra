@@ -505,14 +505,28 @@ class TestPostViews:
 class TestFolderViews:
     """Tests for folder views."""
 
-    def test_list_folders(self, authenticated_client, subgroup, folder):
+    def test_list_folders(self, authenticated_client, user, subgroup, folder):
         """Test listing folders in a subgroup."""
+        File.objects.create(
+            subgroup=subgroup,
+            folder=folder,
+            uploaded_by=user,
+            file=SimpleUploadedFile("public.txt", b"x"),
+            name="public.txt",
+        )
         response = authenticated_client.get(f"/api/forum/subgroups/{subgroup.slug}/folders/")
         assert response.status_code == 200
         assert len(get_results(response.data)) == 1
 
-    def test_list_subfolders(self, authenticated_client, subgroup, folder, subfolder):
+    def test_list_subfolders(self, authenticated_client, user, subgroup, folder, subfolder):
         """Test listing subfolders with parent parameter."""
+        File.objects.create(
+            subgroup=subgroup,
+            folder=subfolder,
+            uploaded_by=user,
+            file=SimpleUploadedFile("public.txt", b"x"),
+            name="public.txt",
+        )
         response = authenticated_client.get(
             f"/api/forum/subgroups/{subgroup.slug}/folders/?parent={folder.id}"
         )
@@ -539,6 +553,159 @@ class TestFolderViews:
         assert response.status_code == 201
         new_folder = Folder.objects.get(name="New Subfolder")
         assert new_folder.parent == folder
+
+    def test_non_member_cannot_create_folder_in_members_only_subgroup(
+        self, second_authenticated_client, db
+    ):
+        """Non-members may upload files but not create folders in a private subgroup."""
+        members_only = Subgroup.objects.create(
+            name="Privat udvalg",
+            description="x",
+            slug="privat-udvalg",
+            is_committee=True,
+            allows_members=True,
+        )
+        response = second_authenticated_client.post(
+            f"/api/forum/subgroups/{members_only.slug}/folders/",
+            {"name": "Should Not Exist"},
+        )
+        assert response.status_code == 403
+        assert not Folder.objects.filter(name="Should Not Exist").exists()
+
+    def test_non_member_can_create_folder_in_open_subgroup(
+        self, second_authenticated_client, subgroup
+    ):
+        """Open subgroups (allows_members=False) have no privacy boundary, so
+        any authenticated user can create folders."""
+        response = second_authenticated_client.post(
+            f"/api/forum/subgroups/{subgroup.slug}/folders/",
+            {"name": "Open Folder"},
+        )
+        assert response.status_code == 201
+        assert Folder.objects.filter(name="Open Folder").exists()
+
+    def test_member_can_create_folder_in_members_only_subgroup(
+        self, member_client, member_subgroup
+    ):
+        response = member_client.post(
+            f"/api/forum/subgroups/{member_subgroup.slug}/folders/",
+            {"name": "Member Folder"},
+        )
+        assert response.status_code == 201
+        assert Folder.objects.filter(name="Member Folder").exists()
+
+    def test_delete_folder_cascades_files_and_subfolders(
+        self, authenticated_client, user, subgroup
+    ):
+        """Deleting a folder removes its files and all descendant subfolders."""
+        parent = Folder.objects.create(subgroup=subgroup, name="Parent")
+        child = Folder.objects.create(subgroup=subgroup, name="Child", parent=parent)
+        f1 = File.objects.create(
+            subgroup=subgroup,
+            folder=parent,
+            uploaded_by=user,
+            file=SimpleUploadedFile("a.txt", b"a"),
+            name="a.txt",
+        )
+        f2 = File.objects.create(
+            subgroup=subgroup,
+            folder=child,
+            uploaded_by=user,
+            file=SimpleUploadedFile("b.txt", b"b"),
+            name="b.txt",
+        )
+
+        response = authenticated_client.delete(f"/api/forum/folders/{parent.id}/")
+        assert response.status_code == 204
+        assert not Folder.objects.filter(id=parent.id).exists()
+        assert not Folder.objects.filter(id=child.id).exists()
+        assert not File.objects.filter(id__in=[f1.id, f2.id]).exists()
+
+    def test_non_member_cannot_delete_folder_in_members_only_subgroup(
+        self, second_authenticated_client, user, member_subgroup
+    ):
+        folder = Folder.objects.create(subgroup=member_subgroup, name="Privat mappe")
+        File.objects.create(
+            subgroup=member_subgroup,
+            folder=folder,
+            uploaded_by=user,
+            file=SimpleUploadedFile("public.txt", b"x"),
+            name="public.txt",
+        )
+        response = second_authenticated_client.delete(f"/api/forum/folders/{folder.id}/")
+        assert response.status_code == 403
+        assert Folder.objects.filter(id=folder.id).exists()
+
+    def test_member_can_delete_folder_in_members_only_subgroup(
+        self, member_client, member_subgroup
+    ):
+        folder = Folder.objects.create(subgroup=member_subgroup, name="Mappe")
+        response = member_client.delete(f"/api/forum/folders/{folder.id}/")
+        assert response.status_code == 204
+        assert not Folder.objects.filter(id=folder.id).exists()
+
+    def test_delete_preview_returns_recursive_counts(self, authenticated_client, user, subgroup):
+        parent = Folder.objects.create(subgroup=subgroup, name="Parent")
+        child = Folder.objects.create(subgroup=subgroup, name="Child", parent=parent)
+        Folder.objects.create(subgroup=subgroup, name="Grandchild", parent=child)
+        File.objects.create(
+            subgroup=subgroup,
+            folder=parent,
+            uploaded_by=user,
+            file=SimpleUploadedFile("a.txt", b"a"),
+            name="a.txt",
+        )
+        File.objects.create(
+            subgroup=subgroup,
+            folder=child,
+            uploaded_by=user,
+            file=SimpleUploadedFile("b.txt", b"b"),
+            name="b.txt",
+        )
+        response = authenticated_client.get(f"/api/forum/folders/{parent.id}/delete-preview/")
+        assert response.status_code == 200
+        assert response.data == {"file_count": 2, "subfolder_count": 2}
+
+    def test_delete_preview_forbidden_for_non_member_in_members_only_subgroup(
+        self, second_authenticated_client, member_subgroup
+    ):
+        folder = Folder.objects.create(subgroup=member_subgroup, name="Privat")
+        response = second_authenticated_client.get(
+            f"/api/forum/folders/{folder.id}/delete-preview/"
+        )
+        assert response.status_code == 403
+
+    def test_cannot_create_duplicate_root_folder(self, authenticated_client, subgroup, folder):
+        """Two root-level folders cannot share a name (NULL parent edge case)."""
+        response = authenticated_client.post(
+            f"/api/forum/subgroups/{subgroup.slug}/folders/",
+            {"name": folder.name},
+        )
+        assert response.status_code == 400
+        assert "name" in response.data
+
+    def test_cannot_create_duplicate_subfolder(
+        self, authenticated_client, subgroup, folder, subfolder
+    ):
+        """Two subfolders under the same parent cannot share a name."""
+        response = authenticated_client.post(
+            f"/api/forum/subgroups/{subgroup.slug}/folders/",
+            {"name": subfolder.name, "parent": folder.id},
+        )
+        assert response.status_code == 400
+        assert "name" in response.data
+
+    def test_can_create_same_name_in_different_parents(
+        self, authenticated_client, subgroup, folder
+    ):
+        """Same name is allowed when parents differ — uniqueness is per-parent."""
+        other_parent = Folder.objects.create(subgroup=subgroup, name="Other")
+        Folder.objects.create(subgroup=subgroup, name="Shared", parent=folder)
+        response = authenticated_client.post(
+            f"/api/forum/subgroups/{subgroup.slug}/folders/",
+            {"name": "Shared", "parent": other_parent.id},
+        )
+        assert response.status_code == 201
 
 
 class TestFileViews:
@@ -1667,6 +1834,192 @@ class TestPrivateFileVisibility:
         assert response.status_code == 200
         ids = [f["id"] for f in get_results(response.data)]
         assert private_file.id in ids
+
+
+class TestPrivateFolderVisibility:
+    """Folders containing only private files must be hidden from non-members.
+
+    A folder is shown to a non-member only when it (or any descendant) holds at
+    least one file the user can see — otherwise the directory structure leaks
+    the existence of private content.
+    """
+
+    @pytest.fixture
+    def private_folder(self, db, user, member_subgroup):
+        folder = Folder.objects.create(subgroup=member_subgroup, name="Privat mappe")
+        File.objects.create(
+            subgroup=member_subgroup,
+            folder=folder,
+            uploaded_by=user,
+            name="hemmeligt.pdf",
+            file=SimpleUploadedFile("hemmeligt.pdf", b"secret"),
+            members_only=True,
+        )
+        return folder
+
+    @pytest.fixture
+    def public_folder(self, db, user, member_subgroup):
+        folder = Folder.objects.create(subgroup=member_subgroup, name="Offentlig mappe")
+        File.objects.create(
+            subgroup=member_subgroup,
+            folder=folder,
+            uploaded_by=user,
+            name="aaben.pdf",
+            file=SimpleUploadedFile("aaben.pdf", b"public"),
+            members_only=False,
+        )
+        return folder
+
+    def test_non_member_does_not_see_private_folder_in_list(
+        self, second_authenticated_client, member_subgroup, private_folder
+    ):
+        response = second_authenticated_client.get(
+            f"/api/forum/subgroups/{member_subgroup.slug}/folders/"
+        )
+        assert response.status_code == 200
+        ids = [f["id"] for f in get_results(response.data)]
+        assert private_folder.id not in ids
+
+    def test_non_member_does_not_see_empty_folder_in_list(
+        self, second_authenticated_client, db, member_subgroup
+    ):
+        empty = Folder.objects.create(subgroup=member_subgroup, name="Tom mappe")
+        response = second_authenticated_client.get(
+            f"/api/forum/subgroups/{member_subgroup.slug}/folders/"
+        )
+        assert response.status_code == 200
+        ids = [f["id"] for f in get_results(response.data)]
+        assert empty.id not in ids
+
+    def test_non_member_sees_folder_with_public_file(
+        self, second_authenticated_client, member_subgroup, public_folder
+    ):
+        response = second_authenticated_client.get(
+            f"/api/forum/subgroups/{member_subgroup.slug}/folders/"
+        )
+        assert response.status_code == 200
+        ids = [f["id"] for f in get_results(response.data)]
+        assert public_folder.id in ids
+
+    def test_non_member_sees_ancestor_when_descendant_has_public_file(
+        self, second_authenticated_client, db, user, member_subgroup
+    ):
+        parent = Folder.objects.create(subgroup=member_subgroup, name="Forælder")
+        child = Folder.objects.create(subgroup=member_subgroup, name="Barn", parent=parent)
+        File.objects.create(
+            subgroup=member_subgroup,
+            folder=child,
+            uploaded_by=user,
+            name="aaben.pdf",
+            file=SimpleUploadedFile("aaben.pdf", b"public"),
+            members_only=False,
+        )
+        response = second_authenticated_client.get(
+            f"/api/forum/subgroups/{member_subgroup.slug}/folders/"
+        )
+        ids = [f["id"] for f in get_results(response.data)]
+        assert parent.id in ids
+
+    def test_member_sees_private_folder_in_list(
+        self, member_client, member_subgroup, private_folder
+    ):
+        response = member_client.get(f"/api/forum/subgroups/{member_subgroup.slug}/folders/")
+        assert response.status_code == 200
+        ids = [f["id"] for f in get_results(response.data)]
+        assert private_folder.id in ids
+
+    def test_member_sees_empty_folder_in_list(self, member_client, db, member_subgroup):
+        """A freshly created (empty) folder must remain visible to its members,
+        otherwise the create-folder UX appears broken."""
+        empty = Folder.objects.create(subgroup=member_subgroup, name="Tom mappe")
+        response = member_client.get(f"/api/forum/subgroups/{member_subgroup.slug}/folders/")
+        assert response.status_code == 200
+        ids = [f["id"] for f in get_results(response.data)]
+        assert empty.id in ids
+
+    def test_empty_folder_visible_in_open_subgroup(self, second_authenticated_client, db, subgroup):
+        """Open subgroups (allows_members=False) have no privacy, so empty
+        folders must be visible to everyone — otherwise creating a folder in
+        an open subgroup leaves it invisible to its creator."""
+        empty = Folder.objects.create(subgroup=subgroup, name="Tom mappe")
+        response = second_authenticated_client.get(f"/api/forum/subgroups/{subgroup.slug}/folders/")
+        assert response.status_code == 200
+        ids = [f["id"] for f in get_results(response.data)]
+        assert empty.id in ids
+
+    def test_non_member_cannot_retrieve_private_folder_by_slug(
+        self, second_authenticated_client, member_subgroup, private_folder
+    ):
+        response = second_authenticated_client.get(
+            f"/api/forum/subgroups/{member_subgroup.slug}/folder/{private_folder.slug}/"
+        )
+        assert response.status_code == 404
+
+    def test_non_member_cannot_retrieve_private_folder_by_id(
+        self, second_authenticated_client, member_subgroup, private_folder
+    ):
+        response = second_authenticated_client.get(f"/api/forum/folders/{private_folder.id}/")
+        assert response.status_code == 404
+
+    def test_file_count_excludes_private_files_for_non_member(
+        self, second_authenticated_client, db, user, member_subgroup
+    ):
+        folder = Folder.objects.create(subgroup=member_subgroup, name="Blandet")
+        File.objects.create(
+            subgroup=member_subgroup,
+            folder=folder,
+            uploaded_by=user,
+            name="aaben.pdf",
+            file=SimpleUploadedFile("aaben.pdf", b"public"),
+            members_only=False,
+        )
+        File.objects.create(
+            subgroup=member_subgroup,
+            folder=folder,
+            uploaded_by=user,
+            name="hemmeligt.pdf",
+            file=SimpleUploadedFile("hemmeligt.pdf", b"secret"),
+            members_only=True,
+        )
+        response = second_authenticated_client.get(
+            f"/api/forum/subgroups/{member_subgroup.slug}/folders/"
+        )
+        results = get_results(response.data)
+        row = next(r for r in results if r["id"] == folder.id)
+        assert row["file_count"] == 1
+
+    def test_subfolder_count_excludes_private_subfolders_for_non_member(
+        self, second_authenticated_client, db, user, member_subgroup
+    ):
+        parent = Folder.objects.create(subgroup=member_subgroup, name="Forælder")
+        public_child = Folder.objects.create(
+            subgroup=member_subgroup, name="Offentlig", parent=parent
+        )
+        private_child = Folder.objects.create(
+            subgroup=member_subgroup, name="Privat", parent=parent
+        )
+        File.objects.create(
+            subgroup=member_subgroup,
+            folder=public_child,
+            uploaded_by=user,
+            name="aaben.pdf",
+            file=SimpleUploadedFile("aaben.pdf", b"public"),
+            members_only=False,
+        )
+        File.objects.create(
+            subgroup=member_subgroup,
+            folder=private_child,
+            uploaded_by=user,
+            name="hemmeligt.pdf",
+            file=SimpleUploadedFile("hemmeligt.pdf", b"secret"),
+            members_only=True,
+        )
+        response = second_authenticated_client.get(
+            f"/api/forum/subgroups/{member_subgroup.slug}/folders/"
+        )
+        results = get_results(response.data)
+        row = next(r for r in results if r["id"] == parent.id)
+        assert row["subfolder_count"] == 1
 
 
 class TestMembershipNotifications:

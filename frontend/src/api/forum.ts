@@ -30,6 +30,11 @@ export interface GetThreadsOptions {
   isClosed?: boolean
 }
 
+export interface FolderDeletePreview {
+  file_count: number
+  subfolder_count: number
+}
+
 interface SubgroupUpdateData {
   name?: string
 
@@ -489,6 +494,20 @@ export const forumApi = {
 
         parent: parentId || null,
       },
+    )
+
+    return response.data
+  },
+
+  deleteFolder: async (folderId: number): Promise<void> => {
+    await apiClient.delete(`/forum/folders/${folderId}/`)
+  },
+
+  getFolderDeletePreview: async (
+    folderId: number,
+  ): Promise<FolderDeletePreview> => {
+    const response = await apiClient.get(
+      `/forum/folders/${folderId}/delete-preview/`,
     )
 
     return response.data

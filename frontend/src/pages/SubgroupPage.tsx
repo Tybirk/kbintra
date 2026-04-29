@@ -31,6 +31,7 @@ import {
   Checkbox,
   Tooltip,
   Menu,
+  Alert,
 } from "@mantine/core"
 
 import { useDisclosure, useMediaQuery } from "@mantine/hooks"
@@ -862,6 +863,7 @@ Then each seperate ${capitalize(actionVerb)} is implemented one at a time where 
           <DocumentsTab
             subgroupSlug={slug!}
             allowsMembers={subgroup?.allows_members ?? false}
+            isMember={subgroup?.is_member ?? false}
             defaultMembersOnly={subgroup?.default_members_only ?? false}
             initialFolderSlug={initialFolderSlug}
             onFolderChange={(folderSlug) => {
@@ -1413,6 +1415,8 @@ interface DocumentsTabProps {
 
   allowsMembers: boolean
 
+  isMember: boolean
+
   defaultMembersOnly: boolean
 
   initialFolderSlug?: string | null
@@ -1424,6 +1428,8 @@ function DocumentsTab({
   subgroupSlug,
 
   allowsMembers,
+
+  isMember,
 
   defaultMembersOnly,
 
@@ -1734,6 +1740,63 @@ function DocumentsTab({
     onFolderChange?.(folderSlug ?? null)
   }
 
+  const [
+    deleteFolderConfirmOpened,
+    { open: openDeleteFolderConfirmRaw, close: closeDeleteFolderConfirm },
+  ] = useDisclosure(false)
+
+  const canDeleteCurrentFolder =
+    currentFolderId !== null && (!allowsMembers || isMember)
+
+  const currentFolderName =
+    folderPath[folderPath.length - 1]?.name ?? "denne mappe"
+
+  const [deleteConfirmName, setDeleteConfirmName] = useState("")
+
+  const openDeleteFolderConfirm = () => {
+    setDeleteConfirmName("")
+    openDeleteFolderConfirmRaw()
+  }
+
+  const {
+    data: deletePreview,
+    isFetching: deletePreviewFetching,
+    isError: deletePreviewError,
+  } = useQuery({
+    queryKey: ["folder-delete-preview", currentFolderId],
+    queryFn: () =>
+      currentFolderId !== null
+        ? forumApi.getFolderDeletePreview(currentFolderId)
+        : Promise.resolve(null),
+    enabled: deleteFolderConfirmOpened && currentFolderId !== null,
+    staleTime: 0,
+  })
+
+  const deleteFolderMutation = useMutation({
+    mutationFn: () => {
+      if (currentFolderId === null) return Promise.resolve()
+      return forumApi.deleteFolder(currentFolderId)
+    },
+    onSuccess: () => {
+      notifications.show({
+        title: "Mappe slettet",
+        message: `Mappen "${currentFolderName}" og dens indhold er slettet.`,
+        color: "green",
+      })
+      const parent =
+        folderPath.length >= 2 ? folderPath[folderPath.length - 2] : null
+      navigateToFolder(
+        parent?.id ?? null,
+        parent?.name ?? "Dokumenter",
+        parent?.slug,
+      )
+      queryClient.invalidateQueries({ queryKey: ["folders", subgroupSlug] })
+    },
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke slette mappen. Prøv igen.")
+    },
+  })
+
   const isLoading = resolvingSlug || foldersLoading || filesLoading
 
   const hasContent =
@@ -1780,6 +1843,17 @@ function DocumentsTab({
                 size="sm"
               />
             </Tooltip>
+          )}
+          {canDeleteCurrentFolder && (
+            <Button
+              variant="light"
+              color="red"
+              leftSection={<IconTrash size={16} />}
+              onClick={openDeleteFolderConfirm}
+              size="sm"
+            >
+              Slet mappe
+            </Button>
           )}
           <Button
             variant="light"
@@ -1897,6 +1971,65 @@ function DocumentsTab({
           closeCreateFolderModal()
         }}
       />
+
+      <Modal
+        opened={deleteFolderConfirmOpened}
+        onClose={closeDeleteFolderConfirm}
+        title="Slet mappe"
+        centered
+        size="sm"
+      >
+        <Stack gap="md">
+          <Alert color="red" variant="light">
+            <Stack gap="xs">
+              <Text>
+                Er du sikker på, at du vil slette mappen "{currentFolderName}"
+                og alt dens indhold? Denne handling kan ikke fortrydes.
+              </Text>
+              {deletePreview ? (
+                <Text size="sm">
+                  Dette vil slette {deletePreview.subfolder_count}{" "}
+                  {deletePreview.subfolder_count === 1
+                    ? "undermappe"
+                    : "undermapper"}{" "}
+                  og {deletePreview.file_count}{" "}
+                  {deletePreview.file_count === 1 ? "fil" : "filer"}.
+                </Text>
+              ) : deletePreviewError ? (
+                <Text size="sm">Kunne ikke hente antal filer/mapper.</Text>
+              ) : (
+                <Text size="sm" c="dimmed">
+                  {deletePreviewFetching
+                    ? "Henter antal filer og mapper..."
+                    : ""}
+                </Text>
+              )}
+            </Stack>
+          </Alert>
+          <TextInput
+            label={`Skriv "${currentFolderName}" for at bekræfte`}
+            value={deleteConfirmName}
+            onChange={(e) => setDeleteConfirmName(e.currentTarget.value)}
+            data-autofocus
+          />
+          <Group justify="flex-end">
+            <Button variant="light" onClick={closeDeleteFolderConfirm}>
+              Annuller
+            </Button>
+            <Button
+              color="red"
+              disabled={deleteConfirmName !== currentFolderName}
+              onClick={() => {
+                closeDeleteFolderConfirm()
+                deleteFolderMutation.mutate()
+              }}
+              loading={deleteFolderMutation.isPending}
+            >
+              Slet
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </FileDropzone>
   )
 }
