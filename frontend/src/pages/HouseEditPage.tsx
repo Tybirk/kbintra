@@ -79,6 +79,8 @@ export default function HouseEditPage() {
 
   const [description, setDescription] = useState("")
 
+  const [isEditingDescription, setIsEditingDescription] = useState(false)
+
   const [editingChild, setEditingChild] = useState<Child | null>(null)
 
   const [childModalOpened, { open: openChildModal, close: closeChildModal }] =
@@ -143,6 +145,8 @@ export default function HouseEditPage() {
       queryClient.invalidateQueries({ queryKey: ["house"] })
 
       queryClient.invalidateQueries({ queryKey: ["houses"] })
+
+      setIsEditingDescription(false)
 
       notifications.show({
         title: "Hus opdateret",
@@ -588,27 +592,63 @@ export default function HouseEditPage() {
       </Paper>
 
       <Paper withBorder p="xl" radius="md" mb="xl">
-        <form onSubmit={handleSubmit}>
+        {isEditingDescription ? (
+          <form onSubmit={handleSubmit}>
+            <Stack>
+              <Title order={4}>Beskrivelse</Title>
+
+              <Textarea
+                label="Om husstanden"
+                placeholder="Fortæl lidt om jeres husstand..."
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                minRows={3}
+                maxLength={1000}
+                description={`${description.length}/1000 tegn`}
+                autoFocus
+              />
+
+              <Group justify="flex-end" mt="md">
+                <Button
+                  variant="subtle"
+                  onClick={() => {
+                    setDescription(house.description || "")
+                    setIsEditingDescription(false)
+                  }}
+                  disabled={updateHouseMutation.isPending}
+                >
+                  Annuller
+                </Button>
+                <Button type="submit" loading={updateHouseMutation.isPending}>
+                  Gem ændringer
+                </Button>
+              </Group>
+            </Stack>
+          </form>
+        ) : (
           <Stack>
-            <Title order={4}>Beskrivelse</Title>
-
-            <Textarea
-              label="Om husstanden"
-              placeholder="Fortæl lidt om jeres husstand..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              minRows={3}
-              maxLength={1000}
-              description={`${description.length}/1000 tegn`}
-            />
-
-            <Group justify="flex-end" mt="md">
-              <Button type="submit" loading={updateHouseMutation.isPending}>
-                Gem ændringer
+            <Group justify="space-between" align="flex-start">
+              <Title order={4}>Beskrivelse</Title>
+              <Button
+                variant="subtle"
+                leftSection={<IconPencil size={16} />}
+                onClick={() => setIsEditingDescription(true)}
+              >
+                Rediger
               </Button>
             </Group>
+
+            {house.description ? (
+              <Text style={{ whiteSpace: "pre-wrap" }}>
+                {house.description}
+              </Text>
+            ) : (
+              <Text c="dimmed" fs="italic">
+                Ingen beskrivelse endnu.
+              </Text>
+            )}
           </Stack>
-        </form>
+        )}
       </Paper>
 
       <Paper withBorder p="xl" radius="md">
