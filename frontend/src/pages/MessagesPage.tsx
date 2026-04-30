@@ -1976,7 +1976,7 @@ const MessageBubble = memo(function MessageBubble({
 
               setReactionPickerOpened((o) => !o)
             }}
-            aria-label="Tilf\u00f8j reaktion"
+            aria-label="Tilføj reaktion"
           >
             <IconMoodSmile size={14} />
           </ActionIcon>

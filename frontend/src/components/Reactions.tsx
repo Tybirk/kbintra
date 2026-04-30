@@ -219,7 +219,7 @@ export default function Reactions({
         withArrow
       >
         <Popover.Target>
-          <Tooltip label="Tilf\u00f8j reaktion">
+          <Tooltip label="Tilføj reaktion">
             <ActionIcon
               variant="subtle"
               color="gray"
