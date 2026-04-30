@@ -1243,6 +1243,15 @@ function CreateThreadModal({
 
     if (!title.trim() || !content.trim()) return
 
+    if (pollData?.options.some((o) => !o.text.trim())) {
+      notifications.show({
+        title: "Tomme valgmuligheder",
+        message: "Alle valgmuligheder i afstemningen skal have tekst.",
+        color: "red",
+      })
+      return
+    }
+
     createMutation.mutate({
       data: {
         title: title.trim(),
