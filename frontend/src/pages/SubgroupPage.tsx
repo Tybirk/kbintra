@@ -572,7 +572,7 @@ Then each seperate ${capitalize(actionVerb)} is implemented one at a time where 
 
   return (
     <>
-      <BackButton to="/forum" label="Tilbage til forum" />
+      <BackButton to="/forum" label="Tilbage til forumoversigt" />
 
       <Modal
         opened={editGroupOpened}

@@ -808,7 +808,7 @@ export default function ThreadPage() {
     <>
       <BackButton
         to={`/forum/${thread.subgroup_slug}`}
-        label="Tilbage til forum"
+        label={`Tilbage til ${thread.subgroup_name}`}
       />
 
       {thread.posts[0] && (
