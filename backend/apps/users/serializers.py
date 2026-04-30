@@ -36,6 +36,7 @@ class UserSerializer(serializers.ModelSerializer):
             "date_joined",
             "default_cooking_days",
             "accessibility_mode",
+            "hide_closed_threads",
         ]
         read_only_fields = ["id", "email", "is_staff", "is_food_admin", "date_joined"]
 
@@ -63,6 +64,7 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
             "bio",
             "house",
             "accessibility_mode",
+            "hide_closed_threads",
         ]
         read_only_fields = ["house"]
 

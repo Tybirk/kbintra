@@ -34,6 +34,8 @@ export interface User {
   accessibility_mode: boolean
 
   rainbow_mode: boolean
+
+  hide_closed_threads: boolean
 }
 
 export interface Child {
