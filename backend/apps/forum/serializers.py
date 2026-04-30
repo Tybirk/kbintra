@@ -102,12 +102,18 @@ class SubgroupSerializer(serializers.ModelSerializer):
     def get_members(self, obj: Subgroup) -> list[dict]:
         if not obj.allows_members:
             return []
-        qs = (
-            SubgroupMembership.objects.filter(subgroup=obj)
-            .select_related("user")
-            .order_by("user__first_name", "user__last_name")
-        )
-        return SubgroupMembershipSerializer(qs, many=True).data
+        # Use the prefetched ordered memberships when available (list views),
+        # otherwise fall back to a fresh query for callers that don't prefetch.
+        prefetched = getattr(obj, "_prefetched_objects_cache", {}).get("memberships")
+        if prefetched is not None:
+            members = prefetched
+        else:
+            members = (
+                SubgroupMembership.objects.filter(subgroup=obj)
+                .select_related("user", "user__house")
+                .order_by("user__first_name", "user__last_name")
+            )
+        return SubgroupMembershipSerializer(members, many=True).data
 
     def get_is_member(self, obj: Subgroup) -> bool:
         member_ids = self.context.get("member_subgroup_ids")

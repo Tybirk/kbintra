@@ -160,8 +160,14 @@ class UpcomingBirthdaysView(generics.ListAPIView):
         today = timezone.now().date()
         users_with_birthdays = []
 
-        # Get all active users with birthdates
-        users = User.objects.filter(is_active=True, birthdate__isnull=False).select_related("house")
+        # Get all active users with birthdates.
+        # Annotate inhabitant count so UserSerializer.get_house_inhabitant_count
+        # doesn't run a COUNT(*) per user.
+        users = (
+            User.objects.filter(is_active=True, birthdate__isnull=False)
+            .select_related("house")
+            .annotate(_house_inhabitant_count=Count("house__inhabitants"))
+        )
 
         for user in users:
             # Calculate this year's birthday

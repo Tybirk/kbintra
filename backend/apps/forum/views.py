@@ -6,7 +6,7 @@ import io
 import zipfile
 from typing import Any
 
-from django.db.models import Count, Max
+from django.db.models import Count, Max, Prefetch
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -124,11 +124,28 @@ class IsMemberOrAdmin(permissions.BasePermission):
 
 
 # Subgroup Views
+def _subgroup_list_queryset() -> Any:
+    """Queryset for subgroup list/detail views with prefetched threads and members.
+
+    Memberships are prefetched (with user + house joined) so SubgroupSerializer.get_members
+    doesn't run a query per subgroup.
+    """
+    return Subgroup.objects.prefetch_related(
+        "threads",
+        Prefetch(
+            "memberships",
+            queryset=SubgroupMembership.objects.select_related("user", "user__house").order_by(
+                "user__first_name", "user__last_name"
+            ),
+        ),
+    ).all()
+
+
 class SubgroupListView(generics.ListCreateAPIView):
     """List all subgroups or create a new one."""
 
     permission_classes = [permissions.IsAuthenticated]
-    queryset = Subgroup.objects.prefetch_related("threads").all()
+    queryset = _subgroup_list_queryset()
 
     def get_serializer_class(self) -> type:
         if self.request.method == "POST":
@@ -165,7 +182,7 @@ class SubgroupDetailView(generics.RetrieveAPIView):
 
     serializer_class = SubgroupSerializer
     permission_classes = [permissions.IsAuthenticated]
-    queryset = Subgroup.objects.prefetch_related("threads")
+    queryset = _subgroup_list_queryset()
     lookup_field = "slug"
 
     def get_serializer_context(self) -> dict:
