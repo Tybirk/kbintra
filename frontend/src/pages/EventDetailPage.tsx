@@ -65,6 +65,7 @@ import { clearDraft } from "../utils/draftStorage"
 import { useAuthStore } from "../store/authStore"
 
 import RichTextEditor from "../components/RichTextEditor"
+import { RichTextContent } from "../components/RichTextContent"
 
 import Reactions from "../components/Reactions"
 
@@ -427,7 +428,7 @@ export default function EventDetailPage() {
           <>
             <Divider my="md" />
             <Typography>
-              <div dangerouslySetInnerHTML={{ __html: event.description }} />
+              <RichTextContent html={event.description} />
             </Typography>
           </>
         )}
@@ -1110,7 +1111,7 @@ function DiscussionSection({
               ) : (
                 <>
                   <Typography>
-                    <div dangerouslySetInnerHTML={{ __html: post.content }} />
+                    <RichTextContent html={post.content} />
                   </Typography>
                   <Reactions
                     postId={post.id}

@@ -71,6 +71,7 @@ import { filterFilesBySize } from "../config"
 import { clearDraft } from "../utils/draftStorage"
 
 import RichTextEditor from "../components/RichTextEditor"
+import { RichTextContent } from "../components/RichTextContent"
 
 import FileDropzone, { AttachmentArea } from "../components/FileDropzone"
 
@@ -1524,7 +1525,7 @@ function PostCard({
         ) : (
           <>
             <Typography>
-              <div dangerouslySetInnerHTML={{ __html: post.content }} />
+              <RichTextContent html={post.content} />
             </Typography>
 
             {imageAttachments.length > 0 && (

@@ -82,6 +82,7 @@ import { filterFilesBySize } from "../config"
 import { CompactEventCard } from "../components/CompactEventCard"
 
 import RichTextEditor from "../components/RichTextEditor"
+import { RichTextContent } from "../components/RichTextContent"
 
 import FileDropzone, { AttachmentArea } from "../components/FileDropzone"
 
@@ -668,9 +669,9 @@ Then each seperate ${capitalize(actionVerb)} is implemented one at a time where 
           </Group>
           {subgroup.description && subgroup.description !== "<p></p>" ? (
             <Typography mt="sm">
-              <div
+              <RichTextContent
                 className="description-content"
-                dangerouslySetInnerHTML={{ __html: subgroup.description }}
+                html={subgroup.description}
               />
             </Typography>
           ) : (
@@ -898,11 +899,9 @@ Then each seperate ${capitalize(actionVerb)} is implemented one at a time where 
                 </Group>
                 {subgroup.links_info ? (
                   <Typography>
-                    <div
+                    <RichTextContent
                       className="description-content"
-                      dangerouslySetInnerHTML={{
-                        __html: subgroup.links_info,
-                      }}
+                      html={subgroup.links_info}
                     />
                   </Typography>
                 ) : (

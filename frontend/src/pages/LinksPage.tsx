@@ -25,6 +25,7 @@ import { linksApi } from "../api/links"
 import { useAuthStore } from "../store/authStore"
 
 import RichTextEditor from "../components/RichTextEditor"
+import { RichTextContent } from "../components/RichTextContent"
 
 export default function LinksPage() {
   const queryClient = useQueryClient()
@@ -134,7 +135,7 @@ export default function LinksPage() {
       ) : links?.content && links.content !== "<p></p>" ? (
         <Paper withBorder p="lg" radius="md">
           <Typography>
-            <div dangerouslySetInnerHTML={{ __html: links.content }} />
+            <RichTextContent html={links.content} />
           </Typography>
         </Paper>
       ) : (

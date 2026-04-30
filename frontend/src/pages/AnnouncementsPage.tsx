@@ -53,6 +53,7 @@ import { filterFilesBySize } from "../config"
 import { clearDraft, loadDraft, saveDraft } from "../utils/draftStorage"
 
 import RichTextEditor from "../components/RichTextEditor"
+import { RichTextContent } from "../components/RichTextContent"
 
 import FileDropzone, { AttachmentArea } from "../components/FileDropzone"
 
@@ -433,7 +434,7 @@ function AnnouncementCard({
       </Group>
 
       <Typography>
-        <div dangerouslySetInnerHTML={{ __html: announcement.content }} />
+        <RichTextContent html={announcement.content} />
       </Typography>
 
       {/* Attachments */}

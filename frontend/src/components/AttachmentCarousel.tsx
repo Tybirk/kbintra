@@ -29,6 +29,7 @@ import {
 } from "@tabler/icons-react"
 
 import { getFileType, getFileIcon, getFileTypeColor } from "./FilePreview"
+import { ImageZoomViewer } from "./ImageZoomViewer"
 
 interface Attachment {
   id: number
@@ -60,6 +61,11 @@ export function AttachmentCarousel({
   initialIndex = 0,
 }: AttachmentCarouselProps) {
   const isMobile = useMediaQuery("(max-width: 768px)")
+
+  const [zoomImage, setZoomImage] = useState<{
+    src: string
+    name: string
+  } | null>(null)
 
   // Separate images and other files, images come first
 
@@ -116,6 +122,7 @@ export function AttachmentCarousel({
           attachment={orderedAttachments[0]}
           isMobile={isMobile}
           opened={opened}
+          onImageZoom={(src, name) => setZoomImage({ src, name })}
         />
       ) : (
         <Carousel
@@ -173,11 +180,19 @@ export function AttachmentCarousel({
                 attachment={attachment}
                 isMobile={isMobile}
                 opened={opened}
+                onImageZoom={(src, name) => setZoomImage({ src, name })}
               />
             </Carousel.Slide>
           ))}
         </Carousel>
       )}
+
+      <ImageZoomViewer
+        src={zoomImage?.src || ""}
+        alt={zoomImage?.name}
+        opened={zoomImage !== null}
+        onClose={() => setZoomImage(null)}
+      />
     </Modal>
   )
 }
@@ -188,9 +203,16 @@ interface SlideContentProps {
   isMobile: boolean | undefined
 
   opened: boolean
+
+  onImageZoom: (src: string, name: string) => void
 }
 
-function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
+function SlideContent({
+  attachment,
+  isMobile,
+  opened,
+  onImageZoom,
+}: SlideContentProps) {
   const [textContent, setTextContent] = useState<string | null>(null)
 
   const [loading, setLoading] = useState(false)
@@ -291,8 +313,9 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
 
             maxWidth: "100%",
 
-            touchAction: "pan-y pinch-zoom",
+            cursor: "zoom-in",
           }}
+          onClick={() => onImageZoom(attachment.file_url, attachment.name)}
         />
         <Group justify="center" mt="md">
           <Button
