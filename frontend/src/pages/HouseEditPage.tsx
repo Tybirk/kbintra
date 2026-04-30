@@ -602,7 +602,9 @@ export default function HouseEditPage() {
                 placeholder="Fortæl lidt om jeres husstand..."
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                minRows={3}
+                autosize
+                minRows={8}
+                maxRows={20}
                 maxLength={1000}
                 description={`${description.length}/1000 tegn`}
                 autoFocus
