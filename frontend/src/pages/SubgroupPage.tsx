@@ -1319,6 +1319,8 @@ function CreateThreadModal({
 
                         is_anonymous: false,
 
+                        allow_others_to_add_options: false,
+
                         options: [{ text: "" }, { text: "" }],
                       })
                     }

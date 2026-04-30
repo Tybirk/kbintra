@@ -172,6 +172,20 @@ export default function PollCreator({
               track: { border: "1.5px solid var(--mantine-color-gray-5)" },
             }}
           />
+          <Switch
+            label="Andre kan tilføje valgmuligheder"
+            size="xs"
+            checked={pollData.allow_others_to_add_options}
+            onChange={(e) =>
+              updateField(
+                "allow_others_to_add_options",
+                e.currentTarget.checked,
+              )
+            }
+            styles={{
+              track: { border: "1.5px solid var(--mantine-color-gray-5)" },
+            }}
+          />
         </Group>
       </Stack>
     </Paper>

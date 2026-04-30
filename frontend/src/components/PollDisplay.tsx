@@ -14,13 +14,15 @@ import {
   Stack,
   Box,
   Modal,
+  TextInput,
+  Button,
 } from "@mantine/core"
 
 import { notifications } from "@mantine/notifications"
 
 import { showErrorNotification } from "../utils/errorNotification"
 
-import { IconTrash, IconCheck } from "@tabler/icons-react"
+import { IconTrash, IconCheck, IconPlus } from "@tabler/icons-react"
 
 import { forumApi } from "../api/forum"
 
@@ -277,6 +279,8 @@ export default function PollDisplay({
 
   const [votersOption, setVotersOption] = useState<PollOption | null>(null)
 
+  const [newOptionText, setNewOptionText] = useState("")
+
   const voteMutation = useMutation({
     mutationFn: (optionId: number) => forumApi.votePoll(poll.id, optionId),
 
@@ -286,6 +290,22 @@ export default function PollDisplay({
 
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke stemme. Prøv igen.")
+    },
+  })
+
+  const addOptionMutation = useMutation({
+    mutationFn: (text: string) => forumApi.addPollOption(poll.id, text),
+
+    onSuccess: () => {
+      setNewOptionText("")
+      queryClient.invalidateQueries({ queryKey: threadQueryKey })
+    },
+
+    onError: (error: unknown) => {
+      showErrorNotification(
+        error,
+        "Kunne ikke tilføje valgmulighed. Prøv igen.",
+      )
     },
   })
 
@@ -344,6 +364,11 @@ export default function PollDisplay({
               Anonym
             </Badge>
           )}
+          {poll.allow_others_to_add_options && (
+            <Badge size="xs" variant="light" color="green">
+              Åben
+            </Badge>
+          )}
           {poll.is_own && (
             <ActionIcon
               variant="subtle"
@@ -370,6 +395,39 @@ export default function PollDisplay({
           />
         ))}
       </Stack>
+
+      {poll.allow_others_to_add_options && poll.options.length < 20 && (
+        <Group gap="xs" mt="xs" wrap="nowrap">
+          <TextInput
+            placeholder="Tilføj valgmulighed..."
+            value={newOptionText}
+            onChange={(e) => setNewOptionText(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (
+                e.key === "Enter" &&
+                newOptionText.trim() &&
+                !addOptionMutation.isPending
+              ) {
+                e.preventDefault()
+                addOptionMutation.mutate(newOptionText.trim())
+              }
+            }}
+            size="sm"
+            style={{ flex: 1 }}
+            disabled={addOptionMutation.isPending}
+          />
+          <Button
+            size="sm"
+            variant="light"
+            leftSection={<IconPlus size={14} />}
+            onClick={() => addOptionMutation.mutate(newOptionText.trim())}
+            loading={addOptionMutation.isPending}
+            disabled={!newOptionText.trim()}
+          >
+            Tilføj
+          </Button>
+        </Group>
+      )}
 
       <Text size="xs" c="dimmed" mt="xs">
         {poll.total_voters} {poll.total_voters === 1 ? "person" : "personer"}{" "}

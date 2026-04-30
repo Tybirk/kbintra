@@ -323,6 +323,8 @@ export interface Poll {
 
   is_anonymous: boolean
 
+  allow_others_to_add_options: boolean
+
   options: PollOption[]
 
   total_voters: number
@@ -344,6 +346,8 @@ export interface CreatePollData {
   allow_multiple_votes: boolean
 
   is_anonymous: boolean
+
+  allow_others_to_add_options: boolean
 
   options: PollOptionData[]
 }

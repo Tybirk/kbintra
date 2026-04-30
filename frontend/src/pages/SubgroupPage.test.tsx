@@ -344,7 +344,7 @@ describe("SubgroupPage", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /tilbage til forum/i }),
+        screen.getByRole("button", { name: /tilbage til alle fora/i }),
       ).toBeInTheDocument()
     })
   })

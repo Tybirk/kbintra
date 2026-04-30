@@ -272,6 +272,7 @@ class PollSerializer(serializers.ModelSerializer):
             "question",
             "allow_multiple_votes",
             "is_anonymous",
+            "allow_others_to_add_options",
             "options",
             "total_voters",
             "is_own",
@@ -305,6 +306,7 @@ class PollCreateSerializer(serializers.Serializer):
     question = serializers.CharField(max_length=300)
     allow_multiple_votes = serializers.BooleanField(default=False)
     is_anonymous = serializers.BooleanField(default=False)
+    allow_others_to_add_options = serializers.BooleanField(default=False)
     options = PollOptionCreateSerializer(many=True)
 
     def validate_options(self, value: list) -> list:
@@ -333,6 +335,7 @@ class PollUpdateSerializer(serializers.Serializer):
     question = serializers.CharField(max_length=300, required=False)
     allow_multiple_votes = serializers.BooleanField(required=False)
     is_anonymous = serializers.BooleanField(required=False)
+    allow_others_to_add_options = serializers.BooleanField(required=False)
     options = PollOptionUpdateSerializer(many=True, required=False)
 
     def validate_options(self, value: list) -> list:
@@ -546,6 +549,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
                 question=poll_data["question"],
                 allow_multiple_votes=poll_data.get("allow_multiple_votes", False),
                 is_anonymous=poll_data.get("is_anonymous", False),
+                allow_others_to_add_options=poll_data.get("allow_others_to_add_options", False),
                 created_by=post.author,
             )
             for i, option_data in enumerate(poll_data["options"]):
@@ -897,6 +901,7 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
                 question=poll_data["question"],
                 allow_multiple_votes=poll_data.get("allow_multiple_votes", False),
                 is_anonymous=poll_data.get("is_anonymous", False),
+                allow_others_to_add_options=poll_data.get("allow_others_to_add_options", False),
                 created_by=post.author,
             )
             for i, option_data in enumerate(poll_data["options"]):

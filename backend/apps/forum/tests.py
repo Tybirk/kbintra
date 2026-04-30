@@ -1483,6 +1483,56 @@ class TestPollInThreadDetail:
         assert poll_data["options"][0]["voters"][0]["id"] == user.id
 
 
+class TestPollAddOptionView:
+    """Tests for adding options to an existing poll after creation."""
+
+    def test_creator_can_add_option(self, authenticated_client, poll):
+        response = authenticated_client.post(
+            f"/api/forum/polls/{poll.id}/options/",
+            {"text": "Yellow"},
+        )
+        assert response.status_code == 200
+        texts = [o["text"] for o in response.data["options"]]
+        assert "Yellow" in texts
+        assert texts[-1] == "Yellow"
+
+    def test_others_blocked_when_flag_off(self, api_client, poll, second_user):
+        api_client.force_authenticate(user=second_user)
+        response = api_client.post(
+            f"/api/forum/polls/{poll.id}/options/",
+            {"text": "Purple"},
+        )
+        assert response.status_code == 403
+        assert poll.options.filter(text="Purple").count() == 0
+
+    def test_others_allowed_when_flag_on(self, api_client, poll, second_user):
+        poll.allow_others_to_add_options = True
+        poll.save(update_fields=["allow_others_to_add_options"])
+
+        api_client.force_authenticate(user=second_user)
+        response = api_client.post(
+            f"/api/forum/polls/{poll.id}/options/",
+            {"text": "Purple"},
+        )
+        assert response.status_code == 200
+        assert poll.options.filter(text="Purple").exists()
+
+    def test_admin_can_always_add(self, admin_client, poll):
+        response = admin_client.post(
+            f"/api/forum/polls/{poll.id}/options/",
+            {"text": "Pink"},
+        )
+        assert response.status_code == 200
+        assert poll.options.filter(text="Pink").exists()
+
+    def test_blank_text_rejected(self, authenticated_client, poll):
+        response = authenticated_client.post(
+            f"/api/forum/polls/{poll.id}/options/",
+            {"text": "   "},
+        )
+        assert response.status_code == 400
+
+
 # =============================================================================
 # Admin Rights Tests
 # =============================================================================

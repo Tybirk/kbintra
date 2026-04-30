@@ -17,6 +17,7 @@ from .views import (
     MarkAllForumReadView,
     MarkSubgroupReadView,
     MySubscriptionsView,
+    PollAddOptionView,
     PollDeleteView,
     PollVoteView,
     PostListCreateView,
@@ -126,5 +127,10 @@ urlpatterns = [
     path("files/<int:pk>/move/", FileMoveView.as_view(), name="file-move"),
     # Polls
     path("polls/<int:poll_id>/vote/", PollVoteView.as_view(), name="poll-vote"),
+    path(
+        "polls/<int:poll_id>/options/",
+        PollAddOptionView.as_view(),
+        name="poll-add-option",
+    ),
     path("polls/<int:poll_id>/", PollDeleteView.as_view(), name="poll-delete"),
 ]
