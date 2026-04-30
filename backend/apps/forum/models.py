@@ -182,6 +182,11 @@ class Post(models.Model):
 
     class Meta:
         ordering = ["created_at"]
+        indexes = [
+            # Speeds up RecentActivityView, which orders posts by -created_at
+            # filtered to visible thread ids.
+            models.Index(fields=["thread", "-created_at"], name="forum_post_thread_recent_idx"),
+        ]
 
     def __str__(self) -> str:
         return f"Post by {self.author} in {self.thread}"

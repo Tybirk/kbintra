@@ -85,6 +85,10 @@ class DriveMenuService:
         """
         Get menu for a specific week, using cache if available.
 
+        Stale-while-revalidate: if a stale cache exists, return it immediately
+        and queue a background refresh. Only fetch synchronously when there's
+        no cache at all (rare) or force_refresh=True (admin-triggered).
+
         Args:
             week_number: ISO week number (1-53)
             year: Year (defaults to current year)
@@ -96,16 +100,18 @@ class DriveMenuService:
         if year is None:
             year = date.today().year
 
-        # Check cache first
-        try:
-            cached = DriveMenuCache.objects.get(week_number=week_number, year=year)
-            if not force_refresh and not cached.is_stale(self.cache_hours):
-                logger.debug(f"Returning cached menu for week {week_number}, {year}")
-                return cached
-        except DriveMenuCache.DoesNotExist:
-            cached = None
+        cached = DriveMenuCache.objects.filter(week_number=week_number, year=year).first()
 
-        # Fetch from Drive
+        if cached and not force_refresh:
+            if not cached.is_stale(self.cache_hours):
+                return cached
+            # Stale: return immediately, refresh in background.
+            from apps.food.tasks import refresh_drive_menu_week_task
+
+            refresh_drive_menu_week_task(week_number, year)
+            return cached
+
+        # No cache, or force_refresh — fetch synchronously.
         try:
             menu, folder_id = self._fetch_menu_from_drive(week_number)
             if menu:

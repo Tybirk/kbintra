@@ -1,18 +1,22 @@
 """
 Huey background tasks for the food app.
 
-The main task here is materialize_week_registrations, a periodic task that runs
-every Thursday at 00:30 (just after the Wednesday 23:59 deadline) and creates
-real MealRegistration rows for all houses that don't have one for the upcoming
-Mon-Thu. This "freezes" the preference values so that later preference changes
-don't retroactively affect billing.
+- materialize_week_registrations: every Thursday at 00:30 (just after the
+  Wednesday 23:59 deadline), creates real MealRegistration rows for all houses
+  that don't have one for the upcoming Mon-Thu. This "freezes" preference
+  values so later preference changes don't retroactively affect billing.
+- refresh_drive_menus_periodic: every 4 hours, refreshes the Google Drive menu
+  cache so user-facing requests never have to wait on the Drive API.
+- refresh_drive_menu_week_task: refreshes a single week's menu in the
+  background. Triggered by /api/food/drive-menu/ when the cache is stale, so
+  the user gets the stale menu immediately and the next request gets fresh.
 """
 
 import logging
 from datetime import date, timedelta
 
 from huey import crontab
-from huey.contrib.djhuey import db_periodic_task
+from huey.contrib.djhuey import db_periodic_task, db_task
 
 logger = logging.getLogger(__name__)
 
@@ -102,3 +106,32 @@ def materialize_week_registrations() -> None:
     logger.info("Materializing registrations for %s to %s", dates[0], dates[-1])
     created = _materialize_for_houses(dates)
     logger.info("Materialized %d registrations", created)
+
+
+@db_task(retries=1, retry_delay=60)
+def refresh_drive_menu_week_task(week_number: int, year: int) -> None:
+    """Refresh a single week's menu from Google Drive in the background."""
+    from apps.food.services.drive_menu import DriveMenuService
+
+    service = DriveMenuService()
+    try:
+        service.get_menu_for_week(week_number, year, force_refresh=True)
+    except Exception:
+        logger.exception("Failed to refresh drive menu for week %d/%d", week_number, year)
+
+
+@db_periodic_task(crontab(minute="0", hour="*/4"))
+def refresh_drive_menus_periodic() -> None:
+    """Refresh all Drive menus every 4 hours so the cache is rarely stale."""
+    from apps.food.services.drive_menu import DriveMenuService
+
+    service = DriveMenuService()
+    try:
+        result = service.refresh_all_menus()
+        logger.info(
+            "Periodic Drive menu refresh: %d updated, %d failed",
+            result["updated"],
+            result["failed"],
+        )
+    except Exception:
+        logger.exception("Periodic Drive menu refresh failed")
