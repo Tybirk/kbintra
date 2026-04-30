@@ -563,7 +563,7 @@ Then each seperate ${capitalize(actionVerb)} is implemented one at a time where 
 
   return (
     <>
-      <BackButton to="/forum" label="Tilbage til forumoversigt" />
+      <BackButton to="/forum" label="Tilbage til alle fora" />
 
       <Modal
         opened={editGroupOpened}
@@ -1935,7 +1935,6 @@ function DocumentsTab({
         opened={deleteFolderConfirmOpened}
         onClose={closeDeleteFolderConfirm}
         title="Slet mappe"
-        centered
         size="sm"
       >
         <Stack gap="md">
