@@ -506,17 +506,19 @@ function SubgroupCard({
         </Box>
       )}
       <Stack gap="sm">
-        <Group justify="space-between">
-          <Group gap="xs">
+        <Group justify="space-between" wrap="nowrap" align="flex-start">
+          <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
             {subgroup.icon && (
-              <Text size="lg" lh={1}>
+              <Text size="lg" lh={1} style={{ flexShrink: 0 }}>
                 {subgroup.icon}
               </Text>
             )}
-            <Text fw={500}>{subgroup.name}</Text>
+            <Text fw={500} style={{ wordBreak: "break-word" }}>
+              {subgroup.name}
+            </Text>
           </Group>
           {!hideBell && (
-            <Group gap="xs">
+            <Group gap="xs" style={{ flexShrink: 0 }}>
               <Tooltip
                 label={subgroup.is_subscribed ? "Afmeld" : "Abonnér"}
                 withArrow
