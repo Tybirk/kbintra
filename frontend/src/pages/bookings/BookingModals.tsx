@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 
 import { useMutation } from "@tanstack/react-query"
 
@@ -153,6 +153,7 @@ export function CreateBookingModal({
   onSuccess,
 }: CreateBookingModalProps) {
   const [selectedRoomIds, setSelectedRoomIds] = useState<string[]>([])
+  const roomsInputRef = useRef<HTMLInputElement>(null)
 
   const [title, setTitle] = useState("")
 
@@ -344,11 +345,19 @@ export function CreateBookingModal({
       <form onSubmit={handleSubmit}>
         <Stack gap="md">
           <MultiSelect
+            ref={roomsInputRef}
             label="Lokaler"
             placeholder="Vælg et eller flere lokaler"
             data={roomOptions}
             value={selectedRoomIds}
-            onChange={setSelectedRoomIds}
+            onChange={(value) => {
+              setSelectedRoomIds(value)
+
+              // Most users only pick one room; blur to dismiss the
+              // dropdown so they don't have to click outside. Defer
+              // because Mantine refocuses the input after a select.
+              setTimeout(() => roomsInputRef.current?.blur(), 0)
+            }}
             searchable
             required
           />

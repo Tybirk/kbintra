@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 
 import { useParams, useNavigate, useSearchParams } from "react-router-dom"
 
@@ -207,6 +207,7 @@ export default function EventFormPage() {
   const [endTime, setEndTime] = useState("")
 
   const [stedTags, setStedTags] = useState<string[]>([])
+  const stedInputRef = useRef<HTMLInputElement>(null)
 
   const [subgroupId, setSubgroupId] = useState<string | null>(null)
 
@@ -943,6 +944,7 @@ export default function EventFormPage() {
             )}
 
             <TagsInput
+              ref={stedInputRef}
               label="Sted"
               placeholder="Vælg lokale eller skriv sted"
               leftSection={<IconMapPin size={16} />}
@@ -952,6 +954,11 @@ export default function EventFormPage() {
                 clearErrors()
 
                 setStedTags(value)
+
+                // Most users only pick one location; blur to dismiss the
+                // dropdown so they don't have to click outside. Defer
+                // because Mantine refocuses the input after a select.
+                setTimeout(() => stedInputRef.current?.blur(), 0)
               }}
               error={errors.room_ids || errors.location}
               clearable
