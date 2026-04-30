@@ -179,7 +179,7 @@ export default function UserPickerModal({
           onChange={(e) => setSearch(e.currentTarget.value)}
         />
 
-        <ScrollArea h={200}>
+        <ScrollArea h={isMobile ? "calc(100dvh - 250px)" : 200}>
           <Stack gap="xs">
             {filteredUsers?.map((u) => (
               <Paper
