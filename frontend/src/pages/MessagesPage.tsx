@@ -1412,7 +1412,7 @@ function ChatArea({
               </Popover.Dropdown>
             </Popover>
           </Group>
-          <Menu shadow="md" width={240} position="bottom-end">
+          <Menu shadow="md" width={200} position="bottom-end">
             <Menu.Target>
               <ActionIcon variant="subtle" size="lg">
                 <IconDots size={20} />
