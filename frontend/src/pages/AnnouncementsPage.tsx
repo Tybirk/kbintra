@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 
-import { useLocation } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 
@@ -77,9 +77,11 @@ import type {
 export default function AnnouncementsPage() {
   const queryClient = useQueryClient()
 
-  const { hash } = useLocation()
+  const location = useLocation()
 
-  const scrolledRef = useRef("")
+  const navigate = useNavigate()
+
+  const { hash } = location
 
   const [
     createModalOpened,
@@ -123,24 +125,20 @@ export default function AnnouncementsPage() {
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Scroll to and highlight a specific announcement when navigating from search
+  // Scroll to and highlight a specific announcement when navigating from a
+  // notification or search result. Clear the hash through React Router so a
+  // subsequent click on the same notification re-fires this effect.
 
   useEffect(() => {
-    if (!hash || !announcements || scrolledRef.current === hash) return
+    if (!hash || !announcements) return
 
     const el = document.getElementById(hash.slice(1))
 
     if (!el) return
 
-    const currentHash = hash
-
-    window.history.replaceState(null, "", window.location.pathname)
+    navigate(location.pathname + location.search, { replace: true })
 
     const timer = setTimeout(() => {
-      if (scrolledRef.current === currentHash) return
-
-      scrolledRef.current = currentHash
-
       el.scrollIntoView({ behavior: "smooth", block: "center" })
 
       el.style.borderRadius = "var(--mantine-radius-md)"
@@ -155,7 +153,7 @@ export default function AnnouncementsPage() {
     }, 100)
 
     return () => clearTimeout(timer)
-  }, [hash, announcements])
+  }, [hash, announcements, navigate, location.pathname, location.search])
 
   const deleteMutation = useMutation({
     mutationFn: announcementsApi.deleteAnnouncement,

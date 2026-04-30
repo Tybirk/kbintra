@@ -287,6 +287,11 @@ class PollOptionCreateSerializer(serializers.Serializer):
 
     text = serializers.CharField(max_length=200)
 
+    def validate_text(self, value: str) -> str:
+        if not value.strip():
+            raise serializers.ValidationError("Valgmulighed må ikke være tom.")
+        return value
+
 
 class PollCreateSerializer(serializers.Serializer):
     """Serializer for creating a poll."""
@@ -309,6 +314,11 @@ class PollOptionUpdateSerializer(serializers.Serializer):
 
     id = serializers.IntegerField(required=False, allow_null=True)
     text = serializers.CharField(max_length=200)
+
+    def validate_text(self, value: str) -> str:
+        if not value.strip():
+            raise serializers.ValidationError("Valgmulighed må ikke være tom.")
+        return value
 
 
 class PollUpdateSerializer(serializers.Serializer):

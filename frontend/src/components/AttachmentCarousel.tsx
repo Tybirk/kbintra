@@ -290,6 +290,8 @@ function SlideContent({ attachment, isMobile, opened }: SlideContentProps) {
             maxHeight: isMobile ? "calc(100vh - 140px)" : "65vh",
 
             maxWidth: "100%",
+
+            touchAction: "pan-y pinch-zoom",
           }}
         />
         <Group justify="center" mt="md">

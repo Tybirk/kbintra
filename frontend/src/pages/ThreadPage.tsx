@@ -169,6 +169,15 @@ const ReplyForm = memo(function ReplyForm({
 
     if (isEmpty) return
 
+    if (pollData?.options.some((o) => !o.text.trim())) {
+      notifications.show({
+        title: "Tomme valgmuligheder",
+        message: "Alle valgmuligheder i afstemningen skal have tekst.",
+        color: "red",
+      })
+      return
+    }
+
     onSubmit(content.trim(), attachments, pollData || undefined)
   }
 
@@ -760,6 +769,15 @@ export default function ThreadPage() {
 
     if (isFirstPost && !editTitle.trim()) return
 
+    if (editPollData?.options.some((o) => !o.text.trim())) {
+      notifications.show({
+        title: "Tomme valgmuligheder",
+        message: "Alle valgmuligheder i afstemningen skal have tekst.",
+        color: "red",
+      })
+      return
+    }
+
     updatePostMutation.mutate({
       postId: editingPost.id,
 
@@ -808,7 +826,7 @@ export default function ThreadPage() {
     <>
       <BackButton
         to={`/forum/${thread.subgroup_slug}`}
-        label="Tilbage til forum"
+        label={`Tilbage til ${thread.subgroup_name}`}
       />
 
       {thread.posts[0] && (

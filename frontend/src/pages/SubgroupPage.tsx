@@ -572,7 +572,7 @@ Then each seperate ${capitalize(actionVerb)} is implemented one at a time where 
 
   return (
     <>
-      <BackButton to="/forum" label="Tilbage til forum" />
+      <BackButton to="/forum" label="Tilbage til forumoversigt" />
 
       <Modal
         opened={editGroupOpened}
@@ -1242,6 +1242,15 @@ function CreateThreadModal({
     e?.preventDefault()
 
     if (!title.trim() || !content.trim()) return
+
+    if (pollData?.options.some((o) => !o.text.trim())) {
+      notifications.show({
+        title: "Tomme valgmuligheder",
+        message: "Alle valgmuligheder i afstemningen skal have tekst.",
+        color: "red",
+      })
+      return
+    }
 
     createMutation.mutate({
       data: {
@@ -2623,6 +2632,43 @@ function CreateFolderModal({
   )
 }
 
+interface FolderOption {
+  value: string
+  label: string
+}
+
+function buildFolderOptions(folders: Folder[] | undefined): FolderOption[] {
+  const root: FolderOption = {
+    value: "root",
+    label: "📁 Rodmappe (ingen mappe)",
+  }
+  if (!folders || folders.length === 0) {
+    return [root]
+  }
+
+  const byParent = new Map<number | null, Folder[]>()
+  for (const f of folders) {
+    const arr = byParent.get(f.parent) ?? []
+    arr.push(f)
+    byParent.set(f.parent, arr)
+  }
+  for (const arr of byParent.values()) {
+    arr.sort((a, b) => a.name.localeCompare(b.name, "da"))
+  }
+
+  const out: FolderOption[] = [root]
+  const walk = (parentId: number | null, depth: number) => {
+    const children = byParent.get(parentId) ?? []
+    for (const f of children) {
+      const indent = "    ".repeat(depth)
+      out.push({ value: f.id.toString(), label: `${indent}📂 ${f.name}` })
+      walk(f.id, depth + 1)
+    }
+  }
+  walk(null, 0)
+  return out
+}
+
 interface MoveFileModalProps {
   opened: boolean
 
@@ -2693,17 +2739,7 @@ function MoveFileModal({
     moveMutation.mutate()
   }
 
-  // Build folder options with hierarchy indication
-
-  const folderOptions = [
-    { value: "root", label: "📁 Rodmappe (ingen mappe)" },
-
-    ...(folders?.map((folder) => ({
-      value: folder.id.toString(),
-
-      label: `📂 ${folder.name}`,
-    })) ?? []),
-  ]
+  const folderOptions = buildFolderOptions(folders)
 
   return (
     <Modal opened={opened} onClose={onClose} title={`Flyt "${file.name}"`}>
