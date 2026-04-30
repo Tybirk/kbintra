@@ -723,6 +723,14 @@ export const forumApi = {
     await apiClient.delete(`/forum/polls/${pollId}/`)
   },
 
+  addPollOption: async (pollId: number, text: string): Promise<Poll> => {
+    const response = await apiClient.post(`/forum/polls/${pollId}/options/`, {
+      text,
+    })
+
+    return response.data
+  },
+
   // Subgroup management
 
   updateSubgroup: async (slug: string, data: SubgroupUpdateData): Promise<{

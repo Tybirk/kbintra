@@ -259,6 +259,8 @@ const ReplyForm = memo(function ReplyForm({
 
                         is_anonymous: false,
 
+                        allow_others_to_add_options: false,
+
                         options: [{ text: "" }, { text: "" }],
                       })
                     }
@@ -755,6 +757,8 @@ export default function ThreadPage() {
         allow_multiple_votes: post.poll.allow_multiple_votes,
 
         is_anonymous: post.poll.is_anonymous,
+
+        allow_others_to_add_options: post.poll.allow_others_to_add_options,
 
         options: post.poll.options.map((o) => ({ id: o.id, text: o.text })),
       })

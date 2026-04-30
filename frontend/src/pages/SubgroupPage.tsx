@@ -32,6 +32,7 @@ import {
   Tooltip,
   Menu,
   Alert,
+  Switch,
 } from "@mantine/core"
 
 import { useDisclosure, useMediaQuery } from "@mantine/hooks"
@@ -106,6 +107,8 @@ import UserPickerModal from "../components/UserPickerModal"
 
 import { useAuthStore } from "../store/authStore"
 
+import { useHideClosedThreads } from "../hooks/useHideClosedThreads"
+
 import type {
   Thread,
   CreateThreadData,
@@ -141,11 +144,9 @@ export default function SubgroupPage() {
 
   const activeTab = location.pathname.includes("/dokumenter")
     ? "documents"
-    : location.pathname.includes("/lukkede")
-      ? "closed-threads"
-      : location.pathname.includes("/info")
-        ? "info"
-        : "threads"
+    : location.pathname.includes("/info")
+      ? "info"
+      : "threads"
 
   const [
     createThreadModalOpened,
@@ -172,32 +173,27 @@ export default function SubgroupPage() {
     }
   }
 
-  const openThreadsQuery = useInfiniteQuery({
-    queryKey: ["threads", slug, "open"],
+  const { user } = useAuthStore()
+  const {
+    hideClosedThreads,
+    setHideClosedThreads,
+    isPending: isThreadPrefPending,
+  } = useHideClosedThreads()
+
+  const threadsQuery = useInfiniteQuery({
+    queryKey: ["threads", slug, hideClosedThreads],
     queryFn: ({ pageParam = 1 }) =>
-      forumApi.getThreads(slug!, { page: pageParam, isClosed: false }),
-    getNextPageParam: (lastPage) => parsePageParam(lastPage.next),
-    initialPageParam: 1,
-    enabled: !!slug,
-  })
-  const closedThreadsQuery = useInfiniteQuery({
-    queryKey: ["threads", slug, "closed"],
-    queryFn: ({ pageParam = 1 }) =>
-      forumApi.getThreads(slug!, { page: pageParam, isClosed: true }),
+      forumApi.getThreads(slug!, {
+        page: pageParam,
+        ...(hideClosedThreads ? { isClosed: false } : {}),
+      }),
     getNextPageParam: (lastPage) => parsePageParam(lastPage.next),
     initialPageParam: 1,
     enabled: !!slug,
   })
 
-  const openThreads = (openThreadsQuery.data?.pages ?? []).flatMap(
-    (p) => p.results,
-  )
-  const closedThreads = (closedThreadsQuery.data?.pages ?? []).flatMap(
-    (p) => p.results,
-  )
-  const closedCount = closedThreadsQuery.data?.pages[0]?.count ?? 0
-  const threadsLoading =
-    openThreadsQuery.isLoading || closedThreadsQuery.isLoading
+  const threads = (threadsQuery.data?.pages ?? []).flatMap((p) => p.results)
+  const threadsLoading = threadsQuery.isLoading
 
   const { data: upcomingEvents } = useQuery({
     queryKey: ["events", "subgroup", subgroup?.id],
@@ -231,8 +227,6 @@ export default function SubgroupPage() {
       })
     },
   })
-
-  const { user } = useAuthStore()
 
   const [isCopying, setIsCopying] = useState(false)
 
@@ -318,10 +312,7 @@ export default function SubgroupPage() {
     },
   })
 
-  // Open-tab dot: trust subgroup.unread_thread_count (counts across all pages);
-  // closed-tab dot: best-effort from the pages we've loaded.
-  const openUnread = (subgroup?.unread_thread_count ?? 0) > 0
-  const closedUnread = closedThreads.some((t) => t.is_unread)
+  const hasUnread = (subgroup?.unread_thread_count ?? 0) > 0
 
   const isLoading = subgroupLoading || threadsLoading
 
@@ -573,7 +564,7 @@ Then each seperate ${capitalize(actionVerb)} is implemented one at a time where 
 
   return (
     <>
-      <BackButton to="/forum" label="Tilbage til forumoversigt" />
+      <BackButton to="/forum" label="Tilbage til alle fora" />
 
       <Modal
         opened={editGroupOpened}
@@ -711,7 +702,6 @@ Then each seperate ${capitalize(actionVerb)} is implemented one at a time where 
         value={activeTab}
         onChange={(tab) => {
           if (tab === "documents") navigate(`/forum/${slug}/dokumenter`)
-          else if (tab === "closed-threads") navigate(`/forum/${slug}/lukkede`)
           else if (tab === "info") navigate(`/forum/${slug}/info`)
           else navigate(`/forum/${slug}`)
         }}
@@ -721,7 +711,7 @@ Then each seperate ${capitalize(actionVerb)} is implemented one at a time where 
           <Tabs.Tab value="threads" leftSection={<IconMessage size={16} />}>
             <Group gap={2} wrap="nowrap">
               Tråde
-              {openUnread && (
+              {hasUnread && (
                 <Box
                   style={{
                     width: 8,
@@ -744,63 +734,46 @@ Then each seperate ${capitalize(actionVerb)} is implemented one at a time where 
           <Tabs.Tab value="info" leftSection={<IconLink size={16} />}>
             Links og info
           </Tabs.Tab>
-          {closedCount > 0 && (
-            <Tabs.Tab
-              value="closed-threads"
-              leftSection={<IconLock size={16} />}
-            >
-              <Group gap={2} wrap="nowrap">
-                Lukkede tråde
-                {closedUnread && (
-                  <Box
-                    style={{
-                      width: 8,
-
-                      height: 8,
-
-                      borderRadius: "50%",
-
-                      backgroundColor: "var(--mantine-color-red-6)",
-
-                      flexShrink: 0,
-                    }}
-                  />
-                )}
-              </Group>
-            </Tabs.Tab>
-          )}
         </Tabs.List>
 
         <Tabs.Panel value="threads" pt="md">
-          <Group justify="flex-end" mb="md">
-            {openUnread && (
+          <Group justify="space-between" mb="md" wrap="wrap">
+            <Switch
+              label="Skjul lukkede"
+              checked={hideClosedThreads}
+              onChange={(e) => setHideClosedThreads(e.currentTarget.checked)}
+              disabled={isThreadPrefPending}
+            />
+            <Group gap="xs">
+              {hasUnread && (
+                <Button
+                  variant="light"
+                  leftSection={<IconChecks size={16} />}
+                  onClick={() => markReadMutation.mutate()}
+                  loading={markReadMutation.isPending}
+                >
+                  Markér som læst
+                </Button>
+              )}
               <Button
                 variant="light"
-                leftSection={<IconChecks size={16} />}
-                onClick={() => markReadMutation.mutate()}
-                loading={markReadMutation.isPending}
+                leftSection={<IconCalendarEvent size={16} />}
+                onClick={() =>
+                  navigate(`/kalender/opret?subgroup=${subgroup.id}`)
+                }
               >
-                Markér som læst
+                Opret begivenhed
               </Button>
-            )}
-            <Button
-              variant="light"
-              leftSection={<IconCalendarEvent size={16} />}
-              onClick={() =>
-                navigate(`/kalender/opret?subgroup=${subgroup.id}`)
-              }
-            >
-              Opret begivenhed
-            </Button>
-            <Button
-              leftSection={<IconPlus size={16} />}
-              onClick={openCreateThreadModal}
-            >
-              Ny tråd
-            </Button>
+              <Button
+                leftSection={<IconPlus size={16} />}
+                onClick={openCreateThreadModal}
+              >
+                Ny tråd
+              </Button>
+            </Group>
           </Group>
           <Stack gap="md">
-            {openThreads.length === 0 && !openThreadsQuery.isLoading ? (
+            {threads.length === 0 && !threadsQuery.isLoading ? (
               <Paper withBorder p="xl" radius="md">
                 <Center>
                   <Stack align="center" gap="xs">
@@ -813,7 +786,7 @@ Then each seperate ${capitalize(actionVerb)} is implemented one at a time where 
                 </Center>
               </Paper>
             ) : (
-              openThreads.map((thread) => (
+              threads.map((thread) => (
                 <ThreadRow
                   key={thread.id}
                   thread={thread}
@@ -823,35 +796,12 @@ Then each seperate ${capitalize(actionVerb)} is implemented one at a time where 
                 />
               ))
             )}
-            {openThreadsQuery.hasNextPage && (
+            {threadsQuery.hasNextPage && (
               <Center mt="sm">
                 <Button
                   variant="light"
-                  onClick={() => openThreadsQuery.fetchNextPage()}
-                  loading={openThreadsQuery.isFetchingNextPage}
-                >
-                  Vis flere tråde
-                </Button>
-              </Center>
-            )}
-          </Stack>
-        </Tabs.Panel>
-
-        <Tabs.Panel value="closed-threads" pt="md">
-          <Stack gap="md">
-            {closedThreads.map((thread) => (
-              <ThreadRow
-                key={thread.id}
-                thread={thread}
-                onClick={() => navigate(`/forum/${slug}/traad/${thread.slug}`)}
-              />
-            ))}
-            {closedThreadsQuery.hasNextPage && (
-              <Center mt="sm">
-                <Button
-                  variant="light"
-                  onClick={() => closedThreadsQuery.fetchNextPage()}
-                  loading={closedThreadsQuery.isFetchingNextPage}
+                  onClick={() => threadsQuery.fetchNextPage()}
+                  loading={threadsQuery.isFetchingNextPage}
                 >
                   Vis flere tråde
                 </Button>
@@ -1367,6 +1317,8 @@ function CreateThreadModal({
                         allow_multiple_votes: false,
 
                         is_anonymous: false,
+
+                        allow_others_to_add_options: false,
 
                         options: [{ text: "" }, { text: "" }],
                       })
@@ -1984,7 +1936,6 @@ function DocumentsTab({
         opened={deleteFolderConfirmOpened}
         onClose={closeDeleteFolderConfirm}
         title="Slet mappe"
-        centered
         size="sm"
       >
         <Stack gap="md">

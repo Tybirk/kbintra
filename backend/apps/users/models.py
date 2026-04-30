@@ -122,6 +122,12 @@ class User(AbstractUser):
         help_text="User prefers larger text and higher contrast (for visually impaired)",
     )
 
+    # Forum thread display preference
+    hide_closed_threads = models.BooleanField(
+        default=False,
+        help_text="Hide closed threads from subgroup thread lists",
+    )
+
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS: list[str] = []
 

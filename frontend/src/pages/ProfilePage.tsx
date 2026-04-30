@@ -37,6 +37,8 @@ import { useAuthStore } from "../store/authStore"
 
 import { useAccessibilityMode } from "../hooks/useAccessibilityMode"
 
+import { useHideClosedThreads } from "../hooks/useHideClosedThreads"
+
 import { showErrorNotification } from "../utils/errorNotification"
 
 function ThemeSettings() {
@@ -44,6 +46,12 @@ function ThemeSettings() {
 
   const { isAccessibilityMode, setIsAccessibilityMode, isPending } =
     useAccessibilityMode()
+
+  const {
+    hideClosedThreads,
+    setHideClosedThreads,
+    isPending: isThreadPrefPending,
+  } = useHideClosedThreads()
 
   return (
     <Paper withBorder p="xl" radius="md" mt="xl">
@@ -75,6 +83,13 @@ function ThemeSettings() {
           checked={isAccessibilityMode}
           onChange={(e) => setIsAccessibilityMode(e.currentTarget.checked)}
           disabled={isPending}
+        />
+        <Switch
+          label="Skjul lukkede tråde"
+          description="Vis kun åbne tråde i grupper"
+          checked={hideClosedThreads}
+          onChange={(e) => setHideClosedThreads(e.currentTarget.checked)}
+          disabled={isThreadPrefPending}
         />
       </Stack>
     </Paper>

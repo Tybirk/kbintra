@@ -1418,6 +1418,9 @@ class PollDeleteView(APIView):
         if "is_anonymous" in data:
             poll.is_anonymous = data["is_anonymous"]
             update_fields.append("is_anonymous")
+        if "allow_others_to_add_options" in data:
+            poll.allow_others_to_add_options = data["allow_others_to_add_options"]
+            update_fields.append("allow_others_to_add_options")
         if update_fields:
             poll.save(update_fields=update_fields)
 
@@ -1463,6 +1466,45 @@ class PollDeleteView(APIView):
 
         poll.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class PollAddOptionView(APIView):
+    """Add an option to a poll (creator, staff, or anyone if poll allows it)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request, poll_id: int) -> Response:
+        poll = get_object_or_404(Poll, pk=poll_id)
+
+        is_creator = poll.created_by_id == request.user.id
+        if not (is_creator or request.user.is_staff or poll.allow_others_to_add_options):
+            return Response(
+                {"detail": "Du har ikke tilladelse til at tilføje valgmuligheder."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if poll.options.count() >= 20:
+            return Response(
+                {"detail": "En afstemning kan højst have 20 valgmuligheder."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        text = (request.data.get("text") or "").strip()
+        if not text:
+            return Response(
+                {"detail": "Valgmulighed må ikke være tom."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(text) > 200:
+            return Response(
+                {"detail": "Valgmulighed må højst være 200 tegn."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        next_order = (poll.options.aggregate(m=Max("order"))["m"] or -1) + 1
+        PollOption.objects.create(poll=poll, text=text, order=next_order)
+
+        return Response(PollSerializer(poll, context={"request": request}).data)
 
 
 # Read Status Views

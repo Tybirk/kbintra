@@ -34,6 +34,8 @@ export interface User {
   accessibility_mode: boolean
 
   rainbow_mode: boolean
+
+  hide_closed_threads: boolean
 }
 
 export interface Child {
@@ -321,6 +323,8 @@ export interface Poll {
 
   is_anonymous: boolean
 
+  allow_others_to_add_options: boolean
+
   options: PollOption[]
 
   total_voters: number
@@ -342,6 +346,8 @@ export interface CreatePollData {
   allow_multiple_votes: boolean
 
   is_anonymous: boolean
+
+  allow_others_to_add_options: boolean
 
   options: PollOptionData[]
 }

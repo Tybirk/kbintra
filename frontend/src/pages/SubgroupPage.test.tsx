@@ -277,13 +277,15 @@ describe("SubgroupPage", () => {
     })
   })
 
-  it("shows open thread list", async () => {
+  it("shows all threads including closed", async () => {
     render(<SubgroupPage />)
 
     await waitFor(() => {
       expect(screen.getByText("Fastgjort tråd")).toBeInTheDocument()
 
       expect(screen.getByText("Ulæst tråd")).toBeInTheDocument()
+
+      expect(screen.getByText("Lukket tråd")).toBeInTheDocument()
     })
   })
 
@@ -307,14 +309,16 @@ describe("SubgroupPage", () => {
     })
   })
 
-  it("shows closed threads tab when there are closed threads", async () => {
+  it("does not show a separate closed threads tab", async () => {
     render(<SubgroupPage />)
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("tab", { name: /lukkede tråde/i }),
-      ).toBeInTheDocument()
+      expect(screen.getByRole("tab", { name: /tråde/i })).toBeInTheDocument()
     })
+
+    expect(
+      screen.queryByRole("tab", { name: /lukkede tråde/i }),
+    ).not.toBeInTheDocument()
   })
 
   it("clicking thread navigates to thread page", async () => {
@@ -340,7 +344,7 @@ describe("SubgroupPage", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /tilbage til forum/i }),
+        screen.getByRole("button", { name: /tilbage til alle fora/i }),
       ).toBeInTheDocument()
     })
   })

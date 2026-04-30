@@ -6,9 +6,12 @@ import {
   Title,
   Text,
   Paper,
+  Box,
   Group,
   Avatar,
   Button,
+  ActionIcon,
+  Tooltip,
   Loader,
   Center,
   Stack,
@@ -18,7 +21,13 @@ import {
   Badge,
 } from "@mantine/core"
 
-import { IconHome, IconCar, IconPhone, IconMail } from "@tabler/icons-react"
+import {
+  IconHome,
+  IconCar,
+  IconPhone,
+  IconMail,
+  IconPencil,
+} from "@tabler/icons-react"
 
 import dayjs from "dayjs"
 
@@ -26,12 +35,16 @@ import { housesApi } from "../api/houses"
 
 import { BackButton } from "../components/BackButton"
 
+import { useAuthStore } from "../store/authStore"
+
 import type { Car, Child, UserSummary } from "../types"
 
 export default function HouseDetailPage() {
   const { id } = useParams<{ id: string }>()
 
   const navigate = useNavigate()
+
+  const currentUser = useAuthStore((s) => s.user)
 
   const {
     data: house,
@@ -75,7 +88,24 @@ export default function HouseDetailPage() {
         <Text>{house.name}</Text>
       </Breadcrumbs>
 
-      <BackButton to="/beboere" label="Tilbage til beboeroversigt" />
+      <Group justify="space-between" align="center" wrap="nowrap" gap="xs">
+        <Box style={{ minWidth: 0, flex: 1 }}>
+          <BackButton to="/beboere" label="Tilbage til beboeroversigt" />
+        </Box>
+        {currentUser?.house === house.id && (
+          <Tooltip label="Rediger hus">
+            <ActionIcon
+              variant="light"
+              size="lg"
+              onClick={() => navigate("/hus/rediger")}
+              aria-label="Rediger hus"
+              style={{ flexShrink: 0 }}
+            >
+              <IconPencil size={18} />
+            </ActionIcon>
+          </Tooltip>
+        )}
+      </Group>
 
       <Paper withBorder p="xl" radius="md" mb="xl">
         <Group gap="md" mb="md">

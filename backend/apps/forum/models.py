@@ -323,6 +323,7 @@ class Poll(models.Model):
     question = models.CharField(max_length=300)
     allow_multiple_votes = models.BooleanField(default=False)
     is_anonymous = models.BooleanField(default=False)
+    allow_others_to_add_options = models.BooleanField(default=False)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
