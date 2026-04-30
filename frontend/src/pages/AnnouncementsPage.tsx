@@ -138,7 +138,13 @@ export default function AnnouncementsPage() {
 
     navigate(location.pathname + location.search, { replace: true })
 
-    const timer = setTimeout(() => {
+    // Intentionally no clearTimeout cleanup: the announcements query may
+    // refetch (e.g. for "Opdateret:" notifications, an announcement object's
+    // content just changed), changing the array reference and re-firing this
+    // effect within the 100ms window. Tearing down the timer would cancel
+    // the scroll-and-highlight before it ever fires. The timer is short and
+    // idempotent — letting it run is safe.
+    setTimeout(() => {
       el.scrollIntoView({ behavior: "smooth", block: "center" })
 
       el.style.borderRadius = "var(--mantine-radius-md)"
@@ -151,8 +157,6 @@ export default function AnnouncementsPage() {
         el.style.boxShadow = ""
       }, 2000)
     }, 100)
-
-    return () => clearTimeout(timer)
   }, [hash, announcements, navigate, location.pathname, location.search])
 
   const deleteMutation = useMutation({
