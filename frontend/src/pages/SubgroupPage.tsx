@@ -127,6 +127,8 @@ interface CreateThreadParams {
   pollData?: CreatePollData
 }
 
+const THREADS_PAGE_SIZE = 50
+
 export default function SubgroupPage() {
   const { slug, folderSlug: folderSlugParam } = useParams<{
     slug: string
@@ -185,15 +187,36 @@ export default function SubgroupPage() {
     queryFn: ({ pageParam = 1 }) =>
       forumApi.getThreads(slug!, {
         page: pageParam,
+        pageSize: THREADS_PAGE_SIZE,
         ...(hideClosedThreads ? { isClosed: false } : {}),
       }),
     getNextPageParam: (lastPage) => parsePageParam(lastPage.next),
     initialPageParam: 1,
     enabled: !!slug,
+    gcTime: 30_000,
   })
 
   const threads = (threadsQuery.data?.pages ?? []).flatMap((p) => p.results)
   const threadsLoading = threadsQuery.isLoading
+
+  const loadMoreRef = useRef<HTMLDivElement | null>(null)
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = threadsQuery
+  useEffect(() => {
+    const node = loadMoreRef.current
+    if (!node) return
+    if (!hasNextPage) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage()
+        }
+      },
+      { rootMargin: "400px" },
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
   const { data: upcomingEvents } = useQuery({
     queryKey: ["events", "subgroup", subgroup?.id],
@@ -795,6 +818,9 @@ Then each seperate ${capitalize(actionVerb)} is implemented one at a time where 
                   }
                 />
               ))
+            )}
+            {threadsQuery.hasNextPage && (
+              <div ref={loadMoreRef} aria-hidden="true" />
             )}
             {threadsQuery.hasNextPage && (
               <Center mt="sm">
