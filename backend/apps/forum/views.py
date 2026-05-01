@@ -820,24 +820,23 @@ class PostListCreateView(generics.ListCreateAPIView):
         return context
 
     def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        """Override create to check if thread is closed."""
+        """Override create to enforce visibility (closed threads auto-reopen on reply)."""
         thread = get_object_or_404(Thread, pk=self.kwargs["thread_id"])
         if not can_view_thread(request.user, thread):
             from django.http import Http404
 
             raise Http404
-        if thread.is_closed:
-            return Response(
-                {"detail": "Denne tråd er lukket og accepterer ikke længere nye svar."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
         return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer: Any) -> None:
         serializer.save()
-        # Update thread's updated_at
         thread = get_object_or_404(Thread, pk=self.kwargs["thread_id"])
-        thread.save(update_fields=["updated_at"])
+        # A reply on a closed thread auto-reopens it.
+        update_fields = ["updated_at"]
+        if thread.is_closed:
+            thread.is_closed = False
+            update_fields.append("is_closed")
+        thread.save(update_fields=update_fields)
         # Send mention notifications (these take precedence — reply notifications
         # were already skipped for mentioned users in the serializer)
         from apps.notifications.tasks import notify_mentions_task
