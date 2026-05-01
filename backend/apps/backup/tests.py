@@ -87,8 +87,9 @@ class CheckLitestreamHealthTest(TestCase):
         _check_litestream_health()
 
     @override_settings(**S3_SETTINGS)
+    @patch("apps.backup.tasks._is_active_hour", return_value=True)
     @patch("apps.backup.s3._get_client")
-    def test_raises_when_no_objects(self, mock_get_client):
+    def test_raises_when_no_objects(self, mock_get_client, _mock_active):
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
         mock_client.list_objects_v2.return_value = {"Contents": []}
@@ -97,20 +98,23 @@ class CheckLitestreamHealthTest(TestCase):
             _check_litestream_health()
 
     @override_settings(**S3_SETTINGS)
+    @patch("apps.backup.tasks._is_active_hour", return_value=True)
     @patch("apps.backup.s3._get_client")
-    def test_raises_when_stale(self, mock_get_client):
+    def test_raises_when_stale(self, mock_get_client, _mock_active):
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
+        # Threshold is 240 minutes, so 300 minutes is unambiguously stale.
         mock_client.list_objects_v2.return_value = {
-            "Contents": [{"LastModified": datetime.now(UTC) - timedelta(minutes=30)}]
+            "Contents": [{"LastModified": datetime.now(UTC) - timedelta(minutes=300)}]
         }
 
         with self.assertRaises(RuntimeError, msg="minutes old"):
             _check_litestream_health()
 
     @override_settings(**S3_SETTINGS)
+    @patch("apps.backup.tasks._is_active_hour", return_value=True)
     @patch("apps.backup.s3._get_client")
-    def test_passes_when_recent(self, mock_get_client):
+    def test_passes_when_recent(self, mock_get_client, _mock_active):
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
         mock_client.list_objects_v2.return_value = {
@@ -119,3 +123,12 @@ class CheckLitestreamHealthTest(TestCase):
 
         # Should not raise
         _check_litestream_health()
+
+    @override_settings(**S3_SETTINGS)
+    @patch("apps.backup.tasks._is_active_hour", return_value=False)
+    @patch("apps.backup.s3._get_client")
+    def test_skips_outside_active_hours(self, mock_get_client, _mock_active):
+        # When outside the active window, the check returns early without
+        # ever touching S3.
+        _check_litestream_health()
+        mock_get_client.assert_not_called()

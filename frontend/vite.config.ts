@@ -20,18 +20,21 @@ export default defineConfig(({ command }) => ({
     rollupOptions: {
       output: {
         manualChunks: {
+          // Core vendors needed for first paint on every route
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          'vendor-mantine': [
+          'vendor-mantine-core': [
             '@mantine/core',
             '@mantine/hooks',
             '@mantine/notifications',
             '@mantine/dates',
-            '@mantine/dropzone',
-            '@mantine/tiptap',
-            '@mantine/spotlight',
-            '@mantine/carousel',
-            '@mantine/schedule',
           ],
+          // Mantine extras only used by specific (lazy) pages — split out so
+          // they don't ship with the initial bundle.
+          'vendor-mantine-tiptap': ['@mantine/tiptap'],
+          'vendor-mantine-schedule': ['@mantine/schedule'],
+          'vendor-mantine-carousel': ['@mantine/carousel'],
+          'vendor-mantine-dropzone': ['@mantine/dropzone'],
+          'vendor-mantine-spotlight': ['@mantine/spotlight'],
           'vendor-tiptap': [
             '@tiptap/react',
             '@tiptap/starter-kit',

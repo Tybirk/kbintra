@@ -16,6 +16,8 @@ import {
 
 import { Carousel } from "@mantine/carousel"
 
+import "@mantine/carousel/styles.css"
+
 import { useMediaQuery } from "@mantine/hooks"
 
 import {

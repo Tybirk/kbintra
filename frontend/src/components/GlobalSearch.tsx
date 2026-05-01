@@ -8,6 +8,8 @@ import { useNavigate } from "react-router-dom"
 
 import { Spotlight, spotlight } from "@mantine/spotlight"
 
+import "@mantine/spotlight/styles.css"
+
 import { ActionIcon, Center, Loader, rem, Text } from "@mantine/core"
 
 import {

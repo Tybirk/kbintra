@@ -358,6 +358,10 @@ if SENTRY_DSN:
             # simplejwt token errors are user-facing (expired/invalid tokens), not server bugs
             if exc_type.__name__ in ("TokenError", "InvalidToken", "TokenExpiredError"):
                 return None
+            # TransientPushError drives Huey retries; only the final exhausted-retry
+            # exception (PushDeliveryFailed) is worth surfacing.
+            if exc_type.__name__ == "TransientPushError":
+                return None
         return event
 
     sentry_sdk.init(

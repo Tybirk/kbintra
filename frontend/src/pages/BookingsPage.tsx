@@ -25,6 +25,8 @@ import { Schedule } from "@mantine/schedule"
 
 import type { ScheduleEventData, ScheduleViewLevel } from "@mantine/schedule"
 
+import "@mantine/schedule/styles.css"
+
 import { useDisclosure, useMediaQuery } from "@mantine/hooks"
 
 import { notifications } from "@mantine/notifications"

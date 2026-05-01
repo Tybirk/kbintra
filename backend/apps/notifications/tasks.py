@@ -67,7 +67,7 @@ def send_push_task(
     message: str,
     link: str,
 ) -> None:
-    """Send push notification in background."""
+    """Fan out a push notification to per-subscription tasks for the user."""
     logger.info(
         "send_push_task STARTED: user=%d type=%s title='%s'", user_id, notification_type, title
     )
@@ -81,17 +81,90 @@ def send_push_task(
         logger.warning(f"send_push_task: User {user_id} not found")
         return
 
-    from django.db import connection
-
-    connection.close()  # Release DB connection before HTTP push calls
-    send_push_notification(
+    result = send_push_notification(
         user=user,
         notification_type=notification_type,
         title=title,
         message=message,
         link=link,
     )
-    logger.info("send_push_task COMPLETED: user=%d type=%s", user_id, notification_type)
+    logger.info(
+        "send_push_task COMPLETED: user=%d type=%s enqueued=%d",
+        user_id,
+        notification_type,
+        result.get("total", 0),
+    )
+
+
+class PushDeliveryError(Exception):
+    """Raised when all retry attempts for a push delivery are exhausted.
+
+    Distinct from TransientPushError so the Sentry filter can drop routine
+    retry noise but still surface persistent delivery failures.
+    """
+
+
+# Exponential backoff between retries (seconds). PUSH_RETRY_DELAYS[i] is the
+# wait BEFORE attempt i+2 (i.e. after the (i+1)-th failure). The first attempt
+# has no preceding delay; with 4 retries we get 5 total attempts and wait at
+# most 60+120+240+480 = ~15 minutes spread across them.
+PUSH_RETRY_DELAYS = [60, 120, 240, 480]
+PUSH_MAX_ATTEMPTS = len(PUSH_RETRY_DELAYS) + 1
+
+
+@db_task(retries=PUSH_MAX_ATTEMPTS - 1, retry_delay=PUSH_RETRY_DELAYS[0], context=True)
+def send_push_to_subscription_task(
+    subscription_id: int,
+    notification_type: str,
+    title: str,
+    message: str,
+    link: str,
+    task=None,
+) -> None:
+    """Send a push to one subscription. Retries transient failures with exponential backoff.
+
+    Permanent failures (404/410 expired → sub deleted; 401/403 auth → logged) do not retry.
+    """
+    from .models import PushSubscription
+    from .services import TransientPushError, send_push_to_subscription
+
+    try:
+        subscription = PushSubscription.objects.get(id=subscription_id)
+    except PushSubscription.DoesNotExist:
+        # Already deleted (e.g. expired on a previous attempt) — nothing to do.
+        return
+
+    from django.db import connection
+
+    connection.close()  # Release DB connection before HTTP push calls
+
+    try:
+        send_push_to_subscription(
+            subscription=subscription,
+            notification_type=notification_type,
+            title=title,
+            message=message,
+            link=link,
+        )
+    except TransientPushError as e:
+        # Adjust retry_delay for the *next* attempt based on how many we've used.
+        # task.retries at this point = retries REMAINING after this failure.
+        if task is not None and task.retries > 0:
+            attempts_used = PUSH_MAX_ATTEMPTS - 1 - task.retries  # 0 on first failure
+            task.retry_delay = PUSH_RETRY_DELAYS[min(attempts_used, len(PUSH_RETRY_DELAYS) - 1)]
+            logger.info(
+                "Push retry scheduled: sub_id=%d type=%s remaining=%d delay=%ds",
+                subscription_id,
+                notification_type,
+                task.retries,
+                task.retry_delay,
+            )
+            raise
+        # No retries left — surface as a distinct exception so Sentry captures it
+        # (TransientPushError is filtered out as routine retry noise).
+        raise PushDeliveryError(
+            f"Push to subscription {subscription_id} failed after {PUSH_MAX_ATTEMPTS} attempts: {e}"
+        ) from e
 
 
 # ---------------------------------------------------------------------------

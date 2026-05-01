@@ -13,9 +13,29 @@
     <meta name="description" content="Kommunikationsplatform for KB fællesskabet" />
     <meta name="robots" content="noindex, nofollow" />
     <title>KB Intra</title>
+    <style>
+      /* Inline splash so users see something immediately while JS downloads.
+         Removed automatically when React renders into #root. */
+      html, body { margin: 0; padding: 0; background: #ffffff; }
+      @media (prefers-color-scheme: dark) { html, body { background: #0C0D12; } }
+      #initial-splash {
+        position: fixed; inset: 0; display: flex;
+        align-items: center; justify-content: center;
+        background: inherit;
+      }
+      #initial-splash::after {
+        content: ""; width: 36px; height: 36px;
+        border: 3px solid rgba(34, 139, 230, 0.25);
+        border-top-color: #228be6; border-radius: 50%;
+        animation: splash-spin 0.8s linear infinite;
+      }
+      @keyframes splash-spin { to { transform: rotate(360deg); } }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="initial-splash" aria-label="Indlæser" role="status"></div>
+    </div>
     <script>
       // Capture beforeinstallprompt early — the event fires once and may
       // arrive before React mounts (e.g. while the user is on the login page).

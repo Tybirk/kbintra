@@ -187,13 +187,10 @@ export default function ResetPasswordPage() {
               label="Ny adgangskode"
               placeholder="Indtast din nye adgangskode"
               value={formData.new_password}
-              onChange={(e) =>
-                setFormData((prev) => ({
-                  ...prev,
-
-                  new_password: e.currentTarget.value,
-                }))
-              }
+              onChange={(e) => {
+                const value = e.currentTarget.value
+                setFormData((prev) => ({ ...prev, new_password: value }))
+              }}
               required
               description="Mindst 8 tegn"
             />
@@ -202,13 +199,13 @@ export default function ResetPasswordPage() {
               label="Bekræft adgangskode"
               placeholder="Gentag din nye adgangskode"
               value={formData.new_password_confirm}
-              onChange={(e) =>
+              onChange={(e) => {
+                const value = e.currentTarget.value
                 setFormData((prev) => ({
                   ...prev,
-
-                  new_password_confirm: e.currentTarget.value,
+                  new_password_confirm: value,
                 }))
-              }
+              }}
               required
             />
 

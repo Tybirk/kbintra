@@ -24,6 +24,8 @@ import { Schedule } from "@mantine/schedule"
 
 import type { ScheduleEventData, ScheduleViewLevel } from "@mantine/schedule"
 
+import "@mantine/schedule/styles.css"
+
 import {
   IconPlus,
   IconMapPin,

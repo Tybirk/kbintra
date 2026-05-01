@@ -36,21 +36,15 @@ dayjs.locale("da")
 
 dayjs.extend(relativeTime)
 
-import "@mantine/core/styles.css"
+// Only CSS used by always-mounted components belongs here. Per-feature CSS
+// (tiptap, dropzone, schedule, carousel, spotlight) is imported alongside the
+// lazy components that need it, so Vite code-splits it into the route chunks.
 
-import "@mantine/carousel/styles.css"
+import "@mantine/core/styles.css"
 
 import "@mantine/notifications/styles.css"
 
 import "@mantine/dates/styles.css"
-
-import "@mantine/dropzone/styles.css"
-
-import "@mantine/tiptap/styles.css"
-
-import "@mantine/spotlight/styles.css"
-
-import "@mantine/schedule/styles.css"
 
 import "./accessibility.css"
 
@@ -62,54 +56,43 @@ import { initAccessibilityMode } from "./hooks/useAccessibilityMode"
 
 initAccessibilityMode()
 
-// Sentry: initialize before the app renders so all errors are captured from the start.
-
+// Sentry: deferred to idle time so its DOM observers (Replay, BrowserTracing)
+// don't compete with the first React render. Errors during the first ~50 ms are
+// extremely rare and acceptably traded for a faster first paint.
 // VITE_SENTRY_DSN must be set at build time; if absent, Sentry is a no-op.
 
 const sentryDsn = import.meta.env.VITE_SENTRY_DSN
 
 if (sentryDsn) {
-  Sentry.init({
-    dsn: sentryDsn,
+  const initSentry = () => {
+    Sentry.init({
+      dsn: sentryDsn,
+      environment: import.meta.env.VITE_SENTRY_ENVIRONMENT ?? "development",
+      release: `kb-intra@${__APP_VERSION__}`,
+      integrations: [
+        Sentry.reactRouterV6BrowserTracingIntegration({
+          useEffect,
+          useLocation,
+          useNavigationType,
+          createRoutesFromChildren,
+          matchRoutes,
+        }),
+        Sentry.replayIntegration({
+          maskAllText: true,
+          blockAllMedia: true,
+        }),
+      ],
+      tracesSampleRate: 0.1,
+      replaysSessionSampleRate: 0.0,
+      replaysOnErrorSampleRate: 1.0,
+    })
+  }
 
-    environment: import.meta.env.VITE_SENTRY_ENVIRONMENT ?? "development",
-
-    release: `kb-intra@${__APP_VERSION__}`,
-
-    integrations: [
-      // Performance: tracks navigation and page load times per route pattern
-
-      Sentry.reactRouterV6BrowserTracingIntegration({
-        useEffect,
-
-        useLocation,
-
-        useNavigationType,
-
-        createRoutesFromChildren,
-
-        matchRoutes,
-      }),
-
-      // Session Replay: records user interactions leading up to an error
-
-      Sentry.replayIntegration({
-        maskAllText: true, // Mask all text for privacy
-
-        blockAllMedia: true, // Block media elements
-      }),
-    ],
-
-    // Performance: sample 10% of navigations as traces
-
-    tracesSampleRate: 0.1,
-
-    // Session Replay: don't record every session, but always capture when there's an error
-
-    replaysSessionSampleRate: 0.0,
-
-    replaysOnErrorSampleRate: 1.0,
-  })
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(initSentry, { timeout: 2000 })
+  } else {
+    setTimeout(initSentry, 200)
+  }
 }
 
 const queryClient = new QueryClient({
@@ -199,17 +182,26 @@ const theme = createTheme({
   },
 })
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <MantineProvider theme={theme} defaultColorScheme="auto">
-        <DatesProvider settings={{ locale: "da" }}>
-          <Notifications position="top-right" />
-          <BrowserRouter>
-            <App />
-          </BrowserRouter>
-        </DatesProvider>
-      </MantineProvider>
-    </QueryClientProvider>
-  </StrictMode>,
-)
+// Defer the first React render so the browser can paint the inline splash
+// from index.html before React's synchronous mount blocks the main thread.
+// A single rAF fires *before* the next paint, so React would still mount in
+// the same frame as the splash. Double rAF gives the browser one paint with
+// the splash, then mounts on the next frame.
+const mount = () => {
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <MantineProvider theme={theme} defaultColorScheme="auto">
+          <DatesProvider settings={{ locale: "da" }}>
+            <Notifications position="top-right" />
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </DatesProvider>
+        </MantineProvider>
+      </QueryClientProvider>
+    </StrictMode>,
+  )
+}
+
+requestAnimationFrame(() => requestAnimationFrame(mount))

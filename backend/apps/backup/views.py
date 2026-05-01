@@ -19,8 +19,35 @@ def _is_safe_path(path: str) -> bool:
     return not cleaned.startswith("/") and not cleaned.startswith("..")
 
 
+# Vulnerability scanners constantly probe these paths. Short-circuit them so
+# we don't hit S3, log an error, and create Sentry noise per request.
+_SCANNER_PATH_PREFIXES = (
+    "wp-",
+    "wordpress/",
+    ".env",
+    ".git/",
+    ".aws/",
+    ".ssh/",
+    "xmlrpc.php",
+    "phpmyadmin",
+    "phpunit",
+    "vendor/phpunit",
+    "config.php",
+)
+
+
+def _is_scanner_path(path: str) -> bool:
+    lowered = path.lower()
+    return any(
+        lowered.startswith(prefix) or f"/{prefix}" in lowered for prefix in _SCANNER_PATH_PREFIXES
+    )
+
+
 def serve_media(request: HttpRequest, path: str) -> HttpResponse:
     if not _is_safe_path(path):
+        raise Http404
+
+    if _is_scanner_path(path):
         raise Http404
 
     local_path = Path(settings.MEDIA_ROOT) / path

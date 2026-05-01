@@ -195,6 +195,136 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
     return preference_map.get(notification_type, True)
 
 
+class TransientPushError(Exception):
+    """Raised when a push delivery fails for a reason that may succeed on retry.
+
+    Triggers Huey retry with exponential backoff. Permanent failures (expired
+    subscription, bad VAPID credentials) raise nothing — they are logged and
+    the subscription handled (deleted on 404/410).
+    """
+
+
+def _classify_webpush_status(status_code: int | None) -> str:
+    """Return one of: 'expired', 'auth_failed', 'transient', 'permanent'."""
+    if status_code in (404, 410):
+        return "expired"
+    if status_code in (401, 403):
+        # Bad VAPID config — retrying won't help.
+        return "auth_failed"
+    if status_code is not None and 400 <= status_code < 500 and status_code != 429:
+        # Other 4xx (e.g. 400 invalid payload, 413 too large) — won't help to retry.
+        return "permanent"
+    # 5xx, 429, unknown / no status (network errors) — retry.
+    return "transient"
+
+
+def send_push_to_subscription(
+    subscription: PushSubscription,
+    notification_type: str,
+    title: str,
+    message: str,
+    link: str,
+) -> None:
+    """Send a push to one subscription. Raises TransientPushError on retryable failures.
+
+    Permanent failures (expired sub deleted; auth/permanent 4xx logged) return None.
+    """
+    vapid_private_key = getattr(settings, "VAPID_PRIVATE_KEY", None)
+    vapid_claims = getattr(settings, "VAPID_CLAIMS", None)
+    if not vapid_private_key or not vapid_claims:
+        return
+
+    try:
+        from pywebpush import WebPushException, webpush
+    except ImportError:
+        logger.warning("pywebpush not installed, skipping push notifications")
+        return
+
+    parsed = urlparse(str(subscription.endpoint))
+    log_ctx = {
+        "sub_id": subscription.id,
+        "user_id": subscription.user_id,
+        "endpoint": parsed.netloc,
+        "type": notification_type,
+    }
+    payload = json.dumps(
+        {
+            "title": title,
+            "body": message,
+            "icon": "/pwa-192x192.png",
+            "badge": "/pwa-192x192.png",
+            "data": {"url": link, "notification_type": notification_type},
+        }
+    )
+    ttl = PUSH_TTL.get(notification_type, PUSH_TTL_DEFAULT)
+
+    try:
+        # Apple requires aud to be the push service origin.
+        now = int(time.time())
+        claims = vapid_claims.copy()
+        claims["aud"] = f"{parsed.scheme}://{parsed.netloc}"
+        claims["iat"] = now
+        claims["exp"] = now + 43200  # 12 hours (Apple rejects tokens near the 24h limit)
+
+        response = webpush(
+            subscription_info=subscription.get_subscription_info(),
+            data=payload,
+            vapid_private_key=vapid_private_key,
+            vapid_claims=claims,
+            ttl=ttl,
+        )
+        logger.info(
+            "Push sent: sub_id=%(sub_id)s user=%(user_id)s endpoint=%(endpoint)s "
+            "type=%(type)s status=%(status)s ttl=%(ttl)s",
+            {"status": response.status_code, "ttl": ttl, **log_ctx},
+        )
+        return
+    except WebPushException as e:
+        status_code = getattr(e.response, "status_code", None)
+        if status_code is None:
+            m = re.search(r"Push failed: (\d+)", str(e))
+            if m:
+                status_code = int(m.group(1))
+        kind = _classify_webpush_status(status_code)
+        if kind == "expired":
+            logger.warning(
+                "Push subscription expired (%(status)s): sub_id=%(sub_id)s "
+                "user=%(user_id)s endpoint=%(endpoint)s type=%(type)s",
+                {"status": status_code, **log_ctx},
+            )
+            PushSubscription.objects.filter(id=subscription.id).delete()
+            return
+        if kind == "auth_failed":
+            logger.error(
+                "VAPID auth rejected (%(status)s): sub_id=%(sub_id)s user=%(user_id)s "
+                "endpoint=%(endpoint)s — check VAPID keys config. %(error)s",
+                {"status": status_code, "error": e, **log_ctx},
+            )
+            return
+        if kind == "permanent":
+            logger.error(
+                "Push permanently rejected (%(status)s): sub_id=%(sub_id)s "
+                "user=%(user_id)s endpoint=%(endpoint)s type=%(type)s error=%(error)s",
+                {"status": status_code, "error": e, **log_ctx},
+            )
+            return
+        # transient — log and re-raise so Huey retries with backoff
+        logger.warning(
+            "Push transient failure (%(status)s) — will retry: sub_id=%(sub_id)s "
+            "user=%(user_id)s endpoint=%(endpoint)s type=%(type)s error=%(error)s",
+            {"status": status_code, "error": e, **log_ctx},
+        )
+        raise TransientPushError(str(e)) from e
+    except Exception as e:
+        # Network errors etc. — assume transient and retry.
+        logger.warning(
+            "Push unexpected error — will retry: sub_id=%(sub_id)s user=%(user_id)s "
+            "endpoint=%(endpoint)s type=%(type)s error=%(error)s",
+            {"error": e, **log_ctx},
+        )
+        raise TransientPushError(str(e)) from e
+
+
 def send_push_notification(
     user: User,
     notification_type: NotificationType,
@@ -202,145 +332,38 @@ def send_push_notification(
     message: str,
     link: str = "",
 ) -> dict:
-    """Send push notification to all user's subscribed devices.
+    """Fan out a push notification to all of the user's subscribed devices.
 
-    Args:
-        user: The user to notify
-        notification_type: Type of notification (for preference checking)
-        title: Notification title
-        message: Notification body
-        link: URL to open when notification is clicked
+    Each subscription is sent in its own retried Huey task so transient
+    failures on one device don't affect the others, and so a network blip to
+    one push service can be retried independently with exponential backoff.
 
-    Returns:
-        Dict with total, success_ids, expired_ids, failed_ids
+    Returns a summary dict (mostly for tests / callers): total, enqueued_ids.
     """
-    # Check if push notifications are configured
     vapid_private_key = getattr(settings, "VAPID_PRIVATE_KEY", None)
     vapid_claims = getattr(settings, "VAPID_CLAIMS", None)
 
-    empty_result: dict = {"total": 0, "success_ids": [], "expired_ids": [], "failed_ids": []}
+    empty_result: dict = {"total": 0, "enqueued_ids": []}
 
     if not vapid_private_key or not vapid_claims:
         logger.debug("Push notifications not configured, skipping")
         return empty_result
 
-    # Check user push preference
     if not get_user_push_preference(user, notification_type):
         logger.debug(f"User {user.id} has push disabled for {notification_type}")
         return empty_result
 
-    # Get user's push subscriptions
-    subscriptions = PushSubscription.objects.filter(user=user)
-    if not subscriptions.exists():
+    subscription_ids = list(PushSubscription.objects.filter(user=user).values_list("id", flat=True))
+    if not subscription_ids:
         logger.debug(f"User {user.id} has no push subscriptions")
         return empty_result
 
-    # Import pywebpush here to avoid import errors if not installed
-    try:
-        from pywebpush import WebPushException, webpush
-    except ImportError:
-        logger.warning("pywebpush not installed, skipping push notifications")
-        return empty_result
+    from apps.notifications.tasks import send_push_to_subscription_task
 
-    # Prepare notification payload
-    payload = json.dumps(
-        {
-            "title": title,
-            "body": message,
-            "icon": "/pwa-192x192.png",
-            "badge": "/pwa-192x192.png",
-            "data": {
-                "url": link,
-                "notification_type": notification_type,
-            },
-        }
-    )
+    for sub_id in subscription_ids:
+        send_push_to_subscription_task(sub_id, notification_type, title, message, link)
 
-    success_ids: list[int] = []
-    expired_ids: list[int] = []
-    failed_ids: list[int] = []
-
-    ttl = PUSH_TTL.get(notification_type, PUSH_TTL_DEFAULT)
-
-    for subscription in subscriptions:
-        parsed = urlparse(subscription.endpoint)
-        log_ctx = {
-            "sub_id": subscription.id,
-            "user_id": user.id,
-            "endpoint": parsed.netloc,
-            "type": notification_type,
-        }
-        try:
-            # Build claims with aud (audience) derived from endpoint
-            # Apple requires aud to be the push service origin (e.g., https://web.push.apple.com)
-            now = int(time.time())
-            claims = vapid_claims.copy()
-            claims["aud"] = f"{parsed.scheme}://{parsed.netloc}"
-            claims["iat"] = now
-            claims["exp"] = now + 43200  # 12 hours (Apple rejects tokens near the 24h limit)
-
-            response = webpush(
-                subscription_info=subscription.get_subscription_info(),
-                data=payload,
-                vapid_private_key=vapid_private_key,
-                vapid_claims=claims,
-                ttl=ttl,
-            )
-            success_ids.append(subscription.id)
-            logger.info(
-                "Push sent: sub_id=%(sub_id)s user=%(user_id)s endpoint=%(endpoint)s "
-                "type=%(type)s status=%(status)s ttl=%(ttl)s",
-                {"status": response.status_code, "ttl": ttl, **log_ctx},
-            )
-        except WebPushException as e:
-            status_code = getattr(e.response, "status_code", None)
-            # pywebpush may not expose .response; parse status from message
-            if status_code is None:
-                m = re.search(r"Push failed: (\d+)", str(e))
-                if m:
-                    status_code = int(m.group(1))
-            if status_code in (404, 410):
-                logger.warning(
-                    "Push subscription expired (%(status)s): sub_id=%(sub_id)s "
-                    "user=%(user_id)s endpoint=%(endpoint)s type=%(type)s",
-                    {"status": status_code, **log_ctx},
-                )
-                expired_ids.append(subscription.id)
-            elif status_code in (401, 403):
-                # VAPID credentials rejected — do NOT delete the subscription
-                logger.error(
-                    "VAPID auth rejected (%(status)s): sub_id=%(sub_id)s user=%(user_id)s "
-                    "endpoint=%(endpoint)s — check VAPID keys config. %(error)s",
-                    {"status": status_code, "error": e, **log_ctx},
-                )
-                failed_ids.append(subscription.id)
-            else:
-                logger.error(
-                    "Push failed (%(status)s): sub_id=%(sub_id)s user=%(user_id)s "
-                    "endpoint=%(endpoint)s type=%(type)s error=%(error)s",
-                    {"status": status_code, "error": e, **log_ctx},
-                )
-                failed_ids.append(subscription.id)
-        except Exception:
-            logger.exception(
-                "Unexpected push error: sub_id=%(sub_id)s user=%(user_id)s "
-                "endpoint=%(endpoint)s type=%(type)s",
-                log_ctx,
-            )
-            failed_ids.append(subscription.id)
-
-    if expired_ids:
-        deleted_count, _ = PushSubscription.objects.filter(id__in=expired_ids).delete()
-        logger.warning(
-            "Deleted %d expired push subscriptions (IDs: %s)", deleted_count, expired_ids
-        )
-
-    return {
-        "total": len(subscriptions),
-        "success_ids": success_ids,
-        "expired_ids": expired_ids,
-        "failed_ids": failed_ids,
-    }
+    return {"total": len(subscription_ids), "enqueued_ids": subscription_ids}
 
 
 def create_notification(
@@ -505,22 +528,24 @@ def notify_new_announcement(
 
     Returns the count of notifications created.
     """
+    # No outer transaction: each create_notification commits independently so
+    # the per-user write lock is released between iterations and concurrent
+    # request writers don't pile up on busy_timeout.
     count = 0
-    with transaction.atomic():
-        for user in recipients.exclude(id=author.id):
-            notification = create_notification(
-                user=user,
-                notification_type=NotificationType.NEW_ANNOUNCEMENT,
-                title=announcement_title,
-                message=f"{author.first_name} oprettede et nyt opslag",
-                link=f"/opslag#announcement-{announcement_id}",
-                related_user=author,
-                html_content=f"<h3>{announcement_title}</h3>{announcement_content}"
-                if announcement_content
-                else None,
-            )
-            if notification:
-                count += 1
+    for user in recipients.exclude(id=author.id):
+        notification = create_notification(
+            user=user,
+            notification_type=NotificationType.NEW_ANNOUNCEMENT,
+            title=announcement_title,
+            message=f"{author.first_name} oprettede et nyt opslag",
+            link=f"/opslag#announcement-{announcement_id}",
+            related_user=author,
+            html_content=f"<h3>{announcement_title}</h3>{announcement_content}"
+            if announcement_content
+            else None,
+        )
+        if notification:
+            count += 1
     return count
 
 
@@ -551,21 +576,20 @@ def notify_new_thread(
     thread_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
 
     count = 0
-    with transaction.atomic():
-        for user in subscribers.exclude(id=author.id):
-            notification = create_notification(
-                user=user,
-                notification_type=NotificationType.NEW_THREAD,
-                title=f"{thread_title} ({subgroup_name})",
-                message=f"{author.first_name} oprettede en ny tråd",
-                link=thread_link,
-                related_user=author,
-                html_content=f"<h3>{thread_title}</h3>{initial_post_content}"
-                if initial_post_content
-                else None,
-            )
-            if notification:
-                count += 1
+    for user in subscribers.exclude(id=author.id):
+        notification = create_notification(
+            user=user,
+            notification_type=NotificationType.NEW_THREAD,
+            title=f"{thread_title} ({subgroup_name})",
+            message=f"{author.first_name} oprettede en ny tråd",
+            link=thread_link,
+            related_user=author,
+            html_content=f"<h3>{thread_title}</h3>{initial_post_content}"
+            if initial_post_content
+            else None,
+        )
+        if notification:
+            count += 1
     return count
 
 
@@ -697,18 +721,17 @@ def notify_food_ticket_available(
     Returns the count of notifications created.
     """
     count = 0
-    with transaction.atomic():
-        for user in recipients.exclude(id=owner.id):
-            notification = create_notification(
-                user=user,
-                notification_type=NotificationType.FOOD_TICKET,
-                title="Madbillet tilgængelig",
-                message=f"{owner.first_name} tilbyder {portions} portion(er) den {ticket_date}",
-                link="/mad/billetter",
-                related_user=owner,
-            )
-            if notification:
-                count += 1
+    for user in recipients.exclude(id=owner.id):
+        notification = create_notification(
+            user=user,
+            notification_type=NotificationType.FOOD_TICKET,
+            title="Madbillet tilgængelig",
+            message=f"{owner.first_name} tilbyder {portions} portion(er) den {ticket_date}",
+            link="/mad/billetter",
+            related_user=owner,
+        )
+        if notification:
+            count += 1
     return count
 
 
@@ -796,18 +819,17 @@ def notify_event_created(
     recipients = _get_event_recipients(event, exclude_user_id=author.id)
 
     count = 0
-    with transaction.atomic():
-        for user in recipients:
-            notification = create_notification(
-                user=user,
-                notification_type=NotificationType.EVENT_CREATED,
-                title=title_text,
-                message=message,
-                link=link,
-                related_user=author,
-            )
-            if notification:
-                count += 1
+    for user in recipients:
+        notification = create_notification(
+            user=user,
+            notification_type=NotificationType.EVENT_CREATED,
+            title=title_text,
+            message=message,
+            link=link,
+            related_user=author,
+        )
+        if notification:
+            count += 1
     return count
 
 
@@ -841,18 +863,17 @@ def notify_event_updated(
     )
 
     count = 0
-    with transaction.atomic():
-        for user in recipients:
-            notification = create_notification(
-                user=user,
-                notification_type=NotificationType.EVENT_UPDATED,
-                title=title_text,
-                message=message,
-                link=link,
-                related_user=updater,
-            )
-            if notification:
-                count += 1
+    for user in recipients:
+        notification = create_notification(
+            user=user,
+            notification_type=NotificationType.EVENT_UPDATED,
+            title=title_text,
+            message=message,
+            link=link,
+            related_user=updater,
+        )
+        if notification:
+            count += 1
     return count
 
 
@@ -887,18 +908,17 @@ def notify_event_cancelled(
     )
 
     count = 0
-    with transaction.atomic():
-        for user in recipients:
-            notification = create_notification(
-                user=user,
-                notification_type=NotificationType.EVENT_CANCELLED,
-                title=title_text,
-                message=message,
-                link=link,
-                related_user=canceller,
-            )
-            if notification:
-                count += 1
+    for user in recipients:
+        notification = create_notification(
+            user=user,
+            notification_type=NotificationType.EVENT_CANCELLED,
+            title=title_text,
+            message=message,
+            link=link,
+            related_user=canceller,
+        )
+        if notification:
+            count += 1
     return count
 
 
@@ -944,17 +964,16 @@ def notify_event_reminder(
     )
 
     count = 0
-    with transaction.atomic():
-        for user in recipients:
-            notification = create_notification(
-                user=user,
-                notification_type=NotificationType.EVENT_REMINDER,
-                title=title_text,
-                message=message,
-                link=link,
-            )
-            if notification:
-                count += 1
+    for user in recipients:
+        notification = create_notification(
+            user=user,
+            notification_type=NotificationType.EVENT_REMINDER,
+            title=title_text,
+            message=message,
+            link=link,
+        )
+        if notification:
+            count += 1
     return count
 
 
@@ -978,24 +997,23 @@ def notify_mentions(
     """
     skip_ids = set(exclude_user_ids) if exclude_user_ids else set()
     count = 0
-    with transaction.atomic():
-        for user_id in set(mentioned_user_ids):
-            if user_id == author.id or user_id in skip_ids:
-                continue
-            try:
-                user = User.objects.get(id=user_id, is_active=True)
-            except User.DoesNotExist:
-                continue
-            notification = create_notification(
-                user=user,
-                notification_type=NotificationType.MENTION,
-                title=f"{author.first_name} nævnte dig i {context_label}",
-                message="Du er blevet nævnt",
-                link=link,
-                related_user=author,
-            )
-            if notification:
-                count += 1
+    for user_id in set(mentioned_user_ids):
+        if user_id == author.id or user_id in skip_ids:
+            continue
+        try:
+            user = User.objects.get(id=user_id, is_active=True)
+        except User.DoesNotExist:
+            continue
+        notification = create_notification(
+            user=user,
+            notification_type=NotificationType.MENTION,
+            title=f"{author.first_name} nævnte dig i {context_label}",
+            message="Du er blevet nævnt",
+            link=link,
+            related_user=author,
+        )
+        if notification:
+            count += 1
     return count
 
 
@@ -1012,18 +1030,17 @@ def notify_announcement_updated(
     Returns the count of notifications created.
     """
     count = 0
-    with transaction.atomic():
-        for user in recipients.exclude(id=editor.id):
-            notification = create_notification(
-                user=user,
-                notification_type=NotificationType.ANNOUNCEMENT_UPDATED,
-                title=f"Opdateret: {announcement_title}",
-                message=f"{editor.first_name} opdaterede opslaget",
-                link=f"/opslag#announcement-{announcement_id}",
-                related_user=editor,
-            )
-            if notification:
-                count += 1
+    for user in recipients.exclude(id=editor.id):
+        notification = create_notification(
+            user=user,
+            notification_type=NotificationType.ANNOUNCEMENT_UPDATED,
+            title=f"Opdateret: {announcement_title}",
+            message=f"{editor.first_name} opdaterede opslaget",
+            link=f"/opslag#announcement-{announcement_id}",
+            related_user=editor,
+        )
+        if notification:
+            count += 1
     return count
 
 
@@ -1057,19 +1074,18 @@ def notify_subgroup_activity(
     notification_title = title or thread_title
 
     count = 0
-    with transaction.atomic():
-        for user in subscribers.exclude(id=replier.id):
-            notification = create_notification(
-                user=user,
-                notification_type=NotificationType.SUBGROUP_ACTIVITY,
-                title=notification_title,
-                message=f"{replier.first_name}: {preview}",
-                link=link,
-                related_user=replier,
-                group_key=thread_link,  # Aggregate activity in same thread
-            )
-            if notification:
-                count += 1
+    for user in subscribers.exclude(id=replier.id):
+        notification = create_notification(
+            user=user,
+            notification_type=NotificationType.SUBGROUP_ACTIVITY,
+            title=notification_title,
+            message=f"{replier.first_name}: {preview}",
+            link=link,
+            related_user=replier,
+            group_key=thread_link,  # Aggregate activity in same thread
+        )
+        if notification:
+            count += 1
     return count
 
 

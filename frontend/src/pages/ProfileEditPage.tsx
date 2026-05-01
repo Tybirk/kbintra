@@ -27,6 +27,8 @@ import { DateInput } from "@mantine/dates"
 
 import { Dropzone, IMAGE_MIME_TYPE } from "@mantine/dropzone"
 
+import "@mantine/dropzone/styles.css"
+
 import { notifications } from "@mantine/notifications"
 
 import { showErrorNotification } from "../utils/errorNotification"

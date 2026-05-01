@@ -20,6 +20,8 @@ import Placeholder from "@tiptap/extension-placeholder"
 
 import { RichTextEditor as MantineRTE } from "@mantine/tiptap"
 
+import "@mantine/tiptap/styles.css"
+
 import { Anchor, Group, Text } from "@mantine/core"
 
 const EmojiPicker = lazy(() => import("./EmojiPicker"))
