@@ -358,17 +358,18 @@ class TestThreadCloseViews:
         assert response.status_code == 200
         assert response.data["is_closed"] is True
 
-    def test_cannot_post_to_closed_thread(self, authenticated_client, thread):
-        """Test that posting to a closed thread is rejected."""
+    def test_post_to_closed_thread_reopens_it(self, authenticated_client, thread):
+        """Posting to a closed thread succeeds and auto-reopens the thread."""
         thread.is_closed = True
         thread.save()
 
         response = authenticated_client.post(
             f"/api/forum/threads/{thread.id}/posts/",
-            {"content": "This should fail"},
+            {"content": "Follow-up reply"},
         )
-        assert response.status_code == 403
-        assert "lukket" in response.data["detail"].lower()
+        assert response.status_code == 201
+        thread.refresh_from_db()
+        assert thread.is_closed is False
 
     def test_thread_detail_includes_closed_status(self, authenticated_client, thread):
         """Test that thread detail includes is_closed and can_close fields."""

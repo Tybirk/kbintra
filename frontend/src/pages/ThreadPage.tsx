@@ -472,6 +472,10 @@ export default function ThreadPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: threadQueryKey })
 
+      // Invalidate the subgroup thread list so the lock icon clears when
+      // a reply auto-reopens a closed thread.
+      queryClient.invalidateQueries({ queryKey: ["threads"] })
+
       clearDraft("reply-" + thread!.id)
 
       setReplySubmitKey((k) => k + 1)
@@ -1056,28 +1060,28 @@ export default function ThreadPage() {
 
       <Divider my="lg" />
 
-      {thread.is_closed ? (
+      {thread.is_closed && (
         <Paper
           withBorder
-          p="lg"
+          p="sm"
           radius="md"
           bg="var(--mantine-color-default-hover)"
+          mb="md"
         >
           <Group justify="center" gap="xs">
-            <IconLock size={20} color="var(--mantine-color-gray-6)" />
-            <Text c="dimmed">
-              Denne tråd er lukket og accepterer ikke længere nye svar.
+            <IconLock size={16} color="var(--mantine-color-gray-6)" />
+            <Text size="sm" c="dimmed">
+              Tråden er lukket — et nyt svar genåbner den.
             </Text>
           </Group>
         </Paper>
-      ) : (
-        <ReplyForm
-          threadId={thread.id}
-          onSubmit={handleReplySubmit}
-          isPending={createPostMutation.isPending}
-          submitKey={replySubmitKey}
-        />
       )}
+      <ReplyForm
+        threadId={thread.id}
+        onSubmit={handleReplySubmit}
+        isPending={createPostMutation.isPending}
+        submitKey={replySubmitKey}
+      />
 
       <Modal
         opened={deleteModalOpened}
