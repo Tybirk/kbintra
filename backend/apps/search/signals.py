@@ -55,7 +55,7 @@ def index_house(sender, instance, **kwargs):
             object_id=instance.id,
             title=instance.name,
             body=strip_html(instance.description) if instance.description else "",
-            url=f"/beboere/hus/{instance.id}",
+            url=f"/beboere/hus/{instance.slug}",
             subtitle=create_excerpt(instance.description, 80) if instance.description else "",
             created_at=_isoformat(instance.created_at),
         )
@@ -85,7 +85,7 @@ def index_car(sender, instance, **kwargs):
             object_id=instance.id,
             title=instance.license_plate,
             body=instance.house.name,
-            url=f"/beboere/hus/{instance.house_id}",
+            url=f"/beboere/hus/{instance.house.slug}",
             subtitle=" · ".join(subtitle_parts),
             created_at=_isoformat(instance.created_at),
         )

@@ -40,7 +40,7 @@ import { useAuthStore } from "../store/authStore"
 import type { Car, Child, UserSummary } from "../types"
 
 export default function HouseDetailPage() {
-  const { id } = useParams<{ id: string }>()
+  const { slug } = useParams<{ slug: string }>()
 
   const navigate = useNavigate()
 
@@ -53,11 +53,11 @@ export default function HouseDetailPage() {
 
     error,
   } = useQuery({
-    queryKey: ["house", id],
+    queryKey: ["house", slug],
 
-    queryFn: () => housesApi.getHouse(Number(id)),
+    queryFn: () => housesApi.getHouse(slug!),
 
-    enabled: !!id,
+    enabled: !!slug,
   })
 
   if (isLoading) {

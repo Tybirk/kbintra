@@ -56,6 +56,8 @@ const mockHouses = [
   {
     id: 1,
 
+    slug: "a",
+
     name: "Hus A",
 
     description: "Første hus",
@@ -79,6 +81,8 @@ const mockHouses = [
 
   {
     id: 2,
+
+    slug: "b",
 
     name: "Hus B",
 
@@ -200,6 +204,6 @@ describe("DirectoryPage", () => {
 
     await user.click(screen.getByText("Hus A"))
 
-    expect(mockNavigate).toHaveBeenCalledWith("/beboere/hus/1")
+    expect(mockNavigate).toHaveBeenCalledWith("/beboere/hus/a")
   })
 })

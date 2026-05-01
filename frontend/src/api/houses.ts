@@ -42,8 +42,8 @@ export const housesApi = {
     return asArray(response.data)
   },
 
-  async getHouse(id: number): Promise<House> {
-    const response = await apiClient.get<House>(`/houses/${id}/`)
+  async getHouse(slug: string): Promise<House> {
+    const response = await apiClient.get<House>(`/houses/${slug}/`)
 
     return response.data
   },

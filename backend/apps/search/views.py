@@ -87,7 +87,7 @@ class GlobalSearchView(APIView):
                         "subtitle": create_excerpt(house.description, 80)
                         if house.description
                         else "",
-                        "url": f"/beboere/hus/{house.id}",
+                        "url": f"/beboere/hus/{house.slug}",
                     }
                 )
             # Also show residents of matching houses
@@ -190,7 +190,7 @@ class GlobalSearchView(APIView):
                             "type": "car",
                             "title": car.license_plate,
                             "subtitle": " · ".join(subtitle_parts),
-                            "url": f"/beboere/hus/{car.house_id}",
+                            "url": f"/beboere/hus/{car.house.slug}",
                         }
                     )
             results["cars"] = (injected + results["cars"])[:limit]

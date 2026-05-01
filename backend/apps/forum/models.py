@@ -6,6 +6,8 @@ from django.conf import settings
 from django.db import models
 from django.utils.text import slugify
 
+from .utils import danish_slugify
+
 
 class Subgroup(models.Model):
     """
@@ -63,7 +65,7 @@ class Subgroup(models.Model):
     def save(self, *args: object, **kwargs: object) -> None:
         """Generate slug from name if not provided."""
         if not self.slug:
-            self.slug = slugify(self.name)
+            self.slug = danish_slugify(self.name)
         super().save(*args, **kwargs)
 
 

@@ -6,9 +6,30 @@ import logging
 
 from django.conf import settings
 from django.core.files.uploadedfile import UploadedFile
+from django.utils.text import slugify
 from rest_framework import serializers
 
 logger = logging.getLogger(__name__)
+
+
+_DANISH_TRANSLITERATION = (
+    ("æ", "ae"),
+    ("Æ", "Ae"),
+    ("ø", "oe"),
+    ("Ø", "Oe"),
+    ("å", "aa"),
+    ("Å", "Aa"),
+)
+
+
+def danish_slugify(value: str) -> str:
+    """Slugify with Danish-aware transliteration: æ→ae, ø→oe, å→aa.
+
+    Default Django slugify strips non-ASCII letters, so "Fælles" becomes "flles".
+    """
+    for src, dst in _DANISH_TRANSLITERATION:
+        value = value.replace(src, dst)
+    return slugify(value)
 
 
 def validate_file_size(file: UploadedFile) -> None:

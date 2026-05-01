@@ -173,7 +173,8 @@ export default function ProfilePage() {
                   leftSection={<IconHome size={12} />}
                   style={{ cursor: "pointer" }}
                   onClick={() =>
-                    user.house && navigate(`/beboere/hus/${user.house}`)
+                    user.house_slug &&
+                    navigate(`/beboere/hus/${user.house_slug}`)
                   }
                 >
                   {user.house_name}

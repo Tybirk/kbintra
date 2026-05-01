@@ -61,6 +61,8 @@ const fullUser = {
 
   house_name: "Hus 1",
 
+  house_slug: "1",
+
   house: 1,
 }
 

@@ -23,6 +23,8 @@ export interface User {
 
   house_name: string | null
 
+  house_slug: string | null
+
   house_inhabitant_count: number
 
   is_staff: boolean
@@ -60,6 +62,8 @@ export interface Car {
 
 export interface House {
   id: number
+
+  slug: string
 
   name: string
 

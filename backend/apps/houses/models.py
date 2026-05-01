@@ -3,6 +3,22 @@ House models for KB Intra community platform.
 """
 
 from django.db import models
+from django.utils.text import slugify
+
+
+def derive_house_slug(name: str) -> str:
+    """Derive a house slug from its name by extracting the trailing integer.
+
+    "Kløverbakkevej 3" → "3". Falls back to slugify(name) if no trailing
+    integer is present.
+    """
+    parts = name.split()
+    if parts:
+        try:
+            return str(int(parts[-1]))
+        except ValueError:
+            pass
+    return slugify(name)
 
 
 class House(models.Model):
@@ -12,6 +28,7 @@ class House(models.Model):
     """
 
     name = models.CharField(max_length=100)
+    slug = models.CharField(max_length=20, unique=True, blank=True, db_index=True)
     description = models.TextField(blank=True)
     address = models.CharField(max_length=255, blank=True)
     profile_picture = models.ImageField(
@@ -26,6 +43,11 @@ class House(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+    def save(self, *args: object, **kwargs: object) -> None:
+        if not self.slug:
+            self.slug = derive_house_slug(self.name)
+        super().save(*args, **kwargs)
 
 
 class Child(models.Model):

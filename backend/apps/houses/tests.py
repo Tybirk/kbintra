@@ -102,7 +102,7 @@ class TestHouseAPI:
 
     def test_get_house_detail(self, authenticated_client, house):
         """Test getting house details."""
-        response = authenticated_client.get(f"/api/houses/{house.id}/")
+        response = authenticated_client.get(f"/api/houses/{house.slug}/")
         assert response.status_code == 200
         assert response.json()["name"] == "House 1"
 
@@ -274,7 +274,7 @@ class TestCarAPI:
     def test_cars_included_in_house_detail(self, api_client, user_with_house, car):
         """Test that cars are included in house detail response."""
         api_client.force_authenticate(user=user_with_house)
-        response = api_client.get(f"/api/houses/{user_with_house.house.id}/")
+        response = api_client.get(f"/api/houses/{user_with_house.house.slug}/")
         assert response.status_code == 200
         assert len(response.json()["cars"]) == 1
         assert response.json()["cars"][0]["license_plate"] == "AB12345"
