@@ -212,7 +212,7 @@ export default function SubgroupPage() {
           fetchNextPage()
         }
       },
-      { rootMargin: "400px" },
+      { rootMargin: "1500px" },
     )
     observer.observe(node)
     return () => observer.disconnect()
