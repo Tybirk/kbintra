@@ -15,6 +15,7 @@ class UserSerializer(serializers.ModelSerializer):
     """Serializer for User model (read operations)."""
 
     house_name = serializers.CharField(source="house.name", read_only=True)
+    house_slug = serializers.CharField(source="house.slug", read_only=True)
     house_inhabitant_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -30,6 +31,7 @@ class UserSerializer(serializers.ModelSerializer):
             "bio",
             "house",
             "house_name",
+            "house_slug",
             "house_inhabitant_count",
             "is_staff",
             "is_food_admin",

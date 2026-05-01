@@ -287,7 +287,7 @@ function App() {
                 }
               />
               <Route
-                path="/beboere/hus/:id"
+                path="/beboere/hus/:slug"
                 element={
                   <ProtectedRoute>
                     <ErrorBoundary>

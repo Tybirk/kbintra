@@ -63,7 +63,7 @@ class Command(BaseCommand):
                     object_id=house.id,
                     title=house.name,
                     body=strip_html(house.description) if house.description else "",
-                    url=f"/beboere/hus/{house.id}",
+                    url=f"/beboere/hus/{house.slug}",
                     subtitle=(create_excerpt(house.description, 80) if house.description else ""),
                     created_at=_isoformat(house.created_at),
                 )
@@ -82,7 +82,7 @@ class Command(BaseCommand):
                     object_id=car.id,
                     title=car.license_plate,
                     body=car.house.name,
-                    url=f"/beboere/hus/{car.house_id}",
+                    url=f"/beboere/hus/{car.house.slug}",
                     subtitle=" · ".join(subtitle_parts),
                     created_at=_isoformat(car.created_at),
                 )

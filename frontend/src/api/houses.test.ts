@@ -35,12 +35,12 @@ describe("housesApi", () => {
     expect(result).toEqual(mockHouses)
   })
 
-  it("getHouse calls GET /houses/{id}/", async () => {
-    const mockHouse = { id: 2, name: "Hus 2" }
+  it("getHouse calls GET /houses/{slug}/", async () => {
+    const mockHouse = { id: 2, slug: "2", name: "Hus 2" }
 
     vi.mocked(apiClient.get).mockResolvedValue({ data: mockHouse })
 
-    const result = await housesApi.getHouse(2)
+    const result = await housesApi.getHouse("2")
 
     expect(apiClient.get).toHaveBeenCalledWith("/houses/2/")
 

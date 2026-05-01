@@ -91,6 +91,7 @@ class HouseSerializer(serializers.ModelSerializer):
         model = House
         fields = [
             "id",
+            "slug",
             "name",
             "description",
             "address",
@@ -101,6 +102,7 @@ class HouseSerializer(serializers.ModelSerializer):
             "inhabitant_count",
             "created_at",
         ]
+        read_only_fields = ["slug"]
 
     def get_inhabitant_count(self, obj: House) -> int:
         """Get the number of inhabitants in the house.
@@ -123,6 +125,7 @@ class HouseListSerializer(serializers.ModelSerializer):
         model = House
         fields = [
             "id",
+            "slug",
             "name",
             "description",
             "address",
@@ -132,6 +135,7 @@ class HouseListSerializer(serializers.ModelSerializer):
             "cars",
             "inhabitant_count",
         ]
+        read_only_fields = ["slug"]
 
     def get_inhabitant_count(self, obj: House) -> int:
         """Get the number of inhabitants in the house.

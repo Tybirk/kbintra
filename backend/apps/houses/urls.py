@@ -21,5 +21,5 @@ urlpatterns = [
     path("my/children/<int:pk>/", ChildDetailView.as_view(), name="child-detail"),
     path("my/cars/", CarListCreateView.as_view(), name="car-list-create"),
     path("my/cars/<int:pk>/", CarDetailView.as_view(), name="car-detail"),
-    path("<int:pk>/", HouseDetailView.as_view(), name="house-detail"),
+    path("<slug:slug>/", HouseDetailView.as_view(), name="house-detail"),
 ]

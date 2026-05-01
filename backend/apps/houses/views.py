@@ -51,6 +51,7 @@ class HouseDetailView(generics.RetrieveAPIView):
     serializer_class = HouseSerializer
     permission_classes = [permissions.IsAuthenticated]
     queryset = House.objects.prefetch_related("inhabitants", "children", "cars")
+    lookup_field = "slug"
 
 
 class MyHouseView(APIView):

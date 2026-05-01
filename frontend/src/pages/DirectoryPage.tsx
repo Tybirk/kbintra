@@ -110,7 +110,7 @@ export default function DirectoryPage() {
             <HouseCard
               key={house.id}
               house={house}
-              onClick={() => navigate(`/beboere/hus/${house.id}`)}
+              onClick={() => navigate(`/beboere/hus/${house.slug}`)}
             />
           ))}
         </SimpleGrid>
