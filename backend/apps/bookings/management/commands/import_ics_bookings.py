@@ -35,6 +35,13 @@ SKIP_TITLES: set[str] = {
     "Reserveret til fællesmad (Steffen, 21)",
 }
 
+# Exact title rewrites applied before importing. Add entries here to clean up
+# ICS titles that carry unnecessary person/house-number suffixes.
+TITLE_REWRITES: dict[str, str] = {
+    "Fællesmad (Steffen, 21)": "Fællesmad",
+    "Frit tilgængelig (Terkild, 29)": "Frit tilgængelig",
+}
+
 # Maps CATEGORIES values in the ICS (Teamup room names) to the canonical room
 # names used in this app. Add entries here when importing from new exports.
 ICS_ROOM_NAME_MAP: dict[str, str] = {
@@ -309,6 +316,7 @@ class Command(BaseCommand):
         title = _unescape(ev["SUMMARY"][0])
         if title in SKIP_TITLES:
             return
+        title = TITLE_REWRITES.get(title, title)
         description = _unescape(ev.get("DESCRIPTION", ("", {}))[0]).strip()
 
         try:
