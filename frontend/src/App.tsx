@@ -26,22 +26,24 @@ import { usePushSubscriptionSync } from "./hooks/usePushSubscriptionSync"
 
 import { useAccessibilityModeSync } from "./hooks/useAccessibilityMode"
 
-// All pages are lazy-loaded so the initial bundle stays small.
-// Tiptap (~400 KB) is only pulled in when the user opens a rich-text page.
+// Eager-loaded pages (most used). Tiptap (~400 KB) is lazy-loaded inside the
+// pages that use it, so the initial bundle still stays small.
 
-const DashboardPage = lazy(() => import("./pages/DashboardPage"))
+import DashboardPage from "./pages/DashboardPage"
 
-const ForumPage = lazy(() => import("./pages/ForumPage"))
+import ForumPage from "./pages/ForumPage"
 
-const SubgroupPage = lazy(() => import("./pages/SubgroupPage"))
+import SubgroupPage from "./pages/SubgroupPage"
 
-const ThreadPage = lazy(() => import("./pages/ThreadPage"))
+import ThreadPage from "./pages/ThreadPage"
 
-const MessagesPage = lazy(() => import("./pages/MessagesPage"))
+import MessagesPage from "./pages/MessagesPage"
 
-const LinksPage = lazy(() => import("./pages/LinksPage"))
+import LinksPage from "./pages/LinksPage"
 
-const NotificationsPage = lazy(() => import("./pages/NotificationsPage"))
+import NotificationsPage from "./pages/NotificationsPage"
+
+// Lazy-loaded pages
 
 const LoginPage = lazy(() => import("./pages/LoginPage"))
 

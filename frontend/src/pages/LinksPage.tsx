@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, lazy, Suspense } from "react"
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 
@@ -12,6 +12,7 @@ import {
   Center,
   Stack,
   Typography,
+  Skeleton,
 } from "@mantine/core"
 
 import { notifications } from "@mantine/notifications"
@@ -24,8 +25,20 @@ import { linksApi } from "../api/links"
 
 import { useAuthStore } from "../store/authStore"
 
-import RichTextEditor from "../components/RichTextEditor"
+import type { RichTextEditorProps } from "../components/RichTextEditor"
 import { RichTextContent } from "../components/RichTextContent"
+
+const RichTextEditorImpl = lazy(() => import("../components/RichTextEditor"))
+
+function RichTextEditor(props: RichTextEditorProps) {
+  return (
+    <Suspense
+      fallback={<Skeleton h={(props.minHeight ?? 150) + 50} radius="sm" />}
+    >
+      <RichTextEditorImpl {...props} />
+    </Suspense>
+  )
+}
 
 export default function LinksPage() {
   const queryClient = useQueryClient()

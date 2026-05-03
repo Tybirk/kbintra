@@ -132,7 +132,7 @@ describe("LinksPage", () => {
 
     await user.click(screen.getByRole("button", { name: /rediger/i }))
 
-    expect(screen.getByTestId("rich-editor")).toBeInTheDocument()
+    expect(await screen.findByTestId("rich-editor")).toBeInTheDocument()
   })
 
   it("cancel reverts to view mode", async () => {

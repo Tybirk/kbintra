@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useState, useMemo, lazy, Suspense } from "react"
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 
@@ -19,6 +19,7 @@ import {
   Modal,
   Tooltip,
   Checkbox,
+  Skeleton,
 } from "@mantine/core"
 
 import { useDisclosure, useMediaQuery } from "@mantine/hooks"
@@ -43,9 +44,21 @@ import dayjs from "dayjs"
 
 import { forumApi } from "../api/forum"
 
-import RichTextEditor from "../components/RichTextEditor"
+import type { RichTextEditorProps } from "../components/RichTextEditor"
 
 import type { Subgroup } from "../types"
+
+const RichTextEditorImpl = lazy(() => import("../components/RichTextEditor"))
+
+function RichTextEditor(props: RichTextEditorProps) {
+  return (
+    <Suspense
+      fallback={<Skeleton h={(props.minHeight ?? 150) + 50} radius="sm" />}
+    >
+      <RichTextEditorImpl {...props} />
+    </Suspense>
+  )
+}
 
 export default function ForumPage() {
   const navigate = useNavigate()

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, lazy, Suspense } from "react"
 
 import { useParams, useNavigate, useLocation } from "react-router-dom"
 import {
@@ -33,6 +33,7 @@ import {
   Menu,
   Alert,
   Switch,
+  Skeleton,
 } from "@mantine/core"
 
 import { useDisclosure, useMediaQuery } from "@mantine/hooks"
@@ -82,8 +83,20 @@ import { filterFilesBySize } from "../config"
 
 import { CompactEventCard } from "../components/CompactEventCard"
 
-import RichTextEditor from "../components/RichTextEditor"
+import type { RichTextEditorProps } from "../components/RichTextEditor"
 import { RichTextContent } from "../components/RichTextContent"
+
+const RichTextEditorImpl = lazy(() => import("../components/RichTextEditor"))
+
+function RichTextEditor(props: RichTextEditorProps) {
+  return (
+    <Suspense
+      fallback={<Skeleton h={(props.minHeight ?? 150) + 50} radius="sm" />}
+    >
+      <RichTextEditorImpl {...props} />
+    </Suspense>
+  )
+}
 
 import FileDropzone, { AttachmentArea } from "../components/FileDropzone"
 

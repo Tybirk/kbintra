@@ -126,7 +126,7 @@ const daLabels = {
   linkEditorSave: "Gem",
 }
 
-interface RichTextEditorProps {
+export interface RichTextEditorProps {
   content: string
 
   onChange: (content: string) => void
