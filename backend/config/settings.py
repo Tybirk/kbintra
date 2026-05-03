@@ -131,6 +131,8 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": DATA_DIR / "db.sqlite3",
+        "CONN_MAX_AGE": 60,
+        "CONN_HEALTH_CHECKS": True,
         "OPTIONS": {
             "timeout": 20,
             "transaction_mode": "IMMEDIATE",  # Acquire write lock upfront so busy_timeout works; prevents deadlocks from deferred lock upgrades (Django 5.1+)
