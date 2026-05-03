@@ -128,6 +128,14 @@ class MealRegistration(models.Model):
     class Meta:
         unique_together = ["house", "date"]
         ordering = ["date"]
+        indexes = [
+            # DailyRegistrationStatsView aggregates active registrations across
+            # all houses for a small date window (one ISO week). The
+            # (house, date) index from unique_together can't help when there's
+            # no house filter, so add a (date, is_active) index for the stats
+            # query.
+            models.Index(fields=["date", "is_active"], name="mealreg_date_active_idx"),
+        ]
 
     def __str__(self) -> str:
         return f"House {self.house.name} - {self.date}"
@@ -194,6 +202,12 @@ class FoodTicket(models.Model):
 
     class Meta:
         ordering = ["date", "-created_at"]
+        indexes = [
+            # DailyTicketSummaryView and the foodticket stats aggregation filter
+            # by (house, date); the "my tickets" view ORs in (claimed_by, date).
+            models.Index(fields=["house", "date"], name="ticket_house_date_idx"),
+            models.Index(fields=["claimed_by", "date"], name="ticket_claimedby_date_idx"),
+        ]
 
     def __str__(self) -> str:
         status = "Available" if self.is_available else "Claimed"

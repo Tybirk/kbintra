@@ -6,6 +6,7 @@ import json
 
 import pytest
 from django.db import connection
+from django.utils import timezone
 
 from apps.announcements.models import Announcement
 from apps.events.models import Event
@@ -284,14 +285,19 @@ class TestIndexAndSearch:
 
     def test_content_types_decay_faster_than_static(self):
         """Test that threads/posts decay faster than users with the same age."""
-        # A 3-year-old thread and a 3-year-old user with identical title
+        # When the matched term appears in every doc, BM25 IDF collapses to 0
+        # and the recency penalty alone decides ordering — so the "recent" doc
+        # has to actually be recent relative to "now". Use timezone.now()
+        # rather than a hardcoded date that becomes stale over time.
+        old = "2023-01-01T00:00:00"
+        recent = timezone.now().isoformat()
         index_object(
             obj_type="thread",
             object_id=1,
             title="Generalforsamling",
             body="",
             url="/forum/test/1",
-            created_at="2023-01-01T00:00:00",
+            created_at=old,
         )
         index_object(
             obj_type="user",
@@ -299,7 +305,7 @@ class TestIndexAndSearch:
             title="Generalforsamling Hansen",
             body="",
             url="/profil/2",
-            created_at="2023-01-01T00:00:00",
+            created_at=old,
         )
         # A recent thread should beat both
         index_object(
@@ -308,7 +314,7 @@ class TestIndexAndSearch:
             title="Generalforsamling",
             body="",
             url="/forum/test/3",
-            created_at="2026-01-01T00:00:00",
+            created_at=recent,
         )
         results = fts_search("Generalforsamling")
         assert len(results) == 3

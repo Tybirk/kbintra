@@ -592,14 +592,8 @@ class TestAdminDownloadAPI:
         response = authenticated_client.get("/api/auth/admin/download-media/")
         assert response.status_code == 403
 
-    def test_download_media_staff_ok(self, admin_client, settings, tmp_path):
-        """Test that staff users can download media as zip."""
-        # Create a temp media directory with a file
-        media_dir = tmp_path / "media"
-        media_dir.mkdir()
-        (media_dir / "test.txt").write_text("hello")
-        settings.MEDIA_ROOT = media_dir
-
+    def test_download_media_staff_disabled(self, admin_client):
+        """The media download endpoint is currently disabled — staff still hits
+        permission checks (i.e. it's not a 401/403), but gets 503."""
         response = admin_client.get("/api/auth/admin/download-media/")
-        assert response.status_code == 200
-        assert response["Content-Type"] == "application/zip"
+        assert response.status_code == 503

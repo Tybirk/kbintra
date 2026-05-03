@@ -6,7 +6,7 @@ import io
 import zipfile
 from typing import Any
 
-from django.db.models import Count, Max, Prefetch
+from django.db.models import Count, F, Max, OuterRef, Prefetch, Q, Subquery
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -127,11 +127,20 @@ class IsMemberOrAdmin(permissions.BasePermission):
 def _subgroup_list_queryset() -> Any:
     """Queryset for subgroup list/detail views with prefetched threads and members.
 
+    Threads are filtered to non-closed only with just the columns SubgroupSerializer
+    actually consults (id, members_only, author_id, updated_at, title) — closed
+    threads aren't needed by any serializer field.
+
     Memberships are prefetched (with user + house joined) so SubgroupSerializer.get_members
     doesn't run a query per subgroup.
     """
     return Subgroup.objects.prefetch_related(
-        "threads",
+        Prefetch(
+            "threads",
+            queryset=Thread.objects.filter(is_closed=False).only(
+                "id", "subgroup_id", "members_only", "author_id", "updated_at", "title", "is_closed"
+            ),
+        ),
         Prefetch(
             "memberships",
             queryset=SubgroupMembership.objects.select_related("user", "user__house").order_by(
@@ -1260,13 +1269,23 @@ class RecentActivityView(generics.ListAPIView):
             limit = 10
         limit = min(max(limit, 1), 50)  # Clamp between 1 and 50
 
-        # Filter by visibility on the parent thread.
-        visible_thread_ids = Thread.objects.filter(visible_threads_q(self.request.user)).values(
-            "id"
-        )
+        # Apply the thread-visibility predicate against the joined `forum_thread` rows
+        # (already pulled in by select_related). The previous `thread_id__in=Thread...`
+        # form forced SQLite to materialize the subquery before joining; filtering on
+        # the join columns directly avoids that.
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            visibility = Q(thread__members_only=False)
+        else:
+            member_ids = member_subgroup_ids(user)
+            visibility = (
+                Q(thread__members_only=False)
+                | Q(thread__subgroup_id__in=member_ids)
+                | Q(thread__author_id=user.id)
+            )
         return (
-            Post.objects.filter(thread_id__in=visible_thread_ids)
-            .select_related("author", "thread", "thread__subgroup")
+            Post.objects.select_related("author", "thread", "thread__subgroup")
+            .filter(visibility)
             .order_by("-created_at")[:limit]
         )
 
@@ -1578,27 +1597,30 @@ class ForumUnreadCountView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request: Request) -> Response:
-        subscriptions = SubgroupSubscription.objects.filter(user=request.user).values_list(
-            "subgroup_id", "created_at"
-        )
-        subscribed_since = dict(subscriptions)
-        read_map = dict(
-            ThreadReadStatus.objects.filter(user=request.user).values_list(
-                "thread_id", "last_read_at"
+        user = request.user
+        subscribed_since_sq = SubgroupSubscription.objects.filter(
+            user=user, subgroup_id=OuterRef("subgroup_id")
+        ).values("created_at")[:1]
+        last_read_sq = ThreadReadStatus.objects.filter(user=user, thread_id=OuterRef("pk")).values(
+            "last_read_at"
+        )[:1]
+
+        count = (
+            Thread.objects.filter(
+                is_closed=False,
+                subgroup_id__in=SubgroupSubscription.objects.filter(user=user).values(
+                    "subgroup_id"
+                ),
             )
+            .filter(visible_threads_q(user))
+            .annotate(
+                _subscribed_since=Subquery(subscribed_since_sq),
+                _last_read=Subquery(last_read_sq),
+            )
+            .filter(updated_at__gt=F("_subscribed_since"))
+            .filter(Q(_last_read__isnull=True) | Q(updated_at__gt=F("_last_read")))
+            .count()
         )
-        count = 0
-        for thread in (
-            Thread.objects.filter(subgroup_id__in=subscribed_since.keys(), is_closed=False)
-            .filter(visible_threads_q(request.user))
-            .only("id", "subgroup_id", "updated_at")
-        ):
-            # Only count threads updated after the user subscribed
-            if thread.updated_at <= subscribed_since[thread.subgroup_id]:
-                continue
-            last_read = read_map.get(thread.id)
-            if last_read is None or thread.updated_at > last_read:
-                count += 1
         return Response({"unread_count": count})
 
 

@@ -52,6 +52,11 @@ class Message(models.Model):
 
     class Meta:
         ordering = ["created_at"]
+        indexes = [
+            # Speeds up UnreadCountView's anti-join: WHERE conversation_id=? AND sender_id<>?
+            # then a NOT EXISTS against MessageReadStatus.
+            models.Index(fields=["conversation", "sender"], name="msg_conv_sender_idx"),
+        ]
 
     def __str__(self) -> str:
         return f"{self.sender.first_name}: {self.content[:50]}"
@@ -74,6 +79,12 @@ class MessageReadStatus(models.Model):
 
     class Meta:
         unique_together = ["message", "user"]
+        indexes = [
+            # The unique_together gives an index keyed (message, user); the unread
+            # count's NOT EXISTS subquery seeks by (user, message), so add the
+            # mirror index.
+            models.Index(fields=["user", "message"], name="msg_read_user_msg_idx"),
+        ]
 
     def __str__(self) -> str:
         return f"{self.user.first_name} read message {self.message.id}"

@@ -8,7 +8,6 @@ import os
 import shutil
 import sqlite3
 import tempfile
-import zipfile
 from typing import Any
 
 from django.conf import settings
@@ -534,28 +533,5 @@ class DownloadMediaView(APIView):
 
     permission_classes = [permissions.IsAuthenticated, IsStaff]
 
-    def get(self, request: Request) -> FileResponse:
-        media_root = str(settings.MEDIA_ROOT)
-
-        # Build zip into a temp file to avoid buffering in memory
-        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
-            tmp_name = tmp.name
-        with zipfile.ZipFile(tmp_name, "w", zipfile.ZIP_DEFLATED) as zf:
-            for dirpath, dirnames, filenames in os.walk(media_root):
-                # Exclude private message attachments from backup (privacy)
-                if "message_attachments" in dirnames:
-                    dirnames.remove("message_attachments")
-                for filename in filenames:
-                    filepath = os.path.join(dirpath, filename)
-                    arcname = os.path.relpath(filepath, media_root)
-                    zf.write(filepath, arcname)
-
-        f = open(tmp_name, "rb")  # noqa: SIM115
-        response = FileResponse(
-            f,
-            content_type="application/zip",
-            as_attachment=True,
-            filename="media.zip",
-        )
-        response.close = _make_cleanup_close(response.close, tmp_name)
-        return response
+    def get(self, request: Request) -> Response:
+        return Response({"detail": "Midlertidigt deaktiveret."}, status=503)

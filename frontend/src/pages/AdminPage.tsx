@@ -85,15 +85,9 @@ export default function AdminPage() {
             <IconPhoto size={40} />
             <Text fw={500}>Mediefiler</Text>
             <Text size="sm" c="dimmed" ta="center">
-              Download alle mediefiler som zip-arkiv
+              Download midlertidigt deaktiveret
             </Text>
-            <Button
-              onClick={() =>
-                download("/api/auth/admin/download-media/", "media.zip")
-              }
-              loading={loading === "/api/auth/admin/download-media/"}
-              fullWidth
-            >
+            <Button fullWidth disabled>
               Download mediefiler
             </Button>
           </Stack>

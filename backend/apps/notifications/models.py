@@ -69,6 +69,18 @@ class Notification(models.Model):
 
     class Meta:
         ordering = ["-updated_at"]
+        indexes = [
+            # NotificationListView orders user's notifications by -created_at.
+            models.Index(fields=["user", "-created_at"], name="notif_user_recent_idx"),
+            # UnreadNotificationCountView is polled frequently and only cares
+            # about the unread rows — a partial index keeps the count an
+            # index-only seek even as the read backlog grows.
+            models.Index(
+                fields=["user"],
+                condition=models.Q(is_read=False),
+                name="notif_user_unread_idx",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.user.first_name}: {self.title}"
