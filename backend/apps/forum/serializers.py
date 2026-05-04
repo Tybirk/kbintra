@@ -1017,9 +1017,12 @@ class FolderSerializer(serializers.ModelSerializer):
     def get_file_count(self, obj: Folder) -> int:
         from .services import visible_files_q
 
-        request = self.context.get("request")
-        user = request.user if request else None
-        return obj.files.filter(visible_files_q(user)).count()
+        files_q = self.context.get("visible_files_filter")
+        if files_q is None:
+            request = self.context.get("request")
+            user = request.user if request else None
+            files_q = visible_files_q(user)
+        return obj.files.filter(files_q).count()
 
     def get_subfolder_count(self, obj: Folder) -> int:
         from .services import visible_folder_ids

@@ -947,12 +947,15 @@ class FolderListCreateView(generics.ListCreateAPIView):
         return queryset
 
     def get_serializer_context(self) -> dict:
+        from .services import visible_files_q
+
         context = super().get_serializer_context()
         if self.request.method == "POST":
             context["subgroup"] = get_object_or_404(Subgroup, slug=self.kwargs["slug"])
         elif self.request.method == "GET":
             subgroup = get_object_or_404(Subgroup, slug=self.kwargs["slug"])
             context["visible_folder_ids"] = visible_folder_ids(self.request.user, subgroup)
+            context["visible_files_filter"] = visible_files_q(self.request.user)
         return context
 
     def perform_create(self, serializer: Any) -> None:
