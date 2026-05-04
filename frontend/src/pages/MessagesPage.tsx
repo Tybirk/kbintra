@@ -1902,6 +1902,8 @@ const MessageBubble = memo(function MessageBubble({
     setCarouselOpened(true)
   }
 
+  const menuVisible = isMobileDevice || isHovered || menuOpened
+
   const menuButton = (
     <Menu
       opened={menuOpened}
@@ -1916,7 +1918,9 @@ const MessageBubble = memo(function MessageBubble({
           size="sm"
           color="gray"
           style={{
-            opacity: isMobileDevice || isHovered || menuOpened ? 1 : 0,
+            opacity: menuVisible ? 1 : 0,
+
+            pointerEvents: menuVisible ? "auto" : "none",
 
             transition: "opacity 0.1s",
 
@@ -1924,6 +1928,8 @@ const MessageBubble = memo(function MessageBubble({
           }}
           onMouseDown={(e) => e.preventDefault()}
           aria-label="Beskedindstillinger"
+          aria-hidden={!menuVisible}
+          tabIndex={menuVisible ? 0 : -1}
         >
           <IconDots size={14} />
         </ActionIcon>
@@ -1970,6 +1976,9 @@ const MessageBubble = memo(function MessageBubble({
     reactionMutation.mutate(emoji.native)
   }
 
+  const reactionVisible =
+    isHovered || reactionPickerOpened || fullEmojiPickerOpened
+
   const emojiPickerButton = (
     <>
       <Popover
@@ -1987,10 +1996,9 @@ const MessageBubble = memo(function MessageBubble({
             style={{
               display: isMobileDevice ? "none" : undefined,
 
-              opacity:
-                isHovered || reactionPickerOpened || fullEmojiPickerOpened
-                  ? 1
-                  : 0,
+              opacity: reactionVisible ? 1 : 0,
+
+              pointerEvents: reactionVisible ? "auto" : "none",
 
               transition: "opacity 0.1s",
 
@@ -2003,6 +2011,8 @@ const MessageBubble = memo(function MessageBubble({
               setReactionPickerOpened((o) => !o)
             }}
             aria-label="Tilføj reaktion"
+            aria-hidden={!reactionVisible}
+            tabIndex={reactionVisible ? 0 : -1}
           >
             <IconMoodSmile size={14} />
           </ActionIcon>
