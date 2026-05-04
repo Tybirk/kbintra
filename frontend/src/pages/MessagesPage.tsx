@@ -151,6 +151,32 @@ export default function MessagesPage() {
   const inConversationMobile =
     !!isMobile && (!!selectedConversation || isComposingNew)
 
+  // Track on-screen keyboard height so the fixed mobile conversation view pulls
+  // up above it. position: fixed is anchored to the layout viewport, which
+  // doesn't shrink when the keyboard appears, so without this the input sits
+  // behind the keyboard on first focus.
+  const [keyboardOffset, setKeyboardOffset] = useState(0)
+
+  useEffect(() => {
+    if (!inConversationMobile) {
+      setKeyboardOffset(0)
+      return
+    }
+    const vv = window.visualViewport
+    if (!vv) return
+    const update = () => {
+      const offset = window.innerHeight - vv.height - vv.offsetTop
+      setKeyboardOffset(Math.max(0, offset))
+    }
+    update()
+    vv.addEventListener("resize", update)
+    vv.addEventListener("scroll", update)
+    return () => {
+      vv.removeEventListener("resize", update)
+      vv.removeEventListener("scroll", update)
+    }
+  }, [inConversationMobile])
+
   const selectedConversationRef = useRef(selectedConversation)
 
   const lastMarkedReadConversation = useRef<number | null>(null)
@@ -552,7 +578,7 @@ export default function MessagesPage() {
 
               right: 0,
 
-              bottom: 0,
+              bottom: keyboardOffset,
             }
           : { height: "100%" }),
       }}
