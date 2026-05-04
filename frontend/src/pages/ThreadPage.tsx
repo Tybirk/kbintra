@@ -1622,7 +1622,7 @@ function PostCard({
                       onClick={() => dmMutation.mutate()}
                       loading={dmMutation.isPending}
                     >
-                      Svar i privat besked
+                      Svar privat
                     </Button>
                   </Tooltip>
                   {post.author.phone_number && (

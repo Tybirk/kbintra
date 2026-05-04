@@ -24,6 +24,8 @@ import "@mantine/tiptap/styles.css"
 
 import { Anchor, Group, Text } from "@mantine/core"
 
+import { useMediaQuery } from "@mantine/hooks"
+
 const EmojiPicker = lazy(() => import("./EmojiPicker"))
 
 import { saveDraft, loadDraft, clearDraft } from "../utils/draftStorage"
@@ -161,6 +163,8 @@ export default function RichTextEditor({
 
   draftKey,
 }: RichTextEditorProps) {
+  const isMobile = useMediaQuery("(max-width: 768px)")
+
   const onFilePasteRef = useRef(onFilePaste)
 
   onFilePasteRef.current = onFilePaste
@@ -500,15 +504,17 @@ export default function RichTextEditor({
             <MantineRTE.Unlink />
           </MantineRTE.ControlsGroup>
 
-          <MantineRTE.ControlsGroup>
-            <Suspense fallback={null}>
-              <EmojiPicker
-                onSelect={handleEmojiSelect}
-                size="sm"
-                iconSize={16}
-              />
-            </Suspense>
-          </MantineRTE.ControlsGroup>
+          {!isMobile && (
+            <MantineRTE.ControlsGroup>
+              <Suspense fallback={null}>
+                <EmojiPicker
+                  onSelect={handleEmojiSelect}
+                  size="sm"
+                  iconSize={16}
+                />
+              </Suspense>
+            </MantineRTE.ControlsGroup>
+          )}
 
           <MantineRTE.ControlsGroup>
             <MantineRTE.Undo />
