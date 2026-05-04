@@ -2369,8 +2369,6 @@ const MessageBubble = memo(function MessageBubble({
                 alignItems: "flex-end",
 
                 gap: 6,
-
-                width: "100%",
               }}
             >
               {showInlineTime && isOwn && (
@@ -2402,8 +2400,6 @@ const MessageBubble = memo(function MessageBubble({
                   backgroundColor: isOwn
                     ? "var(--mantine-color-blue-6)"
                     : "var(--mantine-color-default-hover)",
-
-                  maxWidth: showInlineTime ? "calc(100% - 40px)" : "100%",
                 }}
               >
                 <Text
