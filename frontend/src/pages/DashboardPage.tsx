@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useMemo, useState, useEffect } from "react"
 
 import { useNavigate } from "react-router-dom"
 
@@ -86,6 +86,7 @@ import type {
   Event,
   Notification,
   RecentActivity,
+  Subgroup,
   User,
   DriveMenu,
   MealRegistration,
@@ -192,6 +193,38 @@ export default function DashboardPage() {
   const hasMoreActivity =
     !!recentActivity &&
     (activityFetching || recentActivity.length === activityLimit)
+
+  const SHORTCUT_PAGE_SIZE = 10
+
+  const [shortcutLimit, setShortcutLimit] = useState(SHORTCUT_PAGE_SIZE)
+
+  const { data: subgroups, isLoading: subgroupsLoading } = useQuery({
+    queryKey: ["subgroups"],
+
+    queryFn: forumApi.getSubgroups,
+  })
+
+  const myGroups = useMemo(() => {
+    if (!subgroups) return [] as Subgroup[]
+
+    return subgroups
+      .filter((s) => s.is_member || s.is_subscribed)
+      .sort((a, b) => {
+        const aTime = a.last_activity_at
+          ? new Date(a.last_activity_at).getTime()
+          : 0
+
+        const bTime = b.last_activity_at
+          ? new Date(b.last_activity_at).getTime()
+          : 0
+
+        return bTime - aTime
+      })
+  }, [subgroups])
+
+  const visibleShortcuts = myGroups.slice(0, shortcutLimit)
+
+  const hasMoreShortcuts = myGroups.length > shortcutLimit
 
   const hasError =
     announcementsError || eventsError || birthdaysError || activityError
@@ -638,68 +671,116 @@ export default function DashboardPage() {
         </ErrorBoundary>
       </SimpleGrid>
 
-      {/* Recent Forum Activity Widget */}
-      <ErrorBoundary compact title="Kunne ikke vise forumaktivitet">
-        <Paper withBorder p="lg" radius="md" mt="xl">
-          <Group justify="space-between" mb="md">
-            <Group gap="xs">
-              <ThemeIcon size="sm" color="blue" radius="xl">
-                <IconMessageCircle size={14} />
-              </ThemeIcon>
-              <Title order={3}>Seneste forumaktivitet</Title>
+      {/* Forum Shortcuts & Activity - Side by Side */}
+      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg" mt="xl">
+        {/* My Forum Shortcuts Widget */}
+        <ErrorBoundary compact title="Kunne ikke vise dine grupper">
+          <Paper withBorder p="lg" radius="md" h="100%">
+            <Group justify="space-between" mb="md">
+              <Group gap="xs">
+                <ThemeIcon size="sm" color="grape" radius="xl">
+                  <IconUsers size={14} />
+                </ThemeIcon>
+                <Title order={3}>Mine grupper</Title>
+              </Group>
+              <Button
+                variant="subtle"
+                size="xs"
+                rightSection={<IconArrowRight size={14} />}
+                onClick={() => navigate("/forum")}
+              >
+                Se alle
+              </Button>
             </Group>
-            <Button
-              variant="subtle"
+            {subgroupsLoading ? (
+              <Loader size="sm" />
+            ) : visibleShortcuts.length > 0 ? (
+              <Stack gap="xs">
+                {visibleShortcuts.map((sg) => (
+                  <SubgroupShortcut key={sg.id} subgroup={sg} />
+                ))}
+                {hasMoreShortcuts && (
+                  <Button
+                    variant="subtle"
+                    size="xs"
+                    onClick={() =>
+                      setShortcutLimit((l) => l + SHORTCUT_PAGE_SIZE)
+                    }
+                  >
+                    Vis flere
+                  </Button>
+                )}
+              </Stack>
+            ) : (
+              <Text c="dimmed">
+                Du er ikke medlem af eller abonnerer på nogen grupper endnu.
+              </Text>
+            )}
+          </Paper>
+        </ErrorBoundary>
+
+        <ErrorBoundary compact title="Kunne ikke vise forumaktivitet">
+          <Paper withBorder p="lg" radius="md" h="100%">
+            <Group justify="space-between" mb="md">
+              <Group gap="xs">
+                <ThemeIcon size="sm" color="blue" radius="xl">
+                  <IconMessageCircle size={14} />
+                </ThemeIcon>
+                <Title order={3}>Seneste forumaktivitet</Title>
+              </Group>
+              <Button
+                variant="subtle"
+                size="xs"
+                rightSection={<IconArrowRight size={14} />}
+                onClick={() => navigate("/forum")}
+              >
+                Se forum
+              </Button>
+            </Group>
+            <SegmentedControl
+              value={activityScope}
+              onChange={(val) => {
+                setActivityScope(val as "all" | "subscribed")
+                setActivityLimit(ACTIVITY_PAGE_SIZE)
+              }}
+              data={[
+                { label: "Alle", value: "all" },
+                { label: "Mine grupper", value: "subscribed" },
+              ]}
               size="xs"
-              rightSection={<IconArrowRight size={14} />}
-              onClick={() => navigate("/forum")}
-            >
-              Se forum
-            </Button>
-          </Group>
-          <SegmentedControl
-            value={activityScope}
-            onChange={(val) => {
-              setActivityScope(val as "all" | "subscribed")
-              setActivityLimit(ACTIVITY_PAGE_SIZE)
-            }}
-            data={[
-              { label: "Alle", value: "all" },
-              { label: "Mine grupper", value: "subscribed" },
-            ]}
-            size="xs"
-            fullWidth
-            mb="md"
-          />
-          {activityLoading ? (
-            <Loader size="sm" />
-          ) : recentActivity && recentActivity.length > 0 ? (
-            <Stack gap="sm">
-              {recentActivity.map((activity) => (
-                <ActivityPreview key={activity.id} activity={activity} />
-              ))}
-              {hasMoreActivity && (
-                <Button
-                  variant="subtle"
-                  size="xs"
-                  loading={activityFetching}
-                  onClick={() =>
-                    setActivityLimit((l) => l + ACTIVITY_PAGE_SIZE)
-                  }
-                >
-                  Vis flere
-                </Button>
-              )}
-            </Stack>
-          ) : (
-            <Text c="dimmed">
-              {activityScope === "subscribed"
-                ? "Ingen aktivitet i dine grupper endnu."
-                : "Ingen forumaktivitet endnu."}
-            </Text>
-          )}
-        </Paper>
-      </ErrorBoundary>
+              fullWidth
+              mb="md"
+            />
+            {activityLoading ? (
+              <Loader size="sm" />
+            ) : recentActivity && recentActivity.length > 0 ? (
+              <Stack gap="sm">
+                {recentActivity.map((activity) => (
+                  <ActivityPreview key={activity.id} activity={activity} />
+                ))}
+                {hasMoreActivity && (
+                  <Button
+                    variant="subtle"
+                    size="xs"
+                    loading={activityFetching}
+                    onClick={() =>
+                      setActivityLimit((l) => l + ACTIVITY_PAGE_SIZE)
+                    }
+                  >
+                    Vis flere
+                  </Button>
+                )}
+              </Stack>
+            ) : (
+              <Text c="dimmed">
+                {activityScope === "subscribed"
+                  ? "Ingen aktivitet i dine grupper endnu."
+                  : "Ingen forumaktivitet endnu."}
+              </Text>
+            )}
+          </Paper>
+        </ErrorBoundary>
+      </SimpleGrid>
 
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg" mt="xl">
         {/* Birthdays Widget */}
@@ -1024,6 +1105,50 @@ function BirthdayPreview({ birthday }: BirthdayPreviewProps) {
         <Badge color={daysUntil === 0 ? "pink" : "gray"} size="sm">
           {dateLabel}
         </Badge>
+      </Group>
+    </Paper>
+  )
+}
+
+interface SubgroupShortcutProps {
+  subgroup: Subgroup
+}
+
+function SubgroupShortcut({ subgroup }: SubgroupShortcutProps) {
+  const navigate = useNavigate()
+
+  return (
+    <Paper
+      p="xs"
+      radius="sm"
+      bg="var(--mantine-color-default-hover)"
+      style={{ cursor: "pointer" }}
+      onClick={() => navigate(`/forum/${subgroup.slug}`)}
+    >
+      <Group gap="sm" wrap="nowrap">
+        {subgroup.icon ? (
+          <Text size="lg" lh={1} style={{ flexShrink: 0 }}>
+            {subgroup.icon}
+          </Text>
+        ) : (
+          <ThemeIcon
+            size="md"
+            radius="xl"
+            color="blue"
+            variant="light"
+            style={{ flexShrink: 0 }}
+          >
+            <IconMessageCircle size={14} />
+          </ThemeIcon>
+        )}
+        <Text size="sm" fw={500} lineClamp={1} style={{ flex: 1, minWidth: 0 }}>
+          {subgroup.name}
+        </Text>
+        {subgroup.unread_thread_count > 0 && (
+          <Badge color="red" size="sm" style={{ flexShrink: 0 }}>
+            {subgroup.unread_thread_count}
+          </Badge>
+        )}
       </Group>
     </Paper>
   )

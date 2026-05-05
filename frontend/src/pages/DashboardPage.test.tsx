@@ -70,9 +70,13 @@ vi.mock("../api/users", () => ({
 
 const mockGetRecentActivity = vi.fn()
 
+const mockGetSubgroups = vi.fn()
+
 vi.mock("../api/forum", () => ({
   forumApi: {
     getRecentActivity: () => mockGetRecentActivity(),
+
+    getSubgroups: () => mockGetSubgroups(),
   },
 }))
 
@@ -117,6 +121,10 @@ describe("DashboardPage", () => {
     // Default: no recent activity
 
     mockGetRecentActivity.mockResolvedValue([])
+
+    // Default: no subgroups
+
+    mockGetSubgroups.mockResolvedValue([])
 
     // Default: no food menus/registrations
 
