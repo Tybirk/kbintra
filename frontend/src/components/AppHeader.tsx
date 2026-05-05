@@ -138,7 +138,7 @@ export default function AppHeader({
         // If already on the destination page, mark the notification as read immediately
 
         if (isAlreadyViewing && notificationPathname) {
-          void notificationsApi
+          notificationsApi
 
             .markReadByLink(notificationPathname)
 
@@ -149,6 +149,8 @@ export default function AppHeader({
                 queryKey: ["notifications", "unread-count"],
               })
             })
+
+            .catch(() => {})
         }
 
         if (!isAlreadyViewing) {

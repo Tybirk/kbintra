@@ -123,9 +123,10 @@ export const notificationsApi = {
     return response.data
   },
 
-  // Get VAPID public key for push notifications
+  // Get VAPID public key for push notifications. Returns null when push is
+  // not configured on the server (no VAPID_PUBLIC_KEY env var).
 
-  getVapidPublicKey: async (): Promise<{ public_key: string }> => {
+  getVapidPublicKey: async (): Promise<{ public_key: string | null }> => {
     const response = await apiClient.get("/notifications/push/vapid-key/")
 
     return response.data

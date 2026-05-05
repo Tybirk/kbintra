@@ -5,38 +5,125 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios"
 
 import { notifications } from "@mantine/notifications"
+import * as Sentry from "@sentry/react"
 
 const API_BASE_URL = "/api"
 
-// Show at most one "deploy in progress" toast every 30 seconds, even if many
-// requests fail in a burst. The toast itself auto-dismisses after 5s — the
-// throttle is so a page that fires 8 queries on mount doesn't stack 8 toasts.
-const MAINTENANCE_TOAST_THROTTLE_MS = 30_000
+// Throttle each toast type independently — a page that fires 8 queries on mount
+// shouldn't stack 8 identical toasts. The toast itself auto-dismisses after 5s.
+const TOAST_THROTTLE_MS = 30_000
 
-let lastMaintenanceToastAt = 0
+const lastToastAt: Record<string, number> = {}
 
-const showMaintenanceToast = () => {
+const showThrottledToast = (
+  id: string,
+  title: string,
+  message: string,
+  color: string,
+) => {
   const now = Date.now()
-  if (now - lastMaintenanceToastAt < MAINTENANCE_TOAST_THROTTLE_MS) return
-  lastMaintenanceToastAt = now
-  notifications.show({
-    id: "kbintra-maintenance",
-    color: "yellow",
-    title: "KB Intra opdateres",
-    message: "KB Intra bliver lige opdateret. Prøv igen om et øjeblik.",
-    autoClose: 5000,
-  })
+  if (now - (lastToastAt[id] ?? 0) < TOAST_THROTTLE_MS) return
+  lastToastAt[id] = now
+  notifications.show({ id, color, title, message, autoClose: 5000 })
 }
 
-// True for the failure modes that look like "backend/proxy is briefly down"
-// rather than an application error: 502/503/504 from a proxy, or no response
-// at all (network error, timeout, DNS failure). Cancelled requests (e.g. the
-// user navigated away) are not maintenance errors.
-const isMaintenanceError = (error: AxiosError): boolean => {
-  if (axios.isCancel(error) || error.code === "ERR_CANCELED") return false
-  if (!error.response) return true
-  const status = error.response.status
-  return status === 502 || status === 503 || status === 504
+type ErrorKind = "maintenance" | "offline" | "timeout" | "network" | "other"
+
+// Distinguish the failure modes so we don't claim a deploy is happening every
+// time the user's WiFi blips or an endpoint returns 503 for an app reason.
+// Mapping:
+//   - 502/503/504 from the *proxy* (Traefik) → "backend is restarting" (deploy)
+//     Detected by the absence of a JSON body — Django always returns
+//     application/json for app errors, while Traefik serves text/HTML for
+//     proxy-level failures. This avoids false positives like a Django view
+//     returning 503 for "feature not configured".
+//   - navigator.onLine === false → device is offline (mobile/wifi dropped)
+//   - axios timeout (15s) → request hung; usually flaky network or slow server
+//   - any other no-response error → generic network error
+//   - cancelled request → ignore (user navigated away)
+const classifyError = (error: AxiosError): ErrorKind | null => {
+  if (axios.isCancel(error) || error.code === "ERR_CANCELED") return null
+
+  if (error.response) {
+    const status = error.response.status
+    if (status === 502 || status === 503 || status === 504) {
+      const contentType = String(
+        error.response.headers?.["content-type"] ?? "",
+      ).toLowerCase()
+      // Only treat as maintenance if the response did NOT come from Django
+      // (i.e. it's from the proxy because Django was unreachable).
+      if (!contentType.includes("application/json")) return "maintenance"
+    }
+    return "other"
+  }
+
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return "offline"
+  }
+  if (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT") {
+    return "timeout"
+  }
+  return "network"
+}
+
+const reportToast = (kind: ErrorKind) => {
+  switch (kind) {
+    case "maintenance":
+      showThrottledToast(
+        "kbintra-maintenance",
+        "KB Intra opdateres",
+        "KB Intra bliver lige opdateret. Prøv igen om et øjeblik.",
+        "yellow",
+      )
+      return
+    case "offline":
+      showThrottledToast(
+        "kbintra-offline",
+        "Ingen internetforbindelse",
+        "Tjek dit netværk og prøv igen.",
+        "orange",
+      )
+      return
+    case "timeout":
+      showThrottledToast(
+        "kbintra-timeout",
+        "Forbindelsen er langsom",
+        "Det tager længere end normalt at få svar. Prøv igen.",
+        "orange",
+      )
+      return
+    case "network":
+      showThrottledToast(
+        "kbintra-network",
+        "Forbindelsesproblem",
+        "Kunne ikke nå serveren. Tjek dit netværk og prøv igen.",
+        "orange",
+      )
+      return
+    case "other":
+      return
+  }
+}
+
+// Tag Sentry events so transient network/offline errors can be filtered out
+// of the issue stream — they're not bugs in our code.
+const tagSentry = (kind: ErrorKind, error: AxiosError) => {
+  Sentry.withScope((scope) => {
+    scope.setTag("api.error_kind", kind)
+    scope.setTag(
+      "navigator.online",
+      typeof navigator !== "undefined" && navigator.onLine ? "true" : "false",
+    )
+    scope.setTag("api.url", error.config?.url ?? "unknown")
+    if (kind === "offline" || kind === "network" || kind === "timeout") {
+      scope.setLevel("info")
+      Sentry.addBreadcrumb({
+        category: "api.network",
+        level: "info",
+        message: `Network error (${kind}) on ${error.config?.url ?? "unknown"}`,
+      })
+    }
+  })
 }
 
 export const apiClient = axios.create({
@@ -215,8 +302,10 @@ apiClient.interceptors.response.use(
       }
     }
 
-    if (isMaintenanceError(error)) {
-      showMaintenanceToast()
+    const kind = classifyError(error)
+    if (kind) {
+      reportToast(kind)
+      tagSentry(kind, error)
     }
 
     return Promise.reject(error)

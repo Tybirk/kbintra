@@ -427,13 +427,19 @@ export default function ThreadPage() {
 
       queryClient.invalidateQueries({ queryKey: ["threads"] })
 
-      void notificationsApi.markReadByLink(location.pathname).then(() => {
-        queryClient.invalidateQueries({ queryKey: ["notifications"] })
+      notificationsApi
+        .markReadByLink(location.pathname)
+        .then(() => {
+          queryClient.invalidateQueries({ queryKey: ["notifications"] })
 
-        queryClient.invalidateQueries({
-          queryKey: ["notifications", "unread-count"],
+          queryClient.invalidateQueries({
+            queryKey: ["notifications", "unread-count"],
+          })
         })
-      })
+        .catch(() => {
+          // Fire-and-forget: a failed mark-read isn't user-visible and
+          // shouldn't surface as an unhandled rejection.
+        })
     }
   }, [thread?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -117,13 +117,16 @@ export default function AnnouncementsPage() {
   // Auto-mark announcement notifications as read when visiting the page
 
   useEffect(() => {
-    void notificationsApi.markReadByLink("/opslag").then(() => {
-      queryClient.invalidateQueries({ queryKey: ["notifications"] })
+    notificationsApi
+      .markReadByLink("/opslag")
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ["notifications"] })
 
-      queryClient.invalidateQueries({
-        queryKey: ["notifications", "unread-count"],
+        queryClient.invalidateQueries({
+          queryKey: ["notifications", "unread-count"],
+        })
       })
-    })
+      .catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scroll to and highlight a specific announcement when navigating from a

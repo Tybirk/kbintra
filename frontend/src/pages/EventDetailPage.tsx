@@ -109,13 +109,16 @@ export default function EventDetailPage() {
 
   useEffect(() => {
     if (slug) {
-      void notificationsApi.markReadByLink(`/kalender/${slug}`).then(() => {
-        queryClient.invalidateQueries({ queryKey: ["notifications"] })
+      notificationsApi
+        .markReadByLink(`/kalender/${slug}`)
+        .then(() => {
+          queryClient.invalidateQueries({ queryKey: ["notifications"] })
 
-        queryClient.invalidateQueries({
-          queryKey: ["notifications", "unread-count"],
+          queryClient.invalidateQueries({
+            queryKey: ["notifications", "unread-count"],
+          })
         })
-      })
+        .catch(() => {})
     }
   }, [slug]) // eslint-disable-line react-hooks/exhaustive-deps
 

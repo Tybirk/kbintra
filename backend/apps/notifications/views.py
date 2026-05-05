@@ -148,18 +148,20 @@ class ClearAllNotificationsView(APIView):
 
 
 class VapidPublicKeyView(APIView):
-    """Get VAPID public key for Web Push subscription."""
+    """Get VAPID public key for Web Push subscription.
+
+    Returns 200 with `public_key: null` when push is not configured. We avoid
+    503 here on purpose: 503 is conventionally reserved for "service is briefly
+    down" and would be (rightly) interpreted by the frontend's API layer as a
+    deploy/maintenance signal. "Push not configured" is a permanent app state,
+    not a transient outage.
+    """
 
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request: Request) -> Response:
         public_key = getattr(settings, "VAPID_PUBLIC_KEY", None)
-        if not public_key:
-            return Response(
-                {"error": "Web Push not configured"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-        return Response({"public_key": public_key})
+        return Response({"public_key": public_key or None})
 
 
 class PushSubscriptionView(APIView):

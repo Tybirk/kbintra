@@ -304,13 +304,16 @@ export default function FoodPage() {
 
   useEffect(() => {
     if (activeTab === "billetter") {
-      void notificationsApi.markReadByLink("/mad/billetter").then(() => {
-        queryClient.invalidateQueries({ queryKey: ["notifications"] })
+      notificationsApi
+        .markReadByLink("/mad/billetter")
+        .then(() => {
+          queryClient.invalidateQueries({ queryKey: ["notifications"] })
 
-        queryClient.invalidateQueries({
-          queryKey: ["notifications", "unread-count"],
+          queryClient.invalidateQueries({
+            queryKey: ["notifications", "unread-count"],
+          })
         })
-      })
+        .catch(() => {})
     }
   }, [activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
