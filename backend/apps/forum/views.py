@@ -1296,10 +1296,11 @@ class RecentActivityView(generics.ListAPIView):
         qs = Post.objects.select_related("author", "thread", "thread__subgroup").filter(visibility)
 
         if subscribed_only and user and user.is_authenticated:
-            subscribed_ids = SubgroupSubscription.objects.filter(user=user).values_list(
-                "subgroup_id", flat=True
+            subscribed_ids = set(
+                SubgroupSubscription.objects.filter(user=user).values_list("subgroup_id", flat=True)
             )
-            qs = qs.filter(thread__subgroup_id__in=subscribed_ids)
+            my_subgroup_ids = subscribed_ids | member_subgroup_ids(user)
+            qs = qs.filter(thread__subgroup_id__in=my_subgroup_ids)
 
         return qs.order_by("-created_at")[:limit]
 
