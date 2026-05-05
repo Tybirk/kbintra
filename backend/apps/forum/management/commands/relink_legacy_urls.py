@@ -23,6 +23,7 @@ from django.core.management.base import BaseCommand
 
 from apps.announcements.models import Announcement
 from apps.forum.models import Post, Subgroup, Thread
+from apps.links.models import UsefulLinks
 
 ANCHOR_RE = re.compile(r'<a\s+([^>]*?)href="([^"]*)"([^>]*)>(.*?)</a>', re.DOTALL)
 PATH_RE = re.compile(r"^https?://(?:www\.)?kbintra\.dk(/[^?#]*)")
@@ -120,6 +121,10 @@ class Command(BaseCommand):
             (
                 "Announcement",
                 Announcement.objects.filter(content__icontains="kbintra.dk").iterator(),
+            ),
+            (
+                "UsefulLinks",
+                UsefulLinks.objects.filter(content__icontains="kbintra.dk").iterator(),
             ),
         ):
             self.stdout.write(self.style.MIGRATE_HEADING(f"\n=== {model_label} ==="))
