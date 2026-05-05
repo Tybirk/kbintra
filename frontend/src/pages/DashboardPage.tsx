@@ -2,7 +2,12 @@ import { useState, useEffect } from "react"
 
 import { useNavigate } from "react-router-dom"
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  keepPreviousData,
+} from "@tanstack/react-query"
 
 import {
   Title,
@@ -159,17 +164,34 @@ export default function DashboardPage() {
     queryFn: () => usersApi.getUpcomingBirthdays(7),
   })
 
+  const ACTIVITY_PAGE_SIZE = 5
+
+  const [activityLimit, setActivityLimit] = useState(ACTIVITY_PAGE_SIZE)
+
+  const [activityScope, setActivityScope] = useState<"all" | "subscribed">(
+    "all",
+  )
+
   const {
     data: recentActivity,
 
     isLoading: activityLoading,
 
+    isFetching: activityFetching,
+
     isError: activityError,
   } = useQuery({
-    queryKey: ["forum", "recent"],
+    queryKey: ["forum", "recent", activityLimit, activityScope],
 
-    queryFn: () => forumApi.getRecentActivity(5),
+    queryFn: () =>
+      forumApi.getRecentActivity(activityLimit, activityScope === "subscribed"),
+
+    placeholderData: keepPreviousData,
   })
+
+  const hasMoreActivity =
+    !!recentActivity &&
+    (activityFetching || recentActivity.length === activityLimit)
 
   const hasError =
     announcementsError || eventsError || birthdaysError || activityError
@@ -635,6 +657,20 @@ export default function DashboardPage() {
               Se forum
             </Button>
           </Group>
+          <SegmentedControl
+            value={activityScope}
+            onChange={(val) => {
+              setActivityScope(val as "all" | "subscribed")
+              setActivityLimit(ACTIVITY_PAGE_SIZE)
+            }}
+            data={[
+              { label: "Alle", value: "all" },
+              { label: "Mine grupper", value: "subscribed" },
+            ]}
+            size="xs"
+            fullWidth
+            mb="md"
+          />
           {activityLoading ? (
             <Loader size="sm" />
           ) : recentActivity && recentActivity.length > 0 ? (
@@ -642,9 +678,25 @@ export default function DashboardPage() {
               {recentActivity.map((activity) => (
                 <ActivityPreview key={activity.id} activity={activity} />
               ))}
+              {hasMoreActivity && (
+                <Button
+                  variant="subtle"
+                  size="xs"
+                  loading={activityFetching}
+                  onClick={() =>
+                    setActivityLimit((l) => l + ACTIVITY_PAGE_SIZE)
+                  }
+                >
+                  Vis flere
+                </Button>
+              )}
             </Stack>
           ) : (
-            <Text c="dimmed">Ingen forumaktivitet endnu.</Text>
+            <Text c="dimmed">
+              {activityScope === "subscribed"
+                ? "Ingen aktivitet i dine grupper endnu."
+                : "Ingen forumaktivitet endnu."}
+            </Text>
           )}
         </Paper>
       </ErrorBoundary>

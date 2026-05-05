@@ -62,8 +62,15 @@ interface updateThreadData {
 export const forumApi = {
   // Recent activity
 
-  getRecentActivity: async (limit = 10): Promise<RecentActivity[]> => {
-    const response = await apiClient.get(`/forum/recent/?limit=${limit}`)
+  getRecentActivity: async (
+    limit = 10,
+    subscribedOnly = false,
+  ): Promise<RecentActivity[]> => {
+    const params: Record<string, string | number> = { limit }
+
+    if (subscribedOnly) params.subscribed_only = "true"
+
+    const response = await apiClient.get("/forum/recent/", { params })
 
     return asArray(response.data)
   },

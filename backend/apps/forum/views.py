@@ -1270,7 +1270,13 @@ class RecentActivityView(generics.ListAPIView):
             limit = int(self.request.query_params.get("limit", 10))
         except (ValueError, TypeError):
             limit = 10
-        limit = min(max(limit, 1), 50)  # Clamp between 1 and 50
+        limit = min(max(limit, 1), 100)
+
+        subscribed_only = self.request.query_params.get("subscribed_only", "").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
 
         # Apply the thread-visibility predicate against the joined `forum_thread` rows
         # (already pulled in by select_related). The previous `thread_id__in=Thread...`
@@ -1286,11 +1292,16 @@ class RecentActivityView(generics.ListAPIView):
                 | Q(thread__subgroup_id__in=member_ids)
                 | Q(thread__author_id=user.id)
             )
-        return (
-            Post.objects.select_related("author", "thread", "thread__subgroup")
-            .filter(visibility)
-            .order_by("-created_at")[:limit]
-        )
+
+        qs = Post.objects.select_related("author", "thread", "thread__subgroup").filter(visibility)
+
+        if subscribed_only and user and user.is_authenticated:
+            subscribed_ids = SubgroupSubscription.objects.filter(user=user).values_list(
+                "subgroup_id", flat=True
+            )
+            qs = qs.filter(thread__subgroup_id__in=subscribed_ids)
+
+        return qs.order_by("-created_at")[:limit]
 
 
 class ReactionToggleView(APIView):
