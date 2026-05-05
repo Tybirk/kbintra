@@ -1025,8 +1025,18 @@ function DiscussionSection({
               p="md"
               radius="sm"
             >
-              <Group justify="space-between" mb="sm">
-                <Group gap="sm">
+              <Group
+                justify="space-between"
+                wrap="nowrap"
+                align="flex-start"
+                mb="sm"
+              >
+                <Group
+                  gap="sm"
+                  wrap="nowrap"
+                  align="flex-start"
+                  style={{ flex: 1, minWidth: 0 }}
+                >
                   <Avatar
                     src={post.author?.profile_picture}
                     size="md"
@@ -1035,7 +1045,7 @@ function DiscussionSection({
                     {post.author?.first_name?.[0]}
                     {post.author?.last_name?.[0]}
                   </Avatar>
-                  <div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
                     <Text size="sm" fw={500}>
                       {post.author ? (
                         <UserLink

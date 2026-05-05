@@ -358,8 +358,13 @@ function AnnouncementCard({
 
   return (
     <Paper withBorder p="lg" radius="md">
-      <Group justify="space-between" mb="md">
-        <Group gap="sm">
+      <Group justify="space-between" wrap="nowrap" align="flex-start" mb="md">
+        <Group
+          gap="sm"
+          wrap="nowrap"
+          align="flex-start"
+          style={{ flex: 1, minWidth: 0 }}
+        >
           <Avatar
             src={announcement.author.profile_picture}
             radius="xl"
@@ -368,7 +373,7 @@ function AnnouncementCard({
             {announcement.author.first_name?.[0]}
             {announcement.author.last_name?.[0]}
           </Avatar>
-          <div>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <Text fw={500}>{announcement.title}</Text>
             <Text size="sm" c="dimmed">
               <UserLink
