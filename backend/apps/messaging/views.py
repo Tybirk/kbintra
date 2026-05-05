@@ -196,6 +196,25 @@ class ConversationListCreateView(generics.ListCreateAPIView):
                     message_id=message.id,
                 )
 
+        # Notify other participants over WebSocket so their conversation list
+        # refreshes immediately and their socket joins the conversation group.
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+
+        channel_layer = get_channel_layer()
+        conversation_data = ConversationDetailSerializer(
+            conversation, context={"request": request}
+        ).data
+        for participant in conversation.participants.exclude(id=request.user.id):
+            async_to_sync(channel_layer.group_send)(
+                f"user_{participant.id}",
+                {
+                    "type": "new_conversation",
+                    "conversation_id": conversation.id,
+                    "conversation": conversation_data,
+                },
+            )
+
         return Response(
             ConversationDetailSerializer(conversation, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
