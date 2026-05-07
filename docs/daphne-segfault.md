@@ -49,6 +49,14 @@ docker exec kbintra-prod-backend-1 uv run python -c "import autobahn; print(auto
 # Expected: 25.12.2
 ```
 
+### Confidence: low
+
+After reading the 25.12.1 + 25.12.2 changelogs, the upgrade is **probably not** the fix. Both releases are dominated by CI/build/packaging changes. Only one runtime fix is potentially adjacent:
+
+- **autobahn #1767** — "Runtime pure Python fallback for NVX doesn't work consistently". NVX is Autobahn's native fast path for `Utf8Validator` and `create_xor_masker`, called on every WebSocket frame. The fix is about `HAS_NVX` selection consistency. This *could* relate to native/Python state mismatch causing memory corruption, but the issue's stated failure mode is `ImportError`, not SIGSEGV.
+
+Treat the deployment as "watch for recurrence" rather than "resolved." If it crashes again, skip further Autobahn version tweaks and go straight to the escalation options below.
+
 ## If it recurs
 
 1. **Confirm same signature** with `dmesg | grep daphne`. If the crash is in a different library or shows `oom-killer`, it's a different problem.
