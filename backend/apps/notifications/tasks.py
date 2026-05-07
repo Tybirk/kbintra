@@ -309,23 +309,36 @@ def notify_new_thread_task(
         logger.warning("notify_new_thread_task: Author %d not found", author_id)
         return
 
-    subscribers = User.objects.filter(
-        subgroup_subscriptions__subgroup_id=subgroup_id,
-        subgroup_subscriptions__notify_new_threads=True,
+    from apps.forum.models import SubgroupMembership, SubgroupSubscription
+
+    # Subscribers with notify_new_threads=True (existing recipients).
+    subscriber_ids = set(
+        SubgroupSubscription.objects.filter(
+            subgroup_id=subgroup_id,
+            notify_new_threads=True,
+        ).values_list("user_id", flat=True)
     )
+    # Members default to opted-in. Exclude only those with an explicit
+    # subscription saying notify_new_threads=False — a deliberate opt-out.
+    opted_out_ids = set(
+        SubgroupSubscription.objects.filter(
+            subgroup_id=subgroup_id,
+            notify_new_threads=False,
+        ).values_list("user_id", flat=True)
+    )
+    member_ids = set(
+        SubgroupMembership.objects.filter(subgroup_id=subgroup_id).values_list("user_id", flat=True)
+    )
+    recipient_ids = subscriber_ids | (member_ids - opted_out_ids)
+
     if members_only:
         # Restrict to (current members of subgroup ∪ {author}).
-        from apps.forum.models import SubgroupMembership
-
-        member_ids = set(
-            SubgroupMembership.objects.filter(subgroup_id=subgroup_id).values_list(
-                "user_id", flat=True
-            )
-        )
-        member_ids.add(author_id)
-        subscribers = subscribers.filter(id__in=member_ids)
+        recipient_ids &= member_ids
+        recipient_ids.add(author_id)
     if exclude_user_ids:
-        subscribers = subscribers.exclude(id__in=exclude_user_ids)
+        recipient_ids.difference_update(exclude_user_ids)
+
+    subscribers = User.objects.filter(id__in=recipient_ids, is_active=True)
     count = notify_new_thread(
         subscribers=subscribers,
         author=author,
@@ -724,31 +737,46 @@ def notify_subgroup_activity_task(
 
     final_exclude = participants_to_exclude | set(mentioned_ids)
 
-    subscribers = (
-        User.objects.filter(
-            is_active=True,
-            subgroup_subscriptions__subgroup_id=subgroup_id,
-            subgroup_subscriptions__notify_replies=True,
-        )
-        .exclude(id__in=final_exclude)
-        .exclude(id__in=ThreadMuteStatus.objects.filter(thread_id=thread_id).values("user_id"))
-        .distinct()
-    )
-    if members_only:
-        from apps.forum.models import SubgroupMembership, Thread
+    from apps.forum.models import SubgroupMembership, SubgroupSubscription
 
-        member_ids = set(
-            SubgroupMembership.objects.filter(subgroup_id=subgroup_id).values_list(
-                "user_id", flat=True
-            )
-        )
+    subscriber_ids = set(
+        SubgroupSubscription.objects.filter(
+            subgroup_id=subgroup_id,
+            notify_replies=True,
+        ).values_list("user_id", flat=True)
+    )
+    # Members default to opted-in for replies; only an explicit subscription
+    # row with notify_replies=False excludes them.
+    opted_out_ids = set(
+        SubgroupSubscription.objects.filter(
+            subgroup_id=subgroup_id,
+            notify_replies=False,
+        ).values_list("user_id", flat=True)
+    )
+    member_ids = set(
+        SubgroupMembership.objects.filter(subgroup_id=subgroup_id).values_list("user_id", flat=True)
+    )
+    recipient_ids = subscriber_ids | (member_ids - opted_out_ids)
+
+    muted_ids = set(
+        ThreadMuteStatus.objects.filter(thread_id=thread_id).values_list("user_id", flat=True)
+    )
+    recipient_ids -= final_exclude
+    recipient_ids -= muted_ids
+
+    if members_only:
+        from apps.forum.models import Thread
+
         # Author of the thread is always allowed to receive replies.
         thread_author_id = (
             Thread.objects.filter(id=thread_id).values_list("author_id", flat=True).first()
         )
+        allowed = set(member_ids)
         if thread_author_id:
-            member_ids.add(thread_author_id)
-        subscribers = subscribers.filter(id__in=member_ids)
+            allowed.add(thread_author_id)
+        recipient_ids &= allowed
+
+    subscribers = User.objects.filter(id__in=recipient_ids, is_active=True)
 
     count = notify_subgroup_activity(
         subscribers=subscribers,
@@ -817,25 +845,32 @@ def notify_subgroup_activity_new_thread_task(
 
     final_exclude = set(exclude_user_ids) | will_get_new_thread
 
-    subscribers = (
-        User.objects.filter(
-            is_active=True,
-            subgroup_subscriptions__subgroup_id=subgroup_id,
-            subgroup_subscriptions__notify_new_threads=True,
-        )
-        .exclude(id__in=final_exclude)
-        .distinct()
-    )
-    if members_only:
-        from apps.forum.models import SubgroupMembership
+    from apps.forum.models import SubgroupMembership, SubgroupSubscription
 
-        member_ids = set(
-            SubgroupMembership.objects.filter(subgroup_id=subgroup_id).values_list(
-                "user_id", flat=True
-            )
-        )
-        member_ids.add(author_id)
-        subscribers = subscribers.filter(id__in=member_ids)
+    subscriber_ids = set(
+        SubgroupSubscription.objects.filter(
+            subgroup_id=subgroup_id,
+            notify_new_threads=True,
+        ).values_list("user_id", flat=True)
+    )
+    opted_out_ids = set(
+        SubgroupSubscription.objects.filter(
+            subgroup_id=subgroup_id,
+            notify_new_threads=False,
+        ).values_list("user_id", flat=True)
+    )
+    member_ids = set(
+        SubgroupMembership.objects.filter(subgroup_id=subgroup_id).values_list("user_id", flat=True)
+    )
+    recipient_ids = subscriber_ids | (member_ids - opted_out_ids)
+    recipient_ids -= final_exclude
+
+    if members_only:
+        allowed = set(member_ids)
+        allowed.add(author_id)
+        recipient_ids &= allowed
+
+    subscribers = User.objects.filter(id__in=recipient_ids, is_active=True)
 
     count = notify_subgroup_activity(
         subscribers=subscribers,
