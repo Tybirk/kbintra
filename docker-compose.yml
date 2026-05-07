@@ -95,6 +95,8 @@ services:
       - SENTRY_RELEASE=${SENTRY_RELEASE:-}
       # Dump a Python traceback to stderr on segfault — diagnosing intermittent daphne crashes (see docs/daphne-segfault.md)
       - PYTHONFAULTHANDLER=1
+      # Disable Autobahn's NVX C-extension fast paths — primary suspect for the segfaults (see docs/daphne-segfault.md)
+      - AUTOBAHN_USE_NVX=0
     networks:
       - web
     restart: unless-stopped
