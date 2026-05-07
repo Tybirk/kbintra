@@ -15,11 +15,11 @@ else
     echo "Running database migrations..."
     uv run python manage.py migrate --noinput
 
-    echo "Rebuilding search index..."
+    echo "Rebuilding search index (if empty)..."
     _search_start=$(date +%s%3N)
-    uv run python manage.py rebuild_search_index
+    uv run python manage.py rebuild_search_index --if-empty
     _search_end=$(date +%s%3N)
-    echo "Search index rebuilt in $((_search_end - _search_start))ms"
+    echo "Search index step finished in $((_search_end - _search_start))ms"
 
 fi
 
