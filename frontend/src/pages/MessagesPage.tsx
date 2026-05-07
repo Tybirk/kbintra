@@ -1280,18 +1280,20 @@ function ChatArea({
     }
   }, [conversation.id, conversation.messages, location.hash])
 
-  const handleSend = async () => {
-    const textContent = message.trim()
+  const handleSend = async (contentOverride?: string) => {
+    const messageContent =
+      contentOverride !== undefined ? contentOverride : message
+
+    const textContent = messageContent.trim()
 
     if ((!textContent && attachments.length === 0) || isSending) return
 
     setIsSending(true)
 
-    const messageContent = message
-
     const messageAttachments = [...attachments]
 
-    const messageMentions = [...mentionedUserIds]
+    const messageMentions =
+      contentOverride !== undefined ? [] : [...mentionedUserIds]
 
     setMessage("") // Clear immediately for better UX
 
@@ -2629,13 +2631,16 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
     setSelectedUsers((prev) => prev.filter((u) => u.id !== userId))
   }
 
-  const handleSend = async () => {
+  const handleSend = async (contentOverride?: string) => {
     if (selectedUsers.length === 0) return
+
+    const messageContent =
+      contentOverride !== undefined ? contentOverride : message
 
     createMutation.mutate({
       participant_ids: selectedUsers.map((u) => u.id),
 
-      initial_message: message.trim() || undefined,
+      initial_message: messageContent.trim() || undefined,
 
       attachments: attachments.length > 0 ? attachments : undefined,
     })

@@ -28,7 +28,7 @@ interface GiphyPickerProps {
 
   anchor: GiphyAnchor
 
-  onInsert: (url: string) => void
+  onSend: (url: string) => void
 
   onCancel: () => void
 }
@@ -40,7 +40,7 @@ export default function GiphyPicker({
 
   anchor,
 
-  onInsert,
+  onSend,
 
   onCancel,
 }: GiphyPickerProps) {
@@ -145,8 +145,8 @@ export default function GiphyPicker({
             radius="sm"
           />
           <Group gap="xs">
-            <Button size="xs" onClick={() => onInsert(gif.originalUrl)}>
-              Indsæt
+            <Button size="xs" onClick={() => onSend(gif.originalUrl)}>
+              Send
             </Button>
             <Button size="xs" variant="default" onClick={() => doFetch(query)}>
               Ny GIF

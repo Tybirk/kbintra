@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, lazy, Suspense } from "react"
 
+import { flushSync } from "react-dom"
+
 import { useEditor } from "@tiptap/react"
 
 import { mergeAttributes, Extension } from "@tiptap/core"
@@ -55,14 +57,17 @@ function detectGiphy(editor: Editor, setter: (s: GiphyState | null) => void) {
 
   const { from } = editor.state.selection
 
-  const text = editor.state.doc.textBetween(0, from, "\n")
+  // Only trigger when /giphy <query> is the entire document content
+  const fullText = editor.state.doc.textContent
 
-  const match = text.match(/\/giphy\s+(\S+)$/)
+  const match = fullText.match(/^\/giphy\s+(.+)/)
 
-  if (match) {
+  const query = match ? match[1].trim() : ""
+
+  if (query) {
     const coords = editor.view.coordsAtPos(from)
 
-    setter({ query: match[1], anchor: coords, from })
+    setter({ query, anchor: coords, from })
   } else {
     setter(null)
   }
@@ -415,43 +420,21 @@ export default function RichTextEditor({
   }, [])
 
   const handleGiphyInsert = (url: string) => {
-    if (!giphyState || !editor) return
+    if (!editor) return
 
-    const { query, from } = giphyState
+    editor.chain().focus().clearContent().setImage({ src: url }).run()
 
-    const triggerLen = "/giphy ".length + query.length
+    flushSync(() => {
+      setGiphyState(null)
+    })
 
-    editor
-
-      .chain()
-
-      .focus()
-
-      .deleteRange({ from: from - triggerLen, to: from })
-
-      .setImage({ src: url })
-
-      .run()
-
-    setGiphyState(null)
+    onSubmitRef.current?.()
   }
 
   const handleGiphyCancel = () => {
-    if (!giphyState || !editor) return
+    if (!editor) return
 
-    const { query, from } = giphyState
-
-    const triggerLen = "/giphy ".length + query.length
-
-    editor
-
-      .chain()
-
-      .focus()
-
-      .deleteRange({ from: from - triggerLen, to: from })
-
-      .run()
+    editor.chain().focus().clearContent().run()
 
     setGiphyState(null)
   }
@@ -474,7 +457,7 @@ export default function RichTextEditor({
         <GiphyPicker
           query={giphyState.query}
           anchor={giphyState.anchor}
-          onInsert={handleGiphyInsert}
+          onSend={handleGiphyInsert}
           onCancel={handleGiphyCancel}
         />
       )}

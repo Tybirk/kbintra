@@ -62,7 +62,7 @@ interface ChatRichTextEditorProps {
 
   onChange: (content: string) => void
 
-  onSend: () => void
+  onSend: (contentOverride?: string) => void
 
   placeholder?: string
 
@@ -448,15 +448,15 @@ export default function ChatRichTextEditor({
       }
     }
 
-    // Giphy detection — independent of mention/emoji triggers
+    // Giphy detection — only triggers when /giphy <query> is the entire message
+    const giphyMatch = newContent.match(/^\/giphy\s+(.+)/)
+    const giphyQuery = giphyMatch ? giphyMatch[1].trim() : ""
 
-    const giphyMatch = beforeCursor.match(/\/giphy\s+(\S+)$/)
-
-    if (giphyMatch) {
+    if (giphyQuery) {
       const rect = textarea.getBoundingClientRect()
 
       setGiphyState({
-        query: giphyMatch[1],
+        query: giphyQuery,
 
         anchor: { left: rect.left, top: rect.top, bottom: rect.bottom },
       })
@@ -540,48 +540,18 @@ export default function ChatRichTextEditor({
   }
 
   const handleGiphyInsert = (url: string) => {
-    const textarea = textareaRef.current
-
-    const cursor = textarea?.selectionStart ?? content.length
-
-    const beforeCursor = content.slice(0, cursor)
-
-    const afterCursor = content.slice(cursor)
-
-    const replaced = beforeCursor.replace(/\/giphy\s+\S+$/, url)
-
-    const newContent = replaced + afterCursor
-
-    onChange(newContent)
-
     setGiphyState(null)
 
-    requestAnimationFrame(() => {
-      textarea?.focus()
-
-      textarea?.setSelectionRange(replaced.length, replaced.length)
-    })
+    onSend(url)
   }
 
   const handleGiphyCancel = () => {
-    const textarea = textareaRef.current
-
-    const cursor = textarea?.selectionStart ?? content.length
-
-    const beforeCursor = content.slice(0, cursor)
-
-    const afterCursor = content.slice(cursor)
-
-    const replaced = beforeCursor.replace(/\/giphy\s+\S+$/, "")
-
-    onChange(replaced + afterCursor)
+    onChange("")
 
     setGiphyState(null)
 
     requestAnimationFrame(() => {
-      textarea?.focus()
-
-      textarea?.setSelectionRange(replaced.length, replaced.length)
+      textareaRef.current?.focus()
     })
   }
 
@@ -676,7 +646,7 @@ export default function ChatRichTextEditor({
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
       event.preventDefault()
 
-      if (content.trim() || attachments.length > 0) {
+      if (!giphyState && (content.trim() || attachments.length > 0)) {
         onSend()
       }
 
@@ -690,7 +660,7 @@ export default function ChatRichTextEditor({
     if (event.key === "Enter" && !event.shiftKey && !isMobile) {
       event.preventDefault()
 
-      if (content.trim() || attachments.length > 0) {
+      if (!giphyState && (content.trim() || attachments.length > 0)) {
         onSend()
       }
     }
@@ -768,7 +738,7 @@ export default function ChatRichTextEditor({
         <GiphyPicker
           query={giphyState.query}
           anchor={giphyState.anchor}
-          onInsert={handleGiphyInsert}
+          onSend={handleGiphyInsert}
           onCancel={handleGiphyCancel}
         />
       )}
@@ -1053,7 +1023,7 @@ export default function ChatRichTextEditor({
           size={isMobile ? "md" : "lg"}
           radius="md"
           variant="filled"
-          onClick={onSend}
+          onClick={() => onSend()}
           disabled={disabled || isEmpty}
           mb={1}
           mr={isMobile ? 2 : undefined}
