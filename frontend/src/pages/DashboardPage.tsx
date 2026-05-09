@@ -1651,17 +1651,17 @@ export function FoodDayWidget({
           </Text>
         )}
 
-        {!hideLockedActiveControls && <Divider mb="sm" />}
+        <Divider mb="sm" />
 
         {/* Registration controls */}
-        {!hideLockedActiveControls && (
-          <Stack gap="xs">
-            {isLocked && !registration?.is_active ? (
-              <Text size="xs" c="dimmed" ta="center">
-                Ikke tilmeldt
-              </Text>
-            ) : (
-              <>
+        <Stack gap="xs">
+          {isLocked && !registration?.is_active ? (
+            <Text size="xs" c="dimmed" ta="center">
+              Ikke tilmeldt
+            </Text>
+          ) : (
+            <>
+              {!hideLockedActiveControls && (
                 <SegmentedControl
                   value={isActive ? "yes" : "no"}
                   onChange={(val) => setIsActive(val === "yes")}
@@ -1674,100 +1674,100 @@ export function FoodDayWidget({
                   size="xs"
                   disabled={isLocked}
                 />
+              )}
 
-                {isActive && (
-                  <>
+              {isActive && (
+                <>
+                  <SegmentedControl
+                    value={diningOption}
+                    onChange={(val) => setDiningOption(val as DiningOption)}
+                    data={[
+                      { label: "Fælleshuset", value: "eat_in" },
+
+                      { label: "Tag med", value: "take_away" },
+                    ]}
+                    fullWidth
+                    size="xs"
+                  />
+
+                  {diningOption === "eat_in" && (
                     <SegmentedControl
-                      value={diningOption}
-                      onChange={(val) => setDiningOption(val as DiningOption)}
+                      value={seatingTime}
+                      onChange={(val) => setSeatingTime(val as SeatingTime)}
                       data={[
-                        { label: "Fælleshuset", value: "eat_in" },
+                        { label: "17:30", value: "17:30" },
 
-                        { label: "Tag med", value: "take_away" },
+                        { label: "18:30", value: "18:30" },
                       ]}
                       fullWidth
                       size="xs"
                     />
+                  )}
 
-                    {diningOption === "eat_in" && (
-                      <SegmentedControl
-                        value={seatingTime}
-                        onChange={(val) => setSeatingTime(val as SeatingTime)}
-                        data={[
-                          { label: "17:30", value: "17:30" },
-
-                          { label: "18:30", value: "18:30" },
-                        ]}
-                        fullWidth
+                  {isLocked && hasSomethingToSell && !isPast && (
+                    <Tooltip
+                      label="Salg lukket efter kl. 18:30"
+                      disabled={!isAfterCutoff}
+                    >
+                      <Button
+                        variant="light"
+                        color="orange"
                         size="xs"
-                      />
-                    )}
-
-                    {isLocked && hasSomethingToSell && !isPast && (
-                      <Tooltip
-                        label="Salg lukket efter kl. 18:30"
-                        disabled={!isAfterCutoff}
+                        leftSection={<IconTicket size={14} />}
+                        onClick={handleOpenSellModal}
+                        disabled={isAfterCutoff}
                       >
-                        <Button
-                          variant="light"
-                          color="orange"
-                          size="xs"
-                          leftSection={<IconTicket size={14} />}
-                          onClick={handleOpenSellModal}
-                          disabled={isAfterCutoff}
-                        >
-                          Sælg billet
-                        </Button>
-                      </Tooltip>
-                    )}
+                        Sælg billet
+                      </Button>
+                    </Tooltip>
+                  )}
 
-                    {ticketsForSale && ticketsForSale.length > 0 && (
-                      <Stack gap={2} mt="xs">
-                        {ticketsForSale.map((t) => (
-                          <Text key={t.id} size="xs" c="orange">
-                            Billet til salg: {t.total_portions} port.{" "}
-                            {t.price ? `• ${t.price} kr` : "• Gratis"}
+                  {ticketsForSale && ticketsForSale.length > 0 && (
+                    <Stack gap={2} mt="xs">
+                      {ticketsForSale.map((t) => (
+                        <Text key={t.id} size="xs" c="orange">
+                          Billet til salg: {t.total_portions} port.{" "}
+                          {t.price ? `• ${t.price} kr` : "• Gratis"}
+                        </Text>
+                      ))}
+                    </Stack>
+                  )}
+
+                  {purchasedTickets && purchasedTickets.length > 0 && (
+                    <Stack gap={2} mt="xs">
+                      {purchasedTickets.map((t) => (
+                        <Group key={t.id} gap="xs" wrap="nowrap">
+                          <Avatar
+                            src={t.owner.profile_picture}
+                            size={18}
+                            radius="xl"
+                          >
+                            {t.owner.first_name?.[0]}
+                          </Avatar>
+                          <Text size="xs" c="green">
+                            Købt billet: {t.total_portions} port.{" "}
+                            {t.price ? `• ${t.price} kr` : "• Gratis"} fra{" "}
+                            {t.owner.first_name}
                           </Text>
-                        ))}
-                      </Stack>
-                    )}
-
-                    {purchasedTickets && purchasedTickets.length > 0 && (
-                      <Stack gap={2} mt="xs">
-                        {purchasedTickets.map((t) => (
-                          <Group key={t.id} gap="xs" wrap="nowrap">
-                            <Avatar
-                              src={t.owner.profile_picture}
-                              size={18}
-                              radius="xl"
-                            >
-                              {t.owner.first_name?.[0]}
-                            </Avatar>
-                            <Text size="xs" c="green">
-                              Købt billet: {t.total_portions} port.{" "}
-                              {t.price ? `• ${t.price} kr` : "• Gratis"} fra{" "}
-                              {t.owner.first_name}
-                            </Text>
-                          </Group>
-                        ))}
-                      </Stack>
-                    )}
-                  </>
-                )}
-              </>
-            )}
-
-            {/* Saving indicator — fixed height to prevent layout jumps */}
-            <Group gap={4} justify="center" h={20}>
-              {isSaving && <Loader size={10} />}
-              {(isSaving || lastSaved) && (
-                <Text size="xs" c={isSaving ? "blue" : "green"}>
-                  {isSaving ? "Gemmer..." : "Gemt"}
-                </Text>
+                        </Group>
+                      ))}
+                    </Stack>
+                  )}
+                </>
               )}
-            </Group>
-          </Stack>
-        )}
+            </>
+          )}
+
+          {/* Saving indicator — fixed height to prevent layout jumps */}
+          <Group gap={4} justify="center" h={20}>
+            {isSaving && <Loader size={10} />}
+            {(isSaving || lastSaved) && (
+              <Text size="xs" c={isSaving ? "blue" : "green"}>
+                {isSaving ? "Gemmer..." : "Gemt"}
+              </Text>
+            )}
+          </Group>
+        </Stack>
 
         {communityStats && (
           <>
