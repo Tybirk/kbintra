@@ -68,6 +68,16 @@ function detectGiphy(editor: Editor, setter: (s: GiphyState | null) => void) {
   }
 }
 
+// True when href looks like a bare domain (e.g. "example.com/foo") that the
+// browser would otherwise treat as a relative path. Excludes schemes, absolute
+// paths, anchors, and plain text without a dot.
+function isBareDomain(href: string): boolean {
+  if (!href) return false
+  if (/^[a-z][a-z0-9+\-.]*:/i.test(href)) return false
+  if (href.startsWith("/") || href.startsWith("#")) return false
+  return href.includes(".")
+}
+
 const EmojiSuggestionExtension = Extension.create({
   name: "emojiSuggestion",
 
@@ -214,14 +224,7 @@ export default function RichTextEditor({
           // Auto-prefix https:// for hrefs that look like a bare domain (e.g.
           // "example.com/foo"). A missing scheme makes the browser treat the
           // value as a relative path and navigate inside the app.
-          const hasScheme = /^[a-z][a-z0-9+\-.]*:/i.test(rawHref)
-          const isRelativeOrAnchor =
-            rawHref.startsWith("/") || rawHref.startsWith("#")
-          const looksLikeDomain = rawHref.includes(".")
-          const href =
-            !rawHref || hasScheme || isRelativeOrAnchor || !looksLikeDomain
-              ? rawHref
-              : `https://${rawHref}`
+          const href = isBareDomain(rawHref) ? `https://${rawHref}` : rawHref
 
           const isInternal =
             !href ||
@@ -247,6 +250,11 @@ export default function RichTextEditor({
       }).configure({
         openOnClick: false,
         defaultProtocol: "https",
+        // Tiptap's default validator rejects schemeless URLs entirely, so a
+        // bare "example.com/foo" entered in the link dialog never becomes a
+        // link. Accept those here; renderHTML prepends https:// when serializing.
+        isAllowedUri: (url, ctx) =>
+          !!ctx.defaultValidate(url) || isBareDomain(url),
       }),
 
       Placeholder.configure({

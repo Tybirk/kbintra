@@ -463,30 +463,75 @@ export default function SubgroupPage() {
       : isFeatures
         ? "feature requests"
         : "issues/requests"
+    const taskKindSingular = taskKind.replace(/s$/, "")
 
     const actionVerb = isBugs ? "fix" : isFeatures ? "implement" : "address"
-
-    const capitalize = (str: string) =>
-      str.charAt(0).toUpperCase() + str.slice(1)
+    const actionNoun = isBugs ? "fix" : isFeatures ? "implementation" : "change"
 
     return `\
-# Task: ${capitalize(actionVerb)} open ${taskKind} from the "${subgroup!.name}" forum group
+# Task: Investigate and prepare handoffs for open ${taskKind} from the "${subgroup!.name}" forum group
 
-Below are **${threadCount} open ${taskKind}** reported by residents. Each thread is the original post followed by replies — read the full thread for context and constraints before acting.
+Below are **${threadCount} open ${taskKind}** reported by residents. Each thread is the original post followed by replies — including attachments listed as local file paths and a **Prod link** to the live thread.
 
-Some posts include **attachments** (screenshots, images, documents) listed as local file paths. Only read attachments that seem relevant to the task at hand — e.g. screenshots attached to bug reports.
+## Your job in this session
 
-For each ${taskKind.replace(/s$/, "")}:
-1. Read the full thread and understand the problem/request. Ask clarifying questions if needed.
-2. ${capitalize(actionVerb)} it with a focused, minimal change
-3. Run the relevant checks when done
+You are the **investigation agent**. You do **not** implement fixes. Instead, for every actionable ${taskKindSingular}, you produce a self-contained handoff document so a fresh agent can ${actionVerb} it without rereading this whole blob.
 
-If multiple ${taskKind} are **independent**, spawn parallel subagents to handle them concurrently.
-Skip any that are too vague to act on, and note why at the end. The subagents should not do the work, instead gather the
-needed information, and then you as the main agent will act on it.
+Concretely:
 
-The process is as follows. You gather all the information from all the subagents and prepare the way you plan to address it.
-Then each seperate ${capitalize(actionVerb)} is implemented one at a time where you ask me for confirmation on your understanding + approach and I commit before continuing.
+1. Read every thread in full, including referenced screenshots/attachments.
+2. Triage: decide which are actionable now vs. should be skipped (too vague, blocked on a decision, infrastructure-only, already fixed, etc.).
+3. For each actionable ${taskKindSingular}, investigate the codebase enough to identify the file(s) involved, the root cause, and a concrete approach. Do **not** edit code.
+4. Write one Markdown handoff file per actionable ${taskKindSingular} into \`bugs/\` (create the directory if missing). Use the template below.
+5. Write \`bugs/SKIPPED.md\` listing every skipped thread with its **Prod link** and a one-line reason.
+6. Write \`bugs/README.md\` as an index: numbered list of handoff files + a section pointing to \`SKIPPED.md\`.
+
+After this session, the user opens a fresh Claude session per handoff file and asks the new agent to ${actionVerb} that one ${taskKindSingular}.
+
+## Handoff file template (\`bugs/NN-<short-slug>.md\`)
+
+\`\`\`markdown
+# <Bug title>
+
+**Prod link:** <URL from the thread's "Prod link:" line — paste verbatim>
+**Reported by:** <author>, <date>
+**Status:** Open
+
+## Original thread
+
+<full conversation copied from the source blob, attachments listed>
+
+## Investigation (done by previous agent)
+
+- Relevant file(s): <path:line>
+- Root cause: <one paragraph>
+- Constraints/decisions already made in the thread: <bullet list>
+
+## Proposed ${actionNoun}
+
+<step-by-step plan, file-by-file>
+
+## How to verify
+
+<concrete repro: URL paths to visit, inputs to enter, expected vs current behavior>
+
+## Reporting back
+
+After the ${actionNoun} is committed, post a reply on the **Prod link** above:
+
+> Fejlen er rettet — <one-sentence summary of what changed>. Tak for rapporten!
+\`\`\`
+
+## Numbering
+
+Number the handoff files in the order the threads appear in this blob (\`01\`, \`02\`, …). Skip numbers for skipped threads — record those only in \`SKIPPED.md\`.
+
+## Final report to the user
+
+When done, print a short summary:
+- N handoff files written (with paths)
+- M skipped threads (with prod links + reasons)
+- Anything that needs the user's input before a handoff can be finalized
 
 ---
 
@@ -513,6 +558,7 @@ Then each seperate ${capitalize(actionVerb)} is implemented one at a time where 
         page += 1
       }
       const parts: string[] = [buildLlmPreamble(nonClosedThreads.length)]
+      const origin = window.location.origin
 
       for (const thread of nonClosedThreads) {
         const posts = await forumApi.getPosts(thread.id)
@@ -521,7 +567,11 @@ Then each seperate ${capitalize(actionVerb)} is implemented one at a time where 
           ? `${thread.author.first_name} ${thread.author.last_name}`
           : "Ukendt"
 
+        const threadUrl = `${origin}/forum/${slug}/traad/${thread.slug}`
+
         parts.push(`## ${thread.title}\n\n`)
+
+        parts.push(`**Prod link:** ${threadUrl}\n\n`)
 
         parts.push(
           `*Oprettet af ${authorName}, ${dayjs(thread.created_at).locale("da").format("D. MMMM YYYY")} · ${posts.length} svar*\n\n`,
