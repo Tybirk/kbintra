@@ -209,11 +209,24 @@ export default function RichTextEditor({
 
       Link.extend({
         renderHTML({ HTMLAttributes }) {
-          const href: string = HTMLAttributes.href ?? ""
+          const rawHref: string = HTMLAttributes.href ?? ""
+
+          // Auto-prefix https:// for hrefs that look like a bare domain (e.g.
+          // "example.com/foo"). A missing scheme makes the browser treat the
+          // value as a relative path and navigate inside the app.
+          const hasScheme = /^[a-z][a-z0-9+\-.]*:/i.test(rawHref)
+          const isRelativeOrAnchor =
+            rawHref.startsWith("/") || rawHref.startsWith("#")
+          const looksLikeDomain = rawHref.includes(".")
+          const href =
+            !rawHref || hasScheme || isRelativeOrAnchor || !looksLikeDomain
+              ? rawHref
+              : `https://${rawHref}`
 
           const isInternal =
             !href ||
             href.startsWith("/") ||
+            href.includes("kb-intra.dk") ||
             href.includes("kbintra.top") ||
             href.includes("localhost")
 
@@ -221,6 +234,8 @@ export default function RichTextEditor({
             "a",
 
             mergeAttributes(HTMLAttributes, {
+              href: href || null,
+
               target: isInternal ? null : "_blank",
 
               rel: isInternal ? null : "noopener noreferrer",
@@ -231,6 +246,7 @@ export default function RichTextEditor({
         },
       }).configure({
         openOnClick: false,
+        defaultProtocol: "https",
       }),
 
       Placeholder.configure({
