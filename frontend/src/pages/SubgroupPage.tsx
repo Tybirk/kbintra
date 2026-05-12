@@ -471,7 +471,7 @@ export default function SubgroupPage() {
     return `\
 # Task: Investigate and prepare handoffs for open ${taskKind} from the "${subgroup!.name}" forum group
 
-Below are **${threadCount} open ${taskKind}** reported by residents. Each thread is the original post followed by replies — including attachments listed as local file paths and a **Prod link** to the live thread.
+Below are **${threadCount} open ${taskKind}** reported by residents. Each thread is the original post followed by replies — including attachments listed as direct URLs (download with \`curl -O <url>\` only the ones you need for a given ${taskKindSingular}) and a **Prod link** to the live thread.
 
 ## Your job in this session
 
@@ -594,7 +594,12 @@ When done, print a short summary:
             parts.push("Attachments:\n")
 
             for (const att of post.attachments) {
-              parts.push(`- \`backend/data/media/${att.file}\` (${att.name})\n`)
+              const attUrl = att.file_url.startsWith("http")
+                ? att.file_url
+                : `${origin}${att.file_url}`
+              parts.push(
+                `- ${attUrl} (${att.name}) — fetch with \`curl -O '${attUrl}'\`\n`,
+              )
             }
 
             parts.push("\n")
