@@ -146,7 +146,7 @@ class EventSerializer(serializers.ModelSerializer):
     def get_can_edit(self, obj: Event) -> bool:
         request = self.context.get("request")
         if request and request.user.is_authenticated:
-            return obj.created_by_id == request.user.id or request.user.is_staff
+            return obj.created_by_id == request.user.id
         return False
 
     def get_rsvp_summary(self, obj: Event) -> dict | None:

@@ -83,4 +83,16 @@ export const announcementsApi = {
   deleteAnnouncement: async (id: number): Promise<void> => {
     await apiClient.delete(`/announcements/${id}/`)
   },
+
+  toggleDashboard: async (
+    id: number,
+
+    show: boolean,
+  ): Promise<Announcement> => {
+    const response = await apiClient.patch(`/announcements/${id}/dashboard/`, {
+      show_on_dashboard: show,
+    })
+
+    return response.data
+  },
 }

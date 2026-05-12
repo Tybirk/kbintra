@@ -64,6 +64,20 @@ html[data-mantine-color-scheme="dark"] {
   --mantine-color-default-hover: #2a2d38;
 }
 
+/*
+ * Mantine Schedule DayView: the "Hele dagen" gutter label sits in a fixed
+ * 5rem-wide column. In accessibility mode the bumped font-size makes the
+ * label wider than the column, so it wraps to two lines and the second line
+ * overflows into the 06:00 time-slot row below. Widen the gutter so the
+ * label stays on one line, and add nowrap as a belt-and-braces guard.
+ */
+html[data-accessibility="on"] .mantine-DayView-dayView {
+  --day-view-slot-labels-width: calc(7rem * var(--mantine-scale));
+}
+html[data-accessibility="on"] .mantine-DayView-dayViewSlotLabel {
+  white-space: nowrap;
+}
+
 /* ── Dark mode + accessibility ─────────────────────────────────────── */
 html[data-mantine-color-scheme="dark"][data-accessibility="on"] {
   /*

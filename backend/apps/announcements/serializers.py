@@ -48,6 +48,7 @@ class AnnouncementSerializer(serializers.ModelSerializer):
     edited_by = AuthorSerializer(read_only=True)
     is_own = serializers.SerializerMethodField()
     can_edit = serializers.SerializerMethodField()
+    can_toggle_dashboard = serializers.SerializerMethodField()
     attachments = AnnouncementAttachmentSerializer(many=True, read_only=True)
 
     class Meta:
@@ -63,6 +64,7 @@ class AnnouncementSerializer(serializers.ModelSerializer):
             "priority",
             "is_own",
             "can_edit",
+            "can_toggle_dashboard",
             "attachments",
             "created_at",
             "updated_at",
@@ -82,6 +84,12 @@ class AnnouncementSerializer(serializers.ModelSerializer):
         return False
 
     def get_can_edit(self, obj: Announcement) -> bool:
+        request = self.context.get("request")
+        if request and request.user.is_authenticated:
+            return obj.author_id == request.user.id
+        return False
+
+    def get_can_toggle_dashboard(self, obj: Announcement) -> bool:
         request = self.context.get("request")
         if request and request.user.is_authenticated:
             return obj.author_id == request.user.id or request.user.is_staff

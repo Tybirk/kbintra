@@ -150,22 +150,46 @@ class TestAnnouncementAPI:
 
 
 class TestAnnouncementAdminRights:
-    """Admin (is_staff) can manage announcements they did not author."""
+    """Admin (is_staff) has no special privileges over announcements they did not author."""
 
-    def test_admin_can_update_others_announcement(self, admin_client, announcement):
-        """Admin can PATCH an announcement authored by another user."""
+    def test_admin_cannot_update_others_announcement(self, admin_client, announcement):
+        """Admin cannot PATCH an announcement authored by another user."""
+        original_title = announcement.title
         response = admin_client.patch(
             f"/api/announcements/{announcement.id}/",
             {"title": "Admin Updated Title"},
             format="json",
         )
-        assert response.status_code == 200
+        assert response.status_code == 403
         announcement.refresh_from_db()
-        assert announcement.title == "Admin Updated Title"
+        assert announcement.title == original_title
 
-    def test_admin_can_delete_others_announcement(self, admin_client, announcement):
-        """Admin can DELETE an announcement authored by another user."""
+    def test_admin_cannot_delete_others_announcement(self, admin_client, announcement):
+        """Admin cannot DELETE an announcement authored by another user."""
         announcement_id = announcement.id
         response = admin_client.delete(f"/api/announcements/{announcement_id}/")
-        assert response.status_code == 204
-        assert not Announcement.objects.filter(id=announcement_id).exists()
+        assert response.status_code == 403
+        assert Announcement.objects.filter(id=announcement_id).exists()
+
+    def test_admin_can_toggle_others_dashboard(self, admin_client, announcement):
+        """Admin can toggle show_on_dashboard on another user's announcement."""
+        announcement.show_on_dashboard = False
+        announcement.save(update_fields=["show_on_dashboard"])
+        response = admin_client.patch(
+            f"/api/announcements/{announcement.id}/dashboard/",
+            {"show_on_dashboard": True},
+            format="json",
+        )
+        assert response.status_code == 200
+        announcement.refresh_from_db()
+        assert announcement.show_on_dashboard is True
+
+    def test_non_admin_cannot_toggle_others_dashboard(self, api_client, second_user, announcement):
+        """A non-author non-admin user cannot toggle dashboard visibility."""
+        api_client.force_authenticate(user=second_user)
+        response = api_client.patch(
+            f"/api/announcements/{announcement.id}/dashboard/",
+            {"show_on_dashboard": False},
+            format="json",
+        )
+        assert response.status_code == 403

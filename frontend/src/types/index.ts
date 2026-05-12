@@ -545,6 +545,8 @@ export interface Announcement {
 
   can_edit: boolean
 
+  can_toggle_dashboard: boolean
+
   attachments: AnnouncementAttachment[]
 
   created_at: string

@@ -1118,41 +1118,42 @@ class TestEventDeletion:
 
 
 class TestEventAdminRights:
-    """Admin (is_staff) can manage events they did not create."""
+    """Admin (is_staff) has no special privileges over events they did not create."""
 
-    def test_admin_can_update_others_event(self, admin_client, event):
-        """Admin can PATCH an event created by another user."""
+    def test_admin_cannot_update_others_event(self, admin_client, event):
+        """Admin cannot PATCH an event created by another user."""
+        original_title = event.title
         response = admin_client.patch(
             f"/api/events/{event.slug}/",
             {"title": "Admin Updated Title"},
             format="json",
         )
-        assert response.status_code == 200
+        assert response.status_code == 403
         event.refresh_from_db()
-        assert event.title == "Admin Updated Title"
+        assert event.title == original_title
 
-    def test_admin_can_delete_others_event(self, admin_client, event):
-        """Admin can DELETE an event created by another user."""
+    def test_admin_cannot_delete_others_event(self, admin_client, event):
+        """Admin cannot DELETE an event created by another user."""
         event_id = event.id
         event_slug = event.slug
         response = admin_client.delete(f"/api/events/{event_slug}/")
-        assert response.status_code == 204
-        assert not Event.objects.filter(id=event_id).exists()
+        assert response.status_code == 403
+        assert Event.objects.filter(id=event_id).exists()
 
-    def test_admin_can_cancel_others_event(self, admin_client, event):
-        """Admin can cancel a community event created by another user."""
+    def test_admin_cannot_cancel_others_event(self, admin_client, event):
+        """Admin cannot cancel a community event created by another user."""
         response = admin_client.post(
             f"/api/events/{event.slug}/cancel/",
             {"cancellation_message": "Aflyst af admin."},
             format="json",
         )
-        assert response.status_code == 200
+        assert response.status_code == 403
         event.refresh_from_db()
-        assert event.is_cancelled is True
+        assert event.is_cancelled is False
 
-    def test_admin_can_edit_others_event(self, admin_client, event):
-        """can_edit is True for admin on any event; is_own is False (admin didn't create it)."""
+    def test_admin_cannot_edit_others_event(self, admin_client, event):
+        """can_edit is False for admin on another user's event."""
         response = admin_client.get(f"/api/events/{event.slug}/")
         assert response.status_code == 200
         assert response.json()["is_own"] is False
-        assert response.json()["can_edit"] is True
+        assert response.json()["can_edit"] is False

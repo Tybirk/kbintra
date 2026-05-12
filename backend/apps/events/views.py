@@ -37,14 +37,14 @@ def _check_private_event_access(event: Event, user: Any) -> Response | None:
 
 
 class IsOwnerOrReadOnly(permissions.BasePermission):
-    """Custom permission to only allow owners or admins to edit/delete.  Private events are owner-only."""
+    """Custom permission to only allow owners to edit/delete.  Private events are owner-only for reads too."""
 
     def has_object_permission(self, request: Request, view: Any, obj: Event) -> bool:
         if request.method in permissions.SAFE_METHODS:
             if obj.visibility == Event.Visibility.PRIVATE:
                 return obj.created_by == request.user or request.user.is_staff
             return True
-        return obj.created_by == request.user or request.user.is_staff
+        return obj.created_by == request.user
 
 
 class EventListCreateView(generics.ListCreateAPIView):
@@ -222,17 +222,6 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
                 mentioned_user_ids=new_mentions,
                 context_label=f"begivenheden '{event.title}'",
                 link=f"/kalender/{event.slug}",
-            )
-
-        # Notify event creator when an admin edits their event
-        if event.created_by_id != self.request.user.id and self.request.user.is_staff:
-            from apps.notifications.tasks import notify_event_edited_by_admin_task
-
-            notify_event_edited_by_admin_task(
-                event_creator_id=event.created_by_id,
-                editor_id=self.request.user.id,
-                event_title=event.title,
-                event_slug=event.slug,
             )
 
     def perform_destroy(self, instance: Event) -> None:
@@ -524,7 +513,7 @@ class EventCancelView(APIView):
             slug=slug,
         )
 
-        if event.created_by != request.user and not request.user.is_staff:
+        if event.created_by != request.user:
             return Response(
                 {"error": "Kun arrangøren kan aflyse dette arrangement."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -603,7 +592,7 @@ class EventFilesView(APIView):
         except Event.DoesNotExist:
             return Response({"error": "Begivenhed ikke fundet."}, status=status.HTTP_404_NOT_FOUND)
 
-        if event.created_by_id != request.user.id and not request.user.is_staff:
+        if event.created_by_id != request.user.id:
             return Response(
                 {"error": "Kun arrangøren kan uploade filer."},
                 status=status.HTTP_403_FORBIDDEN,

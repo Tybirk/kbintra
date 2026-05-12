@@ -326,9 +326,7 @@ function AnnouncementCard({
 
   const toggleDashboardMutation = useMutation({
     mutationFn: (show: boolean) =>
-      announcementsApi.updateAnnouncement(announcement.id, {
-        show_on_dashboard: show,
-      }),
+      announcementsApi.toggleDashboard(announcement.id, show),
 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["announcements"] })
@@ -361,13 +359,8 @@ function AnnouncementCard({
 
   return (
     <Paper withBorder p="lg" radius="md">
-      <Group justify="space-between" wrap="nowrap" align="flex-start" mb="md">
-        <Group
-          gap="sm"
-          wrap="nowrap"
-          align="flex-start"
-          style={{ flex: 1, minWidth: 0 }}
-        >
+      <Stack gap="xs" mb="md">
+        <Group justify="space-between" wrap="nowrap" align="flex-start">
           <Avatar
             src={announcement.author.profile_picture}
             radius="xl"
@@ -376,36 +369,14 @@ function AnnouncementCard({
             {announcement.author.first_name?.[0]}
             {announcement.author.last_name?.[0]}
           </Avatar>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <Text fw={500}>{announcement.title}</Text>
-            <Text size="sm" c="dimmed">
-              <UserLink
-                id={announcement.author.id}
-                firstName={announcement.author.first_name}
-                lastName={announcement.author.last_name}
-                size="sm"
-                c="dimmed"
-              />{" "}
-              • {dayjs(announcement.created_at).fromNow()}
-              {announcement.edited_by && (
-                <>
-                  {" "}
-                  · redigeret af {announcement.edited_by.first_name}{" "}
-                  {announcement.edited_by.last_name}
-                </>
-              )}
-            </Text>
-          </div>
-        </Group>
 
-        <Group gap="xs">
-          {announcement.priority > 0 && (
-            <Badge color="red" variant="light">
-              Prioritet
-            </Badge>
-          )}
-          {announcement.can_edit && (
-            <>
+          <Group gap="xs" justify="flex-end">
+            {announcement.priority > 0 && (
+              <Badge color="red" variant="light">
+                Prioritet
+              </Badge>
+            )}
+            {announcement.can_toggle_dashboard && (
               <Tooltip label="Vis på forsiden" withArrow>
                 <Checkbox
                   size="sm"
@@ -418,6 +389,8 @@ function AnnouncementCard({
                   styles={{ label: { cursor: "pointer" } }}
                 />
               </Tooltip>
+            )}
+            {announcement.can_edit && (
               <Menu shadow="md" width={200}>
                 <Menu.Target>
                   <ActionIcon variant="subtle">
@@ -440,10 +413,30 @@ function AnnouncementCard({
                   </Menu.Item>
                 </Menu.Dropdown>
               </Menu>
+            )}
+          </Group>
+        </Group>
+
+        <Text fw={500}>{announcement.title}</Text>
+
+        <Text size="sm" c="dimmed">
+          <UserLink
+            id={announcement.author.id}
+            firstName={announcement.author.first_name}
+            lastName={announcement.author.last_name}
+            size="sm"
+            c="dimmed"
+          />{" "}
+          • {dayjs(announcement.created_at).fromNow()}
+          {announcement.edited_by && (
+            <>
+              {" "}
+              · redigeret af {announcement.edited_by.first_name}{" "}
+              {announcement.edited_by.last_name}
             </>
           )}
-        </Group>
-      </Group>
+        </Text>
+      </Stack>
 
       <Typography>
         <RichTextContent html={announcement.content} />

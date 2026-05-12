@@ -627,10 +627,10 @@ class ThreadDetailBySlugView(generics.RetrieveAPIView):
 
 
 class ThreadUpdateView(generics.UpdateAPIView):
-    """Update a thread title (owner or admin)."""
+    """Update a thread title (owner only)."""
 
     serializer_class = ThreadUpdateSerializer
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOrAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
     queryset = Thread.objects.all()
     http_method_names = ["patch"]
 
@@ -664,9 +664,9 @@ class ThreadUpdateView(generics.UpdateAPIView):
 
 
 class ThreadDeleteView(generics.DestroyAPIView):
-    """Delete a thread (owner or admin)."""
+    """Delete a thread (owner only)."""
 
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOrAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
     queryset = Thread.objects.all()
 
     def get_object(self) -> Thread:
@@ -863,10 +863,10 @@ class PostListCreateView(generics.ListCreateAPIView):
 
 
 class PostUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
-    """Update or delete a post (owner or admin)."""
+    """Update or delete a post (owner only)."""
 
     serializer_class = PostSerializer
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOrAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
     queryset = Post.objects.prefetch_related("attachments__uploaded_by").all()
 
     def get_serializer_class(self) -> type:
@@ -875,18 +875,14 @@ class PostUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
         return PostSerializer
 
     def perform_update(self, serializer: Any) -> None:
-        from apps.notifications.tasks import notify_mentions_task, notify_post_edited_by_admin_task
+        from apps.notifications.tasks import notify_mentions_task
         from apps.notifications.utils import extract_mention_ids
 
         old_content = serializer.instance.content or ""
         old_mention_ids = set(extract_mention_ids(old_content))
 
         post = serializer.instance
-        is_admin_edit = post.author_id != self.request.user.id
-        if is_admin_edit:
-            serializer.save(edited_by=self.request.user)
-        else:
-            serializer.save()
+        serializer.save()
 
         new_content = post.content or ""
         new_mention_ids = set(extract_mention_ids(new_content))
@@ -900,18 +896,6 @@ class PostUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
                 mentioned_user_ids=new_mentions,
                 context_label=f"indlæg i '{thread.title}'",
                 link=link,
-            )
-
-        if is_admin_edit and post.author_id and self.request.user.is_staff:
-            thread = post.thread
-            notify_post_edited_by_admin_task(
-                post_author_id=post.author_id,
-                editor_id=self.request.user.id,
-                thread_title=thread.title,
-                thread_id=thread.id,
-                subgroup_slug=thread.subgroup.slug,
-                thread_slug=thread.slug,
-                post_id=post.id,
             )
 
     def perform_destroy(self, instance: Any) -> None:
@@ -1423,14 +1407,14 @@ class PollVoteView(APIView):
 
 
 class PollDeleteView(APIView):
-    """Update or delete a poll (creator or admin only)."""
+    """Update or delete a poll (creator only)."""
 
     permission_classes = [permissions.IsAuthenticated]
 
     def patch(self, request: Request, poll_id: int) -> Response:
         poll = get_object_or_404(Poll, pk=poll_id)
 
-        if poll.created_by != request.user and not request.user.is_staff:
+        if poll.created_by != request.user:
             return Response(
                 {"detail": "You do not have permission to edit this poll."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -1491,7 +1475,7 @@ class PollDeleteView(APIView):
     def delete(self, request: Request, poll_id: int) -> Response:
         poll = get_object_or_404(Poll, pk=poll_id)
 
-        if poll.created_by != request.user and not request.user.is_staff:
+        if poll.created_by != request.user:
             return Response(
                 {"detail": "You do not have permission to delete this poll."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -1502,7 +1486,7 @@ class PollDeleteView(APIView):
 
 
 class PollAddOptionView(APIView):
-    """Add an option to a poll (creator, staff, or anyone if poll allows it)."""
+    """Add an option to a poll (creator only, or anyone if poll allows it)."""
 
     permission_classes = [permissions.IsAuthenticated]
 
@@ -1510,7 +1494,7 @@ class PollAddOptionView(APIView):
         poll = get_object_or_404(Poll, pk=poll_id)
 
         is_creator = poll.created_by_id == request.user.id
-        if not (is_creator or request.user.is_staff or poll.allow_others_to_add_options):
+        if not (is_creator or poll.allow_others_to_add_options):
             return Response(
                 {"detail": "Du har ikke tilladelse til at tilføje valgmuligheder."},
                 status=status.HTTP_403_FORBIDDEN,

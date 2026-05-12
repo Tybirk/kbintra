@@ -1319,10 +1319,10 @@ class TestPollDeleteView:
         response = api_client.delete(f"/api/forum/polls/{poll.id}/")
         assert response.status_code == 403
 
-    def test_admin_can_delete_poll(self, admin_client, poll):
+    def test_admin_cannot_delete_others_poll(self, admin_client, poll):
         response = admin_client.delete(f"/api/forum/polls/{poll.id}/")
-        assert response.status_code == 204
-        assert not Poll.objects.filter(id=poll.id).exists()
+        assert response.status_code == 403
+        assert Poll.objects.filter(id=poll.id).exists()
 
 
 class TestPollUpdateView:
@@ -1518,13 +1518,13 @@ class TestPollAddOptionView:
         assert response.status_code == 200
         assert poll.options.filter(text="Purple").exists()
 
-    def test_admin_can_always_add(self, admin_client, poll):
+    def test_admin_cannot_add_to_others_poll(self, admin_client, poll):
         response = admin_client.post(
             f"/api/forum/polls/{poll.id}/options/",
             {"text": "Pink"},
         )
-        assert response.status_code == 200
-        assert poll.options.filter(text="Pink").exists()
+        assert response.status_code == 403
+        assert not poll.options.filter(text="Pink").exists()
 
     def test_blank_text_rejected(self, authenticated_client, poll):
         response = authenticated_client.post(
@@ -1540,47 +1540,60 @@ class TestPollAddOptionView:
 
 
 class TestForumAdminRights:
-    """Admin (is_staff) can moderate forum content they did not author."""
+    """Admin (is_staff) has no special privileges over forum content they did not author."""
 
-    def test_admin_can_delete_others_thread(self, admin_client, thread):
-        """Admin can DELETE a thread authored by another user."""
+    def test_admin_cannot_delete_others_thread(self, admin_client, thread):
+        """Admin cannot DELETE a thread authored by another user."""
         thread_id = thread.id
         response = admin_client.delete(f"/api/forum/threads/{thread_id}/delete/")
-        assert response.status_code == 204
-        assert not Thread.objects.filter(id=thread_id).exists()
+        assert response.status_code == 403
+        assert Thread.objects.filter(id=thread_id).exists()
 
-    def test_admin_can_update_others_post(self, admin_client, post):
-        """Admin can PATCH a post authored by another user."""
+    def test_admin_cannot_update_others_post(self, admin_client, post):
+        """Admin cannot PATCH a post authored by another user (content edit)."""
+        original_content = post.content
         response = admin_client.patch(
             f"/api/forum/posts/{post.id}/",
             {"content": "Admin corrected content"},
             format="json",
         )
-        assert response.status_code == 200
+        assert response.status_code == 403
         post.refresh_from_db()
-        assert post.content == "Admin corrected content"
+        assert post.content == original_content
 
-    def test_admin_can_delete_others_post(self, admin_client, post):
-        """Admin can DELETE a post authored by another user."""
+    def test_admin_cannot_update_others_thread_title(self, admin_client, thread):
+        """Admin cannot PATCH another user's thread title."""
+        original_title = thread.title
+        response = admin_client.patch(
+            f"/api/forum/threads/{thread.id}/update/",
+            {"title": "Admin renamed"},
+            format="json",
+        )
+        assert response.status_code == 403
+        thread.refresh_from_db()
+        assert thread.title == original_title
+
+    def test_admin_cannot_delete_others_post(self, admin_client, post):
+        """Admin cannot DELETE a post authored by another user."""
         post_id = post.id
         response = admin_client.delete(f"/api/forum/posts/{post_id}/")
-        assert response.status_code == 204
-        assert not Post.objects.filter(id=post_id).exists()
+        assert response.status_code == 403
+        assert Post.objects.filter(id=post_id).exists()
 
-    def test_admin_can_edit_others_thread(self, admin_client, thread, post):
-        """can_edit is True for admin on any thread; is_own is False (admin didn't write it)."""
+    def test_admin_cannot_edit_others_thread(self, admin_client, thread, post):
+        """can_edit is False for admin on another user's thread."""
         response = admin_client.get(f"/api/forum/threads/{thread.id}/")
         assert response.status_code == 200
         assert response.data["is_own"] is False
-        assert response.data["can_edit"] is True
+        assert response.data["can_edit"] is False
 
-    def test_admin_can_edit_others_post(self, admin_client, thread, post):
-        """can_edit is True for admin on any post; is_own is False (admin didn't write it)."""
+    def test_admin_cannot_edit_others_post(self, admin_client, thread, post):
+        """can_edit is False for admin on another user's post."""
         response = admin_client.get(f"/api/forum/threads/{thread.id}/")
         assert response.status_code == 200
         post_data = next(p for p in response.data["posts"] if p["id"] == post.id)
         assert post_data["is_own"] is False
-        assert post_data["can_edit"] is True
+        assert post_data["can_edit"] is False
 
 
 # =============================================================================

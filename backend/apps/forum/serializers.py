@@ -400,7 +400,7 @@ class PostSerializer(serializers.ModelSerializer):
     def get_can_edit(self, obj: Post) -> bool:
         request = self.context.get("request")
         if request and request.user.is_authenticated:
-            return obj.author_id == request.user.id or request.user.is_staff
+            return obj.author_id == request.user.id
         return False
 
     def get_reactions(self, obj: Post) -> list[dict]:
@@ -775,7 +775,7 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
     def get_can_edit(self, obj: Thread) -> bool:
         request = self.context.get("request")
         if request and request.user.is_authenticated:
-            return obj.author_id == request.user.id or request.user.is_staff
+            return obj.author_id == request.user.id
         return False
 
     def get_can_toggle_privacy(self, obj: Thread) -> bool:

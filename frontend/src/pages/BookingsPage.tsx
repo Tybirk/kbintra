@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from "react"
+import { useState, useMemo, useCallback } from "react"
 
 import {
   useQuery,
@@ -352,42 +352,6 @@ export default function BookingsPage() {
     setCurrentView("day")
   }, [])
 
-  const touchStartX = useRef<number | null>(null)
-
-  const touchStartY = useRef<number | null>(null)
-
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX
-
-    touchStartY.current = e.touches[0].clientY
-  }, [])
-
-  const handleTouchEnd = useCallback(
-    (e: React.TouchEvent) => {
-      if (touchStartX.current === null || touchStartY.current === null) return
-
-      const deltaX = e.changedTouches[0].clientX - touchStartX.current
-
-      const deltaY = e.changedTouches[0].clientY - touchStartY.current
-
-      touchStartX.current = null
-
-      touchStartY.current = null
-
-      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
-        setCurrentDate(
-          dayjs(currentDate)
-
-            .add(deltaX < 0 ? 1 : -1, "month")
-
-            .format("YYYY-MM-DD"),
-        )
-      }
-    },
-
-    [currentDate],
-  )
-
   const isLoading = roomsLoading || bookingsLoading
 
   const roomOptions = [
@@ -556,8 +520,6 @@ export default function BookingsPage() {
           layout={
             isMobile && mobileViewMode === "oversigt" ? "responsive" : undefined
           }
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
           onEventClick={handleEventClick}
           // Workaround: @mantine/schedule alpha doesn't destructure onTimeSlotClick
 
