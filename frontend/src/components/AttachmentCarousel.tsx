@@ -91,6 +91,21 @@ export function AttachmentCarousel({
 
   if (orderedAttachments.length === 0) return null
 
+  // Single image: skip the carousel preview entirely and open the zoom viewer directly.
+  if (
+    orderedAttachments.length === 1 &&
+    getFileType(orderedAttachments[0].name) === "image"
+  ) {
+    return (
+      <ImageZoomViewer
+        src={orderedAttachments[0].file_url}
+        alt={orderedAttachments[0].name}
+        opened={opened}
+        onClose={onClose}
+      />
+    )
+  }
+
   return (
     <Modal
       opened={opened}
@@ -306,19 +321,41 @@ function SlideContent({
           padding: isMobile ? 0 : "1rem",
         }}
       >
-        <Image
-          src={attachment.file_url}
-          alt={attachment.name}
-          fit="contain"
-          style={{
-            maxHeight: isMobile ? "calc(100vh - 140px)" : "65vh",
-
-            maxWidth: "100%",
-
-            cursor: "zoom-in",
+        <Box
+          onDoubleClick={() =>
+            onImageZoom(attachment.file_url, attachment.name)
+          }
+          onWheel={(e) => {
+            if (e.deltaY < 0) {
+              onImageZoom(attachment.file_url, attachment.name)
+            }
           }}
-          onClick={() => onImageZoom(attachment.file_url, attachment.name)}
-        />
+          onTouchStart={(e) => {
+            if (e.touches.length >= 2) {
+              onImageZoom(attachment.file_url, attachment.name)
+            }
+          }}
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            maxWidth: "100%",
+          }}
+        >
+          <Image
+            src={attachment.file_url}
+            alt={attachment.name}
+            fit="contain"
+            style={{
+              maxHeight: isMobile ? "calc(100vh - 140px)" : "65vh",
+
+              maxWidth: "100%",
+
+              cursor: "zoom-in",
+            }}
+            onClick={() => onImageZoom(attachment.file_url, attachment.name)}
+          />
+        </Box>
         <Group justify="center" mt="md">
           <Button
             variant="light"
