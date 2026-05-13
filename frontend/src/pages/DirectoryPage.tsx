@@ -205,7 +205,12 @@ function StatsSummary({ houses }: StatsSummaryProps) {
           onClick={() => setOpened((o) => !o)}
           onMouseEnter={() => setOpened(true)}
           onMouseLeave={() => setOpened(false)}
-          style={{ cursor: "pointer", userSelect: "none" }}
+          style={{
+            cursor: "pointer",
+            userSelect: "none",
+            textDecoration: "underline dashed",
+            textUnderlineOffset: "3px",
+          }}
         >
           {adults} voksne, {kids} børn
         </Text>
@@ -214,48 +219,48 @@ function StatsSummary({ houses }: StatsSummaryProps) {
         onMouseEnter={() => setOpened(true)}
         onMouseLeave={() => setOpened(false)}
       >
-        <Stack gap={4}>
-          <Text size="sm" fw={500}>
+        <Stack gap={6}>
+          <Text size="md" fw={500}>
             Statistik
           </Text>
-          <Text size="xs" c="dimmed">
+          <Text size="sm" c="dimmed">
             {people} beboere
           </Text>
-          <Text size="xs" c="dimmed">
+          <Text size="sm" c="dimmed">
             {adults} voksne ({pct(adults, people)}%)
           </Text>
-          <Text size="xs" c="dimmed">
+          <Text size="sm" c="dimmed">
             {kids} børn ({pct(kids, people)}%)
           </Text>
           {bandCounts
             .filter((b) => b.count > 0)
             .map((b) => (
               <Group key={b.label} gap="xs" justify="space-between" pl="md">
-                <Text size="xs" c="dimmed">
+                <Text size="sm" c="dimmed">
                   {b.label}
                 </Text>
-                <Text size="xs" c="dimmed">
+                <Text size="sm" c="dimmed">
                   {b.count}
                 </Text>
               </Group>
             ))}
           {kidsUncategorized > 0 && (
             <Group gap="xs" justify="space-between" pl="md">
-              <Text size="xs" c="dimmed" fs="italic">
+              <Text size="sm" c="dimmed" fs="italic">
                 uden fødselsdag
               </Text>
-              <Text size="xs" c="dimmed">
+              <Text size="sm" c="dimmed">
                 {kidsUncategorized}
               </Text>
             </Group>
           )}
           {cars > 0 && (
             <>
-              <Text size="xs" c="dimmed" mt={4}>
+              <Text size="sm" c="dimmed" mt={4}>
                 {cars} {cars === 1 ? "bil" : "biler"}
               </Text>
               {electricCars > 0 && (
-                <Text size="xs" c="dimmed" pl="md">
+                <Text size="sm" c="dimmed" pl="md">
                   {electricCars} {electricCars === 1 ? "elbil" : "elbiler"} (
                   {pct(electricCars, cars)}%)
                 </Text>
