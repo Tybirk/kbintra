@@ -255,7 +255,7 @@ function StatsSummary({ houses }: StatsSummaryProps) {
                 {cars} {cars === 1 ? "bil" : "biler"}
               </Text>
               {electricCars > 0 && (
-                <Text size="xs" c="dimmed">
+                <Text size="xs" c="dimmed" pl="md">
                   {electricCars} {electricCars === 1 ? "elbil" : "elbiler"} (
                   {pct(electricCars, cars)}%)
                 </Text>
