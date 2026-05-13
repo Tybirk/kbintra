@@ -71,8 +71,9 @@ class Command(BaseCommand):
 
             # Cars
             from apps.houses.models import Car
+            from apps.houses.utils import format_license_plate
 
-            cars = Car.objects.select_related("house")
+            cars = Car.objects.select_related("house").exclude(license_plate="")
             for car in cars:
                 subtitle_parts = [car.house.name]
                 if car.is_electric:
@@ -80,7 +81,7 @@ class Command(BaseCommand):
                 index_object(
                     obj_type="car",
                     object_id=car.id,
-                    title=car.license_plate,
+                    title=format_license_plate(car.license_plate),
                     body=car.house.name,
                     url=f"/beboere/hus/{car.house.slug}",
                     subtitle=" · ".join(subtitle_parts),

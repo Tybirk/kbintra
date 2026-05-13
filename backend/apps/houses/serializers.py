@@ -18,6 +18,7 @@ class ChildSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "birthdate",
+            "profile_picture",
             "created_at",
         ]
         read_only_fields = ["id", "created_at"]
@@ -32,6 +33,7 @@ class ChildCreateUpdateSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "birthdate",
+            "profile_picture",
         ]
         read_only_fields = ["id"]
 

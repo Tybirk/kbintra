@@ -92,6 +92,19 @@ export const housesApi = {
     return response.data
   },
 
+  async updateChildPicture(id: number, file: File): Promise<Child> {
+    const formData = new FormData()
+
+    formData.append("profile_picture", file)
+
+    const response = await apiClient.patch<Child>(
+      `/houses/my/children/${id}/`,
+      formData,
+    )
+
+    return response.data
+  },
+
   async deleteChild(id: number): Promise<void> {
     await apiClient.delete(`/houses/my/children/${id}/`)
   },

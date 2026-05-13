@@ -39,6 +39,8 @@ import { useAuthStore } from "../store/authStore"
 
 import type { Car, Child, UserSummary } from "../types"
 
+import { formatLicensePlate } from "../utils/licensePlate"
+
 export default function HouseDetailPage() {
   const { slug } = useParams<{ slug: string }>()
 
@@ -127,7 +129,11 @@ export default function HouseDetailPage() {
           </div>
         </Group>
 
-        {house.description && <Text mb="md">{house.description}</Text>}
+        {house.description && (
+          <Text mb="md" style={{ whiteSpace: "pre-wrap" }}>
+            {house.description}
+          </Text>
+        )}
       </Paper>
 
       <Title order={3} mb="md">
@@ -249,7 +255,7 @@ function ChildCard({ child }: ChildCardProps) {
   return (
     <Paper withBorder p="lg" radius="md">
       <Group>
-        <Avatar size="lg" radius="xl" color="grape">
+        <Avatar src={child.profile_picture} size="lg" radius="xl" color="grape">
           {child.name?.[0]}
         </Avatar>
         <div style={{ flex: 1 }}>
@@ -283,7 +289,13 @@ function CarCard({ car }: CarCardProps) {
         </Avatar>
         <div style={{ flex: 1 }}>
           <Group gap="xs">
-            <Text fw={500}>{car.license_plate}</Text>
+            {car.license_plate ? (
+              <Text fw={500}>{formatLicensePlate(car.license_plate)}</Text>
+            ) : (
+              <Text fw={500} c="dimmed" fs="italic">
+                (ingen nummerplade)
+              </Text>
+            )}
             {car.is_electric && (
               <Badge size="sm" variant="light" color="green">
                 Elbil

@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 from apps.forum.models import File, Post, Subgroup, Thread
 from apps.forum.services import member_subgroup_ids
 from apps.houses.models import Car, House
+from apps.houses.utils import format_license_plate, normalize_license_plate
 from apps.users.models import User
 
 from .services import create_excerpt, fts_search
@@ -172,11 +173,14 @@ class GlobalSearchView(APIView):
                     )
             results["subgroups"] = (injected + results["subgroups"])[:limit]
 
-        # Heuristic 4: License plate direct lookup
-        if re.match(r"^[A-Za-z]{2}\d{2,5}$", query):
-            plate_matches = Car.objects.filter(license_plate__istartswith=query).select_related(
-                "house"
-            )[:limit]
+        # Heuristic 4: License plate direct lookup.
+        # Normalize the query (strip whitespace, uppercase) so users can search
+        # with or without the standard "AB 12 345" spacing.
+        plate_query = normalize_license_plate(query)
+        if re.match(r"^[A-Z]{2}\d{2,5}$", plate_query):
+            plate_matches = Car.objects.filter(
+                license_plate__istartswith=plate_query
+            ).select_related("house")[:limit]
             injected = []
             for car in plate_matches:
                 if car.id not in seen["cars"]:
@@ -188,7 +192,7 @@ class GlobalSearchView(APIView):
                         {
                             "id": car.id,
                             "type": "car",
-                            "title": car.license_plate,
+                            "title": format_license_plate(car.license_plate),
                             "subtitle": " · ".join(subtitle_parts),
                             "url": f"/beboere/hus/{car.house.slug}",
                         }

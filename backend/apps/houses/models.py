@@ -64,6 +64,11 @@ class Child(models.Model):
     )
     name = models.CharField(max_length=100)
     birthdate = models.DateField(blank=True, null=True)
+    profile_picture = models.ImageField(
+        upload_to="child_pictures/",
+        blank=True,
+        null=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -86,13 +91,19 @@ class Car(models.Model):
         on_delete=models.CASCADE,
         related_name="cars",
     )
-    license_plate = models.CharField(max_length=15)
+    license_plate = models.CharField(max_length=15, blank=True, default="")
     is_electric = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["license_plate"]
+
+    def save(self, *args, **kwargs):
+        from .utils import normalize_license_plate
+
+        self.license_plate = normalize_license_plate(self.license_plate)
+        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return f"{self.license_plate} ({self.house.name})"
