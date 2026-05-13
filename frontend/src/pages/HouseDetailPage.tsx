@@ -292,9 +292,7 @@ function CarCard({ car }: CarCardProps) {
             {car.license_plate ? (
               <Text fw={500}>{formatLicensePlate(car.license_plate)}</Text>
             ) : (
-              <Text fw={500} c="dimmed" fs="italic">
-                (bil)
-              </Text>
+              <Text fw={500}>Bil</Text>
             )}
             {car.is_electric && (
               <Badge size="sm" variant="light" color="green">

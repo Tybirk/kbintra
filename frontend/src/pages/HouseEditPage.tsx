@@ -805,9 +805,7 @@ export default function HouseEditPage() {
                       {car.license_plate ? (
                         formatLicensePlate(car.license_plate)
                       ) : (
-                        <Text c="dimmed" fs="italic" size="sm">
-                          (bil)
-                        </Text>
+                        <Text size="sm">Bil</Text>
                       )}
                     </Table.Td>
                     <Table.Td>
