@@ -426,6 +426,18 @@ class TestGlobalSearchAPI:
         posts = response.data["results"]["posts"]
         assert len(posts) >= 1
 
+    def test_license_plate_lookup_normalizes_query(self, authenticated_client, house):
+        """Searching with or without spaces returns the same car, formatted."""
+        from apps.houses.models import Car
+
+        Car.objects.create(house=house, license_plate="AB 12 345")
+
+        for query in ("AB12345", "AB 12 345", "ab 12 345"):
+            response = authenticated_client.get(f"/api/search/?q={query}")
+            assert response.status_code == 200, query
+            cars = response.data["results"]["cars"]
+            assert any(c["title"] == "AB 12 345" for c in cars), query
+
     def test_search_finds_subgroup(self, authenticated_client, subgroup):
         """Test search finds subgroups by name (via heuristic)."""
         response = authenticated_client.get("/api/search/?q=General Discussion")

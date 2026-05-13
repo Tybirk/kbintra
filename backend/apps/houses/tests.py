@@ -279,6 +279,32 @@ class TestCarAPI:
         assert len(response.json()["cars"]) == 1
         assert response.json()["cars"][0]["license_plate"] == "AB12345"
 
+    def test_license_plate_normalized_on_save(self, user_with_house):
+        """Plates entered with spaces / mixed case are stored canonically."""
+        car = Car.objects.create(house=user_with_house.house, license_plate="ab 12 345")
+        assert car.license_plate == "AB12345"
+
+    def test_create_car_with_spaced_plate(self, api_client, user_with_house):
+        """Spaced API input is normalized in storage."""
+        api_client.force_authenticate(user=user_with_house)
+        response = api_client.post(
+            "/api/houses/my/cars/",
+            {"license_plate": "XY 98 765"},
+            format="json",
+        )
+        assert response.status_code == 201
+        assert Car.objects.filter(license_plate="XY98765").exists()
+
+    def test_create_car_without_plate(self, api_client, user_with_house):
+        """License plate is optional."""
+        api_client.force_authenticate(user=user_with_house)
+        response = api_client.post(
+            "/api/houses/my/cars/",
+            {"is_electric": False},
+            format="json",
+        )
+        assert response.status_code == 201
+
     def test_update_car_electric_flag(self, api_client, user_with_house, car):
         """Test updating is_electric flag from False to True."""
         api_client.force_authenticate(user=user_with_house)

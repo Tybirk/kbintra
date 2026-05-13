@@ -60,12 +60,20 @@ import {
 
 import type { Car, Child } from "../types"
 
+import { formatLicensePlate } from "../utils/licensePlate"
+
 import { BackButton } from "../components/BackButton"
 
 interface UpdateChildParams {
   id: number
 
   data: UpdateChildData
+}
+
+interface UploadChildPictureParams {
+  id: number
+
+  file: File
 }
 
 interface UpdateCarParams {
@@ -177,6 +185,29 @@ export default function HouseEditPage() {
 
         message: "Husets billede er blevet opdateret.",
 
+        color: "green",
+      })
+    },
+
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke uploade billedet. Prøv igen.")
+    },
+  })
+
+  const uploadChildPictureMutation = useMutation({
+    mutationFn: ({ id, file }: UploadChildPictureParams) =>
+      housesApi.updateChildPicture(id, file),
+
+    onSuccess: (child) => {
+      queryClient.invalidateQueries({ queryKey: ["house"] })
+
+      queryClient.invalidateQueries({ queryKey: ["houses"] })
+
+      setEditingChild(child)
+
+      notifications.show({
+        title: "Billede opdateret",
+        message: "Barnets billede er blevet opdateret.",
         color: "green",
       })
     },
@@ -458,6 +489,12 @@ export default function HouseEditPage() {
     }
   }
 
+  const handleChildPictureDrop = (files: File[]) => {
+    if (editingChild && files.length > 0) {
+      uploadChildPictureMutation.mutate({ id: editingChild.id, file: files[0] })
+    }
+  }
+
   if (isLoading) {
     return (
       <Center h={200}>
@@ -684,7 +721,19 @@ export default function HouseEditPage() {
               <Table.Tbody>
                 {house.children.map((child) => (
                   <Table.Tr key={child.id}>
-                    <Table.Td>{child.name}</Table.Td>
+                    <Table.Td>
+                      <Group gap="sm" wrap="nowrap">
+                        <Avatar
+                          src={child.profile_picture}
+                          radius="xl"
+                          size="md"
+                          color="grape"
+                        >
+                          {child.name?.[0]}
+                        </Avatar>
+                        <Text>{child.name}</Text>
+                      </Group>
+                    </Table.Td>
                     <Table.Td>
                       {child.birthdate
                         ? dayjs(child.birthdate).format("D. MMMM YYYY")
@@ -752,7 +801,15 @@ export default function HouseEditPage() {
               <Table.Tbody>
                 {house.cars.map((car) => (
                   <Table.Tr key={car.id}>
-                    <Table.Td>{car.license_plate}</Table.Td>
+                    <Table.Td>
+                      {car.license_plate ? (
+                        formatLicensePlate(car.license_plate)
+                      ) : (
+                        <Text c="dimmed" fs="italic" size="sm">
+                          (ingen nummerplade)
+                        </Text>
+                      )}
+                    </Table.Td>
                     <Table.Td>
                       {car.is_electric ? (
                         <Badge size="sm" variant="light" color="green">
@@ -760,7 +817,7 @@ export default function HouseEditPage() {
                         </Badge>
                       ) : (
                         <Badge size="sm" variant="light" color="gray">
-                          Fossilbil
+                          Ikke-elbil
                         </Badge>
                       )}
                     </Table.Td>
@@ -809,6 +866,67 @@ export default function HouseEditPage() {
         title={editingChild ? "Rediger barn" : "Tilføj barn"}
       >
         <Stack>
+          {editingChild && (
+            <Group>
+              <Avatar
+                src={editingChild.profile_picture}
+                size={80}
+                radius="xl"
+                color="grape"
+              >
+                {editingChild.name?.[0]}
+              </Avatar>
+              <Dropzone
+                onDrop={handleChildPictureDrop}
+                accept={IMAGE_MIME_TYPE}
+                maxSize={5 * 1024 ** 2}
+                loading={uploadChildPictureMutation.isPending}
+                style={{ flex: 1 }}
+              >
+                <Group
+                  justify="center"
+                  gap="md"
+                  mih={80}
+                  style={{ pointerEvents: "none" }}
+                >
+                  <Dropzone.Accept>
+                    <IconUpload
+                      style={{
+                        width: rem(32),
+                        height: rem(32),
+                        color: "var(--mantine-color-blue-6)",
+                      }}
+                      stroke={1.5}
+                    />
+                  </Dropzone.Accept>
+                  <Dropzone.Reject>
+                    <IconX
+                      style={{
+                        width: rem(32),
+                        height: rem(32),
+                        color: "var(--mantine-color-red-6)",
+                      }}
+                      stroke={1.5}
+                    />
+                  </Dropzone.Reject>
+                  <Dropzone.Idle>
+                    <IconPhoto
+                      style={{
+                        width: rem(32),
+                        height: rem(32),
+                        color: "var(--mantine-color-dimmed)",
+                      }}
+                      stroke={1.5}
+                    />
+                  </Dropzone.Idle>
+                  <Text size="sm" c="dimmed">
+                    Træk billede hertil eller klik for at vælge
+                  </Text>
+                </Group>
+              </Dropzone>
+            </Group>
+          )}
+
           <TextInput
             label="Navn"
             placeholder="Barnets navn"
@@ -904,7 +1022,7 @@ export default function HouseEditPage() {
       >
         <Stack>
           <TextInput
-            label="Nummerplade"
+            label="Nummerplade (valgfri)"
             placeholder="F.eks. AB12345"
             value={carForm.license_plate}
             onChange={(e) =>
@@ -914,7 +1032,6 @@ export default function HouseEditPage() {
                 license_plate: e.target.value,
               }))
             }
-            required
           />
 
           <Switch
@@ -947,7 +1064,6 @@ export default function HouseEditPage() {
               loading={
                 createCarMutation.isPending || updateCarMutation.isPending
               }
-              disabled={!carForm.license_plate.trim()}
             >
               {editingCar ? "Gem ændringer" : "Tilføj"}
             </Button>
@@ -966,8 +1082,15 @@ export default function HouseEditPage() {
         title="Fjern bil"
       >
         <Text mb="lg">
-          Er du sikker på, at du vil fjerne bilen med nummerplade{" "}
-          <strong>{carToDelete?.license_plate}</strong> fra husstanden?
+          {carToDelete?.license_plate ? (
+            <>
+              Er du sikker på, at du vil fjerne bilen med nummerplade{" "}
+              <strong>{formatLicensePlate(carToDelete.license_plate)}</strong>{" "}
+              fra husstanden?
+            </>
+          ) : (
+            <>Er du sikker på, at du vil fjerne denne bil fra husstanden?</>
+          )}
         </Text>
         <Group justify="flex-end">
           <Button

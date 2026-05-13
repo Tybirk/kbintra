@@ -47,6 +47,8 @@ export interface Child {
 
   birthdate: string | null
 
+  profile_picture: string | null
+
   created_at: string
 }
 

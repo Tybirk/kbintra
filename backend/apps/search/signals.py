@@ -76,14 +76,19 @@ def deindex_house(sender, instance, **kwargs):
 
 @receiver(post_save, sender="houses.Car")
 def index_car(sender, instance, **kwargs):
+    from apps.houses.utils import format_license_plate
+
     try:
+        if not instance.license_plate:
+            remove_object("car", instance.id)
+            return
         subtitle_parts = [instance.house.name]
         if instance.is_electric:
             subtitle_parts.append("Elbil")
         index_object(
             obj_type="car",
             object_id=instance.id,
-            title=instance.license_plate,
+            title=format_license_plate(instance.license_plate),
             body=instance.house.name,
             url=f"/beboere/hus/{instance.house.slug}",
             subtitle=" · ".join(subtitle_parts),

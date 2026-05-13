@@ -14,6 +14,7 @@ import {
   Loader,
   Center,
   Stack,
+  Popover,
 } from "@mantine/core"
 
 import { IconSearch, IconHome } from "@tabler/icons-react"
@@ -84,13 +85,7 @@ export default function DirectoryPage() {
           <Title order={1}>Beboeroversigt</Title>
           <Text c="dimmed">Huse og beboere</Text>
         </div>
-        {data && (
-          <Text size="sm" c="dimmed">
-            {data.reduce((sum, h) => sum + (h.inhabitants?.length || 0), 0)}{" "}
-            voksne,{" "}
-            {data.reduce((sum, h) => sum + (h.children?.length || 0), 0)} børn
-          </Text>
-        )}
+        {data && <StatsSummary houses={data} />}
       </Group>
 
       <TextInput
@@ -116,6 +111,160 @@ export default function DirectoryPage() {
         </SimpleGrid>
       )}
     </>
+  )
+}
+
+interface StatsSummaryProps {
+  houses: House[]
+}
+
+interface AgeBand {
+  label: string
+  min: number
+  max: number
+}
+
+function StatsSummary({ houses }: StatsSummaryProps) {
+  const [opened, setOpened] = useState(false)
+
+  const now = Date.now()
+  const yearMs = 365.25 * 24 * 60 * 60 * 1000
+  const ageYears = (birthdate: string | null): number | null => {
+    if (!birthdate) return null
+    const t = Date.parse(birthdate)
+    return Number.isNaN(t) ? null : (now - t) / yearMs
+  }
+  // In Denmark you're legally an adult at 18. Some "children" records may
+  // be 18+ (older kids tracked alongside the household), so we reclassify
+  // them as voksne for the headline counts.
+  const inhabitants = houses.reduce(
+    (sum, h) => sum + (h.inhabitants?.length || 0),
+    0,
+  )
+  const adultChildren = houses.reduce(
+    (sum, h) =>
+      sum +
+      (h.children?.filter((c) => {
+        const age = ageYears(c.birthdate)
+        return age !== null && age >= 18
+      }).length || 0),
+    0,
+  )
+  const totalChildren = houses.reduce(
+    (sum, h) => sum + (h.children?.length || 0),
+    0,
+  )
+  const adults = inhabitants + adultChildren
+  const kids = totalChildren - adultChildren
+  const people = adults + kids
+  const cars = houses.reduce((sum, h) => sum + (h.cars?.length || 0), 0)
+  const electricCars = houses.reduce(
+    (sum, h) => sum + (h.cars?.filter((c) => c.is_electric).length || 0),
+    0,
+  )
+
+  const ageBands: AgeBand[] = [
+    { label: "0–1 år", min: 0, max: 2 },
+    { label: "2–5 år", min: 2, max: 6 },
+    { label: "6–12 år", min: 6, max: 13 },
+    { label: "13–17 år", min: 13, max: 18 },
+  ]
+  const bandCounts = ageBands.map((b) => ({
+    label: b.label,
+    count: houses.reduce(
+      (sum, h) =>
+        sum +
+        (h.children?.filter((c) => {
+          const age = ageYears(c.birthdate)
+          return age !== null && age >= b.min && age < b.max
+        }).length || 0),
+      0,
+    ),
+  }))
+  // Whatever's left after the age bands: children with no birthdate, with an
+  // unparseable date string, or with an out-of-range age. Defined as a
+  // remainder so the breakdown always sums to `kids`.
+  const kidsUncategorized =
+    kids - bandCounts.reduce((sum, b) => sum + b.count, 0)
+
+  const pct = (n: number, total: number) =>
+    total > 0 ? Math.round((n / total) * 100) : 0
+
+  return (
+    <Popover
+      opened={opened}
+      onChange={setOpened}
+      position="bottom-end"
+      withArrow
+      shadow="md"
+    >
+      <Popover.Target>
+        <Text
+          size="sm"
+          c="dimmed"
+          onClick={() => setOpened((o) => !o)}
+          onMouseEnter={() => setOpened(true)}
+          onMouseLeave={() => setOpened(false)}
+          style={{ cursor: "pointer", userSelect: "none" }}
+        >
+          {adults} voksne, {kids} børn
+        </Text>
+      </Popover.Target>
+      <Popover.Dropdown
+        onMouseEnter={() => setOpened(true)}
+        onMouseLeave={() => setOpened(false)}
+      >
+        <Stack gap={4}>
+          <Text size="sm" fw={500}>
+            Statistik
+          </Text>
+          <Text size="xs" c="dimmed">
+            {people} beboere
+          </Text>
+          <Text size="xs" c="dimmed">
+            {adults} voksne ({pct(adults, people)}%)
+          </Text>
+          <Text size="xs" c="dimmed">
+            {kids} børn ({pct(kids, people)}%)
+          </Text>
+          {bandCounts
+            .filter((b) => b.count > 0)
+            .map((b) => (
+              <Group key={b.label} gap="xs" justify="space-between" pl="md">
+                <Text size="xs" c="dimmed">
+                  {b.label}
+                </Text>
+                <Text size="xs" c="dimmed">
+                  {b.count}
+                </Text>
+              </Group>
+            ))}
+          {kidsUncategorized > 0 && (
+            <Group gap="xs" justify="space-between" pl="md">
+              <Text size="xs" c="dimmed" fs="italic">
+                uden fødselsdag
+              </Text>
+              <Text size="xs" c="dimmed">
+                {kidsUncategorized}
+              </Text>
+            </Group>
+          )}
+          {cars > 0 && (
+            <>
+              <Text size="xs" c="dimmed" mt={4}>
+                {cars} {cars === 1 ? "bil" : "biler"}
+              </Text>
+              {electricCars > 0 && (
+                <Text size="xs" c="dimmed">
+                  {electricCars} {electricCars === 1 ? "elbil" : "elbiler"} (
+                  {pct(electricCars, cars)}%)
+                </Text>
+              )}
+            </>
+          )}
+        </Stack>
+      </Popover.Dropdown>
+    </Popover>
   )
 }
 
@@ -203,7 +352,7 @@ interface ChildRowProps {
 function ChildRow({ child }: ChildRowProps) {
   return (
     <Group gap="xs">
-      <Avatar radius="xl" size="sm" color="grape">
+      <Avatar src={child.profile_picture} radius="xl" size="sm" color="grape">
         {child.name?.[0]}
       </Avatar>
       <Group gap={4}>
