@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, lazy, Suspense } from "react"
 
-import { useParams, useNavigate, useLocation } from "react-router-dom"
+import { useParams, useNavigate, useLocation, Link } from "react-router-dom"
 import {
   useQuery,
   useMutation,
@@ -876,9 +876,7 @@ When done, print a short summary:
                 <ThreadRow
                   key={thread.id}
                   thread={thread}
-                  onClick={() =>
-                    navigate(`/forum/${slug}/traad/${thread.slug}`)
-                  }
+                  to={`/forum/${slug}/traad/${thread.slug}`}
                 />
               ))
             )}
@@ -1008,10 +1006,10 @@ When done, print a short summary:
 interface ThreadRowProps {
   thread: Thread
 
-  onClick: () => void
+  to: string
 }
 
-function ThreadRow({ thread, onClick }: ThreadRowProps) {
+function ThreadRow({ thread, to }: ThreadRowProps) {
   return (
     <Paper
       withBorder
@@ -1028,8 +1026,17 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
           borderWidth: 2,
         }),
       }}
-      onClick={onClick}
     >
+      <Link
+        to={to}
+        aria-label={thread.title}
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 1,
+          borderRadius: "inherit",
+        }}
+      />
       {thread.members_only && (
         <Tooltip label="Kun for medlemmer">
           <Box
@@ -1146,6 +1153,10 @@ function ThreadRow({ thread, onClick }: ThreadRowProps) {
                     textOverflow: "ellipsis",
 
                     whiteSpace: "nowrap",
+
+                    position: "relative",
+
+                    zIndex: 2,
                   }}
                 />
                 <Text

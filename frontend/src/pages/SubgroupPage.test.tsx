@@ -321,22 +321,18 @@ describe("SubgroupPage", () => {
     ).not.toBeInTheDocument()
   })
 
-  it("clicking thread navigates to thread page", async () => {
-    const { default: userEvent } = await import("@testing-library/user-event")
-
-    const user = userEvent.setup()
-
+  it("renders thread row as link to thread page", async () => {
     render(<SubgroupPage />)
 
     await waitFor(() => {
       expect(screen.getByText("Fastgjort tråd")).toBeInTheDocument()
     })
 
-    await user.click(screen.getByText("Fastgjort tråd"))
+    const threadLink = screen
+      .getByRole("link", { name: "Fastgjort tråd" })
+      .getAttribute("href")
 
-    expect(mockNavigate).toHaveBeenCalledWith(
-      "/forum/general/traad/pinned-thread",
-    )
+    expect(threadLink).toBe("/forum/general/traad/pinned-thread")
   })
 
   it("shows back button to forum", async () => {

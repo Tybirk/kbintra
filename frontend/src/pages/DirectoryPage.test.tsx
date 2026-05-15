@@ -193,17 +193,17 @@ describe("DirectoryPage", () => {
     })
   })
 
-  it("clicking house card navigates to house detail", async () => {
-    const user = userEvent.setup()
-
+  it("renders house card as link to house detail", async () => {
     render(<DirectoryPage />)
 
     await waitFor(() => {
       expect(screen.getByText("Hus A")).toBeInTheDocument()
     })
 
-    await user.click(screen.getByText("Hus A"))
+    const cardLink = screen
+      .getByRole("link", { name: "Hus A" })
+      .getAttribute("href")
 
-    expect(mockNavigate).toHaveBeenCalledWith("/beboere/hus/a")
+    expect(cardLink).toBe("/beboere/hus/a")
   })
 })

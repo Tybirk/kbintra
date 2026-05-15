@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from "react"
 
-import { useNavigate } from "react-router-dom"
+import { Link } from "react-router-dom"
 
 import {
   useQuery,
@@ -121,8 +121,6 @@ function getDailyStats(
 dayjs.extend(isoWeek)
 
 export default function DashboardPage() {
-  const navigate = useNavigate()
-
   const {
     data: announcements,
 
@@ -509,10 +507,11 @@ export default function DashboardPage() {
                 </Badge>
               </Group>
               <Button
+                component={Link}
+                to="/notifikationer"
                 variant="subtle"
                 size="xs"
                 rightSection={<IconArrowRight size={14} />}
-                onClick={() => navigate("/notifikationer")}
               >
                 Se alle
               </Button>
@@ -536,10 +535,11 @@ export default function DashboardPage() {
             <Group justify="space-between" mb="md">
               <Title order={3}>Seneste vigtig post</Title>
               <Button
+                component={Link}
+                to="/opslag"
                 variant="subtle"
                 size="xs"
                 rightSection={<IconArrowRight size={14} />}
-                onClick={() => navigate("/opslag")}
               >
                 Se alle
               </Button>
@@ -587,10 +587,11 @@ export default function DashboardPage() {
                 )}
               </Group>
               <Button
+                component={Link}
+                to="/mad"
                 variant="subtle"
                 size="xs"
                 rightSection={<IconArrowRight size={14} />}
-                onClick={() => navigate("/mad")}
               >
                 Se mere
               </Button>
@@ -660,11 +661,7 @@ export default function DashboardPage() {
                 <Text c="dimmed" size="sm" ta="center">
                   Ingen menu tilgængelig
                 </Text>
-                <Button
-                  variant="light"
-                  size="xs"
-                  onClick={() => navigate("/mad")}
-                >
+                <Button component={Link} to="/mad" variant="light" size="xs">
                   Se madplan
                 </Button>
               </Stack>
@@ -686,10 +683,11 @@ export default function DashboardPage() {
                 <Title order={3}>Mine grupper</Title>
               </Group>
               <Button
+                component={Link}
+                to="/forum"
                 variant="subtle"
                 size="xs"
                 rightSection={<IconArrowRight size={14} />}
-                onClick={() => navigate("/forum")}
               >
                 Se alle
               </Button>
@@ -731,10 +729,11 @@ export default function DashboardPage() {
                 <Title order={3}>Seneste forumaktivitet</Title>
               </Group>
               <Button
+                component={Link}
+                to="/forum"
                 variant="subtle"
                 size="xs"
                 rightSection={<IconArrowRight size={14} />}
-                onClick={() => navigate("/forum")}
               >
                 Se forum
               </Button>
@@ -801,10 +800,11 @@ export default function DashboardPage() {
                 )}
               </Group>
               <Button
+                component={Link}
+                to="/beboere"
                 variant="subtle"
                 size="xs"
                 rightSection={<IconArrowRight size={14} />}
-                onClick={() => navigate("/beboere")}
               >
                 Se beboere
               </Button>
@@ -835,10 +835,11 @@ export default function DashboardPage() {
             <Group justify="space-between" mb="md">
               <Title order={3}>Kommende arrangementer</Title>
               <Button
+                component={Link}
+                to="/kalender"
                 variant="subtle"
                 size="xs"
                 rightSection={<IconArrowRight size={14} />}
-                onClick={() => navigate("/kalender")}
               >
                 Se alle
               </Button>
@@ -867,8 +868,6 @@ interface AnnouncementPreviewProps {
 }
 
 function AnnouncementPreview({ announcement }: AnnouncementPreviewProps) {
-  const navigate = useNavigate()
-
   // Strip HTML tags for preview
 
   const plainText = announcement.content
@@ -886,11 +885,17 @@ function AnnouncementPreview({ announcement }: AnnouncementPreviewProps) {
 
   return (
     <Paper
+      component={Link}
+      to={`/opslag#announcement-${announcement.id}`}
       p="sm"
       radius="sm"
       bg="var(--mantine-color-default-hover)"
-      style={{ cursor: "pointer" }}
-      onClick={() => navigate(`/opslag#announcement-${announcement.id}`)}
+      style={{
+        cursor: "pointer",
+        textDecoration: "none",
+        color: "inherit",
+        display: "block",
+      }}
     >
       <Group gap="sm" mb={4}>
         <Avatar src={announcement.author.profile_picture} radius="xl" size="sm">
@@ -916,8 +921,6 @@ interface EventPreviewProps {
 }
 
 function EventPreview({ event }: EventPreviewProps) {
-  const navigate = useNavigate()
-
   const isToday = dayjs(event.start_datetime).isSame(dayjs(), "day")
 
   const isTomorrow = dayjs(event.start_datetime).isSame(
@@ -934,15 +937,19 @@ function EventPreview({ event }: EventPreviewProps) {
 
   return (
     <Paper
+      component={Link}
+      to={`/kalender/${event.slug}`}
       p="sm"
       radius="sm"
       bg="var(--mantine-color-default-hover)"
       style={{
         cursor: "pointer",
+        textDecoration: "none",
+        color: "inherit",
+        display: "block",
 
         opacity: event.is_cancelled ? 0.5 : 1,
       }}
-      onClick={() => navigate(`/kalender/${event.slug}`)}
     >
       <Group gap="sm" mb={4}>
         <ThemeIcon
@@ -1009,19 +1016,17 @@ interface NotificationPreviewProps {
 }
 
 function NotificationPreview({ notification }: NotificationPreviewProps) {
-  const navigate = useNavigate()
-
   return (
     <Paper
+      component={Link}
+      to={notification.link || "/notifikationer"}
       p="sm"
       radius="sm"
-      style={{ cursor: "pointer" }}
-      onClick={() => {
-        if (notification.link) {
-          navigate(notification.link)
-        } else {
-          navigate("/notifikationer")
-        }
+      style={{
+        cursor: "pointer",
+        textDecoration: "none",
+        color: "inherit",
+        display: "block",
       }}
     >
       <Group gap="sm" wrap="nowrap">
@@ -1070,8 +1075,6 @@ interface BirthdayPreviewProps {
 }
 
 function BirthdayPreview({ birthday }: BirthdayPreviewProps) {
-  const navigate = useNavigate()
-
   const { user, daysUntil, age } = birthday
 
   let dateLabel: string
@@ -1086,10 +1089,16 @@ function BirthdayPreview({ birthday }: BirthdayPreviewProps) {
 
   return (
     <Paper
+      component={Link}
+      to={`/beboere/${user.house}`}
       p="sm"
       radius="sm"
-      style={{ cursor: "pointer" }}
-      onClick={() => navigate(`/beboere/${user.house}`)}
+      style={{
+        cursor: "pointer",
+        textDecoration: "none",
+        color: "inherit",
+        display: "block",
+      }}
     >
       <Group gap="sm" wrap="nowrap">
         <Avatar src={user.profile_picture} radius="xl" size="sm">
@@ -1117,15 +1126,19 @@ interface SubgroupShortcutProps {
 }
 
 function SubgroupShortcut({ subgroup }: SubgroupShortcutProps) {
-  const navigate = useNavigate()
-
   return (
     <Paper
+      component={Link}
+      to={`/forum/${subgroup.slug}`}
       p="xs"
       radius="sm"
       bg="var(--mantine-color-default-hover)"
-      style={{ cursor: "pointer" }}
-      onClick={() => navigate(`/forum/${subgroup.slug}`)}
+      style={{
+        cursor: "pointer",
+        textDecoration: "none",
+        color: "inherit",
+        display: "block",
+      }}
     >
       <Group gap="sm" wrap="nowrap">
         {subgroup.icon ? (
@@ -1161,8 +1174,6 @@ interface ActivityPreviewProps {
 }
 
 function ActivityPreview({ activity }: ActivityPreviewProps) {
-  const navigate = useNavigate()
-
   // Strip HTML tags for preview
 
   const plainText = activity.content
@@ -1198,12 +1209,17 @@ function ActivityPreview({ activity }: ActivityPreviewProps) {
           borderStyle: "solid",
         }),
       }}
-      onClick={() =>
-        navigate(
-          `/forum/${activity.subgroup_slug}/traad/${activity.thread_slug}#post-${activity.id}`,
-        )
-      }
     >
+      <Link
+        to={`/forum/${activity.subgroup_slug}/traad/${activity.thread_slug}#post-${activity.id}`}
+        aria-label={activity.thread_title}
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 1,
+          borderRadius: "inherit",
+        }}
+      />
       {activity.members_only && (
         <Tooltip label="Kun for medlemmer">
           <Box
@@ -1255,7 +1271,14 @@ function ActivityPreview({ activity }: ActivityPreviewProps) {
           {activity.author?.first_name?.[0]}
           {activity.author?.last_name?.[0]}
         </Avatar>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            position: "relative",
+            zIndex: 2,
+          }}
+        >
           {activity.author ? (
             <UserLink
               id={activity.author.id}

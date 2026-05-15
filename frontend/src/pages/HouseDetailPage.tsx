@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 
-import { useParams, useNavigate } from "react-router-dom"
+import { useParams, Link } from "react-router-dom"
 
 import {
   Title,
@@ -44,8 +44,6 @@ import { formatLicensePlate } from "../utils/licensePlate"
 export default function HouseDetailPage() {
   const { slug } = useParams<{ slug: string }>()
 
-  const navigate = useNavigate()
-
   const currentUser = useAuthStore((s) => s.user)
 
   const {
@@ -75,7 +73,7 @@ export default function HouseDetailPage() {
       <Center h={200}>
         <Stack align="center">
           <Text c="red">Failed to load house details.</Text>
-          <Button variant="light" onClick={() => navigate("/beboere")}>
+          <Button component={Link} to="/beboere" variant="light">
             Tilbage til beboeroversigt
           </Button>
         </Stack>
@@ -86,7 +84,9 @@ export default function HouseDetailPage() {
   return (
     <>
       <Breadcrumbs mb="md">
-        <Anchor onClick={() => navigate("/beboere")}>Beboeroversigt</Anchor>
+        <Anchor component={Link} to="/beboere">
+          Beboeroversigt
+        </Anchor>
         <Text>{house.name}</Text>
       </Breadcrumbs>
 
@@ -97,9 +97,10 @@ export default function HouseDetailPage() {
         {currentUser?.house === house.id && (
           <Tooltip label="Rediger hus">
             <ActionIcon
+              component={Link}
+              to="/hus/rediger"
               variant="light"
               size="lg"
-              onClick={() => navigate("/hus/rediger")}
               aria-label="Rediger hus"
               style={{ flexShrink: 0 }}
             >
@@ -146,7 +147,7 @@ export default function HouseDetailPage() {
             <InhabitantCard
               key={inhabitant.id}
               inhabitant={inhabitant}
-              onClick={() => navigate(`/profil/${inhabitant.id}`)}
+              to={`/profil/${inhabitant.id}`}
             />
           ))}
         </SimpleGrid>
@@ -188,17 +189,23 @@ export default function HouseDetailPage() {
 interface InhabitantCardProps {
   inhabitant: UserSummary
 
-  onClick: () => void
+  to: string
 }
 
-function InhabitantCard({ inhabitant, onClick }: InhabitantCardProps) {
+function InhabitantCard({ inhabitant, to }: InhabitantCardProps) {
   return (
     <Paper
+      component={Link}
+      to={to}
       withBorder
       p="lg"
       radius="md"
-      style={{ cursor: "pointer" }}
-      onClick={onClick}
+      style={{
+        cursor: "pointer",
+        textDecoration: "none",
+        color: "inherit",
+        display: "block",
+      }}
     >
       <Group>
         <Avatar src={inhabitant.profile_picture} size="lg" radius="xl">

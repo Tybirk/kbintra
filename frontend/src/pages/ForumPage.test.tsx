@@ -189,20 +189,18 @@ describe("ForumPage", () => {
     })
   })
 
-  it("clicking subgroup navigates to subgroup page", async () => {
-    const user = userEvent.setup()
-
+  it("renders subgroup card as link to subgroup page", async () => {
     render(<ForumPage />)
 
     await waitFor(() => {
       expect(screen.getByText("Fællesgruppe")).toBeInTheDocument()
     })
 
-    // Click on the paper card that contains the subgroup name
+    const cardLink = screen
+      .getByRole("link", { name: "Fællesgruppe" })
+      .getAttribute("href")
 
-    await user.click(screen.getByText("Fællesgruppe"))
-
-    expect(mockNavigate).toHaveBeenCalledWith("/forum/faellesgruppe")
+    expect(cardLink).toBe("/forum/faellesgruppe")
   })
 
   it("shows subscribed groups section for subscribed subgroups", async () => {

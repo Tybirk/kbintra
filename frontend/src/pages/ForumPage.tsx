@@ -38,7 +38,7 @@ import {
   IconMessageCircle,
 } from "@tabler/icons-react"
 
-import { useNavigate } from "react-router-dom"
+import { useNavigate, Link } from "react-router-dom"
 
 import dayjs from "dayjs"
 
@@ -256,7 +256,7 @@ export default function ForumPage() {
     <SubgroupCard
       key={subgroup.id}
       subgroup={subgroup}
-      onClick={() => navigate(`/forum/${subgroup.slug}`)}
+      to={`/forum/${subgroup.slug}`}
       onSubscribe={() => subscribeMutation.mutate(subgroup.slug)}
       onUnsubscribe={() => unsubscribeMutation.mutate(subgroup.slug)}
       isSubscribing={subscribeMutation.isPending}
@@ -435,7 +435,7 @@ export default function ForumPage() {
 interface SubgroupCardProps {
   subgroup: Subgroup
 
-  onClick: () => void
+  to: string
 
   onSubscribe: () => void
 
@@ -451,7 +451,7 @@ interface SubgroupCardProps {
 function SubgroupCard({
   subgroup,
 
-  onClick,
+  to,
 
   onSubscribe,
 
@@ -466,6 +466,8 @@ function SubgroupCard({
   const handleSubscriptionClick = (e: React.MouseEvent) => {
     e.stopPropagation()
 
+    e.preventDefault()
+
     if (subgroup.is_subscribed) {
       onUnsubscribe()
     } else {
@@ -479,8 +481,17 @@ function SubgroupCard({
       p="lg"
       radius="md"
       style={{ cursor: "pointer", position: "relative", overflow: "visible" }}
-      onClick={onClick}
     >
+      <Link
+        to={to}
+        aria-label={subgroup.name}
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 1,
+          borderRadius: "inherit",
+        }}
+      />
       {subgroup.unread_thread_count > 0 && (
         <Box
           style={{
@@ -512,7 +523,7 @@ function SubgroupCard({
 
             fontWeight: 700,
 
-            zIndex: 1,
+            zIndex: 2,
           }}
         >
           {subgroup.unread_thread_count}
@@ -531,7 +542,10 @@ function SubgroupCard({
             </Text>
           </Group>
           {!hideBell && (
-            <Group gap="xs" style={{ flexShrink: 0 }}>
+            <Group
+              gap="xs"
+              style={{ flexShrink: 0, position: "relative", zIndex: 2 }}
+            >
               <Tooltip
                 label={subgroup.is_subscribed ? "Afmeld" : "Abonnér"}
                 withArrow

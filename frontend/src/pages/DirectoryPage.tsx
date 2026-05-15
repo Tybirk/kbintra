@@ -19,7 +19,7 @@ import {
 
 import { IconSearch, IconHome } from "@tabler/icons-react"
 
-import { useNavigate } from "react-router-dom"
+import { Link } from "react-router-dom"
 
 import { housesApi } from "../api/houses"
 
@@ -28,8 +28,6 @@ import UserLink from "../components/UserLink"
 import type { Child, House, UserSummary } from "../types"
 
 export default function DirectoryPage() {
-  const navigate = useNavigate()
-
   const [search, setSearch] = useState("")
 
   const { data, isLoading, error } = useQuery({
@@ -105,7 +103,7 @@ export default function DirectoryPage() {
             <HouseCard
               key={house.id}
               house={house}
-              onClick={() => navigate(`/beboere/hus/${house.slug}`)}
+              to={`/beboere/hus/${house.slug}`}
             />
           ))}
         </SimpleGrid>
@@ -276,10 +274,10 @@ function StatsSummary({ houses }: StatsSummaryProps) {
 interface HouseCardProps {
   house: House
 
-  onClick: () => void
+  to: string
 }
 
-function HouseCard({ house, onClick }: HouseCardProps) {
+function HouseCard({ house, to }: HouseCardProps) {
   const totalResidents =
     (house.inhabitants?.length || 0) + (house.children?.length || 0)
 
@@ -288,9 +286,18 @@ function HouseCard({ house, onClick }: HouseCardProps) {
       withBorder
       p="lg"
       radius="md"
-      style={{ cursor: "pointer" }}
-      onClick={onClick}
+      style={{ cursor: "pointer", position: "relative" }}
     >
+      <Link
+        to={to}
+        aria-label={house.name}
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 1,
+          borderRadius: "inherit",
+        }}
+      />
       <Group justify="space-between" mb="xs">
         <Group gap="sm">
           <Avatar
@@ -345,6 +352,7 @@ function ResidentRow({ inhabitant }: ResidentRowProps) {
         firstName={inhabitant.first_name}
         lastName={inhabitant.last_name}
         size="sm"
+        style={{ position: "relative", zIndex: 2 }}
       />
     </Group>
   )

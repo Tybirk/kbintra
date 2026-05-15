@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef } from "react"
 
-import { useNavigate } from "react-router-dom"
+import { useNavigate, Link } from "react-router-dom"
 
 import { useQuery, keepPreviousData } from "@tanstack/react-query"
 
@@ -262,8 +262,9 @@ export default function CalendarPage() {
           <Text c="dimmed">Fællesskabsbegivenheder og aktiviteter</Text>
         </div>
         <Button
+          component={Link}
+          to="/kalender/opret"
           leftSection={<IconPlus size={16} />}
-          onClick={() => navigate("/kalender/opret")}
         >
           Ny begivenhed
         </Button>
@@ -369,11 +370,17 @@ export default function CalendarPage() {
                     {dayEvents.map((ev) => (
                       <Paper
                         key={ev.id}
+                        component={Link}
+                        to={`/kalender/${ev.slug}`}
                         withBorder
                         p="sm"
                         radius="md"
-                        style={{ cursor: "pointer" }}
-                        onClick={() => navigate(`/kalender/${ev.slug}`)}
+                        style={{
+                          cursor: "pointer",
+                          textDecoration: "none",
+                          color: "inherit",
+                          display: "block",
+                        }}
                       >
                         <Stack gap={6}>
                           <Group

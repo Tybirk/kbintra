@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom"
+import { Link } from "react-router-dom"
 
 import { Paper, Group, Box, Text, Badge, Avatar } from "@mantine/core"
 
@@ -21,8 +21,6 @@ export function CompactEventCard({
 
   showCreator = false,
 }: CompactEventCardProps) {
-  const navigate = useNavigate()
-
   const isToday = dayjs(event.start_datetime).isSame(dayjs(), "day")
 
   const isPast = dayjs(event.end_datetime).isBefore(dayjs())
@@ -35,6 +33,8 @@ export function CompactEventCard({
 
   return (
     <Paper
+      component={Link}
+      to={`/kalender/${event.slug}`}
       withBorder
       p="sm"
       radius="md"
@@ -42,8 +42,10 @@ export function CompactEventCard({
         opacity: event.is_cancelled ? 0.5 : isPast ? 0.6 : 1,
 
         cursor: "pointer",
+        textDecoration: "none",
+        color: "inherit",
+        display: "block",
       }}
-      onClick={() => navigate(`/kalender/${event.slug}`)}
     >
       <Group gap="sm" wrap="nowrap" style={{ flex: 1 }}>
         <Box
