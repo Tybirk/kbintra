@@ -9,7 +9,7 @@ import {
   Stack,
   Avatar,
   Loader,
-  TextInput,
+  Drawer,
 } from "@mantine/core"
 
 import { useMediaQuery } from "@mantine/hooks"
@@ -18,7 +18,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 
 import { IconMoodSmile, IconDots } from "@tabler/icons-react"
 
-import { lazy, Suspense, useEffect, useRef, useState } from "react"
+import { lazy, Suspense, useState } from "react"
 
 import { forumApi } from "../api/forum"
 
@@ -35,7 +35,7 @@ const emojiDataPromise = () => import("@emoji-mart/data").then((m) => m.default)
 const DEFAULT_EMOJIS: string[] = [
   "\u{1F44D}",
 
-  "\u2764\uFE0F",
+  "❤️",
 
   "\u{1F602}",
 
@@ -58,25 +58,6 @@ interface ReactionsProps {
   reactions: ReactionSummary[]
 }
 
-// Extracts the first emoji grapheme from a string (handles ZWJ sequences and skin tones).
-function extractFirstEmoji(value: string): string | null {
-  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
-    const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" })
-
-    for (const { segment } of segmenter.segment(value)) {
-      if (/\p{Extended_Pictographic}/u.test(segment)) {
-        return segment
-      }
-    }
-
-    return null
-  }
-
-  const match = value.match(/\p{Extended_Pictographic}/u)
-
-  return match ? match[0] : null
-}
-
 export default function Reactions({
   postId,
 
@@ -92,26 +73,11 @@ export default function Reactions({
 
   const [fullPickerOpened, setFullPickerOpened] = useState(false)
 
-  const [nativeInputOpened, setNativeInputOpened] = useState(false)
-
-  const [nativeInputValue, setNativeInputValue] = useState("")
-
-  const nativeInputRef = useRef<HTMLInputElement>(null)
-
   const [emojiData, setEmojiData] = useState<object | null>(null)
 
   const [openReactionType, setOpenReactionType] = useState<ReactionType | null>(
     null,
   )
-
-  useEffect(() => {
-    if (nativeInputOpened) {
-      // Defer focus so the popover is mounted before we trigger the keyboard.
-      const id = window.setTimeout(() => nativeInputRef.current?.focus(), 50)
-
-      return () => window.clearTimeout(id)
-    }
-  }, [nativeInputOpened])
 
   const toggleMutation = useMutation({
     mutationFn: (reactionType: ReactionType) =>
@@ -124,10 +90,6 @@ export default function Reactions({
 
       setFullPickerOpened(false)
 
-      setNativeInputOpened(false)
-
-      setNativeInputValue("")
-
       setOpenReactionType(null)
     },
   })
@@ -137,19 +99,11 @@ export default function Reactions({
   }
 
   const handleOpenFullPicker = () => {
-    setPickerOpened(false)
-
-    if (isMobile) {
-      setNativeInputValue("")
-
-      setNativeInputOpened((o) => !o)
-
-      return
-    }
-
     if (!emojiData) {
       emojiDataPromise().then(setEmojiData)
     }
+
+    setPickerOpened(false)
 
     setFullPickerOpened((o) => !o)
   }
@@ -158,15 +112,24 @@ export default function Reactions({
     handleReaction(emoji.native)
   }
 
-  const handleNativeInputChange = (value: string) => {
-    setNativeInputValue(value)
-
-    const emoji = extractFirstEmoji(value)
-
-    if (emoji) {
-      handleReaction(emoji)
-    }
-  }
+  const pickerContent = (
+    <Suspense fallback={<Loader size="sm" m="md" />}>
+      <LazyPicker
+        data={emojiData}
+        onEmojiSelect={handleFullPickerSelect}
+        locale="en"
+        theme="light"
+        previewPosition="none"
+        skinTonePosition="search"
+        searchPosition="sticky"
+        navPosition="top"
+        perLine={9}
+        emojiSize={22}
+        emojiButtonSize={32}
+        maxFrequentRows={2}
+      />
+    </Suspense>
+  )
 
   return (
     <Group gap="sm">
@@ -264,7 +227,7 @@ export default function Reactions({
                 >
                   {reaction.has_reacted
                     ? "Fjern din reaktion"
-                    : "Tilf\u00f8j din reaktion"}
+                    : "Tilføj din reaktion"}
                 </Text>
               </UnstyledButton>
             </Stack>
@@ -330,69 +293,38 @@ export default function Reactions({
         </Popover.Dropdown>
       </Popover>
 
-      {/* Full emoji picker (desktop) */}
-      <Popover
-        opened={fullPickerOpened}
-        onChange={setFullPickerOpened}
-        position="top"
-        width="auto"
-        shadow="md"
-      >
-        <Popover.Target>
-          <Box style={{ width: 0, height: 0 }} />
-        </Popover.Target>
-        <Popover.Dropdown p={0} style={{ border: "none", background: "none" }}>
-          {fullPickerOpened && (
-            <Suspense fallback={<Loader size="sm" m="md" />}>
-              <LazyPicker
-                data={emojiData}
-                onEmojiSelect={handleFullPickerSelect}
-                locale="da"
-                theme="light"
-                previewPosition="none"
-                skinTonePosition="search"
-                searchPosition="sticky"
-                navPosition="top"
-                perLine={9}
-                emojiSize={22}
-                emojiButtonSize={32}
-                maxFrequentRows={2}
-              />
-            </Suspense>
-          )}
-        </Popover.Dropdown>
-      </Popover>
-
-      {/* Native emoji input (mobile) */}
-      <Popover
-        opened={nativeInputOpened}
-        onChange={setNativeInputOpened}
-        position="top"
-        width={240}
-        shadow="md"
-      >
-        <Popover.Target>
-          <Box style={{ width: 0, height: 0 }} />
-        </Popover.Target>
-        <Popover.Dropdown p="xs">
-          <Stack gap={6}>
-            <TextInput
-              ref={nativeInputRef}
-              value={nativeInputValue}
-              onChange={(e) => handleNativeInputChange(e.currentTarget.value)}
-              placeholder="😀"
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck={false}
-              disabled={toggleMutation.isPending}
-            />
-            <Text size="xs" c="dimmed">
-              Skift til emoji på dit tastatur og vælg en
-            </Text>
-          </Stack>
-        </Popover.Dropdown>
-      </Popover>
+      {/* Full emoji picker — Drawer on mobile, Popover on desktop */}
+      {isMobile ? (
+        <Drawer
+          opened={fullPickerOpened}
+          onClose={() => setFullPickerOpened(false)}
+          position="bottom"
+          size="auto"
+          withCloseButton={false}
+          padding={0}
+          styles={{ body: { padding: 0 } }}
+        >
+          {fullPickerOpened && pickerContent}
+        </Drawer>
+      ) : (
+        <Popover
+          opened={fullPickerOpened}
+          onChange={setFullPickerOpened}
+          position="top"
+          width="auto"
+          shadow="md"
+        >
+          <Popover.Target>
+            <Box style={{ width: 0, height: 0 }} />
+          </Popover.Target>
+          <Popover.Dropdown
+            p={0}
+            style={{ border: "none", background: "none" }}
+          >
+            {fullPickerOpened && pickerContent}
+          </Popover.Dropdown>
+        </Popover>
+      )}
     </Group>
   )
 }
