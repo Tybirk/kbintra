@@ -65,6 +65,18 @@ class SubgroupMembershipSerializer(serializers.ModelSerializer):
         fields = ["id", "user", "user_id", "role", "house_name", "created_at"]
 
 
+class SubgroupSubscriberSerializer(serializers.ModelSerializer):
+    """Serializer for a single subscriber row (used by the subscribers list endpoint)."""
+
+    user = AuthorSerializer(read_only=True)
+    user_id = serializers.IntegerField(source="user.id", read_only=True)
+    house_name = serializers.CharField(source="user.house.name", read_only=True, default="")
+
+    class Meta:
+        model = SubgroupSubscription
+        fields = ["id", "user", "user_id", "house_name", "created_at"]
+
+
 class SubgroupSerializer(serializers.ModelSerializer):
     """Serializer for Subgroup model."""
 
@@ -74,6 +86,7 @@ class SubgroupSerializer(serializers.ModelSerializer):
     unread_thread_count = serializers.SerializerMethodField()
     latest_thread_title = serializers.SerializerMethodField()
     members = serializers.SerializerMethodField()
+    subscriber_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = Subgroup
@@ -95,6 +108,7 @@ class SubgroupSerializer(serializers.ModelSerializer):
             "is_member",
             "latest_thread_title",
             "members",
+            "subscriber_count",
             "created_at",
             "last_activity_at",
         ]

@@ -246,6 +246,18 @@ export interface Subgroup {
   is_member: boolean
 
   members: SubgroupMember[]
+
+  subscriber_count: number
+}
+
+export interface SubgroupSubscriber {
+  id: number
+
+  user: Author
+
+  house_name: string
+
+  created_at: string
 }
 
 export interface SubgroupSubscription {

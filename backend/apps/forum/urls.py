@@ -32,6 +32,7 @@ from .views import (
     SubgroupMemberDetailView,
     SubgroupMemberListCreateView,
     SubgroupRoleListView,
+    SubgroupSubscribersListView,
     SubgroupUpdateView,
     SubscribeView,
     ThreadCloseView,
@@ -57,6 +58,11 @@ urlpatterns = [
     path("subgroups/<slug:slug>/", SubgroupDetailView.as_view(), name="subgroup-detail"),
     path("subgroups/<slug:slug>/subscribe/", SubscribeView.as_view(), name="subscribe"),
     path("subgroups/<slug:slug>/unsubscribe/", UnsubscribeView.as_view(), name="unsubscribe"),
+    path(
+        "subgroups/<slug:slug>/subscribers/",
+        SubgroupSubscribersListView.as_view(),
+        name="subgroup-subscribers",
+    ),
     path("subgroups/<slug:slug>/update/", SubgroupUpdateView.as_view(), name="subgroup-update"),
     # Membership
     path(

@@ -1,8 +1,5 @@
-/* Global styles - Mantine handles most styling */
-
-* {
-  box-sizing: border-box;
-}
+/* Global styles - Mantine handles most layout/reset. Only the rules below
+   have actual consumers in the app. */
 
 /* Prevent long Danish compound words from causing horizontal overflow */
 h1, h2, h3, h4, h5, h6 {
@@ -30,93 +27,18 @@ h1, h2, h3, h4, h5, h6 {
   margin: 0.25em 0;
 }
 
-
-html {
-  /* Prevent overscroll/bounce on iOS */
-  overflow: hidden;
-  height: 100%;
-  /* Use dynamic viewport height for mobile browser address bar */
-  height: 100dvh;
-}
-
-body {
-  margin: 0;
-  height: 100%;
-  height: 100dvh;
-  overflow: hidden;
-  /* Prevent pull-to-refresh and other unwanted gestures */
-  overscroll-behavior: none;
-  /* Disable double-tap zoom and other touch delays */
-  touch-action: manipulation;
-  /* Prevent text size adjustment on orientation change */
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-  /* Safe area insets - only left/right/bottom, top is handled by AppShell */
-  padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-}
-
-#root {
-  height: 100%;
-  height: 100dvh;
-  overflow: hidden;
-}
-
-/* Prevent iOS callout menu on long press for interactive elements */
-a, button, input, select, textarea {
-  -webkit-touch-callout: none;
-}
-
-/* Ensure scrollable areas have smooth momentum scrolling */
-.mantine-ScrollArea-viewport,
-[data-scrollable="true"] {
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-}
-
-/* AppShell layout - ensure proper mobile scrolling */
-.mantine-AppShell-root {
-  height: 100%;
-  height: 100dvh;
-}
-
-/* PWA safe area - add padding for iOS notch/status bar */
-.mantine-AppShell-header {
-  padding-top: env(safe-area-inset-top) !important;
-  height: calc(60px + env(safe-area-inset-top)) !important;
-  /* Extend background color into the safe area */
-  background-color: var(--mantine-color-body) !important;
-}
-
-.mantine-AppShell-main {
-  /* Offset main content to account for taller header with safe area */
-  padding-top: calc(60px + env(safe-area-inset-top) + var(--mantine-spacing-md)) !important;
-  height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-}
-
 /* Tighter padding on mobile so content has more breathing room horizontally */
 @media (max-width: 48em) {
   .mantine-AppShell-main {
     --app-shell-padding: var(--mantine-spacing-xs);
-    padding-top: calc(60px + env(safe-area-inset-top) + var(--mantine-spacing-xs)) !important;
   }
 }
 
 /* Safari fix: Schedule nav chevrons use SVG transform attribute on the root <svg>
-   element, which Safari ignores. Override with CSS transform (transform-origin: center). */
+   element, which Safari ignores. Override with CSS transform. */
 .schedule-wrapper [data-type="next"] svg {
   transform: rotate(-90deg);
 }
 .schedule-wrapper [data-type="previous"] svg {
   transform: rotate(90deg);
-}
-
-/* Prevent navbar from causing scroll issues when open on mobile */
-.mantine-AppShell-navbar {
-  overscroll-behavior: contain;
-  /* Account for safe area at top when navbar is open */
-  top: env(safe-area-inset-top) !important;
 }

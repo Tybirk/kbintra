@@ -57,16 +57,16 @@ import {
   IconEye,
   IconChartBar,
   IconChecks,
-  IconCalendarEvent,
+  IconCalendarPlus,
   IconLink,
   IconCopy,
   IconEyeOff,
   IconUsers,
   IconUserPlus,
-  IconChevronDown,
-  IconChevronUp,
   IconDots,
   IconSettings,
+  IconBell,
+  IconBellOff,
 } from "@tabler/icons-react"
 
 import dayjs from "dayjs"
@@ -130,6 +130,7 @@ import type {
   ForumFile,
   Subgroup,
   SubgroupMember,
+  SubgroupSubscriber,
 } from "../types"
 
 interface CreateThreadParams {
@@ -710,76 +711,64 @@ When done, print a short summary:
         </Stack>
       </Modal>
 
-      <Group justify="space-between" mb="md">
-        <div>
-          <Group gap="xs">
-            <EmojiPicker
-              onSelect={(emoji) => updateIconMutation.mutate(emoji)}
-              icon={subgroup.icon || "💬"}
-              size="lg"
-            />
-            <Title order={3} style={{ flex: 1, minWidth: 0 }}>
-              {subgroup.name}
-            </Title>
-            <Menu position="bottom-end" withinPortal>
-              <Menu.Target>
-                <ActionIcon
-                  variant="subtle"
-                  color="gray"
-                  aria-label="Gruppemenu"
-                >
-                  <IconDots size={18} />
-                </ActionIcon>
-              </Menu.Target>
-              <Menu.Dropdown>
-                <Menu.Item
-                  leftSection={<IconSettings size={14} />}
-                  onClick={() => {
-                    setEditName(subgroup.name)
-
-                    setEditDescriptionFull(subgroup.description || "")
-
-                    setEditAllowsMembers(subgroup.allows_members)
-
-                    openEditGroup()
-                  }}
-                >
-                  Rediger gruppe
-                </Menu.Item>
-              </Menu.Dropdown>
-            </Menu>
-          </Group>
-          {subgroup.description && subgroup.description !== "<p></p>" ? (
-            <Typography mt="sm">
-              <RichTextContent
-                className="description-content"
-                html={subgroup.description}
-              />
-            </Typography>
-          ) : (
-            <Text c="dimmed" size="sm" mt="sm">
-              Ingen beskrivelse
-            </Text>
-          )}
-        </div>
-        <Group gap="xs">
-          {user?.is_staff && (
-            <Button
-              variant="light"
-              color="gray"
-              leftSection={<IconCopy size={16} />}
-              onClick={copyThreadsAsMarkdown}
-              loading={isCopying}
-            >
-              Kopier til LLM
-            </Button>
-          )}
+      <Box mb="md">
+        <Group gap="xs" wrap="nowrap">
+          <EmojiPicker
+            onSelect={(emoji) => updateIconMutation.mutate(emoji)}
+            icon={subgroup.icon || "💬"}
+            size="lg"
+          />
+          <Title order={3} style={{ flex: 1, minWidth: 0 }}>
+            {subgroup.name}
+          </Title>
+          <Menu position="bottom-end" withinPortal>
+            <Menu.Target>
+              <ActionIcon variant="subtle" color="gray" aria-label="Gruppemenu">
+                <IconDots size={18} />
+              </ActionIcon>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item
+                leftSection={<IconSettings size={14} />}
+                onClick={() => {
+                  setEditName(subgroup.name)
+                  setEditDescriptionFull(subgroup.description || "")
+                  setEditAllowsMembers(subgroup.allows_members)
+                  openEditGroup()
+                }}
+              >
+                Rediger gruppe
+              </Menu.Item>
+              {user?.is_staff && (
+                <>
+                  <Menu.Divider />
+                  <Menu.Item
+                    leftSection={<IconCopy size={14} />}
+                    disabled={isCopying}
+                    onClick={copyThreadsAsMarkdown}
+                  >
+                    {isCopying ? "Kopierer..." : "Kopier til LLM"}
+                  </Menu.Item>
+                </>
+              )}
+            </Menu.Dropdown>
+          </Menu>
         </Group>
-      </Group>
 
-      {subgroup.allows_members && (
-        <MembersSection subgroup={subgroup} currentUserId={user?.id ?? null} />
-      )}
+        {subgroup.description && subgroup.description !== "<p></p>" ? (
+          <ClampedDescription html={subgroup.description} />
+        ) : (
+          <Text c="dimmed" size="sm" mt="sm">
+            Ingen beskrivelse
+          </Text>
+        )}
+
+        <StatsChips
+          subgroup={subgroup}
+          currentUserId={user?.id ?? null}
+          isMobile={!!isMobile}
+        />
+      </Box>
 
       {upcomingEvents && upcomingEvents.length > 0 && (
         <SimpleGrid cols={{ base: 1, sm: 2 }} mb="md">
@@ -828,7 +817,7 @@ When done, print a short summary:
         </Tabs.List>
 
         <Tabs.Panel value="threads" pt="md">
-          <Group justify="space-between" mb="md" wrap="wrap">
+          <Group justify="space-between" mb="md" gap="xs">
             <Switch
               label="Skjul lukkede"
               checked={hideClosedThreads}
@@ -837,24 +826,30 @@ When done, print a short summary:
             />
             <Group gap="xs">
               {hasUnread && (
-                <Button
-                  variant="light"
-                  leftSection={<IconChecks size={16} />}
-                  onClick={() => markReadMutation.mutate()}
-                  loading={markReadMutation.isPending}
-                >
-                  Markér som læst
-                </Button>
+                <Tooltip label="Markér som læst">
+                  <ActionIcon
+                    variant="light"
+                    size="lg"
+                    onClick={() => markReadMutation.mutate()}
+                    loading={markReadMutation.isPending}
+                    aria-label="Markér som læst"
+                  >
+                    <IconChecks size={18} />
+                  </ActionIcon>
+                </Tooltip>
               )}
-              <Button
-                variant="light"
-                leftSection={<IconCalendarEvent size={16} />}
-                onClick={() =>
-                  navigate(`/kalender/opret?subgroup=${subgroup.id}`)
-                }
-              >
-                Opret begivenhed
-              </Button>
+              <Tooltip label="Opret begivenhed">
+                <ActionIcon
+                  variant="light"
+                  size="lg"
+                  onClick={() =>
+                    navigate(`/kalender/opret?subgroup=${subgroup.id}`)
+                  }
+                  aria-label="Opret begivenhed"
+                >
+                  <IconCalendarPlus size={18} />
+                </ActionIcon>
+              </Tooltip>
               <Button
                 leftSection={<IconPlus size={16} />}
                 onClick={openCreateThreadModal}
@@ -2817,29 +2812,141 @@ function MoveFileModal({
   )
 }
 
-interface MembersSectionProps {
-  subgroup: Subgroup
+const CLAMP_MAX_HEIGHT_PX = 80
 
+function ClampedDescription({ html }: { html: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const [needsClamp, setNeedsClamp] = useState(false)
+  const ref = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    // Only measure when the clamp is actually applied. When expanded, the div
+    // has its natural height and scrollHeight === clientHeight would hide the
+    // "Læs mindre" link.
+    if (!el || expanded) return
+    const measure = () => {
+      setNeedsClamp(el.scrollHeight > el.clientHeight + 1)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [html, expanded])
+
+  const clampStyle = expanded
+    ? undefined
+    : {
+        maxHeight: `${CLAMP_MAX_HEIGHT_PX}px`,
+        overflow: "hidden",
+      } as const
+
+  return (
+    <Box mt="sm">
+      <div ref={ref} style={clampStyle}>
+        <Typography>
+          <RichTextContent className="description-content" html={html} />
+        </Typography>
+      </div>
+      {needsClamp && (
+        <Anchor
+          component="button"
+          type="button"
+          size="sm"
+          onClick={() => setExpanded((v) => !v)}
+          mt={4}
+        >
+          {expanded ? "Læs mindre" : "Læs mere"}
+        </Anchor>
+      )}
+    </Box>
+  )
+}
+
+interface StatsChipsProps {
+  subgroup: Subgroup
   currentUserId: number | null
+  isMobile: boolean
+}
+
+function StatsChips({ subgroup, currentUserId, isMobile }: StatsChipsProps) {
+  const [membersOpened, setMembersOpened] = useState(false)
+  const [subsOpened, setSubsOpened] = useState(false)
+
+  return (
+    <>
+      <Group gap="xs" mt="sm">
+        {subgroup.allows_members && (
+          <Badge
+            size="lg"
+            variant="light"
+            color="gray"
+            leftSection={<IconUsers size={14} />}
+            style={{ cursor: "pointer", textTransform: "none" }}
+            onClick={() => setMembersOpened(true)}
+          >
+            {subgroup.members.length} medlemmer
+          </Badge>
+        )}
+        <Badge
+          size="lg"
+          variant="light"
+          color="gray"
+          leftSection={<IconBell size={14} />}
+          style={{ cursor: "pointer", textTransform: "none" }}
+          onClick={() => setSubsOpened(true)}
+        >
+          {subgroup.subscriber_count} følger med
+        </Badge>
+      </Group>
+      {subgroup.allows_members && (
+        <MembersModal
+          opened={membersOpened}
+          onClose={() => setMembersOpened(false)}
+          subgroup={subgroup}
+          currentUserId={currentUserId}
+          isMobile={isMobile}
+        />
+      )}
+      <SubscribersModal
+        opened={subsOpened}
+        onClose={() => setSubsOpened(false)}
+        subgroup={subgroup}
+        isMobile={isMobile}
+      />
+    </>
+  )
+}
+
+interface MembersModalProps {
+  opened: boolean
+  onClose: () => void
+  subgroup: Subgroup
+  currentUserId: number | null
+  isMobile: boolean
 }
 
 const ROLE_FALLBACK = ["Medlem"]
 
-function MembersSection({ subgroup, currentUserId }: MembersSectionProps) {
+function MembersModal({
+  opened,
+  onClose,
+  subgroup,
+  currentUserId,
+  isMobile,
+}: MembersModalProps) {
   const queryClient = useQueryClient()
-
   const { user } = useAuthStore()
 
   const { data: roleOptions } = useQuery({
     queryKey: ["forum-role-options"],
     queryFn: forumApi.getRoleOptions,
     staleTime: 5 * 60 * 1000,
+    enabled: opened,
   })
 
   const roleSuggestions =
     roleOptions && roleOptions.length > 0 ? roleOptions : ROLE_FALLBACK
-
-  const [expanded, setExpanded] = useState(false)
 
   const [pickerOpened, { open: openPicker, close: closePicker }] =
     useDisclosure(false)
@@ -2853,9 +2960,7 @@ function MembersSection({ subgroup, currentUserId }: MembersSectionProps) {
 
   const sortedMembers = [...subgroup.members].sort((a, b) => {
     const an = `${a.user.first_name} ${a.user.last_name}`.toLowerCase()
-
     const bn = `${b.user.first_name} ${b.user.last_name}`.toLowerCase()
-
     return an.localeCompare(bn, "da")
   })
 
@@ -2866,21 +2971,15 @@ function MembersSection({ subgroup, currentUserId }: MembersSectionProps) {
   const addMutation = useMutation({
     mutationFn: (userIds: number[]) =>
       forumApi.addMembers(subgroup.slug, userIds),
-
     onSuccess: () => {
       notifications.show({
         title: "Medlemmer tilføjet",
-
         message: "Medlemmerne er blevet tilføjet.",
-
         color: "green",
       })
-
       invalidateSubgroup()
-
       closePicker()
     },
-
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke tilføje medlemmer.")
     },
@@ -2889,21 +2988,15 @@ function MembersSection({ subgroup, currentUserId }: MembersSectionProps) {
   const removeMutation = useMutation({
     mutationFn: (userId: number) =>
       forumApi.removeMember(subgroup.slug, userId),
-
     onSuccess: () => {
       notifications.show({
         title: "Medlem fjernet",
-
         message: "Medlemmet er blevet fjernet fra gruppen.",
-
         color: "green",
       })
-
       invalidateSubgroup()
-
       setRemoveTarget(null)
     },
-
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke fjerne medlem.")
     },
@@ -2911,18 +3004,15 @@ function MembersSection({ subgroup, currentUserId }: MembersSectionProps) {
 
   interface mutationFnEntry {
     userId: number
-
     role: string
   }
 
   const roleMutation = useMutation({
     mutationFn: ({ userId, role }: mutationFnEntry) =>
       forumApi.updateMemberRole(subgroup.slug, userId, role),
-
     onSuccess: () => {
       invalidateSubgroup()
     },
-
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke opdatere rolle.")
     },
@@ -2930,145 +3020,139 @@ function MembersSection({ subgroup, currentUserId }: MembersSectionProps) {
 
   const leaveMutation = useMutation({
     mutationFn: () => forumApi.leaveSubgroup(subgroup.slug),
-
     onSuccess: () => {
       notifications.show({
         title: "Du har forladt gruppen",
-
         message: `Du er ikke længere medlem af ${subgroup.name}.`,
-
         color: "green",
       })
-
       invalidateSubgroup()
-
       closeLeave()
+      onClose()
     },
-
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke forlade gruppen.")
     },
   })
 
   return (
-    <Paper withBorder p={{ base: "xs", sm: "md" }} radius="md" mb="md">
-      <Group
-        justify="space-between"
-        wrap="nowrap"
-        style={{ cursor: "pointer" }}
-        onClick={() => setExpanded((e) => !e)}
-      >
-        <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
-          <IconUsers size={20} />
-          <Text fw={600}>Medlemmer</Text>
-          <Badge variant="light">{subgroup.members.length}</Badge>
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title={
+        <Group gap="xs">
+          <IconUsers size={18} />
+          <Text fw={600}>Medlemmer · {subgroup.members.length}</Text>
         </Group>
-        <ActionIcon variant="subtle" color="gray" aria-label="Vis medlemmer">
-          {expanded ? (
-            <IconChevronUp size={18} />
-          ) : (
-            <IconChevronDown size={18} />
-          )}
-        </ActionIcon>
-      </Group>
-
-      {expanded && (
-        <Stack gap="xs" mt="sm">
-          {sortedMembers.length === 0 && (
-            <Text c="dimmed" size="sm">
-              Ingen medlemmer endnu. Tilføj det første medlem for at komme i
-              gang.
-            </Text>
-          )}
-          {sortedMembers.map((m) => (
-            <Group key={m.id} justify="space-between" wrap="nowrap" gap="xs">
-              <Group gap="xs" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
-                <Anchor
-                  href={`/profil/${m.user.id}`}
-                  style={{ display: "flex", flexShrink: 0 }}
-                >
-                  <Avatar src={m.user.profile_picture} radius="xl" size="sm">
-                    {m.user.first_name?.[0]}
-                    {m.user.last_name?.[0]}
-                  </Avatar>
-                </Anchor>
-                <Text truncate size="sm" style={{ minWidth: 0 }}>
-                  {m.user.first_name} {m.user.last_name}
-                </Text>
-              </Group>
-              <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
-                {canManage ? (
-                  <Menu position="bottom-end" withinPortal>
-                    <Menu.Target>
-                      <Badge
-                        variant="light"
-                        color="gray"
-                        size="sm"
-                        style={{ cursor: "pointer" }}
-                      >
-                        {m.role || "Medlem"}
-                      </Badge>
-                    </Menu.Target>
-                    <Menu.Dropdown>
-                      {roleSuggestions.map((role) => (
-                        <Menu.Item
-                          key={role}
-                          onClick={() => {
-                            if (role !== m.role) {
-                              roleMutation.mutate({
-                                userId: m.user.id,
-
-                                role,
-                              })
-                            }
-                          }}
-                          fw={(m.role || "Medlem") === role ? 700 : undefined}
-                        >
-                          {role}
-                        </Menu.Item>
-                      ))}
-                    </Menu.Dropdown>
-                  </Menu>
-                ) : (
-                  <Badge variant="light" color="gray" size="sm">
-                    {m.role || "Medlem"}
-                  </Badge>
-                )}
-                {canManage && (
-                  <ActionIcon
-                    color="red"
-                    variant="subtle"
-                    size="sm"
-                    onClick={() => setRemoveTarget(m)}
-                    aria-label={`Fjern ${m.user.first_name}`}
-                  >
-                    <IconTrash size={14} />
-                  </ActionIcon>
-                )}
-              </Group>
-            </Group>
-          ))}
-          <Group justify="space-between" mt="xs">
-            {canManage ? (
-              <Button
-                size="xs"
-                variant="light"
-                leftSection={<IconUserPlus size={14} />}
-                onClick={openPicker}
+      }
+      fullScreen={isMobile}
+      size="md"
+    >
+      <Stack gap="xs">
+        {sortedMembers.length === 0 && (
+          <Text c="dimmed" size="sm">
+            Ingen medlemmer endnu. Tilføj det første medlem for at komme i gang.
+          </Text>
+        )}
+        {sortedMembers.map((m) => (
+          <Group key={m.id} justify="space-between" wrap="nowrap" gap="xs">
+            <Group gap="xs" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+              <Anchor
+                href={`/profil/${m.user.id}`}
+                style={{ display: "flex", flexShrink: 0 }}
               >
-                Tilføj medlem
-              </Button>
-            ) : (
-              <span />
-            )}
-            {subgroup.is_member && currentUserId !== null && (
-              <Button size="xs" variant="light" color="red" onClick={openLeave}>
-                Forlad gruppe
-              </Button>
-            )}
+                <Avatar src={m.user.profile_picture} radius="xl" size="sm">
+                  {m.user.first_name?.[0]}
+                  {m.user.last_name?.[0]}
+                </Avatar>
+              </Anchor>
+              <Box style={{ minWidth: 0, flex: 1 }}>
+                <Text truncate size="sm">
+                  {m.user.first_name} {m.user.last_name}
+                  {m.user.id === currentUserId && (
+                    <Text component="span" size="xs" c="dimmed">
+                      {" · Dig"}
+                    </Text>
+                  )}
+                </Text>
+                {m.house_name && (
+                  <Text size="xs" c="dimmed" truncate>
+                    {m.house_name}
+                  </Text>
+                )}
+              </Box>
+            </Group>
+            <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
+              {canManage ? (
+                <Menu position="bottom-end" withinPortal>
+                  <Menu.Target>
+                    <Badge
+                      variant="light"
+                      color="gray"
+                      size="sm"
+                      style={{ cursor: "pointer" }}
+                    >
+                      {m.role || "Medlem"}
+                    </Badge>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    {roleSuggestions.map((role) => (
+                      <Menu.Item
+                        key={role}
+                        onClick={() => {
+                          if (role !== m.role) {
+                            roleMutation.mutate({
+                              userId: m.user.id,
+                              role,
+                            })
+                          }
+                        }}
+                        fw={(m.role || "Medlem") === role ? 700 : undefined}
+                      >
+                        {role}
+                      </Menu.Item>
+                    ))}
+                  </Menu.Dropdown>
+                </Menu>
+              ) : (
+                <Badge variant="light" color="gray" size="sm">
+                  {m.role || "Medlem"}
+                </Badge>
+              )}
+              {canManage && (
+                <ActionIcon
+                  color="red"
+                  variant="subtle"
+                  size="sm"
+                  onClick={() => setRemoveTarget(m)}
+                  aria-label={`Fjern ${m.user.first_name}`}
+                >
+                  <IconTrash size={14} />
+                </ActionIcon>
+              )}
+            </Group>
           </Group>
-        </Stack>
-      )}
+        ))}
+        <Group justify="space-between" mt="md">
+          {canManage ? (
+            <Button
+              size="xs"
+              variant="light"
+              leftSection={<IconUserPlus size={14} />}
+              onClick={openPicker}
+            >
+              Tilføj medlem
+            </Button>
+          ) : (
+            <span />
+          )}
+          {subgroup.is_member && currentUserId !== null && (
+            <Button size="xs" variant="light" color="red" onClick={openLeave}>
+              Forlad gruppe
+            </Button>
+          )}
+        </Group>
+      </Stack>
 
       <UserPickerModal
         opened={pickerOpened}
@@ -3136,6 +3220,155 @@ function MembersSection({ subgroup, currentUserId }: MembersSectionProps) {
           </Group>
         </Stack>
       </Modal>
-    </Paper>
+    </Modal>
+  )
+}
+
+interface SubscribersModalProps {
+  opened: boolean
+  onClose: () => void
+  subgroup: Subgroup
+  isMobile: boolean
+}
+
+function SubscribersModal({
+  opened,
+  onClose,
+  subgroup,
+  isMobile,
+}: SubscribersModalProps) {
+  const queryClient = useQueryClient()
+  const { user } = useAuthStore()
+
+  const { data: subscribers, isLoading } = useQuery({
+    queryKey: ["subgroup-subscribers", subgroup.slug],
+    queryFn: () => forumApi.getSubscribers(subgroup.slug),
+    enabled: opened,
+  })
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["subgroup", subgroup.slug] })
+    queryClient.invalidateQueries({
+      queryKey: ["subgroup-subscribers", subgroup.slug],
+    })
+    queryClient.invalidateQueries({ queryKey: ["subgroups"] })
+  }
+
+  const subscribeMutation = useMutation({
+    mutationFn: () => forumApi.subscribe(subgroup.slug),
+    onSuccess: invalidate,
+    onError: (error: unknown) =>
+      showErrorNotification(error, "Kunne ikke følge gruppen."),
+  })
+
+  const unsubscribeMutation = useMutation({
+    mutationFn: () => forumApi.unsubscribe(subgroup.slug),
+    onSuccess: invalidate,
+    onError: (error: unknown) =>
+      showErrorNotification(error, "Kunne ikke stoppe med at følge gruppen."),
+  })
+
+  const togglePending =
+    subscribeMutation.isPending || unsubscribeMutation.isPending
+
+  return (
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title={
+        <Group gap="xs">
+          <IconBell size={18} />
+          <Text fw={600}>Følger med · {subgroup.subscriber_count}</Text>
+        </Group>
+      }
+      fullScreen={isMobile}
+      size="md"
+    >
+      <Stack gap="sm">
+        <Text size="xs" c="dimmed">
+          Personer der følger med får notifikationer om nye tråde — uden formelt
+          medlemskab.
+        </Text>
+
+        {user && (
+          <Paper withBorder p="xs" radius="md">
+            <Group justify="space-between" wrap="nowrap" gap="xs">
+              <Group gap="xs" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+                {subgroup.is_subscribed ? (
+                  <IconBell size={18} />
+                ) : (
+                  <IconBellOff size={18} color="var(--mantine-color-gray-6)" />
+                )}
+                <Box style={{ minWidth: 0 }}>
+                  <Text size="sm" fw={500}>
+                    {subgroup.is_subscribed
+                      ? "Du følger gruppen"
+                      : "Du følger ikke gruppen"}
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    {subgroup.is_subscribed
+                      ? "Notifikationer ved nye tråde"
+                      : "Tryk Følg for at få notifikationer"}
+                  </Text>
+                </Box>
+              </Group>
+              {subgroup.is_subscribed ? (
+                <Button
+                  size="xs"
+                  variant="default"
+                  loading={togglePending}
+                  onClick={() => unsubscribeMutation.mutate()}
+                >
+                  Stop
+                </Button>
+              ) : (
+                <Button
+                  size="xs"
+                  variant="light"
+                  loading={togglePending}
+                  onClick={() => subscribeMutation.mutate()}
+                >
+                  Følg
+                </Button>
+              )}
+            </Group>
+          </Paper>
+        )}
+
+        {isLoading ? (
+          <Center py="md">
+            <Loader size="sm" />
+          </Center>
+        ) : subscribers && subscribers.length > 0 ? (
+          <Stack gap={4}>
+            {subscribers.map((s: SubgroupSubscriber) => (
+              <Group key={s.id} wrap="nowrap" gap="xs">
+                <Anchor
+                  href={`/profil/${s.user.id}`}
+                  style={{ display: "flex", flexShrink: 0 }}
+                >
+                  <Avatar src={s.user.profile_picture} radius="xl" size="sm">
+                    {s.user.first_name?.[0]}
+                    {s.user.last_name?.[0]}
+                  </Avatar>
+                </Anchor>
+                <Text size="sm" style={{ minWidth: 0, flex: 1 }} truncate>
+                  {s.user.first_name} {s.user.last_name}
+                </Text>
+                {s.house_name && (
+                  <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>
+                    {s.house_name}
+                  </Text>
+                )}
+              </Group>
+            ))}
+          </Stack>
+        ) : (
+          <Text c="dimmed" size="sm" ta="center" py="md">
+            Ingen følger gruppen endnu.
+          </Text>
+        )}
+      </Stack>
+    </Modal>
   )
 }

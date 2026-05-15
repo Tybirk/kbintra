@@ -46,6 +46,8 @@ import "@mantine/notifications/styles.css"
 
 import "@mantine/dates/styles.css"
 
+import "./index.css"
+
 import "./accessibility.css"
 
 import App from "./App"
@@ -120,6 +122,14 @@ const theme = createTheme({
   autoContrast: true,
 
   fontFamily: "Inter, system-ui, sans-serif",
+
+  fontSizes: {
+    xs: "0.8125rem", // 13px (was 12px)
+    sm: "0.9375rem", // 15px (was 14px)
+    md: "1.0625rem", // 17px (was 16px)
+    lg: "1.1875rem", // 19px (was 18px)
+    xl: "1.3125rem", // 21px (was 20px)
+  },
 
   headings: {
     fontFamily: "Inter, system-ui, sans-serif",

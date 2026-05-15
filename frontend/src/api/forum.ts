@@ -9,6 +9,7 @@ import type {
   PaginatedResponse,
   Subgroup,
   SubgroupMember,
+  SubgroupSubscriber,
   SubgroupSubscription,
   Thread,
   ThreadDetail,
@@ -167,6 +168,14 @@ export const forumApi = {
     )
 
     return response.data
+  },
+
+  getSubscribers: async (slug: string): Promise<SubgroupSubscriber[]> => {
+    const response = await apiClient.get(
+      `/forum/subgroups/${slug}/subscribers/`,
+    )
+
+    return asArray(response.data)
   },
 
   getMySubscriptions: async (): Promise<SubgroupSubscription[]> => {

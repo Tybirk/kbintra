@@ -46,6 +46,7 @@ from .serializers import (
     SubgroupCreateSerializer,
     SubgroupMembershipSerializer,
     SubgroupSerializer,
+    SubgroupSubscriberSerializer,
     SubgroupSubscriptionSerializer,
     SubgroupUpdateSerializer,
     ThreadCreateSerializer,
@@ -134,20 +135,30 @@ def _subgroup_list_queryset() -> Any:
     Memberships are prefetched (with user + house joined) so SubgroupSerializer.get_members
     doesn't run a query per subgroup.
     """
-    return Subgroup.objects.prefetch_related(
-        Prefetch(
-            "threads",
-            queryset=Thread.objects.filter(is_closed=False).only(
-                "id", "subgroup_id", "members_only", "author_id", "updated_at", "title", "is_closed"
+    return (
+        Subgroup.objects.prefetch_related(
+            Prefetch(
+                "threads",
+                queryset=Thread.objects.filter(is_closed=False).only(
+                    "id",
+                    "subgroup_id",
+                    "members_only",
+                    "author_id",
+                    "updated_at",
+                    "title",
+                    "is_closed",
+                ),
             ),
-        ),
-        Prefetch(
-            "memberships",
-            queryset=SubgroupMembership.objects.select_related("user", "user__house").order_by(
-                "user__first_name", "user__last_name"
+            Prefetch(
+                "memberships",
+                queryset=SubgroupMembership.objects.select_related("user", "user__house").order_by(
+                    "user__first_name", "user__last_name"
+                ),
             ),
-        ),
-    ).all()
+        )
+        .annotate(subscriber_count=Count("subscriptions", distinct=True))
+        .all()
+    )
 
 
 class SubgroupListView(generics.ListCreateAPIView):
@@ -252,6 +263,23 @@ class UnsubscribeView(APIView):
         return Response(
             {"detail": "Successfully unsubscribed."},
             status=status.HTTP_200_OK,
+        )
+
+
+class SubgroupSubscribersListView(generics.ListAPIView):
+    """List users subscribed to a subgroup, sorted by name."""
+
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = SubgroupSubscriberSerializer
+    pagination_class = None
+
+    def get_queryset(self) -> Any:
+        slug = self.kwargs["slug"]
+        subgroup = get_object_or_404(Subgroup, slug=slug)
+        return (
+            SubgroupSubscription.objects.filter(subgroup=subgroup)
+            .select_related("user", "user__house")
+            .order_by("user__first_name", "user__last_name")
         )
 
 

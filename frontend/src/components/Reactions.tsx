@@ -9,13 +9,16 @@ import {
   Stack,
   Avatar,
   Loader,
+  TextInput,
 } from "@mantine/core"
+
+import { useMediaQuery } from "@mantine/hooks"
 
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 
 import { IconMoodSmile, IconDots } from "@tabler/icons-react"
 
-import { lazy, Suspense, useState } from "react"
+import { lazy, Suspense, useEffect, useRef, useState } from "react"
 
 import { forumApi } from "../api/forum"
 
@@ -55,6 +58,25 @@ interface ReactionsProps {
   reactions: ReactionSummary[]
 }
 
+// Extracts the first emoji grapheme from a string (handles ZWJ sequences and skin tones).
+function extractFirstEmoji(value: string): string | null {
+  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
+    const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" })
+
+    for (const { segment } of segmenter.segment(value)) {
+      if (/\p{Extended_Pictographic}/u.test(segment)) {
+        return segment
+      }
+    }
+
+    return null
+  }
+
+  const match = value.match(/\p{Extended_Pictographic}/u)
+
+  return match ? match[0] : null
+}
+
 export default function Reactions({
   postId,
 
@@ -64,15 +86,32 @@ export default function Reactions({
 }: ReactionsProps) {
   const queryClient = useQueryClient()
 
+  const isMobile = useMediaQuery("(max-width: 48em)")
+
   const [pickerOpened, setPickerOpened] = useState(false)
 
   const [fullPickerOpened, setFullPickerOpened] = useState(false)
+
+  const [nativeInputOpened, setNativeInputOpened] = useState(false)
+
+  const [nativeInputValue, setNativeInputValue] = useState("")
+
+  const nativeInputRef = useRef<HTMLInputElement>(null)
 
   const [emojiData, setEmojiData] = useState<object | null>(null)
 
   const [openReactionType, setOpenReactionType] = useState<ReactionType | null>(
     null,
   )
+
+  useEffect(() => {
+    if (nativeInputOpened) {
+      // Defer focus so the popover is mounted before we trigger the keyboard.
+      const id = window.setTimeout(() => nativeInputRef.current?.focus(), 50)
+
+      return () => window.clearTimeout(id)
+    }
+  }, [nativeInputOpened])
 
   const toggleMutation = useMutation({
     mutationFn: (reactionType: ReactionType) =>
@@ -85,6 +124,10 @@ export default function Reactions({
 
       setFullPickerOpened(false)
 
+      setNativeInputOpened(false)
+
+      setNativeInputValue("")
+
       setOpenReactionType(null)
     },
   })
@@ -94,17 +137,35 @@ export default function Reactions({
   }
 
   const handleOpenFullPicker = () => {
+    setPickerOpened(false)
+
+    if (isMobile) {
+      setNativeInputValue("")
+
+      setNativeInputOpened((o) => !o)
+
+      return
+    }
+
     if (!emojiData) {
       emojiDataPromise().then(setEmojiData)
     }
-
-    setPickerOpened(false)
 
     setFullPickerOpened((o) => !o)
   }
 
   const handleFullPickerSelect = (emoji: EmojiData) => {
     handleReaction(emoji.native)
+  }
+
+  const handleNativeInputChange = (value: string) => {
+    setNativeInputValue(value)
+
+    const emoji = extractFirstEmoji(value)
+
+    if (emoji) {
+      handleReaction(emoji)
+    }
   }
 
   return (
@@ -269,7 +330,7 @@ export default function Reactions({
         </Popover.Dropdown>
       </Popover>
 
-      {/* Full emoji picker */}
+      {/* Full emoji picker (desktop) */}
       <Popover
         opened={fullPickerOpened}
         onChange={setFullPickerOpened}
@@ -299,6 +360,37 @@ export default function Reactions({
               />
             </Suspense>
           )}
+        </Popover.Dropdown>
+      </Popover>
+
+      {/* Native emoji input (mobile) */}
+      <Popover
+        opened={nativeInputOpened}
+        onChange={setNativeInputOpened}
+        position="top"
+        width={240}
+        shadow="md"
+      >
+        <Popover.Target>
+          <Box style={{ width: 0, height: 0 }} />
+        </Popover.Target>
+        <Popover.Dropdown p="xs">
+          <Stack gap={6}>
+            <TextInput
+              ref={nativeInputRef}
+              value={nativeInputValue}
+              onChange={(e) => handleNativeInputChange(e.currentTarget.value)}
+              placeholder="😀"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              disabled={toggleMutation.isPending}
+            />
+            <Text size="xs" c="dimmed">
+              Skift til emoji på dit tastatur og vælg en
+            </Text>
+          </Stack>
         </Popover.Dropdown>
       </Popover>
     </Group>
