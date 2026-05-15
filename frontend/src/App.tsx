@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react"
+import { lazy, memo, Suspense, useEffect, useState } from "react"
 
 import { Routes, Route, Navigate, useLocation } from "react-router-dom"
 
@@ -262,373 +262,382 @@ function App() {
               : undefined
           }
         >
-          <Suspense fallback={<LoadingOverlay visible />}>
-            <SentryRoutes>
-              {/* Forside */}
-              <Route
-                path="/"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <DashboardPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* Beboere */}
-              <Route
-                path="/beboere"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <DirectoryPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/beboere/hus/:slug"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <HouseDetailPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* Profil */}
-              <Route
-                path="/profil"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <ProfilePage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/profil/rediger"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <ProfileEditPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/profil/skift-adgangskode"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <ChangePasswordPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/profil/:userId"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <ProfilePage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* Hus */}
-              <Route
-                path="/hus/rediger"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <HouseEditPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* Forum */}
-              <Route
-                path="/forum"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <ForumPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/forum/:slug/dokumenter/:folderSlug"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <SubgroupPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/forum/:slug/dokumenter"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <SubgroupPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/forum/:slug/info"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <SubgroupPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/forum/:slug"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <SubgroupPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/forum/:slug/traad/:threadSlug"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <ThreadPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/forum/traad/:id"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <ThreadPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* Opslag */}
-              <Route
-                path="/opslag"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <AnnouncementsPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* Mad */}
-              <Route
-                path="/mad"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <FoodPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/mad/praeferencer"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <FoodPreferencesPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/mad/:tab"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <FoodPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* Madhold */}
-              <Route
-                path="/madhold"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <FoodTeamsPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/madhold/:tab"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <FoodTeamsPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* Kalender */}
-              <Route
-                path="/kalender"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <CalendarPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/kalender/opret"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <EventFormPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/kalender/:slug"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <EventDetailPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/kalender/:slug/rediger"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <EventFormPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* Booking */}
-              <Route
-                path="/booking"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <BookingsPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* Nyttige links */}
-              <Route
-                path="/links"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <LinksPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* Beskeder */}
-              <Route
-                path="/beskeder/:conversationId?"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <MessagesPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* Notifikationer */}
-              <Route
-                path="/notifikationer/indstillinger"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <NotificationPreferencesPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/notifikationer"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <NotificationsPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-              {/* Bekræft emailændring */}
-              <Route
-                path="/bekraeft-email"
-                element={
-                  <ErrorBoundary>
-                    <ConfirmEmailChangePage />
-                  </ErrorBoundary>
-                }
-              />
-
-              {/* Drift */}
-              <Route
-                path="/drift"
-                element={
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <AdminPage />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* Privatlivspolitik */}
-              <Route
-                path="/privatlivspolitik"
-                element={
-                  <ErrorBoundary>
-                    <PrivacyPolicyPage />
-                  </ErrorBoundary>
-                }
-              />
-
-              {/* Catch all */}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </SentryRoutes>
-          </Suspense>
+          <AuthenticatedRoutes />
         </AppShell.Main>
       </AppShell>
     </ErrorBoundary>
   )
 }
+
+// Memoized so toggling the mobile navbar (which only re-renders App) doesn't
+// cascade reconciliation through the entire route tree — keeps the burger
+// menu snappy on mobile.
+const AuthenticatedRoutes = memo(function AuthenticatedRoutes() {
+  return (
+    <Suspense fallback={<LoadingOverlay visible />}>
+      <SentryRoutes>
+        {/* Forside */}
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <DashboardPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Beboere */}
+        <Route
+          path="/beboere"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <DirectoryPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/beboere/hus/:slug"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <HouseDetailPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Profil */}
+        <Route
+          path="/profil"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <ProfilePage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profil/rediger"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <ProfileEditPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profil/skift-adgangskode"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <ChangePasswordPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profil/:userId"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <ProfilePage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Hus */}
+        <Route
+          path="/hus/rediger"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <HouseEditPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Forum */}
+        <Route
+          path="/forum"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <ForumPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/forum/:slug/dokumenter/:folderSlug"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <SubgroupPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/forum/:slug/dokumenter"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <SubgroupPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/forum/:slug/info"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <SubgroupPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/forum/:slug"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <SubgroupPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/forum/:slug/traad/:threadSlug"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <ThreadPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/forum/traad/:id"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <ThreadPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Opslag */}
+        <Route
+          path="/opslag"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <AnnouncementsPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Mad */}
+        <Route
+          path="/mad"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <FoodPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mad/praeferencer"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <FoodPreferencesPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mad/:tab"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <FoodPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Madhold */}
+        <Route
+          path="/madhold"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <FoodTeamsPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/madhold/:tab"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <FoodTeamsPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Kalender */}
+        <Route
+          path="/kalender"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <CalendarPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/kalender/opret"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <EventFormPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/kalender/:slug"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <EventDetailPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/kalender/:slug/rediger"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <EventFormPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Booking */}
+        <Route
+          path="/booking"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <BookingsPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Nyttige links */}
+        <Route
+          path="/links"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <LinksPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Beskeder */}
+        <Route
+          path="/beskeder/:conversationId?"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <MessagesPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Notifikationer */}
+        <Route
+          path="/notifikationer/indstillinger"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <NotificationPreferencesPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/notifikationer"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <NotificationsPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        {/* Bekræft emailændring */}
+        <Route
+          path="/bekraeft-email"
+          element={
+            <ErrorBoundary>
+              <ConfirmEmailChangePage />
+            </ErrorBoundary>
+          }
+        />
+
+        {/* Drift */}
+        <Route
+          path="/drift"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <AdminPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Privatlivspolitik */}
+        <Route
+          path="/privatlivspolitik"
+          element={
+            <ErrorBoundary>
+              <PrivacyPolicyPage />
+            </ErrorBoundary>
+          }
+        />
+
+        {/* Catch all */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </SentryRoutes>
+    </Suspense>
+  )
+})
 
 export default App
