@@ -395,7 +395,7 @@ export default function ForumPage() {
 
           {/* Committees Section */}
           {committees.length > 0 && (
-            <Box p="lg">
+            <Box>
               <Group gap="sm" mb="lg">
                 <ThemeIcon size="lg" radius="md" variant="filled" color="teal">
                   <IconUsers size={20} />

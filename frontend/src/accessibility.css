@@ -28,6 +28,18 @@ html[data-accessibility="on"] {
    */
   --mantine-font-size-xs: 0.875rem;  /* was 0.75rem  (12 → 17.5px) */
   --mantine-font-size-sm: 1rem;      /* was 0.875rem (14 → 20px)   */
+
+  /*
+   * Pin spacing to absolute px values so paddings/margins don't balloon
+   * with the larger font. We want text bigger, not the gaps between things.
+   * Without this override the 20px base font-size scales every rem-based
+   * Mantine spacing by 25%, which feels cramped on mobile.
+   */
+  --mantine-spacing-xs: 10px;
+  --mantine-spacing-sm: 12px;
+  --mantine-spacing-md: 16px;
+  --mantine-spacing-lg: 20px;
+  --mantine-spacing-xl: 32px;
 }
 
 /* ── Light mode base ────────────────────────────────────────────────── */
