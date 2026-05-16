@@ -2,17 +2,20 @@
 Tests for the backup app.
 """
 
+import tempfile
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from django.apps import apps as django_apps
 from django.db.models.signals import post_delete, post_save, pre_save
-from django.test import TestCase, override_settings
+from django.test import Client, TestCase, override_settings
 
 from apps.backup.s3 import is_enabled
 from apps.backup.signals import ATTACHMENT_MODELS, IMAGE_MODELS
 from apps.backup.tasks import _check_litestream_health
 from apps.backup.views import _is_safe_path
+from apps.users.models import User
 
 
 class SignalRegistrationTest(TestCase):
@@ -132,3 +135,82 @@ class CheckLitestreamHealthTest(TestCase):
         # ever touching S3.
         _check_litestream_health()
         mock_get_client.assert_not_called()
+
+
+class ServeMediaAuthTest(TestCase):
+    """`/media/*` must require an authenticated session.
+
+    Regression: media files (profile pictures, post/message attachments) used
+    to be publicly fetchable by guessing the URL. The fix gates `serve_media`
+    on `request.user.is_authenticated`, with the session set as a side-effect
+    of the JWT login flow.
+    """
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.media_root = Path(self.tmpdir)
+        (self.media_root / "post_attachments").mkdir()
+        self.file_path = "post_attachments/test.txt"
+        (self.media_root / self.file_path).write_text("secret payload")
+
+        self.user = User.objects.create_user(
+            email="media-auth@example.com",
+            password="testpass123",
+            first_name="Media",
+            last_name="Tester",
+        )
+
+    def tearDown(self):
+        import shutil
+
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_unauthenticated_request_returns_401(self):
+        with override_settings(MEDIA_ROOT=str(self.media_root)):
+            response = Client().get(f"/media/{self.file_path}")
+        assert response.status_code == 401
+
+    def test_authenticated_session_can_fetch(self):
+        client = Client()
+        client.force_login(self.user)
+        with override_settings(MEDIA_ROOT=str(self.media_root)):
+            response = client.get(f"/media/{self.file_path}")
+        assert response.status_code == 200
+        assert b"secret payload" in b"".join(response.streaming_content)
+
+    def test_jwt_login_grants_media_access(self):
+        """Logging in via the JWT endpoint must set the session cookie that
+        gates media."""
+        client = Client()
+        login_response = client.post(
+            "/api/auth/token/",
+            data={"email": "media-auth@example.com", "password": "testpass123"},
+            content_type="application/json",
+        )
+        assert login_response.status_code == 200
+        # The session cookie was set as a side-effect of login.
+        assert "sessionid" in login_response.cookies
+
+        with override_settings(MEDIA_ROOT=str(self.media_root)):
+            response = client.get(f"/media/{self.file_path}")
+        assert response.status_code == 200
+
+    def test_logout_revokes_media_access(self):
+        client = Client()
+        client.force_login(self.user)
+        with override_settings(MEDIA_ROOT=str(self.media_root)):
+            # Sanity: logged in, media works.
+            assert client.get(f"/media/{self.file_path}").status_code == 200
+
+            logout_response = client.post("/api/auth/logout/")
+            assert logout_response.status_code == 204
+
+            assert client.get(f"/media/{self.file_path}").status_code == 401
+
+    def test_scanner_path_still_404s_without_auth(self):
+        # Scanner traps should short-circuit before the auth check so we don't
+        # leak that the path exists/doesn't exist behind a 401 vs 404 split.
+        # Either 401 or 404 is acceptable; we just want it not to serve content.
+        with override_settings(MEDIA_ROOT=str(self.media_root)):
+            response = Client().get("/media/.env")
+        assert response.status_code in (401, 404)

@@ -170,7 +170,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # REST Framework settings
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "apps.users.authentication.JWTSessionAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
@@ -234,6 +234,13 @@ STORAGES = {
 # Media files (uploads)
 MEDIA_URL = "media/"
 MEDIA_ROOT = DATA_DIR / "media"
+
+# Session cookie used to gate /media/* requests. JWT remains the primary auth
+# for the API; the session is set as a side-effect of the JWT login flow so
+# same-origin <img src="/media/..."> tags carry credentials automatically.
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 30  # 30 days
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
 
 # S3 backup storage (set S3_BACKUP_BUCKET to enable; empty = disabled)
 # Used for media file sync (via Django signals) and Litestream continuous DB replication.

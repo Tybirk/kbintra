@@ -84,6 +84,13 @@ export const authApi = {
   },
 
   logout(): void {
+    // Fire-and-forget: the server destroys the Django session that gates
+    // /media/* access. We don't await — clearing local tokens shouldn't
+    // depend on the server round-trip. Wrapping with Promise.resolve()
+    // tolerates mocks that return undefined synchronously in tests.
+    Promise.resolve(apiClient.post("/auth/logout/")).catch(() => {
+      // Best-effort; session expires server-side after 30 days anyway.
+    })
     clearTokens()
   },
 

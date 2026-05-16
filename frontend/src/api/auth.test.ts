@@ -208,9 +208,10 @@ describe("authApi", () => {
   })
 
   describe("logout", () => {
-    it("should clear tokens on logout", () => {
+    it("should clear tokens and hit the server logout endpoint", () => {
       authApi.logout()
 
+      expect(apiClient.post).toHaveBeenCalledWith("/auth/logout/")
       expect(clearTokens).toHaveBeenCalled()
     })
   })

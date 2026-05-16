@@ -2,10 +2,16 @@
 URL configuration for KB Intra project.
 """
 
-from django.contrib import admin
+from typing import Any
+
+from django.contrib import admin, auth
 from django.http import HttpRequest, JsonResponse
 from django.urls import include, path, re_path
+from rest_framework import status
+from rest_framework.request import Request
+from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from apps.backup.views import serve_media
@@ -14,6 +20,20 @@ from apps.backup.views import serve_media
 class ThrottledTokenObtainPairView(TokenObtainPairView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "login"
+
+    def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        # Replicates the parent post(), but additionally calls auth.login() so
+        # the response carries a sessionid cookie. The session gates same-origin
+        # /media/* requests (gives <img src="/media/..."> credentials for free).
+        serializer = self.get_serializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except TokenError as e:
+            raise InvalidToken(e.args[0]) from e
+
+        auth.login(request, serializer.user, backend="django.contrib.auth.backends.ModelBackend")
+
+        return Response(serializer.validated_data, status=status.HTTP_200_OK)
 
 
 def health_check(request: HttpRequest) -> JsonResponse:
