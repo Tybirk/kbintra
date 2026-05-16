@@ -22,6 +22,11 @@ class Subgroup(models.Model):
         default="",
         help_text="Rich text content for the 'Links og info' tab.",
     )
+    links_info_members = models.TextField(
+        blank=True,
+        default="",
+        help_text="Members-only rich text content shown below 'Links og info'.",
+    )
     slug = models.SlugField(max_length=100, unique=True, blank=True)
     is_default = models.BooleanField(
         default=False,

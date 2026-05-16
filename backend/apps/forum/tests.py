@@ -1804,6 +1804,68 @@ class TestMembershipCRUD:
         assert not SubgroupMembership.objects.filter(subgroup=member_subgroup).exists()
 
 
+class TestLinksInfoMembers:
+    """Tests for the members-only links_info_members field."""
+
+    def test_non_member_get_hides_links_info_members(
+        self, second_authenticated_client, member_subgroup
+    ):
+        member_subgroup.links_info_members = "<p>Hemmeligt</p>"
+        member_subgroup.save()
+        response = second_authenticated_client.get(f"/api/forum/subgroups/{member_subgroup.slug}/")
+        assert response.status_code == 200
+        assert response.data["links_info_members"] == ""
+
+    def test_member_get_shows_links_info_members(self, member_client, member_subgroup):
+        member_subgroup.links_info_members = "<p>Hemmeligt</p>"
+        member_subgroup.save()
+        response = member_client.get(f"/api/forum/subgroups/{member_subgroup.slug}/")
+        assert response.status_code == 200
+        assert response.data["links_info_members"] == "<p>Hemmeligt</p>"
+
+    def test_admin_get_shows_links_info_members(self, admin_client, member_subgroup):
+        member_subgroup.links_info_members = "<p>Hemmeligt</p>"
+        member_subgroup.save()
+        response = admin_client.get(f"/api/forum/subgroups/{member_subgroup.slug}/")
+        assert response.status_code == 200
+        assert response.data["links_info_members"] == "<p>Hemmeligt</p>"
+
+    def test_member_can_patch_links_info_members(self, member_client, member_subgroup):
+        response = member_client.patch(
+            f"/api/forum/subgroups/{member_subgroup.slug}/update/",
+            {"links_info_members": "<p>Nyt</p>"},
+            format="json",
+        )
+        assert response.status_code == 200
+        member_subgroup.refresh_from_db()
+        assert member_subgroup.links_info_members == "<p>Nyt</p>"
+
+    def test_non_member_cannot_patch_links_info_members(
+        self, second_authenticated_client, member_subgroup
+    ):
+        response = second_authenticated_client.patch(
+            f"/api/forum/subgroups/{member_subgroup.slug}/update/",
+            {"links_info_members": "<p>Nyt</p>"},
+            format="json",
+        )
+        assert response.status_code == 403
+        member_subgroup.refresh_from_db()
+        assert member_subgroup.links_info_members == ""
+
+    def test_patch_links_info_members_rejected_when_not_allows_members(
+        self, admin_client, subgroup
+    ):
+        assert subgroup.allows_members is False
+        response = admin_client.patch(
+            f"/api/forum/subgroups/{subgroup.slug}/update/",
+            {"links_info_members": "<p>Nyt</p>"},
+            format="json",
+        )
+        assert response.status_code == 400
+        subgroup.refresh_from_db()
+        assert subgroup.links_info_members == ""
+
+
 class TestPrivateThreadVisibility:
     """Tests for members-only thread visibility."""
 

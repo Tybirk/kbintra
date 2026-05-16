@@ -217,6 +217,8 @@ export interface Subgroup {
 
   links_info: string
 
+  links_info_members: string
+
   slug: string
 
   is_default: boolean

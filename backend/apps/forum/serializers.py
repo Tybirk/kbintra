@@ -86,6 +86,7 @@ class SubgroupSerializer(serializers.ModelSerializer):
     unread_thread_count = serializers.SerializerMethodField()
     latest_thread_title = serializers.SerializerMethodField()
     members = serializers.SerializerMethodField()
+    links_info_members = serializers.SerializerMethodField()
     subscriber_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
@@ -95,6 +96,7 @@ class SubgroupSerializer(serializers.ModelSerializer):
             "name",
             "description",
             "links_info",
+            "links_info_members",
             "slug",
             "is_default",
             "is_committee",
@@ -137,6 +139,17 @@ class SubgroupSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             return SubgroupMembership.objects.filter(user=request.user, subgroup=obj).exists()
         return False
+
+    def get_links_info_members(self, obj: Subgroup) -> str:
+        request = self.context.get("request")
+        user = request.user if request and request.user.is_authenticated else None
+        if user is None:
+            return ""
+        if user.is_staff:
+            return obj.links_info_members
+        if obj.allows_members and self.get_is_member(obj):
+            return obj.links_info_members
+        return ""
 
     def _thread_stats(self, obj: Subgroup) -> tuple[int, int, str | None]:
         """Single pass over open visible threads → (thread_count, unread_count, latest_title).
@@ -209,7 +222,14 @@ class SubgroupUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Subgroup
-        fields = ["name", "description", "links_info", "icon", "allows_members"]
+        fields = [
+            "name",
+            "description",
+            "links_info",
+            "links_info_members",
+            "icon",
+            "allows_members",
+        ]
 
 
 class SubgroupCreateSerializer(serializers.ModelSerializer):

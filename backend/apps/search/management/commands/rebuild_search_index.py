@@ -71,18 +71,19 @@ class Command(BaseCommand):
 
             # Cars
             from apps.houses.models import Car
-            from apps.houses.utils import format_license_plate
+            from apps.houses.utils import format_license_plate, normalize_license_plate
 
             cars = Car.objects.select_related("house").exclude(license_plate="")
             for car in cars:
                 subtitle_parts = [car.house.name]
                 if car.is_electric:
                     subtitle_parts.append("Elbil")
+                plate_compact = normalize_license_plate(car.license_plate)
                 index_object(
                     obj_type="car",
                     object_id=car.id,
                     title=format_license_plate(car.license_plate),
-                    body=car.house.name,
+                    body=f"{car.house.name} {plate_compact}",
                     url=f"/beboere/hus/{car.house.slug}",
                     subtitle=" · ".join(subtitle_parts),
                     created_at=_isoformat(car.created_at),
@@ -202,6 +203,22 @@ class Command(BaseCommand):
                     created_at=_isoformat(file.uploaded_at),
                 )
             counts["files"] = files.count()
+
+            # Folders (only those attached to a subgroup)
+            from apps.forum.models import Folder
+
+            folders = Folder.objects.filter(subgroup__isnull=False).select_related("subgroup")
+            for folder in folders:
+                index_object(
+                    obj_type="folder",
+                    object_id=folder.id,
+                    title=folder.name,
+                    body="",
+                    url=f"/forum/{folder.subgroup.slug}/dokumenter/{folder.slug}",
+                    subtitle=folder.subgroup.name,
+                    created_at=_isoformat(folder.created_at),
+                )
+            counts["folders"] = folders.count()
 
         total = sum(counts.values())
         self.stdout.write(f"Indexed {total} objects:")

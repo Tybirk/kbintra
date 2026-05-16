@@ -296,9 +296,17 @@ export default function SubgroupPage() {
 
   const [editLinksInfoContent, setEditLinksInfoContent] = useState("")
 
+  const [editLinksInfoTarget, setEditLinksInfoTarget] =
+    useState<"public" | "members">("public")
+
   const updateLinksInfoMutation = useMutation({
-    mutationFn: (links_info: string) =>
-      forumApi.updateSubgroup(slug!, { links_info }),
+    mutationFn: (content: string) =>
+      forumApi.updateSubgroup(
+        slug!,
+        editLinksInfoTarget === "members"
+          ? { links_info_members: content }
+          : { links_info: content },
+      ),
 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["subgroup", slug] })
@@ -913,40 +921,92 @@ When done, print a short summary:
 
         <Tabs.Panel value="info" pt="md">
           {(() => {
-            const canEditLinksInfo =
+            const canEditPublic =
               !!user &&
               (user.is_staff || (subgroup.allows_members && subgroup.is_member))
 
-            return (
-              <Stack>
-                <Group justify="flex-end">
-                  {canEditLinksInfo && (
-                    <Button
-                      variant="light"
-                      leftSection={<IconSettings size={16} />}
-                      onClick={() => {
-                        setEditLinksInfoContent(subgroup.links_info || "")
+            const canSeeMembersSection =
+              subgroup.allows_members &&
+              !!user &&
+              (user.is_staff || subgroup.is_member)
 
-                        openEditLinksInfo()
-                      }}
-                    >
-                      Rediger
-                    </Button>
+            const canEditMembers = canSeeMembersSection
+
+            return (
+              <Stack gap="xl">
+                <Stack gap="sm">
+                  <Group justify="space-between" align="center">
+                    <Title order={4}>Offentlig</Title>
+                    {canEditPublic && (
+                      <Button
+                        variant="light"
+                        leftSection={<IconSettings size={16} />}
+                        onClick={() => {
+                          setEditLinksInfoTarget("public")
+                          setEditLinksInfoContent(subgroup.links_info || "")
+                          openEditLinksInfo()
+                        }}
+                      >
+                        Rediger
+                      </Button>
+                    )}
+                  </Group>
+                  {subgroup.links_info ? (
+                    <Typography>
+                      <RichTextContent
+                        className="description-content"
+                        html={subgroup.links_info}
+                      />
+                    </Typography>
+                  ) : (
+                    <Paper withBorder p="xl" radius="md">
+                      <Center>
+                        <Text c="dimmed">Intet indhold endnu.</Text>
+                      </Center>
+                    </Paper>
                   )}
-                </Group>
-                {subgroup.links_info ? (
-                  <Typography>
-                    <RichTextContent
-                      className="description-content"
-                      html={subgroup.links_info}
-                    />
-                  </Typography>
-                ) : (
-                  <Paper withBorder p="xl" radius="md">
-                    <Center>
-                      <Text c="dimmed">Intet indhold endnu.</Text>
-                    </Center>
-                  </Paper>
+                </Stack>
+
+                {canSeeMembersSection && (
+                  <Stack gap="sm">
+                    <Group justify="space-between" align="center">
+                      <Group gap="xs" align="center">
+                        <IconLock size={18} />
+                        <Title order={4}>Kun medlemmer</Title>
+                      </Group>
+                      {canEditMembers && (
+                        <Button
+                          variant="light"
+                          leftSection={<IconSettings size={16} />}
+                          onClick={() => {
+                            setEditLinksInfoTarget("members")
+                            setEditLinksInfoContent(
+                              subgroup.links_info_members || "",
+                            )
+                            openEditLinksInfo()
+                          }}
+                        >
+                          Rediger
+                        </Button>
+                      )}
+                    </Group>
+                    {subgroup.links_info_members ? (
+                      <Typography>
+                        <RichTextContent
+                          className="description-content"
+                          html={subgroup.links_info_members}
+                        />
+                      </Typography>
+                    ) : (
+                      <Paper withBorder p="xl" radius="md">
+                        <Center>
+                          <Text c="dimmed">
+                            Intet indhold endnu — kun synligt for medlemmer.
+                          </Text>
+                        </Center>
+                      </Paper>
+                    )}
+                  </Stack>
                 )}
               </Stack>
             )
@@ -957,7 +1017,11 @@ When done, print a short summary:
       <Modal
         opened={editLinksInfoOpened}
         onClose={closeEditLinksInfo}
-        title="Rediger links og info"
+        title={
+          editLinksInfoTarget === "members"
+            ? "Rediger links og info (kun medlemmer)"
+            : "Rediger links og info"
+        }
         fullScreen={isMobile}
         size="lg"
       >

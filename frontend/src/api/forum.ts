@@ -43,6 +43,8 @@ interface SubgroupUpdateData {
 
   links_info?: string
 
+  links_info_members?: string
+
   icon?: string
 
   allows_members?: boolean

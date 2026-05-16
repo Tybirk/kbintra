@@ -23,8 +23,6 @@ import { IconEdit, IconLink } from "@tabler/icons-react"
 
 import { linksApi } from "../api/links"
 
-import { useAuthStore } from "../store/authStore"
-
 import type { RichTextEditorProps } from "../components/RichTextEditor"
 import { RichTextContent } from "../components/RichTextContent"
 
@@ -42,8 +40,6 @@ function RichTextEditor(props: RichTextEditorProps) {
 
 export default function LinksPage() {
   const queryClient = useQueryClient()
-
-  const { user } = useAuthStore()
 
   const [editing, setEditing] = useState(false)
 
@@ -117,7 +113,7 @@ export default function LinksPage() {
     <>
       <Group justify="space-between" mb="md">
         <Title order={1}>Nyttige links</Title>
-        {user?.is_staff && !editing && (
+        {!editing && (
           <Button
             leftSection={<IconEdit size={16} />}
             variant="light"
@@ -157,11 +153,9 @@ export default function LinksPage() {
             <Stack align="center" gap="xs">
               <IconLink size={48} color="gray" />
               <Text c="dimmed">Ingen links tilføjet endnu.</Text>
-              {user?.is_staff && (
-                <Button onClick={handleEdit} mt="sm">
-                  Tilføj links
-                </Button>
-              )}
+              <Button onClick={handleEdit} mt="sm">
+                Tilføj links
+              </Button>
             </Stack>
           </Center>
         </Paper>

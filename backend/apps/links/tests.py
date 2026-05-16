@@ -29,12 +29,14 @@ class TestUsefulLinksAPI:
         assert response.status_code == 200
         assert UsefulLinks.objects.count() == 1
 
-    def test_regular_user_cannot_put(self, authenticated_client, db):
-        """Test that regular users cannot update links."""
+    def test_regular_user_can_put(self, authenticated_client, db):
+        """Test that any authenticated user can update links."""
         response = authenticated_client.put(
-            "/api/links/", {"content": "new content"}, format="json"
+            "/api/links/", {"content": "<p>new content</p>"}, format="json"
         )
-        assert response.status_code == 403
+        assert response.status_code == 200
+        data = response.json()
+        assert data["content"] == "<p>new content</p>"
 
     def test_admin_can_update_content(self, admin_client, db):
         """Test that admin users can update links."""

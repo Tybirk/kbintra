@@ -76,7 +76,7 @@ def deindex_house(sender, instance, **kwargs):
 
 @receiver(post_save, sender="houses.Car")
 def index_car(sender, instance, **kwargs):
-    from apps.houses.utils import format_license_plate
+    from apps.houses.utils import format_license_plate, normalize_license_plate
 
     try:
         if not instance.license_plate:
@@ -85,11 +85,14 @@ def index_car(sender, instance, **kwargs):
         subtitle_parts = [instance.house.name]
         if instance.is_electric:
             subtitle_parts.append("Elbil")
+        # Include both display ("AB 12 345") and canonical ("AB12345") forms in
+        # the body so FTS finds plates whether the user types spaces or not.
+        plate_compact = normalize_license_plate(instance.license_plate)
         index_object(
             obj_type="car",
             object_id=instance.id,
             title=format_license_plate(instance.license_plate),
-            body=instance.house.name,
+            body=f"{instance.house.name} {plate_compact}",
             url=f"/beboere/hus/{instance.house.slug}",
             subtitle=" · ".join(subtitle_parts),
             created_at=_isoformat(instance.created_at),
@@ -344,3 +347,32 @@ def deindex_file(sender, instance, **kwargs):
         remove_object("file", instance.id)
     except OperationalError:
         logger.exception("Failed to deindex file %s", instance.id)
+
+
+# -- Folder signals --
+
+
+@receiver(post_save, sender="forum.Folder")
+def index_folder(sender, instance, **kwargs):
+    try:
+        if not instance.subgroup_id:
+            return
+        index_object(
+            obj_type="folder",
+            object_id=instance.id,
+            title=instance.name,
+            body="",
+            url=f"/forum/{instance.subgroup.slug}/dokumenter/{instance.slug}",
+            subtitle=instance.subgroup.name,
+            created_at=_isoformat(instance.created_at),
+        )
+    except OperationalError:
+        logger.exception("Failed to index folder %s", instance.id)
+
+
+@receiver(post_delete, sender="forum.Folder")
+def deindex_folder(sender, instance, **kwargs):
+    try:
+        remove_object("folder", instance.id)
+    except OperationalError:
+        logger.exception("Failed to deindex folder %s", instance.id)

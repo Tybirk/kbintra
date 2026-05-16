@@ -103,18 +103,16 @@ describe("LinksPage", () => {
     })
   })
 
-  it("non-admin does not see edit button", async () => {
+  it("non-admin also sees edit button", async () => {
     useAuthStore.setState({ user: regularUser, isAuthenticated: true })
 
     render(<LinksPage />)
 
     await waitFor(() => {
-      expect(screen.getByText("Nyttige links")).toBeInTheDocument()
+      expect(
+        screen.getByRole("button", { name: /rediger/i }),
+      ).toBeInTheDocument()
     })
-
-    expect(
-      screen.queryByRole("button", { name: /rediger/i }),
-    ).not.toBeInTheDocument()
   })
 
   it("clicking edit shows rich text editor", async () => {

@@ -4,9 +4,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 
-import { useNavigate } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 
 import { Spotlight, spotlight } from "@mantine/spotlight"
+import type { SpotlightActionData } from "@mantine/spotlight"
 
 import "@mantine/spotlight/styles.css"
 
@@ -23,6 +24,7 @@ import {
   IconMessages,
   IconCar,
   IconX,
+  IconAdjustmentsHorizontal,
 } from "@tabler/icons-react"
 
 import { useDebouncedValue, useMediaQuery } from "@mantine/hooks"
@@ -54,6 +56,8 @@ const TYPE_ICONS: Record<Exclude<SearchResultType, "file">, typeof IconSearch> =
     house: IconHome,
 
     car: IconCar,
+
+    folder: IconFolder,
   }
 
 const TYPE_LABELS: Record<SearchResultType, string> = {
@@ -74,6 +78,8 @@ const TYPE_LABELS: Record<SearchResultType, string> = {
   car: "Bil",
 
   file: "Fil",
+
+  folder: "Mappe",
 }
 
 // Maps backend plural result keys to singular type keys
@@ -96,6 +102,8 @@ const RESULT_KEY_TO_TYPE: Record<string, SearchResultType> = {
   cars: "car",
 
   files: "file",
+
+  folders: "folder",
 }
 
 // Module-level ref so AppHeader can focus the input after opening the spotlight
@@ -244,9 +252,47 @@ export function GlobalSearch({ onAction }: GlobalSearchProps) {
     })
   }
 
+  const ADVANCED_GROUP_LABEL = "Mere"
+
+  const advancedSearchTarget = debouncedQuery
+    ? `/soeg?q=${encodeURIComponent(debouncedQuery)}`
+    : "/soeg"
+
+  // Synthetic action that takes the user to the full advanced-search page.
+  // Rendered as a real <Link> so ctrl/cmd/middle-click opens in a new tab
+  // exactly like normal anchors. The onClick still fires for the regular
+  // SPA path so we can clear the history-stash flag and run onAction.
+  // Styled distinctly from regular search hits (top border + accent icon +
+  // tint) so users perceive it as a navigation CTA, not just another result.
+  const advancedSearchAction = queryActive
+    ? {
+        id: "__advanced_search__",
+        label: "Avanceret søgning",
+        description: "Filtrer på type, fuzzy match og sortering",
+        component: Link,
+        to: advancedSearchTarget,
+        onClick: () => {
+          historyPushedRef.current = false
+          onAction?.()
+        },
+        leftSection: (
+          <IconAdjustmentsHorizontal
+            size={18}
+            style={{ color: "var(--mantine-primary-color-filled)" }}
+          />
+        ),
+        group: ADVANCED_GROUP_LABEL,
+        style: {
+          borderTop: "1px solid var(--mantine-color-default-border)",
+          marginTop: rem(6),
+          background: "var(--mantine-color-default-hover)",
+        },
+      } as unknown as SpotlightActionData
+    : null
+
   // Flatten results into actions grouped by type
 
-  const actions = data
+  const resultActions = data
     ? Object.entries(data.results)
 
         .flatMap(([, items]) =>
@@ -290,6 +336,10 @@ export function GlobalSearch({ onAction }: GlobalSearchProps) {
         })
     : []
 
+  const actions = advancedSearchAction
+    ? [...resultActions, advancedSearchAction]
+    : resultActions
+
   const nothingFoundContent = queryActive ? (
     isLoading ? (
       <Center py="xl">
@@ -310,6 +360,12 @@ export function GlobalSearch({ onAction }: GlobalSearchProps) {
     <>
       <Spotlight
         actions={actions}
+        // Our backend already returns results that match the query, so the
+        // default client-side substring filter just gets in the way — it would
+        // hide hits whose title doesn't literally contain the query (e.g. a
+        // snippet match in a post body) and would also strip the synthetic
+        // "Avanceret søgning" row.
+        filter={(_q, items) => items}
         nothingFound={nothingFoundContent}
         highlightQuery
         fullScreen={isMobile}

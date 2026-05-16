@@ -305,6 +305,23 @@ class SubgroupUpdateView(APIView):
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
+        if "links_info_members" in serializer.validated_data:
+            if not subgroup.allows_members:
+                return Response(
+                    {"detail": ("Kun-medlemmer-indhold kræver at gruppen tillader medlemskab.")},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            can_edit_members_links = request.user.is_staff or _is_member(request.user, subgroup)
+            if not can_edit_members_links:
+                return Response(
+                    {
+                        "detail": (
+                            "Du har ikke tilladelse til at redigere links og info for medlemmer."
+                        )
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
         if (
             "allows_members" in serializer.validated_data
             and will_allow != was_allowing

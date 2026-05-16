@@ -93,6 +93,8 @@ const ConfirmEmailChangePage = lazy(
 
 const PrivacyPolicyPage = lazy(() => import("./pages/PrivacyPolicyPage"))
 
+const AdvancedSearchPage = lazy(() => import("./pages/AdvancedSearchPage"))
+
 import AppHeader from "./components/AppHeader"
 
 import AppNavbar from "./components/AppNavbar"
@@ -551,6 +553,18 @@ const AuthenticatedRoutes = memo(function AuthenticatedRoutes() {
             <ProtectedRoute>
               <ErrorBoundary>
                 <BookingsPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Avanceret søgning */}
+        <Route
+          path="/soeg"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <AdvancedSearchPage />
               </ErrorBoundary>
             </ProtectedRoute>
           }

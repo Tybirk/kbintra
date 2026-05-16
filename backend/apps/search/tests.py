@@ -13,8 +13,12 @@ from apps.events.models import Event
 from apps.search.services import (
     build_fts_query,
     create_excerpt,
+    fold_danish,
     fts_search,
+    fuzzy_name_matches,
     index_object,
+    levenshtein,
+    normalize_for_match,
     remove_object,
     strip_html,
 )
@@ -107,6 +111,82 @@ class TestCreateExcerpt:
         assert create_excerpt("", 100) == ""
 
 
+class TestFoldDanish:
+    """Tests for the Danish letter folding helper."""
+
+    def test_lowercase_letters(self):
+        assert fold_danish("æøå") == "aeoeaa"
+
+    def test_uppercase_letters(self):
+        assert fold_danish("ÆØÅ") == "AEOEAA"
+
+    def test_mixed_word(self):
+        assert fold_danish("Kløverbakkebogen") == "Kloeverbakkebogen"
+
+    def test_empty_and_none(self):
+        assert fold_danish("") == ""
+        assert fold_danish(None) == ""
+
+    def test_preserves_non_danish_chars(self):
+        assert fold_danish("hello world") == "hello world"
+        assert fold_danish("café") == "café"  # é is not folded here
+
+
+class TestNormalizeForMatch:
+    def test_punctuation_to_space(self):
+        assert normalize_for_match("grønt-udvalg") == "groent udvalg"
+        assert normalize_for_match("hello, world.") == "hello world"
+
+    def test_collapse_whitespace(self):
+        assert normalize_for_match("  hello   world  ") == "hello world"
+
+    def test_lowercase_and_fold(self):
+        assert normalize_for_match("KLØVERBakken") == "kloeverbakken"
+
+
+class TestLevenshtein:
+    def test_zero_distance(self):
+        assert levenshtein("abc", "abc") == 0
+
+    def test_single_edit(self):
+        assert levenshtein("husgrupen", "husgruppen") == 1  # insert 'p'
+        assert levenshtein("tarkild", "terkild") == 1  # substitute a→e
+        assert levenshtein("andras", "andreas") == 1  # insert 'e'
+
+    def test_empty(self):
+        assert levenshtein("", "") == 0
+        assert levenshtein("abc", "") == 3
+
+
+class TestFuzzyNameMatches:
+    def test_matches_single_typo(self):
+        pairs = [(1, "Husgruppen"), (2, "Madudvalget"), (3, "Bestyrelsen")]
+        assert fuzzy_name_matches("Husgrupen", pairs) == [1]  # missing p
+        assert fuzzy_name_matches("Bestyrlsen", pairs) == [3]  # missing e
+
+    def test_matches_with_danish_fold(self):
+        pairs = [(1, "Grønt udvalg")]
+        # User types ae form; should still match
+        assert fuzzy_name_matches("groent udvalg", pairs) == [1]
+
+    def test_matches_with_punctuation(self):
+        pairs = [(1, "Grønt udvalg")]
+        assert fuzzy_name_matches("grønt-udvalg", pairs) == [1]
+
+    def test_skips_very_short_query(self):
+        pairs = [(1, "Madudvalget")]
+        # 3-char query, threshold 0 — only exact-token matches
+        assert fuzzy_name_matches("Mad", pairs) == []
+
+    def test_multi_token_query_each_must_match(self):
+        pairs = [(1, "Grønt udvalg"), (2, "Madudvalget")]
+        # Both tokens must each fuzzy-match some name token
+        result = fuzzy_name_matches("gront udvlg", pairs)
+        # 'gront' (5 chars, threshold 1) vs 'groent' = distance 1 ✓
+        # 'udvlg' (5 chars, threshold 1) vs 'udvalg' = distance 1 ✓
+        assert 1 in result
+
+
 class TestBuildFtsQuery:
     """Tests for FTS5 query construction."""
 
@@ -134,6 +214,11 @@ class TestBuildFtsQuery:
         """Test empty query returns empty string."""
         assert build_fts_query("") == ""
         assert build_fts_query("   ") == ""
+
+    def test_danish_chars_are_folded(self):
+        """Query tokens with æøå become ae/oe/aa before being quoted."""
+        assert build_fts_query("Kløverbakkebogen") == '"Kloeverbakkebogen"*'
+        assert build_fts_query("møde forslag") == '"moede"* "forslag"*'
 
 
 class TestIndexAndSearch:
@@ -228,6 +313,60 @@ class TestIndexAndSearch:
         # FTS5 with remove_diacritics should find these
         results = fts_search("Fællesskab")
         assert len(results) == 1
+
+    def test_danish_fold_query_matches_ae_oe_aa_in_doc(self):
+        """Typing æ/ø/å should match docs stored with ae/oe/aa."""
+        # Doc was created with the Latin-letter spelling
+        index_object(
+            obj_type="folder",
+            object_id=1,
+            title="Kloeverbakkebogen",
+            body="",
+            url="/forum/test/dokumenter/kloeverbakkebogen",
+        )
+        # Query with Danish spelling must still find it
+        results = fts_search("Kløverbakkebogen")
+        assert len(results) == 1
+        assert results[0]["object_id"] == 1
+
+    def test_danish_fold_doc_with_aeoaa_matches_aa_oe_ae_query(self):
+        """A doc stored with æ/ø/å should be findable by ae/oe/aa query."""
+        index_object(
+            obj_type="folder",
+            object_id=2,
+            title="Kløverbakkebogen",
+            body="",
+            url="/forum/test/dokumenter/kløverbakkebogen",
+        )
+        results = fts_search("Kloeverbakkebogen")
+        assert len(results) == 1
+        assert results[0]["object_id"] == 2
+
+    def test_danish_fold_dagsorden_oplaeg(self):
+        """'Dagsorden oplæg' must match a doc indexed with the æ spelling."""
+        index_object(
+            obj_type="post",
+            object_id=3,
+            title="Tråd titel",
+            body="Dagsorden oplæg for mødet",
+            url="/forum/test/3",
+        )
+        # Both spellings of 'oplæg' must hit
+        assert len(fts_search("Dagsorden oplæg")) == 1
+        assert len(fts_search("Dagsorden oplaeg")) == 1
+
+    def test_danish_fold_uppercase(self):
+        """Uppercase Æ/Ø/Å fold the same as lowercase."""
+        index_object(
+            obj_type="thread",
+            object_id=4,
+            title="ÅRSMØDE",
+            body="",
+            url="/forum/test/4",
+        )
+        assert len(fts_search("AARSMOEDE")) == 1
+        assert len(fts_search("aarsmoede")) == 1
+        assert len(fts_search("Årsmøde")) == 1
 
     def test_recency_boost(self):
         """Test newer documents rank higher than older ones with same relevance."""
@@ -371,6 +510,7 @@ class TestGlobalSearchAPI:
             "events",
             "houses",
             "files",
+            "folders",
         ]
         for result_type in expected_types:
             assert result_type in results
@@ -437,6 +577,17 @@ class TestGlobalSearchAPI:
             assert response.status_code == 200, query
             cars = response.data["results"]["cars"]
             assert any(c["title"] == "AB 12 345" for c in cars), query
+
+    def test_license_plate_compact_form_via_fts(self, authenticated_client, house):
+        """Compact plate (no spaces) is also findable via FTS body, not just
+        the heuristic — belt-and-braces in case the heuristic regex misses."""
+        from apps.houses.models import Car
+
+        Car.objects.create(house=house, license_plate="EL28164")
+        response = authenticated_client.get("/api/search/?q=EL28164")
+        assert response.status_code == 200
+        cars = response.data["results"]["cars"]
+        assert any(c["title"] == "EL 28 164" for c in cars)
 
     def test_search_finds_subgroup(self, authenticated_client, subgroup):
         """Test search finds subgroups by name (via heuristic)."""
@@ -613,6 +764,7 @@ class TestGlobalSearchAPI:
             "events",
             "houses",
             "files",
+            "folders",
         ]:
             assert key in response.data["group_order"]
 
@@ -644,6 +796,223 @@ class TestGlobalSearchAPI:
         subgroups = response.data["results"]["subgroups"]
         assert len(subgroups) >= 1
         assert any("General Discussion" in s["title"] for s in subgroups)
+
+    def test_dominant_type_does_not_crowd_out_others(self, authenticated_client, subgroup):
+        """A query that matches many of one type must not crowd out other types.
+
+        Reproduces the prod bug where searching 'Dagsorden' returned only files
+        in the top 40 FTS results (because filenames hit title weight 10x),
+        leaving threads/posts/etc. with zero results.
+        """
+        from apps.announcements.models import Announcement
+        from apps.forum.models import Post, Thread
+        from apps.users.models import User
+
+        author = User.objects.create_user(
+            email="dist@example.com", password="x", first_name="Dist", last_name="Author"
+        )
+        # 20 file-like entries (high title-weight matches) that would dominate a global top-K
+        for i in range(20):
+            index_object(
+                obj_type="file",
+                object_id=10000 + i,
+                title=f"Krydsord-{i:02d}.pdf",
+                body="",
+                url=f"/forum/test/{i}",
+            )
+        # One thread and one announcement that should still appear in their buckets
+        thread = Thread.objects.create(
+            subgroup=subgroup, title="Krydsord på fællesmødet", author=author
+        )
+        Post.objects.create(thread=thread, author=author, content="<p>Krydsord</p>")
+        Announcement.objects.create(
+            title="Krydsord-konkurrence", content="Krydsord!", author=author, is_active=True
+        )
+
+        response = authenticated_client.get("/api/search/?q=Krydsord")
+        assert response.status_code == 200
+        results = response.data["results"]
+        assert len(results["threads"]) >= 1, "thread bucket should not be crowded out by files"
+        assert len(results["announcements"]) >= 1, "announcement bucket should not be crowded out"
+        assert len(results["files"]) >= 1
+
+    def test_subgroups_first_in_group_order(self, authenticated_client, subgroup):
+        """When a subgroup matches, it must appear before users/threads/posts."""
+        response = authenticated_client.get("/api/search/?q=General")
+        assert response.status_code == 200
+        group_order = response.data["group_order"]
+        assert group_order[0] == "subgroups", group_order
+
+    def test_fuzzy_finds_subgroup_with_typo(self, authenticated_client, db):
+        """Subgroup names with single-edit typos should still be found."""
+        from apps.forum.models import Subgroup
+
+        Subgroup.objects.create(name="Husgruppen", slug="husgruppen")
+        response = authenticated_client.get("/api/search/?q=Husgrupen")
+        assert response.status_code == 200
+        subgroups = response.data["results"]["subgroups"]
+        assert any(s["title"] == "Husgruppen" for s in subgroups)
+
+    def test_fuzzy_finds_user_with_typo(self, authenticated_client, db):
+        """User names with single-edit typos should still be found."""
+        User.objects.create_user(
+            email="tk@example.com", password="x", first_name="Terkild", last_name="Hansen"
+        )
+        response = authenticated_client.get("/api/search/?q=Tarkild")
+        assert response.status_code == 200
+        users = response.data["results"]["users"]
+        assert any("Terkild" in u["title"] for u in users)
+
+    def test_fuzzy_punctuation_match(self, authenticated_client, db):
+        """grønt-udvalg should match the subgroup 'Grønt udvalg'.
+
+        FTS index stores folded titles, so the displayed title is 'Groent udvalg'
+        — we just need to confirm the right subgroup was returned, by id.
+        """
+        from urllib.parse import quote
+
+        from apps.forum.models import Subgroup
+
+        sg = Subgroup.objects.create(name="Grønt udvalg", slug="groent-udvalg")
+        response = authenticated_client.get(f"/api/search/?q={quote('grønt-udvalg')}")
+        assert response.status_code == 200
+        subgroups = response.data["results"]["subgroups"]
+        assert any(s["id"] == sg.id for s in subgroups)
+
+    def test_folder_indexed_and_findable(self, authenticated_client, subgroup):
+        """Test that forum folders are indexed and findable by name."""
+        from apps.forum.models import Folder
+
+        folder = Folder.objects.create(subgroup=subgroup, name="Kløverbakkebogen")
+        # Both spellings must locate the folder
+        for query in ("Kløverbakkebogen", "Kloeverbakkebogen"):
+            response = authenticated_client.get(f"/api/search/?q={query}")
+            assert response.status_code == 200, query
+            folders = response.data["results"].get("folders", [])
+            assert any(f["id"] == folder.id for f in folders), query
+            assert any(
+                f["url"] == f"/forum/{subgroup.slug}/dokumenter/{folder.slug}" for f in folders
+            ), query
+
+
+@pytest.mark.django_db(transaction=True)
+class TestAdvancedSearchAPI:
+    """Tests for the /api/search/advanced/ endpoint."""
+
+    def test_requires_auth(self, api_client):
+        response = api_client.get("/api/search/advanced/?q=test")
+        assert response.status_code == 401
+
+    def test_requires_min_length(self, authenticated_client):
+        response = authenticated_client.get("/api/search/advanced/?q=a")
+        assert response.status_code == 400
+
+    def test_default_response_shape(self, authenticated_client):
+        response = authenticated_client.get("/api/search/advanced/?q=test")
+        assert response.status_code == 200
+        body = response.data
+        assert body["query"] == "test"
+        assert body["fuzziness"] == "prefix"
+        assert body["sort"] == "relevance"
+        assert isinstance(body["types"], list)
+        assert "results" in body
+        assert "group_order" in body
+        assert "total_count" in body
+
+    def test_type_filter_restricts_results(self, authenticated_client, thread):
+        index_object(
+            "thread",
+            thread.id,
+            thread.title,
+            "",
+            f"/forum/{thread.subgroup.slug}/{thread.id}",
+            thread.subgroup.name,
+        )
+        # Indexing a user with the same word ensures the type filter is doing the work,
+        # not just an empty search universe.
+        index_object("user", 9999, "Test Person", "test@example.com", "/profil/9999")
+
+        response = authenticated_client.get("/api/search/advanced/?q=Test&types=thread")
+        assert response.status_code == 200
+        results = response.data["results"]
+        assert "threads" in results
+        # No users key in results when only thread requested
+        assert "users" not in results
+
+    def test_invalid_fuzziness_falls_back_to_prefix(self, authenticated_client):
+        response = authenticated_client.get("/api/search/advanced/?q=test&fuzziness=garbage")
+        assert response.status_code == 200
+        assert response.data["fuzziness"] == "prefix"
+
+    def test_exact_mode_does_not_prefix_match(self, authenticated_client):
+        # Title "Generalforsamling" should match the exact word "Generalforsamling"
+        # but NOT a partial query "General".
+        index_object(
+            obj_type="thread",
+            object_id=1,
+            title="Generalforsamling",
+            body="",
+            url="/forum/test/1",
+        )
+        prefix_resp = authenticated_client.get(
+            "/api/search/advanced/?q=General&fuzziness=prefix&types=thread"
+        )
+        exact_resp = authenticated_client.get(
+            "/api/search/advanced/?q=General&fuzziness=exact&types=thread"
+        )
+        assert any(t["id"] == 1 for t in prefix_resp.data["results"].get("threads", []))
+        assert not any(t["id"] == 1 for t in exact_resp.data["results"].get("threads", []))
+
+    def test_titles_returned_with_original_danish_chars(self, authenticated_client):
+        # FTS indexes folded titles ('Grønt' -> 'Groent') so MATCH catches both
+        # spellings. Response should still display the original.
+        from apps.forum.models import Subgroup
+
+        sg = Subgroup.objects.create(name="Grønt udvalg", slug="groent-udvalg")
+        # Both query forms should locate it; both should return original name
+        for q in ("Grønt", "Groent"):
+            response = authenticated_client.get(f"/api/search/advanced/?q={q}&types=subgroup")
+            assert response.status_code == 200, q
+            subgroups = response.data["results"].get("subgroups", [])
+            match = next((s for s in subgroups if s["id"] == sg.id), None)
+            assert match is not None, q
+            assert match["title"] == "Grønt udvalg", q
+
+    def test_fuzzy_mode_substring_matches_subgroup_infix(self, authenticated_client):
+        # 'udva' should match 'Børne- og ungeudvalget' in fuzzy mode even though
+        # FTS prefix matching alone would not — 'udva' is not a token prefix.
+        from apps.forum.models import Subgroup
+
+        sg = Subgroup.objects.create(name="Børne- og ungeudvalget", slug="boerne-ungeudvalget")
+        response = authenticated_client.get(
+            "/api/search/advanced/?q=udva&fuzziness=fuzzy&types=subgroup"
+        )
+        assert response.status_code == 200
+        subgroups = response.data["results"].get("subgroups", [])
+        assert any(s["id"] == sg.id for s in subgroups)
+
+    def test_sort_newest_orders_by_created_at_desc(self, authenticated_client):
+        index_object(
+            obj_type="thread",
+            object_id=1,
+            title="Generalforsamling",
+            body="",
+            url="/forum/test/1",
+            created_at="2023-01-01T00:00:00",
+        )
+        index_object(
+            obj_type="thread",
+            object_id=2,
+            title="Generalforsamling",
+            body="",
+            url="/forum/test/2",
+            created_at="2025-01-01T00:00:00",
+        )
+        response = authenticated_client.get(
+            "/api/search/advanced/?q=Generalforsamling&sort=newest&types=thread"
+        )
+        threads = response.data["results"]["threads"]
+        assert [t["id"] for t in threads[:2]] == [2, 1]
 
 
 # =============================================================================

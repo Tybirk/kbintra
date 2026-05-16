@@ -48,6 +48,37 @@ User input is sanitized and converted to FTS5 prefix queries:
 - FTS5 special characters are stripped
 - Tokens are implicitly ANDed (all must match)
 
+### Danish character folding (æøå ↔ ae/oe/aa)
+
+FTS5's `unicode61 remove_diacritics 2` tokenizer folds combining diacritics
+(e.g. `é → e`), but æ/ø/å are independent Unicode letters and are NOT folded.
+To make search work in both directions (`Kløverbakkebogen` finds
+`Kloeverbakkebogen` and vice versa), `fold_danish()` is applied:
+
+- **At index time** (`index_object`) — `title` and `body` are stored with
+  `æ→ae, ø→oe, å→aa`. The `subtitle` is left unfolded since it is displayed
+  verbatim and not searched.
+- **At query time** (`build_fts_query`) — incoming queries are folded the
+  same way before tokenization.
+
+A consequence is that titles displayed from FTS results show the folded form
+(`Møde` → `Moede`). For the small KB user base this trade-off is acceptable;
+clicking through to the actual record shows the original spelling.
+
+**After deploying changes that affect folding or indexing**, run
+`uv run python manage.py rebuild_search_index` once to repopulate existing
+rows with the new format. Subsequent saves go through the signals and stay
+in sync incrementally.
+
+### Per-type bucketing
+
+`/api/search/` calls `fts_search_per_type(query, per_type_limit)` rather than
+a single global top-K. The function uses `ROW_NUMBER() OVER (PARTITION BY
+type ORDER BY score)` so each type gets its own top-N in one SQL statement.
+Without this, queries like `Dagsorden` — which matches 1000+ files whose
+filenames contain the term — fill the entire global result pool with files
+and leave threads/posts/announcements with zero hits.
+
 ## Key Files
 
 | File | Purpose |
@@ -66,12 +97,14 @@ User input is sanitized and converted to FTS5 prefix queries:
 |-------|----------|---------------------|-------|------|
 | User | `user` | `date_joined` | Full name | Email |
 | House | `house` | `created_at` | Name | Description (stripped HTML) |
-| Thread | `thread` | `created_at` | Title | (empty) |
+| Car | `car` | `created_at` | Plate ("AB 12 345") | House name + compact plate ("AB12345") |
+| Thread | `thread` | `created_at` | Title | First post content (stripped HTML) |
 | Post | `post` | `created_at` | Thread title | Content (stripped HTML) |
 | Subgroup | `subgroup` | `created_at` | Name | Description (stripped HTML) |
 | Announcement | `announcement` | `created_at` | Title | Content (stripped HTML) |
 | Event | `event` | `created_at` | Title | Description + location |
 | File | `file` | `uploaded_at` | Filename | (empty) |
+| Folder | `folder` | `created_at` | Name | (empty) |
 
 ## API Heuristics
 
