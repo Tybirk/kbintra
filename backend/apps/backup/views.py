@@ -10,6 +10,7 @@ from pathlib import Path
 
 from django.conf import settings
 from django.http import Http404, HttpRequest, HttpResponse
+from django.utils.cache import patch_cache_control
 from django.views.static import serve
 
 
@@ -54,7 +55,12 @@ def serve_media(request: HttpRequest, path: str) -> HttpResponse:
     # creates. Same-origin <img src="/media/..."> tags carry the sessionid
     # cookie automatically, so no client-side change is needed.
     if not request.user.is_authenticated:
-        return HttpResponse(status=401)
+        # `no-store` so Cloudflare (or any shared cache) doesn't memoize the
+        # 401 for a URL — otherwise a later authenticated user would still see
+        # 401 from cache.
+        response = HttpResponse(status=401)
+        response["Cache-Control"] = "private, no-store"
+        return response
 
     local_path = Path(settings.MEDIA_ROOT) / path
     if not local_path.is_file():
@@ -67,4 +73,9 @@ def serve_media(request: HttpRequest, path: str) -> HttpResponse:
         else:
             raise Http404
 
-    return serve(request, path, document_root=settings.MEDIA_ROOT)
+    response = serve(request, path, document_root=settings.MEDIA_ROOT)
+    # `private` keeps Cloudflare/any shared cache from storing the file (it's
+    # per-user, not per-URL). The browser may still cache it for max_age seconds
+    # — that's a per-user cache so no leak between users.
+    patch_cache_control(response, private=True, max_age=3600)
+    return response

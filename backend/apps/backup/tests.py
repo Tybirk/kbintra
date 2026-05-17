@@ -245,3 +245,29 @@ class ServeMediaAuthTest(TestCase):
         with override_settings(MEDIA_ROOT=str(self.media_root)):
             response = Client().get("/media/.env")
         assert response.status_code in (401, 404)
+
+    def test_cache_control_prevents_cdn_caching(self):
+        """Cloudflare (and any shared cache) must not cache `/media/*` responses.
+
+        Without `Cache-Control: private`, the first authenticated user's 200
+        gets cached at the CDN and subsequent unauthenticated users would
+        receive the same file — bypassing the auth gate entirely.
+        """
+        client = Client()
+        client.force_login(self.user)
+        with override_settings(MEDIA_ROOT=str(self.media_root)):
+            response = client.get(f"/media/{self.file_path}")
+        assert response.status_code == 200
+        cache_control = response["Cache-Control"].lower()
+        assert "private" in cache_control, (
+            f"200 must be Cache-Control: private. Got {cache_control!r}"
+        )
+
+        # The 401 must also be uncacheable, otherwise a stale 401 could be
+        # served from the CDN to authenticated users.
+        anon_response = Client().get(f"/media/{self.file_path}")
+        assert anon_response.status_code == 401
+        anon_cc = anon_response["Cache-Control"].lower()
+        assert "private" in anon_cc and "no-store" in anon_cc, (
+            f"401 must be Cache-Control: private, no-store. Got {anon_cc!r}"
+        )
