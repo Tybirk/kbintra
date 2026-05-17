@@ -195,6 +195,37 @@ class ServeMediaAuthTest(TestCase):
             response = client.get(f"/media/{self.file_path}")
         assert response.status_code == 200
 
+    def test_jwt_refresh_backfills_session(self):
+        """Silent token refresh (used when an access token expires) must also
+        set the session cookie. Otherwise, returning users would 401 on
+        `/media/*` until their first API call backfilled a session — causing a
+        one-time flash of broken images on first load post-deploy.
+        """
+        client = Client()
+        # First login to get a refresh token.
+        login = client.post(
+            "/api/auth/token/",
+            data={"email": "media-auth@example.com", "password": "testpass123"},
+            content_type="application/json",
+        )
+        refresh_token = login.json()["refresh"]
+
+        # Simulate a fresh client (no session yet) calling /token/refresh/.
+        client.cookies.clear()
+        refresh = client.post(
+            "/api/auth/token/refresh/",
+            data={"refresh": refresh_token},
+            content_type="application/json",
+        )
+        assert refresh.status_code == 200
+        assert "sessionid" in refresh.cookies, (
+            "Refresh must set a sessionid cookie so /media/* is accessible immediately."
+        )
+
+        with override_settings(MEDIA_ROOT=str(self.media_root)):
+            response = client.get(f"/media/{self.file_path}")
+        assert response.status_code == 200
+
     def test_logout_revokes_media_access(self):
         client = Client()
         client.force_login(self.user)
