@@ -179,6 +179,7 @@ class Command(BaseCommand):
                     ),
                     url=f"/kalender/{event.slug}",
                     subtitle=subtitle,
+                    extra=json.dumps({"event_date": _isoformat(event.start_datetime)}),
                     created_at=_isoformat(event.created_at),
                 )
             counts["events"] = events.count()

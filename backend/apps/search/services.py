@@ -219,7 +219,7 @@ _SNIPPET_TYPES = {"post", "announcement", "event", "thread"}
 
 
 def _parse_fts_row(row: tuple) -> dict:
-    columns = ["type", "object_id", "title", "subtitle", "url", "extra", "snippet"]
+    columns = ["type", "object_id", "title", "subtitle", "url", "extra", "created_at", "snippet"]
     item = dict(zip(columns, row, strict=False))
     item["object_id"] = int(item["object_id"])
     snippet = item.pop("snippet", "")
@@ -247,7 +247,7 @@ def fts_search(query: str, limit: int = 10) -> list[dict]:
 
     with connection.cursor() as cursor:
         cursor.execute(
-            "SELECT type, object_id, title, subtitle, url, extra, "
+            "SELECT type, object_id, title, subtitle, url, extra, created_at, "
             "  snippet(search_index, 1, '', '', '…', 15) "
             "FROM search_index WHERE search_index MATCH %s "
             "ORDER BY bm25(search_index, 10.0, 1.0) "
@@ -311,7 +311,7 @@ def fts_search_advanced(
     with connection.cursor() as cursor:
         cursor.execute(
             "WITH ranked AS ("
-            "  SELECT type, object_id, title, subtitle, url, extra, "
+            "  SELECT type, object_id, title, subtitle, url, extra, created_at, "
             "    snippet(search_index, 1, '', '', '…', 15) AS snip, "
             "    " + score_expr + " AS score "
             "  FROM search_index WHERE search_index MATCH %s" + type_filter_sql + " "
@@ -320,7 +320,7 @@ def fts_search_advanced(
             "  SELECT *, ROW_NUMBER() OVER (PARTITION BY type ORDER BY score) AS rn "
             "  FROM ranked"
             ") "
-            "SELECT type, object_id, title, subtitle, url, extra, snip "
+            "SELECT type, object_id, title, subtitle, url, extra, created_at, snip "
             "FROM numbered WHERE rn <= %s ORDER BY type, rn",
             params,
         )
@@ -346,7 +346,7 @@ def fts_search_per_type(query: str, per_type_limit: int = 10) -> list[dict]:
     with connection.cursor() as cursor:
         cursor.execute(
             "WITH ranked AS ("
-            "  SELECT type, object_id, title, subtitle, url, extra, "
+            "  SELECT type, object_id, title, subtitle, url, extra, created_at, "
             "    snippet(search_index, 1, '', '', '…', 15) AS snip, "
             "    bm25(search_index, 10.0, 1.0) "
             "      + CASE WHEN created_at = '' THEN 0 "
@@ -360,7 +360,7 @@ def fts_search_per_type(query: str, per_type_limit: int = 10) -> list[dict]:
             "  SELECT *, ROW_NUMBER() OVER (PARTITION BY type ORDER BY score) AS rn "
             "  FROM ranked"
             ") "
-            "SELECT type, object_id, title, subtitle, url, extra, snip "
+            "SELECT type, object_id, title, subtitle, url, extra, created_at, snip "
             "FROM numbered WHERE rn <= %s ORDER BY type, rn",
             [fts_query, per_type_limit],
         )

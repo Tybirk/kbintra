@@ -278,6 +278,7 @@ def _index_event(instance) -> None:
         ),
         url=f"/kalender/{instance.slug}",
         subtitle=subtitle,
+        extra=json.dumps({"event_date": _isoformat(instance.start_datetime)}),
         created_at=_isoformat(instance.created_at),
     )
 

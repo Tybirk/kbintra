@@ -102,6 +102,7 @@ class GlobalSearchView(APIView):
                         if house.description
                         else "",
                         "url": f"/beboere/hus/{house.slug}",
+                        "created_at": house.created_at.isoformat() if house.created_at else "",
                     }
                 )
             # Also show residents of matching houses
@@ -116,6 +117,7 @@ class GlobalSearchView(APIView):
                         "title": user.get_full_name() or user.email,
                         "subtitle": user.house.name if user.house else "",
                         "url": f"/profil/{user.id}",
+                        "created_at": user.date_joined.isoformat() if user.date_joined else "",
                     }
                 )
 
@@ -141,6 +143,7 @@ class GlobalSearchView(APIView):
                         "title": item["title"],
                         "subtitle": item["subtitle"] or "",
                         "url": item["url"],
+                        "created_at": item.get("created_at") or "",
                         **({"extra": item["extra"]} if item["extra"] else {}),
                     }
                 )
@@ -162,6 +165,7 @@ class GlobalSearchView(APIView):
                             "title": user.get_full_name() or user.email,
                             "subtitle": user.house.name if user.house else "",
                             "url": f"/profil/{user.id}",
+                            "created_at": user.date_joined.isoformat() if user.date_joined else "",
                         }
                     )
             results["users"] = (injected + results["users"])[:limit]
@@ -184,6 +188,9 @@ class GlobalSearchView(APIView):
                                 else ""
                             ),
                             "url": f"/forum/{subgroup.slug}",
+                            "created_at": subgroup.created_at.isoformat()
+                            if subgroup.created_at
+                            else "",
                         }
                     )
             results["subgroups"] = (injected + results["subgroups"])[:limit]
@@ -211,6 +218,7 @@ class GlobalSearchView(APIView):
                             "title": format_license_plate(car.license_plate),
                             "subtitle": " · ".join(subtitle_parts),
                             "url": f"/beboere/hus/{car.house.slug}",
+                            "created_at": car.created_at.isoformat() if car.created_at else "",
                         }
                     )
             results["cars"] = (injected + results["cars"])[:limit]
@@ -286,6 +294,7 @@ class GlobalSearchView(APIView):
                         "title": sg.name,
                         "subtitle": create_excerpt(sg.description, 80) if sg.description else "",
                         "url": f"/forum/{sg.slug}",
+                        "created_at": sg.created_at.isoformat() if sg.created_at else "",
                     }
                 )
                 if len(results["subgroups"]) >= limit:
@@ -308,6 +317,7 @@ class GlobalSearchView(APIView):
                         "title": u.get_full_name() or u.email,
                         "subtitle": u.house.name if u.house else "",
                         "url": f"/profil/{uid}",
+                        "created_at": u.date_joined.isoformat() if u.date_joined else "",
                     }
                 )
                 if len(results["users"]) >= limit:
@@ -330,6 +340,7 @@ class GlobalSearchView(APIView):
                         "title": h.name,
                         "subtitle": create_excerpt(h.description, 80) if h.description else "",
                         "url": f"/beboere/hus/{h.slug}",
+                        "created_at": h.created_at.isoformat() if h.created_at else "",
                     }
                 )
                 if len(results["houses"]) >= limit:
@@ -354,6 +365,7 @@ class GlobalSearchView(APIView):
                         "title": f.name,
                         "subtitle": f.subgroup.name,
                         "url": f"/forum/{f.subgroup.slug}/dokumenter/{f.slug}",
+                        "created_at": f.created_at.isoformat() if f.created_at else "",
                     }
                 )
                 if len(results["folders"]) >= limit:
@@ -571,6 +583,7 @@ def _build_result_item(item: dict) -> dict:
         "title": item["title"],
         "subtitle": item["subtitle"] or "",
         "url": item["url"],
+        "created_at": item.get("created_at") or "",
         **({"extra": item["extra"]} if item["extra"] else {}),
     }
 
@@ -785,6 +798,7 @@ class AdvancedSearchView(APIView):
             "title": sg.name,
             "subtitle": create_excerpt(sg.description, 80) if sg.description else "",
             "url": f"/forum/{sg.slug}",
+            "created_at": sg.created_at.isoformat() if sg.created_at else "",
         }
 
     @staticmethod
@@ -801,6 +815,7 @@ class AdvancedSearchView(APIView):
             "title": u.get_full_name() or u.email,
             "subtitle": u.house.name if u.house else "",
             "url": f"/profil/{u.id}",
+            "created_at": u.date_joined.isoformat() if u.date_joined else "",
         }
 
     @staticmethod
@@ -816,6 +831,7 @@ class AdvancedSearchView(APIView):
             "title": h.name,
             "subtitle": create_excerpt(h.description, 80) if h.description else "",
             "url": f"/beboere/hus/{h.slug}",
+            "created_at": h.created_at.isoformat() if h.created_at else "",
         }
 
     @staticmethod
@@ -831,4 +847,5 @@ class AdvancedSearchView(APIView):
             "title": f.name,
             "subtitle": f.subgroup.name,
             "url": f"/forum/{f.subgroup.slug}/dokumenter/{f.slug}",
+            "created_at": f.created_at.isoformat() if f.created_at else "",
         }
