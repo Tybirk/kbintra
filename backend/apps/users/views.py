@@ -11,6 +11,7 @@ import tempfile
 from typing import Any
 
 from django.conf import settings
+from django.contrib import auth
 from django.db import connection, models
 from django.db.models import Count, QuerySet
 from django.http import FileResponse, HttpResponse
@@ -274,6 +275,27 @@ class ResetPasswordView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response({"message": "Password has been reset successfully."})
+
+
+class LogoutView(APIView):
+    """
+    Destroy the Django session that gates /media/* access.
+
+    JWT-side logout is purely client (the frontend drops the access/refresh
+    tokens from localStorage). This endpoint flushes the server-side session so
+    the sessionid cookie can no longer be used to fetch media after logout.
+
+    `authentication_classes = []` and AllowAny so a user with an
+    expired/malformed JWT can still successfully log out — the session is
+    identified by the cookie, not the JWT.
+    """
+
+    authentication_classes: list = []
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request: Request) -> Response:
+        auth.logout(request)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class RequestEmailChangeView(APIView):

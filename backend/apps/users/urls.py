@@ -13,6 +13,7 @@ from .views import (
     DownloadMediaView,
     ForgotPasswordView,
     InvitationListCreateView,
+    LogoutView,
     RegisterView,
     RequestEmailChangeView,
     ResetPasswordView,
@@ -21,6 +22,7 @@ from .views import (
 
 urlpatterns = [
     path("register/", RegisterView.as_view(), name="register"),
+    path("logout/", LogoutView.as_view(), name="logout"),
     path("validate-invitation/", ValidateInvitationView.as_view(), name="validate-invitation"),
     path("invitations/", InvitationListCreateView.as_view(), name="invitations"),
     path("change-password/", ChangePasswordView.as_view(), name="change-password"),

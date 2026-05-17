@@ -50,6 +50,12 @@ def serve_media(request: HttpRequest, path: str) -> HttpResponse:
     if _is_scanner_path(path):
         raise Http404
 
+    # /media is gated by the same Django session that the JWT login flow
+    # creates. Same-origin <img src="/media/..."> tags carry the sessionid
+    # cookie automatically, so no client-side change is needed.
+    if not request.user.is_authenticated:
+        return HttpResponse(status=401)
+
     local_path = Path(settings.MEDIA_ROOT) / path
     if not local_path.is_file():
         from apps.backup.s3 import download_file, is_enabled
