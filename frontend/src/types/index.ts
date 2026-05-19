@@ -290,6 +290,28 @@ export interface PostAttachment {
   uploaded_at: string
 }
 
+export interface GalleryItem {
+  id: number
+
+  name: string
+
+  file_url: string
+
+  preview_html?: string
+
+  uploaded_at: string
+
+  uploaded_by: Author | null
+
+  thread_id: number
+
+  thread_slug: string
+
+  thread_title: string
+
+  subgroup_slug: string
+}
+
 export type ReactionType = string
 
 export interface ReactionUser {

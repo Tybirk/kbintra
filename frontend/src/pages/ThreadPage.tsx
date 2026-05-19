@@ -494,6 +494,11 @@ export default function ThreadPage() {
       // a reply auto-reopens a closed thread.
       queryClient.invalidateQueries({ queryKey: ["threads"] })
 
+      // Refresh the gallery so new attachments appear without a reload.
+      queryClient.invalidateQueries({
+        queryKey: ["subgroup-gallery", thread!.subgroup_slug],
+      })
+
       clearDraft("reply-" + thread!.id)
 
       setReplySubmitKey((k) => k + 1)
@@ -550,6 +555,10 @@ export default function ThreadPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: threadQueryKey })
 
+      queryClient.invalidateQueries({
+        queryKey: ["subgroup-gallery", thread!.subgroup_slug],
+      })
+
       setEditingPost(null)
 
       setEditContent("")
@@ -582,6 +591,10 @@ export default function ThreadPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: threadQueryKey })
 
+      queryClient.invalidateQueries({
+        queryKey: ["subgroup-gallery", thread!.subgroup_slug],
+      })
+
       closeDeleteModal()
 
       setPostToDelete(null)
@@ -604,6 +617,10 @@ export default function ThreadPage() {
     mutationFn: forumApi.deleteThread,
 
     onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["subgroup-gallery", thread!.subgroup_slug],
+      })
+
       notifications.show({
         title: "Tråd slettet",
 

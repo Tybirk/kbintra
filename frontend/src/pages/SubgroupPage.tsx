@@ -59,6 +59,7 @@ import {
   IconChecks,
   IconCalendarPlus,
   IconLink,
+  IconPhoto,
   IconCopy,
   IconEyeOff,
   IconUsers,
@@ -82,6 +83,8 @@ import { clearDraft, loadDraft, saveDraft } from "../utils/draftStorage"
 import { filterFilesBySize } from "../config"
 
 import { CompactEventCard } from "../components/CompactEventCard"
+
+import GalleryTab from "../components/GalleryTab"
 
 import type { RichTextEditorProps } from "../components/RichTextEditor"
 import { RichTextContent } from "../components/RichTextContent"
@@ -160,9 +163,11 @@ export default function SubgroupPage() {
 
   const activeTab = location.pathname.includes("/dokumenter")
     ? "documents"
-    : location.pathname.includes("/info")
-      ? "info"
-      : "threads"
+    : location.pathname.includes("/galleri")
+      ? "gallery"
+      : location.pathname.includes("/info")
+        ? "info"
+        : "threads"
 
   const [
     createThreadModalOpened,
@@ -790,9 +795,11 @@ When done, print a short summary:
         value={activeTab}
         onChange={(tab) => {
           if (tab === "documents") navigate(`/forum/${slug}/dokumenter`)
+          else if (tab === "gallery") navigate(`/forum/${slug}/galleri`)
           else if (tab === "info") navigate(`/forum/${slug}/info`)
           else navigate(`/forum/${slug}`)
         }}
+        keepMounted={false}
         mb="md"
       >
         <Tabs.List>
@@ -818,6 +825,9 @@ When done, print a short summary:
           </Tabs.Tab>
           <Tabs.Tab value="documents" leftSection={<IconFolder size={16} />}>
             Dokumenter
+          </Tabs.Tab>
+          <Tabs.Tab value="gallery" leftSection={<IconPhoto size={16} />}>
+            Galleri
           </Tabs.Tab>
           <Tabs.Tab value="info" leftSection={<IconLink size={16} />}>
             Links og info
@@ -917,6 +927,10 @@ When done, print a short summary:
               else navigate(`/forum/${slug}/dokumenter/${folderSlug}`)
             }}
           />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="gallery" pt="md">
+          <GalleryTab subgroupSlug={slug!} />
         </Tabs.Panel>
 
         <Tabs.Panel value="info" pt="md">
@@ -1057,6 +1071,10 @@ When done, print a short summary:
         defaultMembersOnly={subgroup?.default_members_only ?? false}
         onSuccess={(thread) => {
           queryClient.invalidateQueries({ queryKey: ["threads", slug] })
+
+          queryClient.invalidateQueries({
+            queryKey: ["subgroup-gallery", slug],
+          })
 
           closeCreateThreadModal()
 

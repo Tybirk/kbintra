@@ -408,6 +408,16 @@ const AuthenticatedRoutes = memo(function AuthenticatedRoutes() {
           }
         />
         <Route
+          path="/forum/:slug/galleri"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <SubgroupPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/forum/:slug"
           element={
             <ProtectedRoute>

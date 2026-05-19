@@ -53,6 +53,37 @@ class PostAttachmentSerializer(serializers.ModelSerializer):
         return ""
 
 
+class GalleryItemSerializer(serializers.ModelSerializer):
+    """A PostAttachment paired with its parent thread, for the subgroup gallery."""
+
+    uploaded_by = AuthorSerializer(read_only=True)
+    file_url = serializers.SerializerMethodField()
+    thread_id = serializers.IntegerField(source="post.thread.id", read_only=True)
+    thread_slug = serializers.CharField(source="post.thread.slug", read_only=True)
+    thread_title = serializers.CharField(source="post.thread.title", read_only=True)
+    subgroup_slug = serializers.CharField(source="post.thread.subgroup.slug", read_only=True)
+
+    class Meta:
+        model = PostAttachment
+        fields = [
+            "id",
+            "name",
+            "file_url",
+            "preview_html",
+            "uploaded_at",
+            "uploaded_by",
+            "thread_id",
+            "thread_slug",
+            "thread_title",
+            "subgroup_slug",
+        ]
+
+    def get_file_url(self, obj: PostAttachment) -> str:
+        if obj.file:
+            return obj.file.url
+        return ""
+
+
 class SubgroupMembershipSerializer(serializers.ModelSerializer):
     """Serializer for a single membership row (used inside subgroup detail)."""
 

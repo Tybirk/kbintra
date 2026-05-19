@@ -27,6 +27,7 @@ from .views import (
     RecentActivityView,
     SubgroupDetailView,
     SubgroupFileListCreateView,
+    SubgroupGalleryView,
     SubgroupLeaveView,
     SubgroupListView,
     SubgroupMemberDetailView,
@@ -86,6 +87,12 @@ urlpatterns = [
         name="mark-subgroup-read",
     ),
     path("subscriptions/", MySubscriptionsView.as_view(), name="my-subscriptions"),
+    # Gallery
+    path(
+        "subgroups/<slug:slug>/gallery/",
+        SubgroupGalleryView.as_view(),
+        name="subgroup-gallery",
+    ),
     # Threads
     path("subgroups/<slug:slug>/threads/", ThreadListCreateView.as_view(), name="thread-list"),
     path(
