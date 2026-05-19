@@ -554,6 +554,11 @@ class SubgroupGalleryView(generics.ListAPIView):
                 visible | Q(post__thread__subgroup_id__in=member_ids) | Q(post__thread__author=user)
             )
 
+        # Sort by parent post creation time, not attachment.uploaded_at. The
+        # scraped/imported data shares one uploaded_at value across all rows,
+        # and even for fresh attachments, "when the post was made" matches the
+        # mental model the user is browsing with. Tie-break on id so the order
+        # is deterministic for posts created in the same second.
         return (
             PostAttachment.objects.filter(post__thread__subgroup=subgroup)
             .filter(visible)
@@ -561,7 +566,7 @@ class SubgroupGalleryView(generics.ListAPIView):
                 "uploaded_by",
                 "post__thread__subgroup",
             )
-            .order_by("-uploaded_at", "-id")
+            .order_by("-post__created_at", "-id")
         )
 
 

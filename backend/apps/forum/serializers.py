@@ -58,9 +58,13 @@ class GalleryItemSerializer(serializers.ModelSerializer):
 
     uploaded_by = AuthorSerializer(read_only=True)
     file_url = serializers.SerializerMethodField()
+    post_id = serializers.IntegerField(source="post.id", read_only=True)
     thread_id = serializers.IntegerField(source="post.thread.id", read_only=True)
     thread_slug = serializers.CharField(source="post.thread.slug", read_only=True)
     thread_title = serializers.CharField(source="post.thread.title", read_only=True)
+    thread_members_only = serializers.BooleanField(
+        source="post.thread.members_only", read_only=True
+    )
     subgroup_slug = serializers.CharField(source="post.thread.subgroup.slug", read_only=True)
 
     class Meta:
@@ -72,9 +76,11 @@ class GalleryItemSerializer(serializers.ModelSerializer):
             "preview_html",
             "uploaded_at",
             "uploaded_by",
+            "post_id",
             "thread_id",
             "thread_slug",
             "thread_title",
+            "thread_members_only",
             "subgroup_slug",
         ]
 
