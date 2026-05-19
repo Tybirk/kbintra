@@ -27,6 +27,8 @@ import { useDebouncedValue } from "@mantine/hooks"
 
 import { useQuery } from "@tanstack/react-query"
 
+import dayjs from "dayjs"
+
 import {
   IconArrowRight,
   IconBell,
@@ -153,6 +155,20 @@ function getIconFor(item: SearchItem) {
   if (item.type === "file") return getFileIcon(item.title)
   if (item.type === "folder") return IconFolder
   return TYPE_ICONS[item.type] ?? IconSearch
+}
+
+// Event rows show the event start date; everything else shows created_at.
+function getItemDateIso(item: SearchItem): string | null {
+  if (item.type === "event") {
+    const ed = item.extra?.event_date
+    return typeof ed === "string" && ed ? ed : null
+  }
+  return item.created_at && item.created_at.length > 0 ? item.created_at : null
+}
+
+function formatShortDanish(iso: string): string {
+  const d = dayjs(iso)
+  return d.isValid() ? d.format("D/M YYYY") : ""
 }
 
 export default function AdvancedSearchPage() {
@@ -433,6 +449,8 @@ export default function AdvancedSearchPage() {
                 <Stack gap={4}>
                   {group.items.map((item) => {
                     const Icon = getIconFor(item)
+                    const dateIso = getItemDateIso(item)
+                    const dateText = dateIso ? formatShortDanish(dateIso) : ""
                     return (
                       <Box
                         key={`${item.type}-${item.id}`}
@@ -470,6 +488,18 @@ export default function AdvancedSearchPage() {
                             </Text>
                           )}
                         </div>
+                        {dateText && (
+                          <Text
+                            size="xs"
+                            c="dimmed"
+                            style={{
+                              whiteSpace: "nowrap",
+                              flexShrink: 0,
+                            }}
+                          >
+                            {dateText}
+                          </Text>
+                        )}
                         <IconArrowRight
                           size={16}
                           style={{

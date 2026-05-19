@@ -19,6 +19,8 @@ export interface SearchItem {
 
   score: number
 
+  created_at?: string
+
   extra?: Record<string, unknown>
 }
 

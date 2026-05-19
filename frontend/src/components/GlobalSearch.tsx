@@ -7,7 +7,12 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 
 import { Spotlight, spotlight } from "@mantine/spotlight"
-import type { SpotlightActionData } from "@mantine/spotlight"
+import type {
+  SpotlightActionData,
+  SpotlightActionGroupData,
+} from "@mantine/spotlight"
+
+type SpotlightActions = SpotlightActionData | SpotlightActionGroupData
 
 import "@mantine/spotlight/styles.css"
 
@@ -30,6 +35,8 @@ import {
 import { useDebouncedValue, useMediaQuery } from "@mantine/hooks"
 
 import { useQuery } from "@tanstack/react-query"
+
+import dayjs from "dayjs"
 
 import { searchApi } from "../api/search"
 
@@ -80,6 +87,44 @@ const TYPE_LABELS: Record<SearchResultType, string> = {
   file: "Fil",
 
   folder: "Mappe",
+}
+
+// Convert a flat list of actions (each with a `group` field) into Mantine's
+// grouped shape so the spotlight renders group headers. Mirrors Mantine's
+// internal `flatActionsToGroups` — we need our own because the custom `filter`
+// prop replaces the default filter, which is where that grouping normally
+// happens. Order is preserved: a group appears where its first member appears.
+function groupActions(actions: SpotlightActionData[]): SpotlightActions[] {
+  const groups: Record<string, SpotlightActionGroupData> = {}
+  const result: SpotlightActions[] = []
+  for (const action of actions) {
+    if (action.group) {
+      let group = groups[action.group]
+      if (!group) {
+        group = { group: action.group, actions: [] }
+        groups[action.group] = group
+        result.push(group)
+      }
+      group.actions.push(action)
+    } else {
+      result.push(action)
+    }
+  }
+  return result
+}
+
+// Event rows show the event start date; everything else shows created_at.
+function getItemDateIso(item: SearchItem): string | null {
+  if (item.type === "event") {
+    const ed = item.extra?.event_date
+    return typeof ed === "string" && ed ? ed : null
+  }
+  return item.created_at && item.created_at.length > 0 ? item.created_at : null
+}
+
+function formatShortDanish(iso: string): string {
+  const d = dayjs(iso)
+  return d.isValid() ? d.format("D/M YYYY") : ""
 }
 
 // Maps backend plural result keys to singular type keys
@@ -304,6 +349,9 @@ export function GlobalSearch({ onAction }: GlobalSearchProps) {
                 ? getFileIcon(item.title)
                 : TYPE_ICONS[item.type]
 
+            const dateIso = getItemDateIso(item)
+            const dateText = dateIso ? formatShortDanish(dateIso) : ""
+
             return {
               id: `${item.type}-${item.id}`,
 
@@ -319,6 +367,16 @@ export function GlobalSearch({ onAction }: GlobalSearchProps) {
                   style={{ color: "var(--mantine-color-dimmed)" }}
                 />
               ),
+
+              rightSection: dateText ? (
+                <Text
+                  size="xs"
+                  c="dimmed"
+                  style={{ whiteSpace: "nowrap", flexShrink: 0 }}
+                >
+                  {dateText}
+                </Text>
+              ) : undefined,
 
               group: TYPE_LABELS[item.type],
             }
@@ -364,8 +422,10 @@ export function GlobalSearch({ onAction }: GlobalSearchProps) {
         // default client-side substring filter just gets in the way — it would
         // hide hits whose title doesn't literally contain the query (e.g. a
         // snippet match in a post body) and would also strip the synthetic
-        // "Avanceret søgning" row.
-        filter={(_q, items) => items}
+        // "Avanceret søgning" row. We still need to convert the flat action
+        // list into Mantine's grouped shape ourselves, because the default
+        // filter is also what produces the group headers.
+        filter={(_q, items) => groupActions(items as SpotlightActionData[])}
         nothingFound={nothingFoundContent}
         highlightQuery
         fullScreen={isMobile}
