@@ -17,9 +17,12 @@ def create_event_thread(event: Event) -> Thread | None:
     Returns None for private events. For community events, creates a thread in
     event.subgroup if set, otherwise in the 'arrangementer' fallback subgroup.
     Does not trigger new-thread notifications — event creation notifications cover that.
+
+    The thread starts empty; the event card itself serves as the OP slot and the
+    UI renders an info banner where the first post would normally be.
     """
     from apps.events.models import Event as EventModel
-    from apps.forum.models import Post, Subgroup, Thread
+    from apps.forum.models import Subgroup, Thread
 
     if event.visibility != EventModel.Visibility.COMMUNITY:
         return None
@@ -39,12 +42,6 @@ def create_event_thread(event: Event) -> Thread | None:
         subgroup=subgroup,
         title=event.title,
         author=event.created_by,
-    )
-
-    Post.objects.create(
-        thread=thread,
-        author=event.created_by,
-        content="<p>Brug denne tråd til at diskutere arrangementet.</p>",
     )
 
     subgroup.last_activity_at = timezone.now()

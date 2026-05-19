@@ -61,6 +61,7 @@ import {
   IconPinnedOff,
   IconX,
   IconRestore,
+  IconInfoCircle,
 } from "@tabler/icons-react"
 
 import { forumApi } from "../api/forum"
@@ -79,6 +80,8 @@ import { clearDraft } from "../utils/draftStorage"
 
 import type { RichTextEditorProps } from "../components/RichTextEditor"
 import { RichTextContent } from "../components/RichTextContent"
+
+import EventHeader from "../components/EventHeader"
 
 const RichTextEditorImpl = lazy(() => import("../components/RichTextEditor"))
 
@@ -388,16 +391,6 @@ export default function ThreadPage() {
 
     queryFn: forumApi.getSubgroups,
   })
-
-  // Redirect to event page if this thread is an event discussion thread
-
-  useEffect(() => {
-    if (thread?.event_slug) {
-      navigate(`/kalender/${thread.event_slug}${location.hash}`, {
-        replace: true,
-      })
-    }
-  }, [thread?.event_slug]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // If thread was moved to a different subgroup, update the URL to reflect the new location
 
@@ -856,151 +849,168 @@ export default function ThreadPage() {
     )
   }
 
+  const isEventThread = !!thread.event_slug
+
+  const threadBadgesNode = (
+    <>
+      {thread.is_pinned && (
+        <Badge color="blue" leftSection={<IconPin size={12} />}>
+          Fastgjort
+        </Badge>
+      )}
+      {thread.is_closed && (
+        <Badge color="orange" leftSection={<IconLock size={12} />}>
+          Lukket
+        </Badge>
+      )}
+      {thread.members_only && (
+        <Badge color="grape" leftSection={<IconEyeOff size={12} />}>
+          Kun for medlemmer af {thread.subgroup_name}
+        </Badge>
+      )}
+    </>
+  )
+
+  const muteActionNode = (
+    <Tooltip
+      label={
+        thread.is_muted ? "Slå notifikationer til" : "Slå notifikationer fra"
+      }
+    >
+      <ActionIcon
+        variant="subtle"
+        color={thread.is_muted ? "gray" : undefined}
+        onClick={() => muteThreadMutation.mutate()}
+        loading={muteThreadMutation.isPending}
+      >
+        {thread.is_muted ? <IconBellOff size={16} /> : <IconBell size={16} />}
+      </ActionIcon>
+    </Tooltip>
+  )
+
+  const pinMenuItem = (
+    <Menu.Item
+      leftSection={
+        thread.is_pinned ? <IconPinnedOff size={14} /> : <IconPin size={14} />
+      }
+      onClick={() => pinThreadMutation.mutate(!thread.is_pinned)}
+    >
+      {thread.is_pinned ? "Løsn tråd" : "Fastgør tråd"}
+    </Menu.Item>
+  )
+
+  const closeMenuItem = thread.can_close ? (
+    <Menu.Item
+      leftSection={
+        thread.is_closed ? <IconLockOpen size={14} /> : <IconLock size={14} />
+      }
+      onClick={() => closeThreadMutation.mutate(!thread.is_closed)}
+    >
+      {thread.is_closed ? "Genåbn tråd" : "Luk tråd"}
+    </Menu.Item>
+  ) : null
+
+  const threadHeaderNode = (
+    <Group justify="space-between" wrap="nowrap" align="flex-start">
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <Text size="sm" c="dimmed" mb={4}>
+          {thread.subgroup_name}
+        </Text>
+        <Group gap="sm" wrap="wrap">
+          <Title order={2} style={{ wordBreak: "break-word" }}>
+            {thread.title}
+          </Title>
+          {threadBadgesNode}
+        </Group>
+      </div>
+      <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+        {muteActionNode}
+        <Menu shadow="md" width={200}>
+          <Menu.Target>
+            <ActionIcon variant="subtle">
+              <IconDotsVertical size={16} />
+            </ActionIcon>
+          </Menu.Target>
+          <Menu.Dropdown>
+            {thread.posts[0]?.can_edit && (
+              <Menu.Item
+                leftSection={<IconEdit size={14} />}
+                onClick={() => handleStartEdit(thread.posts[0])}
+              >
+                Rediger tråd
+              </Menu.Item>
+            )}
+            {pinMenuItem}
+            {closeMenuItem}
+            {thread.can_close && (
+              <Menu.Item
+                leftSection={<IconArrowsMove size={14} />}
+                onClick={openMoveModal}
+              >
+                Flyt tråd
+              </Menu.Item>
+            )}
+            {thread.can_toggle_privacy && (
+              <Menu.Item
+                leftSection={<IconEyeOff size={14} />}
+                onClick={() => {
+                  const next = !thread.members_only
+
+                  const confirmMsg = next
+                    ? "Gør denne tråd privat? Den vil kun være synlig for medlemmer af gruppen (og forfatteren)."
+                    : "Gør denne tråd offentlig? Den vil blive synlig for alle."
+
+                  if (window.confirm(confirmMsg)) {
+                    togglePrivacyMutation.mutate(next)
+                  }
+                }}
+              >
+                {thread.members_only ? "Gør offentlig" : "Gør privat"}
+              </Menu.Item>
+            )}
+            {thread.can_edit && (
+              <Menu.Item
+                color="red"
+                leftSection={<IconTrash size={14} />}
+                onClick={() => deleteThreadMutation.mutate(thread.id)}
+              >
+                Slet tråd
+              </Menu.Item>
+            )}
+          </Menu.Dropdown>
+        </Menu>
+      </Group>
+    </Group>
+  )
+
   return (
     <>
-      <BackButton
-        to={`/forum/${thread.subgroup_slug}`}
-        label={`Tilbage til ${thread.subgroup_name}`}
-      />
+      {isEventThread ? (
+        <EventHeader
+          slug={thread.event_slug!}
+          subgroupLabel={thread.subgroup_name}
+          extraBadges={threadBadgesNode}
+          extraActions={muteActionNode}
+          extraMenuItems={
+            <>
+              {pinMenuItem}
+              {closeMenuItem}
+            </>
+          }
+        />
+      ) : (
+        <BackButton
+          to={`/forum/${thread.subgroup_slug}`}
+          label={`Tilbage til ${thread.subgroup_name}`}
+        />
+      )}
 
-      {thread.posts[0] && (
+      {!isEventThread && thread.posts[0] && (
         <PostCard
           key={thread.posts[0].id}
           post={thread.posts[0]}
           threadQueryKey={threadQueryKey}
-          threadHeader={
-            <Group justify="space-between" wrap="nowrap" align="flex-start">
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <Text size="sm" c="dimmed" mb={4}>
-                  {thread.subgroup_name}
-                </Text>
-                <Group gap="sm" wrap="wrap">
-                  <Title order={2} style={{ wordBreak: "break-word" }}>
-                    {thread.title}
-                  </Title>
-                  {thread.is_pinned && (
-                    <Badge color="blue" leftSection={<IconPin size={12} />}>
-                      Fastgjort
-                    </Badge>
-                  )}
-                  {thread.is_closed && (
-                    <Badge color="orange" leftSection={<IconLock size={12} />}>
-                      Lukket
-                    </Badge>
-                  )}
-                  {thread.members_only && (
-                    <Badge color="grape" leftSection={<IconEyeOff size={12} />}>
-                      Kun for medlemmer af {thread.subgroup_name}
-                    </Badge>
-                  )}
-                </Group>
-              </div>
-              <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
-                <Tooltip
-                  label={
-                    thread.is_muted
-                      ? "Slå notifikationer til"
-                      : "Slå notifikationer fra"
-                  }
-                >
-                  <ActionIcon
-                    variant="subtle"
-                    color={thread.is_muted ? "gray" : undefined}
-                    onClick={() => muteThreadMutation.mutate()}
-                    loading={muteThreadMutation.isPending}
-                  >
-                    {thread.is_muted ? (
-                      <IconBellOff size={16} />
-                    ) : (
-                      <IconBell size={16} />
-                    )}
-                  </ActionIcon>
-                </Tooltip>
-                <Menu shadow="md" width={200}>
-                  <Menu.Target>
-                    <ActionIcon variant="subtle">
-                      <IconDotsVertical size={16} />
-                    </ActionIcon>
-                  </Menu.Target>
-                  <Menu.Dropdown>
-                    {thread.posts[0]?.can_edit && (
-                      <Menu.Item
-                        leftSection={<IconEdit size={14} />}
-                        onClick={() => handleStartEdit(thread.posts[0])}
-                      >
-                        Rediger tråd
-                      </Menu.Item>
-                    )}
-                    <Menu.Item
-                      leftSection={
-                        thread.is_pinned ? (
-                          <IconPinnedOff size={14} />
-                        ) : (
-                          <IconPin size={14} />
-                        )
-                      }
-                      onClick={() =>
-                        pinThreadMutation.mutate(!thread.is_pinned)
-                      }
-                    >
-                      {thread.is_pinned ? "Løsn tråd" : "Fastgør tråd"}
-                    </Menu.Item>
-                    {thread.can_close && (
-                      <Menu.Item
-                        leftSection={
-                          thread.is_closed ? (
-                            <IconLockOpen size={14} />
-                          ) : (
-                            <IconLock size={14} />
-                          )
-                        }
-                        onClick={() =>
-                          closeThreadMutation.mutate(!thread.is_closed)
-                        }
-                      >
-                        {thread.is_closed ? "Genåbn tråd" : "Luk tråd"}
-                      </Menu.Item>
-                    )}
-                    {thread.can_close && (
-                      <Menu.Item
-                        leftSection={<IconArrowsMove size={14} />}
-                        onClick={openMoveModal}
-                      >
-                        Flyt tråd
-                      </Menu.Item>
-                    )}
-                    {thread.can_toggle_privacy && (
-                      <Menu.Item
-                        leftSection={<IconEyeOff size={14} />}
-                        onClick={() => {
-                          const next = !thread.members_only
-
-                          const confirmMsg = next
-                            ? "Gør denne tråd privat? Den vil kun være synlig for medlemmer af gruppen (og forfatteren)."
-                            : "Gør denne tråd offentlig? Den vil blive synlig for alle."
-
-                          if (window.confirm(confirmMsg)) {
-                            togglePrivacyMutation.mutate(next)
-                          }
-                        }}
-                      >
-                        {thread.members_only ? "Gør offentlig" : "Gør privat"}
-                      </Menu.Item>
-                    )}
-                    {thread.can_edit && (
-                      <Menu.Item
-                        color="red"
-                        leftSection={<IconTrash size={14} />}
-                        onClick={() => deleteThreadMutation.mutate(thread.id)}
-                      >
-                        Slet tråd
-                      </Menu.Item>
-                    )}
-                  </Menu.Dropdown>
-                </Menu>
-              </Group>
-            </Group>
-          }
+          threadHeader={threadHeaderNode}
           isEditing={editingPost?.id === thread.posts[0].id}
           editContent={editContent}
           onEditContentChange={setEditContent}
@@ -1041,55 +1051,80 @@ export default function ThreadPage() {
         />
       )}
 
-      {thread.posts.length > 1 && (
-        <>
-          <Title order={4} mt="xl" mb="md">
-            {thread.posts.length - 1} svar
-          </Title>
-          <Stack gap="md" mb="xl">
-            {thread.posts.slice(1).map((post) => (
-              <PostCard
-                key={post.id}
-                post={post}
-                threadQueryKey={threadQueryKey}
-                isEditing={editingPost?.id === post.id}
-                editContent={editContent}
-                onEditContentChange={setEditContent}
-                editPollData={editingPost?.id === post.id ? editPollData : null}
-                onEditPollDataChange={setEditPollData}
-                editAttachments={editAttachments}
-                onEditAttachmentsChange={setEditAttachments}
-                removedAttachmentIds={removedAttachmentIds}
-                onRemoveExistingAttachment={(id) =>
-                  setRemovedAttachmentIds((prev) => [...prev, id])
-                }
-                onRestoreExistingAttachment={(id) =>
-                  setRemovedAttachmentIds((prev) =>
-                    prev.filter((x) => x !== id),
-                  )
-                }
-                onStartEdit={() => handleStartEdit(post)}
-                onSaveEdit={handleSaveEdit}
-                onCancelEdit={() => {
-                  setEditingPost(null)
-
-                  setEditContent("")
-
-                  setEditTitle("")
-
-                  setEditPollData(null)
-
-                  setEditAttachments([])
-
-                  setRemovedAttachmentIds([])
-                }}
-                onDelete={() => handleDeleteClick(post.id)}
-                isSaving={updatePostMutation.isPending}
-              />
-            ))}
-          </Stack>
-        </>
+      {isEventThread && (
+        <Paper
+          withBorder
+          p="sm"
+          radius="md"
+          bg="var(--mantine-color-default-hover)"
+          mb="md"
+        >
+          <Group justify="center" gap="xs">
+            <IconInfoCircle size={16} color="var(--mantine-color-gray-6)" />
+            <Text size="sm" c="dimmed">
+              Brug denne tråd til at diskutere arrangementet.
+            </Text>
+          </Group>
+        </Paper>
       )}
+
+      {(() => {
+        const replies = isEventThread ? thread.posts : thread.posts.slice(1)
+
+        if (replies.length === 0) return null
+
+        return (
+          <>
+            <Title order={4} mt="xl" mb="md">
+              {replies.length} svar
+            </Title>
+            <Stack gap="md" mb="xl">
+              {replies.map((post) => (
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  threadQueryKey={threadQueryKey}
+                  isEditing={editingPost?.id === post.id}
+                  editContent={editContent}
+                  onEditContentChange={setEditContent}
+                  editPollData={
+                    editingPost?.id === post.id ? editPollData : null
+                  }
+                  onEditPollDataChange={setEditPollData}
+                  editAttachments={editAttachments}
+                  onEditAttachmentsChange={setEditAttachments}
+                  removedAttachmentIds={removedAttachmentIds}
+                  onRemoveExistingAttachment={(id) =>
+                    setRemovedAttachmentIds((prev) => [...prev, id])
+                  }
+                  onRestoreExistingAttachment={(id) =>
+                    setRemovedAttachmentIds((prev) =>
+                      prev.filter((x) => x !== id),
+                    )
+                  }
+                  onStartEdit={() => handleStartEdit(post)}
+                  onSaveEdit={handleSaveEdit}
+                  onCancelEdit={() => {
+                    setEditingPost(null)
+
+                    setEditContent("")
+
+                    setEditTitle("")
+
+                    setEditPollData(null)
+
+                    setEditAttachments([])
+
+                    setRemovedAttachmentIds([])
+                  }}
+                  onDelete={() => handleDeleteClick(post.id)}
+                  isSaving={updatePostMutation.isPending}
+                />
+              ))}
+            </Stack>
+          </>
+        )
+      })()}
 
       <Divider my="lg" />
 
