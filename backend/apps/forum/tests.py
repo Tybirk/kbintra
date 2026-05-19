@@ -2230,3 +2230,108 @@ class TestCreatePrivateThreadValidation:
             format="json",
         )
         assert response.status_code == 400
+
+
+class TestSubgroupGallery:
+    """Tests for the subgroup gallery endpoint."""
+
+    def _make_attachment(self, db, user, thread, name, content=b"x"):
+        from apps.forum.models import PostAttachment
+
+        post = Post.objects.create(thread=thread, author=user, content="<p>see</p>")
+        return PostAttachment.objects.create(
+            post=post,
+            uploaded_by=user,
+            file=SimpleUploadedFile(name, content),
+            name=name,
+        )
+
+    def test_lists_attachments_in_subgroup_newest_first(
+        self, authenticated_client, db, user, subgroup, thread
+    ):
+        a1 = self._make_attachment(db, user, thread, "first.jpg")
+        a2 = self._make_attachment(db, user, thread, "second.pdf")
+        a3 = self._make_attachment(db, user, thread, "third.png")
+
+        response = authenticated_client.get(f"/api/forum/subgroups/{subgroup.slug}/gallery/")
+        assert response.status_code == 200
+        results = get_results(response.data)
+        ids = [item["id"] for item in results]
+        assert ids == [a3.id, a2.id, a1.id]
+        first = results[0]
+        assert first["name"] == "third.png"
+        assert first["thread_id"] == thread.id
+        assert first["thread_slug"] == thread.slug
+        assert first["thread_title"] == thread.title
+        assert first["subgroup_slug"] == subgroup.slug
+
+    def test_only_returns_attachments_for_the_requested_subgroup(
+        self, authenticated_client, db, user, subgroup
+    ):
+        other = Subgroup.objects.create(name="Other", slug="other")
+        t1 = Thread.objects.create(subgroup=subgroup, title="A", author=user)
+        t2 = Thread.objects.create(subgroup=other, title="B", author=user)
+        self._make_attachment(db, user, t1, "in-subgroup.png")
+        self._make_attachment(db, user, t2, "in-other.png")
+
+        response = authenticated_client.get(f"/api/forum/subgroups/{subgroup.slug}/gallery/")
+        names = [item["name"] for item in get_results(response.data)]
+        assert names == ["in-subgroup.png"]
+
+    def test_hides_attachments_from_members_only_threads_for_non_members(
+        self, second_authenticated_client, user, member_subgroup
+    ):
+        # Public thread + attachment.
+        public_thread = Thread.objects.create(subgroup=member_subgroup, title="Public", author=user)
+        self._make_attachment(None, user, public_thread, "public.png")
+
+        # Members-only thread + attachment.
+        private_thread = Thread.objects.create(
+            subgroup=member_subgroup,
+            title="Private",
+            author=user,
+            members_only=True,
+        )
+        self._make_attachment(None, user, private_thread, "private.png")
+
+        response = second_authenticated_client.get(
+            f"/api/forum/subgroups/{member_subgroup.slug}/gallery/"
+        )
+        names = [item["name"] for item in get_results(response.data)]
+        assert names == ["public.png"]
+
+    def test_members_see_attachments_from_members_only_threads(
+        self, member_client, user, member_subgroup
+    ):
+        private_thread = Thread.objects.create(
+            subgroup=member_subgroup,
+            title="Private",
+            author=user,
+            members_only=True,
+        )
+        self._make_attachment(None, user, private_thread, "secret.png")
+
+        response = member_client.get(f"/api/forum/subgroups/{member_subgroup.slug}/gallery/")
+        names = [item["name"] for item in get_results(response.data)]
+        assert names == ["secret.png"]
+
+    def test_404_for_unknown_subgroup(self, authenticated_client):
+        response = authenticated_client.get("/api/forum/subgroups/does-not-exist/gallery/")
+        assert response.status_code == 404
+
+    def test_requires_auth(self, api_client, subgroup):
+        response = api_client.get(f"/api/forum/subgroups/{subgroup.slug}/gallery/")
+        assert response.status_code in (401, 403)
+
+    def test_paginates_with_page_param(self, authenticated_client, db, user, subgroup, thread):
+        for i in range(5):
+            self._make_attachment(db, user, thread, f"f{i}.png")
+
+        response = authenticated_client.get(
+            f"/api/forum/subgroups/{subgroup.slug}/gallery/?page_size=2"
+        )
+        assert response.status_code == 200
+        assert "results" in response.data
+        assert len(response.data["results"]) == 2
+        assert response.data["count"] == 5
+        assert response.data["next"] is not None
