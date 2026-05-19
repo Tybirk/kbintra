@@ -79,6 +79,13 @@ export function AttachmentCarousel({
 }: AttachmentCarouselProps) {
   const isMobile = useMediaQuery("(max-width: 768px)")
 
+  // "Stor skrift" enlarges Mantine button heights, so the default 32px slide
+  // bottom padding isn't enough to keep them clear of the indicator dots on
+  // desktop. Detect via the root data attribute set by useAccessibilityModeSync.
+  const isAccessibilityMode =
+    typeof document !== "undefined" &&
+    document.documentElement.getAttribute("data-accessibility") === "on"
+
   const [zoomImage, setZoomImage] = useState<{
     src: string
     name: string
@@ -203,9 +210,11 @@ export function AttachmentCarousel({
 
             // Reserve a strip at the bottom so the per-slide Download button
             // doesn't overlap the dot indicators (which float at bottom: 10).
+            // Bumped in accessibility mode where larger button heights eat
+            // into the default 32px buffer.
             slide: {
               height: "100%",
-              paddingBottom: isMobile ? 0 : 32,
+              paddingBottom: isMobile ? 0 : isAccessibilityMode ? 64 : 32,
             },
 
             control: {
