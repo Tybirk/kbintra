@@ -303,11 +303,15 @@ export interface GalleryItem {
 
   uploaded_by: Author | null
 
+  post_id: number
+
   thread_id: number
 
   thread_slug: string
 
   thread_title: string
+
+  thread_members_only: boolean
 
   subgroup_slug: string
 }

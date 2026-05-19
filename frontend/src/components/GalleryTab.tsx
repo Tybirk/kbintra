@@ -16,9 +16,10 @@ import {
   Loader,
   Paper,
   ThemeIcon,
+  Tooltip,
 } from "@mantine/core"
 
-import { IconInfoCircle, IconPhoto } from "@tabler/icons-react"
+import { IconInfoCircle, IconPhoto, IconEyeOff } from "@tabler/icons-react"
 
 import { forumApi } from "../api/forum"
 
@@ -105,6 +106,10 @@ export default function GalleryTab({ subgroupSlug }: GalleryTabProps) {
         name: item.name,
         file_url: item.file_url,
         preview_html: item.preview_html,
+        thread_subgroup_slug: item.subgroup_slug,
+        thread_slug: item.thread_slug,
+        thread_title: item.thread_title,
+        post_id: item.post_id,
       })),
     [imageItems],
   )
@@ -189,8 +194,10 @@ function GalleryTile({ item, onOpenImage, onOpenDoc }: GalleryTileProps) {
   const FileIcon = getFileIcon(item.name)
   const iconColor = getFileTypeColor(item.name)
 
+  const isPrivate = item.thread_members_only
+
   return (
-    <Stack gap={4}>
+    <Stack gap={4} style={{ position: "relative" }}>
       <Box
         role="button"
         tabIndex={0}
@@ -206,7 +213,9 @@ function GalleryTile({ item, onOpenImage, onOpenDoc }: GalleryTileProps) {
           width: "100%",
           overflow: "hidden",
           borderRadius: "var(--mantine-radius-sm)",
-          border: "1px solid var(--mantine-color-gray-3)",
+          border: isPrivate
+            ? "2px solid var(--mantine-color-grape-8)"
+            : "1px solid var(--mantine-color-gray-3)",
           cursor: "pointer",
           background: "var(--mantine-color-gray-0)",
           display: "flex",
@@ -240,9 +249,32 @@ function GalleryTile({ item, onOpenImage, onOpenDoc }: GalleryTileProps) {
         )}
       </Box>
 
+      {isPrivate && (
+        <Tooltip label="Kun for medlemmer">
+          <Box
+            style={{
+              position: "absolute",
+              top: -8,
+              left: -8,
+              width: 22,
+              height: 22,
+              borderRadius: "50%",
+              backgroundColor: "var(--mantine-color-grape-8)",
+              color: "white",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1,
+            }}
+          >
+            <IconEyeOff size={14} />
+          </Box>
+        </Tooltip>
+      )}
+
       <Anchor
         component={Link}
-        to={`/forum/${item.subgroup_slug}/traad/${item.thread_slug}`}
+        to={`/forum/${item.subgroup_slug}/traad/${item.thread_slug}#post-${item.post_id}`}
         size="xs"
         c="dimmed"
         title={item.thread_title}
