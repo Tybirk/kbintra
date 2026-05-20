@@ -11,6 +11,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from apps.users.models import User
+from apps.users.serializer_mixins import AvatarUrlMixin
 
 from .constants import (
     DAY_NAMES,
@@ -52,7 +53,7 @@ def is_after_deadline(meal_date: date) -> bool:
     return timezone.now() >= get_registration_deadline(meal_date)
 
 
-class AuthorSerializer(serializers.ModelSerializer):
+class AuthorSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """Minimal serializer for user info."""
 
     class Meta:
@@ -434,7 +435,7 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
 # Food Team Serializers
 
 
-class TeamMemberUserSerializer(serializers.ModelSerializer):
+class TeamMemberUserSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """Minimal user info for team member display."""
 
     class Meta:
@@ -522,7 +523,7 @@ class FoodTeamListSerializer(serializers.ModelSerializer):
         )
 
 
-class SwapRequestUserSerializer(serializers.ModelSerializer):
+class SwapRequestUserSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """User info for swap requests."""
 
     class Meta:

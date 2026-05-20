@@ -225,7 +225,7 @@ function GalleryTile({ item, onOpenImage, onOpenDoc }: GalleryTileProps) {
       >
         {isImage ? (
           <Image
-            src={item.file_url}
+            src={item.thumbnail_url}
             alt={item.name}
             fit="cover"
             h="100%"

@@ -5,11 +5,12 @@ Serializers for Bookings models (Room, RecurringBooking, calendar display).
 from rest_framework import serializers
 
 from apps.users.models import User
+from apps.users.serializer_mixins import AvatarUrlMixin
 
 from .models import RecurringBooking, RecurringBookingException, Room
 
 
-class UserSerializer(serializers.ModelSerializer):
+class UserSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """Minimal serializer for booking users."""
 
     class Meta:

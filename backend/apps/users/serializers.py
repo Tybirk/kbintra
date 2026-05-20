@@ -9,9 +9,10 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from .models import EmailChangeToken, Invitation, PasswordResetToken, User
+from .serializer_mixins import AvatarUrlMixin
 
 
-class UserSerializer(serializers.ModelSerializer):
+class UserSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """Serializer for User model (read operations)."""
 
     house_name = serializers.CharField(source="house.name", read_only=True)
@@ -52,7 +53,7 @@ class UserSerializer(serializers.ModelSerializer):
         return 0
 
 
-class UserProfileUpdateSerializer(serializers.ModelSerializer):
+class UserProfileUpdateSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """Serializer for updating user profile."""
 
     class Meta:
@@ -71,7 +72,7 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
         read_only_fields = ["house"]
 
 
-class MentionUserSerializer(serializers.ModelSerializer):
+class MentionUserSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """Minimal serializer for @mention user search."""
 
     class Meta:

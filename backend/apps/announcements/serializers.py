@@ -5,11 +5,12 @@ Serializers for Announcements models.
 from rest_framework import serializers
 
 from apps.users.models import User
+from apps.users.serializer_mixins import AvatarUrlMixin
 
 from .models import Announcement, AnnouncementAttachment
 
 
-class AuthorSerializer(serializers.ModelSerializer):
+class AuthorSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """Minimal serializer for announcement authors."""
 
     class Meta:

@@ -188,11 +188,7 @@ def expand_recurring_bookings_for_range(
                         "id": recurring.created_by.id,
                         "first_name": recurring.created_by.first_name,
                         "last_name": recurring.created_by.last_name,
-                        "profile_picture": (
-                            recurring.created_by.profile_picture.url
-                            if recurring.created_by.profile_picture
-                            else None
-                        ),
+                        "profile_picture": recurring.created_by.avatar_url,
                     },
                     "title": recurring.title,
                     "description": recurring.description,

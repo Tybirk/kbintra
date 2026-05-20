@@ -5,11 +5,12 @@ Serializers for Notifications models.
 from rest_framework import serializers
 
 from apps.users.models import User
+from apps.users.serializer_mixins import AvatarUrlMixin
 
 from .models import Notification, NotificationPreference, PushSubscription
 
 
-class RelatedUserSerializer(serializers.ModelSerializer):
+class RelatedUserSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """Minimal serializer for related user in notifications."""
 
     class Meta:

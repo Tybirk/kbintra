@@ -576,9 +576,7 @@ class EventFilesView(APIView):
                     "id": f.uploaded_by.id,
                     "first_name": f.uploaded_by.first_name,
                     "last_name": f.uploaded_by.last_name,
-                    "profile_picture": (
-                        f.uploaded_by.profile_picture.url if f.uploaded_by.profile_picture else None
-                    ),
+                    "profile_picture": f.uploaded_by.avatar_url,
                 },
                 "uploaded_at": f.uploaded_at.isoformat(),
             }
@@ -654,11 +652,7 @@ class EventFilesView(APIView):
                         "id": request.user.id,
                         "first_name": request.user.first_name,
                         "last_name": request.user.last_name,
-                        "profile_picture": (
-                            request.user.profile_picture.url
-                            if request.user.profile_picture
-                            else None
-                        ),
+                        "profile_picture": request.user.avatar_url,
                     },
                     "uploaded_at": f.uploaded_at.isoformat(),
                 }

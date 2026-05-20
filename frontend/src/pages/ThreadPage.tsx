@@ -1614,7 +1614,7 @@ function PostCard({
                 {imageAttachments.map((att) => (
                   <Image
                     key={att.id}
-                    src={att.file_url}
+                    src={att.thumbnail_url}
                     alt={att.name}
                     radius="md"
                     fit="cover"

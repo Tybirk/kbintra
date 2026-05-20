@@ -349,9 +349,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "id": self.user.id,
                     "first_name": self.user.first_name,
                     "last_name": self.user.last_name,
-                    "profile_picture": (
-                        self.user.profile_picture.url if self.user.profile_picture else None
-                    ),
+                    "profile_picture": self.user.avatar_url,
                 },
                 "content": message.content,
                 "is_own": True,

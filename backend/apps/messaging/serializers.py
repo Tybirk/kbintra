@@ -5,11 +5,12 @@ Serializers for Messaging models.
 from rest_framework import serializers
 
 from apps.users.models import User
+from apps.users.serializer_mixins import AvatarUrlMixin
 
 from .models import Conversation, Message, MessageAttachment
 
 
-class ParticipantSerializer(serializers.ModelSerializer):
+class ParticipantSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """Minimal serializer for conversation participants."""
 
     class Meta:
@@ -321,7 +322,7 @@ class CreateMessageSerializer(serializers.ModelSerializer):
                 "id": user.id,
                 "first_name": user.first_name,
                 "last_name": user.last_name,
-                "profile_picture": user.profile_picture.url if user.profile_picture else None,
+                "profile_picture": user.avatar_url,
             },
             "content": message.content,
             "is_own": False,  # Will be set correctly by the consumer

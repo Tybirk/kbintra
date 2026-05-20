@@ -597,3 +597,70 @@ class TestAdminDownloadAPI:
         permission checks (i.e. it's not a 401/403), but gets 503."""
         response = admin_client.get("/api/auth/admin/download-media/")
         assert response.status_code == 503
+
+
+class TestUserProfileThumbnail:
+    """Tests for the small thumbnail variant on User.profile_picture."""
+
+    def _real_jpeg_bytes(self, width: int = 800, height: int = 600) -> bytes:
+        from io import BytesIO
+
+        from PIL import Image
+
+        img = Image.new("RGB", (width, height), color=(40, 80, 120))
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=80)
+        return buf.getvalue()
+
+    def test_thumbnail_generated_on_save(self, db):
+        from apps.users.models import User
+
+        u = User.objects.create_user(email="thumb@test.com", password="x")
+        u.profile_picture.save(
+            "p.jpg",
+            __import__(
+                "django.core.files.uploadedfile",
+                fromlist=["SimpleUploadedFile"],
+            ).SimpleUploadedFile("p.jpg", self._real_jpeg_bytes(2000, 1500)),
+            save=True,
+        )
+        u.refresh_from_db()
+        assert u.profile_picture_thumbnail
+
+        from PIL import Image as PILImage
+
+        with u.profile_picture_thumbnail.open("rb") as fh, PILImage.open(fh) as img:
+            assert img.size == (400, 400)
+            assert img.format == "JPEG"
+
+    def test_avatar_url_falls_back_to_original(self, db):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from apps.users.models import User
+
+        u = User.objects.create_user(email="fallback@test.com", password="x")
+        # Drop a tiny file that Pillow can still open but bypass the auto
+        # generation by writing directly to the field without triggering
+        # signals — simulate the "task hasn't run yet" state.
+        u.profile_picture = SimpleUploadedFile("p.jpg", b"\xff\xd8\xff\xd9")  # truncated jpeg
+        User.objects.filter(pk=u.pk).update(profile_picture="profile_pictures/x.jpg")
+        u.refresh_from_db()
+        assert not u.profile_picture_thumbnail
+        # avatar_url should return the original URL
+        assert u.avatar_url == u.profile_picture.url
+
+    def test_avatar_url_prefers_thumbnail(self, db):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from apps.users.models import User
+
+        u = User.objects.create_user(email="prefer@test.com", password="x")
+        u.profile_picture.save(
+            "p.jpg",
+            SimpleUploadedFile("p.jpg", self._real_jpeg_bytes()),
+            save=True,
+        )
+        u.refresh_from_db()
+        assert u.profile_picture_thumbnail
+        assert u.avatar_url == u.profile_picture_thumbnail.url
+        assert u.avatar_url != u.profile_picture.url
