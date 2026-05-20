@@ -45,6 +45,10 @@ const IMAGE_EXTENSIONS = [
   "bmp",
 
   "ico",
+
+  "heic",
+
+  "heif",
 ]
 
 const PDF_EXTENSIONS = ["pdf"]
