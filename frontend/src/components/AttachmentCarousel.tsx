@@ -211,10 +211,10 @@ export function AttachmentCarousel({
             // Reserve a strip at the bottom so the per-slide Download button
             // doesn't overlap the dot indicators (which float at bottom: 10).
             // Bumped in accessibility mode where larger button heights eat
-            // into the default 32px buffer.
+            // into the default buffer.
             slide: {
               height: "100%",
-              paddingBottom: isMobile ? 0 : isAccessibilityMode ? 64 : 32,
+              paddingBottom: isAccessibilityMode ? 72 : 48,
             },
 
             control: {
@@ -391,11 +391,11 @@ function SlideContent({
 
           alignItems: "center",
 
-          justifyContent: "center",
-
           height: "100%",
 
           padding: isMobile ? 0 : "1rem",
+
+          gap: "1rem",
         }}
       >
         <Box
@@ -413,10 +413,16 @@ function SlideContent({
             }
           }}
           style={{
+            // flex: 1 + minHeight: 0 lets the image area shrink to whatever's
+            // left after the button row, so portrait images don't push the
+            // buttons into the indicator dot strip.
+            flex: 1,
+            minHeight: 0,
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
             maxWidth: "100%",
+            width: "100%",
           }}
         >
           <Image
@@ -424,7 +430,7 @@ function SlideContent({
             alt={attachment.name}
             fit="contain"
             style={{
-              maxHeight: isMobile ? "calc(100vh - 140px)" : "65vh",
+              maxHeight: "100%",
 
               maxWidth: "100%",
 
@@ -433,7 +439,7 @@ function SlideContent({
             onClick={() => onImageZoom(attachment.file_url, attachment.name)}
           />
         </Box>
-        <Group justify="center" gap="xs" mt="md">
+        <Group justify="center" gap="xs" style={{ flexShrink: 0 }}>
           {threadLinkButton}
           <Button
             variant="light"
