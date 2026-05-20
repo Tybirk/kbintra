@@ -91,11 +91,7 @@ def send_notification_to_websocket(notification: Notification) -> None:
             "id": notification.related_user.id,
             "first_name": notification.related_user.first_name,
             "last_name": notification.related_user.last_name,
-            "profile_picture": (
-                notification.related_user.profile_picture.url
-                if notification.related_user.profile_picture
-                else None
-            ),
+            "profile_picture": notification.related_user.avatar_url,
         }
 
     async_to_sync(channel_layer.group_send)(

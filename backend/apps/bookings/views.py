@@ -211,11 +211,7 @@ class CalendarBookingsView(APIView):
                 "id": event.created_by.id,
                 "first_name": event.created_by.first_name,
                 "last_name": event.created_by.last_name,
-                "profile_picture": (
-                    event.created_by.profile_picture.url
-                    if event.created_by.profile_picture
-                    else None
-                ),
+                "profile_picture": event.created_by.avatar_url,
             }
             for room in event.rooms.all():
                 calendar_items.append(

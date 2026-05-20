@@ -5,6 +5,7 @@ Serializers for Forum models.
 from rest_framework import serializers
 
 from apps.users.models import User
+from apps.users.serializer_mixins import AvatarUrlMixin
 
 from .models import (
     File,
@@ -21,7 +22,25 @@ from .models import (
 )
 
 
-class AuthorSerializer(serializers.ModelSerializer):
+def _create_post_attachment(
+    post: Post, uploaded_by: User, attachment_file: object
+) -> PostAttachment:
+    """Create a PostAttachment row and queue its thumbnail generation."""
+    from .tasks import generate_post_attachment_thumbnail_task
+    from .utils import generate_docx_preview
+
+    attachment = PostAttachment.objects.create(
+        post=post,
+        uploaded_by=uploaded_by,
+        file=attachment_file,
+        name=attachment_file.name,
+        preview_html=generate_docx_preview(attachment_file),
+    )
+    generate_post_attachment_thumbnail_task(attachment.id)
+    return attachment
+
+
+class AuthorSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """Minimal serializer for post/thread authors."""
 
     class Meta:
@@ -29,11 +48,25 @@ class AuthorSerializer(serializers.ModelSerializer):
         fields = ["id", "first_name", "last_name", "profile_picture", "phone_number"]
 
 
+def _attachment_thumbnail_url(obj: PostAttachment) -> str:
+    """Return the thumbnail URL, falling back to the original file URL.
+
+    Falling back keeps the frontend simple: it always uses `thumbnail_url`
+    and gets the right thing whether or not the small variant exists yet.
+    """
+    if obj.thumbnail:
+        return obj.thumbnail.url
+    if obj.file:
+        return obj.file.url
+    return ""
+
+
 class PostAttachmentSerializer(serializers.ModelSerializer):
     """Serializer for PostAttachment model."""
 
     uploaded_by = AuthorSerializer(read_only=True)
     file_url = serializers.SerializerMethodField()
+    thumbnail_url = serializers.SerializerMethodField()
 
     class Meta:
         model = PostAttachment
@@ -42,6 +75,7 @@ class PostAttachmentSerializer(serializers.ModelSerializer):
             "name",
             "file",
             "file_url",
+            "thumbnail_url",
             "preview_html",
             "uploaded_by",
             "uploaded_at",
@@ -52,12 +86,16 @@ class PostAttachmentSerializer(serializers.ModelSerializer):
             return obj.file.url
         return ""
 
+    def get_thumbnail_url(self, obj: PostAttachment) -> str:
+        return _attachment_thumbnail_url(obj)
+
 
 class GalleryItemSerializer(serializers.ModelSerializer):
     """A PostAttachment paired with its parent thread, for the subgroup gallery."""
 
     uploaded_by = AuthorSerializer(read_only=True)
     file_url = serializers.SerializerMethodField()
+    thumbnail_url = serializers.SerializerMethodField()
     post_id = serializers.IntegerField(source="post.id", read_only=True)
     thread_id = serializers.IntegerField(source="post.thread.id", read_only=True)
     thread_slug = serializers.CharField(source="post.thread.slug", read_only=True)
@@ -73,6 +111,7 @@ class GalleryItemSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "file_url",
+            "thumbnail_url",
             "preview_html",
             "uploaded_at",
             "uploaded_by",
@@ -83,6 +122,9 @@ class GalleryItemSerializer(serializers.ModelSerializer):
             "thread_members_only",
             "subgroup_slug",
         ]
+
+    def get_thumbnail_url(self, obj: PostAttachment) -> str:
+        return _attachment_thumbnail_url(obj)
 
     def get_file_url(self, obj: PostAttachment) -> str:
         if obj.file:
@@ -303,7 +345,7 @@ class ReactionSummarySerializer(serializers.Serializer):
     users = serializers.ListField(child=serializers.DictField())
 
 
-class PollVoterSerializer(serializers.ModelSerializer):
+class PollVoterSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """Minimal serializer for poll voters."""
 
     class Meta:
@@ -500,9 +542,7 @@ class PostSerializer(serializers.ModelSerializer):
                     "id": reaction.user.id,
                     "first_name": reaction.user.first_name,
                     "last_name": reaction.user.last_name,
-                    "profile_picture": reaction.user.profile_picture.url
-                    if reaction.user.profile_picture
-                    else None,
+                    "profile_picture": reaction.user.avatar_url,
                 }
             )
 
@@ -568,8 +608,6 @@ class PostCreateSerializer(serializers.ModelSerializer):
         return serializer.validated_data
 
     def update(self, instance: Post, validated_data: dict) -> Post:
-        from .utils import generate_docx_preview
-
         attachments = validated_data.pop("attachments", [])
         remove_attachment_ids = validated_data.pop("remove_attachment_ids", [])
         validated_data.pop("poll_data", None)  # poll updates handled separately
@@ -583,13 +621,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
         # Create new attachments
         user = self.context["request"].user
         for attachment_file in attachments:
-            PostAttachment.objects.create(
-                post=instance,
-                uploaded_by=user,
-                file=attachment_file,
-                name=attachment_file.name,
-                preview_html=generate_docx_preview(attachment_file),
-            )
+            _create_post_attachment(instance, user, attachment_file)
 
         return instance
 
@@ -602,8 +634,6 @@ class PostCreateSerializer(serializers.ModelSerializer):
             notify_thread_reply_task,
         )
 
-        from .utils import generate_docx_preview
-
         # Extract poll_data and attachments before creating post
         poll_data = validated_data.pop("poll_data", None)
         attachments = validated_data.pop("attachments", [])
@@ -614,13 +644,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
 
         # Create attachments
         for attachment_file in attachments:
-            PostAttachment.objects.create(
-                post=post,
-                uploaded_by=post.author,
-                file=attachment_file,
-                name=attachment_file.name,
-                preview_html=generate_docx_preview(attachment_file),
-            )
+            _create_post_attachment(post, post.author, attachment_file)
 
         # Create poll if poll_data is provided
         if poll_data:
@@ -947,8 +971,6 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data: dict) -> Thread:
         from django.utils import timezone
 
-        from .utils import generate_docx_preview
-
         content = validated_data.pop("content")
         attachments = validated_data.pop("attachments", [])
         poll_data = validated_data.pop("poll_data", None)
@@ -966,13 +988,7 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
 
         # Create attachments for the initial post
         for attachment_file in attachments:
-            PostAttachment.objects.create(
-                post=post,
-                uploaded_by=post.author,
-                file=attachment_file,
-                name=attachment_file.name,
-                preview_html=generate_docx_preview(attachment_file),
-            )
+            _create_post_attachment(post, post.author, attachment_file)
 
         # Create poll if poll_data is provided
         if poll_data:

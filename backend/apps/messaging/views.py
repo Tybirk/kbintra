@@ -125,9 +125,7 @@ class ConversationListCreateView(generics.ListCreateAPIView):
                                 "id": user.id,
                                 "first_name": user.first_name,
                                 "last_name": user.last_name,
-                                "profile_picture": (
-                                    user.profile_picture.url if user.profile_picture else None
-                                ),
+                                "profile_picture": user.avatar_url,
                             },
                             "content": message.content,
                             "is_own": False,  # set per-client by the consumer
@@ -405,9 +403,7 @@ class AddParticipantsView(APIView):
                 "id": request.user.id,
                 "first_name": request.user.first_name,
                 "last_name": request.user.last_name,
-                "profile_picture": (
-                    request.user.profile_picture.url if request.user.profile_picture else None
-                ),
+                "profile_picture": (request.user.avatar_url),
             },
             "content": system_message.content,
             "is_own": False,
@@ -483,9 +479,7 @@ class RenameConversationView(APIView):
                 "id": request.user.id,
                 "first_name": request.user.first_name,
                 "last_name": request.user.last_name,
-                "profile_picture": (
-                    request.user.profile_picture.url if request.user.profile_picture else None
-                ),
+                "profile_picture": (request.user.avatar_url),
             },
             "content": system_message.content,
             "is_own": False,
@@ -725,9 +719,7 @@ class LeaveConversationView(APIView):
                 "id": request.user.id,
                 "first_name": request.user.first_name,
                 "last_name": request.user.last_name,
-                "profile_picture": (
-                    request.user.profile_picture.url if request.user.profile_picture else None
-                ),
+                "profile_picture": (request.user.avatar_url),
             },
             "content": system_message.content,
             "is_own": False,
