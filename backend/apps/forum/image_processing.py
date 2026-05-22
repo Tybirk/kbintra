@@ -45,15 +45,23 @@ def is_image_attachment(name: str) -> bool:
     return ext in _IMAGE_EXTENSIONS
 
 
-def generate_thumbnail(source: BinaryIO) -> ContentFile | None:
-    """Open `source`, return a JPEG ContentFile of a centered square crop.
+def generate_thumbnail(source: BinaryIO, *, preserve_aspect: bool = False) -> ContentFile | None:
+    """Open `source`, return a JPEG ContentFile sized for thumbnail use.
 
-    Why center-crop to square? Gallery tiles and the inline post strip render
-    the thumbnail with object-fit: cover into square-ish slots. If the source
-    is panoramic (e.g. 4000×500), constraining only by longest edge yields a
-    400×50 thumb that has to be upscaled ~4× on display, looking washed out.
-    Cropping to a square at source resolution first gives 400×400 of real
-    pixels — crisp at any rendered size up to 400px.
+    Two modes:
+
+    - Default (`preserve_aspect=False`): center-crop to a 400×400 square via
+      `ImageOps.fit`. Used for avatars (User, House, Child) where faces
+      should sit tight in a round/square slot — the surrounding pixels add
+      no value.
+
+    - `preserve_aspect=True`: scale-to-fit so the longest edge ≤ 400 while
+      keeping aspect ratio (via `Image.thumbnail`, which is in-place and
+      won't upscale). Used for post attachments shown in the gallery and
+      inline strip. The frontend `BlurredThumbnail` component places the
+      contained image over a blurred copy of itself, so panoramic or tall
+      photos show their full content with a soft backdrop instead of being
+      brutally center-cropped.
 
     Applies EXIF orientation so photos taken sideways aren't rotated in the
     gallery, drops transparency onto a white background, and resamples with
@@ -79,11 +87,16 @@ def generate_thumbnail(source: BinaryIO) -> ContentFile | None:
     elif img.mode != "RGB":
         img = img.convert("RGB")
 
-    # Clamp target side to the source's shortest edge to avoid upscaling small
-    # images. ImageOps.fit crops to the target aspect ratio (square here),
-    # then resizes — combining the two without an upsample step in between.
-    target = min(min(img.size), THUMBNAIL_MAX_EDGE)
-    img = ImageOps.fit(img, (target, target), Image.LANCZOS)
+    if preserve_aspect:
+        # In-place: shrinks until the longest edge ≤ THUMBNAIL_MAX_EDGE,
+        # preserves aspect ratio, and never upscales.
+        img.thumbnail((THUMBNAIL_MAX_EDGE, THUMBNAIL_MAX_EDGE), Image.LANCZOS)
+    else:
+        # Clamp target side to the source's shortest edge to avoid upscaling
+        # small images. ImageOps.fit crops to the target aspect ratio (square
+        # here), then resizes — combining both steps without upsampling between.
+        target = min(min(img.size), THUMBNAIL_MAX_EDGE)
+        img = ImageOps.fit(img, (target, target), Image.LANCZOS)
 
     buf = BytesIO()
     img.save(

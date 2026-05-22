@@ -30,7 +30,7 @@ def generate_post_attachment_thumbnail_task(attachment_id: int) -> None:
 
     try:
         with att.file.open("rb") as src:
-            thumb = generate_thumbnail(src)
+            thumb = generate_thumbnail(src, preserve_aspect=True)
     except FileNotFoundError:
         logger.warning("Skipping thumbnail for attachment %s: source file missing", attachment_id)
         return

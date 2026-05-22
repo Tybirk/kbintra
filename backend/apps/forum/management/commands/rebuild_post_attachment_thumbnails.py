@@ -3,7 +3,9 @@
 Run once after deploying the thumbnail feature to backfill historical
 attachments. Idempotent: skips rows that already have a thumbnail or whose
 filename isn't an image. By default queues work via Huey; pass --sync to
-generate inline (useful during local development).
+generate inline (useful during local development). Pass --force to
+re-generate even rows that already have a thumbnail (e.g. after changing
+the thumbnail strategy).
 """
 
 from __future__ import annotations
@@ -28,15 +30,24 @@ class Command(BaseCommand):
             action="store_true",
             help="Generate thumbnails inline instead of queueing Huey tasks.",
         )
+        parser.add_argument(
+            "--force",
+            action="store_true",
+            help="Re-generate even for attachments that already have a thumbnail "
+            "(deletes the old file first). Use after changing the thumbnail strategy.",
+        )
 
     def handle(self, *args, **options) -> None:
         sync = options["sync"]
+        force = options["force"]
 
-        qs = PostAttachment.objects.filter(Q(thumbnail="") | Q(thumbnail__isnull=True))
+        if force:
+            qs = PostAttachment.objects.all()
+        else:
+            qs = PostAttachment.objects.filter(Q(thumbnail="") | Q(thumbnail__isnull=True))
         total = qs.count()
-        self.stdout.write(
-            f"Scanning {total} attachments without thumbnails ({'sync' if sync else 'queue'} mode)"
-        )
+        scope = "all attachments" if force else "attachments without thumbnails"
+        self.stdout.write(f"Scanning {total} {scope} ({'sync' if sync else 'queue'} mode)")
 
         queued = 0
         skipped = 0
@@ -47,10 +58,17 @@ class Command(BaseCommand):
                 skipped += 1
                 continue
 
+            if force and att.thumbnail:
+                # Drop the stale file + clear the DB field; the inline / queued
+                # branch below will then regenerate exactly as for a missing thumb.
+                att.thumbnail.delete(save=False)
+                PostAttachment.objects.filter(pk=att.pk).update(thumbnail="")
+                att.thumbnail = None
+
             if sync:
                 try:
                     with att.file.open("rb") as src:
-                        thumb = generate_thumbnail(src)
+                        thumb = generate_thumbnail(src, preserve_aspect=True)
                 except FileNotFoundError:
                     self.stdout.write(
                         self.style.WARNING(f"  missing source for attachment {att.id} ({att.name})")

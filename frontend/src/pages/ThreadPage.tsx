@@ -28,7 +28,6 @@ import {
   Divider,
   Typography,
   Badge,
-  Image,
   SimpleGrid,
   Tooltip,
   Box,
@@ -116,6 +115,8 @@ import {
 import { AttachmentCarousel } from "../components/AttachmentCarousel"
 
 import { AttachmentBadge } from "../components/AttachmentBadge"
+
+import { BlurredThumbnail } from "../components/BlurredThumbnail"
 
 import type {
   Post,
@@ -1610,18 +1611,20 @@ function PostCard({
             </Typography>
 
             {imageAttachments.length > 0 && (
-              <SimpleGrid cols={{ base: 2, sm: 3, md: 4 }} mt="md" spacing="sm">
+              <SimpleGrid
+                cols={{ base: 2, sm: 3, md: 4, lg: 5 }}
+                spacing="md"
+                mt="md"
+              >
                 {imageAttachments.map((att) => (
-                  <Image
-                    key={att.id}
-                    src={att.thumbnail_url}
-                    alt={att.name}
-                    radius="md"
-                    fit="cover"
-                    h={120}
-                    style={{ cursor: "pointer" }}
-                    onClick={() => handleAttachmentClick(att)}
-                  />
+                  <Box key={att.id} style={{ aspectRatio: "1" }}>
+                    <BlurredThumbnail
+                      src={att.thumbnail_url}
+                      alt={att.name}
+                      radius="md"
+                      onClick={() => handleAttachmentClick(att)}
+                    />
+                  </Box>
                 ))}
               </SimpleGrid>
             )}

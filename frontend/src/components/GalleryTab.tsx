@@ -8,7 +8,6 @@ import {
   Stack,
   SimpleGrid,
   Box,
-  Image,
   Text,
   Anchor,
   Alert,
@@ -24,6 +23,8 @@ import { IconInfoCircle, IconPhoto, IconEyeOff } from "@tabler/icons-react"
 import { forumApi } from "../api/forum"
 
 import { AttachmentCarousel } from "./AttachmentCarousel"
+
+import { BlurredThumbnail } from "./BlurredThumbnail"
 
 import { getFileType, getFileIcon, getFileTypeColor } from "./FilePreview"
 
@@ -213,24 +214,20 @@ function GalleryTile({ item, onOpenImage, onOpenDoc }: GalleryTileProps) {
           width: "100%",
           overflow: "hidden",
           borderRadius: "var(--mantine-radius-sm)",
-          border: isPrivate
-            ? "2px solid var(--mantine-color-grape-8)"
-            : "1px solid var(--mantine-color-gray-3)",
           cursor: "pointer",
-          background: "var(--mantine-color-gray-0)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          border: isImage
+            ? undefined
+            : "1px solid var(--mantine-color-default-border)",
         }}
       >
         {isImage ? (
-          <Image
+          <BlurredThumbnail
             src={item.thumbnail_url}
             alt={item.name}
-            fit="cover"
-            h="100%"
-            w="100%"
-            loading="lazy"
+            radius="sm"
           />
         ) : (
           <Stack align="center" gap={4} p="xs">

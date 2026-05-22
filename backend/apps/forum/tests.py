@@ -2440,9 +2440,10 @@ class TestPostAttachmentThumbnail:
         assert att.thumbnail
         assert att.thumbnail.size < att.file.size
 
-    def test_thumbnail_is_square_even_for_wide_source(self, db, user, subgroup, thread):
-        """Wide / panoramic sources are centre-cropped to a square so that
-        cover-fit display doesn't have to upscale the shortest edge."""
+    def test_thumbnail_preserves_aspect_for_wide_source(self, db, user, subgroup, thread):
+        """Post-attachment thumbnails preserve aspect ratio so panoramic / tall
+        photos show their full content in the gallery (paired with the frontend's
+        BlurredThumbnail backdrop). Longest edge clamped to 400."""
         from PIL import Image as PILImage
 
         from apps.forum.serializers import _create_post_attachment
@@ -2457,8 +2458,8 @@ class TestPostAttachmentThumbnail:
         att.refresh_from_db()
         assert att.thumbnail
         with att.thumbnail.open("rb") as fh, PILImage.open(fh) as thumb_img:
-            # Square, clamped to shortest source edge (500) capped at 400.
-            assert thumb_img.size == (400, 400)
+            # 4000×500 → longest edge clamped to 400, aspect ratio preserved → 400×50.
+            assert thumb_img.size == (400, 50)
 
     def test_heic_upload_generates_jpeg_thumbnail(self, db, user, subgroup, thread):
         """iPhone HEIC uploads are decoded via pillow-heif and saved as JPEG."""
@@ -2477,7 +2478,7 @@ class TestPostAttachmentThumbnail:
 
         assert att.thumbnail
         with att.thumbnail.open("rb") as fh, PILImage.open(fh) as thumb_img:
-            # Square crop, downsized to the 400px cap.
-            assert thumb_img.size == (400, 400)
+            # 2000×1500 → longest edge clamped to 400, aspect ratio preserved → 400×300.
+            assert thumb_img.size == (400, 300)
             # We always emit JPEG regardless of source format.
             assert thumb_img.format == "JPEG"
