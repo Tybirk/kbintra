@@ -335,3 +335,9 @@ All email notifications are **opt-in** by default (disabled until user enables t
 
 - [Backend README](backend/README.md) - API endpoints, models, testing
 - [Frontend README](frontend/README.md) - Components, pages, state management
+
+## License
+
+KB Intra is licensed under the [GNU Affero General Public License v3.0](LICENSE.md).
+
+Other communities are welcome to use, modify, and self-host this software. Because AGPL applies to network use, any modified version run as a network service must make its source code available to its users. See the [LICENSE.md](LICENSE.md) file for the full text.
