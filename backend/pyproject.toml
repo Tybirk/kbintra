@@ -21,6 +21,7 @@ dependencies = [
     "python-docx>=1.2.0",
     "python-dotenv>=1.2.1",
     "pywebpush>=2.1.2",
+    "requests>=2.32.0",
     "sentry-sdk[django]>=2.59",  # 2.55 + 2.59 fix profiler teardown/race conditions implicated in our daphne segfaults — see docs/daphne-segfault.md
     "whitenoise>=6.7.0",
 ]

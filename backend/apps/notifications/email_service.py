@@ -3,10 +3,9 @@ Email service for sending notification emails.
 """
 
 import logging
-import os
 
 from django.conf import settings
-from django.core.mail import EmailMessage, get_connection
+from django.core.mail import EmailMessage
 from django.template.loader import render_to_string
 
 from apps.users.models import User
@@ -35,18 +34,6 @@ EMAIL_SUBJECT_PREFIX: dict[str, str] = {
     NotificationType.EVENT_REMINDER: "[Kalender]",
     NotificationType.MENTION: "[Omtale]",
 }
-
-
-def get_resend_connection():
-    """Return an SMTP connection to Resend. Use as a context manager."""
-    return get_connection(
-        backend="django.core.mail.backends.smtp.EmailBackend",
-        host=settings.RESEND_SMTP_HOST,
-        port=settings.RESEND_SMTP_PORT,
-        username=settings.RESEND_SMTP_USERNAME,
-        password=os.environ.get("RESEND_API_KEY", ""),
-        use_tls=True,
-    )
 
 
 def should_send_email(user: User, notification_type: NotificationType) -> bool:
@@ -131,16 +118,14 @@ def send_notification_email(
         prefix = EMAIL_SUBJECT_PREFIX.get(notification_type, "[KB Intra]")
         subject = f"{prefix} {title}"
 
-        with get_resend_connection() as connection:
-            email = EmailMessage(
-                subject=subject,
-                body=html_message,
-                to=[user.email],
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                connection=connection,
-            )
-            email.content_subtype = "html"
-            email.send()
+        email = EmailMessage(
+            subject=subject,
+            body=html_message,
+            to=[user.email],
+            from_email=settings.DEFAULT_FROM_EMAIL,
+        )
+        email.content_subtype = "html"
+        email.send()
 
         logger.info(f"Sent notification email to {user.email}: {title}")
         return True

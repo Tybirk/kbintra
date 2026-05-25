@@ -909,6 +909,7 @@ dependencies = [
     { name = "python-docx" },
     { name = "python-dotenv" },
     { name = "pywebpush" },
+    { name = "requests" },
     { name = "sentry-sdk", extra = ["django"] },
     { name = "whitenoise" },
 ]
@@ -938,6 +939,7 @@ requires-dist = [
     { name = "python-docx", specifier = ">=1.2.0" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "pywebpush", specifier = ">=2.1.2" },
+    { name = "requests", specifier = ">=2.32.0" },
     { name = "sentry-sdk", extras = ["django"], specifier = ">=2.59" },
     { name = "whitenoise", specifier = ">=6.7.0" },
 ]

@@ -262,10 +262,12 @@ EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() == "true"
 EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "False").lower() == "true"
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
-RESEND_SMTP_PORT = 587
-RESEND_SMTP_USERNAME = "resend"
-RESEND_SMTP_HOST = "smtp.resend.com"
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "KB Intra <noreply@kbintra.local>")
+
+# Cloudflare Email Service (used when EMAIL_BACKEND points at CloudflareEmailBackend).
+# Token must be scoped to email_sending:write.
+CLOUDFLARE_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID", "")
+CLOUDFLARE_EMAIL_API_TOKEN = os.getenv("CLOUDFLARE_EMAIL_API_TOKEN", "")
 SITE_URL = os.getenv("SITE_URL", "http://localhost:5173")
 
 # Web Push settings

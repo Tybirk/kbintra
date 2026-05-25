@@ -182,12 +182,9 @@ def send_password_reset_email_task(
     from django.conf import settings
     from django.core.mail import EmailMessage
 
-    from .email_service import get_resend_connection
-
-    with get_resend_connection() as connection:
-        EmailMessage(
-            subject="Nulstil din adgangskode - KB Intra",
-            body=f"""Hej {first_name},
+    EmailMessage(
+        subject="Nulstil din adgangskode - KB Intra",
+        body=f"""Hej {first_name},
 
 Du har anmodet om at nulstille din adgangskode til KB Intra.
 
@@ -201,10 +198,9 @@ Hvis du ikke har anmodet om at nulstille din adgangskode, kan du ignorere denne 
 Med venlig hilsen,
 KB Intra
 """,
-            to=[email],
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            connection=connection,
-        ).send()
+        to=[email],
+        from_email=settings.DEFAULT_FROM_EMAIL,
+    ).send()
 
 
 # ---------------------------------------------------------------------------
@@ -222,12 +218,9 @@ def send_email_change_verification_task(
     from django.conf import settings
     from django.core.mail import EmailMessage
 
-    from .email_service import get_resend_connection
-
-    with get_resend_connection() as connection:
-        EmailMessage(
-            subject="Bekræft din nye emailadresse - KB Intra",
-            body=f"""Hej {first_name},
+    EmailMessage(
+        subject="Bekræft din nye emailadresse - KB Intra",
+        body=f"""Hej {first_name},
 
 Du har anmodet om at ændre din emailadresse på KB Intra.
 
@@ -241,10 +234,9 @@ Hvis du ikke har anmodet om denne ændring, kan du ignorere denne email.
 Med venlig hilsen,
 KB Intra
 """,
-            to=[new_email],
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            connection=connection,
-        ).send()
+        to=[new_email],
+        from_email=settings.DEFAULT_FROM_EMAIL,
+    ).send()
 
 
 # ---------------------------------------------------------------------------
