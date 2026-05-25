@@ -5,11 +5,12 @@ Serializers for House models.
 from rest_framework import serializers
 
 from apps.users.models import User
+from apps.users.serializer_mixins import AvatarUrlMixin
 
 from .models import Car, Child, House
 
 
-class ChildSerializer(serializers.ModelSerializer):
+class ChildSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """Serializer for Child model."""
 
     class Meta:
@@ -24,7 +25,7 @@ class ChildSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at"]
 
 
-class ChildCreateUpdateSerializer(serializers.ModelSerializer):
+class ChildCreateUpdateSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """Serializer for creating/updating children."""
 
     class Meta:
@@ -65,7 +66,7 @@ class CarCreateUpdateSerializer(serializers.ModelSerializer):
         read_only_fields = ["id"]
 
 
-class HouseInhabitantSerializer(serializers.ModelSerializer):
+class HouseInhabitantSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """Serializer for users as house inhabitants (minimal info)."""
 
     class Meta:
@@ -81,7 +82,7 @@ class HouseInhabitantSerializer(serializers.ModelSerializer):
         ]
 
 
-class HouseSerializer(serializers.ModelSerializer):
+class HouseSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """Serializer for House model."""
 
     inhabitants = HouseInhabitantSerializer(many=True, read_only=True)
@@ -115,7 +116,7 @@ class HouseSerializer(serializers.ModelSerializer):
         return len(obj.inhabitants.all())
 
 
-class HouseListSerializer(serializers.ModelSerializer):
+class HouseListSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """Serializer for House list with inhabitant preview."""
 
     inhabitants = HouseInhabitantSerializer(many=True, read_only=True)
@@ -151,7 +152,7 @@ class HouseListSerializer(serializers.ModelSerializer):
         return len(obj.inhabitants.all())
 
 
-class HouseUpdateSerializer(serializers.ModelSerializer):
+class HouseUpdateSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """Serializer for updating a house's description and profile picture."""
 
     class Meta:

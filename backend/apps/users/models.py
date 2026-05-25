@@ -69,7 +69,23 @@ class User(AbstractUser):
         null=True,
         blank=True,
     )
+    profile_picture_thumbnail = models.ImageField(
+        upload_to="profile_pictures/thumbs/",
+        null=True,
+        blank=True,
+        help_text="400x400 JPEG square crop, generated server-side on upload.",
+    )
     bio = models.TextField(blank=True, max_length=1000)
+
+    @property
+    def avatar_url(self) -> str | None:
+        """Best URL for displaying this user's avatar. Falls back to the
+        original if the thumbnail hasn't been generated yet."""
+        if self.profile_picture_thumbnail:
+            return self.profile_picture_thumbnail.url
+        if self.profile_picture:
+            return self.profile_picture.url
+        return None
 
     # House relationship (nullable - user might not be assigned to a house yet)
     house = models.ForeignKey(

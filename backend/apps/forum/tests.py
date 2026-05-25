@@ -2230,3 +2230,254 @@ class TestCreatePrivateThreadValidation:
             format="json",
         )
         assert response.status_code == 400
+
+
+class TestSubgroupGallery:
+    """Tests for the subgroup gallery endpoint."""
+
+    def _make_attachment(self, db, user, thread, name, content=b"x"):
+        from apps.forum.models import PostAttachment
+
+        post = Post.objects.create(thread=thread, author=user, content="<p>see</p>")
+        return PostAttachment.objects.create(
+            post=post,
+            uploaded_by=user,
+            file=SimpleUploadedFile(name, content),
+            name=name,
+        )
+
+    def test_lists_attachments_in_subgroup_newest_first(
+        self, authenticated_client, db, user, subgroup, thread
+    ):
+        a1 = self._make_attachment(db, user, thread, "first.jpg")
+        a2 = self._make_attachment(db, user, thread, "second.pdf")
+        a3 = self._make_attachment(db, user, thread, "third.png")
+
+        response = authenticated_client.get(f"/api/forum/subgroups/{subgroup.slug}/gallery/")
+        assert response.status_code == 200
+        results = get_results(response.data)
+        ids = [item["id"] for item in results]
+        assert ids == [a3.id, a2.id, a1.id]
+        first = results[0]
+        assert first["name"] == "third.png"
+        assert first["thread_id"] == thread.id
+        assert first["thread_slug"] == thread.slug
+        assert first["thread_title"] == thread.title
+        assert first["subgroup_slug"] == subgroup.slug
+
+    def test_only_returns_attachments_for_the_requested_subgroup(
+        self, authenticated_client, db, user, subgroup
+    ):
+        other = Subgroup.objects.create(name="Other", slug="other")
+        t1 = Thread.objects.create(subgroup=subgroup, title="A", author=user)
+        t2 = Thread.objects.create(subgroup=other, title="B", author=user)
+        self._make_attachment(db, user, t1, "in-subgroup.png")
+        self._make_attachment(db, user, t2, "in-other.png")
+
+        response = authenticated_client.get(f"/api/forum/subgroups/{subgroup.slug}/gallery/")
+        names = [item["name"] for item in get_results(response.data)]
+        assert names == ["in-subgroup.png"]
+
+    def test_hides_attachments_from_members_only_threads_for_non_members(
+        self, second_authenticated_client, user, member_subgroup
+    ):
+        # Public thread + attachment.
+        public_thread = Thread.objects.create(subgroup=member_subgroup, title="Public", author=user)
+        self._make_attachment(None, user, public_thread, "public.png")
+
+        # Members-only thread + attachment.
+        private_thread = Thread.objects.create(
+            subgroup=member_subgroup,
+            title="Private",
+            author=user,
+            members_only=True,
+        )
+        self._make_attachment(None, user, private_thread, "private.png")
+
+        response = second_authenticated_client.get(
+            f"/api/forum/subgroups/{member_subgroup.slug}/gallery/"
+        )
+        names = [item["name"] for item in get_results(response.data)]
+        assert names == ["public.png"]
+
+    def test_members_see_attachments_from_members_only_threads(
+        self, member_client, user, member_subgroup
+    ):
+        private_thread = Thread.objects.create(
+            subgroup=member_subgroup,
+            title="Private",
+            author=user,
+            members_only=True,
+        )
+        self._make_attachment(None, user, private_thread, "secret.png")
+
+        response = member_client.get(f"/api/forum/subgroups/{member_subgroup.slug}/gallery/")
+        names = [item["name"] for item in get_results(response.data)]
+        assert names == ["secret.png"]
+
+    def test_404_for_unknown_subgroup(self, authenticated_client):
+        response = authenticated_client.get("/api/forum/subgroups/does-not-exist/gallery/")
+        assert response.status_code == 404
+
+    def test_requires_auth(self, api_client, subgroup):
+        response = api_client.get(f"/api/forum/subgroups/{subgroup.slug}/gallery/")
+        assert response.status_code in (401, 403)
+
+    def test_paginates_with_page_param(self, authenticated_client, db, user, subgroup, thread):
+        for i in range(5):
+            self._make_attachment(db, user, thread, f"f{i}.png")
+
+        response = authenticated_client.get(
+            f"/api/forum/subgroups/{subgroup.slug}/gallery/?page_size=2"
+        )
+        assert response.status_code == 200
+        assert "results" in response.data
+        assert len(response.data["results"]) == 2
+        assert response.data["count"] == 5
+        assert response.data["next"] is not None
+
+
+class TestPostAttachmentThumbnail:
+    """Tests for the small-thumbnail variant on PostAttachment."""
+
+    def _real_jpeg_bytes(self, width: int = 800, height: int = 600) -> bytes:
+        """Return a valid JPEG of the requested size for use in upload tests."""
+        from io import BytesIO
+
+        from PIL import Image
+
+        img = Image.new("RGB", (width, height), color=(40, 80, 120))
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=80)
+        return buf.getvalue()
+
+    def _real_heic_bytes(self, width: int = 800, height: int = 600) -> bytes:
+        """Return a valid HEIC of the requested size for use in upload tests.
+
+        Mirrors the format iPhones save photos in. Requires pillow_heif's
+        opener+encoder registered at module import (already done in
+        apps.forum.image_processing).
+        """
+        from io import BytesIO
+
+        from PIL import Image
+
+        # Ensure the HEIF opener+encoder are registered. Idempotent.
+        import apps.forum.image_processing  # noqa: F401
+
+        img = Image.new("RGB", (width, height), color=(40, 80, 120))
+        buf = BytesIO()
+        img.save(buf, format="HEIF", quality=80)
+        return buf.getvalue()
+
+    def test_thumbnail_generated_on_upload(self, authenticated_client, db, user, subgroup, thread):
+        post = Post.objects.create(thread=thread, author=user, content="see file")
+        # We bypass the API here to drive the serializer/task path directly.
+        from apps.forum.serializers import _create_post_attachment
+
+        upload = SimpleUploadedFile(
+            "photo.jpg", self._real_jpeg_bytes(1600, 900), content_type="image/jpeg"
+        )
+        att = _create_post_attachment(post, user, upload)
+        att.refresh_from_db()
+
+        from PIL import Image as PILImage
+
+        assert att.thumbnail
+        with att.thumbnail.open("rb") as fh, PILImage.open(fh) as thumb_img:
+            assert max(thumb_img.size) <= 400
+            assert thumb_img.format == "JPEG"
+
+    def test_thumbnail_skipped_for_non_image(self, db, user, subgroup, thread):
+        from apps.forum.serializers import _create_post_attachment
+
+        post = Post.objects.create(thread=thread, author=user, content="see pdf")
+        upload = SimpleUploadedFile("doc.pdf", b"not really a pdf", content_type="application/pdf")
+        att = _create_post_attachment(post, user, upload)
+        att.refresh_from_db()
+        assert not att.thumbnail
+
+    def test_thumbnail_url_falls_back_to_file_url(self, db, user, thread):
+        """When no thumbnail exists yet, the API returns the original file URL."""
+        from apps.forum.models import PostAttachment
+        from apps.forum.serializers import PostAttachmentSerializer
+
+        post = Post.objects.create(thread=thread, author=user, content="x")
+        att = PostAttachment.objects.create(
+            post=post,
+            uploaded_by=user,
+            file=SimpleUploadedFile("nothumb.pdf", b"x"),
+            name="nothumb.pdf",
+        )
+        data = PostAttachmentSerializer(att).data
+        assert data["thumbnail_url"] == data["file_url"]
+
+    def test_delete_removes_thumbnail_file(self, db, user, subgroup, thread):
+        from apps.forum.serializers import _create_post_attachment
+
+        post = Post.objects.create(thread=thread, author=user, content="see file")
+        upload = SimpleUploadedFile("photo.jpg", self._real_jpeg_bytes(), content_type="image/jpeg")
+        att = _create_post_attachment(post, user, upload)
+        att.refresh_from_db()
+        assert att.thumbnail
+        thumb_path = att.thumbnail.path
+
+        att.delete()
+
+        import os
+
+        assert not os.path.exists(thumb_path)
+
+    def test_thumbnail_is_smaller_than_original(self, db, user, subgroup, thread):
+        from apps.forum.serializers import _create_post_attachment
+
+        post = Post.objects.create(thread=thread, author=user, content="see file")
+        upload = SimpleUploadedFile(
+            "photo.jpg", self._real_jpeg_bytes(3000, 2000), content_type="image/jpeg"
+        )
+        att = _create_post_attachment(post, user, upload)
+        att.refresh_from_db()
+        assert att.thumbnail
+        assert att.thumbnail.size < att.file.size
+
+    def test_thumbnail_is_square_even_for_wide_source(self, db, user, subgroup, thread):
+        """Wide / panoramic sources are centre-cropped to a square so that
+        cover-fit display doesn't have to upscale the shortest edge."""
+        from PIL import Image as PILImage
+
+        from apps.forum.serializers import _create_post_attachment
+
+        post = Post.objects.create(thread=thread, author=user, content="see file")
+        upload = SimpleUploadedFile(
+            "panorama.jpg",
+            self._real_jpeg_bytes(4000, 500),
+            content_type="image/jpeg",
+        )
+        att = _create_post_attachment(post, user, upload)
+        att.refresh_from_db()
+        assert att.thumbnail
+        with att.thumbnail.open("rb") as fh, PILImage.open(fh) as thumb_img:
+            # Square, clamped to shortest source edge (500) capped at 400.
+            assert thumb_img.size == (400, 400)
+
+    def test_heic_upload_generates_jpeg_thumbnail(self, db, user, subgroup, thread):
+        """iPhone HEIC uploads are decoded via pillow-heif and saved as JPEG."""
+        from PIL import Image as PILImage
+
+        from apps.forum.serializers import _create_post_attachment
+
+        post = Post.objects.create(thread=thread, author=user, content="see file")
+        upload = SimpleUploadedFile(
+            "iphone.heic",
+            self._real_heic_bytes(2000, 1500),
+            content_type="image/heic",
+        )
+        att = _create_post_attachment(post, user, upload)
+        att.refresh_from_db()
+
+        assert att.thumbnail
+        with att.thumbnail.open("rb") as fh, PILImage.open(fh) as thumb_img:
+            # Square crop, downsized to the 400px cap.
+            assert thumb_img.size == (400, 400)
+            # We always emit JPEG regardless of source format.
+            assert thumb_img.format == "JPEG"

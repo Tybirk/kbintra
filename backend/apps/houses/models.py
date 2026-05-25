@@ -36,6 +36,12 @@ class House(models.Model):
         blank=True,
         null=True,
     )
+    profile_picture_thumbnail = models.ImageField(
+        upload_to="house_pictures/thumbs/",
+        blank=True,
+        null=True,
+        help_text="400x400 JPEG square crop, generated server-side on upload.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -48,6 +54,14 @@ class House(models.Model):
         if not self.slug:
             self.slug = derive_house_slug(self.name)
         super().save(*args, **kwargs)
+
+    @property
+    def avatar_url(self) -> str | None:
+        if self.profile_picture_thumbnail:
+            return self.profile_picture_thumbnail.url
+        if self.profile_picture:
+            return self.profile_picture.url
+        return None
 
 
 class Child(models.Model):
@@ -69,6 +83,12 @@ class Child(models.Model):
         blank=True,
         null=True,
     )
+    profile_picture_thumbnail = models.ImageField(
+        upload_to="child_pictures/thumbs/",
+        blank=True,
+        null=True,
+        help_text="400x400 JPEG square crop, generated server-side on upload.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -78,6 +98,14 @@ class Child(models.Model):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.house.name})"
+
+    @property
+    def avatar_url(self) -> str | None:
+        if self.profile_picture_thumbnail:
+            return self.profile_picture_thumbnail.url
+        if self.profile_picture:
+            return self.profile_picture.url
+        return None
 
 
 class Car(models.Model):

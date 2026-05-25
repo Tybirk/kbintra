@@ -1,5 +1,9 @@
 import { useState, useEffect } from "react"
 
+import { Link } from "react-router-dom"
+
+import type { EmblaCarouselType } from "embla-carousel"
+
 import {
   Modal,
   Image,
@@ -28,6 +32,7 @@ import {
   IconFileTypePdf,
   IconFileTypeDoc,
   IconFileTypePpt,
+  IconMessage,
 } from "@tabler/icons-react"
 
 import { getFileType, getFileIcon, getFileTypeColor } from "./FilePreview"
@@ -41,6 +46,16 @@ interface Attachment {
   file_url: string
 
   preview_html?: string
+
+  // Optional thread context — present when the carousel is opened from the
+  // gallery, where each slide belongs to a different thread.
+  thread_subgroup_slug?: string
+
+  thread_slug?: string
+
+  post_id?: number
+
+  thread_title?: string
 }
 
 interface AttachmentCarouselProps {
@@ -64,10 +79,44 @@ export function AttachmentCarousel({
 }: AttachmentCarouselProps) {
   const isMobile = useMediaQuery("(max-width: 768px)")
 
+  // "Stor skrift" enlarges Mantine button heights, so the default 32px slide
+  // bottom padding isn't enough to keep them clear of the indicator dots on
+  // desktop. Detect via the root data attribute set by useAccessibilityModeSync.
+  const isAccessibilityMode =
+    typeof document !== "undefined" &&
+    document.documentElement.getAttribute("data-accessibility") === "on"
+
   const [zoomImage, setZoomImage] = useState<{
     src: string
     name: string
   } | null>(null)
+
+  const [embla, setEmbla] = useState<EmblaCarouselType | null>(null)
+
+  // Arrow keys navigate the carousel while the modal is open. Skip when the
+  // user is typing in a form field so we don't hijack input cursors.
+  useEffect(() => {
+    if (!opened || !embla) return
+
+    const handleKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      const tag = target?.tagName
+      const editable = target?.isContentEditable
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || editable)
+        return
+
+      if (e.key === "ArrowLeft") {
+        e.preventDefault()
+        embla.scrollPrev()
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault()
+        embla.scrollNext()
+      }
+    }
+
+    window.addEventListener("keydown", handleKey)
+    return () => window.removeEventListener("keydown", handleKey)
+  }, [opened, embla])
 
   // Separate images and other files, images come first
 
@@ -151,6 +200,7 @@ export function AttachmentCarousel({
           nextControlIcon={<IconChevronRight size={24} />}
           previousControlIcon={<IconChevronLeft size={24} />}
           emblaOptions={{ loop: true }}
+          getEmblaApi={setEmbla}
           styles={{
             root: { height: "100%" },
 
@@ -158,7 +208,14 @@ export function AttachmentCarousel({
 
             container: { height: "100%" },
 
-            slide: { height: "100%" },
+            // Reserve a strip at the bottom so the per-slide Download button
+            // doesn't overlap the dot indicators (which float at bottom: 10).
+            // Bumped in accessibility mode where larger button heights eat
+            // into the default buffer.
+            slide: {
+              height: "100%",
+              paddingBottom: isAccessibilityMode ? 72 : 48,
+            },
 
             control: {
               backgroundColor: "var(--mantine-color-default)",
@@ -240,6 +297,26 @@ function SlideContent({
 
   const isPwa = window.matchMedia("(display-mode: standalone)").matches
 
+  // Optional "Gå til tråd" link, rendered next to Download when the carousel
+  // was opened from the gallery (each slide is from a different thread).
+  const hasThreadLink = !!(
+    attachment.thread_slug && attachment.thread_subgroup_slug
+  )
+
+  const threadLinkButton = hasThreadLink ? (
+    <Button
+      component={Link}
+      to={`/forum/${attachment.thread_subgroup_slug}/traad/${attachment.thread_slug}${
+        attachment.post_id ? `#post-${attachment.post_id}` : ""
+      }`}
+      variant="light"
+      size="sm"
+      leftSection={<IconMessage size={16} />}
+    >
+      Gå til tråd
+    </Button>
+  ) : null
+
   // Fetch content for text files
 
   useEffect(() => {
@@ -314,11 +391,11 @@ function SlideContent({
 
           alignItems: "center",
 
-          justifyContent: "center",
-
           height: "100%",
 
           padding: isMobile ? 0 : "1rem",
+
+          gap: "1rem",
         }}
       >
         <Box
@@ -336,10 +413,16 @@ function SlideContent({
             }
           }}
           style={{
+            // flex: 1 + minHeight: 0 lets the image area shrink to whatever's
+            // left after the button row, so portrait images don't push the
+            // buttons into the indicator dot strip.
+            flex: 1,
+            minHeight: 0,
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
             maxWidth: "100%",
+            width: "100%",
           }}
         >
           <Image
@@ -347,7 +430,7 @@ function SlideContent({
             alt={attachment.name}
             fit="contain"
             style={{
-              maxHeight: isMobile ? "calc(100vh - 140px)" : "65vh",
+              maxHeight: "100%",
 
               maxWidth: "100%",
 
@@ -356,7 +439,8 @@ function SlideContent({
             onClick={() => onImageZoom(attachment.file_url, attachment.name)}
           />
         </Box>
-        <Group justify="center" mt="md">
+        <Group justify="center" gap="xs" style={{ flexShrink: 0 }}>
+          {threadLinkButton}
           <Button
             variant="light"
             size="sm"
@@ -388,15 +472,18 @@ function SlideContent({
           <Text size="lg" fw={500} ta="center">
             {attachment.name}
           </Text>
-          <Button
-            component="a"
-            href={attachment.file_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            leftSection={<IconExternalLink size={16} />}
-          >
-            Åbn PDF
-          </Button>
+          <Group justify="center" gap="xs">
+            {threadLinkButton}
+            <Button
+              component="a"
+              href={attachment.file_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              leftSection={<IconExternalLink size={16} />}
+            >
+              Åbn PDF
+            </Button>
+          </Group>
         </Stack>
       )
     }
@@ -418,7 +505,8 @@ function SlideContent({
             title={attachment.name}
           />
         </Box>
-        <Group justify="center">
+        <Group justify="center" gap="xs">
+          {threadLinkButton}
           <Button
             variant="light"
             size="sm"
@@ -461,7 +549,8 @@ function SlideContent({
             {textContent}
           </Code>
         </ScrollArea>
-        <Group justify="center">
+        <Group justify="center" gap="xs">
+          {threadLinkButton}
           <Button
             variant="light"
             size="sm"
@@ -494,7 +583,8 @@ function SlideContent({
               dangerouslySetInnerHTML={{ __html: attachment.preview_html }}
             />
           </ScrollArea>
-          <Group justify="center">
+          <Group justify="center" gap="xs">
+            {threadLinkButton}
             <Button
               variant="light"
               size="sm"
@@ -525,12 +615,15 @@ function SlideContent({
           <br />
           Download filen for at åbne den.
         </Text>
-        <Button
-          leftSection={<IconDownload size={16} />}
-          onClick={handleDownload}
-        >
-          Download fil
-        </Button>
+        <Group justify="center" gap="xs">
+          {threadLinkButton}
+          <Button
+            leftSection={<IconDownload size={16} />}
+            onClick={handleDownload}
+          >
+            Download fil
+          </Button>
+        </Group>
       </Stack>
     )
   }
@@ -555,12 +648,15 @@ function SlideContent({
           <br />
           Download filen for at åbne den.
         </Text>
-        <Button
-          leftSection={<IconDownload size={16} />}
-          onClick={handleDownload}
-        >
-          Download fil
-        </Button>
+        <Group justify="center" gap="xs">
+          {threadLinkButton}
+          <Button
+            leftSection={<IconDownload size={16} />}
+            onClick={handleDownload}
+          >
+            Download fil
+          </Button>
+        </Group>
       </Stack>
     )
   }
@@ -588,9 +684,15 @@ function SlideContent({
         <br />
         Download filen for at åbne den.
       </Text>
-      <Button leftSection={<IconDownload size={16} />} onClick={handleDownload}>
-        Download fil
-      </Button>
+      <Group justify="center" gap="xs">
+        {threadLinkButton}
+        <Button
+          leftSection={<IconDownload size={16} />}
+          onClick={handleDownload}
+        >
+          Download fil
+        </Button>
+      </Group>
     </Stack>
   )
 }

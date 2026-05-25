@@ -216,6 +216,12 @@ class PostAttachment(models.Model):
         related_name="post_attachments",
     )
     file = models.FileField(upload_to="post_attachments/")
+    thumbnail = models.ImageField(
+        upload_to="post_attachments/thumbs/",
+        blank=True,
+        null=True,
+        help_text="400px-longest-edge JPEG thumbnail for gallery/inline display.",
+    )
     name = models.CharField(max_length=255)
     preview_html = models.TextField(
         blank=True,
@@ -230,8 +236,10 @@ class PostAttachment(models.Model):
         return f"{self.name} on {self.post}"
 
     def delete(self, *args: object, **kwargs: object) -> tuple:
-        """Delete the file from storage when the attachment is deleted."""
+        """Delete the file(s) from storage when the attachment is deleted."""
         self.file.delete(save=False)
+        if self.thumbnail:
+            self.thumbnail.delete(save=False)
         return super().delete(*args, **kwargs)
 
 

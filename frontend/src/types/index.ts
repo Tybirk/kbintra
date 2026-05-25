@@ -283,11 +283,41 @@ export interface PostAttachment {
 
   file_url: string
 
+  thumbnail_url: string
+
   preview_html?: string
 
   uploaded_by: Author | null
 
   uploaded_at: string
+}
+
+export interface GalleryItem {
+  id: number
+
+  name: string
+
+  file_url: string
+
+  thumbnail_url: string
+
+  preview_html?: string
+
+  uploaded_at: string
+
+  uploaded_by: Author | null
+
+  post_id: number
+
+  thread_id: number
+
+  thread_slug: string
+
+  thread_title: string
+
+  thread_members_only: boolean
+
+  subgroup_slug: string
 }
 
 export type ReactionType = string

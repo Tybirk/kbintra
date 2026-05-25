@@ -12,13 +12,14 @@ from rest_framework import serializers
 from apps.bookings.models import Room
 from apps.bookings.validators import check_multi_room_booking
 from apps.users.models import User
+from apps.users.serializer_mixins import AvatarUrlMixin
 
 from .models import Event, EventAttendance
 
 MAX_DURATION_HOURS = 30
 
 
-class AuthorSerializer(serializers.ModelSerializer):
+class AuthorSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """Minimal serializer for event creators."""
 
     class Meta:

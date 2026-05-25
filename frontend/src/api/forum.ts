@@ -20,6 +20,7 @@ import type {
   Poll,
   Folder,
   ForumFile,
+  GalleryItem,
   RecentActivity,
   ReactionType,
   ReactionTypeInfo,
@@ -29,6 +30,11 @@ export interface GetThreadsOptions {
   page?: number
   pageSize?: number
   isClosed?: boolean
+}
+
+export interface GetGalleryOptions {
+  page?: number
+  pageSize?: number
 }
 
 export interface FolderDeletePreview {
@@ -184,6 +190,21 @@ export const forumApi = {
     const response = await apiClient.get("/forum/subscriptions/")
 
     return asArray(response.data)
+  },
+
+  // Gallery
+  getSubgroupGallery: async (
+    subgroupSlug: string,
+    options: GetGalleryOptions = {},
+  ): Promise<PaginatedResponse<GalleryItem>> => {
+    const params: Record<string, string | number> = {}
+    if (options.page) params.page = options.page
+    if (options.pageSize) params.page_size = options.pageSize
+    const response = await apiClient.get<PaginatedResponse<GalleryItem>>(
+      `/forum/subgroups/${subgroupSlug}/gallery/`,
+      { params },
+    )
+    return response.data
   },
 
   // Threads

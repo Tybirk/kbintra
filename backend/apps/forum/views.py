@@ -23,6 +23,7 @@ from .models import (
     PollOption,
     PollVote,
     Post,
+    PostAttachment,
     Reaction,
     Subgroup,
     SubgroupMembership,
@@ -38,6 +39,7 @@ from .serializers import (
     FileUploadSerializer,
     FolderCreateSerializer,
     FolderSerializer,
+    GalleryItemSerializer,
     PollSerializer,
     PollUpdateSerializer,
     PostCreateSerializer,
@@ -519,6 +521,53 @@ class ThreadPagination(PageNumberPagination):
     page_size = 20
     page_size_query_param = "page_size"
     max_page_size = 100
+
+
+class GalleryPagination(PageNumberPagination):
+    page_size = 60
+    page_size_query_param = "page_size"
+    max_page_size = 200
+
+
+class SubgroupGalleryView(generics.ListAPIView):
+    """All post attachments in a subgroup's threads, newest first.
+
+    Respects thread members_only visibility — attachments from member-only
+    threads are hidden unless the requester is a member of the subgroup or
+    authored the parent thread.
+    """
+
+    serializer_class = GalleryItemSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = GalleryPagination
+
+    def get_queryset(self) -> Any:
+        subgroup = get_object_or_404(Subgroup, slug=self.kwargs["slug"])
+        user = self.request.user
+
+        visible = Q(post__thread__members_only=False)
+        if user.is_authenticated:
+            member_ids = list(
+                SubgroupMembership.objects.filter(user=user).values_list("subgroup_id", flat=True)
+            )
+            visible = (
+                visible | Q(post__thread__subgroup_id__in=member_ids) | Q(post__thread__author=user)
+            )
+
+        # Sort by parent post creation time, not attachment.uploaded_at. The
+        # scraped/imported data shares one uploaded_at value across all rows,
+        # and even for fresh attachments, "when the post was made" matches the
+        # mental model the user is browsing with. Tie-break on id so the order
+        # is deterministic for posts created in the same second.
+        return (
+            PostAttachment.objects.filter(post__thread__subgroup=subgroup)
+            .filter(visible)
+            .select_related(
+                "uploaded_by",
+                "post__thread__subgroup",
+            )
+            .order_by("-post__created_at", "-id")
+        )
 
 
 class ThreadListCreateView(generics.ListCreateAPIView):
