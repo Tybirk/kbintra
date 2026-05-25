@@ -237,6 +237,8 @@ export interface Subgroup {
 
   latest_thread_title: string | null
 
+  latest_thread_activity_at: string | null
+
   created_at: string
 
   last_activity_at: string | null

@@ -1,12 +1,15 @@
 """Subscribe every user to the core community subgroups.
 
-Ensures all users are subscribed to "Fælles", "Arrangementer" and
+One-time backfill that subscribes all users to "Fælles", "Arrangementer" and
 "Bestyrelsen" so they receive notifications from these central forums.
 
-Subgroup name matching is fuzzy (case-insensitive, whitespace-normalised,
-Danish-letter tolerant) to survive minor naming differences. If any of the
-three cannot be matched to exactly one subgroup, the migration aborts so a
-human can resolve the ambiguity rather than silently subscribing to nothing.
+This only does anything on a populated database (i.e. the real prod data set,
+where these subgroups already exist). On a fresh/empty database — such as the
+CI test database, where migrations run before any data exists — there are no
+subgroups to match, so each missing target is simply skipped and the migration
+is a harmless no-op. Subgroup name matching is fuzzy (case-insensitive,
+whitespace-normalised, Danish-letter tolerant) to survive minor naming
+differences.
 """
 
 from django.db import migrations
@@ -30,7 +33,7 @@ def _normalise(value: str) -> str:
 
 
 def _find_subgroup(subgroups, target: str):
-    """Return the single subgroup fuzzily matching `target`, or raise."""
+    """Return the single subgroup fuzzily matching `target`, or None."""
     norm_target = _normalise(target)
 
     # Prefer an exact normalised-name match.
@@ -44,18 +47,11 @@ def _find_subgroup(subgroups, target: str):
             if norm_target in _normalise(sg.name) or _normalise(sg.name) in norm_target
         ]
 
-    if not matches:
-        raise RuntimeError(
-            f'Could not find a forum subgroup matching "{target}". '
-            "Aborting migration so nobody is silently left unsubscribed. "
-            "Check the subgroup names in the admin and adjust TARGET_NAMES."
-        )
-    if len(matches) > 1:
-        names = ", ".join(repr(sg.name) for sg in matches)
-        raise RuntimeError(
-            f'Ambiguous match for "{target}": found {len(matches)} subgroups ({names}). '
-            "Resolve the ambiguity before running this migration."
-        )
+    # No match (e.g. fresh/empty DB) or an ambiguous match: skip rather than
+    # guess. The original prod backfill has already run; remaining runs are
+    # only fresh DBs where there is nothing meaningful to subscribe.
+    if len(matches) != 1:
+        return None
     return matches[0]
 
 
@@ -64,9 +60,8 @@ def subscribe_all_users(apps, schema_editor):
     SubgroupSubscription = apps.get_model("forum", "SubgroupSubscription")
     User = apps.get_model("users", "User")
 
-    # Resolve all three targets first; raises and rolls back if any is missing.
     all_subgroups = list(Subgroup.objects.all())
-    subgroups = [_find_subgroup(all_subgroups, name) for name in TARGET_NAMES]
+    subgroups = [sg for name in TARGET_NAMES if (sg := _find_subgroup(all_subgroups, name))]
 
     for subgroup in subgroups:
         existing_user_ids = set(

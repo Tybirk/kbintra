@@ -1167,7 +1167,7 @@ function ThreadRow({ thread, to }: ThreadRowProps) {
 
                     borderRadius: "50%",
 
-                    backgroundColor: "var(--mantine-color-blue-6)",
+                    backgroundColor: "var(--mantine-color-red-6)",
 
                     flexShrink: 0,
                   }}

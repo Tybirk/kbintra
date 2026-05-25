@@ -1090,7 +1090,7 @@ function BirthdayPreview({ birthday }: BirthdayPreviewProps) {
   return (
     <Paper
       component={Link}
-      to={`/beboere/${user.house}`}
+      to={`/profil/${user.id}`}
       p="sm"
       radius="sm"
       style={{

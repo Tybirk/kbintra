@@ -164,6 +164,7 @@ class SubgroupSerializer(serializers.ModelSerializer):
     is_member = serializers.SerializerMethodField()
     unread_thread_count = serializers.SerializerMethodField()
     latest_thread_title = serializers.SerializerMethodField()
+    latest_thread_activity_at = serializers.SerializerMethodField()
     members = serializers.SerializerMethodField()
     links_info_members = serializers.SerializerMethodField()
     subscriber_count = serializers.IntegerField(read_only=True, default=0)
@@ -188,6 +189,7 @@ class SubgroupSerializer(serializers.ModelSerializer):
             "is_subscribed",
             "is_member",
             "latest_thread_title",
+            "latest_thread_activity_at",
             "members",
             "subscriber_count",
             "created_at",
@@ -230,8 +232,8 @@ class SubgroupSerializer(serializers.ModelSerializer):
             return obj.links_info_members
         return ""
 
-    def _thread_stats(self, obj: Subgroup) -> tuple[int, int, str | None]:
-        """Single pass over open visible threads → (thread_count, unread_count, latest_title).
+    def _thread_stats(self, obj: Subgroup) -> tuple[int, int, str | None, str | None]:
+        """Single pass over open visible threads → (thread_count, unread_count, latest_title, latest_activity_at).
 
         Cached on the obj so the four serializer methods that need this data don't
         each re-walk obj.threads.all() (subgroup list = 48 subgroups × N threads).
@@ -271,7 +273,8 @@ class SubgroupSerializer(serializers.ModelSerializer):
             if last_read is None or thread.updated_at > last_read:
                 unread_count += 1
 
-        result = (thread_count, unread_count, latest.title if latest else None)
+        latest_at = latest.updated_at.isoformat() if latest else None
+        result = (thread_count, unread_count, latest.title if latest else None, latest_at)
         obj._thread_stats_cache = result  # type: ignore[attr-defined]
         return result
 
@@ -280,6 +283,9 @@ class SubgroupSerializer(serializers.ModelSerializer):
 
     def get_latest_thread_title(self, obj: Subgroup) -> str | None:
         return self._thread_stats(obj)[2]
+
+    def get_latest_thread_activity_at(self, obj: Subgroup) -> str | None:
+        return self._thread_stats(obj)[3]
 
     def get_is_subscribed(self, obj: Subgroup) -> bool:
         subscribed_ids = self.context.get("subscribed_subgroup_ids")

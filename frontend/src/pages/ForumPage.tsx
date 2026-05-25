@@ -196,14 +196,12 @@ export default function ForumPage() {
         ) || []
 
       const byActivity = (a: Subgroup, b: Subgroup) => {
-        const aTime = a.last_activity_at
-          ? new Date(a.last_activity_at).getTime()
-          : 0
-
-        const bTime = b.last_activity_at
-          ? new Date(b.last_activity_at).getTime()
-          : 0
-
+        const aTime = new Date(
+          a.latest_thread_activity_at ?? a.last_activity_at ?? 0,
+        ).getTime()
+        const bTime = new Date(
+          b.latest_thread_activity_at ?? b.last_activity_at ?? 0,
+        ).getTime()
         return bTime - aTime
       }
 
@@ -224,15 +222,23 @@ export default function ForumPage() {
 
         subscribedGroups: subscribed,
 
-        committees: filtered.filter(
-          (s) =>
-            s.is_committee && !subscribedIds.has(s.id) && !memberIds.has(s.id),
-        ),
+        committees: filtered
+          .filter(
+            (s) =>
+              s.is_committee &&
+              !subscribedIds.has(s.id) &&
+              !memberIds.has(s.id),
+          )
+          .sort(byActivity),
 
-        regularGroups: filtered.filter(
-          (s) =>
-            !s.is_committee && !subscribedIds.has(s.id) && !memberIds.has(s.id),
-        ),
+        regularGroups: filtered
+          .filter(
+            (s) =>
+              !s.is_committee &&
+              !subscribedIds.has(s.id) &&
+              !memberIds.has(s.id),
+          )
+          .sort(byActivity),
       }
     }, [subgroups, search])
 
@@ -589,8 +595,11 @@ function SubgroupCard({
             style={{ overflow: "hidden", textOverflow: "ellipsis" }}
           >
             {subgroup.latest_thread_title
-              ? `Seneste: ${subgroup.latest_thread_title} \u2014 ${dayjs(subgroup.last_activity_at).fromNow()}`
-              : dayjs(subgroup.last_activity_at).fromNow()}
+              ? `Seneste: ${subgroup.latest_thread_title} \u2014 ${dayjs(subgroup.latest_thread_activity_at ?? subgroup.last_activity_at).fromNow()}`
+              : dayjs(
+                  subgroup.latest_thread_activity_at ??
+                    subgroup.last_activity_at,
+                ).fromNow()}
           </Text>
         )}
       </Stack>
