@@ -10,6 +10,22 @@ from huey.contrib.djhuey import db_task
 logger = logging.getLogger(__name__)
 
 
+def _build_superseded_map(
+    type_to_user_ids: dict[str, set[int]],
+) -> dict[int, list[str]]:
+    """Invert {higher_priority_type: {user_ids}} into {user_id: [higher_priority_types]}.
+
+    Passed to create_notification as ``superseded_by`` so a fall-through notification
+    (e.g. SUBGROUP_ACTIVITY) skips the email/push channels already covered by a
+    higher-priority type (THREAD_REPLY, MENTION, ...) for that user.
+    """
+    result: dict[int, list[str]] = {}
+    for ntype, user_ids in type_to_user_ids.items():
+        for uid in user_ids:
+            result.setdefault(uid, []).append(ntype)
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Low-level tasks (called by create_notification in services.py)
 # ---------------------------------------------------------------------------
@@ -288,8 +304,14 @@ def notify_new_thread_task(
     initial_post_content: str,
     exclude_user_ids: list[int] | None = None,
     members_only: bool = False,
+    mentioned_optout_ids: list[int] | None = None,
 ) -> None:
-    """Send new-thread notifications to subscribers in background."""
+    """Send new-thread notifications to subscribers in background.
+
+    mentioned_optout_ids: mentioned users with notify_mentions=False. They are NOT excluded
+    from NEW_THREAD (they get no in-app MENTION), but they DO receive a MENTION by email/push
+    if enabled. Suppress the NEW_THREAD email/push for them on those channels to avoid a double.
+    """
     logger.info("notify_new_thread_task STARTED: author=%d thread='%s'", author_id, thread_title)
     from apps.users.models import User
 
@@ -330,6 +352,14 @@ def notify_new_thread_task(
     if exclude_user_ids:
         recipient_ids.difference_update(exclude_user_ids)
 
+    # Fall-through mentioned users (notify_mentions=False) get NEW_THREAD in-app but a MENTION
+    # by email/push — NEW_THREAD is superseded by MENTION on those channels for them.
+    from apps.notifications.models import NotificationType
+
+    superseded_by_map = _build_superseded_map(
+        {NotificationType.MENTION: set(mentioned_optout_ids or [])}
+    )
+
     subscribers = User.objects.filter(id__in=recipient_ids, is_active=True)
     count = notify_new_thread(
         subscribers=subscribers,
@@ -340,6 +370,7 @@ def notify_new_thread_task(
         subgroup_slug=subgroup_slug,
         thread_slug=thread_slug,
         initial_post_content=initial_post_content,
+        superseded_by_map=superseded_by_map,
     )
     logger.info("notify_new_thread_task COMPLETED: %d notifications created", count)
 
@@ -438,6 +469,7 @@ def notify_thread_reply_task(
     thread_slug: str,
     reply_content: str,
     post_id: int = 0,
+    superseded_by: list[str] | None = None,
 ) -> None:
     """Send thread reply notification in background."""
     logger.info(
@@ -470,6 +502,7 @@ def notify_thread_reply_task(
         thread_slug=thread_slug,
         reply_content=reply_content,
         post_id=post_id,
+        superseded_by=superseded_by or (),
     )
     logger.info(
         "notify_thread_reply_task COMPLETED: thread_author=%d replier=%d",
@@ -488,6 +521,7 @@ def notify_post_reply_task(
     thread_slug: str,
     reply_content: str,
     post_id: int = 0,
+    superseded_by: list[str] | None = None,
 ) -> None:
     """Send post reply notification in background."""
     logger.info(
@@ -518,6 +552,7 @@ def notify_post_reply_task(
         thread_slug=thread_slug,
         reply_content=reply_content,
         post_id=post_id,
+        superseded_by=superseded_by or (),
     )
     logger.info(
         "notify_post_reply_task COMPLETED: post_author=%d replier=%d", post_author_id, replier_id
@@ -689,11 +724,15 @@ def notify_subgroup_activity_task(
     participant_ids: list[int],
     mentioned_ids: list[int],
     members_only: bool = False,
+    mentioned_optout_ids: list[int] | None = None,
 ) -> None:
     """Notify subgroup subscribers about new thread activity in background.
 
     participant_ids: replier + thread author + previous posters (routed to THREAD_REPLY/POST_REPLY)
     mentioned_ids: effective mentioned users (who will actually receive MENTION)
+    mentioned_optout_ids: mentioned users with notify_mentions=False — they get no in-app MENTION
+        but still receive a MENTION by email/push, so SUBGROUP_ACTIVITY must be suppressed on
+        those channels for them too.
 
     Only participants who opted OUT of thread_replies fall back to SUBGROUP_ACTIVITY here.
     """
@@ -713,11 +752,12 @@ def notify_subgroup_activity_task(
         return
 
     from apps.forum.models import ThreadMuteStatus
-    from apps.notifications.models import NotificationPreference
+    from apps.notifications.models import NotificationPreference, NotificationType
 
-    # Among participants, only exclude those who will ACTUALLY receive THREAD_REPLY/POST_REPLY.
-    # A participant with notify_thread_replies=False won't get that notification, so they
-    # should fall through to SUBGROUP_ACTIVITY instead.
+    # Among participants, only exclude those who will ACTUALLY receive THREAD_REPLY/POST_REPLY
+    # in-app. A participant with notify_thread_replies=False falls through to SUBGROUP_ACTIVITY
+    # in-app instead — but still gets the reply by email/push, so SUBGROUP_ACTIVITY is
+    # superseded by THREAD_REPLY on those channels for them (see notify_subgroup_activity).
     participants_opting_out = set(
         NotificationPreference.objects.filter(
             user_id__in=participant_ids,
@@ -728,6 +768,15 @@ def notify_subgroup_activity_task(
     participants_to_exclude = set(participant_ids) - participants_opting_out
 
     final_exclude = participants_to_exclude | set(mentioned_ids)
+
+    # Per-user higher-priority types that already cover this activity (channel de-dup):
+    # fall-through participants get THREAD_REPLY; fall-through mentioned users get MENTION.
+    superseded_by_map = _build_superseded_map(
+        {
+            NotificationType.THREAD_REPLY: participants_opting_out,
+            NotificationType.MENTION: set(mentioned_optout_ids or []),
+        }
+    )
 
     from apps.forum.models import SubgroupMembership, SubgroupSubscription
 
@@ -780,6 +829,7 @@ def notify_subgroup_activity_task(
         thread_slug=thread_slug,
         reply_content=reply_content,
         post_id=post_id,
+        superseded_by_map=superseded_by_map,
     )
     logger.info("notify_subgroup_activity_task COMPLETED: %d notifications created", count)
 
@@ -797,6 +847,7 @@ def notify_subgroup_activity_new_thread_task(
     post_id: int,
     exclude_user_ids: list[int],
     members_only: bool = False,
+    mentioned_optout_ids: list[int] | None = None,
 ) -> None:
     """Notify subgroup subscribers with notify_subgroup_activity about a new thread.
 
@@ -804,6 +855,8 @@ def notify_subgroup_activity_new_thread_task(
     i.e., they won't receive NEW_THREAD but still want to know about activity.
 
     exclude_user_ids: author + effective mentioned users (who will receive MENTION)
+    mentioned_optout_ids: mentioned users with notify_mentions=False — they still get a MENTION
+        by email/push, so SUBGROUP_ACTIVITY is suppressed on those channels for them.
     """
     logger.info(
         "notify_subgroup_activity_new_thread_task STARTED: author=%d thread='%s'",
@@ -820,7 +873,7 @@ def notify_subgroup_activity_new_thread_task(
         logger.warning("notify_subgroup_activity_new_thread_task: Author %d not found", author_id)
         return
 
-    from apps.notifications.models import NotificationPreference
+    from apps.notifications.models import NotificationPreference, NotificationType
 
     # Users who WILL receive NEW_THREAD (notify_forum_subscriptions=True or no prefs row).
     # Those with explicit False are NOT getting NEW_THREAD, so they should get SUBGROUP_ACTIVITY.
@@ -836,6 +889,17 @@ def notify_subgroup_activity_new_thread_task(
     )
 
     final_exclude = set(exclude_user_ids) | will_get_new_thread
+
+    # The remaining recipients are the fall-through users (notify_forum_subscriptions=False):
+    # they get SUBGROUP_ACTIVITY in-app, but still receive NEW_THREAD by email/push. Plus
+    # fall-through mentioned users (notify_mentions=False) who get a MENTION by email/push.
+    # SUBGROUP_ACTIVITY is superseded by those types on whichever channels the user has enabled.
+    superseded_by_map = _build_superseded_map(
+        {
+            NotificationType.NEW_THREAD: users_with_prefs_off,
+            NotificationType.MENTION: set(mentioned_optout_ids or []),
+        }
+    )
 
     from apps.forum.models import SubgroupMembership, SubgroupSubscription
 
@@ -875,6 +939,7 @@ def notify_subgroup_activity_new_thread_task(
         reply_content=initial_post_content,
         post_id=post_id,
         title=f"Ny tråd: {thread_title}",
+        superseded_by_map=superseded_by_map,
     )
     logger.info(
         "notify_subgroup_activity_new_thread_task COMPLETED: %d notifications created", count

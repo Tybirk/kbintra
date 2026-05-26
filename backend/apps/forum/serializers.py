@@ -699,6 +699,14 @@ class PostCreateSerializer(serializers.ModelSerializer):
         )
         effective_mentioned_ids = mentioned_ids - mentioned_who_opt_out
 
+        # Fall-through mentioned users (notify_mentions=False) get THREAD_REPLY/POST_REPLY
+        # in-app instead of MENTION, but still receive the MENTION by email/push. For them the
+        # reply is superseded by MENTION on those channels — keeping one notification per channel.
+        from apps.notifications.models import NotificationType
+
+        def _reply_superseded_by(user_id: int) -> tuple[str, ...]:
+            return (NotificationType.MENTION,) if user_id in mentioned_who_opt_out else ()
+
         # Notify thread author in background
         # thread.author can be None if the original author was deleted
         if thread.author is not None and thread.author.id not in effective_mentioned_ids:
@@ -711,6 +719,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
                 thread_slug=thread.slug,
                 reply_content=post.content,
                 post_id=post.id,
+                superseded_by=list(_reply_superseded_by(thread.author.id)),
             )
 
         # Notify other participants in the thread (previous posters)
@@ -736,6 +745,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
                         thread_slug=thread.slug,
                         reply_content=post.content,
                         post_id=post.id,
+                        superseded_by=list(_reply_superseded_by(poster_id)),
                     )
                 notified_users.add(poster_id)
 
@@ -756,6 +766,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
             participant_ids=list(notified_users),
             mentioned_ids=list(effective_mentioned_ids),
             members_only=thread.members_only,
+            mentioned_optout_ids=list(mentioned_who_opt_out) if mentioned_who_opt_out else None,
         )
 
         # Store mention IDs for the view's perform_create to send mention notifications
@@ -1036,6 +1047,7 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
             )
             effective_mention_ids = [mid for mid in mention_ids if mid not in mentioned_who_opt_out]
         else:
+            mentioned_who_opt_out = set()
             effective_mention_ids = []
 
         # For members-only threads, drop mention IDs that aren't members of the subgroup
@@ -1048,6 +1060,7 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
             )
             mention_ids = [m for m in mention_ids if m in allowed_member_ids]
             effective_mention_ids = [m for m in effective_mention_ids if m in allowed_member_ids]
+            mentioned_who_opt_out = {m for m in mentioned_who_opt_out if m in allowed_member_ids}
 
         notify_new_thread_task(
             author_id=thread.author.id,
@@ -1060,6 +1073,7 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
             initial_post_content=content,
             exclude_user_ids=effective_mention_ids if effective_mention_ids else None,
             members_only=thread.members_only,
+            mentioned_optout_ids=list(mentioned_who_opt_out) if mentioned_who_opt_out else None,
         )
 
         # Notify subgroup subscribers with subgroup_activity but not forum_subscriptions.
@@ -1076,6 +1090,7 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
             post_id=post.id,
             exclude_user_ids=[thread.author.id] + list(effective_mention_ids),
             members_only=thread.members_only,
+            mentioned_optout_ids=list(mentioned_who_opt_out) if mentioned_who_opt_out else None,
         )
 
         if mention_ids:

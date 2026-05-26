@@ -547,3 +547,200 @@ class TestClearAllNotificationsAPI:
 
         # Verify all are deleted
         assert Notification.objects.count() == 0
+
+
+class TestNotificationChannelDedup:
+    """Per-channel de-duplication: one activity must give one notification per channel.
+
+    The in-app preference only gates the in-app row; email and push are dispatched
+    independently. When a user "falls through" from a higher-priority type (THREAD_REPLY,
+    NEW_THREAD, MENTION) to the catch-all SUBGROUP_ACTIVITY in-app, the higher-priority type
+    still goes out by email/push — so the fall-through SUBGROUP_ACTIVITY must suppress those
+    channels to avoid a double.
+    """
+
+    @pytest.mark.django_db
+    def test_superseded_by_skips_only_channels_higher_type_covers(
+        self, user, second_user, django_capture_on_commit_callbacks
+    ):
+        # Higher type (THREAD_REPLY) is enabled on push but not email → superseding it skips
+        # only push for the lower notification; email still goes out.
+        from apps.notifications.services import create_notification
+
+        NotificationPreference.objects.create(
+            user=user,
+            notify_post_reactions=True,
+            email_post_reactions=True,
+            push_post_reactions=True,
+            email_thread_replies=False,
+            push_thread_replies=True,
+        )
+        with (
+            patch("apps.notifications.tasks.send_email_task") as email_task,
+            patch("apps.notifications.tasks.send_push_task") as push_task,
+            django_capture_on_commit_callbacks(execute=True),
+        ):
+            create_notification(
+                user=user,
+                notification_type=NotificationType.POST_REACTION,
+                title="t",
+                message="m",
+                related_user=second_user,
+                superseded_by=[NotificationType.THREAD_REPLY],
+            )
+        assert email_task.called
+        assert not push_task.called
+
+    @pytest.mark.django_db
+    def test_superseded_by_skips_email_when_higher_type_covers_email(
+        self, user, second_user, django_capture_on_commit_callbacks
+    ):
+        from apps.notifications.services import create_notification
+
+        NotificationPreference.objects.create(
+            user=user,
+            notify_post_reactions=True,
+            email_post_reactions=True,
+            push_post_reactions=True,
+            email_thread_replies=True,
+            push_thread_replies=False,
+        )
+        with (
+            patch("apps.notifications.tasks.send_email_task") as email_task,
+            patch("apps.notifications.tasks.send_push_task") as push_task,
+            django_capture_on_commit_callbacks(execute=True),
+        ):
+            create_notification(
+                user=user,
+                notification_type=NotificationType.POST_REACTION,
+                title="t",
+                message="m",
+                related_user=second_user,
+                superseded_by=[NotificationType.THREAD_REPLY],
+            )
+        assert not email_task.called
+        assert push_task.called
+
+    @pytest.mark.django_db
+    def test_superseded_by_lower_priority_type_does_not_suppress(
+        self, user, second_user, django_capture_on_commit_callbacks
+    ):
+        # A superseded_by entry that does NOT outrank the notification (per _FORUM_ACTIVITY_TIERS)
+        # must never suppress a channel — guards against a mis-declared call site.
+        from apps.notifications.services import create_notification
+
+        NotificationPreference.objects.create(
+            user=user,
+            notify_thread_replies=True,
+            email_thread_replies=True,
+            push_thread_replies=True,
+            email_subgroup_activity=True,
+            push_subgroup_activity=True,
+        )
+        with (
+            patch("apps.notifications.tasks.send_email_task") as email_task,
+            patch("apps.notifications.tasks.send_push_task") as push_task,
+            django_capture_on_commit_callbacks(execute=True),
+        ):
+            create_notification(
+                user=user,
+                notification_type=NotificationType.THREAD_REPLY,
+                title="t",
+                message="m",
+                related_user=second_user,
+                # SUBGROUP_ACTIVITY ranks below THREAD_REPLY, so it cannot supersede it.
+                superseded_by=[NotificationType.SUBGROUP_ACTIVITY],
+            )
+        assert email_task.called
+        assert push_task.called
+
+    @pytest.mark.django_db
+    def test_thread_reply_fallthrough_suppresses_subgroup_activity_push(
+        self, user, second_user, subgroup, django_capture_on_commit_callbacks
+    ):
+        from apps.forum.models import SubgroupSubscription, Thread
+        from apps.notifications.tasks import notify_subgroup_activity_task
+
+        # Participant turned OFF in-app thread replies, kept push on, and enabled subgroup
+        # activity on both in-app and push.
+        NotificationPreference.objects.create(
+            user=user,
+            notify_thread_replies=False,
+            push_thread_replies=True,
+            notify_subgroup_activity=True,
+            push_subgroup_activity=True,
+        )
+        SubgroupSubscription.objects.create(
+            user=user, subgroup=subgroup, notify_new_threads=True, notify_replies=True
+        )
+        thread = Thread.objects.create(subgroup=subgroup, title="T", author=user)
+
+        with (
+            patch("apps.notifications.tasks.send_push_task") as push_task,
+            django_capture_on_commit_callbacks(execute=True),
+        ):
+            notify_subgroup_activity_task(
+                replier_id=second_user.id,
+                thread_title="T",
+                thread_id=thread.id,
+                subgroup_id=subgroup.id,
+                subgroup_name=subgroup.name,
+                subgroup_slug=subgroup.slug,
+                thread_slug=thread.slug,
+                reply_content="hello",
+                post_id=123,
+                participant_ids=[user.id],
+                mentioned_ids=[],
+            )
+
+        # Fall-through still gives an in-app SUBGROUP_ACTIVITY row...
+        assert Notification.objects.filter(
+            user=user, notification_type=NotificationType.SUBGROUP_ACTIVITY
+        ).exists()
+        # ...but its push is suppressed (THREAD_REPLY push covers this activity).
+        pushed = [c.args[1] for c in push_task.call_args_list if c.args and c.args[0] == user.id]
+        assert NotificationType.SUBGROUP_ACTIVITY not in pushed
+
+    @pytest.mark.django_db
+    def test_new_thread_fallthrough_suppresses_subgroup_activity_push(
+        self, user, second_user, subgroup, django_capture_on_commit_callbacks
+    ):
+        from apps.forum.models import SubgroupSubscription, Thread
+        from apps.notifications.tasks import notify_subgroup_activity_new_thread_task
+
+        # Subscriber turned OFF in-app new-thread notifications, kept push on, and enabled
+        # subgroup activity on both in-app and push.
+        NotificationPreference.objects.create(
+            user=user,
+            notify_forum_subscriptions=False,
+            push_forum_subscriptions=True,
+            notify_subgroup_activity=True,
+            push_subgroup_activity=True,
+        )
+        SubgroupSubscription.objects.create(
+            user=user, subgroup=subgroup, notify_new_threads=True, notify_replies=True
+        )
+        thread = Thread.objects.create(subgroup=subgroup, title="T", author=second_user)
+
+        with (
+            patch("apps.notifications.tasks.send_push_task") as push_task,
+            django_capture_on_commit_callbacks(execute=True),
+        ):
+            notify_subgroup_activity_new_thread_task(
+                author_id=second_user.id,
+                thread_title="T",
+                thread_id=thread.id,
+                subgroup_id=subgroup.id,
+                subgroup_name=subgroup.name,
+                subgroup_slug=subgroup.slug,
+                thread_slug=thread.slug,
+                initial_post_content="hello",
+                post_id=123,
+                exclude_user_ids=[second_user.id],
+            )
+
+        assert Notification.objects.filter(
+            user=user, notification_type=NotificationType.SUBGROUP_ACTIVITY
+        ).exists()
+        pushed = [c.args[1] for c in push_task.call_args_list if c.args and c.args[0] == user.id]
+        assert NotificationType.SUBGROUP_ACTIVITY not in pushed

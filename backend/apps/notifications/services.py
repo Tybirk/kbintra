@@ -7,6 +7,7 @@ import logging
 import re
 import time
 import zoneinfo
+from collections.abc import Sequence
 from typing import Any
 from urllib.parse import urlparse
 
@@ -36,6 +37,31 @@ AGGREGATABLE_TYPES = frozenset(
         NotificationType.SUBGROUP_ACTIVITY,
     }
 )
+
+# Single source of truth for how forum-activity notifications rank against each other.
+# One physical activity (a reply, a new thread) can match several of these types for the same
+# user. The in-app row is shown for whichever type the user enabled; on each channel
+# (email/push) we keep only the HIGHEST-priority type, so a user never gets the same activity
+# twice on one channel. Call sites only declare which types a user is eligible for (via
+# `superseded_by`); this ordering — not the call sites — decides what actually supersedes what.
+# Types in the same tuple share a tier (they map to the same preference field).
+_FORUM_ACTIVITY_TIERS: tuple[tuple[str, ...], ...] = (
+    (NotificationType.MENTION,),
+    (NotificationType.THREAD_REPLY, NotificationType.POST_REPLY),
+    (NotificationType.NEW_THREAD,),
+    (NotificationType.SUBGROUP_ACTIVITY,),
+)
+
+
+def _priority_rank(notification_type: str) -> int:
+    """Priority rank of a forum-activity type — lower means higher priority.
+
+    Types not in `_FORUM_ACTIVITY_TIERS` rank lowest, so they can never supersede anything.
+    """
+    for rank, tier in enumerate(_FORUM_ACTIVITY_TIERS):
+        if notification_type in tier:
+            return rank
+    return len(_FORUM_ACTIVITY_TIERS)
 
 
 def _make_aggregate_title(notification_type: str, count: int, existing_title: str) -> str:
@@ -372,6 +398,7 @@ def create_notification(
     check_preferences: bool = True,
     html_content: str | None = None,
     group_key: str = "",
+    superseded_by: Sequence[str] = (),
 ) -> Notification | None:
     """Create a notification for a user.
 
@@ -387,10 +414,31 @@ def create_notification(
         group_key: Optional key for aggregating related notifications (e.g. thread URL).
             When set and a matching unread notification exists, it is updated in-place
             instead of creating a new one.
+        superseded_by: Other notification types this user is eligible for from the SAME
+            activity (e.g. a participant who falls back to SUBGROUP_ACTIVITY in-app still gets
+            THREAD_REPLY by email/push). Only entries that outrank this notification per
+            _FORUM_ACTIVITY_TIERS actually count; for those, the email/push channel is skipped
+            here whenever the user already receives the higher type on that channel — keeping
+            one notification per channel without double-sending. The in-app row is never
+            skipped (the fall-through is the whole point of showing it in-app).
 
     Returns:
         The created (or updated) notification, or None if user opted out of in-app notifications
     """
+    # A higher-priority type covers this activity on whichever channels the user has it
+    # enabled — skip those channels here. (should_send_email / get_user_push_preference both
+    # read the same cached user.notification_preferences, so this adds no extra queries.)
+    # Only types that genuinely outrank this one (per _FORUM_ACTIVITY_TIERS) can suppress a
+    # channel, so a mis-declared superseded_by entry can never silently drop a notification.
+    suppress_email = suppress_push = False
+    if superseded_by:
+        from .email_service import should_send_email
+
+        rank = _priority_rank(notification_type)
+        superseding = [t for t in superseded_by if _priority_rank(t) < rank]
+        suppress_email = any(should_send_email(user, t) for t in superseding)
+        suppress_push = any(get_user_push_preference(user, t) for t in superseding)
+
     notification = None
 
     # Skip in-app notifications for messages — the unread message count handles that
@@ -449,27 +497,34 @@ def create_notification(
         from apps.notifications.tasks import send_email_task, send_push_task
 
         logger.info(
-            "Enqueuing email+push tasks for user=%d type=%s title='%s'",
+            "Enqueuing email+push tasks for user=%d type=%s title='%s' "
+            "(suppress_email=%s suppress_push=%s)",
             _user_id,
             notification_type,
             title,
+            suppress_email,
+            suppress_push,
         )
-        email_result = send_email_task(
-            _user_id,
-            notification_type,
-            title,
-            message,
-            link,
-            _related_user_id,
-            html_content,
-        )
-        push_result = send_push_task(
-            _user_id,
-            notification_type,
-            title,
-            message,
-            link,
-        )
+        email_result = None
+        if not suppress_email:
+            email_result = send_email_task(
+                _user_id,
+                notification_type,
+                title,
+                message,
+                link,
+                _related_user_id,
+                html_content,
+            )
+        push_result = None
+        if not suppress_push:
+            push_result = send_push_task(
+                _user_id,
+                notification_type,
+                title,
+                message,
+                link,
+            )
         logger.info(
             "Enqueued tasks for user=%d: email=%s push=%s",
             _user_id,
@@ -554,6 +609,7 @@ def notify_new_thread(
     subgroup_slug: str,
     thread_slug: str,
     initial_post_content: str = "",
+    superseded_by_map: dict[int, Sequence[str]] | None = None,
 ) -> int:
     """Create notifications for a new thread in a subgroup.
 
@@ -566,9 +622,13 @@ def notify_new_thread(
         subgroup_slug: Slug of the subgroup for URL
         thread_slug: Slug of the thread for URL
         initial_post_content: Full HTML content of the initial post
+        superseded_by_map: {user_id: higher-priority types they already get for this thread}.
+            Those channels are skipped per user. See create_notification.
 
     Returns the count of notifications created.
     """
+    superseded_by_map = superseded_by_map or {}
+
     thread_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
 
     count = 0
@@ -583,6 +643,7 @@ def notify_new_thread(
             html_content=f"<h3>{thread_title}</h3>{initial_post_content}"
             if initial_post_content
             else None,
+            superseded_by=superseded_by_map.get(user.id, ()),
         )
         if notification:
             count += 1
@@ -598,6 +659,7 @@ def notify_thread_reply(
     thread_slug: str,
     reply_content: str,
     post_id: int = 0,
+    superseded_by: Sequence[str] = (),
 ) -> Notification | None:
     """Create notification for a reply to user's thread.
 
@@ -610,6 +672,8 @@ def notify_thread_reply(
         thread_slug: Slug of the thread for URL
         reply_content: Full HTML content of the reply
         post_id: ID of the reply post (for scroll-to link)
+        superseded_by: higher-priority types (e.g. MENTION) the user already gets for this
+            activity — those channels are skipped here. See create_notification.
     """
     if thread_author.id == replier.id:
         return None
@@ -644,6 +708,7 @@ def notify_thread_reply(
         related_user=replier,
         html_content=f"<p><strong>I tråden: {thread_title}</strong></p>{reply_content}",
         group_key=base_link,  # Aggregate all replies to same thread
+        superseded_by=superseded_by,
     )
 
 
@@ -656,6 +721,7 @@ def notify_post_reply(
     thread_slug: str,
     reply_content: str,
     post_id: int = 0,
+    superseded_by: Sequence[str] = (),
 ) -> Notification | None:
     """Create notification for a reply after user's post.
 
@@ -668,6 +734,8 @@ def notify_post_reply(
         thread_slug: Slug of the thread for URL
         reply_content: Full HTML content of the reply
         post_id: ID of the reply post (for scroll-to link)
+        superseded_by: higher-priority types (e.g. MENTION) the user already gets for this
+            activity — those channels are skipped here. See create_notification.
     """
     if post_author.id == replier.id:
         return None
@@ -702,6 +770,7 @@ def notify_post_reply(
         related_user=replier,
         html_content=f"<p><strong>I tråden: {thread_title}</strong></p>{reply_content}",
         group_key=base_link,  # Aggregate all replies to same thread
+        superseded_by=superseded_by,
     )
 
 
@@ -1051,15 +1120,23 @@ def notify_subgroup_activity(
     reply_content: str,
     post_id: int = 0,
     title: str = "",
+    superseded_by_map: dict[int, Sequence[str]] | None = None,
 ) -> int:
     """Notify subgroup subscribers about new activity in a thread they don't participate in.
 
     Only sent to users who have opted in (default OFF) and have
     SubgroupSubscription.notify_replies=True for this subgroup.
 
+    superseded_by_map: {user_id: higher-priority types they already get for this activity}
+    (THREAD_REPLY/POST_REPLY for fall-through participants, MENTION for fall-through mentioned
+    users). Those channels are skipped per user, keeping one notification per channel while
+    still showing the fall-through SUBGROUP_ACTIVITY in-app. See create_notification.
+
     Returns the count of notifications created.
     """
     from django.utils.html import strip_tags
+
+    superseded_by_map = superseded_by_map or {}
 
     plain_text = strip_tags(reply_content)
     preview = plain_text[:80] + "..." if len(plain_text) > 80 else plain_text
@@ -1079,6 +1156,7 @@ def notify_subgroup_activity(
             link=link,
             related_user=replier,
             group_key=thread_link,  # Aggregate activity in same thread
+            superseded_by=superseded_by_map.get(user.id, ()),
         )
         if notification:
             count += 1
