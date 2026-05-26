@@ -52,7 +52,7 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             # In-app preferences
-            "notify_messages",
+            "notify_message_reactions",
             "notify_announcements",
             "notify_announcement_updates",
             "notify_forum_subscriptions",

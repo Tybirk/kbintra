@@ -1301,7 +1301,7 @@ export interface NotificationPreference {
 
   // In-app preferences
 
-  notify_messages: boolean
+  notify_message_reactions: boolean
 
   notify_announcements: boolean
 
@@ -1377,7 +1377,7 @@ export interface NotificationPreference {
 }
 
 export interface UpdateNotificationPreferenceData {
-  notify_messages?: boolean
+  notify_message_reactions?: boolean
 
   notify_announcements?: boolean
 

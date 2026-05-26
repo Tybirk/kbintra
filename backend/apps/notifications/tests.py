@@ -549,6 +549,47 @@ class TestClearAllNotificationsAPI:
         assert Notification.objects.count() == 0
 
 
+class TestMessageReactionInAppPreference:
+    """In-app message reactions are gated by the dedicated notify_message_reactions field.
+
+    NEW_MESSAGE never creates an in-app row, so this field is the only in-app control for
+    message reactions — and it now has a UI toggle (it previously rode on notify_messages,
+    which had no in-app switch, so users could not turn message reactions off in-app).
+    """
+
+    @pytest.mark.django_db
+    def test_message_reaction_in_app_suppressed_when_disabled(self, user, second_user):
+        from apps.notifications.services import notify_message_reaction
+
+        NotificationPreference.objects.create(user=user, notify_message_reactions=False)
+        notify_message_reaction(
+            message_author=user,
+            reactor=second_user,
+            reaction_emoji="👍",
+            conversation_id=1,
+            message_id=1,
+        )
+        assert not Notification.objects.filter(
+            user=user, notification_type=NotificationType.MESSAGE_REACTION
+        ).exists()
+
+    @pytest.mark.django_db
+    def test_message_reaction_in_app_created_when_enabled(self, user, second_user):
+        from apps.notifications.services import notify_message_reaction
+
+        NotificationPreference.objects.create(user=user, notify_message_reactions=True)
+        notify_message_reaction(
+            message_author=user,
+            reactor=second_user,
+            reaction_emoji="👍",
+            conversation_id=1,
+            message_id=1,
+        )
+        assert Notification.objects.filter(
+            user=user, notification_type=NotificationType.MESSAGE_REACTION
+        ).exists()
+
+
 class TestNotificationChannelDedup:
     """Per-channel de-duplication: one activity must give one notification per channel.
 

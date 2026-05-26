@@ -57,7 +57,7 @@ class NotificationPreferenceAdmin(admin.ModelAdmin):
             "In-app",
             {
                 "fields": [
-                    "notify_messages",
+                    "notify_message_reactions",
                     "notify_announcements",
                     "notify_forum_subscriptions",
                     "notify_thread_replies",

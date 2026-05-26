@@ -145,7 +145,7 @@ def get_user_preference(user: User, notification_type: NotificationType) -> bool
         NotificationType.POST_REPLY: prefs.notify_thread_replies,
         NotificationType.SUBGROUP_ACTIVITY: prefs.notify_subgroup_activity,
         NotificationType.POST_REACTION: prefs.notify_post_reactions,
-        NotificationType.MESSAGE_REACTION: prefs.notify_messages,
+        NotificationType.MESSAGE_REACTION: prefs.notify_message_reactions,
         NotificationType.EVENT_CREATED: prefs.notify_events,
         NotificationType.EVENT_UPDATED: prefs.notify_events,
         NotificationType.EVENT_CANCELLED: prefs.notify_events,

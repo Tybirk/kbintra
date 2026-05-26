@@ -95,8 +95,10 @@ class NotificationPreference(models.Model):
         related_name="notification_preferences",
     )
 
-    # In-app notification preferences
-    notify_messages = models.BooleanField(default=True)
+    # In-app notification preferences.
+    # Note: NEW_MESSAGE never creates an in-app row (the unread-message count handles it), so
+    # there is no in-app "new message" preference — only message *reactions* need a toggle.
+    notify_message_reactions = models.BooleanField(default=True)
     notify_announcements = models.BooleanField(default=True)
     notify_announcement_updates = models.BooleanField(default=False)
     notify_forum_subscriptions = models.BooleanField(default=True)

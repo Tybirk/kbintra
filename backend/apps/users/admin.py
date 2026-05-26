@@ -21,7 +21,7 @@ class NotificationPreferenceInline(admin.StackedInline):
             "In-app",
             {
                 "fields": [
-                    "notify_messages",
+                    "notify_message_reactions",
                     "notify_announcements",
                     "notify_announcement_updates",
                     "notify_forum_subscriptions",

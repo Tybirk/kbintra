@@ -349,6 +349,18 @@ export default function NotificationPreferencesPage() {
                 Vælg hvilke notifikationer du vil modtage i appen.
               </Text>
               <Switch
+                label="Reaktioner på beskeder"
+                description="Når nogen reagerer på din besked"
+                checked={preferences.notify_message_reactions}
+                onChange={(e) =>
+                  handleToggle(
+                    "notify_message_reactions",
+
+                    e.currentTarget.checked,
+                  )
+                }
+              />
+              <Switch
                 label="Vigtig post"
                 description="Når ny vigtig post bliver oprettet"
                 checked={preferences.notify_announcements}
