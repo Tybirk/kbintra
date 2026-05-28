@@ -13,7 +13,13 @@ NOTIFICATION_GROUPS: list[dict] = [
         "label": "Beskeder",
         "fields": [
             {
+                # In-app uses notify_message_reactions (NEW_MESSAGE never creates
+                # an in-app row, so only reactions are toggleable in-app). Email
+                # and push share a single umbrella preference (email_messages /
+                # push_messages) that covers both NEW_MESSAGE and MESSAGE_REACTION,
+                # so override the channel key for those tabs.
                 "key": "message_reactions",
+                "channel_keys": {"email": "messages", "push": "messages"},
                 "label": "Reaktioner på dine beskeder",
                 "description": "Få besked når nogen reagerer på en af dine private beskeder",
             },

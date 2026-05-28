@@ -218,6 +218,10 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
                 prefs.push_events,
                 prefs.push_event_reminders,
                 prefs.push_food_tickets,
+                prefs.push_food_team_reminder,
+                prefs.push_food_takeaway_ready,
+                prefs.push_food_leftovers_ready,
+                prefs.push_food_swap_request,
                 prefs.push_mentions,
             )
         )

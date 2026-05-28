@@ -82,7 +82,7 @@ Users declare which dates they're available to cook. If a user submits no wish, 
 
 ### Today action box & team notifications
 
-- `teams/today/` returns whether you're on today's team, the members, the recipe-folder URL, and per-dish recipe links (parsed from the week folder's spreadsheet — sheets `Ma1/Ti2/…`, dish name from cell A1; see `services/recipe_sheets.py`).
+- `teams/today/` returns whether you're on today's team, the members, the recipe-folder URL, and per-dish recipe links (parsed from the week folder's spreadsheet — sheets `Ma1/Ti2/…`, dish name from cell C1 since cols A/B are hidden ingredient columns; see `services/recipe_sheets.py`).
 - `teams/<id>/notify-takeaway/` and `teams/<id>/notify-leftovers/` (image upload supported) broadcast to the community, gated by the new notification preferences. A day-before reminder fires via a 20:00 periodic Huey task.
 
 ## Menus come from Google Drive

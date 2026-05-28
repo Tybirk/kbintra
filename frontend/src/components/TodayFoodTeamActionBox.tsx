@@ -17,6 +17,7 @@ import {
   FileButton,
   Divider,
   SimpleGrid,
+  Skeleton,
 } from "@mantine/core"
 
 import { notifications } from "@mantine/notifications"
@@ -50,6 +51,14 @@ export default function TodayFoodTeamActionBox() {
   const { data } = useQuery({
     queryKey: ["today-food-team"],
     queryFn: foodApi.getTodayActionBox,
+  })
+
+  // Recipes are loaded separately — they require a Drive API round-trip on
+  // cache miss, so we don't want them blocking the box's first paint.
+  const { data: recipesData, isLoading: recipesLoading } = useQuery({
+    queryKey: ["today-food-team", "recipes"],
+    queryFn: foodApi.getTodayRecipes,
+    enabled: !!data?.on_team,
   })
 
   const [leftoversOpen, setLeftoversOpen] = useState(false)
@@ -126,7 +135,15 @@ export default function TodayFoodTeamActionBox() {
 
   const members = data.members ?? []
 
-  const recipes = [...(data.recipes ?? [])].sort((a, b) => a.index - b.index)
+  const recipes = [...(recipesData?.recipes ?? [])].sort(
+    (a, b) => a.index - b.index,
+  )
+  // If the parser couldn't get per-tab gid URLs (e.g. .xlsx files without
+  // OAuth), entries come back with url="". We then show dish names as plain
+  // text and surface a single "Åbn opskriftsark" button for the whole file.
+  const hasPerDishLinks = recipes.some((r) => !!r.url)
+  const recipeFileUrl = recipesData?.recipe_file_url ?? ""
+  const recipeFolderUrl = recipesData?.recipe_folder_url ?? ""
 
   // Build serving buckets defensively — stats may be missing or closed.
   const buckets: ServingBucket[] = stats
@@ -177,47 +194,85 @@ export default function TodayFoodTeamActionBox() {
           </Group>
         )}
 
-        {/* Recipe folder link */}
-        {data.recipe_folder_url && (
-          <div>
-            <Button
-              component="a"
-              href={data.recipe_folder_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              variant="light"
-              color="green"
-              size="sm"
-              leftSection={<IconExternalLink size={16} />}
-            >
-              Åbn dagens opskriftsmappe
-            </Button>
-          </div>
-        )}
-
-        {/* Individual recipe links */}
-        {recipes.length > 0 && (
-          <Stack gap={4}>
-            <Text size="sm" fw={500}>
-              Dagens opskrifter
-            </Text>
+        {/* Recipe folder + file links. Show skeletons while the Drive-backed
+            recipes query is in flight so the rest of the box still renders. */}
+        {recipesLoading ? (
+          <Stack gap={6}>
+            <Skeleton height={32} width={220} radius="sm" />
+            <Skeleton height={16} width="40%" radius="sm" />
             <Group gap="xs">
-              {recipes.map((r) => (
-                <Anchor
-                  key={`${r.code}-${r.index}`}
-                  href={r.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  size="sm"
-                >
-                  <Group gap={4} wrap="nowrap">
-                    <IconExternalLink size={14} />
-                    {r.name}
-                  </Group>
-                </Anchor>
-              ))}
+              <Skeleton height={20} width={140} radius="sm" />
+              <Skeleton height={20} width={120} radius="sm" />
+              <Skeleton height={20} width={100} radius="sm" />
             </Group>
           </Stack>
+        ) : (
+          <>
+            {recipeFolderUrl && (
+              <div>
+                <Button
+                  component="a"
+                  href={recipeFolderUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  variant="light"
+                  color="green"
+                  size="sm"
+                  leftSection={<IconExternalLink size={16} />}
+                >
+                  Åbn dagens opskriftsmappe
+                </Button>
+              </div>
+            )}
+
+            {/* Per-dish: prefer real deep links; fall back to plain text + a
+                single file-level button when the parser couldn't get gids. */}
+            {recipes.length > 0 && (
+              <Stack gap={4}>
+                <Text size="sm" fw={500}>
+                  Dagens opskrifter
+                </Text>
+                <Group gap="xs">
+                  {recipes.map((r) =>
+                    r.url ? (
+                      <Anchor
+                        key={`${r.code}-${r.index}`}
+                        href={r.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        size="sm"
+                      >
+                        <Group gap={4} wrap="nowrap">
+                          <IconExternalLink size={14} />
+                          {r.name}
+                        </Group>
+                      </Anchor>
+                    ) : (
+                      <Text key={`${r.code}-${r.index}`} size="sm">
+                        {r.name}
+                      </Text>
+                    ),
+                  )}
+                </Group>
+                {!hasPerDishLinks && recipeFileUrl && (
+                  <div>
+                    <Button
+                      component="a"
+                      href={recipeFileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      variant="light"
+                      color="green"
+                      size="xs"
+                      leftSection={<IconExternalLink size={14} />}
+                    >
+                      Åbn opskriftsark
+                    </Button>
+                  </div>
+                )}
+              </Stack>
+            )}
+          </>
         )}
 
         <Divider />

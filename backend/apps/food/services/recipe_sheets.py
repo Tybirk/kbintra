@@ -4,12 +4,14 @@ Service for fetching and parsing recipe spreadsheets from Google Drive.
 Each week's Drive folder (DriveMenuCache.drive_folder_id) contains ONE
 spreadsheet whose worksheet tabs are named like ``Ma1, Ma2, Ti1, Ti2,
 On1, On2, To1, To2`` (Ma=Mandag, Ti=Tirsdag, On=Onsdag, To=Torsdag;
-trailing digit is the dish index). Each sheet's top-left cell (A1) holds
-the dish name.
+trailing digit is the dish index). The dish name lives in cell **C1**
+(columns A and B are hidden ingredient-quantity columns).
 
 The parsed result is cached on the DriveMenuCache row in ``recipe_sheets``
-(a list of {code, day, index, name, url} dicts) along with the spreadsheet's
-Drive file id in ``recipe_file_id``.
+(a list of {code, day, index, name, url, _v} dicts) along with the
+spreadsheet's Drive file id in ``recipe_file_id``. Each entry carries a
+``_v`` schema version so a parser change automatically invalidates
+previously-cached rows on the next read.
 """
 
 import datetime
@@ -36,6 +38,27 @@ DAY_PREFIX_TO_INDEX = {
 
 GSHEET_MIME = "application/vnd.google-apps.spreadsheet"
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+# Cell holding the dish name. Columns A and B are hidden in the recipe
+# spreadsheet template, so the human-readable dish name lives in C1.
+DISH_NAME_CELL = "C1"
+DISH_NAME_COL = 3  # 1-indexed column for openpyxl
+DISH_NAME_ROW = 1
+
+# Bump when the parsed entry shape, cell source, or URL format changes.
+# Cached entries whose ``_v`` differs are re-parsed on the next read so
+# callers don't have to know about cache invalidation.
+# v2: dish name moved A1 -> C1.
+# v3: always use Sheets-API #gid links (even for .xlsx files in Drive), so
+#     per-dish deep links work instead of every link going to the file's
+#     default tab.
+# v4: fall back to openpyxl only when Sheets API returns zero sheets in
+#     metadata (signal that developerKey auth can't open the file), not
+#     when it returns sheets that just don't match the Ma1/Ti2 pattern.
+# v5: drop the bogus ?range= "deep link" from the xlsx fallback — Google
+#     Sheets ignores it for tab navigation, so we now leave url="" and the
+#     frontend renders a single "Åbn opskriftsark" button instead.
+CACHE_SCHEMA_VERSION = 5
 
 
 def folder_url(folder_id: str) -> str:
@@ -97,21 +120,53 @@ class RecipeSheetService:
         dicts, one per worksheet whose title matches the Ma/Ti/On/To<digit>
         pattern. Returns [] on any failure.
         """
-        try:
-            file_id, mime_type = self._find_spreadsheet_in_folder(folder_id)
-            if not file_id:
-                logger.warning(f"No recipe spreadsheet found in folder {folder_id}")
-                return []
+        file_id, _ = self._find_spreadsheet_in_folder(folder_id)
+        if not file_id:
+            logger.warning(f"No recipe spreadsheet found in folder {folder_id}")
+            return []
+        return self._parse_with_file_id(folder_id, file_id)
 
-            if mime_type == GSHEET_MIME:
-                return self._parse_native_sheet(file_id)
+    def _parse_with_file_id(self, folder_id: str, file_id: str) -> list[dict]:
+        """Parse the recipe sheets given an already-located spreadsheet file_id.
+
+        Always try the Sheets API path first: it works for both native Google
+        Sheets AND .xlsx files in Drive (Drive surfaces them under the same
+        ``/spreadsheets/d/<id>/edit`` URL where ``#gid=<sheetId>`` anchors are
+        honoured). Fall back to openpyxl only when the Sheets API yields no
+        usable metadata (the case when developerKey auth can't open a
+        particular .xlsx) — when it returns metadata that just doesn't match
+        the Ma1/Ti2 pattern, that's a real "no recipes" answer and we keep it.
+        """
+        try:
+            entries = self._parse_native_sheet(file_id)
+        except Exception as e:
+            logger.warning(
+                "Sheets API parse raised for %s (folder %s), falling back to xlsx: %s",
+                file_id,
+                folder_id,
+                e,
+            )
+            entries = None
+
+        if entries is not None:
+            logger.info(
+                "Recipe sheets parsed via Sheets API for %s: %d entries", file_id, len(entries)
+            )
+            return entries
+
+        logger.info(
+            "Sheets API yielded no metadata for %s — using openpyxl xlsx fallback "
+            "(per-dish gid links will not be available)",
+            file_id,
+        )
+        try:
             return self._parse_xlsx(file_id)
         except Exception as e:
             logger.error(f"Error parsing recipe sheets in folder {folder_id}: {e}")
             return []
 
-    def _entry_from_title(self, title: str, a1_value, url: str) -> dict | None:
-        """Build a recipe entry from a sheet title, A1 value and url.
+    def _entry_from_title(self, title: str, dish_cell_value, url: str) -> dict | None:
+        """Build a recipe entry from a sheet title, dish-cell value (C1) and url.
 
         Returns None if the title doesn't match the recipe sheet pattern.
         """
@@ -123,8 +178,8 @@ class RecipeSheetService:
         day = DAY_PREFIX_TO_INDEX[prefix]
 
         name = ""
-        if a1_value is not None:
-            name = str(a1_value).strip()
+        if dish_cell_value is not None:
+            name = str(dish_cell_value).strip()
         if not name:
             name = title.strip()
 
@@ -134,74 +189,88 @@ class RecipeSheetService:
             "index": index,
             "name": name,
             "url": url,
+            "_v": CACHE_SCHEMA_VERSION,
         }
 
-    def _parse_native_sheet(self, file_id: str) -> list[dict]:
-        """Parse a native Google Sheet via the Sheets API."""
-        try:
-            sheets_service = build("sheets", "v4", developerKey=self.api_key)
+    def _parse_native_sheet(self, file_id: str) -> list[dict] | None:
+        """Parse via the Sheets API.
 
-            # First: titles + gids of all sheets.
-            meta = (
-                sheets_service.spreadsheets()
-                .get(
-                    spreadsheetId=file_id,
-                    fields="sheets.properties(sheetId,title)",
-                )
-                .execute()
+        Works for both native Google Sheets and .xlsx files in Drive — Drive
+        exposes the latter under the same ``/spreadsheets/d/<id>/edit`` URL
+        and the sheetId returned here is the gid that the URL ``#gid=`` anchor
+        expects. Raises on API failure so the caller can fall back to openpyxl.
+
+        Returns:
+          * ``None`` if the API returned no sheet metadata at all (caller
+            should try the openpyxl fallback);
+          * a list (possibly empty) if metadata came back — empty just means
+            the spreadsheet has no sheets matching the Ma/Ti/On/To<digit>
+            pattern, which is a real answer, not a fallback signal.
+        """
+        sheets_service = build("sheets", "v4", developerKey=self.api_key)
+
+        # First: titles + gids of all sheets.
+        meta = (
+            sheets_service.spreadsheets()
+            .get(
+                spreadsheetId=file_id,
+                fields="sheets.properties(sheetId,title)",
             )
-            sheets = meta.get("sheets", [])
+            .execute()
+        )
+        sheets = meta.get("sheets", [])
+        if not sheets:
+            # No metadata at all — Sheets API can't open this file via
+            # developerKey auth (most often the case for .xlsx in Drive).
+            return None
 
-            # Collect titles that match, mapping title -> (sheetId, index)
-            matching: list[tuple[str, int]] = []
-            for sheet in sheets:
-                props = sheet.get("properties", {})
-                title = props.get("title", "")
-                sheet_id = props.get("sheetId", 0)
-                if SHEET_PATTERN.match(title.strip()):
-                    matching.append((title, sheet_id))
+        # Collect titles that match, mapping title -> (sheetId, index)
+        matching: list[tuple[str, int]] = []
+        for sheet in sheets:
+            props = sheet.get("properties", {})
+            title = props.get("title", "")
+            sheet_id = props.get("sheetId", 0)
+            if SHEET_PATTERN.match(title.strip()):
+                matching.append((title, sheet_id))
 
-            if not matching:
-                return []
-
-            # Batch-read A1 of each matching sheet.
-            ranges = [f"'{title}'!A1" for title, _ in matching]
-            batch = (
-                sheets_service.spreadsheets()
-                .values()
-                .batchGet(spreadsheetId=file_id, ranges=ranges)
-                .execute()
-            )
-            value_ranges = batch.get("valueRanges", [])
-
-            entries: list[dict] = []
-            for (title, sheet_id), value_range in zip(matching, value_ranges, strict=False):
-                values = value_range.get("values", [])
-                a1_value = None
-                if values and values[0]:
-                    a1_value = values[0][0]
-                url = f"https://docs.google.com/spreadsheets/d/{file_id}/edit#gid={sheet_id}"
-                entry = self._entry_from_title(title, a1_value, url)
-                if entry:
-                    entries.append(entry)
-            return entries
-        except Exception as e:
-            logger.error(f"Error parsing native Google Sheet {file_id}: {e}")
+        if not matching:
             return []
 
+        # Batch-read the dish-name cell (C1) of each matching sheet.
+        # A1/B1 are hidden ingredient columns; the dish name lives at C1.
+        ranges = [f"'{title}'!{DISH_NAME_CELL}" for title, _ in matching]
+        batch = (
+            sheets_service.spreadsheets()
+            .values()
+            .batchGet(spreadsheetId=file_id, ranges=ranges)
+            .execute()
+        )
+        value_ranges = batch.get("valueRanges", [])
+
+        entries: list[dict] = []
+        for (title, sheet_id), value_range in zip(matching, value_ranges, strict=False):
+            values = value_range.get("values", [])
+            dish_cell_value = None
+            if values and values[0]:
+                dish_cell_value = values[0][0]
+            url = f"https://docs.google.com/spreadsheets/d/{file_id}/edit#gid={sheet_id}"
+            entry = self._entry_from_title(title, dish_cell_value, url)
+            if entry:
+                entries.append(entry)
+        return entries
+
     def _parse_xlsx(self, file_id: str) -> list[dict]:
-        """Parse an uploaded .xlsx spreadsheet via openpyxl."""
+        """Parse an uploaded .xlsx spreadsheet via openpyxl.
+
+        We can't get Google's per-sheet gid for an .xlsx via developerKey-auth
+        Sheets API (and ``?range=`` only selects within the current tab, it
+        doesn't navigate), so per-dish entries are returned with an empty
+        ``url``. The frontend renders those names as plain text and links to
+        the file via a single "Åbn opskriftsark" button (see the
+        ``recipe_file_url`` returned by ``TodayTeamRecipesView``).
+        """
         try:
             import openpyxl
-
-            # Per-sheet deep-linking isn't reliable for xlsx; use the file's
-            # webViewLink for every sheet.
-            url = ""
-            try:
-                file_meta = self.service.files().get(fileId=file_id, fields="webViewLink").execute()
-                url = file_meta.get("webViewLink", "") or ""
-            except Exception as e:
-                logger.error(f"Error fetching webViewLink for {file_id}: {e}")
 
             request = self.service.files().get_media(fileId=file_id)
             file_content = io.BytesIO()
@@ -217,8 +286,9 @@ class RecipeSheetService:
                 title = ws.title
                 if not SHEET_PATTERN.match(title.strip()):
                     continue
-                a1_value = ws["A1"].value
-                entry = self._entry_from_title(title, a1_value, url)
+                # Dish name lives in C1 (A and B are hidden ingredient cols).
+                dish_cell_value = ws.cell(row=DISH_NAME_ROW, column=DISH_NAME_COL).value
+                entry = self._entry_from_title(title, dish_cell_value, url="")
                 if entry:
                     entries.append(entry)
             workbook.close()
@@ -232,7 +302,9 @@ class RecipeSheetService:
     ) -> list[dict]:
         """Get recipe sheets for a week, using/refreshing the DriveMenuCache.
 
-        Returns a list of recipe entry dicts (possibly empty).
+        Returns a list of recipe entry dicts (possibly empty). Cache entries
+        whose ``_v`` doesn't match CACHE_SCHEMA_VERSION are treated as stale
+        and re-parsed automatically.
         """
         from apps.food.models import DriveMenuCache
 
@@ -243,19 +315,30 @@ class RecipeSheetService:
         if cache is None:
             return []
 
-        if cache.recipe_sheets and not force_refresh:
+        if (
+            cache.recipe_sheets
+            and not force_refresh
+            and self._cache_is_current(cache.recipe_sheets)
+        ):
             return cache.recipe_sheets
 
         if not cache.drive_folder_id:
             return []
 
         file_id, _ = self._find_spreadsheet_in_folder(cache.drive_folder_id)
-        parsed = self.parse_recipe_sheets(cache.drive_folder_id)
+        if not file_id:
+            return []
+        parsed = self._parse_with_file_id(cache.drive_folder_id, file_id)
 
         cache.recipe_sheets = parsed
         cache.recipe_file_id = file_id or ""
         cache.save(update_fields=["recipe_sheets", "recipe_file_id"])
         return parsed
+
+    @staticmethod
+    def _cache_is_current(entries: list[dict]) -> bool:
+        """True if every cached entry carries the current schema version."""
+        return all(isinstance(e, dict) and e.get("_v") == CACHE_SCHEMA_VERSION for e in entries)
 
     def recipes_for_date(self, d: datetime.date) -> list[dict]:
         """Return recipe entries for a specific date, sorted by dish index."""

@@ -189,6 +189,14 @@ export default function NotificationPreferencesPage() {
 
             push_food_tickets: false,
 
+            push_food_team_reminder: false,
+
+            push_food_takeaway_ready: false,
+
+            push_food_leftovers_ready: false,
+
+            push_food_swap_request: false,
+
             push_mentions: false,
           })
 
@@ -232,6 +240,14 @@ export default function NotificationPreferencesPage() {
             push_event_reminders: true,
 
             push_food_tickets: true,
+
+            push_food_team_reminder: true,
+
+            push_food_takeaway_ready: true,
+
+            push_food_leftovers_ready: true,
+
+            push_food_swap_request: true,
 
             push_mentions: true,
           })
@@ -345,17 +361,24 @@ export default function NotificationPreferencesPage() {
       <Box key={group.key}>
         <Divider my="sm" label={group.label} labelPosition="left" />
         <Stack gap="md">
-          {group.fields.map((field) => (
-            <Switch
-              key={field.key}
-              label={field.label}
-              description={field.description}
-              checked={prefBool(prefs, `${channel}_${field.key}`)}
-              onChange={(e) =>
-                handleSchemaToggle(channel, field.key, e.currentTarget.checked)
-              }
-            />
-          ))}
+          {group.fields.map((field) => {
+            const backendKey = field.channel_keys?.[channel] ?? field.key
+            return (
+              <Switch
+                key={field.key}
+                label={field.label}
+                description={field.description}
+                checked={prefBool(prefs, `${channel}_${backendKey}`)}
+                onChange={(e) =>
+                  handleSchemaToggle(
+                    channel,
+                    backendKey,
+                    e.currentTarget.checked,
+                  )
+                }
+              />
+            )
+          })}
         </Stack>
       </Box>
     ))

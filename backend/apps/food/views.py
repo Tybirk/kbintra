@@ -1757,7 +1757,12 @@ def _house_number_for(user) -> str:  # type: ignore[no-untyped-def]
 
 
 class TodayTeamActionBoxView(APIView):
-    """Data for the prominent dashboard action box when you're on today's team."""
+    """Fast data for the dashboard action box (no Drive calls).
+
+    Recipe folder + per-dish links live on the sibling
+    ``TodayTeamRecipesView`` so the dashboard widget can render members and
+    buttons immediately and lazily fill in the recipe section with skeletons.
+    """
 
     permission_classes = [permissions.IsAuthenticated]
 
@@ -1777,19 +1782,6 @@ class TodayTeamActionBoxView(APIView):
             team.members.all(), many=True, context={"request": request}
         ).data
 
-        # Recipe folder + per-dish links for today.
-        from .models import DriveMenuCache
-        from .services.recipe_sheets import RecipeSheetService, folder_url
-
-        iso = today.isocalendar()
-        cache = DriveMenuCache.objects.filter(week_number=iso[1], year=iso[0]).first()
-        recipe_folder_url = (
-            folder_url(cache.drive_folder_id) if cache and cache.drive_folder_id else ""
-        )
-        recipes: list[dict] = []
-        with contextlib.suppress(Exception):
-            recipes = RecipeSheetService().recipes_for_date(today)
-
         return Response(
             {
                 "on_team": on_team,
@@ -1798,7 +1790,46 @@ class TodayTeamActionBoxView(APIView):
                 "date": today.isoformat(),
                 "day_name": team.day_name,
                 "members": members,
+            }
+        )
+
+
+class TodayTeamRecipesView(APIView):
+    """Drive-backed recipe info for today's team.
+
+    Split out from :class:`TodayTeamActionBoxView` so the dashboard widget can
+    render the team and buttons immediately while these (potentially slow,
+    Drive-API-backed) fields fill in afterwards. Cached on the DriveMenuCache
+    row, so steady-state calls are fast.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        today = timezone.localdate()
+        from .models import DriveMenuCache
+        from .services.recipe_sheets import RecipeSheetService, folder_url
+
+        iso = today.isocalendar()
+        cache = DriveMenuCache.objects.filter(week_number=iso[1], year=iso[0]).first()
+        recipe_folder_url = (
+            folder_url(cache.drive_folder_id) if cache and cache.drive_folder_id else ""
+        )
+        # File-level link (the recipe spreadsheet itself). For .xlsx files in
+        # Drive we can't deep-link to a specific tab via developerKey-auth, so
+        # we surface this as the single "Åbn opskriftsark" fallback button.
+        recipe_file_url = ""
+        if cache and cache.recipe_file_id:
+            recipe_file_url = f"https://docs.google.com/spreadsheets/d/{cache.recipe_file_id}/edit"
+
+        recipes: list[dict] = []
+        with contextlib.suppress(Exception):
+            recipes = RecipeSheetService().recipes_for_date(today)
+
+        return Response(
+            {
                 "recipe_folder_url": recipe_folder_url,
+                "recipe_file_url": recipe_file_url,
                 "recipes": recipes,
             }
         )
@@ -1843,6 +1874,9 @@ class NotifyTakeawayReadyView(APIView):
         return Response({"detail": "Besked sendt.", "sent": True})
 
 
+_ALLOWED_LEFTOVERS_IMAGE_EXTS = {"jpg", "jpeg", "png", "webp", "heic", "heif", "gif"}
+
+
 class NotifyLeftoversReadyView(APIView):
     """Today's team announces leftovers, optionally with a photo."""
 
@@ -1864,12 +1898,20 @@ class NotifyLeftoversReadyView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        # Match the takeaway view's once-per-day guard so a double-tap doesn't
+        # fan out duplicate community notifications. team.leftovers_announced_at
+        # is the per-team marker; treat the existence of any prior announcement
+        # today as "already sent".
+        if team.leftovers_announced_at is not None:
+            return Response({"detail": "Beskeden er allerede sendt i dag.", "sent": False})
+
         image_url = ""
         image = request.FILES.get("image")
         if image:
             from django.core.files.storage import default_storage
 
-            ext = (image.name.rsplit(".", 1)[-1] if "." in image.name else "jpg")[:5]
+            raw_ext = (image.name.rsplit(".", 1)[-1] if "." in image.name else "jpg").lower()
+            ext = raw_ext if raw_ext in _ALLOWED_LEFTOVERS_IMAGE_EXTS else "jpg"
             path = default_storage.save(
                 f"food_leftovers/{team.date.isoformat()}_{team.id}.{ext}", image
             )
@@ -1930,21 +1972,38 @@ class TakeoverView(APIView):
         serializer = TakeoverSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         membership: FoodTeamMember = serializer.context["target_membership"]
-        debtor = membership.user
         team = membership.team
 
         with transaction.atomic():
+            # Lock the membership and re-resolve its current user inside the
+            # transaction: two concurrent takeovers must not both reassign the
+            # same shift (the loser would otherwise get a favour for a shift
+            # they don't actually cook).
+            try:
+                locked_membership = FoodTeamMember.objects.select_for_update().get(pk=membership.pk)
+            except FoodTeamMember.DoesNotExist:
+                return Response(
+                    {"detail": "Madholdsmedlemskab ikke fundet."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            if locked_membership.user_id == request.user.id:
+                return Response(
+                    {"detail": "Du er allerede på dette madhold."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            debtor = locked_membership.user
+
             # Cancel pending swaps / broadcasts involving this membership.
             TeamSwapRequest.objects.filter(status=SwapRequestStatus.PENDING).filter(
-                Q(requester_membership=membership) | Q(target_membership=membership)
+                Q(requester_membership=locked_membership) | Q(target_membership=locked_membership)
             ).update(status=SwapRequestStatus.CANCELLED)
             SwapBroadcast.objects.filter(
-                requester_membership=membership, status=BroadcastStatus.OPEN
+                requester_membership=locked_membership, status=BroadcastStatus.OPEN
             ).update(status=BroadcastStatus.CANCELLED)
 
-            membership.user = request.user
-            membership.house_number = _house_number_for(request.user)  # ty: ignore[invalid-assignment]
-            membership.save()
+            locked_membership.user = request.user
+            locked_membership.house_number = _house_number_for(request.user)  # ty: ignore[invalid-assignment]
+            locked_membership.save()
 
             favour = TeamFavour.objects.create(
                 creditor=request.user,
@@ -1980,9 +2039,15 @@ def _compute_broadcast_candidates(
     from apps.users.models import User
 
     cycle = FoodTeam.objects.filter(date=requester_date).values_list("cycle_id", flat=True).first()
-    # People currently cooking on a date the requester can take.
+    # People currently cooking on a date the requester can take. Filter out
+    # inactive or exempt users so we don't notify someone who can't cook now
+    # (e.g. opted out after generation but still holds a stale membership).
     holder_ids = set(
-        FoodTeamMember.objects.filter(team__date__in=available_dates)
+        FoodTeamMember.objects.filter(
+            team__date__in=available_dates,
+            user__is_active=True,
+            user__is_exempt_from_food_teams=False,
+        )
         .exclude(user=requester)
         .values_list("user_id", flat=True)
     )
@@ -2155,6 +2220,19 @@ class AcceptSwapBroadcastView(APIView):
 
         requester_membership = broadcast.requester_membership
         with transaction.atomic():
+            # Lock the broadcast and re-check its status: two candidates
+            # accepting simultaneously must not both pass the OPEN check and
+            # double-swap the requester's membership.
+            try:
+                locked_broadcast = SwapBroadcast.objects.select_for_update().get(pk=broadcast.pk)
+            except SwapBroadcast.DoesNotExist:
+                return Response({"detail": "Ikke fundet."}, status=status.HTTP_404_NOT_FOUND)
+            if locked_broadcast.status != BroadcastStatus.OPEN:
+                return Response(
+                    {"detail": "Anmodningen er allerede afsluttet."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             r_user, r_house = requester_membership.user, requester_membership.house_number
             m_user, m_house = my_membership.user, my_membership.house_number
             requester_membership.user, requester_membership.house_number = m_user, m_house
@@ -2162,12 +2240,13 @@ class AcceptSwapBroadcastView(APIView):
             requester_membership.save()
             my_membership.save()
 
-            broadcast.status = BroadcastStatus.ACCEPTED
-            broadcast.accepted_by = request.user
-            broadcast.accepted_membership = my_membership
-            broadcast.save(
+            locked_broadcast.status = BroadcastStatus.ACCEPTED
+            locked_broadcast.accepted_by = request.user
+            locked_broadcast.accepted_membership = my_membership
+            locked_broadcast.save(
                 update_fields=["status", "accepted_by", "accepted_membership", "updated_at"]
             )
+            broadcast = locked_broadcast
 
             # Tidy up other open offers / pending swaps on these memberships.
             SwapBroadcast.objects.filter(status=BroadcastStatus.OPEN).filter(

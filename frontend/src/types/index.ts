@@ -1250,7 +1250,7 @@ export type WsMessage = WsNewMessage | WsMessagesRead | WsTyping | WsNewConversa
 
 // Notification Types
 
-export type NotificationType = "new_message" | "new_announcement" | "new_thread" | "thread_reply" | "post_reply" | "post_reaction" | "event_created" | "event_updated" | "event_cancelled" | "event_reminder" | "food_ticket" | "mention" | "post_edited_by_admin" | "event_edited_by_admin" | "announcement_edited_by_admin"
+export type NotificationType = "new_message" | "message_reaction" | "new_announcement" | "announcement_updated" | "new_thread" | "thread_reply" | "post_reply" | "subgroup_activity" | "post_reaction" | "event_created" | "event_updated" | "event_cancelled" | "event_reminder" | "food_ticket" | "food_team_reminder" | "food_takeaway_ready" | "food_leftovers_ready" | "food_swap_request" | "mention" | "subgroup_member_added" | "subgroup_member_removed" | "post_edited_by_admin" | "event_edited_by_admin" | "announcement_edited_by_admin"
 
 export interface MentionUser {
   id: number
@@ -1399,6 +1399,11 @@ export interface NotificationGroupField {
   key: string
   label: string
   description: string
+  // Optional per-channel override for the underlying model field name.
+  // Useful when a single toggle row maps to different backend fields per
+  // channel (e.g. in-app `notify_message_reactions` vs. email/push umbrella
+  // `email_messages`/`push_messages`).
+  channel_keys?: Partial<Record<"notify" | "email" | "push", string>>
 }
 
 export interface NotificationGroup {
@@ -1745,8 +1750,14 @@ export interface TodayTeamActionBox {
   date?: string
   day_name?: string
   members?: FoodTeamMember[]
-  recipe_folder_url?: string
-  recipes?: RecipeSheet[]
+}
+
+// Lazy recipe payload — fetched separately from the action box so the widget
+// can render members + buttons before any Drive call resolves.
+export interface TodayTeamRecipes {
+  recipe_folder_url: string
+  recipe_file_url: string
+  recipes: RecipeSheet[]
 }
 
 export interface MyFoodProfile {

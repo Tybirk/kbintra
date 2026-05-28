@@ -32,6 +32,7 @@ import type {
   SwapBroadcast,
   CreateSwapBroadcastData,
   TodayTeamActionBox,
+  TodayTeamRecipes,
   TodayLeftoversPost,
   MyFoodProfile,
   FoodRosterEntry,
@@ -556,6 +557,12 @@ export const foodApi = {
 
   getTodayActionBox: async (): Promise<TodayTeamActionBox> => {
     const response = await apiClient.get("/food/teams/today/")
+
+    return response.data
+  },
+
+  getTodayRecipes: async (): Promise<TodayTeamRecipes> => {
+    const response = await apiClient.get("/food/teams/today/recipes/")
 
     return response.data
   },

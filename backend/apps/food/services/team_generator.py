@@ -254,16 +254,17 @@ class TeamGenerator:
                     return False
 
         # Old-person balance: don't pile too many old people on one date via a swap.
+        # Respect the (possibly escalated) self.max_old, not a hard-coded 2.
         if (
             person.is_over_50
             and not switch_person.is_over_50
-            and self.date_to_old_count[switch_date] > 2
+            and self.date_to_old_count[switch_date] >= self.max_old
         ):
             return False
         if (
             switch_person.is_over_50
             and not person.is_over_50
-            and self.date_to_old_count[from_date] > 2
+            and self.date_to_old_count[from_date] >= self.max_old
         ):
             return False
 
@@ -399,11 +400,15 @@ class TeamGenerator:
         for members, options in units:
             best: date | None = None
             best_score: tuple[int, int] | None = None
+            unit_size = len(members)
             for d in options:
                 if not self._unit_fits(members, d):
                     continue
                 slack = self.TEAM_SIZE - len(self.date_to_persons[d])
-                if slack <= 0:
+                # Need room for the WHOLE unit (2 for a couple, 1 for a single).
+                # The greedy pass must not overflow the target team size; the
+                # dedicated overflow pass handles the +OVERFLOW slack later.
+                if slack < unit_size:
                     continue
                 score = (slack, -self.date_to_head_chef_count[d])
                 if best_score is None or score > best_score:

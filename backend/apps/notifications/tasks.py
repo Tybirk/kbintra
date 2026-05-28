@@ -1250,12 +1250,19 @@ def broadcast_leftovers_ready(
         id=actor_user_id
     )
 
+    from html import escape as html_escape
+
     base = "Der er rester i fælleshuset"
     message = f"{base}: {custom_message}" if custom_message else base
     if image_url:
+        # custom_message and image_url come from a team member's POST and end up
+        # in every recipient's in-app feed + emails as raw HTML — escape both
+        # to avoid stored XSS.
+        safe_suffix = f": {html_escape(custom_message)}" if custom_message else ""
+        safe_image_url = html_escape(image_url, quote=True)
         html_content = (
-            f"<p>{base}{f': {custom_message}' if custom_message else ''}</p>"
-            f'<img src="{image_url}" style="max-width:100%;height:auto" />'
+            f"<p>{base}{safe_suffix}</p>"
+            f'<img src="{safe_image_url}" style="max-width:100%;height:auto" />'
         )
     else:
         html_content = None
@@ -1309,20 +1316,19 @@ def notify_swap_broadcast(broadcast_id: int) -> None:
     date_label = f"{DAY_NAMES[cooking_date.weekday()]} {cooking_date.day}/{cooking_date.month}"
 
     count = 0
-    for user_id in broadcast.candidate_user_ids or []:
-        try:
-            user = User.objects.get(id=user_id, is_active=True)
-        except User.DoesNotExist:
-            continue
-        notification = notify_food_swap_request(
-            user=user,
-            requester_name=requester.first_name,
-            date_label=date_label,
-            link="/madhold/bytte",
-            related_user=requester,
-        )
-        if notification:
-            count += 1
+    candidate_ids = broadcast.candidate_user_ids or []
+    if candidate_ids:
+        candidates = User.objects.filter(id__in=candidate_ids, is_active=True)
+        for user in candidates:
+            notification = notify_food_swap_request(
+                user=user,
+                requester_name=requester.first_name,
+                date_label=date_label,
+                link="/madhold/bytte",
+                related_user=requester,
+            )
+            if notification:
+                count += 1
     logger.info("notify_swap_broadcast COMPLETED: %d notifications created", count)
 
 
