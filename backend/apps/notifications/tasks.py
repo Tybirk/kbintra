@@ -1138,6 +1138,199 @@ def notify_announcement_edited_by_admin_task(
     )
 
 
+# ---------------------------------------------------------------------------
+# Food team broadcasts
+# ---------------------------------------------------------------------------
+
+
+@db_task(retries=1, retry_delay=60)
+def broadcast_takeaway_ready(team_id: int, actor_user_id: int) -> None:
+    """Notify the people who actually ordered take-away today.
+
+    Only users whose house has an active MealRegistration for today with
+    dining_option=take_away are notified (the per-user preference toggle still
+    gates inside create_notification on top of this).
+    """
+    logger.info("broadcast_takeaway_ready STARTED: team=%d actor=%d", team_id, actor_user_id)
+    from apps.food.models import DiningOption, FoodTeam, MealRegistration
+    from apps.notifications.models import NotificationType
+    from apps.users.models import User
+
+    from .services import create_notification
+
+    try:
+        team = FoodTeam.objects.get(id=team_id)
+    except FoodTeam.DoesNotExist:
+        logger.warning("broadcast_takeaway_ready: team %d not found", team_id)
+        return
+
+    actor = None
+    with contextlib.suppress(User.DoesNotExist):
+        actor = User.objects.get(id=actor_user_id)
+
+    house_ids = list(
+        MealRegistration.objects.filter(
+            date=team.date,
+            is_active=True,
+            dining_option=DiningOption.TAKE_AWAY,
+        ).values_list("house_id", flat=True)
+    )
+    recipients = User.objects.filter(is_active=True, house_id__in=house_ids).exclude(
+        id=actor_user_id
+    )
+
+    count = 0
+    for user in recipients:
+        notification = create_notification(
+            user=user,
+            notification_type=NotificationType.FOOD_TEAM_TAKEAWAY_READY,
+            title="Takeaway er klar",
+            message="Dagens takeaway er klar til afhentning i fælleshuset",
+            link="/mad",
+            related_user=actor,
+        )
+        if notification:
+            count += 1
+    logger.info(
+        "broadcast_takeaway_ready COMPLETED: %d notifications to %d candidate(s) "
+        "across %d house(s)",
+        count,
+        recipients.count(),
+        len(house_ids),
+    )
+
+
+@db_task(retries=1, retry_delay=60)
+def broadcast_leftovers_ready(
+    team_id: int, actor_user_id: int, image_url: str = "", custom_message: str = ""
+) -> None:
+    """Notify all active users (except the actor) that there are leftovers.
+
+    The notification links to /mad/rester, a page that renders the team's
+    leftovers message and image so recipients see them in context (not just a
+    raw URL in the notification body).
+    """
+    logger.info("broadcast_leftovers_ready STARTED: team=%d actor=%d", team_id, actor_user_id)
+    from django.db.models import Q
+
+    from apps.food.models import (
+        DiningOption,
+        FoodTeam,
+        MealRegistration,
+        SeatingTime,
+    )
+    from apps.notifications.models import NotificationType
+    from apps.users.models import User
+
+    from .services import create_notification
+
+    try:
+        team = FoodTeam.objects.get(id=team_id)
+    except FoodTeam.DoesNotExist:
+        logger.warning("broadcast_leftovers_ready: team %d not found", team_id)
+        return
+
+    actor = None
+    with contextlib.suppress(User.DoesNotExist):
+        actor = User.objects.get(id=actor_user_id)
+
+    # The 18:30 crowd is at the fælleshus when leftovers are announced and
+    # sees them in person — no notification needed. The 17:30 crowd has
+    # already left and might want to come back; the take-away crowd was
+    # never there. So: take-away OR eat-in at 17:30.
+    house_ids = list(
+        MealRegistration.objects.filter(date=team.date, is_active=True)
+        .filter(
+            Q(dining_option=DiningOption.TAKE_AWAY)
+            | Q(dining_option=DiningOption.EAT_IN, seating_time=SeatingTime.FIRST)
+        )
+        .values_list("house_id", flat=True)
+    )
+    recipients = User.objects.filter(is_active=True, house_id__in=house_ids).exclude(
+        id=actor_user_id
+    )
+
+    base = "Der er rester i fælleshuset"
+    message = f"{base}: {custom_message}" if custom_message else base
+    if image_url:
+        html_content = (
+            f"<p>{base}{f': {custom_message}' if custom_message else ''}</p>"
+            f'<img src="{image_url}" style="max-width:100%;height:auto" />'
+        )
+    else:
+        html_content = None
+
+    count = 0
+    for user in recipients:
+        notification = create_notification(
+            user=user,
+            notification_type=NotificationType.FOOD_TEAM_LEFTOVERS_READY,
+            title="Rester er klar",
+            message=message,
+            link="/mad/rester",
+            related_user=actor,
+            html_content=html_content,
+        )
+        if notification:
+            count += 1
+    logger.info(
+        "broadcast_leftovers_ready COMPLETED: %d notifications to %d candidate(s) "
+        "across %d house(s)",
+        count,
+        recipients.count(),
+        len(house_ids),
+    )
+
+
+@db_task(retries=1, retry_delay=60)
+def notify_swap_broadcast(broadcast_id: int) -> None:
+    """Notify swap-broadcast candidates that someone wants to swap a cooking day."""
+    logger.info("notify_swap_broadcast STARTED: broadcast=%d", broadcast_id)
+    import datetime as _dt
+
+    from apps.food.constants import DAY_NAMES
+    from apps.food.models import SwapBroadcast
+    from apps.users.models import User
+
+    from .services import notify_food_swap_request
+
+    try:
+        broadcast = SwapBroadcast.objects.select_related(
+            "requester", "requester_membership__team"
+        ).get(id=broadcast_id)
+    except SwapBroadcast.DoesNotExist:
+        logger.warning("notify_swap_broadcast: broadcast %d not found", broadcast_id)
+        return
+
+    requester = broadcast.requester
+    cooking_date = broadcast.requester_membership.team.date
+    if isinstance(cooking_date, str):
+        cooking_date = _dt.date.fromisoformat(cooking_date)
+    date_label = f"{DAY_NAMES[cooking_date.weekday()]} {cooking_date.day}/{cooking_date.month}"
+
+    count = 0
+    for user_id in broadcast.candidate_user_ids or []:
+        try:
+            user = User.objects.get(id=user_id, is_active=True)
+        except User.DoesNotExist:
+            continue
+        notification = notify_food_swap_request(
+            user=user,
+            requester_name=requester.first_name,
+            date_label=date_label,
+            link="/madhold/bytte",
+            related_user=requester,
+        )
+        if notification:
+            count += 1
+    logger.info("notify_swap_broadcast COMPLETED: %d notifications created", count)
+
+
+# ---------------------------------------------------------------------------
+# Drive menu refresh
+# ---------------------------------------------------------------------------
+
+
 @db_task(retries=1, retry_delay=60)
 def refresh_all_drive_menus_task() -> None:
     """Refresh all Google Drive menus in background."""

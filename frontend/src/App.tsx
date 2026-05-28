@@ -68,6 +68,7 @@ const ProfileEditPage = lazy(() => import("./pages/ProfileEditPage"))
 const AnnouncementsPage = lazy(() => import("./pages/AnnouncementsPage"))
 
 const FoodPage = lazy(() => import("./pages/FoodPage"))
+const LeftoversPage = lazy(() => import("./pages/LeftoversPage"))
 
 const FoodPreferencesPage = lazy(() => import("./pages/FoodPreferencesPage"))
 
@@ -477,6 +478,16 @@ const AuthenticatedRoutes = memo(function AuthenticatedRoutes() {
             <ProtectedRoute>
               <ErrorBoundary>
                 <FoodPreferencesPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mad/rester"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <LeftoversPage />
               </ErrorBoundary>
             </ProtectedRoute>
           }

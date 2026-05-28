@@ -261,6 +261,21 @@ class FoodTeam(models.Model):
         blank=True,
         help_text="Optional notes about this team/day",
     )
+    # Leftovers announcement (one per team; overwritten if announced more than once).
+    leftovers_message = models.TextField(
+        blank=True,
+        help_text="Free-text message that came with the 'Rester er klar' announcement.",
+    )
+    leftovers_image_url = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Absolute URL of the uploaded leftovers photo, if any.",
+    )
+    leftovers_announced_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the leftovers announcement was last sent.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -464,6 +479,13 @@ class FoodTeamWish(models.Model):
         default=list,
         help_text="List of date strings (YYYY-MM-DD) the user is available",
     )
+    is_unavailable = models.BooleanField(
+        default=False,
+        help_text=(
+            "User opted out of this cycle entirely (distinct from the permanent "
+            "is_exempt_from_food_teams). The generator skips them for this cycle."
+        ),
+    )
     comment = models.TextField(
         blank=True,
         help_text="Optional comment or special requests",
@@ -528,6 +550,20 @@ class DriveMenuCache(models.Model):
         blank=True,
         help_text="Google Drive week folder ID (used for linking to the specific week's folder)",
     )
+    recipe_sheets = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Parsed recipe spreadsheet sheets for the week. List of "
+            "{code, day, index, name, url} dicts (code like 'Ma1'; day 0-3; "
+            "name from the sheet's A1 cell; url deep-links to the sheet)."
+        ),
+    )
+    recipe_file_id = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Drive file ID of the week's recipe spreadsheet (if found).",
+    )
     fetched_at = models.DateTimeField(
         auto_now=True,
         help_text="When this menu was last fetched from Drive",
@@ -574,3 +610,121 @@ class ClosedFoodDay(models.Model):
         if self.reason:
             label += f" ({self.reason})"
         return label
+
+
+class TeamFavour(models.Model):
+    """
+    A favour ("you owe me one") created when one user takes over another's shift.
+
+    When user A takes over user B's cooking date, B is freed and A cooks it.
+    A becomes the creditor, B the debtor. This is an honour-system ledger shown
+    to both parties; it is not auto-enforced.
+    """
+
+    creditor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="favours_owed_to_me",
+        help_text="The user who took over the shift (is owed a favour).",
+    )
+    debtor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="favours_i_owe",
+        help_text="The user whose shift was taken over (owes a favour).",
+    )
+    cycle = models.ForeignKey(
+        "FoodTeamCycle",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="favours",
+        help_text="The cycle in which the takeover happened.",
+    )
+    origin_date = models.DateField(help_text="The cooking date that was taken over.")
+    settled = models.BooleanField(default=False)
+    settled_at = models.DateTimeField(null=True, blank=True)
+    note = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        state = "settled" if self.settled else "open"
+        return (
+            f"{self.debtor.first_name} owes {self.creditor.first_name} "
+            f"(from {self.origin_date}, {state})"
+        )
+
+
+class BroadcastStatus(models.TextChoices):
+    """Status options for a broadcast swap request."""
+
+    OPEN = "open", "Åben"
+    ACCEPTED = "accepted", "Accepteret"
+    CANCELLED = "cancelled", "Annulleret"
+
+
+class SwapBroadcast(models.Model):
+    """
+    A broadcast "bytteanmodning": a user wants rid of one cooking date and offers
+    to take any of several dates in return.
+
+    Candidates are users who indicated they could cook the offered date (via this
+    cycle's wish or matching default_cooking_days weekday) AND currently hold a
+    membership on one of the requester's available dates. The first candidate to
+    accept performs an atomic swap and the broadcast closes.
+    """
+
+    requester = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="swap_broadcasts",
+    )
+    requester_membership = models.ForeignKey(
+        FoodTeamMember,
+        on_delete=models.CASCADE,
+        related_name="broadcasts",
+        help_text="The membership (date) the requester wants to get rid of.",
+    )
+    available_dates = models.JSONField(
+        default=list,
+        help_text="ISO date strings the requester is willing to cook instead.",
+    )
+    candidate_user_ids = models.JSONField(
+        default=list,
+        help_text="User IDs notified as candidates at creation time (for reference).",
+    )
+    message = models.TextField(blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=BroadcastStatus.choices,
+        default=BroadcastStatus.OPEN,
+    )
+    accepted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="accepted_broadcasts",
+    )
+    accepted_membership = models.ForeignKey(
+        FoodTeamMember,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="accepted_broadcasts",
+        help_text="The accepting user's membership that was swapped in.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return (
+            f"Broadcast from {self.requester.first_name} "
+            f"({self.requester_membership.team.date}) [{self.status}]"
+        )

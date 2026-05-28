@@ -1371,12 +1371,48 @@ export interface NotificationPreference {
 
   push_mentions: boolean
 
+  // Food team preferences (madhold launch)
+
+  notify_food_team_reminder: boolean
+  notify_food_takeaway_ready: boolean
+  notify_food_leftovers_ready: boolean
+  notify_food_swap_request: boolean
+
+  email_food_team_reminder: boolean
+  email_food_takeaway_ready: boolean
+  email_food_leftovers_ready: boolean
+  email_food_swap_request: boolean
+
+  push_food_team_reminder: boolean
+  push_food_takeaway_ready: boolean
+  push_food_leftovers_ready: boolean
+  push_food_swap_request: boolean
+
   created_at: string
 
   updated_at: string
 }
 
+// Grouped notification-settings schema (from /notifications/preferences/schema/)
+
+export interface NotificationGroupField {
+  key: string
+  label: string
+  description: string
+}
+
+export interface NotificationGroup {
+  key: string
+  label: string
+  fields: NotificationGroupField[]
+}
+
+export interface NotificationPreferenceSchema {
+  groups: NotificationGroup[]
+}
+
 export interface UpdateNotificationPreferenceData {
+  [key: string]: boolean | undefined
   notify_message_reactions?: boolean
 
   notify_announcements?: boolean
@@ -1603,6 +1639,8 @@ export interface FoodTeamWish {
 
   available_date_count: number
 
+  is_unavailable: boolean
+
   comment: string
 
   created_at: string
@@ -1612,6 +1650,8 @@ export interface FoodTeamWish {
 
 export interface CreateWishData {
   available_dates: string[]
+
+  is_unavailable?: boolean
 
   comment?: string
 }
@@ -1626,6 +1666,109 @@ export interface TeamGenerationResult {
   unassigned_persons: string[]
 
   warnings: string[]
+}
+
+// Madhold launch: takeover/favours, broadcast swaps, action box, profile
+
+export type FavourDirection = "owed_to_me" | "i_owe"
+
+export interface TeamFavour {
+  id: number
+  creditor: TeamMemberUser
+  debtor: TeamMemberUser
+  origin_date: string
+  settled: boolean
+  settled_at: string | null
+  note: string
+  direction: FavourDirection
+  created_at: string
+}
+
+export interface TakeoverData {
+  target_membership_id: number
+  note?: string
+}
+
+export interface SwapBroadcastMembership {
+  id: number
+  user: TeamMemberUser
+  house_number: string
+  date: string
+  day_name: string
+}
+
+export type BroadcastStatus = "open" | "accepted" | "cancelled"
+
+export interface SwapBroadcast {
+  id: number
+  requester: TeamMemberUser
+  requester_membership: SwapBroadcastMembership
+  available_dates: string[]
+  message: string
+  status: BroadcastStatus
+  accepted_by: TeamMemberUser | null
+  is_mine: boolean
+  can_accept: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateSwapBroadcastData {
+  requester_membership_id: number
+  available_dates: string[]
+  message?: string
+}
+
+export interface RecipeSheet {
+  code: string
+  day: number
+  index: number
+  name: string
+  url: string
+}
+
+export interface TodayLeftoversPost {
+  has_leftovers: boolean
+  team_id?: number
+  date?: string
+  day_name?: string
+  members?: string[]
+  message?: string
+  image_url?: string
+  announced_at?: string
+}
+
+export interface TodayTeamActionBox {
+  on_team: boolean
+  has_team_today: boolean
+  team_id?: number
+  date?: string
+  day_name?: string
+  members?: FoodTeamMember[]
+  recipe_folder_url?: string
+  recipes?: RecipeSheet[]
+}
+
+export interface MyFoodProfile {
+  can_be_head_chef: boolean
+  prefers_cooking_with_housemate: boolean
+  is_over_50: boolean
+  is_exempt_from_food_teams: boolean
+  default_cooking_days: number[]
+  food_team_comment: string
+  housemate_name: string
+}
+
+export interface FoodRosterEntry {
+  id: number
+  first_name: string
+  last_name: string
+  house_name: string
+  can_be_head_chef: boolean
+  prefers_cooking_with_housemate: boolean
+  is_over_50: boolean
+  is_exempt_from_food_teams: boolean
+  is_food_admin: boolean
 }
 
 // Booking Types

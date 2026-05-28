@@ -28,6 +28,10 @@ EMAIL_SUBJECT_PREFIX: dict[str, str] = {
     NotificationType.NEW_MESSAGE: "[Besked]",
     NotificationType.MESSAGE_REACTION: "[Besked]",
     NotificationType.FOOD_TICKET: "[Mad]",
+    NotificationType.FOOD_TEAM_REMINDER: "[Madhold]",
+    NotificationType.FOOD_TEAM_TAKEAWAY_READY: "[Madhold]",
+    NotificationType.FOOD_TEAM_LEFTOVERS_READY: "[Madhold]",
+    NotificationType.FOOD_TEAM_SWAP_REQUEST: "[Madhold]",
     NotificationType.EVENT_CREATED: "[Kalender]",
     NotificationType.EVENT_UPDATED: "[Kalender]",
     NotificationType.EVENT_CANCELLED: "[Kalender]",
@@ -58,6 +62,10 @@ def should_send_email(user: User, notification_type: NotificationType) -> bool:
         NotificationType.EVENT_CANCELLED: prefs.email_events,
         NotificationType.EVENT_REMINDER: prefs.email_event_reminders,
         NotificationType.FOOD_TICKET: prefs.email_food_tickets,
+        NotificationType.FOOD_TEAM_REMINDER: prefs.email_food_team_reminder,
+        NotificationType.FOOD_TEAM_TAKEAWAY_READY: prefs.email_food_takeaway_ready,
+        NotificationType.FOOD_TEAM_LEFTOVERS_READY: prefs.email_food_leftovers_ready,
+        NotificationType.FOOD_TEAM_SWAP_REQUEST: prefs.email_food_swap_request,
         NotificationType.MENTION: prefs.email_mentions,
     }
 

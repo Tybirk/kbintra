@@ -2,14 +2,21 @@
 Food team generation service.
 
 This module contains the algorithm for generating food teams based on user wishes.
-Ported from the original food_team_script.py with adaptations for Django models.
+It is a faithful port of the standalone ``madhold.py`` scheduler (unit-based greedy
+assignment with swap repair, overflow placement, rebalancing, and max-old
+auto-escalation), adapted to the Django models.
 
 Algorithm constraints:
-- Each team has 6 members
-- No two people from the same house on the same date (unless they requested to be together)
-- Maximum 2 "over 50" people per team
-- At least 1 head chef per team
-- People who want to cook with their housemate are assigned together first
+- Target ``TEAM_SIZE`` (6) members per team.
+- No two people from the same house on the same date, unless they are a "couple"
+  (both housemates flagged ``prefers_cooking_with_housemate``) placed together.
+- At most ``MAX_OLD_PER_DAY`` "over 50" people per team (auto-escalates on failure).
+- At most ``MAX_HEADCHEFS_PER_DAY`` head chefs per team; rebalancing tries to give
+  every team at least one head chef.
+- People with the fewest available dates are assigned first.
+
+Couples are modelled as two-member "units" scheduled on the intersection of both
+partners' available dates; everyone else is a one-member unit.
 """
 
 from dataclasses import dataclass, field
@@ -53,67 +60,87 @@ class TeamGenerationResult:
     warnings: list[str] = field(default_factory=list)
 
 
+# A unit is a tuple of member user-ids (1 for singles, 2 for couples) plus the
+# list of dates valid for the whole unit.
+Unit = tuple[tuple[int, ...], list[date]]
+
+
 class TeamGenerator:
     """
     Generates food teams for a cycle based on user wishes.
 
-    The algorithm:
-    1. Load all eligible persons (not exempt) and their date wishes
-    2. Assign people who want to be with their housemate first
-    3. Assign remaining people based on their wishes, respecting constraints
-    4. Try to resolve any unassigned people by switching
-    5. Balance head chefs and over-50 people across teams
+    Port of the ``madhold.py`` ``Scheduler``. The public surface
+    (``cooking_dates``, ``persons``, ``load_data``, ``is_valid_assignment``,
+    ``assign_person``, ``generate``) is preserved for the views, serializers and
+    tests that depend on it.
     """
 
-    MIN_TEAM_SIZE = 6
-    MAX_OVER_50_PER_TEAM = 2
+    # --- Configurable scheduling constants (match madhold.py defaults) ------ #
+    TEAM_SIZE = 6
+    OVERFLOW = 1
+    MAX_HEADCHEFS_PER_DAY = 3
+    MAX_OLD_PER_DAY_START = 2
+    MAX_OLD_PER_DAY_CEILING = 4
+    REBALANCE_ITERATIONS = 100
+
+    # Backwards-compatible aliases (older code / tests may reference these).
+    MIN_TEAM_SIZE = TEAM_SIZE
+    MAX_OVER_50_PER_TEAM = MAX_OLD_PER_DAY_START
     MIN_HEAD_CHEFS_PER_TEAM = 1
 
     def __init__(self, cycle: FoodTeamCycle):
         self.cycle = cycle
-        # Convert ISO strings to date objects
+        # Convert ISO strings to date objects.
         self.cooking_dates = [date.fromisoformat(d) for d in cycle.cooking_dates]
+        self.cooking_dates_set: set[date] = set(self.cooking_dates)
 
-        # Data structures for the algorithm
-        self.persons: dict[int, PersonData] = {}  # user_id -> PersonData
-        self.special_persons: list[int] = []  # user_ids who want to be with housemate
-        self.regular_persons: list[int] = []  # other user_ids
+        # Person data (populated by load_data).
+        self.persons: dict[int, PersonData] = {}
+        self.special_persons: list[int] = []  # want to cook with their housemate
+        self.regular_persons: list[int] = []  # everyone else
 
-        # Assignment tracking
+        # The active over-50 cap; raised between auto-escalation attempts.
+        self.max_old: int = self.MAX_OLD_PER_DAY_START
+
+        # Assignment tracking (reset per attempt by _reset_assignment).
         self.date_to_persons: dict[date, list[int]] = {d: [] for d in self.cooking_dates}
         self.date_to_old_count: dict[date, int] = dict.fromkeys(self.cooking_dates, 0)
         self.date_to_head_chef_count: dict[date, int] = dict.fromkeys(self.cooking_dates, 0)
 
-        # Results
+        # Results.
         self.unassigned: list[int] = []
         self.warnings: list[str] = []
 
+    # ---- data loading ----------------------------------------------------- #
+
     def load_data(self) -> None:
         """Load persons and their wishes from the database."""
-        # Get all non-exempt users
         users = User.objects.filter(is_exempt_from_food_teams=False).select_related("house")
 
-        # Get wishes for this cycle
         wishes = {w.user_id: w for w in FoodTeamWish.objects.filter(cycle=self.cycle)}
 
-        # Build person data
         for user in users:
+            wish = wishes.get(user.id)
+
+            # New rule: a wish flagged is_unavailable opts the user out of this
+            # cycle entirely — skip them completely.
+            if wish is not None and wish.is_unavailable:
+                continue
+
             house_number = ""
             if user.house:
-                # Extract number from house name like "House 5"
+                # Extract number from house name like "House 5".
                 house_number = user.house.name.replace("House ", "")
 
-            # Get available dates from wishes or default to all dates
-            available_dates = []
-            if user.id in wishes:
-                wish = wishes[user.id]
+            # Available dates come from the wish (filtered to cooking dates); if
+            # the user submitted no wish, they default to ALL cooking dates.
+            available_dates: list[date] = []
+            if wish is not None:
                 available_dates = [
-                    date.fromisoformat(d)
+                    parsed
                     for d in wish.available_dates
-                    if date.fromisoformat(d) in self.cooking_dates
+                    if (parsed := date.fromisoformat(d)) in self.cooking_dates_set
                 ]
-
-            # If no wishes submitted, user is available for all dates
             if not available_dates:
                 available_dates = list(self.cooking_dates)
 
@@ -125,30 +152,35 @@ class TeamGenerator:
                 is_over_50=user.is_over_50,
                 can_be_head_chef=user.can_be_head_chef,
                 prefers_housemate=user.prefers_cooking_with_housemate,
+                # Couples are not freely swapped; singles are.
                 can_be_switched=not user.prefers_cooking_with_housemate,
                 available_dates=available_dates,
             )
             self.persons[user.id] = person
 
-            # Categorize
             if person.prefers_housemate:
                 self.special_persons.append(user.id)
             else:
                 self.regular_persons.append(user.id)
 
-        # Sort regular persons by number of available dates (fewest first)
-        self.regular_persons.sort(
-            key=lambda uid: (
-                len(self.persons[uid].available_dates),
-                -int(self.persons[uid].is_over_50),
-            )
-        )
+    def _reset_assignment(self) -> None:
+        """Clear all per-attempt assignment state (used before each escalation)."""
+        self.date_to_persons = {d: [] for d in self.cooking_dates}
+        self.date_to_old_count = dict.fromkeys(self.cooking_dates, 0)
+        self.date_to_head_chef_count = dict.fromkeys(self.cooking_dates, 0)
+        self.unassigned = []
+        # Couples may have been degraded to singles during a previous attempt; the
+        # can_be_switched flag is reset to its load-time value so each attempt is
+        # independent.
+        for person in self.persons.values():
+            person.can_be_switched = not person.prefers_housemate
+
+    # ---- core mutators ---------------------------------------------------- #
 
     def assign_person(self, user_id: int, d: date) -> None:
         """Assign a person to a date."""
         person = self.persons[user_id]
         self.date_to_persons[d].append(user_id)
-
         if person.is_over_50:
             self.date_to_old_count[d] += 1
         if person.can_be_head_chef:
@@ -158,328 +190,429 @@ class TeamGenerator:
         """Remove a person from a date."""
         person = self.persons[user_id]
         self.date_to_persons[d].remove(user_id)
-
         if person.is_over_50:
             self.date_to_old_count[d] -= 1
         if person.can_be_head_chef:
             self.date_to_head_chef_count[d] -= 1
 
+    def switch_persons(
+        self, person_id: int, from_date: date, switch_id: int, switch_date: date
+    ) -> None:
+        """Swap two people between their dates."""
+        self.remove_person(person_id, from_date)
+        self.remove_person(switch_id, switch_date)
+        self.assign_person(person_id, switch_date)
+        self.assign_person(switch_id, from_date)
+
+    # ---- constraint checks ------------------------------------------------ #
+
     def is_valid_assignment(self, user_id: int, d: date) -> bool:
-        """Check if assigning a person to a date is valid."""
+        """Check if assigning a single person to a date is valid."""
         person = self.persons[user_id]
-        assigned = self.date_to_persons[d]
-
-        # Check for same house (unless they want to be together)
-        for other_id in assigned:
+        # No two from the same house on the same date.
+        for other_id in self.date_to_persons[d]:
             other = self.persons[other_id]
-            if person.house_id and person.house_id == other.house_id:
+            if person.house_id is not None and person.house_id == other.house_id:
                 return False
-
-        # Check over-50 limit
-        if person.is_over_50 and self.date_to_old_count[d] >= self.MAX_OVER_50_PER_TEAM:
+        if person.is_over_50 and self.date_to_old_count[d] >= self.max_old:
             return False
-
-        # Check head chef distribution (don't have too many on one day)
-        return not (person.can_be_head_chef and self.date_to_head_chef_count[d] >= 3)
+        return not (
+            person.can_be_head_chef
+            and self.date_to_head_chef_count[d] >= self.MAX_HEADCHEFS_PER_DAY
+        )
 
     def is_valid_switch(
         self, person_id: int, from_date: date, switch_id: int, switch_date: date
     ) -> bool:
-        """Check if switching two people between dates is valid."""
+        """Check if swapping two people between dates is valid."""
         person = self.persons[person_id]
         switch_person = self.persons[switch_id]
 
-        # Can't switch people who prefer to be with housemate
-        if not person.can_be_switched or not switch_person.can_be_switched:
+        if not (person.can_be_switched and switch_person.can_be_switched):
             return False
-
-        # Check date availability
+        # Each must actually want the date they would move to.
         if from_date not in switch_person.available_dates:
             return False
         if switch_date not in person.available_dates:
             return False
 
-        # Check house conflicts after switch
-        for other_id in self.date_to_persons[switch_date]:
-            if other_id == switch_id:
-                continue
-            other = self.persons[other_id]
-            if person.house_id and person.house_id == other.house_id:
-                return False
+        same_house = person.house_id is not None and person.house_id == switch_person.house_id
 
-        for other_id in self.date_to_persons[from_date]:
-            if other_id == person_id:
-                continue
-            other = self.persons[other_id]
-            if switch_person.house_id and switch_person.house_id == other.house_id:
-                return False
+        # No house-mate on the destination date (unless they are the swap partner).
+        if not same_house:
+            for other_id in self.date_to_persons[switch_date]:
+                if other_id == switch_id:
+                    continue
+                other = self.persons[other_id]
+                if person.house_id is not None and person.house_id == other.house_id:
+                    return False
+            for other_id in self.date_to_persons[from_date]:
+                if other_id == person_id:
+                    continue
+                other = self.persons[other_id]
+                if switch_person.house_id is not None and switch_person.house_id == other.house_id:
+                    return False
 
-        # Check over-50 balance after switch
+        # Old-person balance: don't pile too many old people on one date via a swap.
         if (
             person.is_over_50
             and not switch_person.is_over_50
-            and self.date_to_old_count[switch_date] > 1
+            and self.date_to_old_count[switch_date] > 2
         ):
             return False
         if (
             switch_person.is_over_50
             and not person.is_over_50
-            and self.date_to_old_count[from_date] > 1
+            and self.date_to_old_count[from_date] > 2
         ):
             return False
 
-        # Check head chef balance
+        # Don't strip the last head chef from either side. (madhold.py fixed a
+        # copy/paste bug here: the second branch must test `person`, not the
+        # switch person.)
         if (
-            person.can_be_head_chef
+            self.date_to_head_chef_count[from_date] <= 1
+            and person.can_be_head_chef
             and not switch_person.can_be_head_chef
-            and self.date_to_head_chef_count[from_date] <= 1
         ):
             return False
         return not (
-            switch_person.can_be_head_chef
+            self.date_to_head_chef_count[switch_date] <= 1
+            and switch_person.can_be_head_chef
             and not person.can_be_head_chef
-            and self.date_to_head_chef_count[switch_date] <= 1
         )
 
-    def switch_persons(
-        self, person_id: int, from_date: date, switch_id: int, switch_date: date
-    ) -> None:
-        """Switch two people between dates."""
-        self.remove_person(person_id, from_date)
-        self.assign_person(person_id, switch_date)
-        self.remove_person(switch_id, switch_date)
-        self.assign_person(switch_id, from_date)
+    # ---- units (singles + couples handled uniformly) --------------------- #
 
-    def assign_special_persons(self) -> None:
-        """Assign people who want to be with their housemate."""
-        assigned_special = set()
+    def _build_units(self) -> list[Unit]:
+        """
+        Build the list of (members, valid_dates) units.
+
+        A single is a one-member unit with that person's wishes; a couple is a
+        two-member unit (two housemates who both want to cook together) scheduled
+        on the *intersection* of both partners' wishes. Couples without a partner
+        or without common dates are degraded to singles with a warning (web action,
+        so we never hard-fail).
+        """
+        units: list[Unit] = []
+        placed: set[int] = set()
 
         for user_id in self.special_persons:
-            if user_id in assigned_special:
+            if user_id in placed:
                 continue
-
             person = self.persons[user_id]
-            if not person.house_id:
-                continue
 
-            # Find housemate who also wants to be together
-            partner_id = None
-            for other_id in self.special_persons:
-                if other_id == user_id or other_id in assigned_special:
-                    continue
-                other = self.persons[other_id]
-                if other.house_id == person.house_id:
-                    partner_id = other_id
-                    break
+            partner_id = next(
+                (
+                    other_id
+                    for other_id in self.special_persons
+                    if other_id != user_id
+                    and other_id not in placed
+                    and person.house_id is not None
+                    and self.persons[other_id].house_id == person.house_id
+                ),
+                None,
+            )
 
-            if not partner_id:
-                # No partner, treat as regular person
-                self.regular_persons.append(user_id)
+            if partner_id is None:
+                # No matching housemate — treat as a single.
+                self.warnings.append(
+                    f"{person.first_name} ønskede at lave mad med en medbeboer, men "
+                    f"ingen anden i huset har samme ønske. Planlægges alene."
+                )
+                units.append(((user_id,), list(person.available_dates)))
+                person.can_be_switched = True
+                placed.add(user_id)
                 continue
 
             partner = self.persons[partner_id]
+            partner_dates = set(partner.available_dates)
+            common = [d for d in person.available_dates if d in partner_dates]
 
-            # Find common dates
-            common_dates = set(person.available_dates) & set(partner.available_dates)
-            common_dates = [d for d in common_dates if d in self.cooking_dates]
-
-            # Find a valid date for both
-            assigned = False
-            for d in common_dates:
-                if len(self.date_to_persons[d]) < self.MIN_TEAM_SIZE - 1:
-                    # Check if both can be assigned (skip house check for partners)
-                    old_count = self.date_to_old_count[d]
-                    old_add = int(person.is_over_50) + int(partner.is_over_50)
-                    if old_count + old_add <= self.MAX_OVER_50_PER_TEAM:
-                        self.assign_person(user_id, d)
-                        self.assign_person(partner_id, d)
-                        assigned_special.add(user_id)
-                        assigned_special.add(partner_id)
-                        assigned = True
-                        break
-
-            if not assigned:
+            if not common:
+                # No overlapping dates — degrade both to singles with a warning.
                 self.warnings.append(
-                    f"Could not assign housemates {person.first_name} and {partner.first_name} together"
+                    f"{person.first_name} og {partner.first_name} ønskede at lave mad "
+                    f"sammen, men har ingen fælles ledige datoer. Planlægges hver for sig."
                 )
-                # Add them as regular persons
-                self.regular_persons.append(user_id)
-                self.regular_persons.append(partner_id)
+                for pid in (user_id, partner_id):
+                    p = self.persons[pid]
+                    units.append(((pid,), list(p.available_dates)))
+                    p.can_be_switched = True
+                    placed.add(pid)
+                continue
 
-    def assign_regular_persons(self) -> None:
-        """Assign regular persons to dates."""
+            units.append(((user_id, partner_id), common))
+            placed.add(user_id)
+            placed.add(partner_id)
+
         for user_id in self.regular_persons:
+            units.append(((user_id,), list(self.persons[user_id].available_dates)))
+
+        return units
+
+    def _unit_fits(self, members: tuple[int, ...], d: date) -> bool:
+        """
+        Like is_valid_assignment, but handles a couple atomically: partners share
+        a house, so the house-collision check ignores them as 'each other', and the
+        old/headchef caps account for both members at once.
+        """
+        houses = {self.persons[m].house_id for m in members if self.persons[m].house_id is not None}
+        for other_id in self.date_to_persons[d]:
+            other_house = self.persons[other_id].house_id
+            if other_house is not None and other_house in houses:
+                return False
+        added_old = sum(self.persons[m].is_over_50 for m in members)
+        if self.date_to_old_count[d] + added_old > self.max_old:
+            return False
+        added_chef = sum(self.persons[m].can_be_head_chef for m in members)
+        return self.date_to_head_chef_count[d] + added_chef <= self.MAX_HEADCHEFS_PER_DAY
+
+    def _place_unit(self, members: tuple[int, ...], d: date) -> None:
+        for m in members:
+            self.assign_person(m, d)
+
+    # ---- phases ----------------------------------------------------------- #
+
+    def assign_greedy(self) -> list[Unit]:
+        """
+        Single greedy pass over all units (couples + singles together).
+
+        Order: fewest valid dates first, then head chefs first (spread them out),
+        then over-50 first (honour the cap before slots fill). Within each unit,
+        pick the least-filled valid date (most slack); ties broken by fewest head
+        chefs already there. Returns the units that couldn't be placed.
+        """
+        units = self._build_units()
+
+        def unit_key(unit: Unit) -> tuple[int, bool, bool]:
+            members, options = unit
+            return (
+                len(options),
+                not any(self.persons[m].can_be_head_chef for m in members),
+                not any(self.persons[m].is_over_50 for m in members),
+            )
+
+        units.sort(key=unit_key)
+
+        unplaced: list[Unit] = []
+        for members, options in units:
+            best: date | None = None
+            best_score: tuple[int, int] | None = None
+            for d in options:
+                if not self._unit_fits(members, d):
+                    continue
+                slack = self.TEAM_SIZE - len(self.date_to_persons[d])
+                if slack <= 0:
+                    continue
+                score = (slack, -self.date_to_head_chef_count[d])
+                if best_score is None or score > best_score:
+                    best_score = score
+                    best = d
+
+            if best is None:
+                unplaced.append((members, options))
+                continue
+
+            self._place_unit(members, best)
+
+        return unplaced
+
+    def flatten_unplaced(self, unplaced_units: list[Unit]) -> list[int]:
+        """
+        Flatten unplaced units into individual user-ids. Any couple that ended up
+        unplaced is degraded to singles for the repair passes.
+        """
+        flat: list[int] = []
+        for members, _ in unplaced_units:
+            if len(members) > 1:
+                names = " og ".join(self.persons[m].first_name for m in members)
+                self.warnings.append(
+                    f"Parret {names} kunne ikke placeres sammen; planlægges hver for sig."
+                )
+                for m in members:
+                    self.persons[m].can_be_switched = True
+            flat.extend(members)
+        return flat
+
+    def resolve_via_swaps(self, unassigned: list[int]) -> list[int]:
+        """Repair unplaced people by displacing someone to a short date."""
+        for user_id in list(unassigned):
+            short_dates = [d for d, ps in self.date_to_persons.items() if len(ps) < self.TEAM_SIZE]
             person = self.persons[user_id]
-            assigned = False
+            placed_here = False
 
             for d in person.available_dates:
-                if d not in self.cooking_dates:
-                    continue
-                if len(self.date_to_persons[d]) < self.MIN_TEAM_SIZE and self.is_valid_assignment(
-                    user_id, d
-                ):
+                if d in short_dates and self.is_valid_assignment(user_id, d):
                     self.assign_person(user_id, d)
-                    assigned = True
+                    placed_here = True
                     break
 
-            if not assigned:
-                self.unassigned.append(user_id)
-
-    def resolve_unassigned(self) -> None:
-        """Try to resolve unassigned persons by switching."""
-        dates_needing_members = [
-            d for d, members in self.date_to_persons.items() if len(members) < self.MIN_TEAM_SIZE
-        ]
-
-        still_unassigned = []
-
-        for user_id in self.unassigned:
-            person = self.persons[user_id]
-            resolved = False
-
-            for d in person.available_dates:
-                if d not in self.cooking_dates:
-                    continue
-
-                # If date needs members and we can be assigned
-                if d in dates_needing_members and self.is_valid_assignment(user_id, d):
-                    self.assign_person(user_id, d)
-                    resolved = True
-                    break
-
-                # Try switching with someone on this date
+                # Try to displace someone currently on `d` to a short date.
                 for assigned_id in list(self.date_to_persons[d]):
-                    assigned_person = self.persons[assigned_id]
-
-                    # Find dates where assigned person could go
-                    for switch_date in dates_needing_members:
-                        if switch_date in assigned_person.available_dates and self.is_valid_switch(
-                            user_id, switch_date, assigned_id, d
+                    can_move_to = set(self.persons[assigned_id].available_dates) & set(short_dates)
+                    for move_to in can_move_to:
+                        if self.is_valid_assignment(assigned_id, move_to) and self.is_valid_switch(
+                            user_id, move_to, assigned_id, d
                         ):
-                            # Move assigned person to switch_date
                             self.remove_person(assigned_id, d)
-                            self.assign_person(assigned_id, switch_date)
-                            # Assign our person to d
+                            self.assign_person(assigned_id, move_to)
                             self.assign_person(user_id, d)
-                            resolved = True
+                            placed_here = True
                             break
-                    if resolved:
+                    if placed_here:
                         break
-                if resolved:
+                if placed_here:
                     break
 
-            if not resolved:
-                still_unassigned.append(user_id)
+        return self.get_unassigned()
 
-        self.unassigned = still_unassigned
+    def overflow_remaining(self, unassigned: list[int]) -> list[int]:
+        """Place leftovers allowing up to team_size + overflow per date."""
+        cap = self.TEAM_SIZE + self.OVERFLOW
+        for user_id in list(unassigned):
+            person = self.persons[user_id]
+            for d in person.available_dates:
+                if len(self.date_to_persons[d]) < cap and self.is_valid_assignment(user_id, d):
+                    self.assign_person(user_id, d)
+                    break
+        return self.get_unassigned()
 
-    def balance_teams(self) -> None:
-        """Balance head chefs and over-50 people across teams."""
-        # Balance over-50 people
-        for _ in range(100):  # Max iterations
-            made_change = False
+    def rebalance(self) -> None:
+        """Rebalance over-50 people and head chefs across dates."""
+        for _ in range(self.REBALANCE_ITERATIONS):
+            changed = False
 
+            # --- over-50 rebalance --- #
             for d in self.cooking_dates:
-                if self.date_to_old_count[d] > self.MAX_OVER_50_PER_TEAM:
-                    # Find an old person to move
-                    for person_id in self.date_to_persons[d]:
-                        if not self.persons[person_id].is_over_50:
+                if self.date_to_old_count[d] <= 2:
+                    continue
+                moved = False
+                for user_id in list(self.date_to_persons[d]):
+                    if not self.persons[user_id].is_over_50:
+                        continue
+                    for other_date in self.persons[user_id].available_dates:
+                        if other_date == d or self.date_to_old_count[other_date] > 1:
                             continue
-
-                        # Find a date to move them to
-                        for switch_date in self.persons[person_id].available_dates:
-                            if switch_date == d:
+                        for other_id in list(self.date_to_persons[other_date]):
+                            if self.persons[other_id].is_over_50:
                                 continue
-                            if self.date_to_old_count[switch_date] >= self.MAX_OVER_50_PER_TEAM:
-                                continue
-
-                            # Find someone to switch with
-                            for switch_id in self.date_to_persons[switch_date]:
-                                if not self.persons[switch_id].is_over_50 and self.is_valid_switch(
-                                    person_id, d, switch_id, switch_date
-                                ):
-                                    self.switch_persons(person_id, d, switch_id, switch_date)
-                                    made_change = True
-                                    break
-                            if made_change:
+                            if self.is_valid_switch(user_id, d, other_id, other_date):
+                                self.switch_persons(user_id, d, other_id, other_date)
+                                changed = True
+                                moved = True
                                 break
-                        if made_change:
+                        if moved:
                             break
-                if made_change:
-                    break
+                    if moved:
+                        break
 
-            # Balance head chefs
+            # --- head-chef rebalance --- #
             for d in self.cooking_dates:
-                if self.date_to_head_chef_count[d] == 0:
-                    # Need to get a head chef here
-                    for person_id in self.date_to_persons[d]:
-                        for switch_date in self.persons[person_id].available_dates:
-                            if switch_date == d:
+                if self.date_to_head_chef_count[d] != 0:
+                    continue
+                done = False
+                for user_id in list(self.date_to_persons[d]):
+                    if done:
+                        break
+                    for other_date in self.persons[user_id].available_dates:
+                        if other_date == d or self.date_to_head_chef_count[other_date] <= 1:
+                            continue
+                        for other_id in list(self.date_to_persons[other_date]):
+                            if not self.persons[other_id].can_be_head_chef:
                                 continue
-                            if self.date_to_head_chef_count[switch_date] <= 1:
-                                continue
-
-                            for switch_id in self.date_to_persons[switch_date]:
-                                if self.persons[
-                                    switch_id
-                                ].can_be_head_chef and self.is_valid_switch(
-                                    person_id, d, switch_id, switch_date
-                                ):
-                                    self.switch_persons(person_id, d, switch_id, switch_date)
-                                    made_change = True
-                                    break
-                            if made_change:
+                            if self.is_valid_switch(user_id, d, other_id, other_date):
+                                self.switch_persons(user_id, d, other_id, other_date)
+                                changed = True
+                                done = True
                                 break
-                        if made_change:
+                        if done:
                             break
-                if made_change:
-                    break
 
-            if not made_change:
+            if not changed:
                 break
 
-    def fill_remaining_slots(self) -> None:
-        """Fill remaining slots with unassigned persons (allow 7 per team if needed)."""
-        for user_id in list(self.unassigned):
-            person = self.persons[user_id]
-            for d in person.available_dates:
-                if d not in self.cooking_dates:
-                    continue
-                # Allow up to 7 members
-                if len(
-                    self.date_to_persons[d]
-                ) < self.MIN_TEAM_SIZE + 1 and self.is_valid_assignment(user_id, d):
-                    self.assign_person(user_id, d)
-                    self.unassigned.remove(user_id)
-                    break
+    # ---- introspection ---------------------------------------------------- #
+
+    def get_assigned(self) -> set[int]:
+        return {p for d in self.cooking_dates for p in self.date_to_persons[d]}
+
+    def get_unassigned(self) -> list[int]:
+        assigned = self.get_assigned()
+        return [uid for uid in self.persons if uid not in assigned]
+
+    # ---- assignment driver (max-old auto-escalation) --------------------- #
+
+    def run_assignment(self) -> None:
+        """
+        Run the full assignment, escalating max_old from the start value up to the
+        ceiling if anyone remains unplaced after greedy + swaps + overflow. Each
+        escalation restarts the assignment from scratch.
+        """
+        max_old = self.MAX_OLD_PER_DAY_START
+        ceiling = self.MAX_OLD_PER_DAY_CEILING
+
+        while True:
+            self._reset_assignment()
+            self.max_old = max_old
+
+            unplaced_units = self.assign_greedy()
+            unassigned = self.flatten_unplaced(unplaced_units)
+            if unassigned:
+                unassigned = self.resolve_via_swaps(unassigned)
+            if unassigned:
+                unassigned = self.overflow_remaining(unassigned)
+            self.rebalance()
+
+            self.unassigned = self.get_unassigned()
+
+            if not self.unassigned:
+                break
+            if max_old >= ceiling:
+                self.warnings.append(
+                    f"Nåede grænsen for over-50 pr. hold ({ceiling}); "
+                    f"{len(self.unassigned)} person(er) kunne ikke placeres."
+                )
+                break
+
+            max_old += 1
 
     def validate_result(self) -> None:
-        """Validate the generated teams."""
+        """Collect warnings about the final schedule (Danish, user-facing)."""
         for d, members in self.date_to_persons.items():
-            if len(members) < self.MIN_TEAM_SIZE:
+            if 0 < len(members) < self.TEAM_SIZE:
                 self.warnings.append(
-                    f"Date {d} only has {len(members)} members (need {self.MIN_TEAM_SIZE})"
+                    f"Datoen {d} har kun {len(members)} medlemmer (mål er {self.TEAM_SIZE})."
+                )
+            if members and self.date_to_head_chef_count[d] == 0:
+                self.warnings.append(f"Datoen {d} har ingen chefkok.")
+            if self.date_to_old_count[d] > self.max_old:
+                self.warnings.append(
+                    f"Datoen {d} har {self.date_to_old_count[d]} over-50 medlemmer "
+                    f"(maks {self.max_old})."
                 )
 
-            if self.date_to_head_chef_count[d] == 0:
-                self.warnings.append(f"Date {d} has no head chef")
+            # Unintended same-house collisions (couples are expected).
+            seen: dict[int, int] = {}
+            for uid in members:
+                house = self.persons[uid].house_id
+                if house is None:
+                    continue
+                if house in seen:
+                    both_couples = (
+                        self.persons[uid].prefers_housemate
+                        and self.persons[seen[house]].prefers_housemate
+                    )
+                    if not both_couples:
+                        self.warnings.append(f"Datoen {d} har flere personer fra samme hus.")
+                seen[house] = uid
 
-            if self.date_to_old_count[d] > self.MAX_OVER_50_PER_TEAM:
-                self.warnings.append(
-                    f"Date {d} has {self.date_to_old_count[d]} over-50 members (max {self.MAX_OVER_50_PER_TEAM})"
-                )
-
-            # Check for duplicate houses
-            house_ids = [
-                self.persons[uid].house_id for uid in members if self.persons[uid].house_id
-            ]
-            if len(house_ids) != len(set(house_ids)):
-                self.warnings.append(f"Date {d} has multiple people from the same house")
+    # ---- persistence ------------------------------------------------------ #
 
     @transaction.atomic
     def save_teams(self) -> int:
         """Save the generated teams to the database."""
-        # Delete existing teams for this cycle's dates
+        # Delete existing teams for this cycle's dates.
         FoodTeam.objects.filter(date__in=self.cooking_dates).delete()
 
         teams_created = 0
@@ -487,10 +620,7 @@ class TeamGenerator:
             if not member_ids:
                 continue
 
-            team = FoodTeam.objects.create(
-                cycle=self.cycle,
-                date=d,
-            )
+            team = FoodTeam.objects.create(cycle=self.cycle, date=d)
 
             for user_id in member_ids:
                 person = self.persons[user_id]
@@ -507,50 +637,43 @@ class TeamGenerator:
     def generate(self, save: bool = True) -> TeamGenerationResult:
         """Run the full team generation algorithm."""
         try:
-            # Load data
             self.load_data()
 
             if not self.persons:
                 return TeamGenerationResult(
                     success=False,
-                    message="No eligible persons found for team generation",
+                    message="Ingen kvalificerede personer fundet til holddannelse",
                 )
 
-            # Run algorithm
-            self.assign_special_persons()
-            self.assign_regular_persons()
-            self.resolve_unassigned()
-            self.balance_teams()
-            self.fill_remaining_slots()
+            self.run_assignment()
             self.validate_result()
 
-            # Save if requested
             teams_created = 0
             if save:
                 teams_created = self.save_teams()
-                self.cycle.status = CycleStatus.FINALIZED
+                self.cycle.status = CycleStatus.FINALIZED  # ty: ignore[invalid-assignment]
                 self.cycle.save()
 
             unassigned_names = [self.persons[uid].first_name for uid in self.unassigned]
 
             success = len(self.unassigned) == 0 and not any(
-                len(m) < self.MIN_TEAM_SIZE for m in self.date_to_persons.values()
+                0 < len(m) < self.TEAM_SIZE for m in self.date_to_persons.values()
             )
 
             return TeamGenerationResult(
                 success=success,
-                message=f"Generated {teams_created} teams"
+                message=f"Genererede {teams_created} hold"
                 if success
-                else "Generation completed with issues",
+                else "Generering gennemført med problemer",
                 teams_created=teams_created,
                 unassigned_persons=unassigned_names,
                 warnings=self.warnings,
             )
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - web action, never let it 500
             return TeamGenerationResult(
                 success=False,
-                message=f"Error during generation: {str(e)}",
+                message=f"Fejl under generering: {e!s}",
             )
 
 
@@ -559,11 +682,11 @@ def generate_teams_for_cycle(cycle: FoodTeamCycle, save: bool = True) -> TeamGen
     Convenience function to generate teams for a cycle.
 
     Args:
-        cycle: The FoodTeamCycle to generate teams for
-        save: Whether to save the teams to the database
+        cycle: The FoodTeamCycle to generate teams for.
+        save: Whether to save the teams to the database.
 
     Returns:
-        TeamGenerationResult with details about the generation
+        TeamGenerationResult with details about the generation.
     """
     generator = TeamGenerator(cycle)
     return generator.generate(save=save)

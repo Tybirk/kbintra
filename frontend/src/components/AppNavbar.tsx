@@ -16,6 +16,7 @@ import {
   IconDoor,
   IconLink,
   IconSettings,
+  IconUsersGroup,
 } from "@tabler/icons-react"
 
 import { forumApi } from "../api/forum"
@@ -61,7 +62,7 @@ const navItems: NavItem[] = [
 
   { icon: IconSoup, label: "Mad", path: "/mad" },
 
-  //{ icon: IconUsersGroup, label: "Madhold", path: "/madhold" },
+  { icon: IconUsersGroup, label: "Madhold", path: "/madhold" },
 
   { icon: IconCalendar, label: "Kalender", path: "/kalender" },
 

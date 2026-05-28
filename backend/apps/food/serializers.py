@@ -19,6 +19,7 @@ from .constants import (
     calculate_meal_price,
 )
 from .models import (
+    BroadcastStatus,
     ClosedFoodDay,
     CycleStatus,
     DriveMenuCache,
@@ -29,7 +30,9 @@ from .models import (
     FoodTicket,
     MealPreference,
     MealRegistration,
+    SwapBroadcast,
     SwapRequestStatus,
+    TeamFavour,
     TeamSwapRequest,
 )
 
@@ -728,6 +731,7 @@ class FoodTeamWishSerializer(serializers.ModelSerializer):
             "user_name",
             "available_dates",
             "available_date_count",
+            "is_unavailable",
             "comment",
             "created_at",
             "updated_at",
@@ -743,7 +747,7 @@ class FoodTeamWishCreateUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = FoodTeamWish
-        fields = ["cycle", "available_dates", "comment"]
+        fields = ["cycle", "available_dates", "is_unavailable", "comment"]
 
     def validate_cycle(self, value: FoodTeamCycle) -> FoodTeamCycle:
         if not value.is_accepting_wishes:
@@ -946,3 +950,200 @@ class ClosedFoodDayCreateSerializer(serializers.Serializer):
             )
             results.append(obj)
         return results
+
+
+# --------------------------------------------------------------------------- #
+# Madhold launch: takeover (favours), broadcast swaps, personal profile       #
+# --------------------------------------------------------------------------- #
+
+
+class TeamFavourSerializer(serializers.ModelSerializer):
+    """A 'you owe me one' favour created by a shift takeover."""
+
+    creditor = SwapRequestUserSerializer(read_only=True)
+    debtor = SwapRequestUserSerializer(read_only=True)
+    direction = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TeamFavour
+        fields = [
+            "id",
+            "creditor",
+            "debtor",
+            "origin_date",
+            "settled",
+            "settled_at",
+            "note",
+            "direction",
+            "created_at",
+        ]
+
+    def get_direction(self, obj: TeamFavour) -> str:
+        """'owed_to_me' if the current user is the creditor, else 'i_owe'."""
+        request = self.context.get("request")
+        if request and request.user.is_authenticated and obj.creditor_id == request.user.id:
+            return "owed_to_me"
+        return "i_owe"
+
+
+class TakeoverSerializer(serializers.Serializer):
+    """Take over another user's cooking shift (they owe you one)."""
+
+    target_membership_id = serializers.IntegerField()
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def validate_target_membership_id(self, value: int) -> int:
+        try:
+            membership = FoodTeamMember.objects.select_related("team", "user").get(pk=value)
+        except FoodTeamMember.DoesNotExist as e:
+            raise serializers.ValidationError("Madholdsmedlemskab ikke fundet.") from e
+
+        user = self.context["request"].user
+        if membership.user_id == user.id:
+            raise serializers.ValidationError("Du kan ikke overtage din egen maddag.")
+        if membership.team.date < timezone.localdate():
+            raise serializers.ValidationError("Maddagen er allerede passeret.")
+        # Can't take over a date you're already cooking on.
+        if FoodTeamMember.objects.filter(team=membership.team, user=user).exists():
+            raise serializers.ValidationError("Du er allerede på dette madhold.")
+        self.context["target_membership"] = membership
+        return value
+
+
+class SwapBroadcastMembershipSerializer(serializers.ModelSerializer):
+    """Membership info embedded in a broadcast."""
+
+    user = SwapRequestUserSerializer(read_only=True)
+    date = serializers.DateField(source="team.date", read_only=True)
+    day_name = serializers.CharField(source="team.day_name", read_only=True)
+
+    class Meta:
+        model = FoodTeamMember
+        fields = ["id", "user", "house_number", "date", "day_name"]
+
+
+class SwapBroadcastSerializer(serializers.ModelSerializer):
+    """Read serializer for a broadcast 'bytteanmodning'."""
+
+    requester = SwapRequestUserSerializer(read_only=True)
+    requester_membership = SwapBroadcastMembershipSerializer(read_only=True)
+    accepted_by = SwapRequestUserSerializer(read_only=True)
+    is_mine = serializers.SerializerMethodField()
+    can_accept = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SwapBroadcast
+        fields = [
+            "id",
+            "requester",
+            "requester_membership",
+            "available_dates",
+            "message",
+            "status",
+            "accepted_by",
+            "is_mine",
+            "can_accept",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_is_mine(self, obj: SwapBroadcast) -> bool:
+        request = self.context.get("request")
+        return bool(request and obj.requester_id == request.user.id)
+
+    def get_can_accept(self, obj: SwapBroadcast) -> bool:
+        """True if the current user holds a membership on one of the offered dates."""
+        request = self.context.get("request")
+        if not request or obj.status != BroadcastStatus.OPEN or obj.requester_id == request.user.id:
+            return False
+        dates = [date.fromisoformat(d) for d in obj.available_dates]
+        return FoodTeamMember.objects.filter(user=request.user, team__date__in=dates).exists()
+
+
+class CreateSwapBroadcastSerializer(serializers.Serializer):
+    """Create a broadcast: get rid of one date, offer to take any of several."""
+
+    requester_membership_id = serializers.IntegerField()
+    available_dates = serializers.ListField(child=serializers.DateField(), min_length=1)
+    message = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def validate_requester_membership_id(self, value: int) -> int:
+        try:
+            membership = FoodTeamMember.objects.select_related("team").get(pk=value)
+        except FoodTeamMember.DoesNotExist as e:
+            raise serializers.ValidationError("Madholdsmedlemskab ikke fundet.") from e
+        if membership.user_id != self.context["request"].user.id:
+            raise serializers.ValidationError("Det er ikke din maddag.")
+        if membership.team.date < timezone.localdate():
+            raise serializers.ValidationError("Maddagen er allerede passeret.")
+        self.context["requester_membership"] = membership
+        return value
+
+    def validate(self, attrs: dict) -> dict:
+        membership = self.context["requester_membership"]
+        own_date = membership.team.date
+        if own_date in attrs["available_dates"]:
+            raise serializers.ValidationError(
+                {"available_dates": "Din egen maddag kan ikke være blandt de ønskede dage."}
+            )
+        return attrs
+
+
+class AcceptSwapBroadcastSerializer(serializers.Serializer):
+    """Accept a broadcast with one of your own memberships on an offered date."""
+
+    membership_id = serializers.IntegerField()
+
+
+class MyFoodProfileSerializer(serializers.ModelSerializer):
+    """Self-service food-team profile settings for the current user."""
+
+    housemate_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            "can_be_head_chef",
+            "prefers_cooking_with_housemate",
+            "is_over_50",
+            "is_exempt_from_food_teams",
+            "default_cooking_days",
+            "food_team_comment",
+            "housemate_name",
+        ]
+
+    def get_housemate_name(self, obj: User) -> str:
+        """First housemate (same house, other user) — for the cook-together toggle."""
+        if not obj.house_id:
+            return ""
+        mate = (
+            User.objects.filter(house_id=obj.house_id)
+            .exclude(pk=obj.pk)
+            .order_by("first_name")
+            .first()
+        )
+        return mate.first_name if mate else ""
+
+    def validate_default_cooking_days(self, value: list) -> list:
+        return sorted({v for v in value if 0 <= v <= 3})
+
+
+class FoodRosterSerializer(serializers.ModelSerializer):
+    """Admin roster row for configuring food-team flags across users."""
+
+    house_name = serializers.CharField(source="house.name", read_only=True, default="")
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "first_name",
+            "last_name",
+            "house_name",
+            "can_be_head_chef",
+            "prefers_cooking_with_housemate",
+            "is_over_50",
+            "is_exempt_from_food_teams",
+            "is_food_admin",
+        ]
+        read_only_fields = ["id", "first_name", "last_name", "house_name"]

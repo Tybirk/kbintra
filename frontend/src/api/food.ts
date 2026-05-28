@@ -27,6 +27,14 @@ import type {
   CreateWishData,
   TeamGenerationResult,
   DriveMenu,
+  TeamFavour,
+  TakeoverData,
+  SwapBroadcast,
+  CreateSwapBroadcastData,
+  TodayTeamActionBox,
+  TodayLeftoversPost,
+  MyFoodProfile,
+  FoodRosterEntry,
 } from "../types"
 
 export interface ExpenseDay {
@@ -542,5 +550,140 @@ export const foodApi = {
 
   deleteClosedDay: async (id: number): Promise<void> => {
     await apiClient.delete(`/food/closed-days/${id}/`)
+  },
+
+  // Madhold launch: today action box, take-away/leftovers, takeover, broadcasts
+
+  getTodayActionBox: async (): Promise<TodayTeamActionBox> => {
+    const response = await apiClient.get("/food/teams/today/")
+
+    return response.data
+  },
+
+  getTodayLeftovers: async (): Promise<TodayLeftoversPost> => {
+    const response = await apiClient.get("/food/leftovers/today/")
+
+    return response.data
+  },
+
+  notifyTakeaway: async (teamId: number): Promise<{
+    detail: string
+    sent: boolean
+  }> => {
+    const response = await apiClient.post(
+      `/food/teams/${teamId}/notify-takeaway/`,
+    )
+
+    return response.data
+  },
+
+  notifyLeftovers: async (
+    teamId: number,
+    message?: string,
+    image?: File | null,
+  ): Promise<{
+    detail: string
+    sent: boolean
+  }> => {
+    // Always send multipart with at least the `message` field. An empty
+    // FormData breaks Axios's content-type detection, which is why the
+    // no-image path used to fail.
+    const formData = new FormData()
+
+    formData.append("message", message ?? "")
+
+    if (image) formData.append("image", image)
+
+    const response = await apiClient.post(
+      `/food/teams/${teamId}/notify-leftovers/`,
+      formData,
+    )
+
+    return response.data
+  },
+
+  takeover: async (data: TakeoverData): Promise<TeamFavour> => {
+    const response = await apiClient.post("/food/teams/takeover/", data)
+
+    return response.data
+  },
+
+  getSwapBroadcasts: async (): Promise<SwapBroadcast[]> => {
+    const response = await apiClient.get("/food/swap-broadcasts/")
+
+    return asArray(response.data)
+  },
+
+  createSwapBroadcast: async (
+    data: CreateSwapBroadcastData,
+  ): Promise<SwapBroadcast & { candidate_count: number }> => {
+    const response = await apiClient.post("/food/swap-broadcasts/", data)
+
+    return response.data
+  },
+
+  acceptSwapBroadcast: async (
+    id: number,
+    membershipId: number,
+  ): Promise<SwapBroadcast> => {
+    const response = await apiClient.post(
+      `/food/swap-broadcasts/${id}/accept/`,
+      {
+        membership_id: membershipId,
+      },
+    )
+
+    return response.data
+  },
+
+  cancelSwapBroadcast: async (id: number): Promise<void> => {
+    await apiClient.delete(`/food/swap-broadcasts/${id}/`)
+  },
+
+  // Favours ("you owe me one")
+
+  getFavours: async (): Promise<TeamFavour[]> => {
+    const response = await apiClient.get("/food/favours/")
+
+    return asArray(response.data)
+  },
+
+  settleFavour: async (id: number): Promise<TeamFavour> => {
+    const response = await apiClient.post(`/food/favours/${id}/settle/`)
+
+    return response.data
+  },
+
+  // Personal food-team profile (self-service)
+
+  getMyFoodProfile: async (): Promise<MyFoodProfile> => {
+    const response = await apiClient.get("/food/my-food-profile/")
+
+    return response.data
+  },
+
+  updateMyFoodProfile: async (
+    data: Partial<MyFoodProfile>,
+  ): Promise<MyFoodProfile> => {
+    const response = await apiClient.patch("/food/my-food-profile/", data)
+
+    return response.data
+  },
+
+  // Admin roster
+
+  getFoodRoster: async (): Promise<FoodRosterEntry[]> => {
+    const response = await apiClient.get("/food/admin/roster/")
+
+    return asArray(response.data)
+  },
+
+  updateFoodRosterEntry: async (
+    id: number,
+    data: Partial<FoodRosterEntry>,
+  ): Promise<FoodRosterEntry> => {
+    const response = await apiClient.patch(`/food/admin/roster/${id}/`, data)
+
+    return response.data
   },
 }

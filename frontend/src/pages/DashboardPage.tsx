@@ -75,6 +75,8 @@ import { usersApi } from "../api/users"
 
 import UserLink from "../components/UserLink"
 
+import TodayFoodTeamActionBox from "../components/TodayFoodTeamActionBox"
+
 import { ErrorBoundary } from "../components/ErrorBoundary"
 
 import { calculateDefaultTicketPrice } from "../utils/priceCalculation"
@@ -485,6 +487,11 @@ export default function DashboardPage() {
           Kunne ikke hente data. Prøv at genindlæse siden.
         </Alert>
       )}
+
+      {/* Today's food-team action box — self-hides when not on today's team */}
+      <ErrorBoundary compact title="Kunne ikke vise madhold">
+        <TodayFoodTeamActionBox />
+      </ErrorBoundary>
 
       {/* Notifications Widget */}
       {recentNotifications && recentNotifications.length > 0 && (
@@ -1348,6 +1355,19 @@ export function FoodDayWidget({
 
   const { user } = useAuthStore()
 
+  // Reuse the today-action-box query (deduped by React Query) to show today's
+  // cooking team as a subtle line. Only relevant for today's widget.
+  const { data: todayTeam } = useQuery({
+    queryKey: ["today-food-team"],
+    queryFn: foodApi.getTodayActionBox,
+    enabled: isToday,
+  })
+
+  const todayTeamNames = (todayTeam?.members ?? [])
+    .map((m) => m.user.first_name)
+    .filter(Boolean)
+    .join(", ")
+
   const [isSaving, setIsSaving] = useState(false)
 
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
@@ -1633,9 +1653,15 @@ export function FoodDayWidget({
         </Group>
 
         {/* Menu description */}
-        <Text size="xs" mb="sm">
+        <Text size="xs" mb={isToday && todayTeamNames ? 4 : "sm"}>
           {menuText || "Menu kommer snart"}
         </Text>
+
+        {isToday && todayTeamNames && (
+          <Text size="xs" c="dimmed" mb="sm">
+            Dagens madhold: {todayTeamNames}
+          </Text>
+        )}
 
         {/* Registration summary — matches FoodPage placement */}
         {registration?.is_active ? (

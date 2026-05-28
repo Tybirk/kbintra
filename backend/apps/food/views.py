@@ -18,25 +18,33 @@ from rest_framework.views import APIView
 
 from .constants import DAY_NAMES, calculate_meal_price
 from .models import (
+    BroadcastStatus,
     ClosedFoodDay,
     FoodTeam,
     FoodTeamCycle,
+    FoodTeamMember,
     FoodTeamWish,
     FoodTicket,
     MealPreference,
     MealRegistration,
+    SwapBroadcast,
     SwapRequestStatus,
+    TeamFavour,
     TeamSwapRequest,
 )
 from .serializers import (
+    AcceptSwapBroadcastSerializer,
     ClosedFoodDayCreateSerializer,
     ClosedFoodDaySerializer,
+    CreateSwapBroadcastSerializer,
     CreateSwapRequestSerializer,
     DefaultCookingDaysSerializer,
     DriveMenuCacheSerializer,
+    FoodRosterSerializer,
     FoodTeamCycleCreateSerializer,
     FoodTeamCycleSerializer,
     FoodTeamListSerializer,
+    FoodTeamMemberSerializer,
     FoodTeamSerializer,
     FoodTeamWishCreateUpdateSerializer,
     FoodTeamWishSerializer,
@@ -48,7 +56,11 @@ from .serializers import (
     MealRegistrationCreateUpdateSerializer,
     MealRegistrationSerializer,
     MonthlyFoodCostReportSerializer,
+    MyFoodProfileSerializer,
     RespondSwapRequestSerializer,
+    SwapBroadcastSerializer,
+    TakeoverSerializer,
+    TeamFavourSerializer,
     TeamGenerationResultSerializer,
     TeamSwapRequestSerializer,
     is_after_deadline,
@@ -1724,3 +1736,529 @@ class ClosedFoodDayDeleteView(APIView):
             return Response(status=status.HTTP_404_NOT_FOUND)
         obj.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# --------------------------------------------------------------------------- #
+# Madhold launch: today's action box, take-away/leftovers, takeover,          #
+# broadcast swaps, favours, personal profile, admin roster                    #
+# --------------------------------------------------------------------------- #
+
+
+def _danish_date_label(d: date) -> str:
+    """e.g. 'Mandag 8/6'."""
+    return f"{DAY_NAMES[d.weekday()]} {d.day}/{d.month}"
+
+
+def _house_number_for(user) -> str:  # type: ignore[no-untyped-def]
+    """Cached display house number for a user (e.g. '5' from 'House 5')."""
+    if not user.house:
+        return ""
+    return str(user.house.name).replace("House ", "")
+
+
+class TodayTeamActionBoxView(APIView):
+    """Data for the prominent dashboard action box when you're on today's team."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        today = timezone.localdate()
+        team = (
+            FoodTeam.objects.filter(date=today)
+            .prefetch_related("members__user")
+            .select_related("cycle")
+            .first()
+        )
+        if not team:
+            return Response({"on_team": False, "has_team_today": False})
+
+        on_team = team.members.filter(user_id=request.user.id).exists()
+        members = FoodTeamMemberSerializer(
+            team.members.all(), many=True, context={"request": request}
+        ).data
+
+        # Recipe folder + per-dish links for today.
+        from .models import DriveMenuCache
+        from .services.recipe_sheets import RecipeSheetService, folder_url
+
+        iso = today.isocalendar()
+        cache = DriveMenuCache.objects.filter(week_number=iso[1], year=iso[0]).first()
+        recipe_folder_url = (
+            folder_url(cache.drive_folder_id) if cache and cache.drive_folder_id else ""
+        )
+        recipes: list[dict] = []
+        with contextlib.suppress(Exception):
+            recipes = RecipeSheetService().recipes_for_date(today)
+
+        return Response(
+            {
+                "on_team": on_team,
+                "has_team_today": True,
+                "team_id": team.id,
+                "date": today.isoformat(),
+                "day_name": team.day_name,
+                "members": members,
+                "recipe_folder_url": recipe_folder_url,
+                "recipes": recipes,
+            }
+        )
+
+
+def _already_notified_today(notification_type: str) -> bool:
+    """Soft guard: was a notification of this type already created today?"""
+    from apps.notifications.models import Notification
+
+    return Notification.objects.filter(
+        notification_type=notification_type,
+        created_at__date=timezone.localdate(),
+    ).exists()
+
+
+class NotifyTakeawayReadyView(APIView):
+    """Today's team announces that take-away is ready."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request, pk: int) -> Response:
+        try:
+            team = FoodTeam.objects.get(pk=pk)
+        except FoodTeam.DoesNotExist:
+            return Response({"detail": "Madhold ikke fundet."}, status=status.HTTP_404_NOT_FOUND)
+        if team.date != timezone.localdate():
+            return Response(
+                {"detail": "Kun dagens madhold kan sende denne besked."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not team.members.filter(user_id=request.user.id).exists():
+            return Response(
+                {"detail": "Kun medlemmer af dagens madhold kan sende denne besked."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        from apps.notifications.models import NotificationType
+        from apps.notifications.tasks import broadcast_takeaway_ready
+
+        if _already_notified_today(NotificationType.FOOD_TEAM_TAKEAWAY_READY):
+            return Response({"detail": "Beskeden er allerede sendt i dag.", "sent": False})
+        broadcast_takeaway_ready(team.id, request.user.id)
+        return Response({"detail": "Besked sendt.", "sent": True})
+
+
+class NotifyLeftoversReadyView(APIView):
+    """Today's team announces leftovers, optionally with a photo."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request, pk: int) -> Response:
+        try:
+            team = FoodTeam.objects.get(pk=pk)
+        except FoodTeam.DoesNotExist:
+            return Response({"detail": "Madhold ikke fundet."}, status=status.HTTP_404_NOT_FOUND)
+        if team.date != timezone.localdate():
+            return Response(
+                {"detail": "Kun dagens madhold kan sende denne besked."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not team.members.filter(user_id=request.user.id).exists():
+            return Response(
+                {"detail": "Kun medlemmer af dagens madhold kan sende denne besked."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        image_url = ""
+        image = request.FILES.get("image")
+        if image:
+            from django.core.files.storage import default_storage
+
+            ext = (image.name.rsplit(".", 1)[-1] if "." in image.name else "jpg")[:5]
+            path = default_storage.save(
+                f"food_leftovers/{team.date.isoformat()}_{team.id}.{ext}", image
+            )
+            from django.conf import settings as dj_settings
+
+            image_url = request.build_absolute_uri(dj_settings.MEDIA_URL + path)
+
+        message = str(request.data.get("message", "")).strip()
+
+        team.leftovers_message = message
+        team.leftovers_image_url = image_url
+        team.leftovers_announced_at = timezone.now()
+        team.save(
+            update_fields=["leftovers_message", "leftovers_image_url", "leftovers_announced_at"]
+        )
+
+        from apps.notifications.tasks import broadcast_leftovers_ready
+
+        broadcast_leftovers_ready(team.id, request.user.id, image_url, message)
+        return Response({"detail": "Besked sendt.", "sent": True})
+
+
+class TodayLeftoversView(APIView):
+    """The most recent 'Rester er klar' announcement for today (any user can read)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        today = timezone.localdate()
+        team = (
+            FoodTeam.objects.filter(date=today, leftovers_announced_at__isnull=False)
+            .prefetch_related("members__user")
+            .first()
+        )
+        if not team:
+            return Response({"has_leftovers": False})
+        member_names = [m.user.first_name for m in team.members.all()]
+        return Response(
+            {
+                "has_leftovers": True,
+                "team_id": team.id,
+                "date": today.isoformat(),
+                "day_name": team.day_name,
+                "members": member_names,
+                "message": team.leftovers_message,
+                "image_url": team.leftovers_image_url,
+                "announced_at": team.leftovers_announced_at,
+            }
+        )
+
+
+class TakeoverView(APIView):
+    """Take over another user's shift; they owe you a favour next cycle."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request) -> Response:
+        serializer = TakeoverSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        membership: FoodTeamMember = serializer.context["target_membership"]
+        debtor = membership.user
+        team = membership.team
+
+        with transaction.atomic():
+            # Cancel pending swaps / broadcasts involving this membership.
+            TeamSwapRequest.objects.filter(status=SwapRequestStatus.PENDING).filter(
+                Q(requester_membership=membership) | Q(target_membership=membership)
+            ).update(status=SwapRequestStatus.CANCELLED)
+            SwapBroadcast.objects.filter(
+                requester_membership=membership, status=BroadcastStatus.OPEN
+            ).update(status=BroadcastStatus.CANCELLED)
+
+            membership.user = request.user
+            membership.house_number = _house_number_for(request.user)  # ty: ignore[invalid-assignment]
+            membership.save()
+
+            favour = TeamFavour.objects.create(
+                creditor=request.user,
+                debtor=debtor,
+                cycle=team.cycle,
+                origin_date=team.date,
+                note=serializer.validated_data.get("note", ""),
+            )
+
+        # Notify the freed user.
+        from apps.notifications.services import notify_food_swap_request
+
+        with contextlib.suppress(Exception):
+            notify_food_swap_request(
+                debtor,
+                request.user.first_name,
+                _danish_date_label(team.date),
+                "/madhold/mine-hold",
+                related_user=request.user,
+            )
+
+        return Response(
+            TeamFavourSerializer(favour, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+def _compute_broadcast_candidates(
+    requester, requester_date: date, available_dates: list[date]
+) -> list[int]:
+    """Users who could plausibly take ``requester_date`` and currently hold a
+    membership on one of ``available_dates``."""
+    from apps.users.models import User
+
+    cycle = FoodTeam.objects.filter(date=requester_date).values_list("cycle_id", flat=True).first()
+    # People currently cooking on a date the requester can take.
+    holder_ids = set(
+        FoodTeamMember.objects.filter(team__date__in=available_dates)
+        .exclude(user=requester)
+        .values_list("user_id", flat=True)
+    )
+    if not holder_ids:
+        return []
+
+    weekday = requester_date.weekday()
+    # People who indicated availability for requester_date via this cycle's wish.
+    wish_user_ids: set[int] = set()
+    if cycle:
+        for wish in FoodTeamWish.objects.filter(cycle_id=cycle, is_unavailable=False):
+            if requester_date.isoformat() in wish.available_dates:
+                wish_user_ids.add(wish.user_id)
+
+    # ...or via their default cooking weekday. JSONField __contains is unsupported
+    # on SQLite, so check membership in Python (only among current holders).
+    weekday_user_ids = {
+        uid
+        for uid, days in User.objects.filter(id__in=holder_ids).values_list(
+            "id", "default_cooking_days"
+        )
+        if weekday in (days or [])
+    }
+
+    eligible = (wish_user_ids | weekday_user_ids) & holder_ids
+    # Exclude requester's own house (would collide on requester_date).
+    if requester.house_id:
+        same_house = set(
+            User.objects.filter(house_id=requester.house_id).values_list("id", flat=True)
+        )
+        eligible -= same_house
+    return sorted(eligible)
+
+
+class SwapBroadcastListCreateView(generics.ListCreateAPIView):
+    """List relevant broadcasts or create a new 'bytteanmodning'."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_class(self) -> type:
+        if self.request.method == "POST":
+            return CreateSwapBroadcastSerializer
+        return SwapBroadcastSerializer
+
+    def get_queryset(self) -> QuerySet[SwapBroadcast]:
+        user = self.request.user
+        # Dates the user currently cooks (so we can surface broadcasts they can accept).
+        my_date_strs = {
+            d.isoformat()
+            for d in FoodTeamMember.objects.filter(user=user).values_list("team__date", flat=True)
+        }
+        # JSONField list lookups (__contains/__overlap) aren't supported on SQLite,
+        # so fetch my own + all recent broadcasts and filter candidacy in Python.
+        # IMPORTANT: also include CLOSED (accepted/cancelled) broadcasts where the
+        # user was a candidate, so when they click their notification AFTER someone
+        # else accepted they can still see "already accepted by X" instead of an
+        # empty list. Restrict to recent ones so the list doesn't grow forever.
+        from datetime import timedelta
+
+        cutoff = timezone.now() - timedelta(days=14)
+        base = (
+            SwapBroadcast.objects.filter(Q(requester=user) | Q(created_at__gte=cutoff))
+            .select_related("requester", "requester_membership__team", "accepted_by")
+            .order_by("-created_at")
+        )
+        relevant_ids = [
+            b.id
+            for b in base
+            if b.requester_id == user.id
+            or user.id in (b.candidate_user_ids or [])
+            or (my_date_strs & set(b.available_dates or []))
+        ]
+        return base.filter(id__in=relevant_ids)
+
+    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        membership: FoodTeamMember = serializer.context["requester_membership"]
+        available_dates: list[date] = serializer.validated_data["available_dates"]
+        candidates = _compute_broadcast_candidates(
+            request.user, membership.team.date, available_dates
+        )
+        broadcast = SwapBroadcast.objects.create(
+            requester=request.user,
+            requester_membership=membership,
+            available_dates=[d.isoformat() for d in available_dates],
+            candidate_user_ids=candidates,
+            message=serializer.validated_data.get("message", ""),
+        )
+        from apps.notifications.tasks import notify_swap_broadcast
+
+        if candidates:
+            notify_swap_broadcast(broadcast.id)
+        return Response(
+            SwapBroadcastSerializer(broadcast, context={"request": request}).data
+            | {"candidate_count": len(candidates)},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class SwapBroadcastDetailView(generics.RetrieveDestroyAPIView):
+    """Retrieve or cancel a broadcast (requester only)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = SwapBroadcastSerializer
+
+    def get_queryset(self) -> QuerySet[SwapBroadcast]:
+        return SwapBroadcast.objects.select_related(
+            "requester", "requester_membership__team", "accepted_by"
+        )
+
+    def destroy(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        broadcast = self.get_object()
+        if broadcast.requester_id != request.user.id:
+            return Response(
+                {"detail": "Kun afsenderen kan annullere."}, status=status.HTTP_403_FORBIDDEN
+            )
+        if broadcast.status != BroadcastStatus.OPEN:
+            return Response(
+                {"detail": "Anmodningen er allerede afsluttet."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        broadcast.status = BroadcastStatus.CANCELLED
+        broadcast.save(update_fields=["status", "updated_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AcceptSwapBroadcastView(APIView):
+    """Accept a broadcast with one of your memberships on an offered date."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request, pk: int) -> Response:
+        try:
+            broadcast = SwapBroadcast.objects.select_related(
+                "requester_membership__team", "requester"
+            ).get(pk=pk)
+        except SwapBroadcast.DoesNotExist:
+            return Response({"detail": "Ikke fundet."}, status=status.HTTP_404_NOT_FOUND)
+
+        if broadcast.status != BroadcastStatus.OPEN:
+            return Response(
+                {"detail": "Anmodningen er allerede afsluttet."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if broadcast.requester_id == request.user.id:
+            return Response(
+                {"detail": "Du kan ikke acceptere din egen anmodning."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = AcceptSwapBroadcastSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            my_membership = FoodTeamMember.objects.select_related("team").get(
+                pk=serializer.validated_data["membership_id"], user=request.user
+            )
+        except FoodTeamMember.DoesNotExist:
+            return Response(
+                {"detail": "Dit madholdsmedlemskab blev ikke fundet."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        offered = {date.fromisoformat(d) for d in broadcast.available_dates}
+        if my_membership.team.date not in offered:
+            return Response(
+                {"detail": "Den valgte maddag er ikke blandt de ønskede dage."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        requester_membership = broadcast.requester_membership
+        with transaction.atomic():
+            r_user, r_house = requester_membership.user, requester_membership.house_number
+            m_user, m_house = my_membership.user, my_membership.house_number
+            requester_membership.user, requester_membership.house_number = m_user, m_house
+            my_membership.user, my_membership.house_number = r_user, r_house
+            requester_membership.save()
+            my_membership.save()
+
+            broadcast.status = BroadcastStatus.ACCEPTED
+            broadcast.accepted_by = request.user
+            broadcast.accepted_membership = my_membership
+            broadcast.save(
+                update_fields=["status", "accepted_by", "accepted_membership", "updated_at"]
+            )
+
+            # Tidy up other open offers / pending swaps on these memberships.
+            SwapBroadcast.objects.filter(status=BroadcastStatus.OPEN).filter(
+                Q(requester_membership__in=[requester_membership, my_membership])
+            ).exclude(pk=broadcast.pk).update(status=BroadcastStatus.CANCELLED)
+            TeamSwapRequest.objects.filter(status=SwapRequestStatus.PENDING).filter(
+                Q(requester_membership__in=[requester_membership, my_membership])
+                | Q(target_membership__in=[requester_membership, my_membership])
+            ).update(status=SwapRequestStatus.CANCELLED)
+
+        from apps.notifications.services import notify_food_swap_request
+
+        with contextlib.suppress(Exception):
+            notify_food_swap_request(
+                broadcast.requester,
+                request.user.first_name,
+                _danish_date_label(requester_membership.team.date),
+                "/madhold/bytte",
+                related_user=request.user,
+            )
+        return Response(SwapBroadcastSerializer(broadcast, context={"request": request}).data)
+
+
+class FavourListView(generics.ListAPIView):
+    """Favours where the current user is creditor or debtor."""
+
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = TeamFavourSerializer
+
+    def get_queryset(self) -> QuerySet[TeamFavour]:
+        return (
+            TeamFavour.objects.filter(Q(creditor=self.request.user) | Q(debtor=self.request.user))
+            .select_related("creditor", "debtor")
+            .order_by("settled", "-created_at")
+        )
+
+
+class FavourSettleView(APIView):
+    """Mark a favour as settled (creditor only)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request, pk: int) -> Response:
+        try:
+            favour = TeamFavour.objects.get(pk=pk)
+        except TeamFavour.DoesNotExist:
+            return Response({"detail": "Ikke fundet."}, status=status.HTTP_404_NOT_FOUND)
+        if favour.creditor_id != request.user.id:
+            return Response(
+                {"detail": "Kun den der har tjenesten til gode kan markere den som indfriet."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        favour.settled = True
+        favour.settled_at = timezone.now()
+        favour.save(update_fields=["settled", "settled_at"])
+        return Response(TeamFavourSerializer(favour, context={"request": request}).data)
+
+
+class MyFoodProfileView(generics.RetrieveUpdateAPIView):
+    """Self-service food-team profile for the current user."""
+
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = MyFoodProfileSerializer
+
+    def get_object(self):  # type: ignore[no-untyped-def]
+        return self.request.user
+
+
+class FoodRosterListView(generics.ListAPIView):
+    """Admin roster of all users with their food-team flags."""
+
+    permission_classes = [permissions.IsAuthenticated, IsFoodAdmin]
+    serializer_class = FoodRosterSerializer
+
+    def get_queryset(self) -> QuerySet:
+        from apps.users.models import User
+
+        return (
+            User.objects.filter(is_active=True)
+            .select_related("house")
+            .order_by("house__name", "first_name")
+        )
+
+
+class FoodRosterDetailView(generics.UpdateAPIView):
+    """Admin: update a single user's food-team flags."""
+
+    permission_classes = [permissions.IsAuthenticated, IsFoodAdmin]
+    serializer_class = FoodRosterSerializer
+
+    def get_queryset(self) -> QuerySet:
+        from apps.users.models import User
+
+        return User.objects.all()
