@@ -161,12 +161,14 @@ def parse_exdates(exdate_list: list[tuple]) -> list[date]:
     return dates
 
 
-def _resolve_user_from_ev(ev: dict, fallback: object) -> object:
+def _resolve_user_from_ev(ev: dict, fallback: object) -> object | None:
     """Try to find the responsible user via the house number embedded in the event.
 
     Looks at X-TEAMUP-NAVN-PU00E5-ANSVARLIG-HUSNUMMER (the 'responsible person,
     house number' field Teamup exports). Extracts every integer from the string and
-    tries each as a house slug. Returns the first active user found, or fallback.
+    tries each as a house slug. Returns the first active user found, or fallback if
+    no house number field is present. Returns None if the field is present but no
+    matching user is found (caller should skip the event).
     """
     raw = ev.get("X-TEAMUP-NAVN-PU00E5-ANSVARLIG-HUSNUMMER")
     if not raw:
@@ -176,7 +178,7 @@ def _resolve_user_from_ev(ev: dict, fallback: object) -> object:
         user = User.objects.filter(house__slug=number, is_active=True).first()
         if user:
             return user
-    return fallback
+    return None
 
 
 def parse_rrule(rrule_value: str) -> dict[str, str]:
@@ -330,7 +332,14 @@ class Command(BaseCommand):
             self.stdout.write(f"  WARN: Missing datetime for {title!r}, skipping")
             return
 
+        if dtstart.astimezone(CPH).year < 2026:
+            return
+
         resolved_user = _resolve_user_from_ev(ev, fallback=user)
+        if resolved_user is None:
+            house_raw = _unescape(ev.get("X-TEAMUP-NAVN-PU00E5-ANSVARLIG-HUSNUMMER", ("", {}))[0])
+            self.stdout.write(f"  SKIP (no user match): {title!r} — house field {house_raw!r}")
+            return
 
         rrule_entry = ev.get("RRULE")
         if rrule_entry:
