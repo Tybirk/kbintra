@@ -131,6 +131,7 @@ class Thread(models.Model):
         default=False,
         help_text="If true, only members of the subgroup (and the author) can see this thread.",
     )
+    legacy_url = models.CharField(max_length=500, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
