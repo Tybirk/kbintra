@@ -32,6 +32,7 @@ class Announcement(models.Model):
         default=0,
         help_text="Higher priority announcements appear first",
     )
+    legacy_url = models.CharField(max_length=500, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -59,6 +60,7 @@ class AnnouncementAttachment(models.Model):
     file = models.FileField(upload_to="announcement_attachments/")
     name = models.CharField(max_length=255)
     preview_html = models.TextField(blank=True, default="")
+    legacy_url = models.CharField(max_length=500, blank=True, null=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

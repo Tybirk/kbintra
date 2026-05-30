@@ -185,6 +185,7 @@ class Post(models.Model):
         blank=True,
         related_name="edited_posts",
     )
+    legacy_url = models.CharField(max_length=500, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -228,6 +229,7 @@ class PostAttachment(models.Model):
         blank=True,
         help_text="HTML preview for DOCX files, generated on upload.",
     )
+    legacy_url = models.CharField(max_length=500, blank=True, null=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -265,6 +267,7 @@ class Folder(models.Model):
         blank=True,
         related_name="children",
     )
+    legacy_url = models.CharField(max_length=500, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -481,6 +484,7 @@ class File(models.Model):
         default=False,
         help_text="If true, only members of the subgroup (and the uploader) can see this file.",
     )
+    legacy_url = models.CharField(max_length=500, blank=True, null=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
