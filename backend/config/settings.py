@@ -396,8 +396,10 @@ if SENTRY_DSN:
         ],
         # Performance: capture 10% of requests as traces in production
         traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
-        # Profiling: sample 10% of traced requests for CPU profiling
-        profiles_sample_rate=float(os.getenv("SENTRY_PROFILES_SAMPLE_RATE", "0.1")),
+        # Profiling disabled by default — the transaction profiler runs extract_stack()
+        # via a daemon thread at 100Hz and has caused SIGSEGV crashes in production
+        # (see docs/daphne-segfault.md). Opt in with SENTRY_PROFILES_SAMPLE_RATE=0.1.
+        profiles_sample_rate=float(os.getenv("SENTRY_PROFILES_SAMPLE_RATE", "0")),
         # Include authenticated user email/name in error reports
         send_default_pii=True,
         before_send=_sentry_before_send,

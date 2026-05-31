@@ -104,6 +104,36 @@ class TestAnnouncementAPI:
         assert response.status_code == 201
         assert Announcement.objects.filter(title="New Announcement").exists()
 
+    def test_create_announcement_with_attachment_is_active(self, authenticated_client):
+        """An announcement created with an attachment (multipart) must default to active.
+
+        Regression: DRF maps a missing BooleanField in multipart input to False, which
+        silently saved image announcements as is_active=False/show_on_dashboard=False so
+        they never appeared in the list. They should default to True like the JSON path.
+        """
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        image = SimpleUploadedFile("photo.png", b"fake-image-bytes", content_type="image/png")
+        response = authenticated_client.post(
+            "/api/announcements/",
+            {
+                "title": "Med billede",
+                "content": "<p>Se billedet</p>",
+                "attachments": [image],
+            },
+            format="multipart",
+        )
+        assert response.status_code == 201
+        created = Announcement.objects.get(title="Med billede")
+        assert created.is_active is True
+        assert created.show_on_dashboard is True
+        assert created.attachments.count() == 1
+
+        # And it must actually show up in the default (active-only) list.
+        list_response = authenticated_client.get("/api/announcements/")
+        titles = [a["title"] for a in list_response.json()]
+        assert "Med billede" in titles
+
     def test_get_announcement(self, authenticated_client, announcement):
         """Test getting a single announcement."""
         response = authenticated_client.get(f"/api/announcements/{announcement.id}/")

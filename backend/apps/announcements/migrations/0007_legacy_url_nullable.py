@@ -7,8 +7,10 @@ def _make_nullable(cursor, table, new_ddl, indexes):
 
     if "legacy_url" not in columns:
         cursor.execute(f'ALTER TABLE "{table}" ADD COLUMN "legacy_url" varchar(500) NULL')
+        # Only create the legacy_url index — other indexes already exist on the table
         for idx in indexes:
-            cursor.execute(idx)
+            if '"legacy_url"' in idx:
+                cursor.execute(idx)
     elif columns["legacy_url"][3] == 1:  # notnull=1
         cursor.execute("PRAGMA foreign_keys=OFF")
         cursor.execute(new_ddl)

@@ -8,9 +8,15 @@ Each ICS file corresponds to one room (identified by CATEGORIES field).
 
 Import rules:
   FREQ=WEEKLY, INTERVAL=1  →  RecurringBooking + RecurringBookingException per EXDATE
+                              (imported even if it started before the import year,
+                              as long as it has not already ended)
+  FREQ=WEEKLY, INTERVAL>1  →  one silent COMMUNITY calendar event per occurrence
+                              within the import year (e.g. every-N-weeks recycling
+                              pickups) — no room, no reminder notifications
   Any other RRULE           →  one-time Event at DTSTART (logged as warning)
   No RRULE                  →  one-time Event
 
+One-time events before the import year are skipped as unimportant history.
 Conflicts are logged but never cause the command to abort.
 """
 
@@ -19,14 +25,22 @@ import re
 from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
+from dateutil.rrule import rrulestr
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.bookings.models import RecurringBooking, RecurringBookingException, Room
-from apps.events.models import Event
+from apps.events.models import Event, EventReminderLog
 
 User = get_user_model()
 CPH = ZoneInfo("Europe/Copenhagen")
+
+# Recurring bookings (weekly) and expanded events are anchored to this calendar
+# year. Ongoing recurring bookings that started earlier are still imported, but
+# anything that already ended before this date is treated as unimportant history.
+IMPORT_YEAR = 2026
+WINDOW_START = datetime(IMPORT_YEAR, 1, 1, 0, 0, 0, tzinfo=CPH)
+WINDOW_END = datetime(IMPORT_YEAR, 12, 31, 23, 59, 59, tzinfo=CPH)
 
 ICS_DAYS = {"MO": 0, "TU": 1, "WE": 2, "TH": 3, "FR": 4, "SA": 5, "SU": 6}
 
@@ -190,6 +204,35 @@ def parse_rrule(rrule_value: str) -> dict[str, str]:
     return result
 
 
+def clean_calendar_title(title: str) -> str:
+    """Strip a trailing '(person, house)' suffix from a Teamup title.
+
+    Recycling pickups are shown as plain community calendar entries, so
+    'Madaffald (Susanne, 37)' becomes 'Madaffald'.
+    """
+    return re.sub(r"\s*\([^()]*\)\s*$", "", title).strip() or title
+
+
+def expand_occurrences_in_window(
+    dtstart: datetime, rrule_value: str, exdates: set[date]
+) -> list[datetime]:
+    """Expand an RRULE into all occurrence start datetimes within the import year.
+
+    Respects UNTIL/COUNT (via the RRULE itself) and EXDATEs. Returns aware
+    datetimes in Copenhagen time. Used for recurrences that the booking system
+    cannot represent natively (e.g. weekly INTERVAL>1 recycling pickups), which
+    we materialise as individual one-time events.
+    """
+    rule = rrulestr(rrule_value, dtstart=dtstart)
+    occurrences: list[datetime] = []
+    for occ in rule.between(WINDOW_START, WINDOW_END, inc=True):
+        occ_local = occ.astimezone(CPH)
+        if occ_local.date() in exdates:
+            continue
+        occurrences.append(occ_local)
+    return occurrences
+
+
 # ---------------------------------------------------------------------------
 # Management command
 # ---------------------------------------------------------------------------
@@ -226,9 +269,11 @@ class Command(BaseCommand):
             "rooms_created": 0,
             "recurring_created": 0,
             "recurring_skipped": 0,
+            "recurring_ended": 0,
             "exceptions_created": 0,
             "events_created": 0,
             "events_skipped": 0,
+            "expanded_events_created": 0,
             "unsupported_rrule": 0,
         }
 
@@ -240,13 +285,16 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS(
                 f"Done:\n"
-                f"  Rooms created:       {stats['rooms_created']}\n"
-                f"  Recurring created:   {stats['recurring_created']}\n"
-                f"  Recurring skipped:   {stats['recurring_skipped']} (conflict)\n"
-                f"  Exceptions created:  {stats['exceptions_created']}\n"
-                f"  Events created:      {stats['events_created']}\n"
-                f"  Events skipped:      {stats['events_skipped']} (conflict)\n"
-                f"  Unsupported RRULE:   {stats['unsupported_rrule']} (imported as one-time)"
+                f"  Rooms created:           {stats['rooms_created']}\n"
+                f"  Recurring created:       {stats['recurring_created']}\n"
+                f"  Recurring skipped:       {stats['recurring_skipped']} (conflict)\n"
+                f"  Recurring ended (skip):  {stats['recurring_ended']} (ended before {IMPORT_YEAR})\n"
+                f"  Exceptions created:      {stats['exceptions_created']}\n"
+                f"  Events created:          {stats['events_created']}\n"
+                f"  Events skipped:          {stats['events_skipped']} (conflict)\n"
+                f"  Expanded events:         {stats['expanded_events_created']} "
+                f"(INTERVAL>1 occurrences in {IMPORT_YEAR})\n"
+                f"  Unsupported RRULE:       {stats['unsupported_rrule']} (imported as one-time)"
             )
         )
 
@@ -332,9 +380,6 @@ class Command(BaseCommand):
             self.stdout.write(f"  WARN: Missing datetime for {title!r}, skipping")
             return
 
-        if dtstart.astimezone(CPH).year < 2026:
-            return
-
         resolved_user = _resolve_user_from_ev(ev, fallback=user)
         if resolved_user is None:
             house_raw = _unescape(ev.get("X-TEAMUP-NAVN-PU00E5-ANSVARLIG-HUSNUMMER", ("", {}))[0])
@@ -348,6 +393,8 @@ class Command(BaseCommand):
             interval = int(rrule.get("INTERVAL", "1"))
 
             if freq == "WEEKLY" and interval == 1:
+                # Native recurring booking. Imported regardless of how long ago it
+                # started, as long as it has not already ended (see _import_recurring).
                 self._import_recurring(
                     ev,
                     room,
@@ -360,7 +407,27 @@ class Command(BaseCommand):
                     dry_run,
                     stats,
                 )
+            elif freq == "WEEKLY" and interval > 1:
+                # Every-N-weeks (e.g. recycling pickups). The booking model has no
+                # interval, so materialise each occurrence in the import year as a
+                # one-time event.
+                self._import_expanded(
+                    ev,
+                    room,
+                    resolved_user,
+                    title,
+                    description,
+                    dtstart,
+                    dtend,
+                    rrule_entry[0],
+                    dry_run,
+                    stats,
+                )
             else:
+                # Yearly/other recurrences are kept as a single one-time event at
+                # DTSTART (historical ones before the import year are skipped).
+                if dtstart.astimezone(CPH).year < IMPORT_YEAR:
+                    return
                 stats["unsupported_rrule"] += 1
                 self.stdout.write(
                     f"  WARN: Unsupported RRULE '{rrule_entry[0]}' for {title!r}"
@@ -370,6 +437,9 @@ class Command(BaseCommand):
                     room, resolved_user, title, description, dtstart, dtend, dry_run, stats
                 )
         else:
+            # Plain one-time event. Historical events are unimportant — skip them.
+            if dtstart.astimezone(CPH).year < IMPORT_YEAR:
+                return
             self._import_event(
                 room, resolved_user, title, description, dtstart, dtend, dry_run, stats
             )
@@ -411,6 +481,14 @@ class Command(BaseCommand):
                     effective_until = until_dt.astimezone(CPH).date()
             except Exception:
                 pass
+
+        # Skip recurring bookings that already ended before the import year — they
+        # are unimportant history. Ongoing ones are imported even if they started
+        # years ago (effective_from stays at the real start date).
+        if effective_until and effective_until < WINDOW_START.date():
+            self.stdout.write(f"  SKIP (recurring ended {effective_until}): {title!r}")
+            stats["recurring_ended"] += 1
+            return
 
         # Conflict check: same room + title + start_time (skip if room has no PK yet)
         existing = (
@@ -459,6 +537,114 @@ class Command(BaseCommand):
             stats["recurring_created"] += 1
             stats["exceptions_created"] += len(parse_exdates(ev.get("EXDATE_LIST", [])))
 
+    def _import_expanded(
+        self,
+        ev: dict,
+        room: Room,
+        user: object,
+        title: str,
+        description: str,
+        dtstart: datetime,
+        dtend: datetime,
+        rrule_value: str,
+        dry_run: bool,
+        stats: dict[str, int],
+    ) -> None:
+        """Materialise an every-N-weeks recurrence (e.g. recycling pickups) as
+        community calendar events in the import year.
+
+        These belong on the shared calendar rather than the room booking system,
+        so they are created with COMMUNITY visibility and no room. They are also
+        silenced (no reminder notifications) — there are many, often at night, and
+        a community event without RSVP/subgroup would otherwise notify every
+        resident 24h and 1h before each pickup.
+        """
+        duration = dtend - dtstart
+        calendar_title = clean_calendar_title(title)
+        exdates = set(parse_exdates(ev.get("EXDATE_LIST", [])))
+        try:
+            occurrences = expand_occurrences_in_window(dtstart, rrule_value, exdates)
+        except Exception as exc:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"  WARN: cannot expand RRULE {rrule_value!r} for {title!r}: {exc}"
+                )
+            )
+            return
+
+        if not occurrences:
+            self.stdout.write(f"  No {IMPORT_YEAR} occurrences for {title!r} (RRULE {rrule_value})")
+            return
+
+        self.stdout.write(
+            f"  Expanding {calendar_title!r}: {len(occurrences)} calendar occurrence(s)"
+            f" in {IMPORT_YEAR} (RRULE {rrule_value})"
+        )
+        for occ in occurrences:
+            created = self._import_calendar_event(
+                user, calendar_title, description, occ, occ + duration, dry_run, stats
+            )
+            if created:
+                stats["expanded_events_created"] += 1
+
+    def _import_calendar_event(
+        self,
+        user: object,
+        title: str,
+        description: str,
+        dtstart: datetime,
+        dtend: datetime,
+        dry_run: bool,
+        stats: dict[str, int],
+    ) -> bool:
+        """Create a silent community calendar event (no room, no reminders).
+
+        Returns True if a new event was created.
+        """
+        # Conflict check: same title + exact start, among room-less calendar events.
+        if not dry_run:
+            existing = Event.objects.filter(
+                title=title,
+                start_datetime=dtstart,
+                rooms__isnull=True,
+            ).first()
+            if existing:
+                self.stdout.write(
+                    f"  SKIP (calendar): {title!r} on {dtstart.astimezone(CPH):%Y-%m-%d %H:%M}"
+                    f" — already exists (id={existing.pk})"
+                )
+                stats["events_skipped"] += 1
+                return False
+
+        self.stdout.write(
+            f"  Calendar: {title!r} | {dtstart.astimezone(CPH):%Y-%m-%d %H:%M}"
+            f"–{dtend.astimezone(CPH):%H:%M}"
+        )
+
+        if not dry_run:
+            try:
+                event = Event.objects.create(
+                    title=title,
+                    description=description,
+                    created_by=user,
+                    visibility=Event.Visibility.COMMUNITY,
+                    start_datetime=dtstart,
+                    end_datetime=dtend,
+                )
+                # Pre-log both reminder types so the periodic reminder task skips
+                # this event — silent calendar entry, no notification spam.
+                EventReminderLog.objects.bulk_create(
+                    [
+                        EventReminderLog(event=event, reminder_type=rt)
+                        for rt in EventReminderLog.ReminderType.values
+                    ]
+                )
+            except Exception as exc:
+                self.stdout.write(self.style.ERROR(f"  ERROR: {title!r}: {exc}"))
+                return False
+        # Counted by the caller as an expanded occurrence, not a plain event.
+        return True
+
     def _import_event(
         self,
         room: Room,
@@ -469,7 +655,8 @@ class Command(BaseCommand):
         dtend: datetime,
         dry_run: bool,
         stats: dict[str, int],
-    ) -> None:
+    ) -> bool:
+        """Create a one-time event. Returns True if a new event was created."""
         # Conflict check: same title + exact start_datetime + this room
         if room.pk and not dry_run:
             existing = Event.objects.filter(
@@ -483,7 +670,7 @@ class Command(BaseCommand):
                     f" — already exists (id={existing.pk})"
                 )
                 stats["events_skipped"] += 1
-                return
+                return False
 
         self.stdout.write(
             f"  Event: {title!r} | {dtstart.astimezone(CPH):%Y-%m-%d %H:%M}"
@@ -504,5 +691,7 @@ class Command(BaseCommand):
                 stats["events_created"] += 1
             except Exception as exc:
                 self.stdout.write(self.style.ERROR(f"  ERROR: {title!r}: {exc}"))
+                return False
         else:
             stats["events_created"] += 1
+        return True
