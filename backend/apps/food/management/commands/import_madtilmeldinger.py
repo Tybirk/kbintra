@@ -205,6 +205,19 @@ class Command(BaseCommand):
             ),
         )
         parser.add_argument(
+            "--exclude-weeks",
+            type=int,
+            nargs="*",
+            default=[],
+            metavar="WEEK",
+            help=(
+                "ISO week numbers to skip (e.g. --exclude-weeks 24 25). Useful when "
+                "those weeks are still editable in-app and the spreadsheet is no "
+                "longer authoritative for them. Does not affect the 'Fast tilmelding' "
+                "(preferences) sheet or closed-day import."
+            ),
+        )
+        parser.add_argument(
             "--dry-run",
             action="store_true",
             help="Parse and report without committing any changes.",
@@ -218,6 +231,7 @@ class Command(BaseCommand):
         import_preferences: bool,
         import_closed_days: bool,
         clear: bool,
+        exclude_weeks: list[int],
         dry_run: bool,
         **options,
     ):
@@ -262,6 +276,11 @@ class Command(BaseCommand):
                     )
                 else:
                     week = parsed["week_number"]
+                    if week in exclude_weeks:
+                        self.stdout.write(
+                            f"  Skipping '{sheet_name}' (uge {week}): excluded via --exclude-weeks."
+                        )
+                        continue
                     monday = _monday_of_iso_week(year, week)
 
                     c, u = self._import_registrations(parsed, houses, monday, missing_houses)
@@ -328,10 +347,18 @@ class Command(BaseCommand):
 
             for day in DayOfWeek:
                 veg, meat, children = _extract_day_values(row, day)
-                if veg == 0 and meat == 0 and children == 0:
-                    continue  # House did not register for this day
-
                 day_date = monday + timedelta(days=day.value)
+
+                # A zero/empty row means the house opted out of that day. We must
+                # still write a row — as an inactive tombstone — rather than
+                # skipping it. Post-deadline, the materialization safety net
+                # (_materialize_for_houses) recreates any *missing* registration
+                # from the house's standing MealPreference. Skipping opt-out days
+                # therefore lets that net resurrect a meal the house deliberately
+                # cancelled. An inactive row (is_active=False) is excluded from
+                # stats and billing but its existence blocks re-materialization.
+                is_active = not (veg == 0 and meat == 0 and children == 0)
+
                 _, was_created = MealRegistration.objects.update_or_create(
                     house=house,
                     date=day_date,
@@ -339,7 +366,7 @@ class Command(BaseCommand):
                         "adults_veg": veg,
                         "adults_meat": meat,
                         "children_count": children,
-                        "is_active": True,
+                        "is_active": is_active,
                     },
                 )
                 if was_created:

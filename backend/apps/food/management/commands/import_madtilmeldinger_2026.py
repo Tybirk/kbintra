@@ -41,13 +41,30 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
+            "--exclude-weeks",
+            type=int,
+            nargs="*",
+            default=[],
+            metavar="WEEK",
+            help=(
+                "ISO week numbers to skip (e.g. --exclude-weeks 24 25). When given, "
+                "--clear is disabled so the excluded weeks' existing rows are "
+                "preserved (the importer is idempotent via update_or_create)."
+            ),
+        )
+        parser.add_argument(
             "--dry-run",
             action="store_true",
             help="Parse and report without committing any changes.",
         )
 
-    def handle(self, *args, dry_run: bool, **options):
+    def handle(self, *args, exclude_weeks: list[int], dry_run: bool, **options):
         verbosity = options.get("verbosity", 1)
+
+        # Clearing deletes ALL registrations, which would also wipe any excluded
+        # weeks we are deliberately preserving. So only clear when nothing is
+        # excluded; otherwise rely on update_or_create to correct each week.
+        clear_first = not exclude_weeks
 
         for i, (label, drive_id, extra) in enumerate(_SOURCES):
             self.stdout.write(f"\n=== {label} ===")
@@ -55,7 +72,8 @@ class Command(BaseCommand):
                 "import_madtilmeldinger",
                 drive_id,
                 year=2026,
-                clear=(i == 0),  # clear test data only on first run
+                clear=(i == 0 and clear_first),  # clear test data only on first run
+                exclude_weeks=exclude_weeks,
                 dry_run=dry_run,
                 verbosity=verbosity,
                 **extra,

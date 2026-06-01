@@ -2524,3 +2524,118 @@ class TestBillingOnlyUsesRealRegistrations:
         data = response.json()
         house_data = next(h for h in data["houses"] if h["house_id"] == house.id)
         assert house_data["total_cost"] == "0.00"
+
+
+# =============================================================================
+# import_madtilmeldinger: opt-out handling
+# =============================================================================
+
+
+@pytest.mark.django_db
+class TestImportMadtilmeldingerOptOut:
+    """The importer must record opt-out (zero) days as inactive tombstones.
+
+    Post-deadline, _materialize_for_houses recreates any *missing* registration
+    from the house's standing MealPreference. If the importer skipped opt-out
+    days (leaving no row), that safety net would resurrect a meal the house
+    deliberately cancelled. Writing an inactive row blocks that.
+    """
+
+    def _make_house_with_inhabitant(self):
+        from apps.houses.models import House
+
+        house = House.objects.create(name="Kløverbakkevej 49", address="x")
+        assert house.slug == "49"
+        User.objects.create_user(email="h49@example.com", password="x", first_name="A", house=house)
+        return house
+
+    def _row_mon_active_wed_optout(self):
+        # husnr, Mon[V,W,ch], Tue[V,W,ch], Wed[V,W,KF,ch], Thu[V,W,ch]
+        return ["49", "2", "0", "0", "2", "0", "0", "0", "0", "0", "0", "2", "0", "0"]
+
+    def test_optout_day_written_as_inactive_tombstone(self):
+        from apps.food.management.commands.import_madtilmeldinger import Command
+
+        house = self._make_house_with_inhabitant()
+        monday = date(2026, 6, 1)
+        wednesday = date(2026, 6, 3)
+
+        # Simulate a pre-existing (spurious) active Wednesday registration.
+        MealRegistration.objects.create(
+            house=house, date=wednesday, adults_veg=0, adults_meat=2, is_active=True
+        )
+
+        parsed = {"house_data": [self._row_mon_active_wed_optout()]}
+        Command()._import_registrations(parsed, {"49": house}, monday, [])
+
+        # Active day imported normally.
+        mon = MealRegistration.objects.get(house=house, date=monday)
+        assert mon.is_active is True
+        assert (mon.adults_veg, mon.adults_meat) == (2, 0)
+
+        # Opt-out Wednesday is NOT deleted — it becomes an inactive tombstone.
+        wed = MealRegistration.objects.get(house=house, date=wednesday)
+        assert wed.is_active is False
+        assert (wed.adults_veg, wed.adults_meat, wed.children_count) == (0, 0, 0)
+
+    def test_tombstone_blocks_rematerialization(self):
+        from apps.food.management.commands.import_madtilmeldinger import Command
+        from apps.food.tasks import _materialize_for_houses
+
+        house = self._make_house_with_inhabitant()
+        monday = date(2026, 6, 1)
+        wednesday = date(2026, 6, 3)
+
+        # House's standing order *includes* Wednesday meat — the resurrection trap.
+        MealPreference.objects.create(
+            house=house, day_of_week=DayOfWeek.WEDNESDAY, adults_veg=0, adults_meat=2
+        )
+
+        parsed = {"house_data": [self._row_mon_active_wed_optout()]}
+        Command()._import_registrations(parsed, {"49": house}, monday, [])
+
+        # The post-deadline materialization net runs over the opt-out date.
+        _materialize_for_houses([wednesday])
+
+        # It must NOT resurrect the cancelled Wednesday meal.
+        wed = MealRegistration.objects.get(house=house, date=wednesday)
+        assert wed.is_active is False
+        assert (wed.adults_veg, wed.adults_meat) == (0, 0)
+        assert not MealRegistration.objects.filter(date=wednesday, is_active=True).exists()
+
+    def _write_week_csv(self, tmp_path, week: int):
+        """Write a minimal single-week sheet CSV in the madtilmeldinger format."""
+        lines = [
+            "V=Vegetar W=Weganer KF=Kød/Fisk Børn (1-11)",
+            ",,,,,,,,,,,,,,,",  # row 1: holiday notes (none)
+            "Uge,Mandag (Vegetar),,,Tirsdag (Vegetar),,,Onsdag (Kød),,,,Torsdag (Vegetar),,,,",
+            f"{week},Voksne,,Børn,Voksne,,Børn,Voksne,,,Børn,Voksne,,Børn,,",
+            "Husnr,V,W,1-11,V,W,1-11,V,W,KF,1-11,V,W,1-11,Husnr,Pris",
+            "49,2,0,0,2,0,0,0,0,0,0,2,0,0,49,156",
+        ]
+        path = tmp_path / f"uge{week}.csv"
+        path.write_text("\n".join(lines), encoding="utf-8")
+        return str(path)
+
+    def test_exclude_weeks_skips_that_week(self, tmp_path):
+        from django.core.management import call_command
+
+        self._make_house_with_inhabitant()
+        source = self._write_week_csv(tmp_path, week=23)
+
+        call_command("import_madtilmeldinger", source, year=2026, exclude_weeks=[23])
+
+        # Excluded → nothing written for week 23 (Mon 2026-06-01).
+        assert not MealRegistration.objects.filter(date=date(2026, 6, 1)).exists()
+
+    def test_without_exclude_week_is_imported(self, tmp_path):
+        from django.core.management import call_command
+
+        self._make_house_with_inhabitant()
+        source = self._write_week_csv(tmp_path, week=23)
+
+        call_command("import_madtilmeldinger", source, year=2026)
+
+        # Monday active, Wednesday opt-out tombstoned.
+        assert MealRegistration.objects.get(date=date(2026, 6, 1)).is_active is True
+        assert MealRegistration.objects.get(date=date(2026, 6, 3)).is_active is False
