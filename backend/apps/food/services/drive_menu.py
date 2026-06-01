@@ -307,14 +307,25 @@ class DriveMenuService:
         """Parse a .docx file and extract menu information from page 1 only."""
         doc = Document(file_content)
 
-        # Extract text from page 1 only (stop at page break)
+        # Extract text from page 1 only (the weekly overview). Detailed recipes
+        # live on later pages, so we stop at the first page break.
         page1_paragraphs = []
+        # A day's dish can spill onto the next page when that day's header sits
+        # at the very bottom of page 1 (most often Torsdag). Remember the first
+        # paragraph on the next page so we can rescue that dish below; otherwise
+        # the page-break cutoff drops it and the day shows up empty.
+        overflow_paragraph = ""
+        page_break_seen = False
         for para in doc.paragraphs:
-            # Check for page break before adding
+            text = para.text.strip()
             if self._has_page_break(para):
+                page_break_seen = True
+            if not text:
+                continue
+            if page_break_seen:
+                overflow_paragraph = text
                 break
-            if para.text.strip():
-                page1_paragraphs.append(para.text.strip())
+            page1_paragraphs.append(text)
 
         raw_content = "\n".join(page1_paragraphs)
 
@@ -354,17 +365,21 @@ class DriveMenuService:
                         break
 
             if day_found:
-                # If we've already seen this day, we've hit the detailed recipe section
-                # (some documents repeat the day headers in both an overview and a recipe
-                # section on the same page). Save the current day and stop.
-                if day_found in seen_days:
-                    if current_day and menu_lines:
-                        menus[current_day] = " ".join(menu_lines)
-                    break
-
-                # Save previous day's menu
+                # Save whatever we've accumulated for the day in progress.
                 if current_day and menu_lines:
                     menus[current_day] = " ".join(menu_lines)
+
+                # If we've already seen this day, we've hit a repeated header
+                # (some documents repeat day headers in both an overview and a
+                # detailed recipe section on the same page). Keep the first
+                # occurrence and skip the repeated section, but do NOT stop
+                # parsing: later days — notably Torsdag — can appear *after* a
+                # repeated earlier day, and breaking here silently dropped them
+                # (the cause of the missing Wednesday/Thursday menu bug).
+                if day_found in seen_days:
+                    current_day = None
+                    menu_lines = []
+                    continue
 
                 seen_days.add(day_found)
                 current_day = day_found
@@ -381,6 +396,15 @@ class DriveMenuService:
         # Don't forget the last day
         if current_day and menu_lines:
             menus[current_day] = " ".join(menu_lines)
+        elif current_day and not menus[current_day] and overflow_paragraph:
+            # The last day's header sat at the bottom of page 1 and its dish
+            # spilled onto page 2. Rescue it — unless the next page just starts a
+            # repeated day section (recipes), in which case it is not a dish.
+            is_day_header = any(
+                p.match(overflow_paragraph) for p in self.DAY_PATTERNS.values()
+            ) or any(p.match(overflow_paragraph) for p in self.DAY_PATTERNS_FLEXIBLE.values())
+            if not is_day_header:
+                menus[current_day] = overflow_paragraph.replace("\n", " ")
 
         return ParsedMenu(
             week_number=week_number,
