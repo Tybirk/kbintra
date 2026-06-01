@@ -205,8 +205,10 @@ class DailyRegistrationStatsView(APIView):
     def _get_stats_for_dates(self, dates: list[date]) -> dict[str, dict[str, Any]]:
         """Get registration statistics for multiple dates in batched queries.
 
-        Effective portions = active registrations minus available (unsold) tickets.
-        Claimed tickets are NOT subtracted (the claimer eats in place of the seller).
+        Totals are gross registrations — tickets do not reduce them. Available
+        (unsold) tickets are ignored entirely; claimed tickets only move a
+        portion between dining/seating buckets (the buyer controls where they
+        eat), never changing the per-date total.
 
         With unique_together = ["house", "date"], each house has exactly one
         registration per date — no deduplication needed.
@@ -329,18 +331,6 @@ class DailyRegistrationStatsView(APIView):
                         virt[b]["children"] += children
                 virtual_by_date[d] = virt
 
-        # 5. Available tickets for all dates (1 query)
-        ticket_rows = (
-            FoodTicket.objects.filter(date__in=dates, is_available=True)
-            .values("date")
-            .annotate(
-                ticket_meat=Coalesce(Sum("adults_meat"), 0),
-                ticket_veg=Coalesce(Sum("adults_veg"), 0),
-                ticket_children=Coalesce(Sum("children_count"), 0),
-            )
-        )
-        tickets_by_date: dict[date, dict[str, int]] = {row["date"]: row for row in ticket_rows}
-        empty_tickets: dict[str, int] = {"ticket_meat": 0, "ticket_veg": 0, "ticket_children": 0}
         empty_virt: dict[str, dict[str, int]] = {
             "take_away": {"adults_meat": 0, "adults_veg": 0, "children": 0},
             "eat_in_1730": {"adults_meat": 0, "adults_veg": 0, "children": 0},
@@ -348,7 +338,7 @@ class DailyRegistrationStatsView(APIView):
             "total": {"adults_meat": 0, "adults_veg": 0, "children": 0},
         }
 
-        # 5b. Claimed ticket bucket adjustments (up to 2 queries)
+        # 5. Claimed ticket bucket adjustments (up to 2 queries)
         # Portions from claimed tickets are counted via the seller's registration,
         # but the buyer controls where/when they eat. Move claimed portions from
         # the seller's dining/seating bucket to the buyer's.
@@ -433,14 +423,10 @@ class DailyRegistrationStatsView(APIView):
                     agg[f"{bk}_veg"] = max(0, agg[f"{bk}_veg"] + delta["veg"])
                     agg[f"{bk}_children"] = max(0, agg[f"{bk}_children"] + delta["children"])
             virt = virtual_by_date.get(d, empty_virt)
-            tickets = tickets_by_date.get(d, empty_tickets)
 
             combined_meat = agg["total_meat"] + virt["total"]["adults_meat"]
             combined_veg = agg["total_veg"] + virt["total"]["adults_veg"]
             combined_children = agg["total_children"] + virt["total"]["children"]
-            eff_meat = max(0, combined_meat - tickets["ticket_meat"])
-            eff_veg = max(0, combined_veg - tickets["ticket_veg"])
-            eff_children = max(0, combined_children - tickets["ticket_children"])
 
             result[d.isoformat()] = {
                 "date": d.isoformat(),
@@ -453,11 +439,16 @@ class DailyRegistrationStatsView(APIView):
                 "eat_in_1830": _merge(
                     agg["e18_meat"], agg["e18_veg"], agg["e18_children"], virt["eat_in_1830"]
                 ),
-                "total": {
-                    "adults": eff_meat + eff_veg,
-                    "adults_meat": eff_meat,
-                    "adults_veg": eff_veg,
-                    "children": eff_children,
+                # Gross registration totals. Tickets are intentionally NOT
+                # deducted: an unsold (available) ticket does not reduce the
+                # number of portions registered, and the seller is still billed
+                # for their registration regardless of whether it sells. Ticket
+                # trading is peer-to-peer and never changes community aggregates.
+                "total_registrations": {
+                    "adults": combined_meat + combined_veg,
+                    "adults_meat": combined_meat,
+                    "adults_veg": combined_veg,
+                    "children": combined_children,
                 },
             }
 

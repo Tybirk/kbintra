@@ -739,7 +739,8 @@ export interface DailyRegistrationStats {
 
   eat_in_1830: RegistrationCount
 
-  total: TotalRegistrationCount
+  // Gross registration totals. Tickets never reduce these.
+  total_registrations: TotalRegistrationCount
 }
 
 // Backend returns this shape (instead of DailyRegistrationStats) for dates

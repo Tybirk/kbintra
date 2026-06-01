@@ -385,11 +385,14 @@ export default function FoodPage() {
 
     const stats = getDailyStats(weeklyStats, dateStr)
 
-    const veg = stats?.total.adults_veg ?? 0
+    // Budget is an income figure: use gross registrations, not effective
+    // portions. Available (unsold) tickets must NOT reduce it — the seller is
+    // still billed for their registration regardless of whether it sells.
+    const veg = stats?.total_registrations.adults_veg ?? 0
 
-    const meat = stats?.total.adults_meat ?? 0
+    const meat = stats?.total_registrations.adults_meat ?? 0
 
-    const kids = stats?.total.children ?? 0
+    const kids = stats?.total_registrations.children ?? 0
 
     weeklyBudget +=
       meat * PRICE_ADULT_MEAT + veg * PRICE_ADULT_VEG + kids * PRICE_CHILD

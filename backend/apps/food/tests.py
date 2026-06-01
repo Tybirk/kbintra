@@ -728,7 +728,7 @@ class TestRegistrationStatsView:
         response = authenticated_client.get(url, {"date": monday_date.isoformat()})
         assert response.status_code == 200
         data = response.json()
-        assert "total" in data
+        assert "total_registrations" in data
         assert "takeaway" in data
         assert "eat_in_1730" in data
         assert "eat_in_1830" in data
@@ -1033,8 +1033,8 @@ class TestWednesdayMeatVeg:
         response = authenticated_client.get(url, {"date": wednesday.isoformat()})
         assert response.status_code == 200
         data = response.json()
-        assert "adults_meat" in data["total"]
-        assert "adults_veg" in data["total"]
+        assert "adults_meat" in data["total_registrations"]
+        assert "adults_veg" in data["total_registrations"]
 
 
 @pytest.mark.django_db
@@ -1215,7 +1215,7 @@ class TestStatsWithPreferenceFallback:
         response = api_client.get(url, {"date": monday_date.isoformat()})
         assert response.status_code == 200
         data = response.json()
-        assert data["total"]["adults_veg"] > 0
+        assert data["total_registrations"]["adults_veg"] > 0
 
     def test_user_with_real_reg_not_double_counted(self, api_client, user_with_house, monday_date):
         """House with a real registration is not also counted via preference."""
@@ -1242,7 +1242,7 @@ class TestStatsWithPreferenceFallback:
         assert response.status_code == 200
         data = response.json()
         # Should count 2 (real reg), not 5 (2 + 3)
-        assert data["total"]["adults_veg"] == 2
+        assert data["total_registrations"]["adults_veg"] == 2
 
     def test_two_users_same_house_counted_once(self, api_client, house, monday_date):
         """House with a preference is counted only once regardless of inhabitants."""
@@ -1269,7 +1269,7 @@ class TestStatsWithPreferenceFallback:
         assert response.status_code == 200
         data = response.json()
         # Only one preference per house
-        assert data["total"]["adults_veg"] == 2
+        assert data["total_registrations"]["adults_veg"] == 2
 
 
 @pytest.mark.django_db
@@ -2271,11 +2271,15 @@ class TestTicketValidationWithExisting:
 
 
 @pytest.mark.django_db
-class TestEffectiveStats:
-    """Tests for effective registration statistics (subtract available tickets)."""
+class TestStatsTicketHandling:
+    """Stats totals are gross registrations — tickets never reduce them."""
 
-    def test_stats_subtract_available_tickets(self, authenticated_client, user_with_house, house):
-        """Available (unsold) tickets are subtracted from totals in stats."""
+    def test_stats_ignore_available_tickets(self, authenticated_client, user_with_house, house):
+        """Available (unsold) tickets do NOT reduce stats totals.
+
+        The seller is still billed for their registration whether or not the
+        ticket sells, so an unsold ticket must not shrink the aggregate.
+        """
         meal_date = date(2025, 12, 22)  # Monday
 
         MealRegistration.objects.create(
@@ -2302,9 +2306,11 @@ class TestEffectiveStats:
         assert response.status_code == 200
         data = response.json()
 
-        # Effective = 2 (reg) - 1 (unsold ticket) = 1
-        assert data["total"]["adults_veg"] == 1
-        assert data["total"]["adults"] == 1
+        # Unsold ticket ignored → gross 2 (not 1)
+        assert data["total_registrations"]["adults_veg"] == 2
+        assert data["total_registrations"]["adults"] == 2
+        # The old ticket-adjusted "effective" total is gone entirely.
+        assert "total" not in data
 
     def test_stats_ignore_claimed_tickets(
         self, authenticated_client, user_with_house, house, admin_user
@@ -2339,8 +2345,8 @@ class TestEffectiveStats:
         data = response.json()
 
         # Claimed ticket not subtracted → still 2
-        assert data["total"]["adults_veg"] == 2
-        assert data["total"]["adults"] == 2
+        assert data["total_registrations"]["adults_veg"] == 2
+        assert data["total_registrations"]["adults"] == 2
 
     def test_stats_one_registration_per_house(
         self, authenticated_client, user_with_house, house, admin_user
@@ -2366,8 +2372,8 @@ class TestEffectiveStats:
         data = response.json()
 
         # One registration → 2 adults
-        assert data["total"]["adults_veg"] == 2
-        assert data["total"]["adults"] == 2
+        assert data["total_registrations"]["adults_veg"] == 2
+        assert data["total_registrations"]["adults"] == 2
 
 
 # =============================================================================
