@@ -479,7 +479,10 @@ export const foodApi = {
 
     if (year !== undefined) params.year = year
 
-    const response = await apiClient.get("/food/drive-menu/", { params })
+    const response = await apiClient.get("/food/drive-menu/", {
+      params,
+      skipConnectionToast: true,
+    })
 
     return response.data
   },
@@ -495,7 +498,9 @@ export const foodApi = {
 
     if (year !== undefined) data.year = year
 
-    const response = await apiClient.post("/food/drive-menu/", data)
+    const response = await apiClient.post("/food/drive-menu/", data, {
+      skipConnectionToast: true,
+    })
 
     return response.data
   },
@@ -507,7 +512,13 @@ export const foodApi = {
 
     failed: number
   }> => {
-    const response = await apiClient.post("/food/drive-menu/refresh-all/")
+    const response = await apiClient.post(
+      "/food/drive-menu/refresh-all/",
+      undefined,
+      {
+        skipConnectionToast: true,
+      },
+    )
 
     return response.data
   },
