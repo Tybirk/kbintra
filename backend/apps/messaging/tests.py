@@ -354,3 +354,39 @@ class TestMessageUnsendAPI:
         """Unauthenticated request is rejected."""
         response = api_client.delete(f"/api/messages/messages/{message.id}/unsend/")
         assert response.status_code == 401
+
+
+class TestConversationDetailQueryCount:
+    """Regression: serializing a conversation's messages must not run queries that
+    scale with the number of messages (read-status / attachments were N+1)."""
+
+    def _seed(self, conversation, sender, count, start=0):
+        from apps.messaging.models import Message
+
+        for i in range(start, start + count):
+            Message.objects.create(conversation=conversation, sender=sender, content=f"msg {i}")
+
+    def test_detail_query_count_does_not_scale_with_messages(
+        self, authenticated_client, conversation, second_user
+    ):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/api/messages/conversations/{conversation.id}/"
+
+        # A few messages from the other participant.
+        self._seed(conversation, second_user, 3)
+        # Warm up (first request marks messages read / primes any one-off queries).
+        assert authenticated_client.get(url).status_code == 200
+        with CaptureQueriesContext(connection) as small:
+            assert authenticated_client.get(url).status_code == 200
+
+        # Many more messages — query count must stay the same (no N+1).
+        self._seed(conversation, second_user, 20, start=3)
+        assert authenticated_client.get(url).status_code == 200
+        with CaptureQueriesContext(connection) as big:
+            assert authenticated_client.get(url).status_code == 200
+
+        assert len(big) == len(small), (
+            f"query count scaled with message count: {len(small)} -> {len(big)}"
+        )

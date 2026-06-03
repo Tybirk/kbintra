@@ -61,10 +61,7 @@ services:
       - "traefik.http.routers.backend-api.entrypoints=web"
       - "traefik.http.routers.backend-api.service=backend"
       - "traefik.http.routers.backend-api.middlewares=rate-limit"
-      # WebSocket routes
-      - "traefik.http.routers.backend-ws.rule=PathPrefix(`/ws`)"
-      - "traefik.http.routers.backend-ws.entrypoints=web"
-      - "traefik.http.routers.backend-ws.service=backend"
+      # WebSocket routes are served by the separate `backend-ws` (Daphne) service below.
       # Admin routes
       - "traefik.http.routers.backend-admin.rule=PathPrefix(`/admin`)"
       - "traefik.http.routers.backend-admin.entrypoints=web"
@@ -118,6 +115,61 @@ services:
       retries: 3
       start_period: 30s
 
+  # WebSocket server (ASGI/Daphne). HTTP is served by `backend` (gunicorn); only
+  # /ws is routed here. Shares the same image, code and ./data volume; skips startup
+  # tasks (migrations/search) since `backend` owns those and we depend on it.
+  backend-ws:
+    build: ./backend
+    command: ["uv", "run", "daphne", "--proxy-headers", "--ping-interval", "20", "--ping-timeout", "30", "-v", "1", "-b", "0.0.0.0", "-p", "8000", "config.asgi:application"]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend-ws.rule=PathPrefix(`/ws`)"
+      - "traefik.http.routers.backend-ws.entrypoints=web"
+      - "traefik.http.routers.backend-ws.service=backend-ws"
+      - "traefik.http.services.backend-ws.loadbalancer.server.port=8000"
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      - DEBUG=False
+      - DATA_DIR=/app/data
+      - SKIP_STARTUP_TASKS=1
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost}
+      - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS:-http://localhost}
+      - REDIS_URL=redis://redis:6379/0
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}
+      - SENTRY_RELEASE=${SENTRY_RELEASE:-}
+      # Dump a Python traceback to stderr on segfault — diagnosing intermittent daphne crashes (see docs/daphne-segfault.md)
+      - PYTHONFAULTHANDLER=1
+      # Disable Autobahn's NVX C-extension fast paths — primary suspect for the segfaults (see docs/daphne-segfault.md)
+      - AUTOBAHN_USE_NVX=0
+    networks:
+      - web
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    stop_signal: SIGINT
+    stop_grace_period: 30s
+    mem_limit: 512m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      # Daphne serves the full Django ASGI app, so the HTTP health endpoint works here too.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
   huey:
     build: ./backend
     command: ["uv", "run", "python", "manage.py", "run_huey", "-w", "2", "-k", "thread", "--flush-locks"]
@@ -128,6 +180,9 @@ services:
     environment:
       - DEBUG=False
       - DATA_DIR=/app/data
+      # `backend` runs migrations/search index on startup; huey depends on it being
+      # healthy, so it skips the redundant (and potentially racy) startup tasks.
+      - SKIP_STARTUP_TASKS=1
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost}
       - REDIS_URL=redis://redis:6379/0
       - SENTRY_DSN=${SENTRY_DSN:-}

@@ -71,8 +71,15 @@ class RecurringBooking(models.Model):
         """Return human-readable day names."""
         return ", ".join(self.DayOfWeek(d).label for d in sorted(self.days_of_week))
 
-    def is_active_on_date(self, date: "datetime.date") -> bool:
-        """Check if this recurring booking is active on a given date."""
+    def is_active_on_date(
+        self, date: "datetime.date", exception_dates: "set | None" = None
+    ) -> bool:
+        """Check if this recurring booking is active on a given date.
+
+        ``exception_dates`` lets a caller that expands many dates pass a
+        pre-loaded set of this booking's exception dates, avoiding an N+1
+        ``.exists()`` query per date. When omitted, it is queried lazily.
+        """
         if not self.is_active:
             return False
         if self.effective_from and date < self.effective_from:
@@ -80,7 +87,10 @@ class RecurringBooking(models.Model):
         if self.effective_until and date > self.effective_until:
             return False
         # Check if date has an exception
-        if self.exceptions.filter(exception_date=date).exists():
+        if exception_dates is not None:
+            if date in exception_dates:
+                return False
+        elif self.exceptions.filter(exception_date=date).exists():
             return False
         return date.weekday() in self.days_of_week
 

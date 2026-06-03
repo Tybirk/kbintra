@@ -2,11 +2,26 @@
 Validators for booking overlap detection.
 """
 
+from collections import defaultdict
 from datetime import date, datetime, timedelta
 
 from django.utils import timezone
 
-from .models import RecurringBooking
+from .models import RecurringBooking, RecurringBookingException
+
+
+def _exception_dates_by_booking(recurring_bookings: list) -> dict[int, set[date]]:
+    """Load every exception date for the given recurring bookings in one query.
+
+    Returns ``{recurring_booking_id: {exception_date, ...}}`` so date-range
+    expansion can check exceptions in memory instead of an N+1 per date.
+    """
+    by_booking: dict[int, set[date]] = defaultdict(set)
+    for rb_id, exc_date in RecurringBookingException.objects.filter(
+        recurring_booking__in=recurring_bookings
+    ).values_list("recurring_booking_id", "exception_date"):
+        by_booking[rb_id].add(exc_date)
+    return by_booking
 
 
 def check_booking_overlaps(
@@ -66,10 +81,13 @@ def check_recurring_overlaps(
     conflicts: list[str] = []
 
     # Get all active recurring bookings for this room
-    recurring_bookings = RecurringBooking.objects.filter(
-        room_id=room_id,
-        is_active=True,
+    recurring_bookings = list(
+        RecurringBooking.objects.filter(
+            room_id=room_id,
+            is_active=True,
+        )
     )
+    exceptions_by_booking = _exception_dates_by_booking(recurring_bookings)
 
     # Iterate through each day in the booking range
     current_date = start.date()
@@ -77,7 +95,9 @@ def check_recurring_overlaps(
 
     while current_date <= end_date:
         for recurring in recurring_bookings:
-            if not recurring.is_active_on_date(current_date):
+            if not recurring.is_active_on_date(
+                current_date, exceptions_by_booking.get(recurring.id, frozenset())
+            ):
                 continue
 
             # Build the actual datetime for this occurrence
@@ -156,11 +176,15 @@ def expand_recurring_bookings_for_range(
     query = RecurringBooking.objects.filter(is_active=True).select_related("room", "created_by")
     if room_id:
         query = query.filter(room_id=room_id)
+    recurring_bookings = list(query)
+    exceptions_by_booking = _exception_dates_by_booking(recurring_bookings)
 
     current_date = start
     while current_date <= end:
-        for recurring in query:
-            if not recurring.is_active_on_date(current_date):
+        for recurring in recurring_bookings:
+            if not recurring.is_active_on_date(
+                current_date, exceptions_by_booking.get(recurring.id, frozenset())
+            ):
                 continue
 
             occurrence_start = timezone.make_aware(

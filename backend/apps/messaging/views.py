@@ -226,8 +226,11 @@ class ConversationDetailView(generics.RetrieveAPIView):
     serializer_class = ConversationDetailSerializer
 
     def get_queryset(self) -> QuerySet[Conversation]:
+        # Only `participants` is prefetched here; the serializer's get_messages
+        # fetches (and prefetches) just the last 50 messages itself, so prefetching
+        # the full message history on the conversation would be wasted work.
         return Conversation.objects.filter(participants=self.request.user).prefetch_related(
-            "participants", "messages", "messages__sender", "messages__reactions__user"
+            "participants"
         )
 
     def retrieve(self, request: Request, *args, **kwargs) -> Response:

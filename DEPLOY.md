@@ -126,7 +126,7 @@ git checkout deploy-YYYYMMDD-HHMMSS && docker compose up -d --build
 
 ### Database — Litestream continuous replication
 
-[Litestream](https://litestream.io/) runs as a wrapper around Daphne in the backend container, continuously replicating SQLite WAL changes to S3. This provides:
+[Litestream](https://litestream.io/) runs as a wrapper around the gunicorn HTTP server in the backend container, continuously replicating SQLite WAL changes to S3. (Writes from the `backend-ws` and `huey` containers go to the same SQLite file and are captured too — Litestream replicates the shared WAL regardless of which process wrote it.) This provides:
 
 - **~60 second RPO** — WAL changes ship every minute (vs. daily snapshots before)
 - **Automatic restore** — on first deploy (or data loss), the entrypoint restores from the latest replica
@@ -278,8 +278,8 @@ docker compose exec backend uv run python manage.py shell
 ### Common Issues
 
 **WebSocket connection fails:**
-- Ensure Daphne is running (check `docker compose logs backend`)
-- Verify Traefik is forwarding WebSocket connections
+- Ensure the Daphne `backend-ws` container is running (check `docker compose logs backend-ws`)
+- Verify Traefik is routing `/ws` to the `backend-ws` service
 
 **Push notifications not working:**
 - Check VAPID keys are set in `.env`

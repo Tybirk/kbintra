@@ -60,15 +60,27 @@ uv run python manage.py run_huey -w 2 -k thread --flush-locks
 - `traefik` — Reverse proxy, routes by path prefix to backend/frontend. Rate limiting: 100 req/s general, 5 req/s for auth endpoints.
 - `cloudflared` — Cloudflare Tunnel for secure ingress (no exposed ports)
 - `redis` — Channel layer backend for Django Channels (WebSocket message routing)
-- `backend` — Daphne ASGI server (HTTP + WebSocket)
+- `backend` — Gunicorn WSGI server for HTTP (`/api`, `/admin`, `/media`, `/static`)
+- `backend-ws` — Daphne ASGI server for WebSockets (`/ws` only)
 - `huey` — Background task worker
 - `frontend` — Nginx serving the React SPA
 
-**Daphne configuration** (`backend/docker-entrypoint.sh`):
-- Runs migrations automatically on startup
-- Runs `rebuild_search_index` and `apply_weekly_defaults` on startup
-- `--proxy-headers` — trusts X-Forwarded-For/Proto from Traefik
-- `--ping-interval 20 --ping-timeout 30` — detects and cleans up stale WebSocket connections
+**Why HTTP and WebSocket are split** (`backend/docker-entrypoint.sh`):
+HTTP is served by gunicorn (WSGI), not Daphne. Under Daphne/ASGI, Django's persistent
+DB connections (`CONN_MAX_AGE`) were not reused — every request opened a fresh SQLite
+connection, and a fresh connect under concurrency costs ~30ms, dominating endpoint
+latency. Gunicorn's `gthread` workers reuse one connection per worker thread, removing
+that cost. WebSockets still require ASGI, so Daphne runs in the separate `backend-ws`
+service (Traefik routes `/ws` there). Tunables: `GUNICORN_WORKERS` (default 2),
+`GUNICORN_THREADS` (default 4).
+
+**Startup tasks** (`backend/docker-entrypoint.sh`):
+- The `backend` container runs migrations + `rebuild_search_index` on startup
+- `huey` and `backend-ws` set `SKIP_STARTUP_TASKS=1` and depend on `backend` being
+  healthy, so migrations run exactly once per deploy
+- gunicorn uses `--forwarded-allow-ips=*` (trusts X-Forwarded-* from Traefik); Daphne
+  uses `--proxy-headers` plus `--ping-interval 20 --ping-timeout 30` to clean up stale
+  WebSocket connections
 
 **Channel layer** (`backend/config/settings.py`):
 - Uses `channels_redis` when `REDIS_URL` env var is set (production/Docker)

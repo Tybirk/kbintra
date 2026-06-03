@@ -536,6 +536,37 @@ class TestFolderViews:
         assert len(results) == 1
         assert results[0]["name"] == "Test Subfolder"
 
+    def test_folder_list_query_count_does_not_scale(self, authenticated_client, user, subgroup):
+        """Regression: file_count/subfolder_count must not run a query per folder (N+1)."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        def make_folders(n: int, start: int) -> None:
+            for i in range(start, start + n):
+                f = Folder.objects.create(subgroup=subgroup, name=f"F{i}")
+                File.objects.create(
+                    subgroup=subgroup,
+                    folder=f,
+                    uploaded_by=user,
+                    file=SimpleUploadedFile(f"f{i}.txt", b"x"),
+                    name=f"f{i}.txt",
+                )
+                Folder.objects.create(subgroup=subgroup, name=f"S{i}", parent=f)
+
+        url = f"/api/forum/subgroups/{subgroup.slug}/folders/"
+        make_folders(2, 0)
+        assert authenticated_client.get(url).status_code == 200  # warm up
+        with CaptureQueriesContext(connection) as small:
+            assert authenticated_client.get(url).status_code == 200
+
+        make_folders(8, 2)
+        with CaptureQueriesContext(connection) as big:
+            assert authenticated_client.get(url).status_code == 200
+
+        assert len(big) == len(small), (
+            f"query count scaled with folder count: {len(small)} -> {len(big)}"
+        )
+
     def test_create_folder(self, authenticated_client, subgroup):
         """Test creating a new folder."""
         response = authenticated_client.post(

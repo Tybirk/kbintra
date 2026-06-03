@@ -1123,6 +1123,11 @@ class FolderSerializer(serializers.ModelSerializer):
         ]
 
     def get_file_count(self, obj: Folder) -> int:
+        # Precomputed aggregate map (set by the list view) avoids a query per folder.
+        count_map = self.context.get("file_count_map")
+        if count_map is not None:
+            return count_map.get(obj.id, 0)
+
         from .services import visible_files_q
 
         files_q = self.context.get("visible_files_filter")
@@ -1133,6 +1138,11 @@ class FolderSerializer(serializers.ModelSerializer):
         return obj.files.filter(files_q).count()
 
     def get_subfolder_count(self, obj: Folder) -> int:
+        # Precomputed aggregate map (set by the list view) avoids a query per folder.
+        count_map = self.context.get("subfolder_count_map")
+        if count_map is not None:
+            return count_map.get(obj.id, 0)
+
         from .services import visible_folder_ids
 
         visible_ids = self.context.get("visible_folder_ids")

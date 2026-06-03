@@ -1032,8 +1032,25 @@ class FolderListCreateView(generics.ListCreateAPIView):
             context["subgroup"] = get_object_or_404(Subgroup, slug=self.kwargs["slug"])
         elif self.request.method == "GET":
             subgroup = get_object_or_404(Subgroup, slug=self.kwargs["slug"])
-            context["visible_folder_ids"] = visible_folder_ids(self.request.user, subgroup)
-            context["visible_files_filter"] = visible_files_q(self.request.user)
+            visible_ids = visible_folder_ids(self.request.user, subgroup)
+            files_filter = visible_files_q(self.request.user)
+            context["visible_folder_ids"] = visible_ids
+            context["visible_files_filter"] = files_filter
+            # Precompute per-folder file/subfolder counts in two aggregate queries
+            # so FolderSerializer doesn't run two .count() queries per folder (N+1).
+            context["file_count_map"] = dict(
+                File.objects.filter(folder_id__in=visible_ids)
+                .filter(files_filter)
+                .values("folder_id")
+                .annotate(c=Count("id"))
+                .values_list("folder_id", "c")
+            )
+            context["subfolder_count_map"] = dict(
+                Folder.objects.filter(parent_id__in=visible_ids, id__in=visible_ids)
+                .values("parent_id")
+                .annotate(c=Count("id"))
+                .values_list("parent_id", "c")
+            )
         return context
 
     def perform_create(self, serializer: Any) -> None:

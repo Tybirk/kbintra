@@ -2,12 +2,14 @@
 Serializers for Messaging models.
 """
 
+from collections import defaultdict
+
 from rest_framework import serializers
 
 from apps.users.models import User
 from apps.users.serializer_mixins import AvatarUrlMixin
 
-from .models import Conversation, Message, MessageAttachment
+from .models import Conversation, Message, MessageAttachment, MessageReadStatus
 
 
 class ParticipantSerializer(AvatarUrlMixin, serializers.ModelSerializer):
@@ -98,16 +100,33 @@ class MessageSerializer(serializers.ModelSerializer):
         return list(reaction_map.values())
 
     def get_is_read(self, obj: Message) -> bool:
-        """Check if message has been read by all other participants."""
+        """Check if message has been read by all other participants.
+
+        When the caller supplies a precomputed ``read_status_map`` (and
+        ``other_participant_ids``) in the context, this is resolved in memory —
+        avoiding an N+1 of read-status count queries per message. Otherwise it
+        falls back to per-message queries.
+        """
         request = self.context.get("request")
         if not request or not request.user.is_authenticated:
             return False
-        # For own messages, check if others have read it
-        if obj.sender_id == request.user.id:
-            other_participants = obj.conversation.participants.exclude(id=request.user.id)
+        current_user_id = request.user.id
+
+        read_status_map = self.context.get("read_status_map")
+        if read_status_map is not None:
+            read_user_ids = read_status_map.get(obj.id, frozenset())
+            if obj.sender_id == current_user_id:
+                # Own message: read once every other participant has read it.
+                other_ids = self.context.get("other_participant_ids", frozenset())
+                return other_ids.issubset(read_user_ids)
+            # Others' message: read if the current user has read it.
+            return current_user_id in read_user_ids
+
+        # Fallback: per-message queries (used by callers without precomputed context).
+        if obj.sender_id == current_user_id:
+            other_participants = obj.conversation.participants.exclude(id=current_user_id)
             read_count = obj.read_statuses.filter(user__in=other_participants).count()
             return read_count >= other_participants.count()
-        # For others' messages, check if current user has read it
         return obj.read_statuses.filter(user=request.user).exists()
 
 
@@ -178,15 +197,33 @@ class ConversationDetailSerializer(ConversationSerializer):
         fields = ConversationSerializer.Meta.fields + ["messages"]
 
     def get_messages(self, obj: Conversation) -> list:
-        # Get last 50 messages
-        messages = (
+        # Get last 50 messages (oldest first). Prefetch attachments + reactions so
+        # the MessageSerializer doesn't issue per-message queries for them.
+        messages = list(
             obj.messages.select_related("sender")
-            .prefetch_related("reactions__user")
+            .prefetch_related("reactions__user", "attachments")
             .order_by("-created_at")[:50]
         )
-        # Reverse to show oldest first
-        messages = list(reversed(messages))
-        return MessageSerializer(messages, many=True, context=self.context).data
+        messages.reverse()
+
+        # Precompute read status for these messages in a single query, so
+        # MessageSerializer.is_read resolves in memory instead of N+1 queries.
+        request = self.context.get("request")
+        current_user_id = request.user.id if request and request.user.is_authenticated else None
+        read_status_map: dict[int, set[int]] = defaultdict(set)
+        if messages:
+            for msg_id, user_id in MessageReadStatus.objects.filter(
+                message_id__in=[m.id for m in messages]
+            ).values_list("message_id", "user_id"):
+                read_status_map[msg_id].add(user_id)
+        other_participant_ids = {p.id for p in obj.participants.all() if p.id != current_user_id}
+
+        context = {
+            **self.context,
+            "read_status_map": read_status_map,
+            "other_participant_ids": other_participant_ids,
+        }
+        return MessageSerializer(messages, many=True, context=context).data
 
 
 class CreateConversationSerializer(serializers.Serializer):

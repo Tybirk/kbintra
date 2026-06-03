@@ -125,6 +125,42 @@ class RecurringBookingTest(TestCase):
         self.assertFalse(self.recurring.is_active_on_date(next_monday))
 
 
+class CalendarExpansionQueryCountTest(TestCase):
+    """Regression: expanding recurring bookings over a date range must not run a
+    query per (booking, date) for exceptions (was an N+1)."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="expand@example.com", password="x", first_name="E", last_name="X"
+        )
+        self.room = Room.objects.create(name="Expand Room")
+        today = datetime.date.today()
+        for i in range(5):
+            rb = RecurringBooking.objects.create(
+                room=self.room,
+                created_by=self.user,
+                title=f"RB{i}",
+                days_of_week=[0, 1, 2, 3, 4, 5, 6],
+                start_time=datetime.time(10, 0),
+                end_time=datetime.time(11, 0),
+                is_active=True,
+            )
+            # Exercise the exception path: skip one occurrence per booking.
+            RecurringBookingException.objects.create(
+                recurring_booking=rb, exception_date=today + datetime.timedelta(days=i)
+            )
+
+    def test_expansion_query_count_is_constant(self):
+        from .validators import expand_recurring_bookings_for_range
+
+        start = datetime.date.today()
+        end = start + datetime.timedelta(days=30)
+        # 2 queries total: one for the recurring bookings, one for all exceptions —
+        # independent of the 5 bookings × 31 days being expanded.
+        with self.assertNumQueries(2):
+            expand_recurring_bookings_for_range(self.room.id, start, end)
+
+
 class RecurringBookingExceptionAPITest(TestCase):
     """Tests for RecurringBookingException API."""
 
