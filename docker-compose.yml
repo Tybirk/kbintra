@@ -42,7 +42,7 @@ services:
       retries: 3
 
   backend:
-    build: ./backend
+    image: ghcr.io/tybirk/kbintra-backend:${IMAGE_TAG:-latest}
     labels:
       - "traefik.enable=true"
       # Rate limit middleware (general: 100 req/s, burst 200)
@@ -119,7 +119,7 @@ services:
   # /ws is routed here. Shares the same image, code and ./data volume; skips startup
   # tasks (migrations/search) since `backend` owns those and we depend on it.
   backend-ws:
-    build: ./backend
+    image: ghcr.io/tybirk/kbintra-backend:${IMAGE_TAG:-latest}
     command: ["uv", "run", "daphne", "--proxy-headers", "--ping-interval", "20", "--ping-timeout", "30", "-v", "1", "-b", "0.0.0.0", "-p", "8000", "config.asgi:application"]
     labels:
       - "traefik.enable=true"
@@ -171,7 +171,7 @@ services:
       start_period: 30s
 
   huey:
-    build: ./backend
+    image: ghcr.io/tybirk/kbintra-backend:${IMAGE_TAG:-latest}
     command: ["uv", "run", "python", "manage.py", "run_huey", "-w", "2", "-k", "thread", "--flush-locks"]
     volumes:
       - ./data:/app/data
@@ -212,18 +212,10 @@ services:
         max-file: "3"
 
   frontend:
-    build:
-      context: ./frontend
-      args:
-        # DSN is embedded at build time (public key, safe to include in JS bundle).
-        # Use a separate Sentry project for frontend vs backend.
-        VITE_SENTRY_DSN: ${SENTRY_DSN_FRONTEND:-}
-        VITE_SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
-        VITE_GIPHY_API_KEY: ${VITE_GIPHY_API_KEY:-}
-        # Source map upload credentials (only needed when SENTRY_AUTH_TOKEN is set)
-        SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN:-}
-        SENTRY_ORG: ${SENTRY_ORG:-}
-        SENTRY_PROJECT: ${SENTRY_PROJECT:-}
+    # Built by CI. The Sentry DSN / GIPHY key / sourcemap-upload args that used to be
+    # passed here are now CI build-args sourced from GitHub Actions secrets (see
+    # .github/workflows/ci.yml) — they are baked into the bundle at build time.
+    image: ghcr.io/tybirk/kbintra-frontend:${IMAGE_TAG:-latest}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.frontend.rule=PathPrefix(`/`)"
