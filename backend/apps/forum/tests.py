@@ -567,6 +567,35 @@ class TestFolderViews:
             f"query count scaled with folder count: {len(small)} -> {len(big)}"
         )
 
+    def test_folder_counts_are_correct_with_multiple_children(
+        self, authenticated_client, user, subgroup
+    ):
+        """The precomputed aggregate maps must report the true counts.
+
+        The N+1 fix replaced a per-folder ``.count()`` with two GROUP BY aggregate
+        queries; this asserts a folder with several files/subfolders still reports
+        the correct totals (the sibling query-count test only used one child each,
+        which would mask a miscounting aggregate).
+        """
+        parent = Folder.objects.create(subgroup=subgroup, name="WithChildren")
+        for i in range(3):
+            File.objects.create(
+                subgroup=subgroup,
+                folder=parent,
+                uploaded_by=user,
+                file=SimpleUploadedFile(f"file{i}.txt", b"x"),
+                name=f"file{i}.txt",
+            )
+        for i in range(2):
+            Folder.objects.create(subgroup=subgroup, name=f"Sub{i}", parent=parent)
+
+        url = f"/api/forum/subgroups/{subgroup.slug}/folders/"
+        response = authenticated_client.get(url)
+        assert response.status_code == 200
+        row = next(r for r in get_results(response.data) if r["name"] == "WithChildren")
+        assert row["file_count"] == 3
+        assert row["subfolder_count"] == 2
+
     def test_create_folder(self, authenticated_client, subgroup):
         """Test creating a new folder."""
         response = authenticated_client.post(
