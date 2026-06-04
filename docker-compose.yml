@@ -114,6 +114,11 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+      # Probe every 2s during start_period instead of waiting a full `interval` (30s)
+      # for the first check — flips to healthy as soon as gunicorn answers (~5s).
+      # backend-ws and huey depend on `backend: service_healthy`, so this also lets
+      # them start ~25s sooner.
+      start_interval: 2s
 
   # WebSocket server (ASGI/Daphne). HTTP is served by `backend` (gunicorn); only
   # /ws is routed here. Shares the same image, code and ./data volume; skips startup
@@ -169,6 +174,9 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+      # Probe every 2s during start_period rather than waiting a full interval (30s)
+      # for the first check — marks healthy as soon as Daphne answers.
+      start_interval: 2s
 
   huey:
     image: ghcr.io/tybirk/kbintra-backend:${IMAGE_TAG:-latest}
