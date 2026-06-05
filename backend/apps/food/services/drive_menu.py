@@ -23,6 +23,25 @@ from apps.food.models import DriveMenuCache
 
 logger = logging.getLogger(__name__)
 
+# --- "Dagens forside" (per-day menu-document page) parsing -------------------
+# The weekly menu .docx has a 4-day overview on page 1, then one detailed page
+# per weekday (Mandag…Torsdag). We extract each weekday's detail page so the app
+# can show "Dagens forside" in-app instead of only the one-line menu.
+FRONT_PAGE_SCHEMA_VERSION = 1
+WEEKDAY_NAMES = ["Mandag", "Tirsdag", "Onsdag", "Torsdag"]
+WEEKDAY_TO_INDEX = {name.lower(): i for i, name in enumerate(WEEKDAY_NAMES)}
+# Recurring sub-section labels in the detail pages; rendered as headings even
+# when the source paragraph isn't styled as one.
+FRONT_PAGE_SECTION_LABELS = {
+    "tilbehør",
+    "tips og tricks",
+    "ved servering",
+    "forberedelse til næste dag",
+    "allergener",
+    "fremgangsmåde",
+    "noter",
+}
+
 
 @dataclass
 class ParsedMenu:
@@ -390,6 +409,152 @@ class DriveMenuService:
             thursday=menus["thursday"],
             raw_content=raw_content,
         )
+
+    # --- Per-day "forside" parsing ----------------------------------------- #
+
+    def _load_doc_from_folder(self, folder_id: str):
+        """Find and download the week's menu document; return a Document or None.
+
+        Handles both uploaded .docx and native Google Docs (exported as .docx).
+        """
+        try:
+            results = (
+                self.service.files()
+                .list(
+                    q=(
+                        f"'{folder_id}' in parents and ("
+                        f"mimeType='{self.DOCX_MIME}' or mimeType='{self.GDOC_MIME}')"
+                    ),
+                    fields="files(id, name, mimeType)",
+                )
+                .execute()
+            )
+            files = results.get("files", [])
+            if not files:
+                return None
+            f = files[0]
+            if f["mimeType"] == self.GDOC_MIME:
+                request = self.service.files().export_media(fileId=f["id"], mimeType=self.DOCX_MIME)
+            else:
+                request = self.service.files().get_media(fileId=f["id"])
+            buf = io.BytesIO()
+            downloader = MediaIoBaseDownload(buf, request)
+            done = False
+            while not done:
+                _, done = downloader.next_chunk()
+            buf.seek(0)
+            return Document(buf)
+        except Exception as e:
+            logger.error(f"Error loading menu document from folder {folder_id}: {e}")
+            return None
+
+    def _split_into_pages(self, doc) -> list[list]:
+        """Split the document's paragraphs into pages at page breaks."""
+        pages: list[list] = []
+        current: list = []
+        for para in doc.paragraphs:
+            current.append(para)
+            if self._has_page_break(para):
+                pages.append(current)
+                current = []
+        if current:
+            pages.append(current)
+        return pages
+
+    @staticmethod
+    def _is_front_page_heading(paragraph) -> bool:
+        """True if a paragraph should render as a section heading."""
+        style = paragraph.style.name if paragraph.style else ""
+        if style.startswith("Heading") or style == "Title":
+            return True
+        key = paragraph.text.strip().rstrip(":").lower()
+        return key in FRONT_PAGE_SECTION_LABELS
+
+    def _parse_front_pages(self, doc) -> list[dict]:
+        """Extract each weekday's detail page from the menu document.
+
+        The overview page lists all four weekdays; a detail page has exactly one
+        weekday name as a standalone paragraph. For each detail page the first
+        content line is treated as the dish title and the rest as body blocks.
+        """
+        results: list[dict] = []
+        seen_days: set[int] = set()
+        for page in self._split_into_pages(doc):
+            day_hits = [
+                (i, WEEKDAY_TO_INDEX[para.text.strip().lower()])
+                for i, para in enumerate(page)
+                if para.text.strip().lower() in WEEKDAY_TO_INDEX
+            ]
+            # Skip the overview (multiple weekdays) and pages with none.
+            if len({day for _, day in day_hits}) != 1:
+                continue
+            header_pos, day = day_hits[0]
+            if day in seen_days:
+                continue
+            seen_days.add(day)
+
+            title = ""
+            blocks: list[dict] = []
+            for para in page[header_pos + 1 :]:
+                text = para.text.strip()
+                if not text:
+                    continue
+                if not title:
+                    title = text  # first content line is the dish title
+                    continue
+                blocks.append(
+                    {"text": para.text.rstrip(), "heading": self._is_front_page_heading(para)}
+                )
+            if title or blocks:
+                results.append(
+                    {
+                        "day": day,
+                        "weekday": WEEKDAY_NAMES[day],
+                        "title": title,
+                        "blocks": blocks,
+                        "_v": FRONT_PAGE_SCHEMA_VERSION,
+                    }
+                )
+        results.sort(key=lambda r: r["day"])
+        return results
+
+    @staticmethod
+    def _front_pages_current(entries: list[dict]) -> bool:
+        """True if every cached front-page entry carries the current schema."""
+        return all(
+            isinstance(e, dict) and e.get("_v") == FRONT_PAGE_SCHEMA_VERSION for e in entries
+        )
+
+    def get_front_pages_for_week(
+        self, week_number: int, year: int | None = None, force_refresh: bool = False
+    ) -> list[dict]:
+        """Get per-day front pages for a week, using/refreshing DriveMenuCache."""
+        if year is None:
+            year = date.today().year
+        cache = DriveMenuCache.objects.filter(week_number=week_number, year=year).first()
+        if cache is None:
+            return []
+        if (
+            cache.daily_front_pages
+            and not force_refresh
+            and self._front_pages_current(cache.daily_front_pages)
+        ):
+            return cache.daily_front_pages
+        if not cache.drive_folder_id:
+            return cache.daily_front_pages or []
+        doc = self._load_doc_from_folder(cache.drive_folder_id)
+        if doc is None:
+            return cache.daily_front_pages or []
+        parsed = self._parse_front_pages(doc)
+        cache.daily_front_pages = parsed
+        cache.save(update_fields=["daily_front_pages"])
+        return parsed
+
+    def front_page_for_date(self, d: date) -> dict | None:
+        """Return the parsed front page for a specific date (or None)."""
+        iso = d.isocalendar()
+        pages = self.get_front_pages_for_week(iso[1], iso[0])
+        return next((p for p in pages if p.get("day") == d.weekday()), None)
 
     def _save_folder_id(self, week_number: int, year: int, folder_id: str) -> None:
         """Persist the Drive folder ID for a week even if no menu has been parsed yet."""

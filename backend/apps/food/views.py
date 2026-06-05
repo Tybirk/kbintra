@@ -1826,11 +1826,84 @@ class TodayTeamRecipesView(APIView):
         with contextlib.suppress(Exception):
             recipes = RecipeSheetService().recipes_for_date(today)
 
+        # "Dagens forside": today's section of the week's menu document.
+        front_page = None
+        with contextlib.suppress(Exception):
+            from .services.drive_menu import DriveMenuService
+
+            front_page = DriveMenuService().front_page_for_date(today)
+
         return Response(
             {
                 "recipe_folder_url": recipe_folder_url,
                 "recipe_file_url": recipe_file_url,
                 "recipes": recipes,
+                "front_page": front_page,
+            }
+        )
+
+
+class WeekRecipesView(APIView):
+    """All recipes for a week, for the standalone "Ugens opskrifter" page.
+
+    Unlike :class:`TodayTeamRecipesView` this is not gated on team membership
+    and returns every recipe sheet for the week (all weekdays), so any resident
+    can browse the menu's recipes. Accepts ``?week=&year=`` or ``?date=`` (all
+    optional; defaults to the current ISO week). Cached on DriveMenuCache.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        from .models import DriveMenuCache
+        from .services.drive_menu import DriveMenuService
+        from .services.recipe_sheets import RecipeSheetService, folder_url
+
+        # Resolve the target ISO week/year from the query params.
+        date_str = request.query_params.get("date")
+        week_param = request.query_params.get("week")
+        year_param = request.query_params.get("year")
+        if date_str:
+            try:
+                d = date.fromisoformat(date_str)
+            except ValueError:
+                return Response({"detail": "Ugyldig dato."}, status=status.HTTP_400_BAD_REQUEST)
+            iso = d.isocalendar()
+            week_number, year = iso[1], iso[0]
+        else:
+            today = timezone.localdate()
+            iso = today.isocalendar()
+            try:
+                week_number = int(week_param) if week_param else iso[1]
+                year = int(year_param) if year_param else iso[0]
+            except ValueError:
+                return Response({"detail": "Ugyldig uge."}, status=status.HTTP_400_BAD_REQUEST)
+
+        cache = DriveMenuCache.objects.filter(week_number=week_number, year=year).first()
+        recipe_folder_url = (
+            folder_url(cache.drive_folder_id) if cache and cache.drive_folder_id else ""
+        )
+        recipe_file_url = ""
+        if cache and cache.recipe_file_id:
+            recipe_file_url = f"https://docs.google.com/spreadsheets/d/{cache.recipe_file_id}/edit"
+
+        recipes: list[dict] = []
+        with contextlib.suppress(Exception):
+            recipes = RecipeSheetService().get_recipes_for_week(week_number, year)
+        recipes = sorted(recipes, key=lambda r: (r.get("day", 0), r.get("index", 0)))
+
+        front_pages: list[dict] = []
+        with contextlib.suppress(Exception):
+            front_pages = DriveMenuService().get_front_pages_for_week(week_number, year)
+
+        return Response(
+            {
+                "week_number": week_number,
+                "year": year,
+                "recipe_folder_url": recipe_folder_url,
+                "recipe_file_url": recipe_file_url,
+                "recipes": recipes,
+                "front_pages": front_pages,
             }
         )
 

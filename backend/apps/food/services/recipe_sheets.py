@@ -8,10 +8,12 @@ trailing digit is the dish index). The dish name lives in cell **C1**
 (columns A and B are hidden ingredient-quantity columns).
 
 The parsed result is cached on the DriveMenuCache row in ``recipe_sheets``
-(a list of {code, day, index, name, url, _v} dicts) along with the
-spreadsheet's Drive file id in ``recipe_file_id``. Each entry carries a
-``_v`` schema version so a parser change automatically invalidates
-previously-cached rows on the next read.
+(a list of {code, day, index, name, weekday, url, ingredients, steps, _v}
+dicts) along with the spreadsheet's Drive file id in ``recipe_file_id``.
+``ingredients`` is a list of {amount, unit, name, comment} and ``steps`` a
+list of Fremgangsmåde paragraphs, so the app can render the full recipe
+in-app. Each entry carries a ``_v`` schema version so a parser change
+automatically invalidates previously-cached rows on the next read.
 """
 
 import datetime
@@ -36,14 +38,38 @@ DAY_PREFIX_TO_INDEX = {
     "to": 3,
 }
 
+# Display labels per weekday index. Derived from the tab code (the source of
+# truth) rather than the sheet's F1 cell, which is sometimes a stale copy-paste
+# (e.g. a "To3" tab whose F1 still reads "Onsdag").
+DANISH_WEEKDAYS = ["Mandag", "Tirsdag", "Onsdag", "Torsdag"]
+
 GSHEET_MIME = "application/vnd.google-apps.spreadsheet"
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
-# Cell holding the dish name. Columns A and B are hidden in the recipe
-# spreadsheet template, so the human-readable dish name lives in C1.
+# Recipe-sheet layout (1-indexed columns, openpyxl/Sheets-API convention).
+# Columns A and B are alternate quantity scalings; the human-readable data the
+# kitchen reads lives in C–F (per the menu template):
+#   C1            -> dish name        F1 -> weekday label ("Mandag" …)
+#   <header> row  -> "Ingrediens" in col E marks the ingredient table header
+#   ingredient    -> C amount, D unit, E name, F comment
+#   "Fremgangsmåde" header row, then each step is a cell merged across C:F
+#   (the text sits in column C; merged continuation rows are blank -> skipped)
 DISH_NAME_CELL = "C1"
-DISH_NAME_COL = 3  # 1-indexed column for openpyxl
+DISH_NAME_COL = 3  # 1-indexed column for openpyxl / dish name
 DISH_NAME_ROW = 1
+COL_UNIT = 4  # D
+COL_INGREDIENT = 5  # E
+COL_COMMENT = 6  # F
+COL_STEP = 3  # C — merged Fremgangsmåde step text
+# Preferred amount column, then fallbacks. Most sheets fill C; a few only fill
+# B (or A), so we pick the first of these that has any value in the table.
+AMOUNT_COL_PREFERENCE = (3, 2, 1)  # C, then B, then A
+# Markers (lower-cased) that delimit the two sections of a recipe sheet.
+INGREDIENT_HEADER = "ingrediens"
+METHOD_HEADER = "fremgangsmåde"
+# Recipe sheets are tiny; cap the scan so a sheet with phantom dimensions
+# (huge declared row count, mostly empty) can't blow up parsing.
+MAX_SCAN_ROWS = 120
 
 # Bump when the parsed entry shape, cell source, or URL format changes.
 # Cached entries whose ``_v`` differs are re-parsed on the next read so
@@ -58,7 +84,46 @@ DISH_NAME_ROW = 1
 # v5: drop the bogus ?range= "deep link" from the xlsx fallback — Google
 #     Sheets ignores it for tab navigation, so we now leave url="" and the
 #     frontend renders a single "Åbn opskriftsark" button instead.
-CACHE_SCHEMA_VERSION = 5
+# v6: parse full recipe content (ingredients + Fremgangsmåde steps + weekday)
+#     so the app can render recipes in-app instead of only deep-linking.
+CACHE_SCHEMA_VERSION = 6
+
+
+def _grid_cell(grid: list, row: int, col: int):
+    """1-indexed cell access into a list-of-rows grid; None if out of range.
+
+    Works for both openpyxl ``iter_rows(values_only=True)`` tuples and the
+    Sheets API ``valueRange['values']`` lists (which trim trailing empties).
+    """
+    if 0 <= row - 1 < len(grid):
+        cells = grid[row - 1]
+        if cells is not None and 0 <= col - 1 < len(cells):
+            return cells[col - 1]
+    return None
+
+
+def _grid_str(grid: list, row: int, col: int) -> str:
+    """Trimmed string value of a grid cell ('' if empty/missing)."""
+    value = _grid_cell(grid, row, col)
+    return "" if value is None else str(value).strip()
+
+
+def _fmt_amount(value) -> str:
+    """Format a quantity for display: trim float noise, keep non-numeric as-is.
+
+    openpyxl returns floats (formula results); the Sheets API returns formatted
+    strings that may use a Danish decimal comma. Both collapse to e.g. "7.2",
+    "784", "0.45"; anything non-numeric (ranges like "1-2") passes through.
+    """
+    if value is None or value == "":
+        return ""
+    if isinstance(value, (int, float)):
+        return f"{round(float(value), 2):g}"
+    text = str(value).strip()
+    try:
+        return f"{round(float(text.replace(',', '.')), 2):g}"
+    except ValueError:
+        return text
 
 
 def folder_url(folder_id: str) -> str:
@@ -165,10 +230,13 @@ class RecipeSheetService:
             logger.error(f"Error parsing recipe sheets in folder {folder_id}: {e}")
             return []
 
-    def _entry_from_title(self, title: str, dish_cell_value, url: str) -> dict | None:
-        """Build a recipe entry from a sheet title, dish-cell value (C1) and url.
+    def _build_entry_from_grid(self, title: str, grid: list, url: str) -> dict | None:
+        """Build a full recipe entry from a sheet's cell grid.
 
-        Returns None if the title doesn't match the recipe sheet pattern.
+        ``grid`` is a list-of-rows (openpyxl tuples or Sheets API value lists).
+        Extracts dish name (C1), weekday (F1), the ingredient table (C–F) and
+        the Fremgangsmåde steps. Returns None if the title doesn't match the
+        recipe-sheet pattern.
         """
         match = SHEET_PATTERN.match(title.strip())
         if not match:
@@ -177,18 +245,66 @@ class RecipeSheetService:
         index = int(match.group(2))
         day = DAY_PREFIX_TO_INDEX[prefix]
 
-        name = ""
-        if dish_cell_value is not None:
-            name = str(dish_cell_value).strip()
-        if not name:
-            name = title.strip()
+        name = _grid_str(grid, DISH_NAME_ROW, DISH_NAME_COL) or title.strip()
+        weekday = DANISH_WEEKDAYS[day]
+
+        # Locate the ingredient-table header ("Ingrediens" in col E) and the
+        # "Fremgangsmåde" header so we can split the sheet into its two parts.
+        n_rows = min(len(grid), MAX_SCAN_ROWS)
+        header_row: int | None = None
+        method_row: int | None = None
+        for r in range(1, n_rows + 1):
+            for c in (COL_STEP, COL_UNIT, COL_INGREDIENT, COL_COMMENT):
+                cell = _grid_str(grid, r, c).lower()
+                if cell == INGREDIENT_HEADER and header_row is None:
+                    header_row = r
+                elif cell == METHOD_HEADER and method_row is None:
+                    method_row = r
+
+        ing_start = (header_row or 4) + 1
+        ing_end = (method_row - 1) if method_row else n_rows
+
+        # Pick the amount column: prefer C, but fall back to B/A for the
+        # occasional sheet that only fills an alternate scaling column.
+        amount_col = AMOUNT_COL_PREFERENCE[0]
+        for candidate in AMOUNT_COL_PREFERENCE:
+            if any(
+                _grid_cell(grid, r, candidate) not in (None, "")
+                for r in range(ing_start, ing_end + 1)
+            ):
+                amount_col = candidate
+                break
+
+        ingredients: list[dict] = []
+        for r in range(ing_start, ing_end + 1):
+            ing_name = _grid_str(grid, r, COL_INGREDIENT)
+            if not ing_name:
+                continue
+            ingredients.append(
+                {
+                    "amount": _fmt_amount(_grid_cell(grid, r, amount_col)),
+                    "unit": _grid_str(grid, r, COL_UNIT),
+                    "name": ing_name,
+                    "comment": _grid_str(grid, r, COL_COMMENT),
+                }
+            )
+
+        steps: list[str] = []
+        if method_row:
+            for r in range(method_row + 1, n_rows + 1):
+                text = _grid_str(grid, r, COL_STEP)
+                if text:
+                    steps.append(text)
 
         return {
             "code": title.strip(),
             "day": day,
             "index": index,
             "name": name,
+            "weekday": weekday,
             "url": url,
+            "ingredients": ingredients,
+            "steps": steps,
             "_v": CACHE_SCHEMA_VERSION,
         }
 
@@ -236,9 +352,9 @@ class RecipeSheetService:
         if not matching:
             return []
 
-        # Batch-read the dish-name cell (C1) of each matching sheet.
-        # A1/B1 are hidden ingredient columns; the dish name lives at C1.
-        ranges = [f"'{title}'!{DISH_NAME_CELL}" for title, _ in matching]
+        # Batch-read columns A–F of each matching sheet (the full recipe block:
+        # dish name, ingredient table and Fremgangsmåde steps all live here).
+        ranges = [f"'{title}'!A1:F{MAX_SCAN_ROWS}" for title, _ in matching]
         batch = (
             sheets_service.spreadsheets()
             .values()
@@ -249,12 +365,9 @@ class RecipeSheetService:
 
         entries: list[dict] = []
         for (title, sheet_id), value_range in zip(matching, value_ranges, strict=False):
-            values = value_range.get("values", [])
-            dish_cell_value = None
-            if values and values[0]:
-                dish_cell_value = values[0][0]
+            grid = value_range.get("values", [])
             url = f"https://docs.google.com/spreadsheets/d/{file_id}/edit#gid={sheet_id}"
-            entry = self._entry_from_title(title, dish_cell_value, url)
+            entry = self._build_entry_from_grid(title, grid, url)
             if entry:
                 entries.append(entry)
         return entries
@@ -262,12 +375,14 @@ class RecipeSheetService:
     def _parse_xlsx(self, file_id: str) -> list[dict]:
         """Parse an uploaded .xlsx spreadsheet via openpyxl.
 
-        We can't get Google's per-sheet gid for an .xlsx via developerKey-auth
-        Sheets API (and ``?range=`` only selects within the current tab, it
-        doesn't navigate), so per-dish entries are returned with an empty
-        ``url``. The frontend renders those names as plain text and links to
-        the file via a single "Åbn opskriftsark" button (see the
-        ``recipe_file_url`` returned by ``TodayTeamRecipesView``).
+        This is the path that actually runs in production: the menu workbooks
+        are Office .xlsx files, which the Sheets API refuses to open, so we
+        download and read them locally. ``data_only=True`` returns the cached
+        formula results (the quantities are formulas) rather than the formulas.
+
+        We can't get Google's per-sheet gid for an .xlsx via developerKey-auth,
+        so entries carry an empty ``url`` and the app renders the parsed recipe
+        content in-app instead of deep-linking into a specific tab.
         """
         try:
             import openpyxl
@@ -280,15 +395,14 @@ class RecipeSheetService:
                 _, done = downloader.next_chunk()
             file_content.seek(0)
 
-            workbook = openpyxl.load_workbook(file_content, read_only=True)
+            workbook = openpyxl.load_workbook(file_content, read_only=True, data_only=True)
             entries: list[dict] = []
             for ws in workbook.worksheets:
                 title = ws.title
                 if not SHEET_PATTERN.match(title.strip()):
                     continue
-                # Dish name lives in C1 (A and B are hidden ingredient cols).
-                dish_cell_value = ws.cell(row=DISH_NAME_ROW, column=DISH_NAME_COL).value
-                entry = self._entry_from_title(title, dish_cell_value, url="")
+                grid = list(ws.iter_rows(min_row=1, max_row=MAX_SCAN_ROWS, values_only=True))
+                entry = self._build_entry_from_grid(title, grid, url="")
                 if entry:
                     entries.append(entry)
             workbook.close()

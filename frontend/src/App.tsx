@@ -70,6 +70,8 @@ const AnnouncementsPage = lazy(() => import("./pages/AnnouncementsPage"))
 const FoodPage = lazy(() => import("./pages/FoodPage"))
 const LeftoversPage = lazy(() => import("./pages/LeftoversPage"))
 
+const RecipesPage = lazy(() => import("./pages/RecipesPage"))
+
 const FoodPreferencesPage = lazy(() => import("./pages/FoodPreferencesPage"))
 
 const FoodTeamsPage = lazy(() => import("./pages/FoodTeamsPage"))
@@ -488,6 +490,16 @@ const AuthenticatedRoutes = memo(function AuthenticatedRoutes() {
             <ProtectedRoute>
               <ErrorBoundary>
                 <LeftoversPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mad/opskrifter"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <RecipesPage />
               </ErrorBoundary>
             </ProtectedRoute>
           }

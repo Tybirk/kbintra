@@ -11,7 +11,6 @@ import {
   Textarea,
   Avatar,
   Button,
-  Anchor,
   ThemeIcon,
   Collapse,
   FileButton,
@@ -29,13 +28,17 @@ import {
   IconToolsKitchen,
   IconBowl,
   IconPhoto,
+  IconBook2,
+  IconFileText,
 } from "@tabler/icons-react"
 
 import { foodApi } from "../api/food"
 
 import { showErrorNotification } from "../utils/errorNotification"
 
-import type { RegistrationCount } from "../types"
+import { RecipeDrawer, FrontPageDrawer } from "./RecipeView"
+
+import type { RegistrationCount, RecipeSheet } from "../types"
 
 interface ServingBucket {
   label: string
@@ -66,6 +69,10 @@ export default function TodayFoodTeamActionBox() {
   const [leftoverImage, setLeftoverImage] = useState<File | null>(null)
 
   const [leftoverMessage, setLeftoverMessage] = useState("")
+
+  const [activeRecipe, setActiveRecipe] = useState<RecipeSheet | null>(null)
+
+  const [frontPageOpen, setFrontPageOpen] = useState(false)
 
   const teamId = data?.team_id
 
@@ -138,12 +145,8 @@ export default function TodayFoodTeamActionBox() {
   const recipes = [...(recipesData?.recipes ?? [])].sort(
     (a, b) => a.index - b.index,
   )
-  // If the parser couldn't get per-tab gid URLs (e.g. .xlsx files without
-  // OAuth), entries come back with url="". We then show dish names as plain
-  // text and surface a single "Åbn opskriftsark" button for the whole file.
-  const hasPerDishLinks = recipes.some((r) => !!r.url)
-  const recipeFileUrl = recipesData?.recipe_file_url ?? ""
   const recipeFolderUrl = recipesData?.recipe_folder_url ?? ""
+  const frontPage = recipesData?.front_page ?? null
 
   // Build serving buckets defensively — stats may be missing or closed.
   const buckets: ServingBucket[] = stats
@@ -208,68 +211,57 @@ export default function TodayFoodTeamActionBox() {
           </Stack>
         ) : (
           <>
-            {recipeFolderUrl && (
-              <div>
-                <Button
-                  component="a"
-                  href={recipeFolderUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  variant="light"
-                  color="green"
-                  size="sm"
-                  leftSection={<IconExternalLink size={16} />}
-                >
-                  Åbn dagens opskriftsmappe
-                </Button>
-              </div>
+            {(recipeFolderUrl || frontPage) && (
+              <Group gap="xs">
+                {frontPage && (
+                  <Button
+                    variant="light"
+                    color="blue"
+                    size="sm"
+                    leftSection={<IconFileText size={16} />}
+                    onClick={() => setFrontPageOpen(true)}
+                  >
+                    Dagens forside
+                  </Button>
+                )}
+                {recipeFolderUrl && (
+                  <Button
+                    component="a"
+                    href={recipeFolderUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    variant="light"
+                    color="green"
+                    size="sm"
+                    leftSection={<IconExternalLink size={16} />}
+                  >
+                    Åbn dagens opskriftsmappe
+                  </Button>
+                )}
+              </Group>
             )}
 
-            {/* Per-dish: prefer real deep links; fall back to plain text + a
-                single file-level button when the parser couldn't get gids. */}
+            {/* Per-dish: open the parsed recipe in-app (ingredients +
+                Fremgangsmåde) so cooks don't need an Excel viewer. */}
             {recipes.length > 0 && (
-              <Stack gap={4}>
+              <Stack gap={6}>
                 <Text size="sm" fw={500}>
                   Dagens opskrifter
                 </Text>
                 <Group gap="xs">
-                  {recipes.map((r) =>
-                    r.url ? (
-                      <Anchor
-                        key={`${r.code}-${r.index}`}
-                        href={r.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        size="sm"
-                      >
-                        <Group gap={4} wrap="nowrap">
-                          <IconExternalLink size={14} />
-                          {r.name}
-                        </Group>
-                      </Anchor>
-                    ) : (
-                      <Text key={`${r.code}-${r.index}`} size="sm">
-                        {r.name}
-                      </Text>
-                    ),
-                  )}
-                </Group>
-                {!hasPerDishLinks && recipeFileUrl && (
-                  <div>
+                  {recipes.map((r) => (
                     <Button
-                      component="a"
-                      href={recipeFileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      variant="light"
+                      key={`${r.code}-${r.index}`}
+                      variant="white"
                       color="green"
                       size="xs"
-                      leftSection={<IconExternalLink size={14} />}
+                      leftSection={<IconBook2 size={14} />}
+                      onClick={() => setActiveRecipe(r)}
                     >
-                      Åbn opskriftsark
+                      {r.name}
                     </Button>
-                  </div>
-                )}
+                  ))}
+                </Group>
               </Stack>
             )}
           </>
@@ -403,6 +395,18 @@ export default function TodayFoodTeamActionBox() {
           </>
         )}
       </Stack>
+
+      <RecipeDrawer
+        recipe={activeRecipe}
+        opened={!!activeRecipe}
+        onClose={() => setActiveRecipe(null)}
+      />
+
+      <FrontPageDrawer
+        frontPage={frontPage}
+        opened={frontPageOpen}
+        onClose={() => setFrontPageOpen(false)}
+      />
     </Paper>
   )
 }

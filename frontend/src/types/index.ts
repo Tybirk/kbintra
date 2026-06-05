@@ -1724,12 +1724,35 @@ export interface CreateSwapBroadcastData {
   message?: string
 }
 
+export interface RecipeIngredient {
+  amount: string
+  unit: string
+  name: string
+  comment: string
+}
+
 export interface RecipeSheet {
   code: string
   day: number
   index: number
   name: string
+  weekday: string
   url: string
+  ingredients: RecipeIngredient[]
+  steps: string[]
+}
+
+export interface FrontPageBlock {
+  text: string
+  heading: boolean
+}
+
+// One weekday's "forside" — the detailed menu-document page for that day.
+export interface DayFrontPage {
+  day: number
+  weekday: string
+  title: string
+  blocks: FrontPageBlock[]
 }
 
 export interface TodayLeftoversPost {
@@ -1758,6 +1781,17 @@ export interface TodayTeamRecipes {
   recipe_folder_url: string
   recipe_file_url: string
   recipes: RecipeSheet[]
+  front_page: DayFrontPage | null
+}
+
+// Whole-week recipes for the standalone "Ugens opskrifter" page.
+export interface WeekRecipes {
+  week_number: number
+  year: number
+  recipe_folder_url: string
+  recipe_file_url: string
+  recipes: RecipeSheet[]
+  front_pages: DayFrontPage[]
 }
 
 export interface MyFoodProfile {

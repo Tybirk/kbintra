@@ -48,6 +48,7 @@ from .views import (
     TodayLeftoversView,
     TodayTeamActionBoxView,
     TodayTeamRecipesView,
+    WeekRecipesView,
 )
 
 app_name = "food"
@@ -73,6 +74,7 @@ urlpatterns = [
     path("teams/my/", MyTeamsView.as_view(), name="my-teams"),
     path("teams/today/", TodayTeamActionBoxView.as_view(), name="team-today"),
     path("teams/today/recipes/", TodayTeamRecipesView.as_view(), name="team-today-recipes"),
+    path("recipes/week/", WeekRecipesView.as_view(), name="recipes-week"),
     path("leftovers/today/", TodayLeftoversView.as_view(), name="leftovers-today"),
     path("teams/takeover/", TakeoverView.as_view(), name="team-takeover"),
     path("teams/<int:pk>/", FoodTeamDetailView.as_view(), name="team-detail"),

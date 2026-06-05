@@ -555,14 +555,25 @@ class DriveMenuCache(models.Model):
         blank=True,
         help_text=(
             "Parsed recipe spreadsheet sheets for the week. List of "
-            "{code, day, index, name, url} dicts (code like 'Ma1'; day 0-3; "
-            "name from the sheet's A1 cell; url deep-links to the sheet)."
+            "{code, day, index, name, weekday, url, ingredients, steps} dicts "
+            "(code like 'Ma1'; day 0-3; name from cell C1; ingredients is a "
+            "list of {amount, unit, name, comment}; steps is the Fremgangsmåde)."
         ),
     )
     recipe_file_id = models.CharField(
         max_length=100,
         blank=True,
         help_text="Drive file ID of the week's recipe spreadsheet (if found).",
+    )
+    daily_front_pages = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Parsed per-day 'forside' sections from the week's menu document. "
+            "List of {day, weekday, title, blocks} dicts (day 0-3; blocks is a "
+            "list of {text, heading}). Extracted from the detailed weekday "
+            "pages of the .docx (one page per weekday)."
+        ),
     )
     fetched_at = models.DateTimeField(
         auto_now=True,

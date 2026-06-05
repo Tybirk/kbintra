@@ -33,6 +33,7 @@ import type {
   CreateSwapBroadcastData,
   TodayTeamActionBox,
   TodayTeamRecipes,
+  WeekRecipes,
   TodayLeftoversPost,
   MyFoodProfile,
   FoodRosterEntry,
@@ -563,6 +564,18 @@ export const foodApi = {
 
   getTodayRecipes: async (): Promise<TodayTeamRecipes> => {
     const response = await apiClient.get("/food/teams/today/recipes/")
+
+    return response.data
+  },
+
+  getWeekRecipes: async (
+    week?: number,
+    year?: number,
+  ): Promise<WeekRecipes> => {
+    const params: Record<string, number> = {}
+    if (week != null) params.week = week
+    if (year != null) params.year = year
+    const response = await apiClient.get("/food/recipes/week/", { params })
 
     return response.data
   },
