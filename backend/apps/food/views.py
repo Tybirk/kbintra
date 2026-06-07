@@ -1221,10 +1221,14 @@ class GenerateTeamsView(APIView):
         generator = TeamGenerator(cycle)
         result = generator.generate(save=not dry_run)
 
-        return Response(
-            TeamGenerationResultSerializer(result).data,
-            status=status.HTTP_200_OK if result.success else status.HTTP_400_BAD_REQUEST,
-        )
+        # Always return 200 with the structured result. A run that "completes
+        # with problems" (unplaced people / undersized teams -> success=False)
+        # is not a client error: the request was valid and the generator did
+        # produce an outcome (teams_created, unassigned_persons, warnings). The
+        # frontend branches on result.success to show the "Holdgenerering
+        # resultat" modal either way. Reserving non-2xx for problematic runs
+        # would route them to a raw error toast and hide the modal.
+        return Response(TeamGenerationResultSerializer(result).data)
 
 
 class DefaultCookingDaysView(APIView):

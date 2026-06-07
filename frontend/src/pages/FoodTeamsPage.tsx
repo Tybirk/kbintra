@@ -817,19 +817,24 @@ function AdminPanel() {
     onSuccess: (result) => {
       setGenerationResult(result)
 
-      if (result.success) {
-        queryClient.invalidateQueries({ queryKey: ["food", "cycles"] })
+      // A real run persists/finalizes even when it completes with problems, so
+      // refresh either way. The detailed outcome (unassigned, warnings) is in
+      // the result modal; the toast is just a quick summary.
+      queryClient.invalidateQueries({ queryKey: ["food", "cycles"] })
 
-        queryClient.invalidateQueries({ queryKey: ["food", "teams"] })
+      queryClient.invalidateQueries({ queryKey: ["food", "teams"] })
 
-        notifications.show({
-          title: "Hold genereret",
+      notifications.show({
+        title: result.success
+          ? "Hold genereret"
+          : "Generering gennemført med problemer",
 
-          message: `Oprettede ${result.teams_created} hold.`,
+        message: result.success
+          ? `Oprettede ${result.teams_created} hold.`
+          : result.message,
 
-          color: "green",
-        })
-      }
+        color: result.success ? "green" : "yellow",
+      })
     },
 
     onError: (error: unknown) => {
@@ -2071,27 +2076,40 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
           </Badge>
         </Group>
 
-        <Group gap="xl">
-          <div>
-            <Text size="xs" c="dimmed">
-              Deres dato
-            </Text>
-            <Text size="sm" fw={500}>
-              {request.requester_membership.team_day_name},{" "}
-              {dayjs(request.requester_membership.team_date).format("D. MMM")}
-            </Text>
-          </div>
-          <IconArrowsExchange size={16} />
-          <div>
-            <Text size="xs" c="dimmed">
-              Din dato
-            </Text>
-            <Text size="sm" fw={500}>
-              {request.target_membership.team_day_name},{" "}
-              {dayjs(request.target_membership.team_date).format("D. MMM")}
-            </Text>
-          </div>
-        </Group>
+        {/* requester_membership/target_membership are fixed roles on the
+            request, but "Din"/"Deres" depend on who is viewing. For an incoming
+            request the viewer is the target; for an outgoing one the viewer is
+            the requester, so the two memberships swap sides. */}
+        {(() => {
+          const mine = request.is_incoming
+            ? request.target_membership
+            : request.requester_membership
+          const theirs = request.is_incoming
+            ? request.requester_membership
+            : request.target_membership
+          return (
+            <Group gap="xl">
+              <div>
+                <Text size="xs" c="dimmed">
+                  Din dato
+                </Text>
+                <Text size="sm" fw={500}>
+                  {mine.team_day_name}, {dayjs(mine.team_date).format("D. MMM")}
+                </Text>
+              </div>
+              <IconArrowsExchange size={16} />
+              <div>
+                <Text size="xs" c="dimmed">
+                  Deres dato
+                </Text>
+                <Text size="sm" fw={500}>
+                  {theirs.team_day_name},{" "}
+                  {dayjs(theirs.team_date).format("D. MMM")}
+                </Text>
+              </div>
+            </Group>
+          )
+        })()}
 
         {request.message && (
           <Paper p="xs" bg="var(--mantine-color-default-hover)" radius="sm">
