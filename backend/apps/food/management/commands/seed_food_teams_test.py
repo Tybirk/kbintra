@@ -19,7 +19,6 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.food.models import (
-    ClosedFoodDay,
     CycleStatus,
     FoodTeamCycle,
     FoodTeamWish,
@@ -131,6 +130,8 @@ class Command(BaseCommand):
 
     def _build_cooking_dates(self, start_str: str) -> list[str]:
         """16 cooking days (Mon–Thu) starting from the next Monday, skipping closed days."""
+        from apps.food.services.cycle_planning import next_cooking_dates
+
         if start_str:
             start = date.fromisoformat(start_str)
         else:
@@ -138,17 +139,7 @@ class Command(BaseCommand):
             start = today + timedelta(days=(7 - today.weekday()) % 7 or 7)
         # Snap to Monday.
         start -= timedelta(days=start.weekday())
-
-        closed = set(ClosedFoodDay.objects.values_list("date", flat=True))
-        dates: list[str] = []
-        d = start
-        guard = 0
-        while len(dates) < COOKING_DAYS_PER_CYCLE and guard < 400:
-            guard += 1
-            if d.weekday() <= 3 and d not in closed:
-                dates.append(d.isoformat())
-            d += timedelta(days=1)
-        return dates
+        return next_cooking_dates(COOKING_DAYS_PER_CYCLE, start=start)
 
     def _configure_flags(self, rng, users: list, options: dict) -> None:  # type: ignore[no-untyped-def]
         def apply_pct(field: str, pct: int) -> None:
@@ -186,23 +177,9 @@ class Command(BaseCommand):
 
     def _create_cycle(self, cooking_dates: list[str], name: str) -> FoodTeamCycle:
         if not name:
-            months = sorted({date.fromisoformat(d).month for d in cooking_dates})
-            danish = {
-                1: "januar",
-                2: "februar",
-                3: "marts",
-                4: "april",
-                5: "maj",
-                6: "juni",
-                7: "juli",
-                8: "august",
-                9: "september",
-                10: "oktober",
-                11: "november",
-                12: "december",
-            }
-            year = date.fromisoformat(cooking_dates[0]).year
-            name = f"Madhold {'-'.join(danish[m] for m in months)} {year}"
+            from apps.food.services.cycle_planning import suggest_cycle_name
+
+            name = suggest_cycle_name(cooking_dates)
 
         # Clear any existing cycle covering the same first date to stay idempotent.
         # (JSONField __contains is unsupported on SQLite, so filter in Python.)

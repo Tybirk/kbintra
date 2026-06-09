@@ -1631,6 +1631,18 @@ export interface CreateCycleData {
   wish_deadline: string
 }
 
+export interface SuggestedCyclePlan {
+  eligible_count: number
+
+  suggested_day_count: number
+
+  name: string
+
+  cooking_dates: string[]
+
+  wish_deadline: string
+}
+
 export interface FoodTeamWish {
   id: number
 

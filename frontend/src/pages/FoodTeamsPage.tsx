@@ -1084,6 +1084,8 @@ function CreateCycleModal({
 
   const [wishDeadline, setWishDeadline] = useState<Date | null>(null)
 
+  const [prefilled, setPrefilled] = useState(false)
+
   // Fetch closed food days to disable them in the date picker
 
   const { data: closedDays } = useQuery({
@@ -1095,6 +1097,30 @@ function CreateCycleModal({
   })
 
   const closedDateSet = new Set(closedDays?.map((d) => d.date) ?? [])
+
+  // Suggested defaults for the next period (live eligible count → number of
+  // cooking days, dates skipping closed days, name, deadline). Prefilled once
+  // per open so we never clobber the admin's manual edits.
+
+  const { data: suggestion } = useQuery({
+    queryKey: ["food", "cycles", "suggested"],
+
+    queryFn: foodApi.getSuggestedCyclePlan,
+
+    enabled: opened,
+  })
+
+  useEffect(() => {
+    if (opened && suggestion && !prefilled) {
+      setName(suggestion.name)
+
+      setCookingDates(suggestion.cooking_dates.map((d) => dayjs(d).toDate()))
+
+      setWishDeadline(dayjs(suggestion.wish_deadline).toDate())
+
+      setPrefilled(true)
+    }
+  }, [opened, suggestion, prefilled])
 
   const handleSubmit = () => {
     onCreate({
@@ -1114,6 +1140,8 @@ function CreateCycleModal({
     setCookingDates([])
 
     setWishDeadline(null)
+
+    setPrefilled(false)
 
     onClose()
   }
@@ -1141,6 +1169,15 @@ function CreateCycleModal({
       size="lg"
     >
       <Stack gap="md">
+        {suggestion && (
+          <Alert color="blue" variant="light" icon={<IconCalendar size={16} />}>
+            Forslag: {suggestion.eligible_count} berettigede kokke →{" "}
+            {suggestion.suggested_day_count} maddage. Datoer, navn og deadline
+            er udfyldt nedenfor (lukkede maddage er udeladt) — ret dem efter
+            behov.
+          </Alert>
+        )}
+
         <TextInput
           label="Periodenavn"
           placeholder="F.eks. Januar 2025 periode"

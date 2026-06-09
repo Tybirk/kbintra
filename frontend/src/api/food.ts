@@ -22,6 +22,7 @@ import type {
   CreateSwapRequestData,
   RespondSwapRequestData,
   FoodTeamCycle,
+  SuggestedCyclePlan,
   CreateCycleData,
   FoodTeamWish,
   CreateWishData,
@@ -332,6 +333,12 @@ export const foodApi = {
 
   getActiveCycle: async (): Promise<FoodTeamCycle> => {
     const response = await apiClient.get("/food/cycles/active/")
+
+    return response.data
+  },
+
+  getSuggestedCyclePlan: async (): Promise<SuggestedCyclePlan> => {
+    const response = await apiClient.get("/food/cycles/suggested/")
 
     return response.data
   },

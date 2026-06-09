@@ -40,6 +40,7 @@ from .views import (
     NotifyTakeawayReadyView,
     ReleaseTicketView,
     RespondSwapRequestView,
+    SuggestedCyclePlanView,
     SwapBroadcastDetailView,
     SwapBroadcastListCreateView,
     SwapRequestDetailView,
@@ -119,6 +120,7 @@ urlpatterns = [
     # Cycles
     path("cycles/", FoodTeamCycleListCreateView.as_view(), name="cycle-list"),
     path("cycles/active/", ActiveCycleView.as_view(), name="cycle-active"),
+    path("cycles/suggested/", SuggestedCyclePlanView.as_view(), name="cycle-suggested"),
     path("cycles/<int:pk>/", FoodTeamCycleDetailView.as_view(), name="cycle-detail"),
     path("cycles/<int:cycle_id>/wishes/", CycleWishesListView.as_view(), name="cycle-wishes"),
     path("cycles/<int:cycle_id>/my-wish/", MyWishView.as_view(), name="my-wish"),

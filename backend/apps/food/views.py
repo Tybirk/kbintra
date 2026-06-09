@@ -1126,6 +1126,49 @@ class ActiveCycleView(APIView):
         return Response(serializer.data)
 
 
+class SuggestedCyclePlanView(APIView):
+    """Defaults for the "Opret periode" admin form.
+
+    Suggests the next cycle's cooking dates (Mon–Thu, skipping closed days,
+    continuing after the latest existing cycle), a sensible number of days
+    derived from the live eligible-cook count, a Danish name, and a wish
+    deadline. All values are editable in the UI before saving.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsFoodAdmin]
+
+    def get(self, request: Request) -> Response:
+        from datetime import datetime, time, timedelta
+
+        from .services import cycle_planning as planning
+
+        eligible = planning.eligible_food_team_count()
+        day_count = planning.suggested_day_count(eligible)
+        cooking_dates = planning.next_cooking_dates(day_count)
+        name = planning.suggest_cycle_name(cooking_dates)
+
+        # Deadline: a week out, but always before the first cooking day so the
+        # period is still open for wishes when it starts.
+        now = timezone.now()
+        deadline = now + timedelta(days=7)
+        if cooking_dates:
+            first = datetime.combine(date.fromisoformat(cooking_dates[0]), time(23, 59))
+            first = timezone.make_aware(first, timezone.get_current_timezone())
+            day_before = first - timedelta(days=1)
+            if day_before < deadline:
+                deadline = max(now + timedelta(hours=1), day_before)
+
+        return Response(
+            {
+                "eligible_count": eligible,
+                "suggested_day_count": day_count,
+                "name": name,
+                "cooking_dates": cooking_dates,
+                "wish_deadline": deadline.isoformat(),
+            }
+        )
+
+
 # Food Team Wish Views
 
 

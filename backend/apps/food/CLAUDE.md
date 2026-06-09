@@ -50,6 +50,10 @@ The admin cost endpoint materializes any missing registrations first, then calcu
 
 Teams are planned in explicit `FoodTeamCycle` periods with status flow: `COLLECTING_WISHES` -> `GENERATING` -> `FINALIZED` -> `ARCHIVED`. Cannot regenerate once finalized without deleting teams first.
 
+### Next-cycle planning (create form defaults)
+
+`services/cycle_planning.py` centralises "what should the next period look like": **eligible cooks** = active users with `is_exempt_from_food_teams=False` (children aren't users); **suggested cooking days** = `round(eligible / 6)` (teams target 6, overflow 7); **dates** = the next Mon–Thu days skipping `ClosedFoodDay`s, continuing after the latest existing cycle so periods don't overlap. `GET cycles/suggested/` (food-admin) returns `{eligible_count, suggested_day_count, name, cooking_dates, wish_deadline}` and the "Opret periode" modal auto-prefills (editable) from it. The seeder reuses the same helpers. Initial resident flags were seeded from the cooking team's roster in `users/migrations/0012_seed_food_team_flags.py`.
+
 ### Wish-based allocation
 
 Users declare which dates they're available to cook. If a user submits no wish, they default to available for ALL dates (fairness). A wish with `is_unavailable=True` opts the user out of *that cycle* entirely (distinct from the permanent `is_exempt_from_food_teams`). The generator in `services/team_generator.py` assigns people to teams respecting constraints.
