@@ -1462,7 +1462,7 @@ function CreateThreadModal({
           <Stack gap="md">
             <TextInput
               label="Titel"
-              placeholder="Hvad vil du diskutere?"
+              placeholder=""
               value={title}
               onChange={(e) => setTitle(e.currentTarget.value)}
               required
@@ -1474,7 +1474,7 @@ function CreateThreadModal({
               <RichTextEditor
                 content={content}
                 onChange={setContent}
-                placeholder="Skriv dit første indlæg..."
+                placeholder=""
                 minHeight={200}
                 onFilePaste={handleAddFiles}
                 onSubmit={handleSubmit}
