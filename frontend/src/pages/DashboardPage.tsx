@@ -53,6 +53,7 @@ import {
   IconUsers,
   IconExternalLink,
   IconEyeOff,
+  IconPencil,
 } from "@tabler/icons-react"
 
 import dayjs from "dayjs"
@@ -201,6 +202,12 @@ export default function DashboardPage() {
 
     queryFn: forumApi.getSubgroups,
   })
+
+  // The main "Fælles" group. Several groups can be flagged is_default in
+  // production, so match the known slug with a loose name fallback instead.
+  const faellesGroup =
+    subgroups?.find((s) => s.slug === "faelles") ??
+    subgroups?.find((s) => s.name.trim().toLowerCase() === "fælles")
 
   const myGroups = useMemo(() => {
     if (!subgroups) return [] as Subgroup[]
@@ -480,6 +487,18 @@ export default function DashboardPage() {
 
   return (
     <>
+      {faellesGroup && (
+        <Button
+          component={Link}
+          to={`/forum/${faellesGroup.slug}?nytraad=1`}
+          leftSection={<IconPencil size={16} />}
+          size="sm"
+          mb="xl"
+        >
+          Skriv på Fælles
+        </Button>
+      )}
+
       {hasError && (
         <Alert color="red" title="Fejl" mb="xl">
           Kunne ikke hente data. Prøv at genindlæse siden.

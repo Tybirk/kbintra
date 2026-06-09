@@ -362,6 +362,29 @@ export default function SubgroupPage() {
     },
   })
 
+  // Allow opening the "Ny tråd" modal directly via a ?nytraad=1 query param
+  // (used by the "Skriv på Fælles" shortcut on the dashboard). Strip the param
+  // afterwards so it doesn't reopen on refresh or back-navigation.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+
+    if (params.get("nytraad") === "1") {
+      openCreateThreadModal()
+
+      params.delete("nytraad")
+
+      const newSearch = params.toString()
+
+      navigate(
+        {
+          pathname: location.pathname,
+          search: newSearch ? `?${newSearch}` : "",
+        },
+        { replace: true },
+      )
+    }
+  }, [location.search, location.pathname, navigate, openCreateThreadModal])
+
   const hasUnread = (subgroup?.unread_thread_count ?? 0) > 0
 
   const isLoading = subgroupLoading || threadsLoading

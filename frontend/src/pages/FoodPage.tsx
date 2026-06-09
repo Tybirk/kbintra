@@ -533,11 +533,14 @@ export default function FoodPage() {
               )}
               <Group gap="xs">
                 {canFoodAdmin && (
-                  <Text size="xs" c="dimmed" style={{ lineHeight: 1.1 }}>
-                    Budget
-                    <br />
-                    {weeklyBudget} kr.
-                  </Text>
+                  <Stack gap={0} style={{ lineHeight: 1.1 }}>
+                    <Text size="xs" c="dimmed">
+                      Budget (inkl. moms): {weeklyBudget} kr.
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      Budget (ekskl. moms): {Math.round(weeklyBudget * 0.8)} kr.
+                    </Text>
+                  </Stack>
                 )}
                 {canFoodAdmin && weekIsLocked && (
                   <Button
