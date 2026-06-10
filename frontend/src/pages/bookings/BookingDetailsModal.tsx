@@ -77,13 +77,27 @@ export function BookingDetailsModal({
           <Text size="sm" c="dimmed">
             Tidspunkt
           </Text>
-          <Text>
-            {dayjs(booking.start_datetime).format("dddd D. MMMM YYYY")}
-          </Text>
-          <Text fw={500}>
-            {dayjs(booking.start_datetime).format("HH:mm")} -{" "}
-            {dayjs(booking.end_datetime).format("HH:mm")}
-          </Text>
+          {dayjs(booking.start_datetime).isSame(
+            dayjs(booking.end_datetime),
+            "day",
+          ) ? (
+            <>
+              <Text>
+                {dayjs(booking.start_datetime).format("dddd D. MMMM YYYY")}
+              </Text>
+              <Text fw={500}>
+                {dayjs(booking.start_datetime).format("HH:mm")} -{" "}
+                {dayjs(booking.end_datetime).format("HH:mm")}
+              </Text>
+            </>
+          ) : (
+            <Text fw={500}>
+              {dayjs(booking.start_datetime).format("dddd D. MMMM YYYY")} kl.{" "}
+              {dayjs(booking.start_datetime).format("HH:mm")} –{" "}
+              {dayjs(booking.end_datetime).format("dddd D. MMMM YYYY")} kl.{" "}
+              {dayjs(booking.end_datetime).format("HH:mm")}
+            </Text>
+          )}
         </div>
 
         <div>

@@ -24,6 +24,21 @@ def _exception_dates_by_booking(recurring_bookings: list) -> dict[int, set[date]
     return by_booking
 
 
+def _format_event_span(event) -> str:
+    """Human-readable local-time span for a conflicting event.
+
+    Datetimes are stored in UTC, so convert to the current timezone before
+    formatting. Include the end date whenever the booking ends on a different
+    day than it starts — otherwise a multi-day booking (e.g. a party that runs
+    overnight into the next day) looks like a short same-day slot.
+    """
+    start_local = timezone.localtime(event.start_datetime)
+    end_local = timezone.localtime(event.end_datetime)
+    if start_local.date() == end_local.date():
+        return f"{start_local.strftime('%d/%m %H:%M')} - {end_local.strftime('%H:%M')}"
+    return f"{start_local.strftime('%d/%m %H:%M')} - {end_local.strftime('%d/%m %H:%M')}"
+
+
 def check_booking_overlaps(
     room_id: int,
     start: datetime,
@@ -53,11 +68,7 @@ def check_booking_overlaps(
         events_query = events_query.exclude(id=exclude_event_id)
 
     for event in events_query:
-        conflicts.append(
-            f"Overlapper med '{event.title}' "
-            f"({event.start_datetime.strftime('%d/%m %H:%M')} - "
-            f"{event.end_datetime.strftime('%H:%M')})"
-        )
+        conflicts.append(f"Overlapper med '{event.title}' ({_format_event_span(event)})")
 
     # Check recurring bookings
     recurring_conflicts = check_recurring_overlaps(room_id, start, end)
