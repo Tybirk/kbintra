@@ -34,6 +34,15 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
+/* Hide NumberInput up/down stepper arrows on touch devices: scrolling can
+   easily mis-tap them, silently changing (and auto-saving) meal portion
+   counts. Mouse users keep the arrows; touch users type the value instead. */
+@media (pointer: coarse) {
+  .meal-portion-input-controls {
+    display: none;
+  }
+}
+
 /* Safari fix: Schedule nav chevrons use SVG transform attribute on the root <svg>
    element, which Safari ignores. Override with CSS transform. */
 .schedule-wrapper [data-type="next"] svg {

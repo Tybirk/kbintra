@@ -1925,6 +1925,33 @@ class TestLinksInfoMembers:
         subgroup.refresh_from_db()
         assert subgroup.links_info_members == ""
 
+    def test_non_member_can_patch_public_links_info_in_open_subgroup(
+        self, second_authenticated_client, subgroup
+    ):
+        """Open subgroups (allows_members=False) have no privacy boundary, so
+        any authenticated user can edit the public links_info."""
+        assert subgroup.allows_members is False
+        response = second_authenticated_client.patch(
+            f"/api/forum/subgroups/{subgroup.slug}/update/",
+            {"links_info": "<p>Nyt</p>"},
+            format="json",
+        )
+        assert response.status_code == 200
+        subgroup.refresh_from_db()
+        assert subgroup.links_info == "<p>Nyt</p>"
+
+    def test_non_member_cannot_patch_public_links_info_in_member_subgroup(
+        self, second_authenticated_client, member_subgroup
+    ):
+        response = second_authenticated_client.patch(
+            f"/api/forum/subgroups/{member_subgroup.slug}/update/",
+            {"links_info": "<p>Nyt</p>"},
+            format="json",
+        )
+        assert response.status_code == 403
+        member_subgroup.refresh_from_db()
+        assert member_subgroup.links_info == ""
+
 
 class TestPrivateThreadVisibility:
     """Tests for members-only thread visibility."""

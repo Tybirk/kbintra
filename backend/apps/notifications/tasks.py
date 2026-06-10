@@ -781,23 +781,16 @@ def notify_subgroup_activity_task(
     from apps.forum.models import SubgroupMembership, SubgroupSubscription
 
     subscriber_ids = set(
-        SubgroupSubscription.objects.filter(
-            subgroup_id=subgroup_id,
-            notify_replies=True,
-        ).values_list("user_id", flat=True)
-    )
-    # Members default to opted-in for replies; only an explicit subscription
-    # row with notify_replies=False excludes them.
-    opted_out_ids = set(
-        SubgroupSubscription.objects.filter(
-            subgroup_id=subgroup_id,
-            notify_replies=False,
-        ).values_list("user_id", flat=True)
+        SubgroupSubscription.objects.filter(subgroup_id=subgroup_id).values_list(
+            "user_id", flat=True
+        )
     )
     member_ids = set(
         SubgroupMembership.objects.filter(subgroup_id=subgroup_id).values_list("user_id", flat=True)
     )
-    recipient_ids = subscriber_ids | (member_ids - opted_out_ids)
+    # Gate only on subscription/membership existence; the global notify_subgroup_activity
+    # preference is enforced downstream in create_notification → get_user_preference.
+    recipient_ids = subscriber_ids | member_ids
 
     muted_ids = set(
         ThreadMuteStatus.objects.filter(thread_id=thread_id).values_list("user_id", flat=True)

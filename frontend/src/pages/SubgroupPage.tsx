@@ -960,7 +960,7 @@ When done, print a short summary:
           {(() => {
             const canEditPublic =
               !!user &&
-              (user.is_staff || (subgroup.allows_members && subgroup.is_member))
+              (user.is_staff || !subgroup.allows_members || subgroup.is_member)
 
             const canSeeMembersSection =
               subgroup.allows_members &&

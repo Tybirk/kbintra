@@ -103,6 +103,7 @@ export function MealFormFields({
             <>
               <NumberInput
                 label="Voksne (kød)"
+                classNames={{ controls: "meal-portion-input-controls" }}
                 value={adultsMeatInput}
                 onChange={(val) => {
                   setAdultsMeatInput(val)
@@ -125,6 +126,7 @@ export function MealFormFields({
               />
               <NumberInput
                 label="Voksne (veg)"
+                classNames={{ controls: "meal-portion-input-controls" }}
                 value={adultsVegInput}
                 onChange={(val) => {
                   setAdultsVegInput(val)
@@ -148,6 +150,7 @@ export function MealFormFields({
           ) : (
             <NumberInput
               label="Voksne"
+              classNames={{ controls: "meal-portion-input-controls" }}
               value={adultsVegInput}
               onChange={(val) => {
                 setAdultsVegInput(val)
@@ -177,6 +180,7 @@ export function MealFormFields({
           )}
           <NumberInput
             label="Børn"
+            classNames={{ controls: "meal-portion-input-controls" }}
             value={childrenInput}
             onChange={(val) => {
               setChildrenInput(val)

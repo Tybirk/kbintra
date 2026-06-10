@@ -336,7 +336,6 @@ class SubgroupSubscriptionSerializer(serializers.ModelSerializer):
             "id",
             "subgroup",
             "notify_new_threads",
-            "notify_replies",
             "created_at",
         ]
 

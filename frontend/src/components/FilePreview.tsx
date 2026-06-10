@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react"
 
+import { useMediaQuery } from "@mantine/hooks"
+
 import {
   Modal,
   Image,
@@ -170,6 +172,8 @@ export function FilePreviewModal({
 
   const isPwa = window.matchMedia("(display-mode: standalone)").matches
 
+  const isMobile = useMediaQuery("(max-width: 768px)")
+
   // Fetch file content when needed
 
   useEffect(() => {
@@ -278,6 +282,9 @@ export function FilePreviewModal({
                 leftSection={<IconExternalLink size={16} />}
               >
                 Åbn PDF
+              </Button>
+              <Button variant="subtle" onClick={onClose}>
+                Luk
               </Button>
             </Stack>
           )
@@ -474,6 +481,7 @@ export function FilePreviewModal({
       onClose={onClose}
       title={file.name}
       size={modalSize()}
+      fullScreen={isMobile}
       centered
     >
       {renderPreviewContent()}

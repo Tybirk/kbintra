@@ -298,8 +298,10 @@ class SubgroupUpdateView(APIView):
         will_allow = serializer.validated_data.get("allows_members", was_allowing)
 
         if "links_info" in serializer.validated_data:
-            can_edit_links = request.user.is_staff or (
-                subgroup.allows_members and _is_member(request.user, subgroup)
+            can_edit_links = (
+                request.user.is_staff
+                or not subgroup.allows_members
+                or _is_member(request.user, subgroup)
             )
             if not can_edit_links:
                 return Response(

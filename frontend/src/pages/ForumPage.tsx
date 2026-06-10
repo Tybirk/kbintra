@@ -196,12 +196,12 @@ export default function ForumPage() {
         ) || []
 
       const byActivity = (a: Subgroup, b: Subgroup) => {
-        const aTime = new Date(
-          a.latest_thread_activity_at ?? a.last_activity_at ?? 0,
-        ).getTime()
-        const bTime = new Date(
-          b.latest_thread_activity_at ?? b.last_activity_at ?? 0,
-        ).getTime()
+        const aTime = a.latest_thread_activity_at
+          ? new Date(a.latest_thread_activity_at).getTime()
+          : 0
+        const bTime = b.latest_thread_activity_at
+          ? new Date(b.latest_thread_activity_at).getTime()
+          : 0
         return bTime - aTime
       }
 

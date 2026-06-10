@@ -271,8 +271,6 @@ export interface SubgroupSubscription {
 
   notify_new_threads: boolean
 
-  notify_replies: boolean
-
   created_at: string
 }
 

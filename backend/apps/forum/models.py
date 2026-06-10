@@ -91,7 +91,6 @@ class SubgroupSubscription(models.Model):
         related_name="subscriptions",
     )
     notify_new_threads = models.BooleanField(default=True)
-    notify_replies = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

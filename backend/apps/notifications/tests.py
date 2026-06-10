@@ -711,9 +711,7 @@ class TestNotificationChannelDedup:
             notify_subgroup_activity=True,
             push_subgroup_activity=True,
         )
-        SubgroupSubscription.objects.create(
-            user=user, subgroup=subgroup, notify_new_threads=True, notify_replies=True
-        )
+        SubgroupSubscription.objects.create(user=user, subgroup=subgroup, notify_new_threads=True)
         thread = Thread.objects.create(subgroup=subgroup, title="T", author=user)
 
         with (
@@ -758,9 +756,7 @@ class TestNotificationChannelDedup:
             notify_subgroup_activity=True,
             push_subgroup_activity=True,
         )
-        SubgroupSubscription.objects.create(
-            user=user, subgroup=subgroup, notify_new_threads=True, notify_replies=True
-        )
+        SubgroupSubscription.objects.create(user=user, subgroup=subgroup, notify_new_threads=True)
         thread = Thread.objects.create(subgroup=subgroup, title="T", author=second_user)
 
         with (
@@ -785,3 +781,40 @@ class TestNotificationChannelDedup:
         ).exists()
         pushed = [c.args[1] for c in push_task.call_args_list if c.args and c.args[0] == user.id]
         assert NotificationType.SUBGROUP_ACTIVITY not in pushed
+
+    @pytest.mark.django_db
+    def test_subgroup_activity_gated_only_by_global_preference(
+        self, user, second_user, subgroup, django_capture_on_commit_callbacks
+    ):
+        """Regression: a subgroup subscriber with the global notify_subgroup_activity
+        preference ON receives SUBGROUP_ACTIVITY for a reply in a thread they don't
+        participate in. (The former per-subgroup notify_replies flag, which silently
+        suppressed this, has been removed.)"""
+        from apps.forum.models import SubgroupSubscription, Thread
+        from apps.notifications.tasks import notify_subgroup_activity_task
+
+        NotificationPreference.objects.create(
+            user=user,
+            notify_subgroup_activity=True,
+        )
+        SubgroupSubscription.objects.create(user=user, subgroup=subgroup, notify_new_threads=True)
+        thread = Thread.objects.create(subgroup=subgroup, title="T", author=second_user)
+
+        with django_capture_on_commit_callbacks(execute=True):
+            notify_subgroup_activity_task(
+                replier_id=second_user.id,
+                thread_title="T",
+                thread_id=thread.id,
+                subgroup_id=subgroup.id,
+                subgroup_name=subgroup.name,
+                subgroup_slug=subgroup.slug,
+                thread_slug=thread.slug,
+                reply_content="hello",
+                post_id=123,
+                participant_ids=[],
+                mentioned_ids=[],
+            )
+
+        assert Notification.objects.filter(
+            user=user, notification_type=NotificationType.SUBGROUP_ACTIVITY
+        ).exists()

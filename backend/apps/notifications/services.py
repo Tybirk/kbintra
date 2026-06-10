@@ -1124,8 +1124,8 @@ def notify_subgroup_activity(
 ) -> int:
     """Notify subgroup subscribers about new activity in a thread they don't participate in.
 
-    Only sent to users who have opted in (default OFF) and have
-    SubgroupSubscription.notify_replies=True for this subgroup.
+    Only sent to users who have opted in to subgroup activity (NotificationPreference
+    .notify_subgroup_activity, default OFF) and subscribe to / are members of the subgroup.
 
     superseded_by_map: {user_id: higher-priority types they already get for this activity}
     (THREAD_REPLY/POST_REPLY for fall-through participants, MENTION for fall-through mentioned
