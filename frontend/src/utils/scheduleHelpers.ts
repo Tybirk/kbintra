@@ -72,6 +72,10 @@ export function bookingToScheduleData(
  *
  * Each segment keeps the original payload (so clicks still resolve to the
  * booking) and gets a per-day unique id (the library throws on duplicate ids).
+ *
+ * An end at exactly midnight (00:00:00) is treated as the end of the previous
+ * day, so a booking that stops on a day boundary doesn't spill an empty
+ * (zero-length) chip onto the next, otherwise untouched, day.
  */
 export function expandMultiDayEvents<T extends EventPayload>(
   events: ScheduleEventData<T>[],
@@ -80,12 +84,26 @@ export function expandMultiDayEvents<T extends EventPayload>(
 
   for (const event of events) {
     const start = dayjs(event.start)
-    const end = dayjs(event.end)
+    let end = dayjs(event.end)
+
+    // A midnight end belongs to the previous day — clamp to its end-of-day so
+    // the split below doesn't emit a 00:00→00:00 segment on the next day.
+    const endsAtMidnight = end.isAfter(start) && end.isSame(end.startOf("day"))
+    if (endsAtMidnight) {
+      end = end.subtract(1, "day").endOf("day")
+    }
+
     const startDay = start.startOf("day")
     const endDay = end.startOf("day")
 
     if (!endDay.isAfter(startDay)) {
-      result.push(event)
+      // Re-emit with the clamped end (if any) so the library doesn't treat a
+      // midnight-terminated booking as spanning into the next day.
+      result.push(
+        endsAtMidnight
+          ? { ...event, end: end.format("YYYY-MM-DD HH:mm:ss") }
+          : event,
+      )
       continue
     }
 
