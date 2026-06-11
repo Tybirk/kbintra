@@ -1,4 +1,4 @@
-import type { ScheduleEventData } from "@mantine/schedule"
+import type { ScheduleEventData, EventPayload } from "@mantine/schedule"
 
 import type { Event, CalendarBooking } from "../types"
 
@@ -46,6 +46,66 @@ export function bookingToScheduleData(
 
     payload: { booking },
   }
+}
+
+/**
+ * Expand multi-day events into one single-day segment per covered day.
+ *
+ * Works around two `@mantine/schedule@9.0.0-alpha.1` limitations with multi-day
+ * events, both fixed by treating a multi-day booking as a series of single-day
+ * ones:
+ *
+ *  - **Month grid:** it packs a week's events into week-global rows and only
+ *    renders the first two inline (`position.row < 2`), while the "+N more"
+ *    badge is counted independently per day. A day fully covered by multi-day
+ *    events gets all of its own events pushed past the 2-row cap, so the cell
+ *    renders blank while still showing "+N more" (reported for 23 Jun / Aug
+ *    Sundays 2026). Independent single-day chips fill each day's lowest rows
+ *    first, so no day with events can render blank.
+ *  - **Day view:** it only includes events that *start* on the viewed day
+ *    (`getDayViewEvents`), so an overnight booking is missing from its second
+ *    day. A per-day segment starts on each covered day, so it shows on all of
+ *    them.
+ *
+ * The week view already renders multi-day events as spanning bars and the
+ * mobile "oversigt" agenda lists them, so those keep the original events.
+ *
+ * Each segment keeps the original payload (so clicks still resolve to the
+ * booking) and gets a per-day unique id (the library throws on duplicate ids).
+ */
+export function expandMultiDayEvents<T extends EventPayload>(
+  events: ScheduleEventData<T>[],
+): ScheduleEventData<T>[] {
+  const result: ScheduleEventData<T>[] = []
+
+  for (const event of events) {
+    const start = dayjs(event.start)
+    const end = dayjs(event.end)
+    const startDay = start.startOf("day")
+    const endDay = end.startOf("day")
+
+    if (!endDay.isAfter(startDay)) {
+      result.push(event)
+      continue
+    }
+
+    let day = startDay
+    while (!day.isAfter(endDay)) {
+      const segStart = day.isSame(startDay, "day") ? start : day.startOf("day")
+      const segEnd = day.isSame(endDay, "day") ? end : day.endOf("day")
+
+      result.push({
+        ...event,
+        id: `${event.id}__${day.format("YYYY-MM-DD")}`,
+        start: segStart.format("YYYY-MM-DD HH:mm:ss"),
+        end: segEnd.format("YYYY-MM-DD HH:mm:ss"),
+      })
+
+      day = day.add(1, "day")
+    }
+  }
+
+  return result
 }
 
 /** Danish labels for the Schedule component */

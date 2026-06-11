@@ -51,6 +51,7 @@ import { useAuthStore } from "../store/authStore"
 import {
   bookingToScheduleData,
   DA_SCHEDULE_LABELS,
+  expandMultiDayEvents,
 } from "../utils/scheduleHelpers"
 
 import { CreateBookingModal, EditBookingModal } from "./bookings/BookingModals"
@@ -182,13 +183,22 @@ export default function BookingsPage() {
     placeholderData: keepPreviousData,
   })
 
-  // Convert bookings → Schedule events
+  // Convert bookings → Schedule events. The month grid (desktop, or mobile
+  // "skema") and the day view need multi-day bookings split into per-day chips
+  // — the month grid otherwise renders blank cells and the day view drops a
+  // booking's later days (see expandMultiDayEvents). The week view renders
+  // multi-day events as spanning bars and the mobile "oversigt" agenda lists
+  // them, so both keep the original events.
 
-  const scheduleEvents = useMemo(
-    () => (bookings || []).map(bookingToScheduleData),
+  const splitMultiDayEvents =
+    currentView === "day" ||
+    (currentView === "month" && !(isMobile && mobileViewMode === "oversigt"))
 
-    [bookings],
-  )
+  const scheduleEvents = useMemo(() => {
+    const mapped = (bookings || []).map(bookingToScheduleData)
+
+    return splitMultiDayEvents ? expandMultiDayEvents(mapped) : mapped
+  }, [bookings, splitMultiDayEvents])
 
   const deleteMutation = useMutation({
     mutationFn: async ({
