@@ -28,14 +28,20 @@ import {
   IconDownload,
   IconChevronLeft,
   IconChevronRight,
-  IconExternalLink,
   IconFileTypePdf,
   IconFileTypeDoc,
   IconFileTypePpt,
   IconMessage,
 } from "@tabler/icons-react"
 
-import { getFileType, getFileIcon, getFileTypeColor } from "./FilePreview"
+import {
+  getFileType,
+  getFileIcon,
+  getFileTypeColor,
+  useFileActions,
+  FileActionButtons,
+  PdfPreview,
+} from "./FilePreview"
 import { ImageZoomViewer } from "./ImageZoomViewer"
 
 interface Attachment {
@@ -295,7 +301,9 @@ function SlideContent({
 
   const fileType = getFileType(attachment.name)
 
-  const isPwa = window.matchMedia("(display-mode: standalone)").matches
+  const actions = useFileActions(attachment, opened)
+
+  const { blobUrl, blobError, handleDownload } = actions
 
   // Optional "Gå til tråd" link, rendered next to Download when the carousel
   // was opened from the gallery (each slide is from a different thread).
@@ -354,30 +362,6 @@ function SlideContent({
         })
     }
   }, [attachment.file_url, fileType, opened])
-
-  const handleDownload = () => {
-    fetch(attachment.file_url)
-
-      .then((res) => res.blob())
-
-      .then((blob) => {
-        const blobUrl = URL.createObjectURL(blob)
-
-        const a = document.createElement("a")
-
-        a.href = blobUrl
-
-        a.download = attachment.name
-
-        document.body.appendChild(a)
-
-        a.click()
-
-        document.body.removeChild(a)
-
-        URL.revokeObjectURL(blobUrl)
-      })
-  }
 
   // Image preview
 
@@ -457,9 +441,7 @@ function SlideContent({
   // PDF preview
 
   if (fileType === "pdf") {
-    if (isPwa) {
-      // In PWA, iframes are unreliable — open in browser/system PDF viewer instead
-
+    if (blobError) {
       return (
         <Stack
           align="center"
@@ -469,53 +451,36 @@ function SlideContent({
           p="xl"
         >
           <IconFileTypePdf size={80} color="var(--mantine-color-red-6)" />
-          <Text size="lg" fw={500} ta="center">
-            {attachment.name}
+          <Text c="red" ta="center">
+            Kunne ikke indlæse PDF&apos;en.
           </Text>
-          <Group justify="center" gap="xs">
-            {threadLinkButton}
-            <Button
-              component="a"
-              href={attachment.file_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              leftSection={<IconExternalLink size={16} />}
-            >
-              Åbn PDF
-            </Button>
-          </Group>
+          <FileActionButtons
+            actions={actions}
+            size="sm"
+            extra={threadLinkButton}
+          />
         </Stack>
+      )
+    }
+
+    if (!blobUrl) {
+      return (
+        <Center h="100%">
+          <Loader />
+        </Center>
       )
     }
 
     return (
       <Stack gap="md" style={{ height: "100%" }} p={isMobile ? "xs" : "md"}>
-        <Box style={{ flex: 1, minHeight: 0 }}>
-          <iframe
-            src={attachment.file_url}
-            style={{
-              width: "100%",
-
-              height: "100%",
-
-              border: "none",
-
-              borderRadius: "8px",
-            }}
-            title={attachment.name}
-          />
-        </Box>
-        <Group justify="center" gap="xs">
-          {threadLinkButton}
-          <Button
-            variant="light"
-            size="sm"
-            leftSection={<IconDownload size={16} />}
-            onClick={handleDownload}
-          >
-            Download fil
-          </Button>
-        </Group>
+        <ScrollArea style={{ flex: 1, minHeight: 0 }}>
+          <PdfPreview blobUrl={blobUrl} />
+        </ScrollArea>
+        <FileActionButtons
+          actions={actions}
+          size="sm"
+          extra={threadLinkButton}
+        />
       </Stack>
     )
   }
@@ -583,17 +548,11 @@ function SlideContent({
               dangerouslySetInnerHTML={{ __html: attachment.preview_html }}
             />
           </ScrollArea>
-          <Group justify="center" gap="xs">
-            {threadLinkButton}
-            <Button
-              variant="light"
-              size="sm"
-              leftSection={<IconDownload size={16} />}
-              onClick={handleDownload}
-            >
-              Download fil
-            </Button>
-          </Group>
+          <FileActionButtons
+            actions={actions}
+            size="sm"
+            extra={threadLinkButton}
+          />
         </Stack>
       )
     }
@@ -611,19 +570,15 @@ function SlideContent({
           {attachment.name}
         </Text>
         <Text c="dimmed" ta="center">
-          Word-dokumenter kan ikke vises direkte i browseren.
+          Word-dokumenter kan ikke vises direkte i appen.
           <br />
-          Download filen for at åbne den.
+          Åbn dokumentet i din standard-app, eller gem det.
         </Text>
-        <Group justify="center" gap="xs">
-          {threadLinkButton}
-          <Button
-            leftSection={<IconDownload size={16} />}
-            onClick={handleDownload}
-          >
-            Download fil
-          </Button>
-        </Group>
+        <FileActionButtons
+          actions={actions}
+          size="sm"
+          extra={threadLinkButton}
+        />
       </Stack>
     )
   }
@@ -644,19 +599,15 @@ function SlideContent({
           {attachment.name}
         </Text>
         <Text c="dimmed" ta="center">
-          PowerPoint-præsentationer kan ikke vises direkte i browseren.
+          PowerPoint-præsentationer kan ikke vises direkte i appen.
           <br />
-          Download filen for at åbne den.
+          Åbn præsentationen i din standard-app, eller gem den.
         </Text>
-        <Group justify="center" gap="xs">
-          {threadLinkButton}
-          <Button
-            leftSection={<IconDownload size={16} />}
-            onClick={handleDownload}
-          >
-            Download fil
-          </Button>
-        </Group>
+        <FileActionButtons
+          actions={actions}
+          size="sm"
+          extra={threadLinkButton}
+        />
       </Stack>
     )
   }
@@ -682,17 +633,9 @@ function SlideContent({
       <Text c="dimmed" ta="center">
         Denne filtype kan ikke forhåndsvises.
         <br />
-        Download filen for at åbne den.
+        Åbn filen i din standard-app, eller gem den.
       </Text>
-      <Group justify="center" gap="xs">
-        {threadLinkButton}
-        <Button
-          leftSection={<IconDownload size={16} />}
-          onClick={handleDownload}
-        >
-          Download fil
-        </Button>
-      </Group>
+      <FileActionButtons actions={actions} size="sm" extra={threadLinkButton} />
     </Stack>
   )
 }

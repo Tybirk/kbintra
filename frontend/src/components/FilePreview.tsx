@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from "react"
+import { useState, useEffect, lazy, Suspense, type ReactNode } from "react"
 
 import { useMediaQuery } from "@mantine/hooks"
 
@@ -16,6 +16,7 @@ import {
   Code,
   ScrollArea,
   Box,
+  type ButtonProps,
 } from "@mantine/core"
 
 import {
@@ -152,6 +153,241 @@ export function getFileTypeColor(filename: string): string {
   }
 }
 
+interface PreviewableFile {
+  name: string
+
+  file_url: string
+}
+
+function triggerDownload(url: string, filename: string) {
+  const a = document.createElement("a")
+
+  a.href = url
+
+  a.download = filename
+
+  document.body.appendChild(a)
+
+  a.click()
+
+  document.body.removeChild(a)
+}
+
+/**
+ * Shared blob/share/download logic for file previews. Used by both
+ * FilePreviewModal and AttachmentCarousel so they behave identically.
+ *
+ * Document-like types are fetched to an (authenticated) blob so we can render
+ * a PDF inline, hand the file to the OS share sheet / default viewer ("Åbn"),
+ * and save it ("Gem") — all without navigating away or hitting the media 401.
+ */
+export function useFileActions(file: PreviewableFile | null, enabled: boolean) {
+  const fileType = file ? getFileType(file.name) : "other"
+
+  const needsBlob =
+    fileType === "pdf" ||
+    fileType === "word" ||
+    fileType === "powerpoint" ||
+    fileType === "other"
+
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
+
+  const [shareFile, setShareFile] = useState<File | null>(null)
+
+  const [blobError, setBlobError] = useState(false)
+
+  const fileUrl = file?.file_url ?? null
+
+  const filename = file?.name ?? ""
+
+  // Fetch document-like files to an authenticated blob (used for inline PDF
+  // render, "Åbn" via the share sheet, and "Gem"). Revoked on close / change.
+  useEffect(() => {
+    if (!fileUrl || !enabled || !needsBlob) {
+      setBlobUrl(null)
+
+      setShareFile(null)
+
+      setBlobError(false)
+
+      return
+    }
+
+    let objectUrl: string | null = null
+
+    let cancelled = false
+
+    setBlobError(false)
+
+    fetch(fileUrl)
+
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load file")
+
+        return res.blob()
+      })
+
+      .then((blob) => {
+        if (cancelled) return
+
+        objectUrl = URL.createObjectURL(blob)
+
+        setBlobUrl(objectUrl)
+
+        setShareFile(new File([blob], filename, { type: blob.type }))
+      })
+
+      .catch(() => {
+        if (!cancelled) setBlobError(true)
+      })
+
+    return () => {
+      cancelled = true
+
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [fileUrl, filename, enabled, needsBlob])
+
+  // "Gem" — save the file. Blob-backed types reuse the prefetched blob (their
+  // buttons are disabled until it's ready); image/text fetch on demand.
+  const handleDownload = () => {
+    if (!fileUrl) return
+
+    if (blobUrl) {
+      triggerDownload(blobUrl, filename)
+
+      return
+    }
+
+    fetch(fileUrl)
+
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load file")
+
+        return res.blob()
+      })
+
+      .then((blob) => {
+        const url = URL.createObjectURL(blob)
+
+        triggerDownload(url, filename)
+
+        // Delayed revoke — Safari can abort the download if revoked immediately.
+        setTimeout(() => URL.revokeObjectURL(url), 30_000)
+      })
+
+      .catch(() => {
+        notifications.show({
+          title: "Fejl",
+
+          message: "Filen kunne ikke hentes.",
+
+          color: "red",
+        })
+      })
+  }
+
+  // "Åbn" — hand the file to the OS share sheet (iOS/Android) so the user can
+  // open it in the default viewer (Word/Pages/Quick Look) or save it. Called
+  // synchronously with the prefetched File so the user gesture isn't lost.
+  // Where file-sharing isn't supported (desktop): PDFs open in a new tab,
+  // everything else downloads with its proper filename (window.open on a
+  // non-renderable blob would save it under a random UUID name).
+  const handleOpen = () => {
+    if (shareFile && navigator.canShare?.({ files: [shareFile] })) {
+      navigator.share({ files: [shareFile], title: filename }).catch(() => {})
+
+      return
+    }
+
+    if (blobUrl && fileType === "pdf") {
+      window.open(blobUrl, "_blank", "noopener,noreferrer")
+
+      return
+    }
+
+    handleDownload()
+  }
+
+  return {
+    fileType,
+
+    blobUrl,
+
+    blobError,
+
+    // Åbn/Gem stay disabled until the blob is ready so the share sheet / blob
+    // is always available synchronously in the click handler. On error they
+    // re-enable as a retry path through the on-demand fetch.
+    actionsDisabled: needsBlob && !blobUrl && !blobError,
+
+    handleOpen,
+
+    handleDownload,
+  }
+}
+
+export type FileActions = ReturnType<typeof useFileActions>
+
+interface FileActionButtonsProps {
+  actions: FileActions
+
+  size?: ButtonProps["size"]
+
+  /** Extra buttons rendered before Åbn/Gem (e.g. "Gå til tråd"). */
+  extra?: ReactNode
+}
+
+export function FileActionButtons({
+  actions,
+
+  size,
+
+  extra,
+}: FileActionButtonsProps) {
+  return (
+    <Group justify="center" gap="xs">
+      {extra}
+      <Button
+        size={size}
+        leftSection={<IconExternalLink size={16} />}
+        onClick={actions.handleOpen}
+        disabled={actions.actionsDisabled}
+      >
+        Åbn
+      </Button>
+      <Button
+        size={size}
+        variant="light"
+        leftSection={<IconDownload size={16} />}
+        onClick={actions.handleDownload}
+        disabled={actions.actionsDisabled}
+      >
+        Gem
+      </Button>
+    </Group>
+  )
+}
+
+interface PdfPreviewProps {
+  blobUrl: string
+}
+
+/** Lazy-loaded inline PDF renderer with a loading fallback. */
+export function PdfPreview({ blobUrl }: PdfPreviewProps) {
+  return (
+    <Suspense
+      fallback={
+        <Center h={200}>
+          <Loader />
+        </Center>
+      }
+    >
+      <PdfViewer blobUrl={blobUrl} />
+    </Suspense>
+  )
+}
+
 interface FilePreviewModalProps {
   file: ForumFile | null
 
@@ -173,24 +409,11 @@ export function FilePreviewModal({
 
   const [error, setError] = useState<string | null>(null)
 
-  const fileType = file ? getFileType(file.name) : "other"
-
   const isMobile = useMediaQuery("(max-width: 768px)")
 
-  // Document-like types are fetched to an (authenticated) blob so we can render a
-  // PDF inline, hand the file to the OS share sheet / default viewer ("Åbn"), and
-  // save it ("Gem") — all without navigating away or hitting the media 401.
-  const needsBlob =
-    fileType === "pdf" ||
-    fileType === "word" ||
-    fileType === "powerpoint" ||
-    fileType === "other"
+  const actions = useFileActions(file, opened)
 
-  const [blobUrl, setBlobUrl] = useState<string | null>(null)
-
-  const [shareFile, setShareFile] = useState<File | null>(null)
-
-  const [blobError, setBlobError] = useState(false)
+  const { fileType, blobUrl, blobError, handleDownload } = actions
 
   // Fetch file content when needed
 
@@ -230,150 +453,7 @@ export function FilePreviewModal({
     }
   }, [file, opened, fileType])
 
-  // Fetch document-like files to an authenticated blob (used for inline PDF
-  // render, "Åbn" via the share sheet, and "Gem"). Revoked on close / change.
-  useEffect(() => {
-    if (!file || !opened || !needsBlob) {
-      setBlobUrl(null)
-
-      setShareFile(null)
-
-      setBlobError(false)
-
-      return
-    }
-
-    let objectUrl: string | null = null
-
-    let cancelled = false
-
-    setBlobError(false)
-
-    fetch(file.file_url)
-
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to load file")
-
-        return res.blob()
-      })
-
-      .then((blob) => {
-        if (cancelled) return
-
-        objectUrl = URL.createObjectURL(blob)
-
-        setBlobUrl(objectUrl)
-
-        setShareFile(new File([blob], file.name, { type: blob.type }))
-      })
-
-      .catch(() => {
-        if (!cancelled) setBlobError(true)
-      })
-
-    return () => {
-      cancelled = true
-
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
-    }
-  }, [file, opened, needsBlob])
-
   if (!file) return null
-
-  const filename = file.name
-
-  const triggerDownload = (url: string) => {
-    const a = document.createElement("a")
-
-    a.href = url
-
-    a.download = filename
-
-    document.body.appendChild(a)
-
-    a.click()
-
-    document.body.removeChild(a)
-  }
-
-  // "Gem" — save the file. Blob-backed types reuse the prefetched blob (their
-  // buttons are disabled until it's ready); image/text fetch on demand.
-  const handleDownload = () => {
-    if (blobUrl) {
-      triggerDownload(blobUrl)
-
-      return
-    }
-
-    fetch(file.file_url)
-
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to load file")
-
-        return res.blob()
-      })
-
-      .then((blob) => {
-        const url = URL.createObjectURL(blob)
-
-        triggerDownload(url)
-
-        // Delayed revoke — Safari can abort the download if revoked immediately.
-        setTimeout(() => URL.revokeObjectURL(url), 30_000)
-      })
-
-      .catch(() => {
-        notifications.show({
-          title: "Fejl",
-
-          message: "Filen kunne ikke hentes.",
-
-          color: "red",
-        })
-      })
-  }
-
-  // "Åbn" — hand the file to the OS share sheet (iOS/Android) so the user can
-  // open it in the default viewer (Word/Pages/Quick Look) or save it. Called
-  // synchronously with the prefetched File so the user gesture isn't lost.
-  // Where file-sharing isn't supported (desktop): PDFs open in a new tab,
-  // everything else downloads with its proper filename (window.open on a
-  // non-renderable blob would save it under a random UUID name).
-  const handleOpen = () => {
-    if (shareFile && navigator.canShare?.({ files: [shareFile] })) {
-      navigator.share({ files: [shareFile], title: filename }).catch(() => {})
-
-      return
-    }
-
-    if (blobUrl && fileType === "pdf") {
-      window.open(blobUrl, "_blank", "noopener,noreferrer")
-
-      return
-    }
-
-    handleDownload()
-  }
-
-  const renderFileActions = () => (
-    <Group justify="center">
-      <Button
-        leftSection={<IconExternalLink size={16} />}
-        onClick={handleOpen}
-        disabled={!blobUrl && !blobError}
-      >
-        Åbn
-      </Button>
-      <Button
-        variant="light"
-        leftSection={<IconDownload size={16} />}
-        onClick={handleDownload}
-        disabled={!blobUrl && !blobError}
-      >
-        Gem
-      </Button>
-    </Group>
-  )
 
   const renderPreviewContent = () => {
     switch (fileType) {
@@ -411,7 +491,7 @@ export function FilePreviewModal({
               <Text c="red" ta="center">
                 Kunne ikke indlæse PDF&apos;en.
               </Text>
-              {renderFileActions()}
+              <FileActionButtons actions={actions} />
             </Stack>
           )
         }
@@ -427,17 +507,9 @@ export function FilePreviewModal({
         return (
           <Stack gap="md">
             <ScrollArea h={isMobile ? "78vh" : "70vh"}>
-              <Suspense
-                fallback={
-                  <Center h={200}>
-                    <Loader />
-                  </Center>
-                }
-              >
-                <PdfViewer blobUrl={blobUrl} />
-              </Suspense>
+              <PdfPreview blobUrl={blobUrl} />
             </ScrollArea>
-            {renderFileActions()}
+            <FileActionButtons actions={actions} />
           </Stack>
         )
 
@@ -499,7 +571,7 @@ export function FilePreviewModal({
                   dangerouslySetInnerHTML={{ __html: file.preview_html }}
                 />
               </ScrollArea>
-              {renderFileActions()}
+              <FileActionButtons actions={actions} />
             </Stack>
           )
         }
@@ -515,7 +587,7 @@ export function FilePreviewModal({
               <br />
               Åbn dokumentet i din standard-app, eller gem det.
             </Text>
-            {renderFileActions()}
+            <FileActionButtons actions={actions} />
           </Stack>
         )
 
@@ -531,7 +603,7 @@ export function FilePreviewModal({
               <br />
               Åbn præsentationen i din standard-app, eller gem den.
             </Text>
-            {renderFileActions()}
+            <FileActionButtons actions={actions} />
           </Stack>
         )
 
@@ -547,7 +619,7 @@ export function FilePreviewModal({
               <br />
               Åbn filen i din standard-app, eller gem den.
             </Text>
-            {renderFileActions()}
+            <FileActionButtons actions={actions} />
           </Stack>
         )
     }
