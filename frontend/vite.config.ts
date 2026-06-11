@@ -125,6 +125,10 @@ export default defineConfig(({ command }) => ({
       strategies: 'injectManifest',
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        // Don't precache the lazy PDF viewer (~400 kB + 1 MB worker): viewing a
+        // PDF needs the network anyway (blobs come from /media, never cached),
+        // so precaching it would only bloat every app update for everyone.
+        globIgnores: ['**/PdfViewer-*', '**/pdf.worker*'],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3 MiB
       },
     }),
