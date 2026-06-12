@@ -27,9 +27,13 @@ kbintra/
 │   │   ├── forum/              # Forum with subgroups, threads, files
 │   │   ├── announcements/      # Community announcements
 │   │   ├── food/               # Food module (menus, teams, tickets)
-│   │   ├── calendar_app/       # Community calendar
+│   │   ├── events/             # Community events & room bookings
 │   │   ├── messaging/          # Direct messaging system
-│   │   └── notifications/      # Notification system with email
+│   │   ├── notifications/      # Notification system with email
+│   │   ├── search/              # FTS5 full-text search
+│   │   ├── bookings/            # Bookable rooms & recurring bookings
+│   │   ├── links/                # Shared community links
+│   │   └── backup/               # Media serving with S3 fallback
 │   ├── conftest.py             # Pytest fixtures
 │   ├── manage.py
 │   └── pyproject.toml          # uv project config
@@ -199,9 +203,12 @@ Key endpoint groups:
 - `/api/forum/` - Forum (subgroups, threads, posts, files)
 - `/api/announcements/` - Announcements
 - `/api/food/` - Food (menus, registrations, tickets, teams)
-- `/api/calendar/` - Calendar events
+- `/api/events/` - Community events & room bookings
 - `/api/messages/` - Direct messaging
 - `/api/notifications/` - Notifications and preferences
+- `/api/search/` - Full-text search
+- `/api/bookings/` - Bookable rooms & recurring bookings
+- `/api/links/` - Shared community links
 
 WebSocket: `ws://localhost:7000/ws/chat/?token=<jwt>`
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-KB Intra is a community communication platform for a co-living community (~90 users). It features forum discussions, food management (meal registration, tickets, cooking teams), direct messaging, calendar, and resident directory.
+KB Intra is a community communication platform for a co-living community (~90 users). It features forum discussions, food management (meal registration, tickets, cooking teams), direct messaging, calendar/events, room bookings, and resident directory.
 It is a small scale app, with few developers who do not wish to spend time maintaining it, but it is also critical infrastructure for our community, so the app should be simple and rock solid at the same time and easy to debug.
 
 ## Tech Stack
@@ -68,15 +68,19 @@ Note: Migrations run automatically on backend container startup via `docker-entr
 
 ### Backend Structure
 
-8 Django apps in `backend/apps/`:
+12 Django apps in `backend/apps/`:
 - `users` - Custom User model (email-based auth), invitations, profiles
 - `houses` - Resident directory by house
 - `forum` - Subgroups → Threads → Posts (Tiptap HTML), Files/Folders
-- `food` - MenuTemplates → WeeklyMenu → DailyMenu, MealRegistration, FoodTickets, FoodTeams
 - `announcements` - Priority community posts
-- `calendar_app` - Community events
+- `food` - MenuTemplates → WeeklyMenu → DailyMenu, MealRegistration, FoodTickets, FoodTeams
+- `events` - Community events and private room bookings, with 24h/1h reminders
 - `messaging` - 1:1 and group conversations with real-time messages (encrypted at rest)
 - `notifications` - In-app + email + push notifications with preferences
+- `search` - FTS5 full-text search index across other apps' models
+- `bookings` - Bookable room catalog with recurring bookings and exceptions
+- `links` - Shared community links page
+- `backup` - Media serving with S3 fallback restore + Litestream health checks
 
 ### Frontend Structure
 
@@ -88,7 +92,7 @@ Note: Migrations run automatically on backend container startup via `docker-entr
 
 ### API & Real-time
 
-- REST endpoints: `/api/{auth,users,houses,forum,announcements,food,calendar,messages,notifications}/`
+- REST endpoints: `/api/{auth,users,houses,forum,announcements,food,events,messages,notifications,search,bookings,links}/`
 - WebSocket: `ws://localhost:7000/ws/chat/?token=<jwt>` - messaging, notifications, typing indicators
 - Health check: `GET /api/health/` (unauthenticated, used by Docker healthcheck)
 - Vite proxies `/api` and `/media` to backend in dev (configured in vite.config.ts)
