@@ -572,7 +572,7 @@ export default function MessagesPage() {
 
               position: "fixed",
 
-              top: "var(--app-shell-header-height, 60px)",
+              top: "var(--app-shell-header-offset, 60px)",
 
               left: 0,
 

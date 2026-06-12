@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react"
+import { useLayoutEffect, useRef } from "react"
 
 import { Box, Stack, Text } from "@mantine/core"
 
@@ -23,7 +23,7 @@ export function TestDomainBanner() {
 
   const show = isTestDomain()
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!show) return
 
     const el = ref.current

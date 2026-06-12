@@ -26,7 +26,7 @@ export function BackButton({ to, label }: BackButtonProps) {
       style={{
         position: "sticky",
 
-        top: "var(--app-shell-header-height, 60px)",
+        top: "var(--app-shell-header-offset, 60px)",
 
         zIndex: 100,
 
