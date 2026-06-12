@@ -216,5 +216,10 @@ data/
 # Server config
 .server
 
-seed.data.md
+docs/history/seed.data.md
 bugs/
+
+# Local data dumps / one-off import-export artifacts — never commit
+kloeverbakken-export-*/
+*-import-*.zip
+old_food_teams/
