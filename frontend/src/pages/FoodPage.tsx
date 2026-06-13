@@ -91,6 +91,8 @@ import {
 
 import { isDateLocked, isAfterTicketSaleCutoff } from "../utils/foodDeadline"
 
+import { copyToClipboard } from "../utils/clipboard"
+
 import type {
   MealRegistration,
   CreateMealRegistrationData,
@@ -380,8 +382,6 @@ export default function FoodPage() {
 
   // Aggregate weekly budget and per-day shopping numbers from stats
 
-  const purchaseClipboard = useClipboard({ timeout: 1500 })
-
   let weeklyBudget = 0
 
   const purchaseColumns: number[] = []
@@ -553,14 +553,23 @@ export default function FoodPage() {
                     variant="light"
                     size="sm"
                     leftSection={<IconCopy size={14} />}
-                    onClick={() => {
-                      purchaseClipboard.copy(purchaseTSV)
+                    onClick={async () => {
+                      const copied = await copyToClipboard(purchaseTSV)
 
-                      notifications.show({
-                        color: "green",
+                      if (copied) {
+                        notifications.show({
+                          color: "green",
 
-                        message: "Indkøbstal kopieret til udklipsholder.",
-                      })
+                          message: "Indkøbstal kopieret til udklipsholder.",
+                        })
+                      } else {
+                        notifications.show({
+                          color: "red",
+
+                          message:
+                            "Kunne ikke kopiere automatisk. Prøv at markere tallene og kopiere manuelt.",
+                        })
+                      }
                     }}
                   >
                     Kopier indkøbstal
@@ -2569,11 +2578,32 @@ function FoodPageCommunityStats({ stats }: FoodPageCommunityStatsProps) {
     return parts.join(" · ")
   }
 
+  // Weighted headcount where children count as half a person.
+  const weightedCount = (slot: DailyRegistrationStats["eat_in_1730"]) =>
+    slot.adults + slot.children * 0.5
+
+  const totalWeighted =
+    weightedCount(stats.eat_in_1730) +
+    weightedCount(stats.eat_in_1830) +
+    weightedCount(stats.takeaway)
+
+  const formatPercent = (slot: DailyRegistrationStats["eat_in_1730"]) => {
+    if (totalWeighted <= 0) return null
+
+    return Math.round((weightedCount(slot) / totalWeighted) * 100)
+  }
+
   const slot1730 = formatSlot(stats.eat_in_1730)
 
   const slot1830 = formatSlot(stats.eat_in_1830)
 
   const slotTakeaway = formatSlot(stats.takeaway)
+
+  const pct1730 = formatPercent(stats.eat_in_1730)
+
+  const pct1830 = formatPercent(stats.eat_in_1830)
+
+  const pctTakeaway = formatPercent(stats.takeaway)
 
   if (!slot1730 && !slot1830 && !slotTakeaway) {
     return (
@@ -2592,6 +2622,11 @@ function FoodPageCommunityStats({ stats }: FoodPageCommunityStatsProps) {
           </Text>
           <Text size="xs" c="dimmed">
             {slot1730}
+            {pct1730 != null && (
+              <Text span fw={600}>
+                {` · ${pct1730}%`}
+              </Text>
+            )}
           </Text>
         </Group>
       )}
@@ -2602,6 +2637,11 @@ function FoodPageCommunityStats({ stats }: FoodPageCommunityStatsProps) {
           </Text>
           <Text size="xs" c="dimmed">
             {slot1830}
+            {pct1830 != null && (
+              <Text span fw={600}>
+                {` · ${pct1830}%`}
+              </Text>
+            )}
           </Text>
         </Group>
       )}
@@ -2612,6 +2652,11 @@ function FoodPageCommunityStats({ stats }: FoodPageCommunityStatsProps) {
           </Text>
           <Text size="xs" c="dimmed">
             {slotTakeaway}
+            {pctTakeaway != null && (
+              <Text span fw={600}>
+                {` · ${pctTakeaway}%`}
+              </Text>
+            )}
           </Text>
         </Group>
       )}

@@ -1964,11 +1964,32 @@ function CommunityRegistrationStats({
     return parts.join(" · ")
   }
 
+  // Weighted headcount where children count as half a person.
+  const weightedCount = (slot: DailyRegistrationStats["eat_in_1730"]) =>
+    slot.adults + slot.children * 0.5
+
+  const totalWeighted =
+    weightedCount(stats.eat_in_1730) +
+    weightedCount(stats.eat_in_1830) +
+    weightedCount(stats.takeaway)
+
+  const formatPercent = (slot: DailyRegistrationStats["eat_in_1730"]) => {
+    if (totalWeighted <= 0) return null
+
+    return Math.round((weightedCount(slot) / totalWeighted) * 100)
+  }
+
   const slot1730 = formatSlot(stats.eat_in_1730)
 
   const slot1830 = formatSlot(stats.eat_in_1830)
 
   const slotTakeaway = formatSlot(stats.takeaway)
+
+  const pct1730 = formatPercent(stats.eat_in_1730)
+
+  const pct1830 = formatPercent(stats.eat_in_1830)
+
+  const pctTakeaway = formatPercent(stats.takeaway)
 
   if (!slot1730 && !slot1830 && !slotTakeaway) {
     return (
@@ -1987,6 +2008,11 @@ function CommunityRegistrationStats({
           </Text>
           <Text size="xs" c="dimmed">
             {slot1730}
+            {pct1730 != null && (
+              <Text span fw={600}>
+                {` · ${pct1730}%`}
+              </Text>
+            )}
           </Text>
         </Group>
       )}
@@ -1997,6 +2023,11 @@ function CommunityRegistrationStats({
           </Text>
           <Text size="xs" c="dimmed">
             {slot1830}
+            {pct1830 != null && (
+              <Text span fw={600}>
+                {` · ${pct1830}%`}
+              </Text>
+            )}
           </Text>
         </Group>
       )}
@@ -2007,6 +2038,11 @@ function CommunityRegistrationStats({
           </Text>
           <Text size="xs" c="dimmed">
             {slotTakeaway}
+            {pctTakeaway != null && (
+              <Text span fw={600}>
+                {` · ${pctTakeaway}%`}
+              </Text>
+            )}
           </Text>
         </Group>
       )}
