@@ -9,6 +9,7 @@ import {
   Button,
   Card,
   Center,
+  Checkbox,
   Collapse,
   Container,
   Divider,
@@ -150,25 +151,33 @@ function ExpenseFormModal({ opened, onClose, expense }: ExpenseFormModalProps) {
   const queryClient = useQueryClient()
   const isEdit = !!expense
 
+  // Bank details fall back to the resident's saved profile values when creating
+  // a fresh udlæg, so they don't have to retype them every time.
+  const profile = useAuthStore((s) => s.user)
+
   const [regNr, setRegNr] = useState("")
   const [accountNumber, setAccountNumber] = useState("")
   const [amount, setAmount] = useState<string | number>("")
   const [description, setDescription] = useState("")
   const [approvalReference, setApprovalReference] = useState("")
+  const [foodRelated, setFoodRelated] = useState(false)
   const [files, setFiles] = useState<File[]>([])
   const [error, setError] = useState<string | null>(null)
 
   // Reset the form each time the modal opens (for create or a specific expense).
   useEffect(() => {
     if (!opened) return
-    setRegNr(expense?.reg_nr ?? "")
-    setAccountNumber(expense?.account_number ?? "")
+    setRegNr(expense?.reg_nr ?? profile?.bank_reg_nr ?? "")
+    setAccountNumber(
+      expense?.account_number ?? profile?.bank_account_number ?? "",
+    )
     setAmount(expense ? Number(expense.amount) : "")
     setDescription(expense?.description ?? "")
     setApprovalReference(expense?.approval_reference ?? "")
+    setFoodRelated(expense?.food_related ?? false)
     setFiles([])
     setError(null)
-  }, [opened, expense])
+  }, [opened, expense, profile])
 
   const handleAddFiles = (incoming: File[]) => {
     const { validFiles, errors } = filterFilesBySize(incoming)
@@ -194,6 +203,7 @@ function ExpenseFormModal({ opened, onClose, expense }: ExpenseFormModalProps) {
         amount: String(amount),
         description: description.trim(),
         approval_reference: approvalReference.trim(),
+        food_related: foodRelated,
       }
       if (isEdit && expense) {
         await expensesApi.update(expense.id, data)
@@ -304,6 +314,13 @@ function ExpenseFormModal({ opened, onClose, expense }: ExpenseFormModalProps) {
           onChange={(e) => setApprovalReference(e.currentTarget.value)}
           minRows={1}
           autosize
+        />
+
+        <Checkbox
+          label="Udlæg i forbindelse med fællesmad"
+          description="Gør udlægget synligt for de madansvarlige"
+          checked={foodRelated}
+          onChange={(e) => setFoodRelated(e.currentTarget.checked)}
         />
 
         {isEdit && expense && expense.attachments.length > 0 && (
@@ -439,6 +456,11 @@ function MyExpensesTab() {
                       <Badge color={meta.color} variant="light">
                         {expense.status_display || meta.label}
                       </Badge>
+                      {expense.food_related && (
+                        <Badge color="grape" variant="light">
+                          Fællesmad
+                        </Badge>
+                      )}
                     </Group>
                     <Text size="sm" c="dimmed">
                       {dayjs(expense.created_at).format("D. MMM YYYY")}
@@ -524,11 +546,12 @@ interface StatusMutationVars {
   note: string
 }
 
-function AdminExpensesTab() {
+function AdminExpensesTab({ canManage }: { canManage: boolean }) {
   const queryClient = useQueryClient()
   const [status, setStatus] = useState<ExpenseStatus | "">("")
   const [userId, setUserId] = useState<string | null>(null)
   const [range, setRange] = useState<[Date | null, Date | null]>([null, null])
+  const [foodFilter, setFoodFilter] = useState<string | null>(null)
   const [rejecting, setRejecting] = useState<RejectState | null>(null)
   const [page, setPage] = useState(1)
 
@@ -537,14 +560,17 @@ function AdminExpensesTab() {
 
   // The summed total and CSV export use the full filtered set, so they take
   // the filters without the page. The page is only added for the list query.
+  // Food-admin-only users always see the food_related subset (server-enforced),
+  // so the food filter is only surfaced to managers.
   const filters: AdminExpenseFilters = useMemo(
     () => ({
       status: status || undefined,
       user: userId ? Number(userId) : undefined,
       from: fromStr,
       to: toStr,
+      food_related: foodFilter === null ? undefined : foodFilter === "true",
     }),
-    [status, userId, fromStr, toStr],
+    [status, userId, fromStr, toStr, foodFilter],
   )
 
   // Reset to the first page whenever the filters change.
@@ -621,6 +647,17 @@ function AdminExpensesTab() {
 
   return (
     <Stack gap="md">
+      {!canManage && (
+        <Alert
+          icon={<IconInfoCircle size={20} />}
+          color="grape"
+          variant="light"
+        >
+          Du ser udlæg i forbindelse med fællesmad. Kun kassereren kan markere
+          dem som udbetalt eller afvist.
+        </Alert>
+      )}
+
       <Group justify="space-between" align="flex-end" wrap="wrap">
         <Group align="flex-end" wrap="wrap">
           <Select
@@ -658,6 +695,20 @@ function AdminExpensesTab() {
             w={240}
             clearable
           />
+          {canManage && (
+            <Select
+              label="Fællesmad"
+              placeholder="Alle"
+              data={[
+                { value: "true", label: "Kun fællesmad" },
+                { value: "false", label: "Ikke fællesmad" },
+              ]}
+              value={foodFilter}
+              onChange={setFoodFilter}
+              clearable
+              w={160}
+            />
+          )}
         </Group>
         <Button
           variant="light"
@@ -696,9 +747,10 @@ function AdminExpensesTab() {
                 <Table.Th>Beløb</Table.Th>
                 <Table.Th>Reg./konto</Table.Th>
                 <Table.Th>Beskrivelse</Table.Th>
+                <Table.Th>Fællesmad</Table.Th>
                 <Table.Th>Bilag</Table.Th>
                 <Table.Th>Status</Table.Th>
-                <Table.Th>Handling</Table.Th>
+                {canManage && <Table.Th>Handling</Table.Th>}
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -727,6 +779,17 @@ function AdminExpensesTab() {
                       )}
                     </Table.Td>
                     <Table.Td>
+                      {expense.food_related ? (
+                        <Badge color="grape" variant="light">
+                          Ja
+                        </Badge>
+                      ) : (
+                        <Text size="sm" c="dimmed">
+                          –
+                        </Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
                       <Group gap={4}>
                         {expense.attachments.map((att) => (
                           <ActionIcon
@@ -747,37 +810,39 @@ function AdminExpensesTab() {
                         {expense.status_display || meta.label}
                       </Badge>
                     </Table.Td>
-                    <Table.Td>
-                      <Menu position="bottom-end" withinPortal>
-                        <Menu.Target>
-                          <Button
-                            size="xs"
-                            variant="light"
-                            rightSection={<IconChevronDown size={14} />}
-                          >
-                            Skift
-                          </Button>
-                        </Menu.Target>
-                        <Menu.Dropdown>
-                          <Menu.Item
-                            onClick={() => setStatusFor(expense, "paid")}
-                          >
-                            Marker som udbetalt
-                          </Menu.Item>
-                          <Menu.Item
-                            color="red"
-                            onClick={() => setStatusFor(expense, "rejected")}
-                          >
-                            Afvis
-                          </Menu.Item>
-                          <Menu.Item
-                            onClick={() => setStatusFor(expense, "pending")}
-                          >
-                            Sæt som afventer
-                          </Menu.Item>
-                        </Menu.Dropdown>
-                      </Menu>
-                    </Table.Td>
+                    {canManage && (
+                      <Table.Td>
+                        <Menu position="bottom-end" withinPortal>
+                          <Menu.Target>
+                            <Button
+                              size="xs"
+                              variant="light"
+                              rightSection={<IconChevronDown size={14} />}
+                            >
+                              Skift
+                            </Button>
+                          </Menu.Target>
+                          <Menu.Dropdown>
+                            <Menu.Item
+                              onClick={() => setStatusFor(expense, "paid")}
+                            >
+                              Marker som udbetalt
+                            </Menu.Item>
+                            <Menu.Item
+                              color="red"
+                              onClick={() => setStatusFor(expense, "rejected")}
+                            >
+                              Afvis
+                            </Menu.Item>
+                            <Menu.Item
+                              onClick={() => setStatusFor(expense, "pending")}
+                            >
+                              Sæt som afventer
+                            </Menu.Item>
+                          </Menu.Dropdown>
+                        </Menu>
+                      </Table.Td>
+                    )}
                   </Table.Tr>
                 )
               })}
@@ -846,7 +911,10 @@ function AdminExpensesTab() {
 
 export default function ExpensesPage() {
   const user = useAuthStore((s) => s.user)
-  const canAdmin = !!(user?.is_staff || user?.is_economy_admin)
+  // Economy admins (and staff) manage everything; food admins get a read-only
+  // view of the fællesmad-related udlæg.
+  const canManage = !!(user?.is_staff || user?.is_economy_admin)
+  const canViewAdmin = canManage || !!user?.is_food_admin
   const [tab, setTab] = useState<string | null>("mine")
 
   return (
@@ -855,17 +923,19 @@ export default function ExpensesPage() {
         Udlæg
       </Title>
 
-      {canAdmin ? (
+      {canViewAdmin ? (
         <Tabs value={tab} onChange={setTab}>
           <Tabs.List mb="md">
             <Tabs.Tab value="mine">Mine udlæg</Tabs.Tab>
-            <Tabs.Tab value="admin">Administration</Tabs.Tab>
+            <Tabs.Tab value="admin">
+              {canManage ? "Administration" : "Fællesmad-udlæg"}
+            </Tabs.Tab>
           </Tabs.List>
           <Tabs.Panel value="mine">
             <MyExpensesTab />
           </Tabs.Panel>
           <Tabs.Panel value="admin">
-            <AdminExpensesTab />
+            <AdminExpensesTab canManage={canManage} />
           </Tabs.Panel>
         </Tabs>
       ) : (
