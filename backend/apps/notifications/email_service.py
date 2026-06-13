@@ -33,6 +33,7 @@ EMAIL_SUBJECT_PREFIX: dict[str, str] = {
     NotificationType.EVENT_CANCELLED: "[Kalender]",
     NotificationType.EVENT_REMINDER: "[Kalender]",
     NotificationType.MENTION: "[Omtale]",
+    NotificationType.EXPENSE_PROCESSED: "[Udlæg]",
 }
 
 
@@ -60,6 +61,25 @@ def should_send_email(user: User, notification_type: NotificationType) -> bool:
         NotificationType.FOOD_TICKET: prefs.email_food_tickets,
         NotificationType.MENTION: prefs.email_mentions,
     }
+
+    # Expense outcomes have no dedicated email toggle — they piggyback on
+    # whatever email channels the user already has enabled (email if any email).
+    if notification_type == NotificationType.EXPENSE_PROCESSED:
+        return any(
+            (
+                prefs.email_messages,
+                prefs.email_announcements,
+                prefs.email_announcement_updates,
+                prefs.email_forum_subscriptions,
+                prefs.email_thread_replies,
+                prefs.email_subgroup_activity,
+                prefs.email_post_reactions,
+                prefs.email_events,
+                prefs.email_event_reminders,
+                prefs.email_food_tickets,
+                prefs.email_mentions,
+            )
+        )
 
     return preference_map.get(notification_type, False)
 

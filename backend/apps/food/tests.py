@@ -1318,6 +1318,32 @@ class TestBillingDedup:
 
 
 @pytest.mark.django_db
+class TestCostReportPermissions:
+    """The food cost report is visible to food admins and economy admins."""
+
+    def test_economy_admin_can_view_cost_report(self, api_client, house):
+        econ = User.objects.create_user(
+            email="econ@example.com",
+            password="pass12345",
+            first_name="Econ",
+            is_economy_admin=True,
+        )
+        api_client.force_authenticate(user=econ)
+        url = reverse("food:monthly-food-cost")
+        resp = api_client.get(url, {"start_date": "2024-04-01", "end_date": "2024-04-30"})
+        assert resp.status_code == 200
+
+    def test_regular_user_cannot_view_cost_report(self, api_client):
+        plain = User.objects.create_user(
+            email="plain@example.com", password="pass12345", first_name="Plain"
+        )
+        api_client.force_authenticate(user=plain)
+        url = reverse("food:monthly-food-cost")
+        resp = api_client.get(url, {"start_date": "2024-04-01", "end_date": "2024-04-30"})
+        assert resp.status_code == 403
+
+
+@pytest.mark.django_db
 class TestBillingWithPreferenceFallback:
     """Tests for billing using preference/default fallback."""
 

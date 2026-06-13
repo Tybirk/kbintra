@@ -126,11 +126,23 @@ class User(AbstractUser):
         default=False,
         help_text="User has food admin privileges (cost reports, refresh menus, etc.)",
     )
+    is_economy_admin = models.BooleanField(
+        default=False,
+        help_text=(
+            "User has economy admin privileges (manage udlæg/expense reimbursements "
+            "and view the food cost report)."
+        ),
+    )
 
     @property
     def has_food_admin(self) -> bool:
         """Regular admins (is_staff) implicitly have food admin privileges."""
         return self.is_staff or self.is_food_admin
+
+    @property
+    def has_economy_admin(self) -> bool:
+        """Regular admins (is_staff) implicitly have economy admin privileges."""
+        return self.is_staff or self.is_economy_admin
 
     # Accessibility preference
     accessibility_mode = models.BooleanField(

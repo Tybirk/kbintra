@@ -36,12 +36,20 @@ class UserSerializer(AvatarUrlMixin, serializers.ModelSerializer):
             "house_inhabitant_count",
             "is_staff",
             "is_food_admin",
+            "is_economy_admin",
             "date_joined",
             "default_cooking_days",
             "accessibility_mode",
             "hide_closed_threads",
         ]
-        read_only_fields = ["id", "email", "is_staff", "is_food_admin", "date_joined"]
+        read_only_fields = [
+            "id",
+            "email",
+            "is_staff",
+            "is_food_admin",
+            "is_economy_admin",
+            "date_joined",
+        ]
 
     def get_house_inhabitant_count(self, obj: User) -> int:
         """Get the number of inhabitants in the user's house."""

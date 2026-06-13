@@ -15,6 +15,7 @@ import {
   IconBell,
   IconDoor,
   IconLink,
+  IconReceipt2,
   IconSettings,
 } from "@tabler/icons-react"
 
@@ -74,6 +75,8 @@ const navItems: NavItem[] = [
   },
 
   { icon: IconDoor, label: "Booking", path: "/booking" },
+
+  { icon: IconReceipt2, label: "Udlæg", path: "/udlaeg" },
 
   { icon: IconLink, label: "Nyttige links", path: "/links" },
 ]

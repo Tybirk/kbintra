@@ -81,6 +81,8 @@ const EventFormPage = lazy(() => import("./pages/EventFormPage"))
 
 const BookingsPage = lazy(() => import("./pages/BookingsPage"))
 
+const ExpensesPage = lazy(() => import("./pages/ExpensesPage"))
+
 const NotificationPreferencesPage = lazy(
   () => import("./pages/NotificationPreferencesPage"),
 )
@@ -576,6 +578,18 @@ const AuthenticatedRoutes = memo(function AuthenticatedRoutes() {
             <ProtectedRoute>
               <ErrorBoundary>
                 <BookingsPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Udlæg */}
+        <Route
+          path="/udlaeg"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <ExpensesPage />
               </ErrorBoundary>
             </ProtectedRoute>
           }

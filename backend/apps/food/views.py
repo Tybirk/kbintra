@@ -66,6 +66,18 @@ class IsFoodAdmin(permissions.BasePermission):
         return bool(u and u.is_authenticated and (u.is_staff or getattr(u, "is_food_admin", False)))
 
 
+class IsFoodOrEconomyAdmin(permissions.BasePermission):
+    """Allow food admins or economy admins (the treasurer reads the cost report)."""
+
+    def has_permission(self, request: Request, view) -> bool:  # type: ignore[no-untyped-def]
+        u = request.user
+        return bool(
+            u
+            and u.is_authenticated
+            and (getattr(u, "has_food_admin", False) or getattr(u, "has_economy_admin", False))
+        )
+
+
 def get_week_start(d: date) -> date:
     """Get the Monday of the week containing the given date."""
     return d - timedelta(days=d.weekday())
@@ -1256,9 +1268,9 @@ def _parse_date_range(request: Request, default_weeks: int) -> tuple[date, date]
 
 
 class MonthlyFoodCostView(APIView):
-    """Get food cost breakdown per house over a date range (food admin only)."""
+    """Food cost breakdown per house over a date range (food or economy admin)."""
 
-    permission_classes = [permissions.IsAuthenticated, IsFoodAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsFoodOrEconomyAdmin]
 
     def get(self, request: Request) -> Response:
         parsed = _parse_date_range(request, default_weeks=4)

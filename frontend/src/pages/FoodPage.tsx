@@ -133,6 +133,12 @@ export default function FoodPage() {
 
   const canFoodAdmin = !!(user?.is_staff || user?.is_food_admin)
 
+  // Economy admins (the treasurer) may view the cost report, but not the
+  // operational food-admin tools (closed days, etc.).
+  const canEconomyAdmin = !!(user?.is_staff || user?.is_economy_admin)
+
+  const canSeeAdminTab = canFoodAdmin || canEconomyAdmin
+
   // Path-based tab state
 
   const validTabs = ["tilmelding", "billetter", "okonomi", "admin"]
@@ -444,7 +450,7 @@ export default function FoodPage() {
           <Tabs.Tab value="okonomi" leftSection={<IconWallet size={16} />}>
             Økonomi
           </Tabs.Tab>
-          {canFoodAdmin && (
+          {canSeeAdminTab && (
             <Tabs.Tab value="admin" leftSection={<IconSettings size={16} />}>
               Admin
             </Tabs.Tab>
@@ -751,11 +757,15 @@ export default function FoodPage() {
           <MyFoodExpenses />
         </Tabs.Panel>
 
-        {canFoodAdmin && (
+        {canSeeAdminTab && (
           <Tabs.Panel value="admin">
             <Stack gap="xl">
-              <ClosedDaysAdmin />
-              <Divider />
+              {canFoodAdmin && (
+                <>
+                  <ClosedDaysAdmin />
+                  <Divider />
+                </>
+              )}
               <MonthlyCostReport />
             </Stack>
           </Tabs.Panel>

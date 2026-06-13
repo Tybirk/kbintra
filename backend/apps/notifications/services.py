@@ -160,6 +160,8 @@ def get_user_preference(user: User, notification_type: NotificationType) -> bool
         NotificationType.POST_EDITED_BY_ADMIN: True,
         NotificationType.EVENT_EDITED_BY_ADMIN: True,
         NotificationType.ANNOUNCEMENT_EDITED_BY_ADMIN: True,
+        # Expense (udlæg) outcomes are always shown in-app — no opt-out toggle.
+        NotificationType.EXPENSE_PROCESSED: True,
     }
 
     return preference_map.get(notification_type, True)
@@ -191,12 +193,13 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
         NotificationType.MENTION: prefs.push_mentions,
     }
 
-    # Subgroup membership pushes piggyback on whatever push channels the user
-    # already has enabled — if they've opted into any push at all, they get
-    # pushed about being added to / removed from a group.
+    # These types have no dedicated push toggle — they piggyback on whatever
+    # push channels the user already has enabled. If they've opted into any
+    # push at all, they get pushed (group membership changes, expense outcomes).
     if notification_type in (
         NotificationType.SUBGROUP_MEMBER_ADDED,
         NotificationType.SUBGROUP_MEMBER_REMOVED,
+        NotificationType.EXPENSE_PROCESSED,
     ):
         return any(
             (
@@ -814,6 +817,40 @@ def notify_ticket_claimed(
         link="/mad/billetter",
         related_user=claimer,
         check_preferences=False,  # Always notify owner
+    )
+
+
+def notify_expense_processed(expense: Any) -> Notification | None:
+    """Notify the submitter that their expense (udlæg) was paid or rejected.
+
+    Routed through whatever channels the user already has enabled: always
+    in-app, push if any push channel is on, email if any email channel is on
+    (see get_user_preference / get_user_push_preference / should_send_email).
+    There is intentionally no dedicated preference toggle for this type.
+    """
+    from apps.expenses.models import Expense
+
+    submitter = expense.submitted_by
+    if submitter is None:
+        return None
+
+    if expense.status == Expense.Status.PAID:
+        title = "Dit udlæg er udbetalt"
+        message = f"Dit udlæg på {expense.amount} kr. er markeret som udbetalt."
+    elif expense.status == Expense.Status.REJECTED:
+        title = "Dit udlæg er afvist"
+        message = f"Dit udlæg på {expense.amount} kr. blev afvist."
+        if expense.admin_note:
+            message += f" Begrundelse: {expense.admin_note}"
+    else:
+        return None
+
+    return create_notification(
+        user=submitter,
+        notification_type=NotificationType.EXPENSE_PROCESSED,
+        title=title,
+        message=message,
+        link="/udlaeg",
     )
 
 

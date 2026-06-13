@@ -1,0 +1,464 @@
+"""
+Tests for the Expenses (Udlæg) app.
+"""
+
+from decimal import Decimal
+
+import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
+from rest_framework.test import APIClient
+
+from apps.expenses.models import Expense, ExpenseAttachment
+from apps.users.models import User
+
+
+@pytest.fixture
+def economy_admin(db):
+    """A non-staff user with the economy admin role (the treasurer)."""
+    return User.objects.create_user(
+        email="economy@example.com",
+        password="pass12345",
+        first_name="Øko",
+        last_name="Nom",
+        is_economy_admin=True,
+    )
+
+
+def _receipt(name: str = "kvittering.pdf") -> SimpleUploadedFile:
+    return SimpleUploadedFile(name, b"%PDF-1.4 fake receipt", content_type="application/pdf")
+
+
+def _make_expense(user, **overrides) -> Expense:
+    data = {
+        "submitted_by": user,
+        "reg_nr": "1234",
+        "account_number": "1234567890",
+        "amount": Decimal("250.00"),
+        "description": "Indkøb af kaffe til fællesmøde",
+    }
+    data.update(overrides)
+    return Expense.objects.create(**data)
+
+
+# --- Creation / validation ---------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_create_expense_with_receipt(authenticated_client, user):
+    resp = authenticated_client.post(
+        "/api/expenses/",
+        {
+            "reg_nr": "1234",
+            "account_number": "9876543",
+            "amount": "250.50",
+            "description": "Maling til fælleshus",
+            "files": [_receipt()],
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 201, resp.data
+    assert resp.data["status"] == "pending"
+    assert resp.data["status_display"] == "Afventer"
+    assert len(resp.data["attachments"]) == 1
+    expense = Expense.objects.get(id=resp.data["id"])
+    assert expense.submitted_by == user
+    assert expense.attachments.count() == 1
+
+
+@pytest.mark.django_db
+def test_create_expense_requires_attachment(authenticated_client):
+    resp = authenticated_client.post(
+        "/api/expenses/",
+        {
+            "reg_nr": "1234",
+            "account_number": "9876543",
+            "amount": "250.50",
+            "description": "Maling",
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 400
+    assert "files" in resp.data
+
+
+@pytest.mark.django_db
+def test_create_expense_rejects_bad_reg_nr(authenticated_client):
+    resp = authenticated_client.post(
+        "/api/expenses/",
+        {
+            "reg_nr": "12",
+            "account_number": "9876543",
+            "amount": "10.00",
+            "description": "Test",
+            "files": [_receipt()],
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 400
+    assert "reg_nr" in resp.data
+
+
+@pytest.mark.django_db
+def test_create_expense_rejects_zero_amount(authenticated_client):
+    resp = authenticated_client.post(
+        "/api/expenses/",
+        {
+            "reg_nr": "1234",
+            "account_number": "9876543",
+            "amount": "0",
+            "description": "Test",
+            "files": [_receipt()],
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 400
+    assert "amount" in resp.data
+
+
+# --- Ownership / listing -----------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_list_only_returns_own_expenses(authenticated_client, user, second_user):
+    _make_expense(user)
+    _make_expense(second_user)
+    resp = authenticated_client.get("/api/expenses/")
+    assert resp.status_code == 200
+    assert len(resp.data) == 1
+    assert resp.data[0]["submitted_by"]["id"] == user.id
+
+
+@pytest.mark.django_db
+def test_owner_can_edit_pending_but_not_paid(authenticated_client, user):
+    expense = _make_expense(user)
+    resp = authenticated_client.patch(
+        f"/api/expenses/{expense.id}/", {"amount": "300.00"}, format="json"
+    )
+    assert resp.status_code == 200
+    assert resp.data["amount"] == "300.00"
+
+    Expense.objects.filter(id=expense.id).update(status=Expense.Status.PAID)
+    resp = authenticated_client.patch(
+        f"/api/expenses/{expense.id}/", {"amount": "400.00"}, format="json"
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.django_db
+def test_owner_can_delete_pending_only(authenticated_client, user):
+    expense = _make_expense(user, status=Expense.Status.PAID)
+    resp = authenticated_client.delete(f"/api/expenses/{expense.id}/")
+    assert resp.status_code == 403
+
+    pending = _make_expense(user)
+    resp = authenticated_client.delete(f"/api/expenses/{pending.id}/")
+    assert resp.status_code == 204
+    assert not Expense.objects.filter(id=pending.id).exists()
+
+
+@pytest.mark.django_db
+def test_non_owner_cannot_read_detail_admin_can(api_client, user, admin_user, second_user):
+    expense = _make_expense(user)
+
+    api_client.force_authenticate(user=second_user)
+    assert api_client.get(f"/api/expenses/{expense.id}/").status_code == 404
+
+    api_client.force_authenticate(user=admin_user)
+    assert api_client.get(f"/api/expenses/{expense.id}/").status_code == 200
+
+
+# --- Attachment download (private files) -------------------------------------
+
+
+@pytest.mark.django_db
+def test_attachment_download_permissions(settings, tmp_path, user, admin_user, second_user):
+    settings.MEDIA_ROOT = tmp_path
+    expense = _make_expense(user)
+    attachment = ExpenseAttachment.objects.create(
+        expense=expense, file=_receipt(), name="kvittering.pdf"
+    )
+    url = f"/api/expenses/attachments/{attachment.id}/download/"
+
+    # Unauthenticated
+    assert APIClient().get(url).status_code == 401
+
+    # Other resident -> 404 (cannot confirm existence)
+    other = APIClient()
+    other.force_login(second_user)
+    assert other.get(url).status_code == 404
+
+    # Owner -> 200
+    owner = APIClient()
+    owner.force_login(user)
+    assert owner.get(url).status_code == 200
+
+    # Admin -> 200
+    staff = APIClient()
+    staff.force_login(admin_user)
+    assert staff.get(url).status_code == 200
+
+
+@pytest.mark.django_db
+def test_private_prefix_blocked_on_media_path(user):
+    client = APIClient()
+    client.force_login(user)
+    resp = client.get("/media/expense_receipts/anything.pdf")
+    assert resp.status_code == 403
+
+
+@pytest.mark.django_db
+def test_private_prefix_blocked_via_path_traversal(settings, tmp_path, user):
+    """A ../ that normalizes back into expense_receipts/ must NOT leak the file."""
+    settings.MEDIA_ROOT = tmp_path
+    # A real sibling dir (prod has avatars/, forum files, etc.) so the traversal
+    # resolves on disk — this is what made the naive prefix check exploitable.
+    (tmp_path / "avatars").mkdir()
+    expense = _make_expense(user)
+    attachment = ExpenseAttachment.objects.create(
+        expense=expense, file=_receipt(), name="kvittering.pdf"
+    )
+    client = APIClient()
+    client.force_login(user)
+    resp = client.get(f"/media/avatars/../{attachment.file.name}")
+    assert resp.status_code == 403
+
+
+@pytest.mark.django_db
+def test_attachment_download_forces_attachment_disposition(settings, tmp_path, user):
+    """Receipts are served as a download, never rendered inline (stored-XSS guard)."""
+    settings.MEDIA_ROOT = tmp_path
+    expense = _make_expense(user)
+    attachment = ExpenseAttachment.objects.create(
+        expense=expense, file=_receipt(), name="kvittering.pdf"
+    )
+    client = APIClient()
+    client.force_login(user)
+    resp = client.get(f"/api/expenses/attachments/{attachment.id}/download/")
+    assert resp.status_code == 200
+    assert resp["Content-Disposition"].startswith("attachment")
+    assert resp["X-Content-Type-Options"] == "nosniff"
+
+
+# --- Admin views -------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_admin_list_filters_and_total(admin_client, user, second_user):
+    _make_expense(user, amount=Decimal("100.00"))
+    _make_expense(second_user, amount=Decimal("50.00"), status=Expense.Status.PAID)
+
+    resp = admin_client.get("/api/expenses/admin/")
+    assert resp.status_code == 200
+    assert len(resp.data["results"]) == 2
+    assert resp.data["total"] == "150.00"
+
+    resp = admin_client.get("/api/expenses/admin/", {"status": "paid"})
+    assert len(resp.data["results"]) == 1
+    assert resp.data["total"] == "50.00"
+
+    resp = admin_client.get("/api/expenses/admin/", {"user": user.id})
+    assert len(resp.data["results"]) == 1
+
+
+@pytest.mark.django_db
+def test_admin_list_paginates_20_per_page(admin_client, user):
+    for _ in range(25):
+        _make_expense(user, amount=Decimal("10.00"))
+
+    resp = admin_client.get("/api/expenses/admin/")
+    assert resp.status_code == 200
+    assert resp.data["count"] == 25
+    assert resp.data["num_pages"] == 2
+    assert resp.data["page"] == 1
+    assert len(resp.data["results"]) == 20
+    # The total spans the whole filtered set, not just the page.
+    assert resp.data["total"] == "250.00"
+
+    page2 = admin_client.get("/api/expenses/admin/", {"page": 2})
+    assert page2.data["page"] == 2
+    assert len(page2.data["results"]) == 5
+
+    # An out-of-range page clamps to the last page instead of 404ing.
+    clamped = admin_client.get("/api/expenses/admin/", {"page": 99})
+    assert clamped.status_code == 200
+    assert clamped.data["page"] == 2
+
+
+@pytest.mark.django_db
+def test_admin_list_requires_economy_admin(authenticated_client):
+    # A regular resident (no economy role) cannot reach the admin list.
+    assert authenticated_client.get("/api/expenses/admin/").status_code == 403
+
+
+@pytest.mark.django_db
+def test_economy_admin_has_admin_access(api_client, economy_admin, user):
+    expense = _make_expense(user)
+    api_client.force_authenticate(user=economy_admin)
+
+    # List + total
+    resp = api_client.get("/api/expenses/admin/")
+    assert resp.status_code == 200
+    assert resp.data["count"] == 1
+
+    # Read any resident's expense detail
+    assert api_client.get(f"/api/expenses/{expense.id}/").status_code == 200
+
+    # Mark paid (records who processed it)
+    resp = api_client.patch(
+        f"/api/expenses/{expense.id}/status/", {"status": "paid"}, format="json"
+    )
+    assert resp.status_code == 200
+    expense.refresh_from_db()
+    assert expense.processed_by == economy_admin
+
+
+@pytest.mark.django_db
+def test_economy_admin_can_download_attachment(settings, tmp_path, economy_admin, user):
+    settings.MEDIA_ROOT = tmp_path
+    expense = _make_expense(user)
+    attachment = ExpenseAttachment.objects.create(
+        expense=expense, file=_receipt(), name="kvittering.pdf"
+    )
+    client = APIClient()
+    client.force_login(economy_admin)
+    resp = client.get(f"/api/expenses/attachments/{attachment.id}/download/")
+    assert resp.status_code == 200
+
+
+@pytest.mark.django_db
+def test_admin_mark_paid_sets_paid_at(admin_client, user, admin_user):
+    expense = _make_expense(user)
+    resp = admin_client.patch(
+        f"/api/expenses/{expense.id}/status/", {"status": "paid"}, format="json"
+    )
+    assert resp.status_code == 200
+    expense.refresh_from_db()
+    assert expense.status == Expense.Status.PAID
+    assert expense.paid_at is not None
+    assert expense.processed_by == admin_user
+
+
+@pytest.mark.django_db
+def test_admin_reject_requires_note(admin_client, user):
+    expense = _make_expense(user)
+    resp = admin_client.patch(
+        f"/api/expenses/{expense.id}/status/", {"status": "rejected"}, format="json"
+    )
+    assert resp.status_code == 400
+    assert "admin_note" in resp.data
+
+    resp = admin_client.patch(
+        f"/api/expenses/{expense.id}/status/",
+        {"status": "rejected", "admin_note": "Mangler godkendelse"},
+        format="json",
+    )
+    assert resp.status_code == 200
+    expense.refresh_from_db()
+    assert expense.status == Expense.Status.REJECTED
+    assert expense.paid_at is None
+
+
+@pytest.mark.django_db
+def test_admin_csv_export(admin_client, user):
+    _make_expense(user, amount=Decimal("123.45"))
+    resp = admin_client.get("/api/expenses/admin/export/")
+    assert resp.status_code == 200
+    assert resp["Content-Type"].startswith("text/csv")
+    body = resp.content.decode("utf-8")
+    assert body.startswith("﻿")  # BOM
+    assert "Reg. nr." in body
+    assert "123,45" in body
+
+
+@pytest.mark.django_db
+def test_admin_csv_export_neutralizes_formula_injection(admin_client, user):
+    """A description starting with = must be escaped so Excel can't run it."""
+    _make_expense(user, description='=HYPERLINK("http://evil")')
+    resp = admin_client.get("/api/expenses/admin/export/")
+    body = resp.content.decode("utf-8")
+    assert "'=HYPERLINK" in body
+    assert "\n=HYPERLINK" not in body
+    assert ";=HYPERLINK" not in body
+
+
+@pytest.mark.django_db
+def test_admin_list_rejects_non_numeric_user_filter(admin_client):
+    resp = admin_client.get("/api/expenses/admin/", {"user": "abc"})
+    assert resp.status_code == 400
+    assert "user" in resp.data
+
+
+# --- Notifications -----------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_notifies_submitter_on_paid_and_rejected(admin_client, user):
+    from apps.notifications.models import Notification, NotificationType
+
+    paid = _make_expense(user)
+    admin_client.patch(f"/api/expenses/{paid.id}/status/", {"status": "paid"}, format="json")
+
+    rejected = _make_expense(user)
+    admin_client.patch(
+        f"/api/expenses/{rejected.id}/status/",
+        {"status": "rejected", "admin_note": "Mangler godkendelse"},
+        format="json",
+    )
+
+    notes = Notification.objects.filter(
+        user=user, notification_type=NotificationType.EXPENSE_PROCESSED
+    )
+    assert notes.count() == 2
+    # The rejection reason is surfaced to the submitter.
+    assert any("Mangler godkendelse" in n.message for n in notes)
+
+
+@pytest.mark.django_db
+def test_no_notification_when_reset_to_pending_or_unchanged(admin_client, user):
+    from apps.notifications.models import Notification
+
+    expense = _make_expense(user, status=Expense.Status.PAID)
+    # paid -> pending should not notify; the submitter already saw "paid".
+    admin_client.patch(f"/api/expenses/{expense.id}/status/", {"status": "pending"}, format="json")
+    assert not Notification.objects.filter(user=user).exists()
+
+    # Re-saving the same status (e.g. just editing the note) must not re-notify.
+    paid = _make_expense(user, status=Expense.Status.PAID)
+    admin_client.patch(
+        f"/api/expenses/{paid.id}/status/",
+        {"status": "paid", "admin_note": "intern note"},
+        format="json",
+    )
+    assert not Notification.objects.filter(user=user).exists()
+
+
+@pytest.mark.django_db
+def test_expense_notification_channel_routing():
+    """No dedicated toggle: push if any push on, email if any email on, always in-app."""
+    from apps.notifications.email_service import should_send_email
+    from apps.notifications.models import NotificationPreference, NotificationType
+    from apps.notifications.services import get_user_preference, get_user_push_preference
+
+    t = NotificationType.EXPENSE_PROCESSED
+
+    quiet = User.objects.create_user(email="quiet@example.com", password="x", first_name="Q")
+    NotificationPreference.objects.create(
+        user=quiet,
+        **{
+            f.name: False
+            for f in NotificationPreference._meta.get_fields()
+            if f.name.startswith(("email_", "push_"))
+        },
+    )
+    # In-app is always on; with every email/push channel off, neither fires.
+    assert get_user_preference(quiet, t) is True
+    assert should_send_email(quiet, t) is False
+    assert get_user_push_preference(quiet, t) is False
+
+    loud = User.objects.create_user(email="loud@example.com", password="x", first_name="L")
+    prefs = NotificationPreference.objects.create(user=loud)
+    prefs.email_food_tickets = True  # any single email channel
+    prefs.push_mentions = True  # any single push channel
+    prefs.save()
+    assert should_send_email(loud, t) is True
+    assert get_user_push_preference(loud, t) is True

@@ -35,6 +35,7 @@ class NotificationType(models.TextChoices):
         "announcement_edited_by_admin",
         "Dit opslag blev redigeret af en administrator",
     )
+    EXPENSE_PROCESSED = "expense_processed", "Udlæg behandlet"
 
 
 class Notification(models.Model):

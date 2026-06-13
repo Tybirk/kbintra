@@ -70,6 +70,7 @@ INSTALLED_APPS = [
     "apps.search",
     "apps.bookings",
     "apps.links",
+    "apps.expenses",
     "apps.backup",
 ]
 

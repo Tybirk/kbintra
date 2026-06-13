@@ -31,6 +31,8 @@ export interface User {
 
   is_food_admin: boolean
 
+  is_economy_admin: boolean
+
   date_joined: string
 
   accessibility_mode: boolean
@@ -1249,7 +1251,7 @@ export type WsMessage = WsNewMessage | WsMessagesRead | WsTyping | WsNewConversa
 
 // Notification Types
 
-export type NotificationType = "new_message" | "new_announcement" | "new_thread" | "thread_reply" | "post_reply" | "post_reaction" | "event_created" | "event_updated" | "event_cancelled" | "event_reminder" | "food_ticket" | "mention" | "post_edited_by_admin" | "event_edited_by_admin" | "announcement_edited_by_admin"
+export type NotificationType = "new_message" | "new_announcement" | "new_thread" | "thread_reply" | "post_reply" | "post_reaction" | "event_created" | "event_updated" | "event_cancelled" | "event_reminder" | "food_ticket" | "mention" | "post_edited_by_admin" | "event_edited_by_admin" | "announcement_edited_by_admin" | "expense_processed"
 
 export interface MentionUser {
   id: number
@@ -1757,4 +1759,68 @@ export interface AvailabilityResult {
   available_rooms: number[]
 
   conflicts_by_room: Record<number, string[]>
+}
+
+// Udlæg (expense reimbursements)
+
+export type ExpenseStatus = "pending" | "paid" | "rejected"
+
+export interface ExpenseAttachment {
+  id: number
+
+  name: string
+
+  download_url: string
+}
+
+export interface ExpenseSubmitter {
+  id: number
+
+  first_name: string
+
+  last_name: string
+
+  profile_picture: string | null
+}
+
+export interface Expense {
+  id: number
+
+  submitted_by: ExpenseSubmitter | null
+
+  reg_nr: string
+
+  account_number: string
+
+  amount: string
+
+  description: string
+
+  approval_reference: string
+
+  status: ExpenseStatus
+
+  status_display: string
+
+  admin_note: string
+
+  paid_at: string | null
+
+  created_at: string
+
+  updated_at: string
+
+  attachments: ExpenseAttachment[]
+}
+
+export interface AdminExpenseList {
+  results: Expense[]
+
+  total: string
+
+  count: number
+
+  page: number
+
+  num_pages: number
 }
