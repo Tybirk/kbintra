@@ -64,6 +64,17 @@ def _csv_safe(value: object) -> str:
     return text
 
 
+def _can_view_expense(user: Any, expense: Expense) -> bool:
+    """Whether *user* may read *expense* (not counting ownership).
+
+    Economy admins (the treasurer) see every expense; food admins see only the
+    ones flagged ``food_related`` (udlæg i forbindelse med fællesmad).
+    """
+    if user.has_economy_admin:
+        return True
+    return bool(user.has_food_admin and expense.food_related)
+
+
 def _create_attachments(expense: Expense, files: list) -> None:
     """Validate and persist uploaded files as ExpenseAttachment rows."""
     for upload in files:
@@ -103,6 +114,12 @@ class ExpenseListCreateView(generics.ListCreateAPIView):
             expense = serializer.save(submitted_by=request.user)
             _create_attachments(expense, files)
 
+        # Let the treasurer know a new udlæg was submitted. Enqueued after the
+        # atomic block so it only fires once the expense is committed.
+        from .tasks import send_expense_created_email_task
+
+        send_expense_created_email_task(expense.id)
+
         out = ExpenseSerializer(expense, context=self.get_serializer_context())
         return Response(out.data, status=status.HTTP_201_CREATED)
 
@@ -130,7 +147,7 @@ class ExpenseDetailView(generics.RetrieveUpdateDestroyAPIView):
         user = self.request.user
         is_owner = obj.submitted_by_id == user.id
         if self.request.method == "GET":
-            if not (is_owner or user.has_economy_admin):
+            if not (is_owner or _can_view_expense(user, obj)):
                 raise Http404
         else:
             if not is_owner:
@@ -193,7 +210,9 @@ def expense_attachment_download(request: HttpRequest, pk: int) -> HttpResponse:
         raise Http404 from exc
 
     user = request.user
-    if not (attachment.expense.submitted_by_id == user.id or user.has_economy_admin):
+    if not (
+        attachment.expense.submitted_by_id == user.id or _can_view_expense(user, attachment.expense)
+    ):
         # 404 (not 403) so a non-owner can't even confirm the attachment exists.
         raise Http404
 
@@ -236,11 +255,39 @@ class IsEconomyAdmin(permissions.BasePermission):
         return bool(u and u.is_authenticated and u.has_economy_admin)
 
 
+class IsExpenseAdmin(permissions.BasePermission):
+    """Allow economy admins (full access) or food admins (read-only).
+
+    Food admins may *view* the udlæg flagged ``food_related`` so they can keep
+    track of fællesmad expenses, but only economy admins change status. The
+    food-related restriction itself is enforced in ``_filter_admin_expenses``.
+    """
+
+    def has_permission(self, request: Request, view: Any) -> bool:
+        u = request.user
+        return bool(u and u.is_authenticated and (u.has_economy_admin or u.has_food_admin))
+
+
 def _filter_admin_expenses(request: Request) -> QuerySet[Expense]:
-    """Apply the shared status/user/date filters used by list and export."""
+    """Apply the shared status/user/date filters used by list and export.
+
+    Food-admin-only users (no economy role) are restricted to ``food_related``
+    expenses; economy admins see everything and may opt into the same filter
+    via the ``food_related`` query param.
+    """
     qs = Expense.objects.select_related("submitted_by", "processed_by").prefetch_related(
         "attachments"
     )
+
+    if not request.user.has_economy_admin:
+        # Food-admin-only: never expose non-food expenses.
+        qs = qs.filter(food_related=True)
+    else:
+        food_param = request.query_params.get("food_related")
+        if food_param in ("true", "1"):
+            qs = qs.filter(food_related=True)
+        elif food_param in ("false", "0"):
+            qs = qs.filter(food_related=False)
 
     status_param = request.query_params.get("status")
     if status_param in Expense.Status.values:
@@ -284,13 +331,14 @@ def _filter_admin_expenses(request: Request) -> QuerySet[Expense]:
 
 
 class AdminExpenseListView(APIView):
-    """List all expenses (staff only), paginated, with a summed total.
+    """List all expenses, paginated, with a summed total.
 
     ``total`` is summed over the whole filtered set, not just the current page,
-    so the treasurer always sees the grand total for the active filter.
+    so the treasurer always sees the grand total for the active filter. Food
+    admins see only the ``food_related`` subset (read-only).
     """
 
-    permission_classes = [IsEconomyAdmin]
+    permission_classes = [IsExpenseAdmin]
 
     def get(self, request: Request) -> Response:
         qs = _filter_admin_expenses(request)
@@ -347,9 +395,12 @@ class AdminExpenseStatusView(APIView):
 
 
 class AdminExpenseExportView(APIView):
-    """Export the filtered expenses as CSV (staff only)."""
+    """Export the filtered expenses as CSV.
 
-    permission_classes = [IsEconomyAdmin]
+    Food admins export only the ``food_related`` subset (see filter).
+    """
+
+    permission_classes = [IsExpenseAdmin]
 
     def get(self, request: Request) -> HttpResponse:
         qs = _filter_admin_expenses(request)
@@ -366,6 +417,7 @@ class AdminExpenseExportView(APIView):
                 "Kontonummer",
                 "Beløb",
                 "Beskrivelse",
+                "Fællesmad",
                 "Status",
                 "Udbetalt dato",
                 "Note",
@@ -382,6 +434,7 @@ class AdminExpenseExportView(APIView):
                     e.account_number,
                     f"{e.amount:.2f}".replace(".", ","),
                     e.description,
+                    "Ja" if e.food_related else "Nej",
                     e.get_status_display(),
                     timezone.localtime(e.paid_at).strftime("%Y-%m-%d") if e.paid_at else "",
                     e.admin_note,

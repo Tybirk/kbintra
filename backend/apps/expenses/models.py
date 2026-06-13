@@ -46,6 +46,10 @@ class Expense(models.Model):
         blank=True,
         help_text="Henvisning til skriftlig godkendelse (referat, mail, intranet).",
     )
+    food_related = models.BooleanField(
+        default=False,
+        help_text="Udlæg i forbindelse med fællesmad — gør det synligt for madansvarlige.",
+    )
     status = models.CharField(
         max_length=10,
         choices=Status.choices,

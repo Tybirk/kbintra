@@ -77,6 +77,20 @@ class User(AbstractUser):
     )
     bio = models.TextField(blank=True, max_length=1000)
 
+    # Bank details for reimbursing expenses (udlæg). Optional; used to prefill
+    # the expense form. Private — only ever exposed to the user themselves
+    # (see CurrentUserSerializer), never in the shared user list/detail.
+    bank_reg_nr = models.CharField(
+        max_length=10,
+        blank=True,
+        help_text="Bank reg. nr. (4 cifre) til udbetaling af udlæg",
+    )
+    bank_account_number = models.CharField(
+        max_length=20,
+        blank=True,
+        help_text="Kontonummer til udbetaling af udlæg",
+    )
+
     @property
     def avatar_url(self) -> str | None:
         """Best URL for displaying this user's avatar. Falls back to the

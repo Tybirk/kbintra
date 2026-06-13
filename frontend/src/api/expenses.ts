@@ -12,6 +12,7 @@ export interface ExpenseFormData {
   amount: string
   description: string
   approval_reference: string
+  food_related: boolean
 }
 
 export interface AdminExpenseFilters {
@@ -19,6 +20,7 @@ export interface AdminExpenseFilters {
   user?: number
   from?: string
   to?: string
+  food_related?: boolean
   ordering?: string
   page?: number
 }
@@ -30,6 +32,7 @@ function buildFormData(data: ExpenseFormData, files: File[]): FormData {
   fd.append("amount", data.amount)
   fd.append("description", data.description)
   fd.append("approval_reference", data.approval_reference)
+  fd.append("food_related", String(data.food_related))
   files.forEach((file) => fd.append("files", file))
   return fd
 }
@@ -40,6 +43,8 @@ function toQuery(filters: AdminExpenseFilters): string {
   if (filters.user) params.set("user", String(filters.user))
   if (filters.from) params.set("from", filters.from)
   if (filters.to) params.set("to", filters.to)
+  if (filters.food_related !== undefined)
+    params.set("food_related", String(filters.food_related))
   if (filters.ordering) params.set("ordering", filters.ordering)
   if (filters.page && filters.page > 1) params.set("page", String(filters.page))
   const qs = params.toString()

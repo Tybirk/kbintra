@@ -72,6 +72,10 @@ export default function ProfileEditPage() {
     birthdate: null as Date | null,
 
     house: null as number | null,
+
+    bank_reg_nr: "",
+
+    bank_account_number: "",
   })
 
   const [emailChangeOpen, setEmailChangeOpen] = useState(false)
@@ -106,6 +110,10 @@ export default function ProfileEditPage() {
         birthdate: user.birthdate ? new Date(user.birthdate) : null,
 
         house: user.house,
+
+        bank_reg_nr: user.bank_reg_nr || "",
+
+        bank_account_number: user.bank_account_number || "",
       })
     }
   }, [user])
@@ -214,6 +222,10 @@ export default function ProfileEditPage() {
         : null,
 
       house: formData.house,
+
+      bank_reg_nr: formData.bank_reg_nr.trim(),
+
+      bank_account_number: formData.bank_account_number.trim(),
     })
   }
 
@@ -383,6 +395,44 @@ export default function ProfileEditPage() {
               maxLength={500}
               description={`${formData.bio.length}/500 tegn`}
             />
+
+            <Title order={4} mt="md">
+              Bankoplysninger
+            </Title>
+            <Text size="sm" c="dimmed">
+              Bruges til at udfylde dine udlæg automatisk. Kun du kan se dem.
+            </Text>
+
+            <Group grow>
+              <TextInput
+                label="Reg. nr."
+                placeholder="1234"
+                value={formData.bank_reg_nr}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+
+                    bank_reg_nr: e.target.value,
+                  }))
+                }
+                inputMode="numeric"
+                maxLength={4}
+              />
+              <TextInput
+                label="Kontonummer"
+                placeholder="1234567890"
+                value={formData.bank_account_number}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+
+                    bank_account_number: e.target.value,
+                  }))
+                }
+                inputMode="numeric"
+                maxLength={10}
+              />
+            </Group>
 
             <Group justify="flex-end" mt="md">
               <Button variant="light" onClick={() => navigate("/profil")}>
