@@ -265,6 +265,10 @@ EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "KB Intra <noreply@kbintra.local>")
 
+# Treasurer/economy inbox that receives a notice whenever a new udlæg is
+# submitted. Empty disables the notice (e.g. in dev).
+ECONOMY_EMAIL = os.getenv("ECONOMY_EMAIL", "")
+
 # Cloudflare Email Service (used when EMAIL_BACKEND points at CloudflareEmailBackend).
 # Token must be scoped to email_sending:write.
 CLOUDFLARE_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID", "")

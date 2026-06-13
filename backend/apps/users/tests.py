@@ -219,6 +219,49 @@ class TestCurrentUserAPI:
         user.refresh_from_db()
         assert user.first_name == "Updated"
 
+    def test_can_save_and_read_own_bank_details(self, authenticated_client, user):
+        """Bank reg/konto round-trips through /users/me/ for the owner."""
+        response = authenticated_client.patch(
+            "/api/users/me/",
+            {"bank_reg_nr": "1234", "bank_account_number": "9876543210"},
+            format="json",
+        )
+        assert response.status_code == 200, response.json()
+        user.refresh_from_db()
+        assert user.bank_reg_nr == "1234"
+        assert user.bank_account_number == "9876543210"
+
+        me = authenticated_client.get("/api/users/me/").json()
+        assert me["bank_reg_nr"] == "1234"
+        assert me["bank_account_number"] == "9876543210"
+
+    def test_bank_details_rejects_bad_format(self, authenticated_client, user):
+        response = authenticated_client.patch(
+            "/api/users/me/",
+            {"bank_reg_nr": "12"},
+            format="json",
+        )
+        assert response.status_code == 400
+        assert "bank_reg_nr" in response.json()
+
+    def test_bank_details_not_exposed_in_user_list_or_detail(
+        self, authenticated_client, user, second_user
+    ):
+        """Bank details are private — never visible to other residents."""
+        second_user.bank_reg_nr = "4321"
+        second_user.bank_account_number = "1122334455"
+        second_user.save(update_fields=["bank_reg_nr", "bank_account_number"])
+
+        list_resp = authenticated_client.get("/api/users/").json()
+        rows = list_resp.get("results", list_resp) if isinstance(list_resp, dict) else list_resp
+        for row in rows:
+            assert "bank_reg_nr" not in row
+            assert "bank_account_number" not in row
+
+        detail = authenticated_client.get(f"/api/users/{second_user.id}/").json()
+        assert "bank_reg_nr" not in detail
+        assert "bank_account_number" not in detail
+
 
 class TestInvitationAPI:
     """Tests for the Invitation API endpoints."""

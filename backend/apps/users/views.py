@@ -25,6 +25,7 @@ from .models import Invitation, User
 from .serializers import (
     ChangePasswordSerializer,
     ConfirmEmailChangeSerializer,
+    CurrentUserSerializer,
     ForgotPasswordSerializer,
     InvitationCreateSerializer,
     InvitationSerializer,
@@ -90,7 +91,7 @@ class CurrentUserView(generics.RetrieveUpdateAPIView):
     def get_serializer_class(self) -> type:
         if self.request.method in ["PUT", "PATCH"]:
             return UserProfileUpdateSerializer
-        return UserSerializer
+        return CurrentUserSerializer
 
     def get_object(self) -> User:
         return self.request.user

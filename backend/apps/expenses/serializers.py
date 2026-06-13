@@ -53,6 +53,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
             "amount",
             "description",
             "approval_reference",
+            "food_related",
             "status",
             "status_display",
             "admin_note",
@@ -74,6 +75,7 @@ class ExpenseCreateUpdateSerializer(serializers.ModelSerializer):
             "amount",
             "description",
             "approval_reference",
+            "food_related",
         ]
 
     def validate_reg_nr(self, value: str) -> str:

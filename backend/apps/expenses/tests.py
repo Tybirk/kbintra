@@ -24,6 +24,18 @@ def economy_admin(db):
     )
 
 
+@pytest.fixture
+def food_admin(db):
+    """A non-staff user with only the food admin role."""
+    return User.objects.create_user(
+        email="food@example.com",
+        password="pass12345",
+        first_name="Mad",
+        last_name="Ansvarlig",
+        is_food_admin=True,
+    )
+
+
 def _receipt(name: str = "kvittering.pdf") -> SimpleUploadedFile:
     return SimpleUploadedFile(name, b"%PDF-1.4 fake receipt", content_type="application/pdf")
 
@@ -462,3 +474,168 @@ def test_expense_notification_channel_routing():
     prefs.save()
     assert should_send_email(loud, t) is True
     assert get_user_push_preference(loud, t) is True
+
+
+# --- Food-related flag -------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_create_expense_defaults_food_related_off(authenticated_client):
+    resp = authenticated_client.post(
+        "/api/expenses/",
+        {
+            "reg_nr": "1234",
+            "account_number": "9876543",
+            "amount": "50.00",
+            "description": "Almindeligt udlæg",
+            "files": [_receipt()],
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 201, resp.data
+    assert resp.data["food_related"] is False
+
+
+@pytest.mark.django_db
+def test_create_expense_can_flag_food_related(authenticated_client):
+    resp = authenticated_client.post(
+        "/api/expenses/",
+        {
+            "reg_nr": "1234",
+            "account_number": "9876543",
+            "amount": "50.00",
+            "description": "Krydderier til fællesmad",
+            "food_related": "true",
+            "files": [_receipt()],
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 201, resp.data
+    assert resp.data["food_related"] is True
+    assert Expense.objects.get(id=resp.data["id"]).food_related is True
+
+
+# --- Food-admin visibility ---------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_food_admin_sees_only_food_related_expenses(api_client, food_admin, user):
+    _make_expense(user, description="Ikke-mad", food_related=False)
+    _make_expense(user, description="Mad", food_related=True)
+
+    api_client.force_authenticate(user=food_admin)
+    resp = api_client.get("/api/expenses/admin/")
+    assert resp.status_code == 200
+    assert resp.data["count"] == 1
+    assert all(row["food_related"] for row in resp.data["results"])
+
+
+@pytest.mark.django_db
+def test_food_admin_cannot_change_status(api_client, food_admin, user):
+    expense = _make_expense(user, food_related=True)
+    api_client.force_authenticate(user=food_admin)
+    resp = api_client.patch(
+        f"/api/expenses/{expense.id}/status/", {"status": "paid"}, format="json"
+    )
+    assert resp.status_code == 403
+    expense.refresh_from_db()
+    assert expense.status == Expense.Status.PENDING
+
+
+@pytest.mark.django_db
+def test_food_admin_detail_and_attachment_scoped_to_food_related(
+    settings, tmp_path, api_client, food_admin, user
+):
+    settings.MEDIA_ROOT = tmp_path
+    food = _make_expense(user, food_related=True)
+    food_att = ExpenseAttachment.objects.create(
+        expense=food, file=_receipt(), name="kvittering.pdf"
+    )
+    other = _make_expense(user, food_related=False)
+    other_att = ExpenseAttachment.objects.create(
+        expense=other, file=_receipt(), name="hemmelig.pdf"
+    )
+
+    # DRF detail endpoint (token auth)
+    api_client.force_authenticate(user=food_admin)
+    assert api_client.get(f"/api/expenses/{food.id}/").status_code == 200
+    assert api_client.get(f"/api/expenses/{other.id}/").status_code == 404
+
+    # Private attachment download (session auth)
+    session = APIClient()
+    session.force_login(food_admin)
+    assert session.get(f"/api/expenses/attachments/{food_att.id}/download/").status_code == 200
+    assert session.get(f"/api/expenses/attachments/{other_att.id}/download/").status_code == 404
+
+
+@pytest.mark.django_db
+def test_economy_admin_can_filter_food_related(api_client, economy_admin, user):
+    _make_expense(user, food_related=False)
+    _make_expense(user, food_related=True)
+    api_client.force_authenticate(user=economy_admin)
+
+    # No filter → everything
+    assert api_client.get("/api/expenses/admin/").data["count"] == 2
+    # Only food
+    resp = api_client.get("/api/expenses/admin/", {"food_related": "true"})
+    assert resp.data["count"] == 1
+    assert resp.data["results"][0]["food_related"] is True
+    # Only non-food
+    resp = api_client.get("/api/expenses/admin/", {"food_related": "false"})
+    assert resp.data["count"] == 1
+    assert resp.data["results"][0]["food_related"] is False
+
+
+@pytest.mark.django_db
+def test_csv_export_includes_food_related_column(admin_client, user):
+    _make_expense(user, food_related=True)
+    resp = admin_client.get("/api/expenses/admin/export/")
+    body = resp.content.decode("utf-8")
+    assert "Fællesmad" in body
+    assert "Ja" in body
+
+
+# --- Economy email on creation -----------------------------------------------
+
+
+@pytest.mark.django_db
+def test_economy_email_sent_on_creation(settings, mailoutbox, authenticated_client, user):
+    settings.ECONOMY_EMAIL = "oekonomi@example.com"
+    resp = authenticated_client.post(
+        "/api/expenses/",
+        {
+            "reg_nr": "1234",
+            "account_number": "9876543",
+            "amount": "250.50",
+            "description": "Maling til fælleshus",
+            "food_related": "true",
+            "files": [_receipt()],
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 201, resp.data
+    assert len(mailoutbox) == 1
+    msg = mailoutbox[0]
+    assert msg.to == ["oekonomi@example.com"]
+    assert "250,50" in msg.body
+    assert "Maling til fælleshus" in msg.body
+    # The fællesmad flag is surfaced to the treasurer.
+    assert "Vedrører fællesmad: Ja" in msg.body
+
+
+@pytest.mark.django_db
+def test_no_economy_email_when_unconfigured(settings, mailoutbox, authenticated_client):
+    settings.ECONOMY_EMAIL = ""
+    resp = authenticated_client.post(
+        "/api/expenses/",
+        {
+            "reg_nr": "1234",
+            "account_number": "9876543",
+            "amount": "10.00",
+            "description": "Test",
+            "files": [_receipt()],
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 201, resp.data
+    assert len(mailoutbox) == 0

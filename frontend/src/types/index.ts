@@ -40,6 +40,12 @@ export interface User {
   rainbow_mode: boolean
 
   hide_closed_threads: boolean
+
+  // Private bank details for prefilling udlæg. Only returned for the current
+  // user (GET /users/me/), never in the shared user list/detail.
+  bank_reg_nr?: string
+
+  bank_account_number?: string
 }
 
 export interface Child {
@@ -1797,6 +1803,8 @@ export interface Expense {
   description: string
 
   approval_reference: string
+
+  food_related: boolean
 
   status: ExpenseStatus
 
