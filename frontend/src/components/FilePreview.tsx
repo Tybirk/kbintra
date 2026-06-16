@@ -32,6 +32,8 @@ import {
 
 import type { ForumFile } from "../types"
 
+import { ErrorBoundary } from "./ErrorBoundary"
+
 // pdf.js is heavy — only load it when a PDF is actually opened.
 const PdfViewer = lazy(() => import("./PdfViewer"))
 
@@ -507,7 +509,29 @@ export function FilePreviewModal({
         return (
           <Stack gap="md">
             <ScrollArea h={isMobile ? "78vh" : "70vh"}>
-              <PdfPreview blobUrl={blobUrl} />
+              {/* pdf.js (pdfjs-dist 5.x) calls Promise.withResolvers, which
+                  iOS/Safari < 17.4 lacks, so inline rendering throws there.
+                  Catch it and fall back to the Åbn/Gem buttons below rather
+                  than crashing. resetKeys retries when a new PDF is opened. */}
+              <ErrorBoundary
+                resetKeys={[blobUrl]}
+                fallback={
+                  <Center h={200}>
+                    <Stack align="center" gap="sm" px="md">
+                      <IconFileTypePdf
+                        size={64}
+                        color="var(--mantine-color-red-6)"
+                      />
+                      <Text c="dimmed" ta="center">
+                        PDF&apos;en kan ikke vises her. Brug Åbn eller Gem
+                        nedenfor.
+                      </Text>
+                    </Stack>
+                  </Center>
+                }
+              >
+                <PdfPreview blobUrl={blobUrl} />
+              </ErrorBoundary>
             </ScrollArea>
             <FileActionButtons actions={actions} />
           </Stack>
