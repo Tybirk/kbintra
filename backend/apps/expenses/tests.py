@@ -621,6 +621,30 @@ def test_economy_email_sent_on_creation(settings, mailoutbox, authenticated_clie
     assert "Maling til fælleshus" in msg.body
     # The fællesmad flag is surfaced to the treasurer.
     assert "Vedrører fællesmad: Ja" in msg.body
+    # Prod SITE_URL → no TEST: prefix.
+    assert msg.subject.startswith("[Udlæg]")
+
+
+@pytest.mark.django_db
+def test_economy_email_subject_flagged_on_test_site(
+    settings, mailoutbox, authenticated_client, user
+):
+    settings.ECONOMY_EMAIL = "oekonomi@example.com"
+    settings.SITE_URL = "https://kbintra.top"
+    resp = authenticated_client.post(
+        "/api/expenses/",
+        {
+            "reg_nr": "1234",
+            "account_number": "9876543",
+            "amount": "10.00",
+            "description": "Test",
+            "files": [_receipt()],
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 201, resp.data
+    assert len(mailoutbox) == 1
+    assert mailoutbox[0].subject.startswith("TEST: [Udlæg]")
 
 
 @pytest.mark.django_db

@@ -39,6 +39,10 @@ def send_expense_created_email_task(expense_id: int) -> None:
     site_url = getattr(settings, "SITE_URL", "http://localhost:5173")
     food_line = "Ja" if expense.food_related else "Nej"
 
+    # The test site (kbintra.top) shares prod's data and economy inbox, so flag
+    # its mails with TEST: in the subject to avoid mistaking them for real udlæg.
+    test_prefix = "TEST: " if "kbintra.top" in site_url else ""
+
     body = f"""Der er oprettet et nyt udlæg på KB Intra.
 
 Beboer: {who}
@@ -55,7 +59,7 @@ Beskrivelse:
     body += f"\nSe og behandl udlægget her: {site_url}/udlaeg\n"
 
     EmailMessage(
-        subject=f"[Udlæg] Nyt udlæg fra {who} – {amount} kr.",
+        subject=f"{test_prefix}[Udlæg] Nyt udlæg fra {who} – {amount} kr.",
         body=body,
         to=[economy_email],
         from_email=settings.DEFAULT_FROM_EMAIL,
