@@ -132,6 +132,37 @@ def test_cc_bcc_reply_to_and_headers(settings):
 
 
 @pytest.mark.django_db
+def test_attachments_are_base64_encoded(settings):
+    import base64
+
+    for k, v in SETTINGS.items():
+        setattr(settings, k, v)
+
+    msg = EmailMessage(subject="S", body="b", from_email="noreply@kb.dk", to=["x@kb.dk"])
+    msg.attach("kvittering.pdf", b"%PDF-1.4 fake", "application/pdf")
+    with patch.object(requests.Session, "post", return_value=_response(200, SUCCESS)) as post:
+        CloudflareEmailBackend().send_messages([msg])
+    payload = post.call_args.kwargs["json"]
+    assert len(payload["attachments"]) == 1
+    att = payload["attachments"][0]
+    assert att["filename"] == "kvittering.pdf"
+    assert att["type"] == "application/pdf"
+    assert att["disposition"] == "attachment"
+    assert base64.b64decode(att["content"]) == b"%PDF-1.4 fake"
+
+
+@pytest.mark.django_db
+def test_no_attachments_field_when_none(settings):
+    for k, v in SETTINGS.items():
+        setattr(settings, k, v)
+
+    msg = EmailMessage(subject="S", body="b", from_email="noreply@kb.dk", to=["x@kb.dk"])
+    with patch.object(requests.Session, "post", return_value=_response(200, SUCCESS)) as post:
+        CloudflareEmailBackend().send_messages([msg])
+    assert "attachments" not in post.call_args.kwargs["json"]
+
+
+@pytest.mark.django_db
 def test_permanent_bounce_is_soft_failure_no_raise(settings):
     """Permanent bounce: reported as not-sent, but must NOT raise (no Huey retry)."""
     for k, v in SETTINGS.items():

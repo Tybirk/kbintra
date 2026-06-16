@@ -31,6 +31,8 @@ import {
 
 import { DatePickerInput } from "@mantine/dates"
 
+import { useMediaQuery } from "@mantine/hooks"
+
 import { notifications } from "@mantine/notifications"
 
 import {
@@ -56,9 +58,14 @@ import { AttachmentArea } from "../components/FileDropzone"
 
 import { AttachmentBadge } from "../components/AttachmentBadge"
 
-import { filterFilesBySize } from "../config"
+import {
+  EXPENSE_MAX_ATTACHMENT_SIZE,
+  EXPENSE_MAX_ATTACHMENT_SIZE_MB,
+} from "../config"
 
 import { useAuthStore } from "../store/authStore"
+
+import { saveDraft, loadDraft, clearDraft } from "../utils/draftStorage"
 
 import type { AdminExpenseFilters } from "../api/expenses"
 
@@ -147,9 +154,14 @@ interface ExpenseFormModalProps {
   expense?: Expense | null
 }
 
+// Autosave key for a new udlæg, so an accidental modal close doesn't lose it.
+// Only create drafts are persisted (edits already live server-side).
+const CREATE_DRAFT_KEY = "expense-create"
+
 function ExpenseFormModal({ opened, onClose, expense }: ExpenseFormModalProps) {
   const queryClient = useQueryClient()
   const isEdit = !!expense
+  const isMobile = useMediaQuery("(max-width: 48em)")
 
   // Bank details fall back to the resident's saved profile values when creating
   // a fresh udlæg, so they don't have to retype them every time.
@@ -177,14 +189,65 @@ function ExpenseFormModal({ opened, onClose, expense }: ExpenseFormModalProps) {
     setFoodRelated(expense?.food_related ?? false)
     setFiles([])
     setError(null)
+
+    // For a new udlæg, restore an autosaved draft on top of the defaults.
+    // Bank details are intentionally never persisted (kept out of the draft).
+    if (!expense) {
+      loadDraft(CREATE_DRAFT_KEY).then((stored) => {
+        if (!stored) return
+        try {
+          const d = JSON.parse(stored)
+          if (typeof d.amount === "string" || typeof d.amount === "number")
+            setAmount(d.amount)
+          if (typeof d.description === "string") setDescription(d.description)
+          if (typeof d.approvalReference === "string")
+            setApprovalReference(d.approvalReference)
+          if (typeof d.foodRelated === "boolean") setFoodRelated(d.foodRelated)
+        } catch {
+          // Ignore a corrupt draft.
+        }
+      })
+    }
   }, [opened, expense, profile])
 
-  const handleAddFiles = (incoming: File[]) => {
-    const { validFiles, errors } = filterFilesBySize(incoming)
-    errors.forEach((message) =>
-      notifications.show({ title: "Filen er for stor", message, color: "red" }),
+  // Autosave the create form so closing by accident doesn't lose the entry.
+  // Bank details alone (prefilled from profile) don't count as a draft.
+  useEffect(() => {
+    if (!opened || isEdit) return
+    const hasContent =
+      String(amount).trim() !== "" ||
+      description.trim() !== "" ||
+      approvalReference.trim() !== ""
+    if (!hasContent) {
+      clearDraft(CREATE_DRAFT_KEY)
+      return
+    }
+    saveDraft(
+      CREATE_DRAFT_KEY,
+      JSON.stringify({
+        amount,
+        description,
+        approvalReference,
+        foodRelated,
+      }),
     )
-    setFiles((prev) => [...prev, ...validFiles])
+  }, [opened, isEdit, amount, description, approvalReference, foodRelated])
+
+  const handleAddFiles = (incoming: File[]) => {
+    const accepted: File[] = []
+    for (const file of incoming) {
+      if (file.size > EXPENSE_MAX_ATTACHMENT_SIZE) {
+        const sizeMb = (file.size / 1_000_000).toFixed(1)
+        notifications.show({
+          title: "Filen er for stor",
+          message: `"${file.name}" fylder ${sizeMb} MB. Et bilag må højst fylde ${EXPENSE_MAX_ATTACHMENT_SIZE_MB} MB, så det kan vedhæftes mailen til økonomi.`,
+          color: "red",
+        })
+      } else {
+        accepted.push(file)
+      }
+    }
+    setFiles((prev) => [...prev, ...accepted])
   }
 
   const removeAttachmentMutation = useMutation({
@@ -214,6 +277,7 @@ function ExpenseFormModal({ opened, onClose, expense }: ExpenseFormModalProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["expenses"] })
+      if (!isEdit) clearDraft(CREATE_DRAFT_KEY)
       notifications.show({
         title: isEdit ? "Udlæg opdateret" : "Udlæg oprettet",
         message: isEdit
@@ -264,6 +328,7 @@ function ExpenseFormModal({ opened, onClose, expense }: ExpenseFormModalProps) {
       onClose={onClose}
       title={isEdit ? "Rediger udlæg" : "Opret udlæg"}
       size="lg"
+      fullScreen={isMobile}
     >
       <Stack gap="md">
         <NumberInput
@@ -548,6 +613,7 @@ interface StatusMutationVars {
 
 function AdminExpensesTab({ canManage }: { canManage: boolean }) {
   const queryClient = useQueryClient()
+  const isMobile = useMediaQuery("(max-width: 48em)")
   const [status, setStatus] = useState<ExpenseStatus | "">("")
   const [userId, setUserId] = useState<string | null>(null)
   const [range, setRange] = useState<[Date | null, Date | null]>([null, null])
@@ -758,7 +824,7 @@ function AdminExpensesTab({ canManage }: { canManage: boolean }) {
                 const meta = STATUS_META[expense.status]
                 return (
                   <Table.Tr key={expense.id}>
-                    <Table.Td>
+                    <Table.Td style={{ whiteSpace: "nowrap" }}>
                       {dayjs(expense.created_at).format("D/M YYYY")}
                     </Table.Td>
                     <Table.Td>{fullName(expense.submitted_by)}</Table.Td>
@@ -862,6 +928,7 @@ function AdminExpensesTab({ canManage }: { canManage: boolean }) {
         onClose={() => setRejecting(null)}
         title="Afvis udlæg"
         size="md"
+        fullScreen={isMobile}
       >
         <Stack gap="md">
           <Textarea

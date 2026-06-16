@@ -15,6 +15,7 @@ from decimal import Decimal
 from typing import Any
 from urllib.parse import quote
 
+from django.conf import settings
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import QuerySet, Sum
@@ -76,14 +77,52 @@ def _can_view_expense(user: Any, expense: Expense) -> bool:
 
 
 def _create_attachments(expense: Expense, files: list) -> None:
-    """Validate and persist uploaded files as ExpenseAttachment rows."""
+    """Validate and persist uploaded files as ExpenseAttachment rows.
+
+    Receipts are capped at ``EXPENSE_EMAIL_MAX_ATTACHMENT_BYTES`` so each one
+    still fits the economy notification email. Validate everything up front so a
+    too-big file doesn't leave half the uploads written to storage.
+    """
+    max_bytes = getattr(settings, "EXPENSE_EMAIL_MAX_ATTACHMENT_BYTES", 18_000_000)
     for upload in files:
         validate_file_size(upload)
+        if upload.size > max_bytes:
+            raise ValidationError(
+                {
+                    "files": (
+                        f"Bilaget '{upload.name}' er for stort. "
+                        f"Hvert bilag må højst fylde {max_bytes // 1_000_000} MB."
+                    )
+                }
+            )
+    for upload in files:
         ExpenseAttachment.objects.create(
             expense=expense,
             file=upload,
             name=upload.name,
         )
+
+
+def _expense_email_fields(expense: Expense) -> dict:
+    """Snapshot the fields the economy notification needs, as primitives.
+
+    Passed to the Huey task instead of the model instance so the ``deleted``
+    notice still has its data after the row (and its FK) are gone.
+    """
+    who = (expense.submitted_by.get_full_name() if expense.submitted_by else "") or "Ukendt"
+    return {
+        "id": expense.id,
+        "who": who,
+        "amount": f"{expense.amount:.2f}".replace(".", ","),
+        "reg_nr": expense.reg_nr,
+        "account_number": expense.account_number,
+        "food_related": expense.food_related,
+        "description": expense.description,
+        "approval_reference": expense.approval_reference,
+        # Storage refs (not bytes) — the task reads + attaches the receipts so
+        # the treasurer gets them straight in the mail. Captured before delete.
+        "attachments": [{"name": a.name, "path": a.file.name} for a in expense.attachments.all()],
+    }
 
 
 class ExpenseListCreateView(generics.ListCreateAPIView):
@@ -116,9 +155,9 @@ class ExpenseListCreateView(generics.ListCreateAPIView):
 
         # Let the treasurer know a new udlæg was submitted. Enqueued after the
         # atomic block so it only fires once the expense is committed.
-        from .tasks import send_expense_created_email_task
+        from .tasks import send_expense_notification_task
 
-        send_expense_created_email_task(expense.id)
+        send_expense_notification_task("created", _expense_email_fields(expense))
 
         out = ExpenseSerializer(expense, context=self.get_serializer_context())
         return Response(out.data, status=status.HTTP_201_CREATED)
@@ -155,6 +194,21 @@ class ExpenseDetailView(generics.RetrieveUpdateDestroyAPIView):
             if obj.status != Expense.Status.PENDING:
                 raise PermissionDenied("Udlægget kan ikke ændres, når det er behandlet.")
         return obj
+
+    def perform_update(self, serializer: Any) -> None:
+        from .tasks import send_expense_notification_task
+
+        expense = serializer.save()
+        # Notify the treasurer of the change, threaded under the original notice.
+        send_expense_notification_task("edited", _expense_email_fields(expense))
+
+    def perform_destroy(self, instance: Expense) -> None:
+        from .tasks import send_expense_notification_task
+
+        # Snapshot before the row (and its attachments) are gone.
+        fields = _expense_email_fields(instance)
+        instance.delete()
+        send_expense_notification_task("deleted", fields)
 
 
 class ExpenseAttachmentView(APIView):

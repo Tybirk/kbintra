@@ -8,6 +8,13 @@ export const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024 // 50MB per file
 
 export const MAX_UPLOAD_FILE_SIZE_MB = 50
 
+// Receipts (udlæg) get a tighter cap so each one fits the economy email.
+// Must match backend EXPENSE_EMAIL_MAX_ATTACHMENT_BYTES (decimal MB).
+export const EXPENSE_MAX_ATTACHMENT_SIZE_MB = 18
+
+export const EXPENSE_MAX_ATTACHMENT_SIZE =
+  EXPENSE_MAX_ATTACHMENT_SIZE_MB * 1_000_000
+
 /**
  * Validate file size and return error message if too large
  */

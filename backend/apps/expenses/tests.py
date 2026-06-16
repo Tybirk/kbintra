@@ -595,12 +595,13 @@ def test_csv_export_includes_food_related_column(admin_client, user):
     assert "Ja" in body
 
 
-# --- Economy email on creation -----------------------------------------------
+# --- Economy email notifications ---------------------------------------------
 
 
 @pytest.mark.django_db
 def test_economy_email_sent_on_creation(settings, mailoutbox, authenticated_client, user):
     settings.ECONOMY_EMAIL = "oekonomi@example.com"
+    settings.DEFAULT_FROM_EMAIL = "KB Intra <noreply@kbintra.top>"
     resp = authenticated_client.post(
         "/api/expenses/",
         {
@@ -608,7 +609,7 @@ def test_economy_email_sent_on_creation(settings, mailoutbox, authenticated_clie
             "account_number": "9876543",
             "amount": "250.50",
             "description": "Maling til fælleshus",
-            "food_related": "true",
+            "food_related": "false",
             "files": [_receipt()],
         },
         format="multipart",
@@ -619,10 +620,58 @@ def test_economy_email_sent_on_creation(settings, mailoutbox, authenticated_clie
     assert msg.to == ["oekonomi@example.com"]
     assert "250,50" in msg.body
     assert "Maling til fælleshus" in msg.body
-    # The fællesmad flag is surfaced to the treasurer.
-    assert "Vedrører fællesmad: Ja" in msg.body
-    # Prod SITE_URL → no TEST: prefix.
-    assert msg.subject.startswith("[Udlæg]")
+    assert "Vedrører fællesmad: Nej" in msg.body
+    expense_id = resp.data["id"]
+    # Prod SITE_URL → no TEST: prefix; stable per-expense subject.
+    assert msg.subject == f"[Udlæg #{expense_id}] Udlæg fra Test User"
+    # The root notice carries the thread id but no In-Reply-To.
+    assert msg.extra_headers["References"] == f"<udlaeg-{expense_id}@kbintra.top>"
+    assert "In-Reply-To" not in msg.extra_headers
+    # The uploaded receipt is attached so the treasurer gets it in the mail.
+    assert len(msg.attachments) == 1
+    att_name, att_content, _ = msg.attachments[0]
+    assert att_name == "kvittering.pdf"
+    assert att_content == b"%PDF-1.4 fake receipt"
+
+
+@pytest.mark.django_db
+def test_receipt_over_size_cap_rejected(settings, authenticated_client):
+    # A receipt bigger than the email attachment cap is refused on upload.
+    settings.EXPENSE_EMAIL_MAX_ATTACHMENT_BYTES = 5  # tiny, to trip the guard
+    resp = authenticated_client.post(
+        "/api/expenses/",
+        {
+            "reg_nr": "1234",
+            "account_number": "9876543",
+            "amount": "10.00",
+            "description": "For stort bilag",
+            "files": [_receipt()],  # 21 bytes > 5
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 400
+    assert "for stort" in str(resp.data)
+    assert not Expense.objects.exists()
+
+
+@pytest.mark.django_db
+def test_no_economy_email_when_food_related(settings, mailoutbox, authenticated_client):
+    # Fællesmad-udlæg are handled by food admins in-app, so no economy notice.
+    settings.ECONOMY_EMAIL = "oekonomi@example.com"
+    resp = authenticated_client.post(
+        "/api/expenses/",
+        {
+            "reg_nr": "1234",
+            "account_number": "9876543",
+            "amount": "99.00",
+            "description": "Krydderier til fællesmad",
+            "food_related": "true",
+            "files": [_receipt()],
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 201, resp.data
+    assert len(mailoutbox) == 0
 
 
 @pytest.mark.django_db
@@ -644,7 +693,65 @@ def test_economy_email_subject_flagged_on_test_site(
     )
     assert resp.status_code == 201, resp.data
     assert len(mailoutbox) == 1
-    assert mailoutbox[0].subject.startswith("TEST: [Udlæg]")
+    assert mailoutbox[0].subject.startswith("TEST: [Udlæg #")
+
+
+@pytest.mark.django_db
+def test_economy_email_on_edit_threads_with_creation(
+    settings, mailoutbox, authenticated_client, user
+):
+    settings.ECONOMY_EMAIL = "oekonomi@example.com"
+    settings.DEFAULT_FROM_EMAIL = "KB Intra <noreply@kbintra.top>"
+    expense = _make_expense(user)  # pending, owned by user
+    resp = authenticated_client.patch(
+        f"/api/expenses/{expense.id}/", {"amount": "300.00"}, format="json"
+    )
+    assert resp.status_code == 200, resp.data
+    assert len(mailoutbox) == 1
+    msg = mailoutbox[0]
+    assert "rettet" in msg.body.lower()
+    assert "300,00" in msg.body
+    # Same stable subject + thread id as the creation notice, plus In-Reply-To,
+    # so the change threads under the original in the treasurer's inbox.
+    thread_id = f"<udlaeg-{expense.id}@kbintra.top>"
+    assert msg.subject == f"[Udlæg #{expense.id}] Udlæg fra Test User"
+    assert msg.extra_headers["References"] == thread_id
+    assert msg.extra_headers["In-Reply-To"] == thread_id
+
+
+@pytest.mark.django_db
+def test_economy_email_on_delete_threads_with_creation(
+    settings, mailoutbox, authenticated_client, user
+):
+    settings.ECONOMY_EMAIL = "oekonomi@example.com"
+    settings.DEFAULT_FROM_EMAIL = "KB Intra <noreply@kbintra.top>"
+    expense = _make_expense(user)  # pending, owned by user
+    ExpenseAttachment.objects.create(expense=expense, file=_receipt(), name="kvittering.pdf")
+    expense_id = expense.id
+    resp = authenticated_client.delete(f"/api/expenses/{expense_id}/")
+    assert resp.status_code == 204
+    assert len(mailoutbox) == 1
+    msg = mailoutbox[0]
+    assert "slettet" in msg.body.lower()
+    # No "behandl her" link once it's gone, and no attachments (files are deleted).
+    assert "/udlaeg" not in msg.body
+    assert msg.attachments == []
+    thread_id = f"<udlaeg-{expense_id}@kbintra.top>"
+    assert msg.subject == f"[Udlæg #{expense_id}] Udlæg fra Test User"
+    assert msg.extra_headers["In-Reply-To"] == thread_id
+
+
+@pytest.mark.django_db
+def test_no_economy_email_on_edit_when_food_related(
+    settings, mailoutbox, authenticated_client, user
+):
+    settings.ECONOMY_EMAIL = "oekonomi@example.com"
+    expense = _make_expense(user, food_related=True)
+    resp = authenticated_client.patch(
+        f"/api/expenses/{expense.id}/", {"amount": "300.00"}, format="json"
+    )
+    assert resp.status_code == 200, resp.data
+    assert len(mailoutbox) == 0
 
 
 @pytest.mark.django_db

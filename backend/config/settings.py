@@ -269,6 +269,16 @@ DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "KB Intra <noreply@kbintra.
 # submitted. Empty disables the notice (e.g. in dev).
 ECONOMY_EMAIL = os.getenv("ECONOMY_EMAIL", "")
 
+# Max raw bytes of receipts attached to the udlæg notice, and the per-file cap
+# enforced on receipt uploads (so a receipt always fits the mail). Cloudflare
+# accepts 25 MiB only for *verified* destination addresses; ECONOMY_EMAIL is
+# verified, so 18 MB raw leaves room for base64 (~+33%) under that. Bigger
+# receipts are rejected on upload (and the in-app link covers the multi-file
+# overflow case where the running total exceeds the budget).
+EXPENSE_EMAIL_MAX_ATTACHMENT_BYTES = int(
+    os.getenv("EXPENSE_EMAIL_MAX_ATTACHMENT_BYTES", str(18_000_000))
+)
+
 # Cloudflare Email Service (used when EMAIL_BACKEND points at CloudflareEmailBackend).
 # Token must be scoped to email_sending:write.
 CLOUDFLARE_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID", "")
