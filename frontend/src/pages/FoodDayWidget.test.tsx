@@ -191,6 +191,11 @@ function renderWidget(
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
 
+  // Pin "now" to a fixed point before FUTURE_MONDAY so the widget never treats
+  // the test date as past (otherwise the suite breaks once the real clock
+  // passes FUTURE_MONDAY).
+  vi.setSystemTime(new Date("2026-06-10T12:00:00"))
+
   vi.clearAllMocks()
 
   mockIsDateLocked = false
