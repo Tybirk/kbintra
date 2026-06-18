@@ -347,17 +347,27 @@ export function FileActionButtons({
 
   extra,
 }: FileActionButtonsProps) {
+  const isTouch = useMediaQuery("(pointer: coarse)")
+
+  // On desktop, "Åbn" only adds value for PDFs (opens in a new tab). For
+  // word/powerpoint/other it just duplicates "Gem", and can silently no-op via
+  // navigator.share — so hide it there. Always show it on touch devices.
+  // useMediaQuery is undefined on first render (falsy) → safe desktop default.
+  const showOpen = isTouch || actions.fileType === "pdf"
+
   return (
     <Group justify="center" gap="xs">
       {extra}
-      <Button
-        size={size}
-        leftSection={<IconExternalLink size={16} />}
-        onClick={actions.handleOpen}
-        disabled={actions.actionsDisabled}
-      >
-        Åbn
-      </Button>
+      {showOpen && (
+        <Button
+          size={size}
+          leftSection={<IconExternalLink size={16} />}
+          onClick={actions.handleOpen}
+          disabled={actions.actionsDisabled}
+        >
+          Åbn
+        </Button>
+      )}
       <Button
         size={size}
         variant="light"
