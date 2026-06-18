@@ -315,7 +315,13 @@ class MarkMessagesReadView(APIView):
 
 
 class MarkMessagesUnreadView(APIView):
-    """Mark a conversation as unread (delete this user's read statuses)."""
+    """Mark a conversation as unread.
+
+    By default this only clears the read status of the latest message from
+    another participant, so the conversation reappears as unread (with one
+    unread message) — a reminder to reply — without resurfacing the whole
+    history. Own messages are never tracked as unread.
+    """
 
     permission_classes = [permissions.IsAuthenticated]
 
@@ -324,17 +330,35 @@ class MarkMessagesUnreadView(APIView):
             Conversation.objects.filter(participants=request.user),
             pk=conversation_id,
         )
-        # Delete this user's read statuses for messages from others so the
-        # conversation reappears as unread. Own messages are never tracked as
-        # unread, so exclude them to leave their read statuses untouched.
-        deleted, _ = (
-            MessageReadStatus.objects.filter(
-                user=request.user,
-                message__conversation=conversation,
-            )
-            .exclude(message__sender=request.user)
-            .delete()
+        latest = (
+            conversation.messages.exclude(sender=request.user)
+            .order_by("-created_at", "-id")
+            .first()
         )
+        if latest is None:
+            return Response({"marked_unread": 0})
+        deleted, _ = MessageReadStatus.objects.filter(user=request.user, message=latest).delete()
+        return Response({"marked_unread": deleted})
+
+
+class MarkMessageUnreadView(APIView):
+    """Mark a single message as unread for the current user.
+
+    Deletes the user's read status for that message so the conversation
+    reappears as unread. Own messages are never tracked as unread, so marking
+    one is a no-op.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request, message_id: int) -> Response:
+        message = get_object_or_404(
+            Message.objects.filter(conversation__participants=request.user),
+            pk=message_id,
+        )
+        if message.sender_id == request.user.id:
+            return Response({"marked_unread": 0})
+        deleted, _ = MessageReadStatus.objects.filter(user=request.user, message=message).delete()
         return Response({"marked_unread": deleted})
 
 

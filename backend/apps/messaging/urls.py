@@ -11,6 +11,7 @@ from .views import (
     LeaveConversationView,
     MarkMessagesReadView,
     MarkMessagesUnreadView,
+    MarkMessageUnreadView,
     MessageEditView,
     MessageListCreateView,
     MessageReactionToggleView,
@@ -63,5 +64,10 @@ urlpatterns = [
         "messages/<int:message_id>/react/",
         MessageReactionToggleView.as_view(),
         name="message-react",
+    ),
+    path(
+        "messages/<int:message_id>/unread/",
+        MarkMessageUnreadView.as_view(),
+        name="message-mark-unread",
     ),
 ]
