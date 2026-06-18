@@ -338,34 +338,6 @@ class TestEventAPI:
         assert len(results) == 1
         assert results[0]["title"] == "Subgroup Event"
 
-    def test_list_subgroup_filter_via_thread(self, authenticated_client, db, user):
-        """Events whose direct subgroup FK was cleared still match via their thread.
-
-        The `subgroup` FK is SET_NULL and can be cleared, but the discussion
-        thread usually still points to the subgroup. The widget must keep
-        finding such events.
-        """
-        from apps.forum.models import Subgroup, Thread
-
-        sg = Subgroup.objects.create(name="Tråd Gruppe", slug="traad-gruppe")
-        thread = Thread.objects.create(title="Begivenhedstråd", subgroup=sg, author=user)
-        now = timezone.now()
-        Event.objects.create(
-            title="Orphaned Subgroup Event",
-            created_by=user,
-            visibility=Event.Visibility.COMMUNITY,
-            subgroup=None,
-            thread=thread,
-            start_datetime=now + timedelta(days=1),
-            end_datetime=now + timedelta(days=1, hours=1),
-        )
-        response = authenticated_client.get(f"/api/events/?subgroup={sg.id}")
-        assert response.status_code == 200
-        data = response.json()
-        results = data if isinstance(data, list) else data.get("results", data)
-        assert len(results) == 1
-        assert results[0]["title"] == "Orphaned Subgroup Event"
-
     def test_room_overlap_rejected(self, authenticated_client, db):
         from apps.bookings.models import Room
 

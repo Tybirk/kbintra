@@ -246,7 +246,7 @@ export default function SubgroupPage() {
 
         start: dayjs().toISOString(),
 
-        end: dayjs().add(30, "day").toISOString(),
+        end: dayjs().add(6, "month").toISOString(),
       }),
 
     enabled: !!subgroup,
@@ -808,7 +808,7 @@ When done, print a short summary:
 
       {upcomingEvents && upcomingEvents.length > 0 && (
         <SimpleGrid cols={{ base: 1, sm: 2 }} mb="md">
-          {upcomingEvents.slice(0, 2).map((event) => (
+          {upcomingEvents.slice(0, 5).map((event) => (
             <CompactEventCard key={event.id} event={event} />
           ))}
         </SimpleGrid>
