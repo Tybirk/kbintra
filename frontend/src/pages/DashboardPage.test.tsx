@@ -195,6 +195,35 @@ describe("DashboardPage", () => {
     expect(screen.getByText(/this is a test forum post/i)).toBeInTheDocument()
   })
 
+  // Fælles shortcut buttons
+
+  it("should show both 'Skriv på Fælles' and 'Se Fælles' shortcuts", async () => {
+    mockGetSubgroups.mockResolvedValue([
+      {
+        id: 1,
+        name: "Fælles",
+        slug: "faelles",
+        is_member: false,
+        is_subscribed: false,
+        unread_thread_count: 0,
+        last_activity_at: null,
+      },
+    ])
+
+    render(<DashboardPage />)
+
+    const writeLink = await screen.findByRole("link", {
+      name: /skriv på fælles/i,
+    })
+    const viewLink = await screen.findByRole("link", { name: /se fælles/i })
+
+    // "Skriv på Fælles" opens the new-thread composer (?nytraad=1)
+    expect(writeLink).toHaveAttribute("href", "/forum/faelles?nytraad=1")
+
+    // "Se Fælles" opens the group's thread list (no ?nytraad=1)
+    expect(viewLink).toHaveAttribute("href", "/forum/faelles")
+  })
+
   // Birthday Tests
 
   it("should show birthday section", async () => {
