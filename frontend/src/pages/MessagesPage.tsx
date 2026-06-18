@@ -62,6 +62,7 @@ import {
   IconTrash,
   IconCopy,
   IconMoodSmile,
+  IconMailOpened,
 } from "@tabler/icons-react"
 
 import dayjs from "dayjs"
@@ -557,6 +558,34 @@ export default function MessagesPage() {
     }
   }
 
+  const handleMarkUnread = async () => {
+    const id = selectedConversation
+
+    if (!id) return
+
+    try {
+      await messagingApi.markUnread(id)
+
+      // Reset the "already marked read this session" guard so that re-opening
+      // the conversation marks it read again.
+
+      lastMarkedReadConversation.current = null
+
+      // Leave the conversation so opening/listing it doesn't instantly re-mark
+      // it read (both via the server fetch and the auto-mark-read effect).
+
+      setSelectedConversation(null)
+
+      navigate("/beskeder", { replace: true })
+
+      queryClient.invalidateQueries({ queryKey: ["conversations"] })
+
+      queryClient.invalidateQueries({ queryKey: ["messages", "unread-count"] })
+    } catch (error) {
+      showErrorNotification(error, "Kunne ikke markere samtalen som ulæst")
+    }
+  }
+
   return (
     <Box
       style={{
@@ -770,6 +799,7 @@ export default function MessagesPage() {
                   })
                 }}
                 onLeave={handleLeaveConversation}
+                onMarkUnread={handleMarkUnread}
                 isMobile={isMobile ?? false}
                 onMessageUpdated={(messageId, content, editedAt) => {
                   queryClient.setQueryData<ConversationDetail>(
@@ -974,6 +1004,8 @@ interface ChatAreaProps {
 
   onLeave?: () => void
 
+  onMarkUnread?: () => void
+
   onMessageUpdated?: (
     messageId: number,
 
@@ -1132,6 +1164,8 @@ function ChatArea({
   onParticipantsAdded,
 
   onLeave,
+
+  onMarkUnread,
 
   onMessageUpdated,
 
@@ -1447,6 +1481,13 @@ function ChatArea({
               </ActionIcon>
             </Menu.Target>
             <Menu.Dropdown>
+              <Menu.Item
+                leftSection={<IconMailOpened size={16} />}
+                onClick={() => onMarkUnread?.()}
+              >
+                Markér som ulæst
+              </Menu.Item>
+              <Menu.Divider />
               <Menu.Item
                 leftSection={<IconPencil size={16} />}
                 onClick={() => {
