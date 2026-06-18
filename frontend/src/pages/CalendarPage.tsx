@@ -437,7 +437,6 @@ export default function CalendarPage() {
                               <LocationText
                                 location={ev.resolved_location}
                                 size="sm"
-                                c="dimmed"
                                 lineClamp={1}
                               />
                             </Group>
