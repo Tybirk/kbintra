@@ -495,6 +495,10 @@ export function GlobalSearch({ onAction }: GlobalSearchProps) {
         }}
         query={query}
         onQueryChange={setQuery}
+        // Keep the last query when the spotlight closes so reopening it (incl.
+        // via Back after viewing a result) restores the previous search instead
+        // of an empty box. Mantine clears it by default.
+        clearQueryOnClose={false}
         transitionProps={{ duration: 0 }}
         shortcut={["mod + K"]}
         scrollable
