@@ -488,15 +488,25 @@ export default function DashboardPage() {
   return (
     <>
       {faellesGroup && (
-        <Button
-          component={Link}
-          to={`/forum/${faellesGroup.slug}?nytraad=1`}
-          leftSection={<IconPencil size={16} />}
-          size="sm"
-          mb="xl"
-        >
-          Skriv på Fælles
-        </Button>
+        <Group mb="xl" gap="sm">
+          <Button
+            component={Link}
+            to={`/forum/${faellesGroup.slug}?nytraad=1`}
+            leftSection={<IconPencil size={16} />}
+            size="sm"
+          >
+            Skriv på Fælles
+          </Button>
+          <Button
+            component={Link}
+            to={`/forum/${faellesGroup.slug}`}
+            variant="light"
+            leftSection={<IconUsers size={16} />}
+            size="sm"
+          >
+            Se Fælles
+          </Button>
+        </Group>
       )}
 
       {hasError && (
