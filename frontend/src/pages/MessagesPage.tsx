@@ -558,6 +558,24 @@ export default function MessagesPage() {
     }
   }
 
+  // Shared cleanup after marking (part of) a conversation unread. We must leave
+  // the conversation so opening/listing it doesn't instantly re-mark it read
+  // (both via the server fetch and the auto-mark-read effect), reset the
+  // "already marked read this session" guard so re-opening marks it read again,
+  // and refresh the conversation list + unread badge.
+
+  const settleAfterMarkUnread = () => {
+    lastMarkedReadConversation.current = null
+
+    setSelectedConversation(null)
+
+    navigate("/beskeder", { replace: true })
+
+    queryClient.invalidateQueries({ queryKey: ["conversations"] })
+
+    queryClient.invalidateQueries({ queryKey: ["messages", "unread-count"] })
+  }
+
   const handleMarkUnread = async () => {
     const id = selectedConversation
 
@@ -566,23 +584,21 @@ export default function MessagesPage() {
     try {
       await messagingApi.markUnread(id)
 
-      // Reset the "already marked read this session" guard so that re-opening
-      // the conversation marks it read again.
-
-      lastMarkedReadConversation.current = null
-
-      // Leave the conversation so opening/listing it doesn't instantly re-mark
-      // it read (both via the server fetch and the auto-mark-read effect).
-
-      setSelectedConversation(null)
-
-      navigate("/beskeder", { replace: true })
-
-      queryClient.invalidateQueries({ queryKey: ["conversations"] })
-
-      queryClient.invalidateQueries({ queryKey: ["messages", "unread-count"] })
+      settleAfterMarkUnread()
     } catch (error) {
       showErrorNotification(error, "Kunne ikke markere samtalen som ulæst")
+    }
+  }
+
+  const handleMarkMessageUnread = async (messageId: number) => {
+    if (!selectedConversation) return
+
+    try {
+      await messagingApi.markMessageUnread(messageId)
+
+      settleAfterMarkUnread()
+    } catch (error) {
+      showErrorNotification(error, "Kunne ikke markere beskeden som ulæst")
     }
   }
 
@@ -800,6 +816,7 @@ export default function MessagesPage() {
                 }}
                 onLeave={handleLeaveConversation}
                 onMarkUnread={handleMarkUnread}
+                onMarkMessageUnread={handleMarkMessageUnread}
                 isMobile={isMobile ?? false}
                 onMessageUpdated={(messageId, content, editedAt) => {
                   queryClient.setQueryData<ConversationDetail>(
@@ -1006,6 +1023,8 @@ interface ChatAreaProps {
 
   onMarkUnread?: () => void
 
+  onMarkMessageUnread?: (messageId: number) => void
+
   onMessageUpdated?: (
     messageId: number,
 
@@ -1052,6 +1071,8 @@ interface MessageListProps {
 
   onUnsend?: (messageId: number) => void
 
+  onMarkMessageUnread?: (messageId: number) => void
+
   scrollViewportRef: RefObject<HTMLDivElement | null>
 }
 
@@ -1063,6 +1084,8 @@ const MessageList = memo(function MessageList({
   onEdit,
 
   onUnsend,
+
+  onMarkMessageUnread,
 
   scrollViewportRef,
 }: MessageListProps) {
@@ -1145,6 +1168,7 @@ const MessageList = memo(function MessageList({
                 showInlineTime={!isMobile}
                 onEdit={onEdit}
                 onUnsend={onUnsend}
+                onMarkMessageUnread={onMarkMessageUnread}
               />
             </Box>
           )
@@ -1166,6 +1190,8 @@ function ChatArea({
   onLeave,
 
   onMarkUnread,
+
+  onMarkMessageUnread,
 
   onMessageUpdated,
 
@@ -1602,6 +1628,7 @@ function ChatArea({
         isMobile={isMobile}
         onEdit={onMessageUpdated}
         onUnsend={onMessageDeleted}
+        onMarkMessageUnread={onMarkMessageUnread}
         scrollViewportRef={scrollRef}
       />
 
@@ -1740,6 +1767,8 @@ interface MessageBubbleProps {
   onEdit?: (messageId: number, content: string, editedAt: string) => void
 
   onUnsend?: (messageId: number) => void
+
+  onMarkMessageUnread?: (messageId: number) => void
 }
 
 function isImageFile(filename: string): boolean {
@@ -1758,6 +1787,8 @@ const MessageBubble = memo(function MessageBubble({
   onEdit,
 
   onUnsend,
+
+  onMarkMessageUnread,
 }: MessageBubbleProps) {
   const [carouselOpened, setCarouselOpened] = useState(false)
 
@@ -1989,6 +2020,14 @@ const MessageBubble = memo(function MessageBubble({
         <Menu.Item leftSection={<IconCopy size={14} />} onClick={handleCopy}>
           Kopiér
         </Menu.Item>
+        {!isOwn && (
+          <Menu.Item
+            leftSection={<IconMailOpened size={14} />}
+            onClick={() => onMarkMessageUnread?.(message.id)}
+          >
+            Markér som ulæst
+          </Menu.Item>
+        )}
         {isOwn && (
           <>
             <Menu.Divider />
@@ -2207,6 +2246,23 @@ const MessageBubble = memo(function MessageBubble({
               <Text size="sm">Kopiér</Text>
             </Group>
           </UnstyledButton>
+          {!isOwn && (
+            <UnstyledButton
+              px="xs"
+              py={6}
+              style={{ borderRadius: "var(--mantine-radius-sm)" }}
+              onClick={() => {
+                onMarkMessageUnread?.(message.id)
+
+                setReactionPickerOpened(false)
+              }}
+            >
+              <Group gap="xs">
+                <IconMailOpened size={14} color="var(--mantine-color-dimmed)" />
+                <Text size="sm">Markér som ulæst</Text>
+              </Group>
+            </UnstyledButton>
+          )}
           {isOwn && (
             <UnstyledButton
               px="xs"

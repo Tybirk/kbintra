@@ -233,6 +233,29 @@ class TestMarkMessagesUnreadAPI:
         assert not MessageReadStatus.objects.filter(message=message, user=second_user).exists()
         assert api_client.get("/api/messages/unread-count/").json()["unread_count"] == 1
 
+    def test_mark_unread_only_affects_latest_message(
+        self, api_client, user, second_user, conversation, message
+    ):
+        """Marking a conversation unread clears only the latest message, not all."""
+        # A second, later message from the other participant.
+        latest = Message.objects.create(
+            conversation=conversation,
+            sender=user,
+            content="A later message",
+        )
+
+        api_client.force_authenticate(user=second_user)
+        api_client.post(f"/api/messages/conversations/{conversation.id}/read/")
+
+        response = api_client.post(f"/api/messages/conversations/{conversation.id}/unread/")
+        assert response.status_code == 200
+        assert response.json()["marked_unread"] == 1
+
+        # Only the latest message is unread; the earlier one stays read.
+        assert not MessageReadStatus.objects.filter(message=latest, user=second_user).exists()
+        assert MessageReadStatus.objects.filter(message=message, user=second_user).exists()
+        assert api_client.get("/api/messages/unread-count/").json()["unread_count"] == 1
+
     def test_mark_unread_leaves_own_messages_untouched(
         self, api_client, second_user, conversation, message
     ):
@@ -265,6 +288,48 @@ class TestMarkMessagesUnreadAPI:
         """Users cannot mark a conversation they're not part of as unread."""
         api_client.force_authenticate(user=admin_user)
         response = api_client.post(f"/api/messages/conversations/{conversation.id}/unread/")
+        assert response.status_code == 404
+
+
+class TestMarkMessageUnreadAPI:
+    """Tests for the per-message Mark Unread API endpoint."""
+
+    def test_mark_message_unread(self, api_client, second_user, conversation, message):
+        """Reading then marking a single message unread makes it unread again."""
+        api_client.force_authenticate(user=second_user)
+
+        api_client.post(f"/api/messages/conversations/{conversation.id}/read/")
+        assert MessageReadStatus.objects.filter(message=message, user=second_user).exists()
+
+        response = api_client.post(f"/api/messages/messages/{message.id}/unread/")
+        assert response.status_code == 200
+        assert response.json()["marked_unread"] == 1
+
+        assert not MessageReadStatus.objects.filter(message=message, user=second_user).exists()
+        assert api_client.get("/api/messages/unread-count/").json()["unread_count"] == 1
+
+    def test_mark_own_message_unread_is_noop(self, api_client, second_user, conversation):
+        """Marking one's own message unread is a no-op (own messages aren't tracked)."""
+        own_message = Message.objects.create(
+            conversation=conversation,
+            sender=second_user,
+            content="My own message",
+        )
+        api_client.force_authenticate(user=second_user)
+
+        response = api_client.post(f"/api/messages/messages/{own_message.id}/unread/")
+        assert response.status_code == 200
+        assert response.json()["marked_unread"] == 0
+
+    def test_mark_message_unread_unauthenticated(self, api_client, message):
+        """Unauthenticated users cannot mark a message unread."""
+        response = api_client.post(f"/api/messages/messages/{message.id}/unread/")
+        assert response.status_code == 401
+
+    def test_cannot_mark_message_in_others_conversation(self, api_client, admin_user, message):
+        """Users cannot mark a message in a conversation they're not part of."""
+        api_client.force_authenticate(user=admin_user)
+        response = api_client.post(f"/api/messages/messages/{message.id}/unread/")
         assert response.status_code == 404
 
 
