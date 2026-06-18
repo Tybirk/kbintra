@@ -314,6 +314,30 @@ class MarkMessagesReadView(APIView):
         return Response({"marked_read": len(read_statuses)})
 
 
+class MarkMessagesUnreadView(APIView):
+    """Mark a conversation as unread (delete this user's read statuses)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request, conversation_id: int) -> Response:
+        conversation = get_object_or_404(
+            Conversation.objects.filter(participants=request.user),
+            pk=conversation_id,
+        )
+        # Delete this user's read statuses for messages from others so the
+        # conversation reappears as unread. Own messages are never tracked as
+        # unread, so exclude them to leave their read statuses untouched.
+        deleted, _ = (
+            MessageReadStatus.objects.filter(
+                user=request.user,
+                message__conversation=conversation,
+            )
+            .exclude(message__sender=request.user)
+            .delete()
+        )
+        return Response({"marked_unread": deleted})
+
+
 class UnreadCountView(APIView):
     """Get total unread message count for current user."""
 

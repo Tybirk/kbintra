@@ -212,6 +212,62 @@ class TestMarkMessagesReadAPI:
         assert MessageReadStatus.objects.filter(message=message, user=second_user).exists()
 
 
+class TestMarkMessagesUnreadAPI:
+    """Tests for the Mark Messages Unread API endpoint."""
+
+    def test_mark_messages_unread(self, api_client, second_user, conversation, message):
+        """Reading then marking unread makes the conversation unread again."""
+        api_client.force_authenticate(user=second_user)
+
+        # Read the conversation first (creates a read status for second_user).
+        api_client.post(f"/api/messages/conversations/{conversation.id}/read/")
+        assert MessageReadStatus.objects.filter(message=message, user=second_user).exists()
+        assert api_client.get("/api/messages/unread-count/").json()["unread_count"] == 0
+
+        # Now mark it as unread.
+        response = api_client.post(f"/api/messages/conversations/{conversation.id}/unread/")
+        assert response.status_code == 200
+        assert response.json()["marked_unread"] == 1
+
+        # The read status is gone and the conversation is unread again.
+        assert not MessageReadStatus.objects.filter(message=message, user=second_user).exists()
+        assert api_client.get("/api/messages/unread-count/").json()["unread_count"] == 1
+
+    def test_mark_unread_leaves_own_messages_untouched(
+        self, api_client, second_user, conversation, message
+    ):
+        """Marking unread must not delete read statuses for the user's own messages."""
+        # second_user sends their own message and reads the whole conversation.
+        own_message = Message.objects.create(
+            conversation=conversation,
+            sender=second_user,
+            content="My own reply",
+        )
+        own_read = MessageReadStatus.objects.create(message=own_message, user=second_user)
+
+        api_client.force_authenticate(user=second_user)
+        api_client.post(f"/api/messages/conversations/{conversation.id}/read/")
+
+        response = api_client.post(f"/api/messages/conversations/{conversation.id}/unread/")
+        assert response.status_code == 200
+
+        # The other user's message read status is deleted...
+        assert not MessageReadStatus.objects.filter(message=message, user=second_user).exists()
+        # ...but the read status for second_user's own message is preserved.
+        assert MessageReadStatus.objects.filter(pk=own_read.pk).exists()
+
+    def test_mark_unread_unauthenticated(self, api_client, conversation):
+        """Unauthenticated users cannot mark a conversation unread."""
+        response = api_client.post(f"/api/messages/conversations/{conversation.id}/unread/")
+        assert response.status_code == 401
+
+    def test_cannot_mark_unread_others_conversation(self, api_client, admin_user, conversation):
+        """Users cannot mark a conversation they're not part of as unread."""
+        api_client.force_authenticate(user=admin_user)
+        response = api_client.post(f"/api/messages/conversations/{conversation.id}/unread/")
+        assert response.status_code == 404
+
+
 class TestUnreadCountAPI:
     """Tests for the Unread Count API endpoint."""
 
