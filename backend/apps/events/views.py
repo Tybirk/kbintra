@@ -95,10 +95,16 @@ class EventListCreateView(generics.ListCreateAPIView):
         if room_id:
             queryset = queryset.filter(rooms__id=room_id).distinct()
 
-        # Filter by subgroup
+        # Filter by subgroup. Match both the direct FK and the event's discussion
+        # thread subgroup: the direct `subgroup` FK is SET_NULL and can be cleared
+        # (e.g. by an edit that omits subgroup_id, or by deleting/recreating a
+        # subgroup), but the linked thread usually still points to the subgroup.
+        # Keying on both keeps the "kommende begivenheder" widget robust.
         subgroup_id = self.request.query_params.get("subgroup")
         if subgroup_id:
-            queryset = queryset.filter(subgroup_id=subgroup_id)
+            queryset = queryset.filter(
+                Q(subgroup_id=subgroup_id) | Q(thread__subgroup_id=subgroup_id)
+            ).distinct()
 
         # Filter by "mine" (current user's events)
         mine = self.request.query_params.get("mine")

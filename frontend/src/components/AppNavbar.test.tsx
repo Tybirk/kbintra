@@ -62,7 +62,7 @@ describe("AppNavbar", () => {
 
     expect(screen.getByText("Mad")).toBeInTheDocument()
 
-    expect(screen.getByText("Kalender")).toBeInTheDocument()
+    expect(screen.getByText("Begivenhedskalender")).toBeInTheDocument()
 
     expect(screen.getByText("Beboeroversigt")).toBeInTheDocument()
 
@@ -76,7 +76,7 @@ describe("AppNavbar", () => {
 
     expect(forumLink).toHaveAttribute("href", "/forum")
 
-    const kalenderLink = screen.getByText("Kalender").closest("a")
+    const kalenderLink = screen.getByText("Begivenhedskalender").closest("a")
 
     expect(kalenderLink).toHaveAttribute("href", "/kalender")
   })
@@ -88,7 +88,7 @@ describe("AppNavbar", () => {
 
     render(<AppNavbar onNavigate={onNavigate} />)
 
-    await user.click(screen.getByText("Kalender"))
+    await user.click(screen.getByText("Begivenhedskalender"))
 
     expect(onNavigate).toHaveBeenCalled()
   })

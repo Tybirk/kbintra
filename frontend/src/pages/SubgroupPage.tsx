@@ -879,18 +879,15 @@ When done, print a short summary:
                   </ActionIcon>
                 </Tooltip>
               )}
-              <Tooltip label="Opret begivenhed">
-                <ActionIcon
-                  variant="light"
-                  size="lg"
-                  onClick={() =>
-                    navigate(`/kalender/opret?subgroup=${subgroup.id}`)
-                  }
-                  aria-label="Opret begivenhed"
-                >
-                  <IconCalendarPlus size={18} />
-                </ActionIcon>
-              </Tooltip>
+              <Button
+                variant="light"
+                leftSection={<IconCalendarPlus size={16} />}
+                onClick={() =>
+                  navigate(`/kalender/opret?subgroup=${subgroup.id}`)
+                }
+              >
+                Ny begivenhed
+              </Button>
               <Button
                 leftSection={<IconPlus size={16} />}
                 onClick={openCreateThreadModal}

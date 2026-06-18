@@ -64,7 +64,7 @@ const navItems: NavItem[] = [
 
   //{ icon: IconUsersGroup, label: "Madhold", path: "/madhold" },
 
-  { icon: IconCalendar, label: "Kalender", path: "/kalender" },
+  { icon: IconCalendar, label: "Begivenhedskalender", path: "/kalender" },
 
   {
     icon: IconBuildingCommunity,
@@ -74,7 +74,7 @@ const navItems: NavItem[] = [
     path: "/beboere",
   },
 
-  { icon: IconDoor, label: "Booking", path: "/booking" },
+  { icon: IconDoor, label: "Bookingkalender", path: "/booking" },
 
   { icon: IconReceipt2, label: "Udlæg", path: "/udlaeg" },
 
