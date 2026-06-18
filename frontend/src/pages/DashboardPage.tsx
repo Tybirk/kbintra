@@ -1099,7 +1099,7 @@ function BirthdayPreview({ birthday }: BirthdayPreviewProps) {
   let dateLabel: string
 
   if (daysUntil === 0) {
-    dateLabel = "I dag!"
+    dateLabel = "🇩🇰 I dag!"
   } else if (daysUntil === 1) {
     dateLabel = "I morgen"
   } else {
