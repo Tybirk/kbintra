@@ -97,6 +97,8 @@ const PrivacyPolicyPage = lazy(() => import("./pages/PrivacyPolicyPage"))
 
 const AdvancedSearchPage = lazy(() => import("./pages/AdvancedSearchPage"))
 
+const OverviewPage = lazy(() => import("./pages/OverviewPage"))
+
 import AppHeader from "./components/AppHeader"
 
 import AppNavbar from "./components/AppNavbar"
@@ -458,6 +460,18 @@ const AuthenticatedRoutes = memo(function AuthenticatedRoutes() {
             <ProtectedRoute>
               <ErrorBoundary>
                 <ThreadPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Grafisk overblik */}
+        <Route
+          path="/overblik"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <OverviewPage />
               </ErrorBoundary>
             </ProtectedRoute>
           }

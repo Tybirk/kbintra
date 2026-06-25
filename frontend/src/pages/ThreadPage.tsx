@@ -389,7 +389,7 @@ export default function ThreadPage() {
   const { data: subgroups } = useQuery({
     queryKey: ["subgroups"],
 
-    queryFn: forumApi.getSubgroups,
+    queryFn: () => forumApi.getSubgroups(),
   })
 
   // If thread was moved to a different subgroup, update the URL to reflect the new location

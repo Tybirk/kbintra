@@ -2,6 +2,7 @@
 Serializers for Forum models.
 """
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from apps.users.models import User
@@ -19,6 +20,7 @@ from .models import (
     SubgroupMembership,
     SubgroupSubscription,
     Thread,
+    validate_subgroup_parent,
 )
 
 
@@ -156,6 +158,49 @@ class SubgroupSubscriberSerializer(serializers.ModelSerializer):
         fields = ["id", "user", "user_id", "house_name", "created_at"]
 
 
+class SubgroupChildSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for a subgroup's children (navigation only)."""
+
+    class Meta:
+        model = Subgroup
+        fields = ["id", "name", "slug"]
+
+
+class OrgNodeMemberSerializer(AvatarUrlMixin, serializers.Serializer):
+    """Lightweight member entry for an org-tree node (avatar + name only)."""
+
+    id = serializers.IntegerField()
+    first_name = serializers.CharField()
+    last_name = serializers.CharField()
+    profile_picture = serializers.CharField(allow_null=True)
+
+
+class OrgNodeSerializer(serializers.Serializer):
+    """Serializer for a node in the organisation tree (`/forum/organisation/`).
+
+    Consumes already-nested plain dicts built by `OrganisationView` — `children`
+    is fed pre-built nested data, so recursing into it does NOT trigger any ORM
+    queries. Do not pass live `Subgroup` querysets/instances directly; the view
+    converts each subgroup into a plain dict (including its `members` list and
+    nested `children`) before this serializer ever sees it.
+    """
+
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    slug = serializers.CharField()
+    group_type = serializers.CharField()
+    description = serializers.CharField()
+    established_on = serializers.DateField(allow_null=True)
+    expires_on = serializers.DateField(allow_null=True)
+    is_active = serializers.BooleanField()
+    member_count = serializers.IntegerField()
+    members = OrgNodeMemberSerializer(many=True)
+    children = serializers.SerializerMethodField()
+
+    def get_children(self, obj: dict) -> list[dict]:
+        return OrgNodeSerializer(obj["children"], many=True).data
+
+
 class SubgroupSerializer(serializers.ModelSerializer):
     """Serializer for Subgroup model."""
 
@@ -168,6 +213,9 @@ class SubgroupSerializer(serializers.ModelSerializer):
     members = serializers.SerializerMethodField()
     links_info_members = serializers.SerializerMethodField()
     subscriber_count = serializers.IntegerField(read_only=True, default=0)
+    parent_name = serializers.CharField(source="parent.name", read_only=True, default=None)
+    parent_slug = serializers.CharField(source="parent.slug", read_only=True, default=None)
+    children = serializers.SerializerMethodField()
 
     class Meta:
         model = Subgroup
@@ -179,11 +227,18 @@ class SubgroupSerializer(serializers.ModelSerializer):
             "links_info_members",
             "slug",
             "is_default",
-            "is_committee",
+            "group_type",
             "is_main",
             "allows_members",
             "default_members_only",
             "icon",
+            "parent",
+            "parent_name",
+            "parent_slug",
+            "children",
+            "established_on",
+            "expires_on",
+            "is_active",
             "thread_count",
             "unread_thread_count",
             "is_subscribed",
@@ -195,6 +250,11 @@ class SubgroupSerializer(serializers.ModelSerializer):
             "created_at",
             "last_activity_at",
         ]
+
+    def get_children(self, obj: Subgroup) -> list[dict]:
+        prefetched = getattr(obj, "_prefetched_objects_cache", {}).get("children")
+        children = prefetched if prefetched is not None else obj.children.all()
+        return SubgroupChildSerializer(children, many=True).data
 
     def get_members(self, obj: Subgroup) -> list[dict]:
         if not obj.allows_members:
@@ -303,7 +363,15 @@ class SubgroupSerializer(serializers.ModelSerializer):
 
 
 class SubgroupUpdateSerializer(serializers.ModelSerializer):
-    """Serializer for updating subgroup description, icon, or membership flag."""
+    """Serializer for updating subgroup description, icon, membership flag, type, or parent.
+
+    `group_type` is writable so residents can convert a group between
+    arbejdsgruppe <-> almindelig (and set its parent/dates) in-app. Converting
+    to/from an organ type (generalforsamling/faellesmoede/bestyrelse/udvalg)
+    stays staff-only — enforced in `validate()` below. The view additionally
+    gates edits to a group that IS CURRENTLY an organ behind staff/membership
+    (see `organ_gated_fields` in views.py).
+    """
 
     class Meta:
         model = Subgroup
@@ -314,15 +382,118 @@ class SubgroupUpdateSerializer(serializers.ModelSerializer):
             "links_info_members",
             "icon",
             "allows_members",
+            "group_type",
+            "parent",
+            "established_on",
+            "expires_on",
+            "is_active",
         ]
+
+    def validate(self, attrs: dict) -> dict:
+        instance = self.instance
+        group_type = attrs.get("group_type", instance.group_type)
+
+        request = self.context.get("request")
+        user = request.user if request else None
+        if (
+            user is not None
+            and not user.is_staff
+            and "group_type" in attrs
+            and group_type != instance.group_type
+            and group_type
+            not in (
+                Subgroup.GroupType.ARBEJDSGRUPPE,
+                Subgroup.GroupType.ALMINDELIG,
+            )
+        ):
+            raise serializers.ValidationError(
+                {"group_type": "Kun administratorer kan ændre en gruppe til et organ."}
+            )
+
+        # A type that can't carry a parent (almindelig/organ): if the caller didn't
+        # explicitly pass a parent, clear it rather than falling back to the
+        # instance's current parent (which would spuriously fail validation below).
+        if group_type != Subgroup.GroupType.ARBEJDSGRUPPE and "parent" not in attrs:
+            attrs["parent"] = None
+
+        parent = attrs.get("parent", instance.parent)
+
+        if group_type == Subgroup.GroupType.ARBEJDSGRUPPE and parent is None:
+            raise serializers.ValidationError(
+                {
+                    "parent": "En arbejdsgruppe skal have en forælder (et organ eller en anden arbejdsgruppe)."
+                }
+            )
+
+        # Transient instance with the real pk preserved so validate_subgroup_parent's
+        # cycle-walk (which checks `instance.pk`) still detects self/descendant cycles.
+        temp_instance = Subgroup(pk=instance.pk, group_type=group_type, parent=parent)
+        try:
+            validate_subgroup_parent(temp_instance, parent)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({"parent": exc.messages}) from exc
+
+        return attrs
 
 
 class SubgroupCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating a new subgroup."""
+    """Serializer for creating a new subgroup.
+
+    `group_type` defaults to `almindelig` (today's "Opret gruppe" path is unchanged
+    if omitted). Non-staff users may only create `arbejdsgruppe`/`almindelig` —
+    organ types (generalforsamling/faellesmoede/bestyrelse/udvalg) are admin-only,
+    created via Django admin. An `arbejdsgruppe` requires a parent (organ or another
+    arbejdsgruppe) so it always has a mandate; `almindelig` may not have a parent.
+    """
 
     class Meta:
         model = Subgroup
-        fields = ["name", "description", "allows_members"]
+        fields = [
+            "name",
+            "description",
+            "allows_members",
+            "group_type",
+            "parent",
+            "established_on",
+            "expires_on",
+        ]
+        extra_kwargs = {"group_type": {"default": Subgroup.GroupType.ALMINDELIG}}
+
+    def validate(self, attrs: dict) -> dict:
+        group_type = attrs.get("group_type", Subgroup.GroupType.ALMINDELIG)
+        parent = attrs.get("parent")
+
+        request = self.context.get("request")
+        user = request.user if request else None
+        if (
+            user is not None
+            and not user.is_staff
+            and group_type
+            not in (
+                Subgroup.GroupType.ARBEJDSGRUPPE,
+                Subgroup.GroupType.ALMINDELIG,
+            )
+        ):
+            raise serializers.ValidationError(
+                {"group_type": "Kun administratorer kan oprette organer."}
+            )
+
+        if group_type == Subgroup.GroupType.ARBEJDSGRUPPE and parent is None:
+            raise serializers.ValidationError(
+                {
+                    "parent": "En arbejdsgruppe skal have en forælder (et organ eller en anden arbejdsgruppe)."
+                }
+            )
+
+        # Unsaved instance (pk=None) so validate_subgroup_parent's cycle-walk and
+        # parent-type rules apply identically to creation as to later updates.
+        temp_instance = Subgroup(group_type=group_type, parent=parent)
+        try:
+            validate_subgroup_parent(temp_instance, parent)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({"parent": exc.messages}) from exc
+
+        return attrs
 
 
 class SubgroupSubscriptionSerializer(serializers.ModelSerializer):

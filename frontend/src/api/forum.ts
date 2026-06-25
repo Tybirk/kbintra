@@ -24,6 +24,8 @@ import type {
   RecentActivity,
   ReactionType,
   ReactionTypeInfo,
+  OrgNode,
+  GroupType,
 } from "../types"
 
 export interface GetThreadsOptions {
@@ -35,6 +37,10 @@ export interface GetThreadsOptions {
 export interface GetGalleryOptions {
   page?: number
   pageSize?: number
+}
+
+export interface GetSubgroupsOptions {
+  includeArchived?: boolean
 }
 
 export interface FolderDeletePreview {
@@ -54,6 +60,16 @@ interface SubgroupUpdateData {
   icon?: string
 
   allows_members?: boolean
+
+  group_type?: GroupType
+
+  parent?: number | null
+
+  established_on?: string | null
+
+  expires_on?: string | null
+
+  is_active?: boolean
 }
 
 interface updateFileData {
@@ -84,10 +100,24 @@ export const forumApi = {
     return asArray(response.data)
   },
 
+  // Organisation overview
+
+  getOrganisation: async (includeInactive?: boolean): Promise<OrgNode[]> => {
+    const params: Record<string, string> = {}
+    if (includeInactive) params.include_inactive = "true"
+    const response = await apiClient.get("/forum/organisation/", { params })
+
+    return asArray(response.data)
+  },
+
   // Subgroups
 
-  getSubgroups: async (): Promise<Subgroup[]> => {
-    const response = await apiClient.get("/forum/subgroups/")
+  getSubgroups: async (
+    options: GetSubgroupsOptions = {},
+  ): Promise<Subgroup[]> => {
+    const params: Record<string, string> = {}
+    if (options.includeArchived) params.include_archived = "true"
+    const response = await apiClient.get("/forum/subgroups/", { params })
 
     return asArray(response.data)
   },
@@ -98,6 +128,14 @@ export const forumApi = {
     description: string
 
     allows_members?: boolean
+
+    group_type?: GroupType
+
+    parent?: number | null
+
+    established_on?: string | null
+
+    expires_on?: string | null
   }): Promise<Subgroup> => {
     const response = await apiClient.post("/forum/subgroups/", data)
 

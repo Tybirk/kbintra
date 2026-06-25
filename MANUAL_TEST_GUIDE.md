@@ -22,6 +22,7 @@ This document describes all features in KB Intra and provides a structured testi
 ### 9. Notifications
 ### 10. Global Search
 ### 11. Useful Links
+### 12. Grafisk overblik (Organisation overview)
 
 ---
 
@@ -505,7 +506,124 @@ This document describes all features in KB Intra and provides a structured testi
 
 ---
 
-## Section 12: Dashboard
+## Section 12: Grafisk overblik (Organisation overview)
+
+### Features
+- Organisation tree at `/overblik` showing **organer** (fixed top-level types, in fixed
+  display order: Generalforsamling → Fællesmøde → Bestyrelse → Udvalg, alphabetical within
+  Udvalg) and **arbejdsgrupper** nested under them to arbitrary depth (organer can parent
+  arbejdsgrupper, and arbejdsgrupper can parent further arbejdsgrupper).
+- **Almindelige grupper** (plain forum groups) are excluded from `/overblik` entirely — they
+  only ever appear in the regular `/forum` list.
+- Archiving (`is_active = False`) hides a subgroup from the default `/forum` list and from
+  `/overblik` by default; both have an opt-in switch ("Vis arkiverede" / "Vis afsluttede
+  arbejdsgrupper") to reveal archived/afsluttede groups. Archiving an arbejdsgruppe that still
+  has an active child hides the whole subtree until the switch is toggled on.
+- Users can create **Arbejdsgruppe** or **Almindelig gruppe** from the UI (via the create-group
+  modal, reachable from both `/forum` and `/overblik`). Creating an arbejdsgruppe requires
+  picking a parent (an organ or another arbejdsgruppe) and supports optional establish/expiry
+  dates. Creating/editing/deleting **organ types** (Generalforsamling, Fællesmøde, Bestyrelse,
+  Udvalg) and reparenting/deleting organer is **admin-only and only available in Django admin**
+  — there is no app-UI path for it.
+- All users are automatically subscribed to **Generalforsamling** and **Fællesmøde**.
+
+### Setup / Preconditions
+
+- Dev servers running: `uv run dev.py` (frontend http://localhost:5173, backend daphne on
+  port 7000).
+- Seed data required (organ types/reparenting via Django admin — admin-only; arbejdsgrupper via
+  the in-app create-modal):
+  - The two fixed organer **Generalforsamling** and **Fællesmøde** (seeded by migration),
+    a **Bestyrelsen**, and **at least 1 Udvalg**.
+  - **At least 1 arbejdsgruppe** directly under an organ, plus **at least 1 grandchild**
+    arbejdsgruppe nested under that arbejdsgruppe (≥2 levels deep).
+  - **At least 1 archived arbejdsgruppe that still has an active child** — needed to exercise
+    the subtree-hiding rule.
+  - **At least 1 almindelig gruppe** — used to confirm it never shows up in `/overblik`.
+- Three test personas (e.g. seeded with a shared default password, emails like
+  `<name>.<house>@kb.local`):
+  1. **Staff/admin** user.
+  2. A **member of an organ** (e.g. a member of Bestyrelsen).
+  3. A **non-member, non-staff** regular user.
+
+### Test Cases
+
+#### 12.A Navbar + `/overblik` read view
+- [ ] Navbar shows a "Grafisk overblik" entry (sitemap icon) → navigates to `/overblik`.
+- [ ] Root nodes render in fixed order: Generalforsamling → Fællesmøde → Bestyrelse → Udvalg
+      (Udvalg entries alphabetical).
+- [ ] Arbejdsgrupper render nested under their organ; the ≥2-level grandchild arbejdsgruppe
+      renders correctly when its branch is expanded.
+- [ ] Almindelige grupper appear **nowhere** in the `/overblik` tree.
+- [ ] Each node shows: the name as a link to `/forum/<slug>`, a truncated formål/description,
+      member avatars + count (e.g. "N medlem"/"N medlemmer"), and dates ("Oprettet: <date>" /
+      "Udløber: <date>") when set.
+- [ ] Folding/unfolding a branch (chevron toggle) works, including at a narrow mobile viewport
+      (~375px).
+- [ ] The "Vis afsluttede arbejdsgrupper" switch is **off** by default → the archived
+      arbejdsgruppe and its active child are both hidden. Toggling it **on** reveals the
+      archived group with an "Afsluttet" badge, and its subtree (including the active child)
+      reappears.
+
+#### 12.B Top-organ subscriptions
+- [ ] As the regular (non-member) user, `/forum` shows **Generalforsamling** and
+      **Fællesmøde** under the "Grupper du abonnerer på" section; clicking either opens its
+      group page.
+
+#### 12.C Create flows
+- [ ] The create-group modal ("Opret ny gruppe") opens both from the "Opret gruppe" button on
+      `/forum` and the "Opret arbejdsgruppe" button on `/overblik`; a type selector
+      (SegmentedControl: "Almindelig gruppe" / "Arbejdsgruppe") is shown.
+- [ ] **Almindelig gruppe**: selecting it shows no "Forælder" select and no date inputs; after
+      creating, the new group shows in `/forum` but **not** in `/overblik`.
+- [ ] **Arbejdsgruppe**: selecting it reveals the "Forælder" Select (listing organer and
+      arbejdsgrupper, indented by depth, searchable) plus "Oprettelsesdato" and "Udløbsdato"
+      date inputs. Pick a parent organ, optionally set dates, and create.
+- [ ] The new arbejdsgruppe appears under its chosen parent in `/overblik` immediately (after
+      refetch) and has a working forum group page at `/forum/<slug>`.
+- [ ] As the non-staff user, only "Arbejdsgruppe" / "Almindelig gruppe" are offered in the type
+      selector — no organ type (Generalforsamling/Fællesmøde/Bestyrelse/Udvalg) can be chosen or
+      created from the UI.
+
+#### 12.D Subgroup page: parent/children chips + dates
+- [ ] On an arbejdsgruppe's page, a parent breadcrumb (a "←" chevron + the parent's name, e.g.
+      "← Bestyrelsen") links back to the parent group.
+- [ ] If the group has children, an "Arbejdsgrupper" chip section lists each sub-group as a
+      clickable badge linking to `/forum/<child-slug>`.
+- [ ] `established_on` / `expires_on` show as "Oprettet: <date>" / "Udløber: <date>" under the
+      group title when set.
+
+#### 12.E Archiving round-trip
+- [ ] From the group's "⋯" menu, "Markér som afsluttet" on an arbejdsgruppe removes it from the
+      default `/forum` list and from `/overblik`; its direct URL `/forum/<slug>` still loads and
+      shows an "Afsluttet" badge next to the group name.
+- [ ] Toggling "Vis arkiverede" on `/forum` reveals it again in the list.
+- [ ] Reopening the same menu on the archived group now shows "Genåbn gruppe"; clicking it
+      restores the group to both the default `/forum` list and `/overblik`.
+
+#### 12.F Permission gate
+- [ ] As the **non-member, non-staff** user: editing an **organ's** name/description via
+      "Rediger gruppe" is blocked — either no edit affordance is usable, or attempting the save
+      produces a 403/error toast ("Kunne ikke opdatere gruppen.").
+- [ ] As a **member of that organ** (or as staff): the same "Rediger gruppe" edit succeeds and
+      shows "Gruppe opdateret" / "Ændringerne er gemt."
+- [ ] Any authenticated user can edit, reparent (via the create/edit flow's parent select), and
+      archive/reopen an **arbejdsgruppe** ("Markér som afsluttet" / "Genåbn gruppe" is offered to
+      any authenticated user on arbejdsgrupper, per the `canArchive` rule).
+- [ ] No app-UI path exists to create, reparent, or delete an **organ** type
+      (Generalforsamling/Fællesmøde/Bestyrelse/Udvalg) — confirmed admin-only via Django admin.
+
+#### 12.G `/forum` "Udvalg" section + regression
+- [ ] `/forum`'s "Udvalg" section lists committees exactly as before (now driven by
+      `group_type === "udvalg"` instead of the old `is_committee` flag); archived committees are
+      not shown unless "Vis arkiverede" is on.
+- [ ] Smoke test: the forum list still loads, opening a thread still works, and group
+      membership still works — confirms the `is_committee` → `group_type` migration didn't break
+      grouping or the list.
+
+---
+
+## Section 13: Dashboard
 
 ### Features
 - Welcome message

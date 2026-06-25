@@ -44,14 +44,12 @@ class TestSubgroupModel:
         subgroup = Subgroup.objects.create(name="Test Subgroup")
         assert subgroup.slug == "test-subgroup"
 
-    def test_subgroup_ordering_committees_first(self, db):
-        """Test that committees appear before regular subgroups."""
-        regular = Subgroup.objects.create(name="Regular", is_committee=False)
-        committee = Subgroup.objects.create(name="Committee", is_committee=True)
-
-        subgroups = list(Subgroup.objects.all())
-        assert subgroups[0] == committee
-        assert subgroups[1] == regular
+    def test_subgroup_default_group_type_is_almindelig(self, db):
+        """Test that a subgroup defaults to group_type=almindelig."""
+        subgroup = Subgroup.objects.create(name="Regular")
+        assert subgroup.group_type == Subgroup.GroupType.ALMINDELIG
+        assert not subgroup.is_organ
+        assert not subgroup.is_working_group
 
     def test_subgroup_last_activity_updated_on_thread_create(self, authenticated_client, subgroup):
         """Test that last_activity_at is updated when a thread is created."""
@@ -67,6 +65,58 @@ class TestSubgroupModel:
         assert subgroup.last_activity_at is not None
         if old_activity:
             assert subgroup.last_activity_at >= old_activity
+
+
+class TestOrganerMigration:
+    """Tests for the Generalforsamling/Fællesmøde organer created by migration 0048."""
+
+    def test_organer_exist_and_are_default(self, db):
+        """Both top organer exist with the right group_type and are default groups."""
+        generalforsamling = Subgroup.objects.get(group_type=Subgroup.GroupType.GENERALFORSAMLING)
+        faellesmoede = Subgroup.objects.get(group_type=Subgroup.GroupType.FAELLESMOEDE)
+
+        assert generalforsamling.name == "Generalforsamling"
+        assert generalforsamling.is_default is True
+        assert faellesmoede.name == "Fællesmøde"
+        assert faellesmoede.is_default is True
+
+    def test_new_user_auto_subscribed_to_both_organer(self, api_client, user, house):
+        """A user registering via an invitation is auto-subscribed to both organer."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.users.models import Invitation, User
+
+        invitation = Invitation.objects.create(
+            email="newresident@example.com",
+            house=house,
+            created_by=user,
+            expires_at=timezone.now() + timedelta(days=7),
+        )
+
+        response = api_client.post(
+            "/api/auth/register/",
+            {
+                "token": invitation.token,
+                "email": invitation.email,
+                "password": "newpassword123",
+                "password_confirm": "newpassword123",
+                "first_name": "New",
+                "last_name": "Resident",
+            },
+            format="json",
+        )
+        assert response.status_code == 201
+
+        new_user = User.objects.get(email=invitation.email)
+        subscribed_group_types = set(
+            SubgroupSubscription.objects.filter(user=new_user).values_list(
+                "subgroup__group_type", flat=True
+            )
+        )
+        assert Subgroup.GroupType.GENERALFORSAMLING in subscribed_group_types
+        assert Subgroup.GroupType.FAELLESMOEDE in subscribed_group_types
 
 
 class TestSubgroupSubscriptionModel:
@@ -623,7 +673,7 @@ class TestFolderViews:
             name="Privat udvalg",
             description="x",
             slug="privat-udvalg",
-            is_committee=True,
+            group_type=Subgroup.GroupType.UDVALG,
             allows_members=True,
         )
         response = second_authenticated_client.post(
@@ -1668,7 +1718,7 @@ def member_subgroup(db):
         name="Grønt udvalg",
         description="Green committee",
         slug="gront-udvalg",
-        is_committee=True,
+        group_type=Subgroup.GroupType.UDVALG,
         allows_members=True,
     )
 
@@ -2568,3 +2618,585 @@ class TestPostAttachmentThumbnail:
             assert thumb_img.size == (400, 400)
             # We always emit JPEG regardless of source format.
             assert thumb_img.format == "JPEG"
+
+
+# =============================================================================
+# Parent/Children Hierarchy Tests
+# =============================================================================
+
+
+@pytest.fixture
+def arbejdsgruppe(db, member_subgroup):
+    """An arbejdsgruppe whose parent is an organ (member_subgroup, a udvalg)."""
+    return Subgroup.objects.create(
+        name="Arrangementsgruppen",
+        description="Planlægger arrangementer",
+        slug="arrangementsgruppen",
+        group_type=Subgroup.GroupType.ARBEJDSGRUPPE,
+        parent=member_subgroup,
+    )
+
+
+class TestSubgroupParentValidation:
+    """Tests for parent/children hierarchy validation via the update endpoint."""
+
+    def test_arbejdsgruppe_parent_cannot_be_own_descendant(self, admin_client, arbejdsgruppe):
+        """Setting an arbejdsgruppe's parent to its own descendant must be rejected."""
+        child = Subgroup.objects.create(
+            name="Undergruppe",
+            description="",
+            slug="undergruppe",
+            group_type=Subgroup.GroupType.ARBEJDSGRUPPE,
+            parent=arbejdsgruppe,
+        )
+        response = admin_client.patch(
+            f"/api/forum/subgroups/{arbejdsgruppe.slug}/update/",
+            {"parent": child.id},
+            format="json",
+        )
+        assert response.status_code == 400
+        arbejdsgruppe.refresh_from_db()
+        assert arbejdsgruppe.parent_id != child.id
+
+    def test_almindelig_with_parent_rejected(self, admin_client, subgroup, committee_subgroup):
+        """An almindelig group must not be allowed a parent."""
+        response = admin_client.patch(
+            f"/api/forum/subgroups/{subgroup.slug}/update/",
+            {"parent": committee_subgroup.id},
+            format="json",
+        )
+        assert response.status_code == 400
+        subgroup.refresh_from_db()
+        assert subgroup.parent_id is None
+
+    def test_arbejdsgruppe_under_almindelig_rejected(self, admin_client, subgroup):
+        """An arbejdsgruppe may not have an almindelig group as parent."""
+        ag = Subgroup.objects.create(
+            name="Test-arbejdsgruppe",
+            description="",
+            slug="test-arbejdsgruppe",
+            group_type=Subgroup.GroupType.ARBEJDSGRUPPE,
+        )
+        response = admin_client.patch(
+            f"/api/forum/subgroups/{ag.slug}/update/",
+            {"parent": subgroup.id},
+            format="json",
+        )
+        assert response.status_code == 400
+        ag.refresh_from_db()
+        assert ag.parent_id is None
+
+    def test_arbejdsgruppe_under_organ_accepted(self, admin_client, committee_subgroup):
+        """An arbejdsgruppe may have an organ (e.g. udvalg) as parent."""
+        ag = Subgroup.objects.create(
+            name="Madplanlægning",
+            description="",
+            slug="madplanlaegning",
+            group_type=Subgroup.GroupType.ARBEJDSGRUPPE,
+        )
+        response = admin_client.patch(
+            f"/api/forum/subgroups/{ag.slug}/update/",
+            {"parent": committee_subgroup.id},
+            format="json",
+        )
+        assert response.status_code == 200
+        ag.refresh_from_db()
+        assert ag.parent_id == committee_subgroup.id
+
+    def test_arbejdsgruppe_under_arbejdsgruppe_accepted(self, admin_client, arbejdsgruppe):
+        """An arbejdsgruppe may be nested under another arbejdsgruppe (>=2 levels)."""
+        sub_ag = Subgroup.objects.create(
+            name="Underarbejdsgruppe",
+            description="",
+            slug="underarbejdsgruppe",
+            group_type=Subgroup.GroupType.ARBEJDSGRUPPE,
+        )
+        response = admin_client.patch(
+            f"/api/forum/subgroups/{sub_ag.slug}/update/",
+            {"parent": arbejdsgruppe.id},
+            format="json",
+        )
+        assert response.status_code == 200
+        sub_ag.refresh_from_db()
+        assert sub_ag.parent_id == arbejdsgruppe.id
+        # Confirm 2-level nesting: sub_ag -> arbejdsgruppe -> member_subgroup (organ)
+        assert sub_ag.parent.parent_id == arbejdsgruppe.parent_id
+
+
+class TestSubgroupGroupTypeConversion:
+    """Tests for converting a group's type (arbejdsgruppe <-> almindelig) via update."""
+
+    def test_non_staff_converts_almindelig_to_arbejdsgruppe_with_parent(
+        self, second_authenticated_client, subgroup, committee_subgroup
+    ):
+        """A non-staff user may promote an almindelig group to arbejdsgruppe, given a parent."""
+        response = second_authenticated_client.patch(
+            f"/api/forum/subgroups/{subgroup.slug}/update/",
+            {"group_type": "arbejdsgruppe", "parent": committee_subgroup.id},
+            format="json",
+        )
+        assert response.status_code == 200
+        subgroup.refresh_from_db()
+        assert subgroup.group_type == Subgroup.GroupType.ARBEJDSGRUPPE
+        assert subgroup.parent_id == committee_subgroup.id
+
+    def test_almindelig_to_arbejdsgruppe_without_parent_rejected(
+        self, second_authenticated_client, subgroup
+    ):
+        response = second_authenticated_client.patch(
+            f"/api/forum/subgroups/{subgroup.slug}/update/",
+            {"group_type": "arbejdsgruppe"},
+            format="json",
+        )
+        assert response.status_code == 400
+        subgroup.refresh_from_db()
+        assert subgroup.group_type == Subgroup.GroupType.ALMINDELIG
+
+    def test_non_staff_cannot_convert_to_organ_type(self, second_authenticated_client, subgroup):
+        response = second_authenticated_client.patch(
+            f"/api/forum/subgroups/{subgroup.slug}/update/",
+            {"group_type": "bestyrelse"},
+            format="json",
+        )
+        assert response.status_code == 400
+        subgroup.refresh_from_db()
+        assert subgroup.group_type == Subgroup.GroupType.ALMINDELIG
+
+    def test_arbejdsgruppe_to_almindelig_clears_parent(
+        self, second_authenticated_client, arbejdsgruppe
+    ):
+        """Converting an arbejdsgruppe (with a parent) to almindelig clears the parent."""
+        assert arbejdsgruppe.parent_id is not None
+        response = second_authenticated_client.patch(
+            f"/api/forum/subgroups/{arbejdsgruppe.slug}/update/",
+            {"group_type": "almindelig"},
+            format="json",
+        )
+        assert response.status_code == 200
+        arbejdsgruppe.refresh_from_db()
+        assert arbejdsgruppe.group_type == Subgroup.GroupType.ALMINDELIG
+        assert arbejdsgruppe.parent_id is None
+
+    def test_arbejdsgruppe_parent_cannot_be_set_to_self(
+        self, second_authenticated_client, arbejdsgruppe
+    ):
+        response = second_authenticated_client.patch(
+            f"/api/forum/subgroups/{arbejdsgruppe.slug}/update/",
+            {"parent": arbejdsgruppe.id},
+            format="json",
+        )
+        assert response.status_code == 400
+        arbejdsgruppe.refresh_from_db()
+        assert arbejdsgruppe.parent_id != arbejdsgruppe.id
+
+
+class TestOrganEditPermission:
+    """Tests for type-aware edit permissions: organs require member/staff, others stay open."""
+
+    def test_member_can_edit_organ_name(self, member_client, member_subgroup):
+        response = member_client.patch(
+            f"/api/forum/subgroups/{member_subgroup.slug}/update/",
+            {"name": "Grønt udvalg 2.0"},
+            format="json",
+        )
+        assert response.status_code == 200
+        member_subgroup.refresh_from_db()
+        assert member_subgroup.name == "Grønt udvalg 2.0"
+
+    def test_staff_can_edit_organ_description(self, admin_client, member_subgroup):
+        response = admin_client.patch(
+            f"/api/forum/subgroups/{member_subgroup.slug}/update/",
+            {"description": "Ny beskrivelse"},
+            format="json",
+        )
+        assert response.status_code == 200
+        member_subgroup.refresh_from_db()
+        assert member_subgroup.description == "Ny beskrivelse"
+
+    def test_non_member_non_staff_cannot_edit_organ_name(
+        self, second_authenticated_client, member_subgroup
+    ):
+        response = second_authenticated_client.patch(
+            f"/api/forum/subgroups/{member_subgroup.slug}/update/",
+            {"name": "Hacket navn"},
+            format="json",
+        )
+        assert response.status_code == 403
+        member_subgroup.refresh_from_db()
+        assert member_subgroup.name == "Grønt udvalg"
+
+    def test_any_authenticated_user_can_edit_arbejdsgruppe_parent(
+        self, second_authenticated_client, arbejdsgruppe, committee_subgroup
+    ):
+        """Structural edits to an arbejdsgruppe (e.g. parent) stay open to any user."""
+        other_organ = Subgroup.objects.create(
+            name="Bestyrelsen",
+            description="",
+            slug="bestyrelsen-test",
+            group_type=Subgroup.GroupType.BESTYRELSE,
+        )
+        response = second_authenticated_client.patch(
+            f"/api/forum/subgroups/{arbejdsgruppe.slug}/update/",
+            {"parent": other_organ.id},
+            format="json",
+        )
+        assert response.status_code == 200
+        arbejdsgruppe.refresh_from_db()
+        assert arbejdsgruppe.parent_id == other_organ.id
+
+
+# =============================================================================
+# Lifecycle Metadata + Archiving Tests
+# =============================================================================
+
+
+class TestSubgroupArchiving:
+    """Tests for is_active archiving: default-hidden from the list, opt-in visible."""
+
+    def test_archived_arbejdsgruppe_excluded_from_list_by_default(
+        self, second_authenticated_client, arbejdsgruppe
+    ):
+        arbejdsgruppe.is_active = False
+        arbejdsgruppe.save(update_fields=["is_active"])
+
+        response = second_authenticated_client.get("/api/forum/subgroups/")
+        assert response.status_code == 200
+        slugs = {item["slug"] for item in response.data}
+        assert arbejdsgruppe.slug not in slugs
+
+    def test_archived_arbejdsgruppe_included_with_include_archived(
+        self, second_authenticated_client, arbejdsgruppe
+    ):
+        arbejdsgruppe.is_active = False
+        arbejdsgruppe.save(update_fields=["is_active"])
+
+        response = second_authenticated_client.get("/api/forum/subgroups/?include_archived=true")
+        assert response.status_code == 200
+        slugs = {item["slug"] for item in response.data}
+        assert arbejdsgruppe.slug in slugs
+
+    def test_non_member_non_staff_can_archive_arbejdsgruppe(
+        self, second_authenticated_client, arbejdsgruppe
+    ):
+        """Afslut action: any authenticated user may archive an arbejdsgruppe."""
+        response = second_authenticated_client.patch(
+            f"/api/forum/subgroups/{arbejdsgruppe.slug}/update/",
+            {"is_active": False},
+            format="json",
+        )
+        assert response.status_code == 200
+        arbejdsgruppe.refresh_from_db()
+        assert arbejdsgruppe.is_active is False
+
+    def test_non_member_non_staff_cannot_archive_organ(
+        self, second_authenticated_client, member_subgroup
+    ):
+        """Archiving an organ requires staff or membership."""
+        response = second_authenticated_client.patch(
+            f"/api/forum/subgroups/{member_subgroup.slug}/update/",
+            {"is_active": False},
+            format="json",
+        )
+        assert response.status_code == 403
+        member_subgroup.refresh_from_db()
+        assert member_subgroup.is_active is True
+
+    def test_genaaben_reactivates_subgroup(self, second_authenticated_client, arbejdsgruppe):
+        arbejdsgruppe.is_active = False
+        arbejdsgruppe.save(update_fields=["is_active"])
+
+        response = second_authenticated_client.patch(
+            f"/api/forum/subgroups/{arbejdsgruppe.slug}/update/",
+            {"is_active": True},
+            format="json",
+        )
+        assert response.status_code == 200
+        arbejdsgruppe.refresh_from_db()
+        assert arbejdsgruppe.is_active is True
+
+
+# =============================================================================
+# Organisation Overview Endpoint Tests (/api/forum/organisation/)
+# =============================================================================
+
+
+class TestOrganisationView:
+    """Tests for GET /api/forum/organisation/ — the grafiske overblik tree."""
+
+    def test_roots_returned_in_fixed_order(self, second_authenticated_client, db):
+        # Generalforsamling/Fællesmøde already exist from the backfill data
+        # migration (0041-style) — don't create duplicates, just assert that
+        # whatever organer exist appear in the right relative order:
+        # generalforsamling(s) -> fællesmøde(r) -> bestyrelse(r) -> udvalg (alpha).
+        Subgroup.objects.create(
+            name="Bestyrelsen", slug="best-test", group_type=Subgroup.GroupType.BESTYRELSE
+        )
+        Subgroup.objects.create(
+            name="Vand-udvalg", slug="vand-udvalg", group_type=Subgroup.GroupType.UDVALG
+        )
+        Subgroup.objects.create(
+            name="Grønt udvalg", slug="groent-udvalg-test", group_type=Subgroup.GroupType.UDVALG
+        )
+
+        response = second_authenticated_client.get("/api/forum/organisation/")
+        assert response.status_code == 200
+        types = [node["group_type"] for node in response.data]
+        names = [node["name"] for node in response.data]
+
+        # All generalforsamling roots precede all fællesmøde roots, which
+        # precede all bestyrelse roots, which precede all udvalg roots.
+        type_order = ["generalforsamling", "faellesmoede", "bestyrelse", "udvalg"]
+        seen_indices = [
+            [i for i, t in enumerate(types) if t == group_type] for group_type in type_order
+        ]
+        for earlier, later in zip(seen_indices, seen_indices[1:], strict=False):
+            if earlier and later:
+                assert max(earlier) < min(later), f"order violated: {type_order} -> {types}"
+
+        # Udvalg roots are alphabetical by name.
+        udvalg_names = [n for n, t in zip(names, types, strict=True) if t == "udvalg"]
+        assert udvalg_names == sorted(udvalg_names)
+        assert "Vand-udvalg" in udvalg_names
+        assert "Grønt udvalg" in udvalg_names
+        assert udvalg_names.index("Grønt udvalg") < udvalg_names.index("Vand-udvalg")
+
+    def test_arbejdsgrupper_nested_recursively_under_organ(
+        self, second_authenticated_client, committee_subgroup
+    ):
+        """organ -> arbejdsgruppe -> grandchild arbejdsgruppe, all nested."""
+        child = Subgroup.objects.create(
+            name="Bivenner",
+            slug="bivenner-test",
+            group_type=Subgroup.GroupType.ARBEJDSGRUPPE,
+            parent=committee_subgroup,
+        )
+        grandchild = Subgroup.objects.create(
+            name="Bistader",
+            slug="bistader-test",
+            group_type=Subgroup.GroupType.ARBEJDSGRUPPE,
+            parent=child,
+        )
+
+        response = second_authenticated_client.get("/api/forum/organisation/")
+        assert response.status_code == 200
+        organ_node = next(n for n in response.data if n["slug"] == committee_subgroup.slug)
+        assert len(organ_node["children"]) == 1
+        child_node = organ_node["children"][0]
+        assert child_node["slug"] == child.slug
+        assert len(child_node["children"]) == 1
+        assert child_node["children"][0]["slug"] == grandchild.slug
+
+    def test_almindelig_group_never_appears(self, second_authenticated_client, subgroup):
+        """`subgroup` fixture defaults to group_type=almindelig."""
+        response = second_authenticated_client.get("/api/forum/organisation/")
+        assert response.status_code == 200
+
+        def all_slugs(nodes: list[dict]) -> set[str]:
+            slugs = set()
+            for node in nodes:
+                slugs.add(node["slug"])
+                slugs |= all_slugs(node["children"])
+            return slugs
+
+        assert subgroup.slug not in all_slugs(response.data)
+
+    def test_archived_parent_hides_whole_subtree_including_active_child(
+        self, second_authenticated_client, committee_subgroup
+    ):
+        archived_child = Subgroup.objects.create(
+            name="Afsluttet arbejdsgruppe",
+            slug="afsluttet-ag-test",
+            group_type=Subgroup.GroupType.ARBEJDSGRUPPE,
+            parent=committee_subgroup,
+            is_active=False,
+        )
+        active_grandchild = Subgroup.objects.create(
+            name="Aktiv undergruppe",
+            slug="aktiv-under-test",
+            group_type=Subgroup.GroupType.ARBEJDSGRUPPE,
+            parent=archived_child,
+            is_active=True,
+        )
+
+        response = second_authenticated_client.get("/api/forum/organisation/")
+        assert response.status_code == 200
+
+        def all_slugs(nodes: list[dict]) -> set[str]:
+            slugs = set()
+            for node in nodes:
+                slugs.add(node["slug"])
+                slugs |= all_slugs(node["children"])
+            return slugs
+
+        slugs = all_slugs(response.data)
+        assert archived_child.slug not in slugs
+        # The active grandchild must NOT be promoted to a root or appear anywhere.
+        assert active_grandchild.slug not in slugs
+
+        response = second_authenticated_client.get("/api/forum/organisation/?include_inactive=true")
+        assert response.status_code == 200
+        slugs = all_slugs(response.data)
+        assert archived_child.slug in slugs
+        assert active_grandchild.slug in slugs
+
+    def test_organisation_view_does_not_n_plus_one(self, second_authenticated_client, db):
+        """Query count must not scale with the number of subgroups/arbejdsgrupper."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        organ = Subgroup.objects.create(
+            name="Stort udvalg", slug="stort-udvalg-test", group_type=Subgroup.GroupType.UDVALG
+        )
+        for i in range(3):
+            Subgroup.objects.create(
+                name=f"Lille gruppe {i}",
+                slug=f"lille-gruppe-{i}",
+                group_type=Subgroup.GroupType.ARBEJDSGRUPPE,
+                parent=organ,
+            )
+
+        url = "/api/forum/organisation/"
+        assert second_authenticated_client.get(url).status_code == 200  # warm up
+        with CaptureQueriesContext(connection) as small:
+            assert second_authenticated_client.get(url).status_code == 200
+
+        for i in range(3, 13):
+            Subgroup.objects.create(
+                name=f"Lille gruppe {i}",
+                slug=f"lille-gruppe-{i}",
+                group_type=Subgroup.GroupType.ARBEJDSGRUPPE,
+                parent=organ,
+            )
+
+        with CaptureQueriesContext(connection) as big:
+            assert second_authenticated_client.get(url).status_code == 200
+
+        assert len(big) == len(small), (
+            f"query count scaled with subgroup count: {len(small)} -> {len(big)}"
+        )
+
+
+# =============================================================================
+# Create arbejdsgruppe/almindelig from the UI (slice 006)
+# =============================================================================
+
+
+class TestSubgroupCreateGroupType:
+    """Tests for group_type/parent handling in SubgroupCreateSerializer/SubgroupListView.create."""
+
+    def test_non_staff_can_create_almindelig(self, authenticated_client):
+        response = authenticated_client.post(
+            "/api/forum/subgroups/",
+            {"name": "Bogklub", "description": "Læseklub", "group_type": "almindelig"},
+            format="json",
+        )
+        assert response.status_code == 201
+        assert response.data["group_type"] == "almindelig"
+
+    def test_non_staff_can_create_arbejdsgruppe_with_organ_parent(
+        self, authenticated_client, committee_subgroup
+    ):
+        response = authenticated_client.post(
+            "/api/forum/subgroups/",
+            {
+                "name": "Bivenner",
+                "description": "Mandat fra Madudvalget",
+                "group_type": "arbejdsgruppe",
+                "parent": committee_subgroup.id,
+            },
+            format="json",
+        )
+        assert response.status_code == 201
+        assert response.data["group_type"] == "arbejdsgruppe"
+        assert response.data["parent"] == committee_subgroup.id
+
+    def test_non_staff_cannot_create_organ_type(self, authenticated_client):
+        response = authenticated_client.post(
+            "/api/forum/subgroups/",
+            {"name": "Nyt Udvalg", "description": "", "group_type": "udvalg"},
+            format="json",
+        )
+        assert response.status_code == 400
+        assert not Subgroup.objects.filter(slug="nyt-udvalg").exists()
+
+    def test_non_staff_cannot_create_bestyrelse(self, authenticated_client):
+        response = authenticated_client.post(
+            "/api/forum/subgroups/",
+            {"name": "Ny Bestyrelse", "description": "", "group_type": "bestyrelse"},
+            format="json",
+        )
+        assert response.status_code == 400
+
+    def test_staff_can_create_organ_type(self, admin_client):
+        response = admin_client.post(
+            "/api/forum/subgroups/",
+            {"name": "Vandudvalg", "description": "", "group_type": "udvalg"},
+            format="json",
+        )
+        assert response.status_code == 201
+        assert response.data["group_type"] == "udvalg"
+
+    def test_arbejdsgruppe_without_parent_rejected(self, authenticated_client):
+        response = authenticated_client.post(
+            "/api/forum/subgroups/",
+            {"name": "Løs gruppe", "description": "", "group_type": "arbejdsgruppe"},
+            format="json",
+        )
+        assert response.status_code == 400
+        assert not Subgroup.objects.filter(slug="loes-gruppe").exists()
+
+    def test_arbejdsgruppe_with_almindelig_parent_rejected(self, authenticated_client, subgroup):
+        response = authenticated_client.post(
+            "/api/forum/subgroups/",
+            {
+                "name": "Forkert mandat",
+                "description": "",
+                "group_type": "arbejdsgruppe",
+                "parent": subgroup.id,
+            },
+            format="json",
+        )
+        assert response.status_code == 400
+        assert not Subgroup.objects.filter(slug="forkert-mandat").exists()
+
+    def test_group_type_defaults_to_almindelig_when_omitted(self, authenticated_client):
+        """Today's plain 'Opret gruppe' path (no group_type in payload) is unchanged."""
+        response = authenticated_client.post(
+            "/api/forum/subgroups/",
+            {"name": "Simpel gruppe", "description": ""},
+            format="json",
+        )
+        assert response.status_code == 201
+        assert response.data["group_type"] == "almindelig"
+
+    def test_created_arbejdsgruppe_appears_under_parent_in_organisation_view(
+        self, authenticated_client, committee_subgroup
+    ):
+        create_response = authenticated_client.post(
+            "/api/forum/subgroups/",
+            {
+                "name": "Grønne fingre",
+                "description": "Pasning af fællesarealer",
+                "group_type": "arbejdsgruppe",
+                "parent": committee_subgroup.id,
+            },
+            format="json",
+        )
+        assert create_response.status_code == 201
+
+        org_response = authenticated_client.get("/api/forum/organisation/")
+        assert org_response.status_code == 200
+
+        def find_node(nodes, slug):
+            for node in nodes:
+                if node["slug"] == slug:
+                    return node
+                found = find_node(node["children"], slug)
+                if found is not None:
+                    return found
+            return None
+
+        organ_node = find_node(org_response.data, committee_subgroup.slug)
+        assert organ_node is not None
+        child_slugs = {child["slug"] for child in organ_node["children"]}
+        assert "groenne-fingre" in child_slugs

@@ -34,15 +34,23 @@ const mockUnsubscribe = vi.fn()
 
 const mockMarkAllRead = vi.fn()
 
+const mockCreateSubgroup = vi.fn()
+
+const mockGetOrganisation = vi.fn()
+
 vi.mock("../api/forum", () => ({
   forumApi: {
-    getSubgroups: () => mockGetSubgroups(),
+    getSubgroups: (...args: unknown[]) => mockGetSubgroups(...args),
 
     subscribe: (...args: unknown[]) => mockSubscribe(...args),
 
     unsubscribe: (...args: unknown[]) => mockUnsubscribe(...args),
 
     markAllRead: () => mockMarkAllRead(),
+
+    createSubgroup: (...args: unknown[]) => mockCreateSubgroup(...args),
+
+    getOrganisation: (...args: unknown[]) => mockGetOrganisation(...args),
   },
 }))
 
@@ -58,7 +66,7 @@ const mockSubgroups = [
 
     is_subscribed: false,
 
-    is_committee: false,
+    group_type: "almindelig",
 
     is_default: true,
 
@@ -86,7 +94,7 @@ const mockSubgroups = [
 
     is_subscribed: true,
 
-    is_committee: true,
+    group_type: "udvalg",
 
     is_default: false,
 
@@ -104,11 +112,43 @@ const mockSubgroups = [
   },
 ]
 
+const mockArchivedSubgroup = {
+  id: 3,
+
+  name: "Gammelt udvalg",
+
+  slug: "gammelt-udvalg",
+
+  description: "Nedlagt udvalg",
+
+  is_subscribed: false,
+
+  group_type: "almindelig",
+
+  is_default: false,
+
+  is_main: false,
+
+  icon: "",
+
+  thread_count: 1,
+
+  unread_thread_count: 0,
+
+  latest_thread_title: "Sidste møde",
+
+  last_activity_at: "2025-01-01T10:00:00Z",
+
+  is_active: false,
+}
+
 describe("ForumPage", () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
     mockGetSubgroups.mockResolvedValue(mockSubgroups)
+
+    mockGetOrganisation.mockResolvedValue([])
   })
 
   it("renders page title 'Forum'", async () => {
@@ -228,6 +268,33 @@ describe("ForumPage", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Ingen grupper fundet.")).toBeInTheDocument()
+    })
+  })
+
+  it("hides archived groups by default and shows them when Vis arkiverede is toggled on", async () => {
+    const user = userEvent.setup()
+
+    mockGetSubgroups.mockImplementation(
+      async (options: { includeArchived?: boolean } = {}) =>
+        options.includeArchived
+          ? [...mockSubgroups, mockArchivedSubgroup]
+          : mockSubgroups,
+    )
+
+    render(<ForumPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Fællesgruppe")).toBeInTheDocument()
+    })
+
+    expect(screen.queryByText("Gammelt udvalg")).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole("switch", { name: /vis arkiverede/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText("Gammelt udvalg")).toBeInTheDocument()
+
+      expect(screen.getByText("Afsluttet")).toBeInTheDocument()
     })
   })
 })

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, lazy, Suspense } from "react"
+import { useState, useRef, useEffect, useMemo, lazy, Suspense } from "react"
 
 import { useParams, useNavigate, useLocation, Link } from "react-router-dom"
 import {
@@ -34,9 +34,12 @@ import {
   Alert,
   Switch,
   Skeleton,
+  SegmentedControl,
 } from "@mantine/core"
 
 import { useDisclosure, useMediaQuery } from "@mantine/hooks"
+
+import { DateInput } from "@mantine/dates"
 
 import { notifications } from "@mantine/notifications"
 
@@ -68,6 +71,7 @@ import {
   IconSettings,
   IconBell,
   IconBellOff,
+  IconArchive,
 } from "@tabler/icons-react"
 
 import dayjs from "dayjs"
@@ -75,6 +79,8 @@ import dayjs from "dayjs"
 import { eventsApi } from "../api/events"
 
 import { forumApi } from "../api/forum"
+
+import { flattenOrgTree } from "../utils/orgTree"
 
 import { BackButton } from "../components/BackButton"
 
@@ -134,6 +140,7 @@ import type {
   Subgroup,
   SubgroupMember,
   SubgroupSubscriber,
+  GroupType,
 } from "../types"
 
 interface CreateThreadParams {
@@ -145,6 +152,13 @@ interface CreateThreadParams {
 }
 
 const THREADS_PAGE_SIZE = 50
+
+const ORGAN_TYPES = new Set([
+  "generalforsamling",
+  "faellesmoede",
+  "bestyrelse",
+  "udvalg",
+])
 
 export default function SubgroupPage() {
   const { slug, folderSlug: folderSlugParam } = useParams<{
@@ -293,6 +307,33 @@ export default function SubgroupPage() {
 
   const [editAllowsMembers, setEditAllowsMembers] = useState(false)
 
+  type EditableGroupType = "arbejdsgruppe" | "almindelig"
+
+  const [editGroupType, setEditGroupType] =
+    useState<EditableGroupType>("almindelig")
+
+  const [editParentId, setEditParentId] = useState<string | null>(null)
+
+  const [editEstablishedOn, setEditEstablishedOn] = useState<Date | null>(null)
+
+  const [editExpiresOn, setEditExpiresOn] = useState<Date | null>(null)
+
+  // The type selector only appears for arbejdsgruppe/almindelig groups (never for
+  // organs, which keep the simpler name/description-only edit flow).
+  const canChangeGroupType =
+    ORGAN_TYPES.has(subgroup?.group_type ?? "") === false
+
+  const { data: editOrgTree } = useQuery({
+    queryKey: ["forum", "organisation", false],
+    queryFn: () => forumApi.getOrganisation(false),
+    enabled: editGroupOpened && editGroupType === "arbejdsgruppe",
+  })
+
+  const editParentOptions = useMemo(
+    () => flattenOrgTree(editOrgTree ?? [], 0, subgroup?.id),
+    [editOrgTree, subgroup?.id],
+  )
+
   const [
     editLinksInfoOpened,
 
@@ -339,12 +380,22 @@ export default function SubgroupPage() {
       description?: string
 
       allows_members?: boolean
+
+      group_type?: GroupType
+
+      parent?: number | null
+
+      established_on?: string | null
+
+      expires_on?: string | null
     }) => forumApi.updateSubgroup(slug!, data),
 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["subgroup", slug] })
 
       queryClient.invalidateQueries({ queryKey: ["subgroups"] })
+
+      queryClient.invalidateQueries({ queryKey: ["forum", "organisation"] })
 
       notifications.show({
         title: "Gruppe opdateret",
@@ -359,6 +410,31 @@ export default function SubgroupPage() {
 
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke opdatere gruppen.")
+    },
+  })
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: (isActive: boolean) =>
+      forumApi.updateSubgroup(slug!, { is_active: isActive }),
+
+    onSuccess: (_data, isActive) => {
+      queryClient.invalidateQueries({ queryKey: ["subgroup", slug] })
+
+      queryClient.invalidateQueries({ queryKey: ["subgroups"] })
+
+      notifications.show({
+        title: isActive ? "Gruppe genåbnet" : "Gruppe afsluttet",
+
+        message: isActive
+          ? "Gruppen er nu aktiv igen."
+          : "Gruppen er markeret som afsluttet og skjult fra forumlisten.",
+
+        color: "green",
+      })
+    },
+
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke ændre gruppens status.")
     },
   })
 
@@ -404,6 +480,16 @@ export default function SubgroupPage() {
       </Center>
     )
   }
+
+  // Afslut/genåbn affordance: backend enforces the rule regardless, but we only
+  // show the action when the user would actually be allowed to use it — any
+  // authenticated user for an arbejdsgruppe/almindelig group, staff or members
+  // for an organ (generalforsamling/faellesmoede/bestyrelse/udvalg).
+  const canArchive =
+    !!user &&
+    (!ORGAN_TYPES.has(subgroup.group_type) ||
+      user.is_staff ||
+      subgroup.is_member)
 
   function htmlToMarkdown(html: string): string {
     function nodeToMd(node: Node): string {
@@ -718,6 +804,58 @@ When done, print a short summary:
               minHeight={120}
             />
           </Box>
+
+          {canChangeGroupType && (
+            <>
+              <SegmentedControl
+                fullWidth
+                value={editGroupType}
+                onChange={(value) =>
+                  setEditGroupType(value as EditableGroupType)
+                }
+                data={[
+                  { label: "Almindelig gruppe", value: "almindelig" },
+                  { label: "Arbejdsgruppe", value: "arbejdsgruppe" },
+                ]}
+              />
+
+              {editGroupType === "arbejdsgruppe" && (
+                <>
+                  <Select
+                    label="Forælder"
+                    description="Organet eller arbejdsgruppen denne arbejdsgruppe har mandat fra"
+                    placeholder="Vælg forælder"
+                    data={editParentOptions}
+                    value={editParentId}
+                    onChange={setEditParentId}
+                    searchable
+                    required
+                  />
+                  <Group grow>
+                    <DateInput
+                      label="Oprettelsesdato"
+                      placeholder="Vælg dato"
+                      value={editEstablishedOn}
+                      onChange={(value) =>
+                        setEditEstablishedOn(value ? new Date(value) : null)
+                      }
+                      clearable
+                    />
+                    <DateInput
+                      label="Udløbsdato"
+                      placeholder="Vælg dato (valgfrit)"
+                      value={editExpiresOn}
+                      onChange={(value) =>
+                        setEditExpiresOn(value ? new Date(value) : null)
+                      }
+                      clearable
+                    />
+                  </Group>
+                </>
+              )}
+            </>
+          )}
+
           <Checkbox
             label="Tillad medlemskab"
             description="Relevant hvis der ønskes mulighed for private tråde."
@@ -730,7 +868,12 @@ When done, print a short summary:
             </Button>
             <Button
               loading={updateSubgroupMutation.isPending}
-              disabled={!editName.trim()}
+              disabled={
+                !editName.trim() ||
+                (canChangeGroupType &&
+                  editGroupType === "arbejdsgruppe" &&
+                  editParentId === null)
+              }
               onClick={() =>
                 updateSubgroupMutation.mutate({
                   name: editName,
@@ -738,6 +881,24 @@ When done, print a short summary:
                   description: editDescriptionFull,
 
                   allows_members: editAllowsMembers,
+
+                  ...(canChangeGroupType
+                    ? {
+                        group_type: editGroupType,
+                        parent:
+                          editGroupType === "arbejdsgruppe"
+                            ? Number(editParentId)
+                            : null,
+                        established_on:
+                          editGroupType === "arbejdsgruppe" && editEstablishedOn
+                            ? dayjs(editEstablishedOn).format("YYYY-MM-DD")
+                            : null,
+                        expires_on:
+                          editGroupType === "arbejdsgruppe" && editExpiresOn
+                            ? dayjs(editExpiresOn).format("YYYY-MM-DD")
+                            : null,
+                      }
+                    : {}),
                 })
               }
             >
@@ -757,6 +918,11 @@ When done, print a short summary:
           <Title order={3} style={{ flex: 1, minWidth: 0 }}>
             {subgroup.name}
           </Title>
+          {subgroup.is_active === false && (
+            <Badge color="gray" variant="light">
+              Afsluttet
+            </Badge>
+          )}
           <Menu position="bottom-end" withinPortal>
             <Menu.Target>
               <ActionIcon variant="subtle" color="gray" aria-label="Gruppemenu">
@@ -770,11 +936,39 @@ When done, print a short summary:
                   setEditName(subgroup.name)
                   setEditDescriptionFull(subgroup.description || "")
                   setEditAllowsMembers(subgroup.allows_members)
+                  setEditGroupType(
+                    subgroup.group_type === "arbejdsgruppe"
+                      ? "arbejdsgruppe"
+                      : "almindelig",
+                  )
+                  setEditParentId(
+                    subgroup.parent !== null ? String(subgroup.parent) : null,
+                  )
+                  setEditEstablishedOn(
+                    subgroup.established_on
+                      ? new Date(subgroup.established_on)
+                      : null,
+                  )
+                  setEditExpiresOn(
+                    subgroup.expires_on ? new Date(subgroup.expires_on) : null,
+                  )
                   openEditGroup()
                 }}
               >
                 Rediger gruppe
               </Menu.Item>
+              {canArchive && (
+                <Menu.Item
+                  leftSection={<IconArchive size={14} />}
+                  onClick={() =>
+                    toggleActiveMutation.mutate(!(subgroup.is_active !== false))
+                  }
+                >
+                  {subgroup.is_active === false
+                    ? "Genåbn gruppe"
+                    : "Markér som afsluttet"}
+                </Menu.Item>
+              )}
               {user?.is_staff && (
                 <>
                   <Menu.Divider />
@@ -791,6 +985,39 @@ When done, print a short summary:
           </Menu>
         </Group>
 
+        {(subgroup.established_on || subgroup.expires_on) && (
+          <Group gap="md" mt={4}>
+            {subgroup.established_on && (
+              <Text size="sm" c="dimmed">
+                Oprettet:{" "}
+                {dayjs(subgroup.established_on).format("D. MMMM YYYY")}
+              </Text>
+            )}
+            {subgroup.expires_on && (
+              <Text size="sm" c="dimmed">
+                Udløber: {dayjs(subgroup.expires_on).format("D. MMMM YYYY")}
+              </Text>
+            )}
+          </Group>
+        )}
+
+        {subgroup.parent_slug && (
+          <Anchor
+            component={Link}
+            to={`/forum/${subgroup.parent_slug}`}
+            size="sm"
+            c="dimmed"
+            mt={4}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+          >
+            <IconChevronRight
+              size={14}
+              style={{ transform: "rotate(180deg)" }}
+            />
+            {subgroup.parent_name}
+          </Anchor>
+        )}
+
         {subgroup.description && subgroup.description !== "<p></p>" ? (
           <ClampedDescription html={subgroup.description} />
         ) : (
@@ -804,6 +1031,29 @@ When done, print a short summary:
           currentUserId={user?.id ?? null}
           isMobile={!!isMobile}
         />
+
+        {subgroup.children.length > 0 && (
+          <Box mt="sm">
+            <Text size="xs" c="dimmed" mb={4}>
+              Arbejdsgrupper
+            </Text>
+            <Group gap="xs">
+              {subgroup.children.map((child) => (
+                <Badge
+                  key={child.id}
+                  component={Link}
+                  to={`/forum/${child.slug}`}
+                  size="lg"
+                  variant="light"
+                  color="blue"
+                  style={{ cursor: "pointer", textTransform: "none" }}
+                >
+                  {child.name}
+                </Badge>
+              ))}
+            </Group>
+          </Box>
+        )}
       </Box>
 
       {upcomingEvents && upcomingEvents.length > 0 && (

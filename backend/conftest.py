@@ -277,7 +277,7 @@ def committee_subgroup(db):
         name="Madudvalg",
         description="Food committee",
         slug="madudvalg",
-        is_committee=True,
+        group_type=Subgroup.GroupType.UDVALG,
     )
 
 

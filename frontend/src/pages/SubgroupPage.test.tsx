@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 
 import { screen, waitFor } from "@testing-library/react"
 
+import userEvent from "@testing-library/user-event"
+
 import { render } from "../test/testUtils"
 
 import SubgroupPage from "./SubgroupPage"
@@ -82,6 +84,10 @@ const mockGetEvents = vi.fn()
 
 const mockMarkSubgroupRead = vi.fn()
 
+const mockUpdateSubgroup = vi.fn()
+
+const mockGetOrganisation = vi.fn()
+
 vi.mock("../api/forum", () => ({
   forumApi: {
     getSubgroup: (...args: unknown[]) => mockGetSubgroup(...args),
@@ -89,6 +95,10 @@ vi.mock("../api/forum", () => ({
     getThreads: (...args: unknown[]) => mockGetThreads(...args),
 
     markSubgroupRead: (...args: unknown[]) => mockMarkSubgroupRead(...args),
+
+    updateSubgroup: (...args: unknown[]) => mockUpdateSubgroup(...args),
+
+    getOrganisation: (...args: unknown[]) => mockGetOrganisation(...args),
 
     getFolders: vi.fn().mockResolvedValue([]),
 
@@ -121,7 +131,7 @@ const mockSubgroup = {
 
   description: "Til generalforsamlinger",
 
-  is_committee: false,
+  group_type: "almindelig",
 
   is_subscribed: true,
 
@@ -130,6 +140,14 @@ const mockSubgroup = {
   is_main: false,
 
   icon: "",
+
+  parent: null,
+
+  parent_name: null,
+
+  parent_slug: null,
+
+  children: [],
 
   thread_count: 2,
 
@@ -140,6 +158,12 @@ const mockSubgroup = {
   created_at: "2026-01-01T10:00:00Z",
 
   last_activity_at: "2026-01-20T10:00:00Z",
+
+  established_on: null,
+
+  expires_on: null,
+
+  is_active: true,
 }
 
 const mockThreads = [
@@ -267,6 +291,8 @@ describe("SubgroupPage", () => {
       },
     )
     mockGetEvents.mockResolvedValue([])
+    mockUpdateSubgroup.mockResolvedValue(mockSubgroup)
+    mockGetOrganisation.mockResolvedValue([])
   })
 
   it("renders subgroup title", async () => {
@@ -343,5 +369,235 @@ describe("SubgroupPage", () => {
         screen.getByRole("button", { name: /tilbage til forumoversigt/i }),
       ).toBeInTheDocument()
     })
+  })
+
+  it("shows a parent breadcrumb chip linking to the parent group", async () => {
+    mockGetSubgroup.mockResolvedValue({
+      ...mockSubgroup,
+      parent: 5,
+      parent_name: "Bestyrelsen",
+      parent_slug: "bestyrelsen",
+    })
+
+    render(<SubgroupPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Bestyrelsen")).toBeInTheDocument()
+    })
+
+    const parentLink = screen
+      .getByRole("link", { name: /Bestyrelsen/i })
+      .getAttribute("href")
+
+    expect(parentLink).toBe("/forum/bestyrelsen")
+  })
+
+  it("shows children as chips linking to the child group", async () => {
+    mockGetSubgroup.mockResolvedValue({
+      ...mockSubgroup,
+      children: [{ id: 7, name: "Festudvalg", slug: "festudvalg" }],
+    })
+
+    render(<SubgroupPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Festudvalg")).toBeInTheDocument()
+    })
+
+    const childLink = screen
+      .getByRole("link", { name: "Festudvalg" })
+      .getAttribute("href")
+
+    expect(childLink).toBe("/forum/festudvalg")
+  })
+
+  it("shows an Afsluttet badge when the group is archived", async () => {
+    mockGetSubgroup.mockResolvedValue({
+      ...mockSubgroup,
+      is_active: false,
+    })
+
+    render(<SubgroupPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Afsluttet")).toBeInTheDocument()
+    })
+  })
+
+  it("does not show an Afsluttet badge for an active group", async () => {
+    render(<SubgroupPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Generalforsamling")).toBeInTheDocument()
+    })
+
+    expect(screen.queryByText("Afsluttet")).not.toBeInTheDocument()
+  })
+
+  it("allows marking an active group as afsluttet via the group menu", async () => {
+    const user = userEvent.setup()
+
+    render(<SubgroupPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Generalforsamling")).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole("button", { name: /gruppemenu/i }))
+
+    await user.click(
+      await screen.findByRole("menuitem", { name: /markér som afsluttet/i }, {
+        timeout: 5000,
+      }),
+    )
+
+    await waitFor(() => {
+      expect(mockUpdateSubgroup).toHaveBeenCalledWith("general", {
+        is_active: false,
+      })
+    })
+  })
+
+  it("shows a genåbn action for an archived group", async () => {
+    mockGetSubgroup.mockResolvedValue({
+      ...mockSubgroup,
+      is_active: false,
+    })
+
+    const user = userEvent.setup()
+
+    render(<SubgroupPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Generalforsamling")).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole("button", { name: /gruppemenu/i }))
+
+    await user.click(
+      await screen.findByRole("menuitem", { name: /genåbn gruppe/i }, {
+        timeout: 5000,
+      }),
+    )
+
+    await waitFor(() => {
+      expect(mockUpdateSubgroup).toHaveBeenCalledWith("general", {
+        is_active: true,
+      })
+    })
+  })
+
+  it("shows the group type selector for an almindelig group and hides the parent select by default", async () => {
+    const user = userEvent.setup()
+
+    render(<SubgroupPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Generalforsamling")).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole("button", { name: /gruppemenu/i }))
+    await user.click(
+      await screen.findByRole("menuitem", { name: /rediger gruppe/i }, {
+        timeout: 5000,
+      }),
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("radio", { name: "Almindelig gruppe" }),
+      ).toBeInTheDocument()
+    })
+    expect(
+      screen.getByRole("radio", { name: "Almindelig gruppe" }),
+    ).toBeChecked()
+    expect(screen.queryByLabelText(/^Forælder/)).not.toBeInTheDocument()
+  })
+
+  it("converting to Arbejdsgruppe shows the parent select; submitting sends the new group_type", async () => {
+    mockGetOrganisation.mockResolvedValue([
+      {
+        id: 9,
+        name: "Bestyrelsen",
+        slug: "bestyrelsen",
+        group_type: "bestyrelse",
+        description: "",
+        established_on: null,
+        expires_on: null,
+        is_active: true,
+        member_count: 0,
+        members: [],
+        children: [],
+      },
+    ])
+
+    const user = userEvent.setup()
+
+    render(<SubgroupPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Generalforsamling")).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole("button", { name: /gruppemenu/i }))
+    await user.click(
+      await screen.findByRole("menuitem", { name: /rediger gruppe/i }, {
+        timeout: 5000,
+      }),
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("radio", { name: "Arbejdsgruppe" }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole("radio", { name: "Arbejdsgruppe" }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("textbox", { name: /^Forælder/ }),
+      ).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole("textbox", { name: /^Forælder/ }))
+    await user.click(await screen.findByText("Bestyrelsen"))
+
+    await user.click(screen.getByRole("button", { name: "Gem" }))
+
+    await waitFor(() => {
+      expect(mockUpdateSubgroup).toHaveBeenCalledWith(
+        "general",
+        expect.objectContaining({
+          group_type: "arbejdsgruppe",
+          parent: 9,
+        }),
+      )
+    })
+  })
+
+  it("does not show the type selector for an organ group", async () => {
+    mockGetSubgroup.mockResolvedValue({
+      ...mockSubgroup,
+      group_type: "udvalg",
+    })
+
+    const user = userEvent.setup()
+
+    render(<SubgroupPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Generalforsamling")).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole("button", { name: /gruppemenu/i }))
+    await user.click(
+      await screen.findByRole("menuitem", { name: /rediger gruppe/i }, {
+        timeout: 5000,
+      }),
+    )
+
+    expect(
+      screen.queryByRole("radio", { name: "Almindelig gruppe" }),
+    ).not.toBeInTheDocument()
   })
 })

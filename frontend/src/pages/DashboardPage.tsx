@@ -200,7 +200,7 @@ export default function DashboardPage() {
   const { data: subgroups, isLoading: subgroupsLoading } = useQuery({
     queryKey: ["subgroups"],
 
-    queryFn: forumApi.getSubgroups,
+    queryFn: () => forumApi.getSubgroups(),
   })
 
   // The main "Fælles" group. Several groups can be flagged is_default in

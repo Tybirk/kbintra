@@ -140,7 +140,6 @@ class Command(BaseCommand):
                     defaults={
                         "description": group_data.get("description", ""),
                         "is_main": True,
-                        "is_committee": False,
                         "is_default": group_data.get("is_default", False),
                     },
                 )
@@ -163,7 +162,7 @@ class Command(BaseCommand):
                     defaults={
                         "description": committee_data.get("description", ""),
                         "is_main": False,
-                        "is_committee": True,
+                        "group_type": Subgroup.GroupType.UDVALG,
                         "allows_members": True,
                         "is_default": committee_data.get("is_default", False),
                     },
@@ -187,7 +186,6 @@ class Command(BaseCommand):
                     defaults={
                         "description": group_data.get("description", ""),
                         "is_main": False,
-                        "is_committee": False,
                         "is_default": group_data.get("is_default", False),
                     },
                 )

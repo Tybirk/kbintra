@@ -1,4 +1,4 @@
-import { useState, useMemo, lazy, Suspense } from "react"
+import { useState, useMemo } from "react"
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 
@@ -16,13 +16,12 @@ import {
   Stack,
   Box,
   ThemeIcon,
-  Modal,
   Tooltip,
-  Checkbox,
-  Skeleton,
+  Switch,
+  Badge,
 } from "@mantine/core"
 
-import { useDisclosure, useMediaQuery } from "@mantine/hooks"
+import { useDisclosure } from "@mantine/hooks"
 
 import { notifications } from "@mantine/notifications"
 
@@ -44,39 +43,21 @@ import dayjs from "dayjs"
 
 import { forumApi } from "../api/forum"
 
-import type { RichTextEditorProps } from "../components/RichTextEditor"
+import CreateSubgroupModal from "../components/CreateSubgroupModal"
 
 import type { Subgroup } from "../types"
-
-const RichTextEditorImpl = lazy(() => import("../components/RichTextEditor"))
-
-function RichTextEditor(props: RichTextEditorProps) {
-  return (
-    <Suspense
-      fallback={<Skeleton h={(props.minHeight ?? 150) + 50} radius="sm" />}
-    >
-      <RichTextEditorImpl {...props} />
-    </Suspense>
-  )
-}
 
 export default function ForumPage() {
   const navigate = useNavigate()
 
   const queryClient = useQueryClient()
 
-  const isMobile = useMediaQuery("(max-width: 48em)")
-
   const [search, setSearch] = useState("")
 
   const [createOpened, { open: openCreate, close: closeCreate }] =
     useDisclosure(false)
 
-  const [newName, setNewName] = useState("")
-
-  const [newDescription, setNewDescription] = useState("")
-
-  const [newAllowsMembers, setNewAllowsMembers] = useState(false)
+  const [showArchived, setShowArchived] = useState(false)
 
   const {
     data: subgroups,
@@ -85,9 +66,9 @@ export default function ForumPage() {
 
     error,
   } = useQuery({
-    queryKey: ["subgroups"],
+    queryKey: ["subgroups", showArchived],
 
-    queryFn: forumApi.getSubgroups,
+    queryFn: () => forumApi.getSubgroups({ includeArchived: showArchived }),
   })
 
   const subscribeMutation = useMutation({
@@ -146,40 +127,6 @@ export default function ForumPage() {
     },
   })
 
-  const createSubgroupMutation = useMutation({
-    mutationFn: forumApi.createSubgroup,
-
-    onSuccess: (subgroup) => {
-      queryClient.invalidateQueries({ queryKey: ["subgroups"] })
-
-      notifications.show({
-        title: "Gruppe oprettet",
-
-        message: `"${subgroup.name}" er nu oprettet.`,
-
-        color: "green",
-      })
-
-      setNewName("")
-
-      setNewDescription("")
-
-      setNewAllowsMembers(false)
-
-      closeCreate()
-
-      navigate(`/forum/${subgroup.slug}`)
-    },
-
-    onError: (error: unknown) => {
-      showErrorNotification(
-        error,
-
-        "Kunne ikke oprette gruppen. Prøv venligst igen.",
-      )
-    },
-  })
-
   const totalUnread = useMemo(
     () => subgroups?.reduce((sum, s) => sum + s.unread_thread_count, 0) ?? 0,
 
@@ -225,7 +172,7 @@ export default function ForumPage() {
         committees: filtered
           .filter(
             (s) =>
-              s.is_committee &&
+              s.group_type === "udvalg" &&
               !subscribedIds.has(s.id) &&
               !memberIds.has(s.id),
           )
@@ -234,7 +181,7 @@ export default function ForumPage() {
         regularGroups: filtered
           .filter(
             (s) =>
-              !s.is_committee &&
+              s.group_type !== "udvalg" &&
               !subscribedIds.has(s.id) &&
               !memberIds.has(s.id),
           )
@@ -273,59 +220,11 @@ export default function ForumPage() {
 
   return (
     <>
-      <Modal
+      <CreateSubgroupModal
         opened={createOpened}
         onClose={closeCreate}
-        title="Opret ny gruppe"
-        fullScreen={isMobile}
-      >
-        <Stack>
-          <TextInput
-            label="Navn"
-            placeholder="Gruppenavn"
-            value={newName}
-            onChange={(e) => setNewName(e.currentTarget.value)}
-            required
-          />
-          <Box>
-            <Text size="sm" fw={500} mb={4}>
-              Beskrivelse
-            </Text>
-            <RichTextEditor
-              content={newDescription}
-              onChange={setNewDescription}
-              placeholder="Kort beskrivelse af gruppen (valgfrit)"
-              minHeight={100}
-            />
-          </Box>
-          <Checkbox
-            label="Tillad medlemskab"
-            description="Relevant hvis der ønskes mulighed for private tråde."
-            checked={newAllowsMembers}
-            onChange={(e) => setNewAllowsMembers(e.currentTarget.checked)}
-          />
-          <Group justify="flex-end">
-            <Button variant="default" onClick={closeCreate}>
-              Annuller
-            </Button>
-            <Button
-              onClick={() =>
-                createSubgroupMutation.mutate({
-                  name: newName,
-
-                  description: newDescription,
-
-                  allows_members: newAllowsMembers,
-                })
-              }
-              loading={createSubgroupMutation.isPending}
-              disabled={!newName.trim()}
-            >
-              Opret gruppe
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+        onCreated={(subgroup) => navigate(`/forum/${subgroup.slug}`)}
+      />
 
       <Group justify="space-between" mb="md">
         <div>
@@ -349,14 +248,20 @@ export default function ForumPage() {
         </Group>
       </Group>
 
-      <TextInput
-        placeholder="Søg i grupper..."
-        leftSection={<IconSearch size={16} />}
-        value={search}
-        onChange={(e) => setSearch(e.currentTarget.value)}
-        mb="lg"
-        style={{ maxWidth: 300 }}
-      />
+      <Group justify="space-between" align="flex-end" mb="lg" wrap="wrap">
+        <TextInput
+          placeholder="Søg i grupper..."
+          leftSection={<IconSearch size={16} />}
+          value={search}
+          onChange={(e) => setSearch(e.currentTarget.value)}
+          style={{ maxWidth: 300 }}
+        />
+        <Switch
+          label="Vis arkiverede"
+          checked={showArchived}
+          onChange={(e) => setShowArchived(e.currentTarget.checked)}
+        />
+      </Group>
 
       {memberGroups.length === 0 &&
       subscribedGroups.length === 0 &&
@@ -546,6 +451,16 @@ function SubgroupCard({
             <Text fw={500} style={{ wordBreak: "break-word" }}>
               {subgroup.name}
             </Text>
+            {subgroup.is_active === false && (
+              <Badge
+                color="gray"
+                variant="light"
+                size="sm"
+                style={{ flexShrink: 0 }}
+              >
+                Afsluttet
+              </Badge>
+            )}
           </Group>
           {!hideBell && (
             <Group
