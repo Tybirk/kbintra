@@ -55,6 +55,13 @@ const IMAGE_EXTENSIONS = [
   "bmp",
 
   "ico",
+
+  // Apple formats — not browser-renderable, but the backend generates a
+  // web-viewable JPEG `preview`; we classify them as images so the UI shows
+  // that preview instead of a generic "cannot preview" tile.
+  "heic",
+
+  "heif",
 ]
 
 const PDF_EXTENSIONS = ["pdf"]
@@ -308,6 +315,16 @@ export function useFileActions(file: PreviewableFile | null, enabled: boolean) {
       return
     }
 
+    // No share sheet available (typically a non-PDF file on a device whose
+    // browser can't share files) — fall back to a download, but tell the user
+    // so "Åbn"/"Del" never silently appears to do nothing.
+    notifications.show({
+      title: "Filen downloades",
+
+      message:
+        "Din enhed kan ikke åbne filen direkte. Den downloades, så du kan åbne den i din foretrukne app.",
+    })
+
     handleDownload()
   }
 
@@ -355,6 +372,11 @@ export function FileActionButtons({
   // useMediaQuery is undefined on first render (falsy) → safe desktop default.
   const showOpen = isTouch || actions.fileType === "pdf"
 
+  // On touch devices "Åbn" hands the file to the OS share sheet (the user picks
+  // an app), which Terkild noted is the better behaviour — so call it "Del"
+  // there. On desktop it opens a PDF in a new tab, where "Åbn" is accurate.
+  const openLabel = isTouch ? "Del" : "Åbn"
+
   return (
     <Group justify="center" gap="xs">
       {extra}
@@ -365,7 +387,7 @@ export function FileActionButtons({
           onClick={actions.handleOpen}
           disabled={actions.actionsDisabled}
         >
-          Åbn
+          {openLabel}
         </Button>
       )}
       <Button

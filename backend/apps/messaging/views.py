@@ -10,6 +10,9 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.backup.signing import signed_media_url
+from apps.forum.tasks import generate_attachment_preview_task
+
 from .models import Conversation, Message, MessageAttachment, MessageReaction, MessageReadStatus
 from .serializers import (
     AddParticipantsSerializer,
@@ -18,6 +21,7 @@ from .serializers import (
     CreateConversationSerializer,
     CreateMessageSerializer,
     MessageSerializer,
+    message_attachment_preview_url,
 )
 
 
@@ -111,6 +115,9 @@ class ConversationListCreateView(generics.ListCreateAPIView):
                                 uploaded_by=request.user,
                             )
                             attachment_objects.append(att)
+                            generate_attachment_preview_task(
+                                "messaging", "MessageAttachment", att.id
+                            )
 
                         # Broadcast message via WebSocket so all clients update instantly
                         from asgiref.sync import async_to_sync
@@ -136,7 +143,8 @@ class ConversationListCreateView(generics.ListCreateAPIView):
                                 {
                                     "id": att.id,
                                     "name": att.name,
-                                    "file_url": att.file.url if att.file else "",
+                                    "file_url": signed_media_url(att.file.url) if att.file else "",
+                                    "preview_url": message_attachment_preview_url(att),
                                 }
                                 for att in attachment_objects
                             ],
@@ -175,12 +183,13 @@ class ConversationListCreateView(generics.ListCreateAPIView):
 
             # Create attachments
             for attachment_file in attachments:
-                MessageAttachment.objects.create(
+                att = MessageAttachment.objects.create(
                     message=message,
                     file=attachment_file,
                     name=attachment_file.name,
                     uploaded_by=request.user,
                 )
+                generate_attachment_preview_task("messaging", "MessageAttachment", att.id)
 
             # Send notifications to other participants in background
             from apps.notifications.tasks import notify_new_message_task

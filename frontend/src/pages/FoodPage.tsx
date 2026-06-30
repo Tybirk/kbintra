@@ -79,6 +79,7 @@ import { foodApi } from "../api/food"
 import { notificationsApi } from "../api/notifications"
 
 import { MealFormFields } from "../components/MealFormFields"
+import UserLink from "../components/UserLink"
 
 import { useAuthStore } from "../store/authStore"
 
@@ -2247,9 +2248,12 @@ function TicketCard({ ticket }: TicketCardProps) {
             </Avatar>
             <div style={{ flex: 1, minWidth: 0 }}>
               <Group gap="xs" mb={2}>
-                <Text fw={500}>
-                  {ticket.owner.first_name} {ticket.owner.last_name}
-                </Text>
+                <UserLink
+                  id={ticket.owner.id}
+                  firstName={ticket.owner.first_name}
+                  lastName={ticket.owner.last_name}
+                  fw={500}
+                />
                 {ticket.is_free ? (
                   <Badge color="green" variant="light">
                     Gratis
@@ -2426,9 +2430,12 @@ function TicketCard({ ticket }: TicketCardProps) {
                 {ticket.owner.first_name?.[0]}
                 {ticket.owner.last_name?.[0]}
               </Avatar>
-              <Text fw={500}>
-                {ticket.owner.first_name} {ticket.owner.last_name}
-              </Text>
+              <UserLink
+                id={ticket.owner.id}
+                firstName={ticket.owner.first_name}
+                lastName={ticket.owner.last_name}
+                fw={500}
+              />
             </Group>
           </div>
 

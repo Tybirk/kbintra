@@ -3,6 +3,7 @@ Tests for the backup app.
 """
 
 import tempfile
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -271,3 +272,80 @@ class ServeMediaAuthTest(TestCase):
         assert "private" in anon_cc and "no-store" in anon_cc, (
             f"401 must be Cache-Control: private, no-store. Got {anon_cc!r}"
         )
+
+
+class SignedMediaUrlTest(TestCase):
+    """`/media/*` can also be authorized by a short-lived signed token in the URL.
+
+    This is what keeps `<img src="/media/...">` working when the session cookie
+    is dropped (common on iOS) but the JWT survives — an <img> tag can carry the
+    signature in the query string but not the JWT header.
+    """
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.media_root = Path(self.tmpdir)
+        (self.media_root / "post_attachments").mkdir()
+        self.rel_path = "post_attachments/test.txt"
+        (self.media_root / self.rel_path).write_text("secret payload")
+
+    def tearDown(self):
+        import shutil
+
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_valid_signature_serves_without_session_cookie(self):
+        from apps.backup.signing import signed_media_url
+
+        # Mint a signed URL the way a serializer would (no cookie / no login).
+        signed = signed_media_url(f"/media/{self.rel_path}")
+        with override_settings(MEDIA_ROOT=str(self.media_root)):
+            response = Client().get(signed)
+        assert response.status_code == 200
+        assert b"secret payload" in b"".join(response.streaming_content)
+
+    def test_expired_signature_401s_without_cookie(self):
+        from apps.backup.signing import _sign
+
+        exp = int(time.time()) - 10  # already expired
+        sig = _sign(self.rel_path, exp)
+        with override_settings(MEDIA_ROOT=str(self.media_root)):
+            response = Client().get(f"/media/{self.rel_path}?exp={exp}&sig={sig}")
+        assert response.status_code == 401
+
+    def test_tampered_signature_401s_without_cookie(self):
+        from apps.backup.signing import signed_media_url
+
+        signed = signed_media_url(f"/media/{self.rel_path}")
+        tampered = signed[:-2] + ("aa" if not signed.endswith("aa") else "bb")
+        with override_settings(MEDIA_ROOT=str(self.media_root)):
+            response = Client().get(tampered)
+        assert response.status_code == 401
+
+    def test_signature_for_other_path_does_not_serve(self):
+        """A signature minted for one path must not authorize a different path."""
+        from apps.backup.signing import _current_expiry, _sign
+
+        exp = _current_expiry()
+        sig = _sign("post_attachments/other.txt", exp)
+        with override_settings(MEDIA_ROOT=str(self.media_root)):
+            response = Client().get(f"/media/{self.rel_path}?exp={exp}&sig={sig}")
+        assert response.status_code == 401
+
+    def test_round_trip_and_hour_aligned_expiry(self):
+        from apps.backup.signing import (
+            _current_expiry,
+            _media_relative_path,
+            signed_media_url,
+            verify_media_signature,
+        )
+
+        signed = signed_media_url(f"/media/{self.rel_path}")
+        # Parse exp/sig back out and verify against the normalized path.
+        query = signed.split("?", 1)[1]
+        params = dict(p.split("=", 1) for p in query.split("&"))
+        assert verify_media_signature(self.rel_path, params["exp"], params["sig"])
+        assert _media_relative_path(signed) == self.rel_path
+        # exp is aligned to a whole hour boundary (cache-stable within the hour).
+        assert int(params["exp"]) % 3600 == 0
+        assert int(params["exp"]) == _current_expiry()

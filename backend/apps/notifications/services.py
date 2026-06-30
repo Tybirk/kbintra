@@ -913,7 +913,7 @@ def notify_event_created(
 
     event = Event.objects.prefetch_related("rooms").select_related("subgroup").get(id=event_id)
     location = event.resolved_location
-    title_text = f"Nyt arrangement: {event.title}"
+    title_text = f"Ny begivenhed: {event.title}"
     local_start = event.start_datetime.astimezone(_CPH_TZ)
     message = location or local_start.strftime("%d/%m %H:%M")
     link = f"/kalender/{event.slug}"
@@ -951,7 +951,7 @@ def notify_event_updated(
 
     event = Event.objects.prefetch_related("rooms").select_related("subgroup").get(id=event_id)
     location = event.resolved_location
-    title_text = f"Arrangement opdateret: {event.title}"
+    title_text = f"Begivenhed opdateret: {event.title}"
     local_start = event.start_datetime.astimezone(_CPH_TZ)
     message = f"Ny tid/sted: {local_start.strftime('%d/%m %H:%M')}"
     if location:
@@ -999,7 +999,7 @@ def notify_event_cancelled(
     message = (
         event.cancellation_message
         if event.cancellation_message
-        else "Arrangementet er desværre aflyst."
+        else "Begivenheden er desværre aflyst."
     )
     link = f"/kalender/{event.slug}"
 

@@ -433,8 +433,8 @@ export default function NotificationPreferencesPage() {
                 }
               />
               <Switch
-                label="Arrangementer"
-                description="Når nye arrangementer oprettes eller opdateres"
+                label="Begivenheder"
+                description="Når nye begivenheder oprettes eller opdateres"
                 checked={preferences.notify_events}
                 onChange={(e) =>
                   handleToggle("notify_events", e.currentTarget.checked)
@@ -534,8 +534,8 @@ export default function NotificationPreferencesPage() {
                 }
               />
               <Switch
-                label="Arrangementer"
-                description="E-mail når nye arrangementer oprettes eller opdateres"
+                label="Begivenheder"
+                description="E-mail når nye begivenheder oprettes eller opdateres"
                 checked={preferences.email_events}
                 onChange={(e) =>
                   handleToggle("email_events", e.currentTarget.checked)
@@ -682,8 +682,8 @@ export default function NotificationPreferencesPage() {
                         }
                       />
                       <Switch
-                        label="Arrangementer"
-                        description="Push-notifikation når nye arrangementer oprettes eller opdateres"
+                        label="Begivenheder"
+                        description="Push-notifikation når nye begivenheder oprettes eller opdateres"
                         checked={preferences.push_events}
                         onChange={(e) =>
                           handleToggle("push_events", e.currentTarget.checked)

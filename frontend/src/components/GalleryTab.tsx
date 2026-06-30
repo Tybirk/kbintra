@@ -105,6 +105,7 @@ export default function GalleryTab({ subgroupSlug }: GalleryTabProps) {
         id: item.id,
         name: item.name,
         file_url: item.file_url,
+        preview_url: item.preview_url,
         preview_html: item.preview_html,
         thread_subgroup_slug: item.subgroup_slug,
         thread_slug: item.thread_slug,

@@ -6,6 +6,7 @@ from collections import defaultdict
 
 from rest_framework import serializers
 
+from apps.backup.signing import signed_media_url
 from apps.users.models import User
 from apps.users.serializer_mixins import AvatarUrlMixin
 
@@ -20,18 +21,32 @@ class ParticipantSerializer(AvatarUrlMixin, serializers.ModelSerializer):
         fields = ["id", "first_name", "last_name", "profile_picture"]
 
 
+def message_attachment_preview_url(att: MessageAttachment) -> str:
+    """URL for *viewing* an attachment: the converted web preview for formats the
+    browser can't render (HEIC), otherwise the original file. Both signed."""
+    if att.preview:
+        return signed_media_url(att.preview.url)
+    if att.file:
+        return signed_media_url(att.file.url)
+    return ""
+
+
 class MessageAttachmentSerializer(serializers.ModelSerializer):
     """Serializer for MessageAttachment model."""
 
     file_url = serializers.SerializerMethodField()
+    preview_url = serializers.SerializerMethodField()
 
     class Meta:
         model = MessageAttachment
-        fields = ["id", "name", "file", "file_url", "preview_html", "uploaded_at"]
+        fields = ["id", "name", "file", "file_url", "preview_url", "preview_html", "uploaded_at"]
         read_only_fields = ["id", "uploaded_at"]
 
     def get_file_url(self, obj: MessageAttachment) -> str:
-        return obj.file.url if obj.file else ""
+        return signed_media_url(obj.file.url) if obj.file else ""
+
+    def get_preview_url(self, obj: MessageAttachment) -> str:
+        return message_attachment_preview_url(obj)
 
 
 class MessageSerializer(serializers.ModelSerializer):
@@ -333,6 +348,7 @@ class CreateMessageSerializer(serializers.ModelSerializer):
         message = super().create(validated_data)
 
         # Create attachments
+        from apps.forum.tasks import generate_attachment_preview_task
         from apps.forum.utils import generate_docx_preview
 
         user = self.context["request"].user
@@ -346,6 +362,7 @@ class CreateMessageSerializer(serializers.ModelSerializer):
                 preview_html=generate_docx_preview(attachment_file),
             )
             attachment_objects.append(att)
+            generate_attachment_preview_task("messaging", "MessageAttachment", att.id)
 
         # Update conversation's updated_at
         message.conversation.save()
@@ -370,7 +387,8 @@ class CreateMessageSerializer(serializers.ModelSerializer):
                 {
                     "id": att.id,
                     "name": att.name,
-                    "file_url": att.file.url if att.file else "",
+                    "file_url": signed_media_url(att.file.url) if att.file else "",
+                    "preview_url": message_attachment_preview_url(att),
                     "preview_html": att.preview_html,
                 }
                 for att in attachment_objects

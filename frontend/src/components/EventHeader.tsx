@@ -164,10 +164,10 @@ export default function EventHeader({
       closeCancelModal()
 
       notifications.show({
-        title: "Arrangement aflyst",
+        title: "Begivenhed aflyst",
 
         message:
-          "Arrangementet er blevet aflyst og berørte brugere er notificeret.",
+          "Begivenheden er blevet aflyst og berørte brugere er notificeret.",
 
         color: "orange",
       })
@@ -177,7 +177,7 @@ export default function EventHeader({
       showErrorNotification(
         error,
 
-        "Kunne ikke aflyse arrangementet. Prøv igen.",
+        "Kunne ikke aflyse begivenheden. Prøv igen.",
       )
     },
   })
@@ -299,7 +299,7 @@ export default function EventHeader({
                           navigate(`/kalender/${event.slug}/rediger`)
                         }
                       >
-                        Rediger arrangement
+                        Rediger begivenhed
                       </Menu.Item>
                       {!event.is_cancelled && (
                         <Menu.Item
@@ -307,7 +307,7 @@ export default function EventHeader({
                           leftSection={<IconBan size={14} />}
                           onClick={openCancelModal}
                         >
-                          Aflys arrangement
+                          Aflys begivenhed
                         </Menu.Item>
                       )}
                       <Menu.Item
@@ -315,7 +315,7 @@ export default function EventHeader({
                         leftSection={<IconTrash size={14} />}
                         onClick={openDeleteModal}
                       >
-                        Slet arrangement
+                        Slet begivenhed
                       </Menu.Item>
                     </>
                   )}
@@ -459,7 +459,7 @@ export default function EventHeader({
           <>
             <Divider my="md" />
             <Alert icon={<IconBan size={16} />} color="gray" variant="light">
-              Arrangementet er aflyst — tilmelding er ikke længere mulig.
+              Begivenheden er aflyst — tilmelding er ikke længere mulig.
             </Alert>
           </>
         )}
@@ -478,7 +478,7 @@ export default function EventHeader({
       <Modal
         opened={cancelModalOpened}
         onClose={closeCancelModal}
-        title="Aflys arrangement"
+        title="Aflys begivenhed"
         centered
       >
         <Text mb="sm">
@@ -486,7 +486,7 @@ export default function EventHeader({
         </Text>
         <Textarea
           label="Begrundelse (valgfri)"
-          placeholder="Fortæl hvorfor arrangementet er aflyst..."
+          placeholder="Fortæl hvorfor begivenheden er aflyst..."
           value={cancelMessage}
           onChange={(e) => setCancelMessage(e.currentTarget.value)}
           mb="lg"

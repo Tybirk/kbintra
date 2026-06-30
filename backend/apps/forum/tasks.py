@@ -40,3 +40,32 @@ def generate_post_attachment_thumbnail_task(attachment_id: int) -> None:
 
     att.thumbnail.save(f"{att.id}.jpg", thumb, save=True)
     logger.info("Generated thumbnail for attachment %s", attachment_id)
+
+
+@db_task(retries=2, retry_delay=30)
+def generate_attachment_preview_task(app_label: str, model_name: str, attachment_id: int) -> None:
+    """Generate a web-viewable JPEG `preview` for a HEIC/HEIF attachment.
+
+    Generic across attachment models with `file`, `name`, and `preview` fields
+    (forum / messaging / announcements), so HEIC images uploaded anywhere become
+    viewable in browsers that can't decode them. No-ops for non-HEIC files,
+    missing rows, or attachments already converted.
+    """
+    from django.apps import apps as django_apps
+
+    from apps.forum.image_processing import generate_attachment_preview
+
+    model = django_apps.get_model(app_label, model_name)
+    att = model.objects.filter(id=attachment_id).first()
+    if not att:
+        return
+    try:
+        if generate_attachment_preview(att):
+            logger.info("Generated web preview for %s.%s %s", app_label, model_name, attachment_id)
+    except FileNotFoundError:
+        logger.warning(
+            "Skipping preview for %s.%s %s: source file missing",
+            app_label,
+            model_name,
+            attachment_id,
+        )

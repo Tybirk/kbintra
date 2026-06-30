@@ -94,11 +94,14 @@ class User(AbstractUser):
     @property
     def avatar_url(self) -> str | None:
         """Best URL for displaying this user's avatar. Falls back to the
-        original if the thumbnail hasn't been generated yet."""
+        original if the thumbnail hasn't been generated yet. Signed so <img>
+        tags authenticate without the session cookie (see apps.backup.signing)."""
+        from apps.backup.signing import signed_media_url
+
         if self.profile_picture_thumbnail:
-            return self.profile_picture_thumbnail.url
+            return signed_media_url(self.profile_picture_thumbnail.url)
         if self.profile_picture:
-            return self.profile_picture.url
+            return signed_media_url(self.profile_picture.url)
         return None
 
     # House relationship (nullable - user might not be assigned to a house yet)

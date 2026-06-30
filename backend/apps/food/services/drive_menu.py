@@ -55,6 +55,17 @@ class DriveMenuService:
         "thursday": re.compile(r"^torsdag\b", re.IGNORECASE),
     }
 
+    # Marks the weekly grocery/veggie order block ("Gnavegrønt til ugen 18 stk
+    # agurker ...") that some cooks append after Torsdag's dish. It carries no
+    # weekday header, so without a terminator it gets swallowed into the last
+    # parsed day (Torsdag), polluting Thursday's menu text. Match the observed
+    # phrasing ("gnavegrønt") plus close variants, conservatively enough not to
+    # truncate a real dish name.
+    STOP_SECTION_PATTERN = re.compile(
+        r"gnavegr(ø|oe?)nt|ugens\s+gr(ø|oe?)nt|gr(ø|oe?)nt\s+til\s+ugen",
+        re.IGNORECASE,
+    )
+
     # Pattern to extract week number from folder name (e.g., "Uge 2", "Uge 12")
     WEEK_FOLDER_PATTERN = re.compile(r"[Uu]ge\s*(\d+)")
 
@@ -343,6 +354,16 @@ class DriveMenuService:
         seen_days: set[str] = set()
 
         for para in page1_paragraphs:
+            # The weekly grocery/veggie order has no weekday header and would
+            # otherwise be appended to Torsdag (the last day parsed). Stop
+            # accumulating day content as soon as we reach it.
+            if self.STOP_SECTION_PATTERN.search(para):
+                if current_day and menu_lines:
+                    menus[current_day] = " ".join(menu_lines)
+                current_day = None
+                menu_lines = []
+                break
+
             # Check if this is a day header (try strict pattern first, then flexible)
             day_found = None
             remaining_content = None
@@ -403,7 +424,7 @@ class DriveMenuService:
             is_day_header = any(
                 p.match(overflow_paragraph) for p in self.DAY_PATTERNS.values()
             ) or any(p.match(overflow_paragraph) for p in self.DAY_PATTERNS_FLEXIBLE.values())
-            if not is_day_header:
+            if not is_day_header and not self.STOP_SECTION_PATTERN.search(overflow_paragraph):
                 menus[current_day] = overflow_paragraph.replace("\n", " ")
 
         return ParsedMenu(

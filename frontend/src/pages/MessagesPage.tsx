@@ -1772,7 +1772,9 @@ interface MessageBubbleProps {
 }
 
 function isImageFile(filename: string): boolean {
-  return /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(filename)
+  // heic/heif aren't browser-renderable, but the backend generates a viewable
+  // JPEG preview, so treat them as images (we display preview_url, not file_url).
+  return /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i.test(filename)
 }
 
 const MessageBubble = memo(function MessageBubble({
@@ -2402,7 +2404,7 @@ const MessageBubble = memo(function MessageBubble({
                   onClick={() => handleAttachmentClick(attachment)}
                 >
                   <Image
-                    src={attachment.file_url}
+                    src={attachment.preview_url ?? attachment.file_url}
                     alt={attachment.name}
                     radius="md"
                     maw={200}

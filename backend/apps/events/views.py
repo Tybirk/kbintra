@@ -15,6 +15,8 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.backup.signing import signed_media_url
+
 from .models import Event, EventAttendance
 from .serializers import (
     AttendanceSerializer,
@@ -198,6 +200,13 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
         if event.thread_id and event.title != old_title:
             event.thread.title = event.title
             event.thread.save(update_fields=["title"])
+
+        # Re-parent the discussion thread if the event's subgroup changed, so a
+        # reassigned event becomes visible in the new udvalg (not the old one /
+        # the fallback group).
+        from apps.events.services import sync_event_thread_subgroup
+
+        sync_event_thread_subgroup(event)
 
         # Notify if time/location changed
         time_changed = event.start_datetime != old_start
@@ -515,13 +524,13 @@ class EventCancelView(APIView):
 
         if event.created_by != request.user:
             return Response(
-                {"error": "Kun arrangøren kan aflyse dette arrangement."},
+                {"error": "Kun arrangøren kan aflyse denne begivenhed."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
         if event.is_cancelled:
             return Response(
-                {"error": "Arrangementet er allerede aflyst."},
+                {"error": "Begivenheden er allerede aflyst."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -571,7 +580,7 @@ class EventFilesView(APIView):
             {
                 "id": f.id,
                 "name": f.name,
-                "file_url": f.file.url,
+                "file_url": signed_media_url(f.file.url),
                 "uploaded_by": {
                     "id": f.uploaded_by.id,
                     "first_name": f.uploaded_by.first_name,
@@ -603,20 +612,12 @@ class EventFilesView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        from apps.forum.models import File, Folder, Subgroup
+        from apps.events.services import get_events_fallback_subgroup
+        from apps.forum.models import File, Folder
 
-        # Resolve effective subgroup — fall back to the "arrangementer" subgroup
-        # (same pattern as create_event_thread in services.py)
-        if event.subgroup:
-            file_subgroup = event.subgroup
-        else:
-            file_subgroup, _ = Subgroup.objects.get_or_create(
-                slug="arrangementer",
-                defaults={
-                    "name": "Arrangementer",
-                    "description": "Diskussioner om arrangementer",
-                },
-            )
+        # Resolve effective subgroup — fall back to the events catch-all subgroup
+        # (same helper as create_event_thread in services.py)
+        file_subgroup = event.subgroup or get_events_fallback_subgroup()
 
         # Create folder on demand
         if not event.folder:
@@ -647,7 +648,7 @@ class EventFilesView(APIView):
                 {
                     "id": f.id,
                     "name": f.name,
-                    "file_url": f.file.url,
+                    "file_url": signed_media_url(f.file.url),
                     "uploaded_by": {
                         "id": request.user.id,
                         "first_name": request.user.first_name,

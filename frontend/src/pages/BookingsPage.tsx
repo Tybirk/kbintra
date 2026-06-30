@@ -554,7 +554,7 @@ export default function BookingsPage() {
                   {event.title}
                 </Text>
                 {booking && (
-                  <Text size="xs" c="dimmed" lineClamp={2}>
+                  <Text size="xs" lineClamp={2}>
                     {booking.room.name}
                   </Text>
                 )}
@@ -626,7 +626,7 @@ export default function BookingsPage() {
                       {event.title}
                     </Text>
                     {booking && (
-                      <Text size="xs" lineClamp={2} style={{ opacity: 0.7 }}>
+                      <Text size="xs" lineClamp={2}>
                         {booking.room.name}
                       </Text>
                     )}

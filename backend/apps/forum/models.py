@@ -62,7 +62,11 @@ class Subgroup(models.Model):
     )
 
     class Meta:
-        ordering = ["-is_main", "-is_committee", "-last_activity_at"]
+        # Deliberately NOT ordered by last_activity_at: that timestamp is bumped
+        # by private/members-only threads too, which would float a subgroup to
+        # the top for people who can't see the activity. Activity ordering is
+        # done per-viewer in the serializer/frontend via latest_thread_activity_at.
+        ordering = ["-is_main", "-is_committee"]
 
     def __str__(self) -> str:
         return self.name
@@ -223,6 +227,12 @@ class PostAttachment(models.Model):
         null=True,
         help_text="400px-longest-edge JPEG thumbnail for gallery/inline display.",
     )
+    preview = models.ImageField(
+        upload_to="post_attachments/previews/",
+        blank=True,
+        null=True,
+        help_text="Full-size web-viewable JPEG for formats browsers can't render (e.g. HEIC).",
+    )
     name = models.CharField(max_length=255)
     preview_html = models.TextField(
         blank=True,
@@ -242,6 +252,8 @@ class PostAttachment(models.Model):
         self.file.delete(save=False)
         if self.thumbnail:
             self.thumbnail.delete(save=False)
+        if self.preview:
+            self.preview.delete(save=False)
         return super().delete(*args, **kwargs)
 
 

@@ -161,6 +161,53 @@ class TestEventAPI:
         assert response.status_code == 201
         assert Event.objects.filter(title="New Event").exists()
 
+    def test_edit_event_subgroup_reparents_thread(self, authenticated_client, db):
+        """Editing a community event to assign an udvalg moves its discussion
+        thread into that udvalg.
+
+        Regression: the thread used to stay under the 'arrangementer' fallback
+        group and was therefore invisible inside the assigned udvalg.
+        """
+        from apps.forum.models import Subgroup
+
+        now = timezone.now()
+        # Community event with no explicit subgroup → thread lands in the fallback.
+        create = authenticated_client.post(
+            "/api/events/",
+            {
+                "title": "Reparent Event",
+                "visibility": "community",
+                "start_datetime": (now + timedelta(days=3)).isoformat(),
+                "end_datetime": (now + timedelta(days=3, hours=2)).isoformat(),
+            },
+            format="json",
+        )
+        assert create.status_code == 201
+        event = Event.objects.select_related("thread__subgroup").get(title="Reparent Event")
+        assert event.thread is not None
+        assert event.thread.subgroup.slug == "arrangementer"
+
+        # Assign a real udvalg via edit.
+        udvalg = Subgroup.objects.create(name="Madudvalget", slug="madudvalget", is_committee=True)
+        patch = authenticated_client.patch(
+            f"/api/events/{event.slug}/",
+            {"subgroup_id": udvalg.id},
+            format="json",
+        )
+        assert patch.status_code == 200
+
+        event.refresh_from_db()
+        assert event.subgroup_id == udvalg.id
+        # The thread moved with the event.
+        event.thread.refresh_from_db()
+        assert event.thread.subgroup_id == udvalg.id
+
+        # And the event is now listed under that udvalg.
+        listing = authenticated_client.get(f"/api/events/?subgroup={udvalg.id}")
+        data = listing.json()
+        results = data if isinstance(data, list) else data.get("results", data)
+        assert any(e["title"] == "Reparent Event" for e in results)
+
     def test_create_private_event_with_room(self, authenticated_client, db):
         from apps.bookings.models import Room
 

@@ -48,7 +48,7 @@ export default function PrivacyPolicyPage() {
               madholdsmedlemskaber og madønsker
             </List.Item>
             <List.Item>
-              <strong>Kalender:</strong> Deltagelse i fællesarrangementer
+              <strong>Kalender:</strong> Deltagelse i fællesbegivenheder
             </List.Item>
             <List.Item>
               <strong>Tekniske data:</strong> Tidspunkt for oprettelse og senest

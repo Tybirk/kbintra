@@ -5,6 +5,7 @@ Serializers for Announcements models.
 from rest_framework import serializers
 from rest_framework.fields import empty
 
+from apps.backup.signing import signed_media_url
 from apps.users.models import User
 from apps.users.serializer_mixins import AvatarUrlMixin
 
@@ -37,6 +38,7 @@ class AnnouncementAttachmentSerializer(serializers.ModelSerializer):
 
     uploaded_by = AuthorSerializer(read_only=True)
     file_url = serializers.SerializerMethodField()
+    preview_url = serializers.SerializerMethodField()
 
     class Meta:
         model = AnnouncementAttachment
@@ -45,6 +47,7 @@ class AnnouncementAttachmentSerializer(serializers.ModelSerializer):
             "name",
             "file",
             "file_url",
+            "preview_url",
             "preview_html",
             "uploaded_by",
             "uploaded_at",
@@ -52,7 +55,15 @@ class AnnouncementAttachmentSerializer(serializers.ModelSerializer):
 
     def get_file_url(self, obj: AnnouncementAttachment) -> str:
         if obj.file:
-            return obj.file.url
+            return signed_media_url(obj.file.url)
+        return ""
+
+    def get_preview_url(self, obj: AnnouncementAttachment) -> str:
+        """View URL: converted web preview for HEIC, else the original file."""
+        if obj.preview:
+            return signed_media_url(obj.preview.url)
+        if obj.file:
+            return signed_media_url(obj.file.url)
         return ""
 
 
@@ -141,16 +152,18 @@ class AnnouncementCreateSerializer(serializers.ModelSerializer):
         announcement = super().create(validated_data)
 
         # Create attachments
+        from apps.forum.tasks import generate_attachment_preview_task
         from apps.forum.utils import generate_docx_preview
 
         for attachment_file in attachments:
-            AnnouncementAttachment.objects.create(
+            att = AnnouncementAttachment.objects.create(
                 announcement=announcement,
                 uploaded_by=announcement.author,
                 file=attachment_file,
                 name=attachment_file.name,
                 preview_html=generate_docx_preview(attachment_file),
             )
+            generate_attachment_preview_task("announcements", "AnnouncementAttachment", att.id)
 
         # Send notifications to all users (except author) if announcement is active
         if announcement.is_active:

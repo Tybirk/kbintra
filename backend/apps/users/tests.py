@@ -689,8 +689,10 @@ class TestUserProfileThumbnail:
         User.objects.filter(pk=u.pk).update(profile_picture="profile_pictures/x.jpg")
         u.refresh_from_db()
         assert not u.profile_picture_thumbnail
-        # avatar_url should return the original URL
-        assert u.avatar_url == u.profile_picture.url
+        # avatar_url should return the original URL (signed with a short-lived
+        # token, so compare the base path before the ?exp=&sig= query).
+        assert u.avatar_url.startswith(u.profile_picture.url)
+        assert "sig=" in u.avatar_url
 
     def test_avatar_url_prefers_thumbnail(self, db):
         from django.core.files.uploadedfile import SimpleUploadedFile
@@ -705,5 +707,7 @@ class TestUserProfileThumbnail:
         )
         u.refresh_from_db()
         assert u.profile_picture_thumbnail
-        assert u.avatar_url == u.profile_picture_thumbnail.url
-        assert u.avatar_url != u.profile_picture.url
+        # avatar_url prefers the thumbnail (signed with a short-lived token, so
+        # compare the base path before the ?exp=&sig= query).
+        assert u.avatar_url.startswith(u.profile_picture_thumbnail.url)
+        assert not u.avatar_url.startswith(u.profile_picture.url)

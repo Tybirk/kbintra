@@ -215,12 +215,15 @@ export default function DashboardPage() {
     return subgroups
       .filter((s) => s.is_member || s.is_subscribed)
       .sort((a, b) => {
-        const aTime = a.last_activity_at
-          ? new Date(a.last_activity_at).getTime()
+        // Sort by the privacy-aware latest visible thread activity, NOT the raw
+        // last_activity_at (which is bumped by private threads too and would
+        // float a group up for people who can't see why).
+        const aTime = a.latest_thread_activity_at
+          ? new Date(a.latest_thread_activity_at).getTime()
           : 0
 
-        const bTime = b.last_activity_at
-          ? new Date(b.last_activity_at).getTime()
+        const bTime = b.latest_thread_activity_at
+          ? new Date(b.latest_thread_activity_at).getTime()
           : 0
 
         return bTime - aTime
@@ -859,10 +862,10 @@ export default function DashboardPage() {
           </Paper>
         </ErrorBoundary>
 
-        <ErrorBoundary compact title="Kunne ikke vise arrangementer">
+        <ErrorBoundary compact title="Kunne ikke vise begivenheder">
           <Paper withBorder p="lg" radius="md">
             <Group justify="space-between" mb="md">
-              <Title order={3}>Kommende arrangementer</Title>
+              <Title order={3}>Kommende begivenheder</Title>
               <Button
                 component={Link}
                 to="/kalender"
@@ -883,7 +886,7 @@ export default function DashboardPage() {
                 ))}
               </Stack>
             ) : (
-              <Text c="dimmed">Ingen kommende arrangementer.</Text>
+              <Text c="dimmed">Ingen kommende begivenheder.</Text>
             )}
           </Paper>
         </ErrorBoundary>
@@ -1109,7 +1112,7 @@ function BirthdayPreview({ birthday }: BirthdayPreviewProps) {
   let dateLabel: string
 
   if (daysUntil === 0) {
-    dateLabel = "🇩🇰 I dag!"
+    dateLabel = "I dag!"
   } else if (daysUntil === 1) {
     dateLabel = "I morgen"
   } else {
@@ -1142,6 +1145,16 @@ function BirthdayPreview({ birthday }: BirthdayPreviewProps) {
             Fylder {age} år
           </Text>
         </div>
+        {daysUntil === 0 && (
+          <Text
+            size="xl"
+            lh={1}
+            style={{ flexShrink: 0 }}
+            aria-label="Dansk flag"
+          >
+            🇩🇰
+          </Text>
+        )}
         <Badge color={daysUntil === 0 ? "pink" : "gray"} size="sm">
           {dateLabel}
         </Badge>

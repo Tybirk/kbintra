@@ -1079,7 +1079,7 @@ export default function ThreadPage() {
           <Group justify="center" gap="xs">
             <IconInfoCircle size={16} color="var(--mantine-color-gray-6)" />
             <Text size="sm" c="dimmed">
-              Brug denne tråd til at diskutere arrangementet.
+              Brug denne tråd til at diskutere begivenheden.
             </Text>
           </Group>
         </Paper>

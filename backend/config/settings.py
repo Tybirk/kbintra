@@ -236,6 +236,13 @@ STORAGES = {
 MEDIA_URL = "media/"
 MEDIA_ROOT = DATA_DIR / "media"
 
+# Key for signing short-lived /media URLs (apps.backup.signing). Lets <img> tags
+# authenticate via a token in the URL instead of the session cookie, so images
+# keep working when the cookie is dropped (common on iOS). Defaults to
+# SECRET_KEY so no new secret is required in production; set a dedicated value to
+# rotate media URLs independently (rotating invalidates outstanding ones, ≤2h).
+MEDIA_URL_SIGNING_KEY = os.getenv("MEDIA_URL_SIGNING_KEY", SECRET_KEY)
+
 # Session cookie used to gate /media/* requests. JWT remains the primary auth
 # for the API; the session is set as a side-effect of the JWT login flow so
 # same-origin <img src="/media/..."> tags carry credentials automatically.

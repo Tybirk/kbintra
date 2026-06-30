@@ -587,7 +587,7 @@ function SubgroupCard({
           </Text>
         )}
 
-        {subgroup.last_activity_at && (
+        {subgroup.latest_thread_activity_at && (
           <Text
             size="xs"
             c="dimmed"
@@ -595,11 +595,8 @@ function SubgroupCard({
             style={{ overflow: "hidden", textOverflow: "ellipsis" }}
           >
             {subgroup.latest_thread_title
-              ? `Seneste: ${subgroup.latest_thread_title} \u2014 ${dayjs(subgroup.latest_thread_activity_at ?? subgroup.last_activity_at).fromNow()}`
-              : dayjs(
-                  subgroup.latest_thread_activity_at ??
-                    subgroup.last_activity_at,
-                ).fromNow()}
+              ? `Seneste: ${subgroup.latest_thread_title} \u2014 ${dayjs(subgroup.latest_thread_activity_at).fromNow()}`
+              : dayjs(subgroup.latest_thread_activity_at).fromNow()}
           </Text>
         )}
       </Stack>

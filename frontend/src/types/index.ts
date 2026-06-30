@@ -293,6 +293,8 @@ export interface PostAttachment {
 
   thumbnail_url: string
 
+  preview_url?: string
+
   preview_html?: string
 
   uploaded_by: Author | null
@@ -308,6 +310,8 @@ export interface GalleryItem {
   file_url: string
 
   thumbnail_url: string
+
+  preview_url?: string
 
   preview_html?: string
 
@@ -1073,6 +1077,8 @@ export interface MessageAttachment {
   file: string
 
   file_url: string
+
+  preview_url?: string
 
   preview_html?: string
 

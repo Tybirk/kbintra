@@ -52,6 +52,11 @@ interface Attachment {
 
   file_url: string
 
+  // Web-viewable URL for formats the browser can't render (e.g. HEIC); the
+  // server points this at a converted JPEG. Falls back to file_url for normal
+  // images. Used for display/zoom only — downloads always use file_url.
+  preview_url?: string
+
   preview_html?: string
 
   // Optional thread context — present when the carousel is opened from the
@@ -154,7 +159,9 @@ export function AttachmentCarousel({
   ) {
     return (
       <ImageZoomViewer
-        src={orderedAttachments[0].file_url}
+        src={
+          orderedAttachments[0].preview_url ?? orderedAttachments[0].file_url
+        }
         alt={orderedAttachments[0].name}
         opened={opened}
         onClose={onClose}
@@ -367,6 +374,9 @@ function SlideContent({
   // Image preview
 
   if (fileType === "image") {
+    // HEIC/HEIF can't render in the browser; use the server-generated JPEG
+    // preview when present, falling back to the original for normal images.
+    const imageSrc = attachment.preview_url ?? attachment.file_url
     return (
       <Box
         style={{
@@ -384,17 +394,15 @@ function SlideContent({
         }}
       >
         <Box
-          onDoubleClick={() =>
-            onImageZoom(attachment.file_url, attachment.name)
-          }
+          onDoubleClick={() => onImageZoom(imageSrc, attachment.name)}
           onWheel={(e) => {
             if (e.deltaY < 0) {
-              onImageZoom(attachment.file_url, attachment.name)
+              onImageZoom(imageSrc, attachment.name)
             }
           }}
           onTouchStart={(e) => {
             if (e.touches.length >= 2) {
-              onImageZoom(attachment.file_url, attachment.name)
+              onImageZoom(imageSrc, attachment.name)
             }
           }}
           style={{
@@ -411,7 +419,7 @@ function SlideContent({
           }}
         >
           <Image
-            src={attachment.file_url}
+            src={imageSrc}
             alt={attachment.name}
             fit="contain"
             style={{
@@ -421,7 +429,7 @@ function SlideContent({
 
               cursor: "zoom-in",
             }}
-            onClick={() => onImageZoom(attachment.file_url, attachment.name)}
+            onClick={() => onImageZoom(imageSrc, attachment.name)}
           />
         </Box>
         <Group justify="center" gap="xs" style={{ flexShrink: 0 }}>

@@ -2568,3 +2568,64 @@ class TestPostAttachmentThumbnail:
             assert thumb_img.size == (400, 400)
             # We always emit JPEG regardless of source format.
             assert thumb_img.format == "JPEG"
+
+    def test_heic_upload_generates_web_preview(self, db, user, subgroup, thread):
+        """HEIC uploads also get a full-size web-viewable JPEG `preview` so the
+        carousel/zoom can show them in browsers that can't decode HEIC."""
+        from PIL import Image as PILImage
+
+        from apps.forum.serializers import PostAttachmentSerializer, _create_post_attachment
+
+        post = Post.objects.create(thread=thread, author=user, content="see file")
+        upload = SimpleUploadedFile(
+            "iphone.heic",
+            self._real_heic_bytes(2000, 1500),
+            content_type="image/heic",
+        )
+        att = _create_post_attachment(post, user, upload)
+        att.refresh_from_db()
+
+        assert att.preview
+        with att.preview.open("rb") as fh, PILImage.open(fh) as prev_img:
+            # Full-size (not square-cropped), longest edge capped at 2000, JPEG.
+            assert max(prev_img.size) <= 2000
+            assert prev_img.size == (2000, 1500)
+            assert prev_img.format == "JPEG"
+
+        data = PostAttachmentSerializer(att).data
+        # preview_url points at the converted JPEG (not the original .heic), while
+        # file_url stays the original for download.
+        assert "previews/" in data["preview_url"]
+        assert data["preview_url"] != data["file_url"]
+
+    def test_non_heic_image_has_no_preview(self, db, user, subgroup, thread):
+        """Browser-renderable formats don't need a converted preview; preview_url
+        falls back to the original file URL."""
+        from apps.forum.serializers import PostAttachmentSerializer, _create_post_attachment
+
+        post = Post.objects.create(thread=thread, author=user, content="see file")
+        upload = SimpleUploadedFile("photo.jpg", self._real_jpeg_bytes(), content_type="image/jpeg")
+        att = _create_post_attachment(post, user, upload)
+        att.refresh_from_db()
+
+        assert not att.preview
+        data = PostAttachmentSerializer(att).data
+        assert data["preview_url"] == data["file_url"]
+
+    def test_delete_removes_preview_file(self, db, user, subgroup, thread):
+        import os
+
+        from apps.forum.serializers import _create_post_attachment
+
+        post = Post.objects.create(thread=thread, author=user, content="see file")
+        upload = SimpleUploadedFile(
+            "iphone.heic", self._real_heic_bytes(), content_type="image/heic"
+        )
+        att = _create_post_attachment(post, user, upload)
+        att.refresh_from_db()
+        assert att.preview
+        preview_path = att.preview.path
+
+        att.delete()
+
+        assert not os.path.exists(preview_path)

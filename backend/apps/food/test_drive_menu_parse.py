@@ -143,6 +143,37 @@ def test_dish_on_page_one_is_not_overwritten_by_page_two(service: DriveMenuServi
     assert parsed.thursday == "Sprøde gulerods nuggets"
 
 
+def test_weekly_veggie_order_not_appended_to_thursday(service: DriveMenuService) -> None:
+    """Regression for the reported bug: the weekly grocery/veggie order
+    ("Gnavegrønt til ugen ...") sits after Torsdag's dish with no weekday header,
+    so it used to be swallowed into Thursday's menu text. It must now be excluded
+    while Thursday's real dish is kept and Mon-Wed are unaffected.
+    """
+    parsed = service._parse_docx(
+        _make_docx(
+            [
+                "Mandag",
+                "Lasagne",
+                "Tirsdag",
+                "Thai karry",
+                "Onsdag",
+                "Frikadeller",
+                "Torsdag",
+                "Beluga-bolognese med spaghetti og fennikelsalat med citrusfrugter",
+                "Gnavegrønt til ugen 18 stk agurker 4 stk blomkål "
+                "6,8 kg gulerødder 5 kg appelsiner 10 stk glaskål",
+            ]
+        ),
+        week_number=24,
+    )
+    assert parsed.monday == "Lasagne"
+    assert parsed.tuesday == "Thai karry"
+    assert parsed.wednesday == "Frikadeller"
+    assert parsed.thursday == "Beluga-bolognese med spaghetti og fennikelsalat med citrusfrugter"
+    assert "Gnavegrønt" not in parsed.thursday
+    assert "agurker" not in parsed.thursday
+
+
 def test_repeated_earlier_day_does_not_drop_later_days(service: DriveMenuService) -> None:
     """If an earlier day header repeats (e.g. overview + detailed section on the
     same page) before later days appear, the later days must still be parsed.
