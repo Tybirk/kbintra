@@ -66,7 +66,11 @@ class Subgroup(models.Model):
         # by private/members-only threads too, which would float a subgroup to
         # the top for people who can't see the activity. Activity ordering is
         # done per-viewer in the serializer/frontend via latest_thread_activity_at.
-        ordering = ["-is_main", "-is_committee"]
+        #
+        # `name` is the tiebreaker because those two flags leave 40 of the 50
+        # groups equal, and without it SQLite returns them in whatever order the
+        # rows happen to sit in — so a list could reshuffle after any edit.
+        ordering = ["-is_main", "-is_committee", "name"]
 
     def __str__(self) -> str:
         return self.name

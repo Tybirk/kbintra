@@ -247,8 +247,11 @@ def _sign_indexed_media(extra: object) -> object:
     """
     from apps.backup.signing import signed_media_url
 
-    if isinstance(extra, dict) and extra.get("file_url"):
-        return {**extra, "file_url": signed_media_url(extra["file_url"])}
+    if isinstance(extra, dict):
+        file_url = extra.get("file_url")
+        # Narrowed rather than assumed: this is JSON read back off disk.
+        if isinstance(file_url, str) and file_url:
+            return {**extra, "file_url": signed_media_url(file_url)}
     return extra
 
 

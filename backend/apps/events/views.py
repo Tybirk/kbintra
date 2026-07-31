@@ -201,12 +201,16 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
             event.thread.title = event.title
             event.thread.save(update_fields=["title"])
 
-        # Re-parent the discussion thread if the event's subgroup changed, so a
-        # reassigned event becomes visible in the new udvalg (not the old one /
-        # the fallback group).
-        from apps.events.services import sync_event_thread_subgroup
+        # Re-parent the discussion thread and the file folder if the event's
+        # subgroup changed, so a reassigned event — and its files — become
+        # visible in the new udvalg (not the old one / the fallback group).
+        from apps.events.services import (
+            sync_event_folder_subgroup,
+            sync_event_thread_subgroup,
+        )
 
         sync_event_thread_subgroup(event)
+        sync_event_folder_subgroup(event)
 
         # Notify if time/location changed
         time_changed = event.start_datetime != old_start

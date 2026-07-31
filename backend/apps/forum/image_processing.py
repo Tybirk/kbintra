@@ -180,16 +180,9 @@ def generate_thumbnail(source: BinaryIO) -> ContentFile | None:
         logger.warning("Pillow could not open attachment for thumbnailing: %s", exc)
         return None
 
-    img = ImageOps.exif_transpose(img)
-
-    # JPEG can't carry alpha — composite onto white so PNGs with transparency
-    # don't end up with a black background.
-    if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
-        background = Image.new("RGB", img.size, (255, 255, 255))
-        background.paste(img.convert("RGBA"), mask=img.convert("RGBA").split()[-1])
-        img = background
-    elif img.mode != "RGB":
-        img = img.convert("RGB")
+    # Applies EXIF orientation and composites alpha onto white: JPEG can't carry
+    # transparency, so a PNG would otherwise get a black background.
+    img = _flatten_to_rgb(img)
 
     # Clamp target side to the source's shortest edge to avoid upscaling small
     # images. ImageOps.fit crops to the target aspect ratio (square here),

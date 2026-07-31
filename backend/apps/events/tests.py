@@ -208,6 +208,63 @@ class TestEventAPI:
         results = data if isinstance(data, list) else data.get("results", data)
         assert any(e["title"] == "Reparent Event" for e in results)
 
+    def test_edit_event_subgroup_moves_the_file_folder_too(self, authenticated_client, db):
+        """Files attached to an event follow it into the assigned udvalg.
+
+        Uploads usually happen before an udvalg is picked, so the folder is
+        created under the 'arrangementer' fallback. Moving only the thread left
+        the folder — and every file in it — in the fallback group, where the
+        udvalg's members had no way to find them.
+        """
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from apps.forum.models import File, Subgroup
+
+        now = timezone.now()
+        create = authenticated_client.post(
+            "/api/events/",
+            {
+                "title": "Event med filer",
+                "visibility": "community",
+                "start_datetime": (now + timedelta(days=3)).isoformat(),
+                "end_datetime": (now + timedelta(days=3, hours=2)).isoformat(),
+            },
+            format="json",
+        )
+        assert create.status_code == 201
+        event = Event.objects.get(title="Event med filer")
+
+        upload = authenticated_client.post(
+            f"/api/events/{event.slug}/files/",
+            {"files": SimpleUploadedFile("dagsorden.pdf", b"%PDF-1.4 fake")},
+            format="multipart",
+        )
+        assert upload.status_code in (200, 201), upload.data
+
+        event.refresh_from_db()
+        assert event.folder is not None
+        assert event.folder.subgroup.slug == "arrangementer"
+
+        udvalg = Subgroup.objects.create(
+            name="Festudvalget", slug="festudvalget", is_committee=True
+        )
+        patch = authenticated_client.patch(
+            f"/api/events/{event.slug}/",
+            {"subgroup_id": udvalg.id},
+            format="json",
+        )
+        assert patch.status_code == 200
+
+        event.refresh_from_db()
+        event.folder.refresh_from_db()
+        assert event.folder.subgroup_id == udvalg.id, "the folder stayed in the old group"
+        # The year folder it hangs under must belong to the new group as well.
+        assert event.folder.parent is not None
+        assert event.folder.parent.subgroup_id == udvalg.id
+        # Files carry their own subgroup for the group's file list.
+        assert File.objects.filter(folder=event.folder).exists()
+        assert not File.objects.filter(folder=event.folder).exclude(subgroup=udvalg).exists()
+
     def test_create_private_event_with_room(self, authenticated_client, db):
         from apps.bookings.models import Room
 

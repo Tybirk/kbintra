@@ -42,6 +42,8 @@ import { notifications } from "@mantine/notifications"
 
 import { showErrorNotification } from "../utils/errorNotification"
 
+import { unsignedMediaUrl } from "../utils/mediaUrl"
+
 import {
   IconPlus,
   IconPin,
@@ -631,9 +633,10 @@ When done, print a short summary:
             parts.push("Attachments:\n")
 
             for (const att of post.attachments) {
-              const attUrl = att.file_url.startsWith("http")
-                ? att.file_url
-                : `${origin}${att.file_url}`
+              const fileUrl = unsignedMediaUrl(att.file_url)
+              const attUrl = fileUrl.startsWith("http")
+                ? fileUrl
+                : `${origin}${fileUrl}`
               parts.push(
                 `- ${attUrl} (${att.name}) — fetch with \`curl -O '${attUrl}'\`\n`,
               )
@@ -2569,7 +2572,9 @@ function FileRow({
               onClick={(e: React.MouseEvent) => {
                 e.stopPropagation()
 
-                const url = `${window.location.origin}${file.file_url}`
+                // Unsigned: the signature would expire within hours, and
+                // until then it grants access without a login.
+                const url = `${window.location.origin}${unsignedMediaUrl(file.file_url)}`
 
                 navigator.clipboard.writeText(url).then(
                   () =>

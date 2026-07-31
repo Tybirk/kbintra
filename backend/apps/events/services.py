@@ -82,3 +82,39 @@ def sync_event_thread_subgroup(event: Event) -> None:
         event.thread.save(update_fields=["subgroup"])
         target.last_activity_at = timezone.now()
         target.save(update_fields=["last_activity_at"])
+
+
+def sync_event_folder_subgroup(event: Event) -> None:
+    """Move an event's file folder along with the event's subgroup.
+
+    The folder is created under whichever group the event had at upload time
+    (often the 'Begivenheder' fallback, because files are usually attached before
+    an udvalg is picked). Only moving the thread left the folder — and every file
+    in it — behind in the old group, where the udvalg's members can't find them.
+
+    Files carry their own subgroup FK for the group's file list, so they have to
+    move too, not just their parent folder.
+    """
+    if not event.folder_id:
+        return
+
+    from apps.forum.models import File, Folder
+
+    target = event.subgroup if event.subgroup_id else get_events_fallback_subgroup()
+    folder = event.folder
+
+    if folder.subgroup_id == target.id:
+        return
+
+    # Event folders live under a per-year folder; make sure the target group has
+    # one rather than pointing at the old group's.
+    year_folder, _ = Folder.objects.get_or_create(
+        subgroup=target,
+        name=str(event.start_datetime.year),
+        parent=None,
+    )
+    folder.subgroup = target
+    folder.parent = year_folder
+    folder.save(update_fields=["subgroup", "parent"])
+
+    File.objects.filter(folder=folder).update(subgroup=target)
