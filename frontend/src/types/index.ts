@@ -552,6 +552,10 @@ export interface ForumFile {
 
   file_url: string
 
+  /** JPEG rendition for formats browsers can't decode (HEIC/HEIF), when the
+   *  source model has one. Forum documents don't, so it may be absent. */
+  preview_url?: string
+
   preview_html?: string
 
   uploaded_by: Author | null
@@ -575,6 +579,8 @@ export interface AnnouncementAttachment {
   file: string
 
   file_url: string
+
+  preview_url?: string
 
   preview_html?: string
 

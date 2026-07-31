@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.backup.signing import signed_media_url
-from apps.forum.tasks import generate_attachment_preview_task
+from apps.forum.image_processing import ensure_attachment_preview
 
 from .models import Conversation, Message, MessageAttachment, MessageReaction, MessageReadStatus
 from .serializers import (
@@ -115,9 +115,8 @@ class ConversationListCreateView(generics.ListCreateAPIView):
                                 uploaded_by=request.user,
                             )
                             attachment_objects.append(att)
-                            generate_attachment_preview_task(
-                                "messaging", "MessageAttachment", att.id
-                            )
+                            # Inline: the broadcast below reads `preview`.
+                            ensure_attachment_preview("messaging", "MessageAttachment", att)
 
                         # Broadcast message via WebSocket so all clients update instantly
                         from asgiref.sync import async_to_sync
@@ -189,7 +188,7 @@ class ConversationListCreateView(generics.ListCreateAPIView):
                     name=attachment_file.name,
                     uploaded_by=request.user,
                 )
-                generate_attachment_preview_task("messaging", "MessageAttachment", att.id)
+                ensure_attachment_preview("messaging", "MessageAttachment", att)
 
             # Send notifications to other participants in background
             from apps.notifications.tasks import notify_new_message_task

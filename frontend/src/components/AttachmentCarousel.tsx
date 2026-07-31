@@ -36,6 +36,7 @@ import {
 
 import {
   getFileType,
+  getRenderableFileType,
   getFileIcon,
   getFileTypeColor,
   useFileActions,
@@ -307,7 +308,7 @@ function SlideContent({
 
   const [error, setError] = useState<string | null>(null)
 
-  const fileType = getFileType(attachment.name)
+  const fileType = getRenderableFileType(attachment)
 
   const actions = useFileActions(attachment, opened)
 

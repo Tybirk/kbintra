@@ -4,7 +4,11 @@ import { screen, waitFor } from "@testing-library/react"
 
 import { render } from "../test/testUtils"
 
-import { FileActionButtons, type FileActions } from "./FilePreview"
+import {
+  FileActionButtons,
+  getRenderableFileType,
+  type FileActions,
+} from "./FilePreview"
 
 /** Make useMediaQuery("(pointer: coarse)") report a touch device. */
 function mockPointer(coarse: boolean) {
@@ -110,5 +114,60 @@ describe("FileActionButtons", () => {
     expect(
       screen.queryByRole("button", { name: /Åbn|Del/ }),
     ).not.toBeInTheDocument()
+  })
+})
+
+describe("getRenderableFileType", () => {
+  it("treats HEIC as an image only when a converted preview exists", () => {
+    const withPreview = {
+      name: "iphone.heic",
+      file_url: "/media/x/iphone.heic",
+      preview_url: "/media/x/previews/1.jpg",
+    }
+
+    const withoutPreview = {
+      name: "iphone.heic",
+      file_url: "/media/x/iphone.heic",
+    }
+
+    expect(getRenderableFileType(withPreview)).toBe("image")
+
+    // No preview (forum documents, search results) — an <img> here would be
+    // broken in every browser but Safari, so fall back to the file tile.
+    expect(getRenderableFileType(withoutPreview)).toBe("other")
+  })
+
+  it("leaves ordinary images and documents alone", () => {
+    expect(
+      getRenderableFileType({ name: "foto.jpg", file_url: "/media/foto.jpg" }),
+    ).toBe("image")
+
+    expect(
+      getRenderableFileType({
+        name: "notat.docx",
+        file_url: "/media/notat.docx",
+      }),
+    ).toBe("word")
+
+    expect(
+      getRenderableFileType({
+        name: "rapport.pdf",
+        file_url: "/media/rapport.pdf",
+      }),
+    ).toBe("pdf")
+  })
+
+  it("is case-insensitive about the extension", () => {
+    expect(
+      getRenderableFileType({ name: "IMG_0881.HEIC", file_url: "/x" }),
+    ).toBe("other")
+
+    expect(
+      getRenderableFileType({
+        name: "IMG_0881.HEIF",
+        file_url: "/x",
+        preview_url: "/p.jpg",
+      }),
+    ).toBe("image")
   })
 })

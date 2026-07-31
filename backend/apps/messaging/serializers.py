@@ -348,7 +348,7 @@ class CreateMessageSerializer(serializers.ModelSerializer):
         message = super().create(validated_data)
 
         # Create attachments
-        from apps.forum.tasks import generate_attachment_preview_task
+        from apps.forum.image_processing import ensure_attachment_preview
         from apps.forum.utils import generate_docx_preview
 
         user = self.context["request"].user
@@ -362,7 +362,9 @@ class CreateMessageSerializer(serializers.ModelSerializer):
                 preview_html=generate_docx_preview(attachment_file),
             )
             attachment_objects.append(att)
-            generate_attachment_preview_task("messaging", "MessageAttachment", att.id)
+            # Inline, not queued: the WebSocket broadcast below reads `preview` to
+            # build preview_url, and a queued task would not have run yet.
+            ensure_attachment_preview("messaging", "MessageAttachment", att)
 
         # Update conversation's updated_at
         message.conversation.save()

@@ -27,10 +27,8 @@ def _create_post_attachment(
     post: Post, uploaded_by: User, attachment_file: object
 ) -> PostAttachment:
     """Create a PostAttachment row and queue its thumbnail/preview generation."""
-    from .tasks import (
-        generate_attachment_preview_task,
-        generate_post_attachment_thumbnail_task,
-    )
+    from .image_processing import ensure_attachment_preview
+    from .tasks import generate_post_attachment_thumbnail_task
     from .utils import generate_docx_preview
 
     attachment = PostAttachment.objects.create(
@@ -42,8 +40,9 @@ def _create_post_attachment(
     )
     generate_post_attachment_thumbnail_task(attachment.id)
     # HEIC/HEIF gets a web-viewable JPEG so browsers that can't decode it (Chrome,
-    # Android) can still display it in the carousel/zoom.
-    generate_attachment_preview_task("forum", "PostAttachment", attachment.id)
+    # Android) can still display it in the carousel/zoom. Generated inline: the
+    # response this attachment goes into already carries preview_url.
+    ensure_attachment_preview("forum", "PostAttachment", attachment)
     return attachment
 
 

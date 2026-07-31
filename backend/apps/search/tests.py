@@ -239,6 +239,36 @@ class TestIndexAndSearch:
         assert results[0]["type"] == "thread"
         assert results[0]["object_id"] == 1
 
+    def test_indexed_file_url_is_signed_at_read_time(self):
+        """Files opened from search must carry a fresh media signature.
+
+        The index stores the plain URL — a signature would expire long before the
+        row is reindexed — so it has to be signed on the way out. Otherwise a
+        search result still 401s for a client that has lost its session cookie,
+        which is precisely what signed media URLs are for.
+        """
+        index_object(
+            obj_type="file",
+            object_id=7,
+            title="Vedtaegter.pdf",
+            body="foreningens vedtaegter",
+            url="/forum/bestyrelsen/filer",
+            extra=json.dumps({"file_url": "/media/forum_files/Vedtaegter.pdf"}),
+        )
+        result = fts_search("vedtaegter")[0]
+        assert "exp=" in result["extra"]["file_url"]
+        assert "sig=" in result["extra"]["file_url"]
+
+        from urllib.parse import parse_qs, urlparse
+
+        from apps.backup.signing import verify_media_signature
+
+        parsed = urlparse(result["extra"]["file_url"])
+        params = parse_qs(parsed.query)
+        assert verify_media_signature(
+            "forum_files/Vedtaegter.pdf", params["exp"][0], params["sig"][0]
+        )
+
     def test_prefix_search(self):
         """Test prefix matching works for typeahead."""
         index_object(

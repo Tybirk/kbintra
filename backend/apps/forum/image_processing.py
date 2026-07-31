@@ -131,6 +131,32 @@ def generate_attachment_preview(attachment: object) -> bool:
     return True
 
 
+def ensure_attachment_preview(app_label: str, model_name: str, attachment: object) -> None:
+    """Generate a HEIC/HEIF `preview` *now*, falling back to the background task.
+
+    Upload paths hand the attachment straight into the response body and the
+    WebSocket broadcast, both of which read `preview` to build `preview_url`. A
+    queued task hasn't run at that point in production, so the payload carried
+    the undecodable original and every recipient saw a broken image until they
+    reloaded. Generating inline keeps those payloads correct by construction.
+
+    Cheap in practice: this no-ops for every format browsers can render, so only
+    genuine HEIC uploads (a handful in the whole archive) pay for the conversion.
+    """
+    from apps.forum.tasks import generate_attachment_preview_task
+
+    try:
+        generate_attachment_preview(attachment)
+    except Exception:  # noqa: BLE001 — an upload must not fail over a preview
+        logger.exception(
+            "Inline preview failed for %s.%s %s; falling back to the task queue",
+            app_label,
+            model_name,
+            getattr(attachment, "pk", None),
+        )
+        generate_attachment_preview_task(app_label, model_name, attachment.pk)
+
+
 def generate_thumbnail(source: BinaryIO) -> ContentFile | None:
     """Open `source`, return a JPEG ContentFile of a centered square crop.
 

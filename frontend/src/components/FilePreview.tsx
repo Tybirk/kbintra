@@ -56,9 +56,9 @@ const IMAGE_EXTENSIONS = [
 
   "ico",
 
-  // Apple formats — not browser-renderable, but the backend generates a
-  // web-viewable JPEG `preview`; we classify them as images so the UI shows
-  // that preview instead of a generic "cannot preview" tile.
+  // Apple formats — not browser-renderable on their own. Classified as images
+  // so surfaces with a server-generated JPEG `preview` show it; where no preview
+  // exists, getRenderableFileType() demotes them to a file tile.
   "heic",
 
   "heif",
@@ -114,6 +114,30 @@ export function getFileType(filename: string): FileType {
   return "other"
 }
 
+/** True for Apple's HEIC/HEIF, which no browser but Safari can decode. */
+export function isHeic(filename: string): boolean {
+  const ext = getFileExtension(filename)
+
+  return ext === "heic" || ext === "heif"
+}
+
+/**
+ * The type to *render* a file as, which isn't always what its name says.
+ *
+ * HEIC counts as an image only when the backend produced a JPEG `preview` for
+ * it. Surfaces that carry no preview — forum documents, whose model has no such
+ * field, and anything reached from search — would otherwise put the raw .heic in
+ * an <img> and show a broken image everywhere except Safari. Falling back to the
+ * generic file tile keeps those openable via Del/Gem instead.
+ */
+export function getRenderableFileType(file: PreviewableFile): FileType {
+  const type = getFileType(file.name)
+
+  if (type === "image" && isHeic(file.name) && !file.preview_url) return "other"
+
+  return type
+}
+
 export function getFileIcon(filename: string) {
   const type = getFileType(filename)
 
@@ -166,6 +190,9 @@ interface PreviewableFile {
   name: string
 
   file_url: string
+
+  /** Server-generated JPEG for formats browsers can't decode (HEIC/HEIF). */
+  preview_url?: string | null
 }
 
 function triggerDownload(url: string, filename: string) {
@@ -191,7 +218,7 @@ function triggerDownload(url: string, filename: string) {
  * and save it ("Gem") — all without navigating away or hitting the media 401.
  */
 export function useFileActions(file: PreviewableFile | null, enabled: boolean) {
-  const fileType = file ? getFileType(file.name) : "other"
+  const fileType = file ? getRenderableFileType(file) : "other"
 
   const needsBlob =
     fileType === "pdf" ||
@@ -509,7 +536,7 @@ export function FilePreviewModal({
           <Stack gap="md">
             <Center>
               <Image
-                src={file.file_url}
+                src={file.preview_url ?? file.file_url}
                 alt={file.name}
                 radius="md"
                 maw="100%"
@@ -742,7 +769,7 @@ export function ImageThumbnail({
 
   onClick,
 }: ImageThumbnailProps) {
-  const fileType = getFileType(file.name)
+  const fileType = getRenderableFileType(file)
 
   if (fileType !== "image") {
     const Icon = getFileIcon(file.name)
@@ -757,7 +784,7 @@ export function ImageThumbnail({
 
   return (
     <Image
-      src={file.file_url}
+      src={file.preview_url ?? file.file_url}
       alt={file.name}
       w={size}
       h={size}

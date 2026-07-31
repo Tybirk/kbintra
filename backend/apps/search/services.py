@@ -230,9 +230,26 @@ def _parse_fts_row(row: tuple) -> dict:
             item["extra"] = json.loads(item["extra"])
         except (json.JSONDecodeError, TypeError):
             item["extra"] = None
+        else:
+            item["extra"] = _sign_indexed_media(item["extra"])
     else:
         item["extra"] = None
     return item
+
+
+def _sign_indexed_media(extra: object) -> object:
+    """Attach a fresh media signature to a file URL coming out of the index.
+
+    URLs are indexed unsigned on purpose — a signature lasts ~2 hours while an
+    index entry lives until the row changes — so they have to be signed on the
+    way out. Without this, a file opened from search still 401s on a client that
+    has lost its session cookie, which is the case signed URLs exist for.
+    """
+    from apps.backup.signing import signed_media_url
+
+    if isinstance(extra, dict) and extra.get("file_url"):
+        return {**extra, "file_url": signed_media_url(extra["file_url"])}
+    return extra
 
 
 def fts_search(query: str, limit: int = 10) -> list[dict]:
