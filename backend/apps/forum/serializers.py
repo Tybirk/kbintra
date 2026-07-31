@@ -222,8 +222,12 @@ class SubgroupSerializer(serializers.ModelSerializer):
             "members",
             "subscriber_count",
             "created_at",
-            "last_activity_at",
         ]
+        # NOTE: `last_activity_at` is deliberately not exposed. It's bumped by
+        # private threads too, so sorting on it floats a group up for people who
+        # can't see why (the bug in "Sortering af forum grupper skal ikke tælle
+        # private tråde med"). Clients must use the privacy-aware
+        # `latest_thread_activity_at` instead.
 
     def get_members(self, obj: Subgroup) -> list[dict]:
         if not obj.allows_members:

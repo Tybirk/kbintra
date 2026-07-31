@@ -174,6 +174,101 @@ def test_weekly_veggie_order_not_appended_to_thursday(service: DriveMenuService)
     assert "agurker" not in parsed.thursday
 
 
+@pytest.mark.parametrize(
+    "veggie_order_header",
+    [
+        "Gnavegrønt til ugen:",
+        "Gnavegrønt til ugen",
+        "Gnavegrønt.",
+        "Gnavegrønt\ttil ugen:",  # tab instead of space (uge 20)
+        "Gnavegrønt: Gulerødder, æbler, pære, glaskål og blomkål",
+        "Grønt til ugen",
+        "Ugens grønt",
+    ],
+)
+def test_veggie_order_header_variants_all_terminate(
+    service: DriveMenuService, veggie_order_header: str
+) -> None:
+    """Every phrasing of the shopping-block header seen in the menu archive must
+    end Thursday's dish text."""
+    parsed = service._parse_docx(
+        _make_docx(
+            [
+                "Torsdag",
+                "Cremet blomkålssuppe med foccacia",
+                veggie_order_header,
+                "æbler 4 kg",
+                "gulerødder 7 kg",
+            ]
+        ),
+        week_number=8,
+    )
+    assert parsed.thursday == "Cremet blomkålssuppe med foccacia"
+    assert "kg" not in parsed.thursday
+
+
+def test_gnavegroent_as_a_days_side_dish_does_not_stop_parsing(
+    service: DriveMenuService,
+) -> None:
+    """Cooks list gnavegrønt as a side dish for individual days ("Tilbehør: ... +
+    gnavegrønt"). Those lines belong to their day and must not terminate parsing.
+
+    Taken verbatim from uge 5/2026. Treating them as the weekly shopping block
+    stopped the parse at Monday and blanked Tuesday through Thursday.
+    """
+    parsed = service._parse_docx(
+        _make_docx(
+            [
+                "Uge med Dhal",
+                "Mandag",
+                "Svampe i butterdej med porre og kål",
+                "Tilbehør: bulgursalat med kål og kerner + gnavegrønt",
+                "Tirsdag",
+                "Dhal med raita, bagte rodfrugter",
+                "Tilbehør: Flutes og gnavegrønt",
+                "Onsdag",
+                "Pitabrød med BBQ-svin, grønt, urtedressing og kartofler",
+                "Tilbehør: brød og gnavegrønt",
+                "Torsdag",
+                "Græskinspireret 'byg-selv' pastasalat",
+                "Tilbehør: brød og gnavegrønt",
+            ]
+        ),
+        week_number=5,
+    )
+    assert parsed.monday == (
+        "Svampe i butterdej med porre og kål Tilbehør: bulgursalat med kål og kerner + gnavegrønt"
+    )
+    assert parsed.tuesday == "Dhal med raita, bagte rodfrugter Tilbehør: Flutes og gnavegrønt"
+    assert parsed.wednesday.startswith("Pitabrød med BBQ-svin")
+    assert parsed.thursday.startswith("Græskinspireret")
+    assert all(day for day in (parsed.tuesday, parsed.wednesday, parsed.thursday))
+
+
+def test_veggie_order_before_a_later_day_keeps_that_day(service: DriveMenuService) -> None:
+    """A weekday header after the shopping block is still parsed.
+
+    The terminator skips the block's lines instead of abandoning the document, so
+    a misplaced block can never cost more than the day it interrupts.
+    """
+    parsed = service._parse_docx(
+        _make_docx(
+            [
+                "Mandag",
+                "Lasagne",
+                "Gnavegrønt til ugen",
+                "agurker 6 kg",
+                "Torsdag",
+                "Pasta pesto",
+            ]
+        ),
+        week_number=12,
+    )
+    assert parsed.monday == "Lasagne"
+    assert parsed.thursday == "Pasta pesto"
+    assert "agurker" not in parsed.monday
+
+
 def test_repeated_earlier_day_does_not_drop_later_days(service: DriveMenuService) -> None:
     """If an earlier day header repeats (e.g. overview + detailed section on the
     same page) before later days appear, the later days must still be parsed.

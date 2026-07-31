@@ -138,8 +138,6 @@ const mockSubgroup = {
   latest_thread_title: "Referat 2026",
 
   created_at: "2026-01-01T10:00:00Z",
-
-  last_activity_at: "2026-01-20T10:00:00Z",
 }
 
 const mockThreads = [

@@ -190,6 +190,20 @@ class TestSubgroupSerializer:
         assert response.status_code == 200
         assert response.data["is_subscribed"] is True
 
+    def test_subgroup_serializer_hides_privacy_blind_last_activity(
+        self, authenticated_client, subgroup
+    ):
+        """last_activity_at must never reach a client: it counts private threads.
+
+        Clients sort on latest_thread_activity_at, which is filtered per viewer.
+        """
+        detail = authenticated_client.get(f"/api/forum/subgroups/{subgroup.slug}/")
+        assert "last_activity_at" not in detail.data
+        assert "latest_thread_activity_at" in detail.data
+
+        listing = authenticated_client.get("/api/forum/subgroups/")
+        assert all("last_activity_at" not in row for row in listing.data)
+
 
 class TestThreadSerializer:
     """Tests for the ThreadSerializer."""

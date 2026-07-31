@@ -109,6 +109,11 @@ import type {
 
 import { isClosedDayPlaceholder, isClosedDayStats } from "../types"
 
+// How far back the week navigation may go. Past weeks are read-only anyway (the
+// Wednesday deadline locks them), but being able to look back at an earlier
+// week's menu and recipes is useful — and makes menu-import bugs verifiable.
+const MIN_REG_WEEK_OFFSET = -8
+
 // The stats endpoint returns a closed-day marker for closed dates.
 
 // Normalise to `undefined` so widgets treat them as "no stats".
@@ -467,7 +472,7 @@ export default function FoodPage() {
                   variant="light"
                   size="lg"
                   onClick={() => setRegWeekOffset(regWeekOffset - 1)}
-                  disabled={regWeekOffset <= 0}
+                  disabled={regWeekOffset <= MIN_REG_WEEK_OFFSET}
                 >
                   <IconChevronLeft size={20} />
                 </ActionIcon>

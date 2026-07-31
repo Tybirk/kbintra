@@ -249,7 +249,8 @@ export interface Subgroup {
 
   created_at: string
 
-  last_activity_at: string | null
+  // No `last_activity_at`: the API deliberately doesn't expose it, because it is
+  // bumped by private threads too. Sort on latest_thread_activity_at instead.
 
   allows_members: boolean
 

@@ -82,6 +82,8 @@ import { calculateDefaultTicketPrice } from "../utils/priceCalculation"
 
 import { isDateLocked, isAfterTicketSaleCutoff } from "../utils/foodDeadline"
 
+import { htmlToPreview } from "../utils/htmlText"
+
 import type {
   Announcement,
   Event,
@@ -215,9 +217,9 @@ export default function DashboardPage() {
     return subgroups
       .filter((s) => s.is_member || s.is_subscribed)
       .sort((a, b) => {
-        // Sort by the privacy-aware latest visible thread activity, NOT the raw
-        // last_activity_at (which is bumped by private threads too and would
-        // float a group up for people who can't see why).
+        // Sort by the privacy-aware latest *visible* thread activity. The raw
+        // last_activity_at is bumped by private threads too and would float a
+        // group up for people who can't see why, so the API no longer sends it.
         const aTime = a.latest_thread_activity_at
           ? new Date(a.latest_thread_activity_at).getTime()
           : 0
@@ -900,20 +902,7 @@ interface AnnouncementPreviewProps {
 }
 
 function AnnouncementPreview({ announcement }: AnnouncementPreviewProps) {
-  // Strip HTML tags for preview
-
-  const plainText = announcement.content
-
-    .replace(/<\/[^>]+>/g, " ")
-
-    .replace(/<[^>]*>/g, "")
-
-    .replace(/\s+/g, " ")
-
-    .trim()
-
-  const preview =
-    plainText.length > 150 ? `${plainText.slice(0, 150)}...` : plainText
+  const preview = htmlToPreview(announcement.content, 150)
 
   return (
     <Paper
@@ -1216,20 +1205,7 @@ interface ActivityPreviewProps {
 }
 
 function ActivityPreview({ activity }: ActivityPreviewProps) {
-  // Strip HTML tags for preview
-
-  const plainText = activity.content
-
-    .replace(/<\/[^>]+>/g, " ")
-
-    .replace(/<[^>]*>/g, "")
-
-    .replace(/\s+/g, " ")
-
-    .trim()
-
-  const preview =
-    plainText.length > 100 ? `${plainText.slice(0, 100)}...` : plainText
+  const preview = htmlToPreview(activity.content, 100)
 
   return (
     <Paper

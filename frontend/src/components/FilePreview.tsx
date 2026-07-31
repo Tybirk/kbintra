@@ -296,6 +296,15 @@ export function useFileActions(file: PreviewableFile | null, enabled: boolean) {
       })
   }
 
+  // Whether the browser will actually accept this file in the share sheet.
+  // Chrome/Android permits only a fixed set of types (PDF, images, audio, video,
+  // plain text) and rejects Office documents, while iOS Safari accepts them — so
+  // asking the browser is the only reliable test. False until the blob is
+  // prefetched, since canShare needs the real File.
+  const canShare =
+    shareFile !== null &&
+    (navigator.canShare?.({ files: [shareFile] }) ?? false)
+
   // "Åbn" — hand the file to the OS share sheet (iOS/Android) so the user can
   // open it in the default viewer (Word/Pages/Quick Look) or save it. Called
   // synchronously with the prefetched File so the user gesture isn't lost.
@@ -303,7 +312,7 @@ export function useFileActions(file: PreviewableFile | null, enabled: boolean) {
   // everything else downloads with its proper filename (window.open on a
   // non-renderable blob would save it under a random UUID name).
   const handleOpen = () => {
-    if (shareFile && navigator.canShare?.({ files: [shareFile] })) {
+    if (canShare && shareFile) {
       navigator.share({ files: [shareFile], title: filename }).catch(() => {})
 
       return
@@ -315,9 +324,9 @@ export function useFileActions(file: PreviewableFile | null, enabled: boolean) {
       return
     }
 
-    // No share sheet available (typically a non-PDF file on a device whose
-    // browser can't share files) — fall back to a download, but tell the user
-    // so "Åbn"/"Del" never silently appears to do nothing.
+    // Neither sharing nor an inline tab is possible (e.g. a PDF whose blob
+    // failed to load) — fall back to a download, but tell the user so the
+    // button never silently appears to do nothing.
     notifications.show({
       title: "Filen downloades",
 
@@ -334,6 +343,8 @@ export function useFileActions(file: PreviewableFile | null, enabled: boolean) {
     blobUrl,
 
     blobError,
+
+    canShare,
 
     // Åbn/Gem stay disabled until the blob is ready so the share sheet / blob
     // is always available synchronously in the click handler. On error they
@@ -366,11 +377,13 @@ export function FileActionButtons({
 }: FileActionButtonsProps) {
   const isTouch = useMediaQuery("(pointer: coarse)")
 
-  // On desktop, "Åbn" only adds value for PDFs (opens in a new tab). For
-  // word/powerpoint/other it just duplicates "Gem", and can silently no-op via
-  // navigator.share — so hide it there. Always show it on touch devices.
+  // PDFs always get the button: it shares on mobile and opens a tab on desktop.
+  // Anything else only gets it on a touch device whose browser confirms it can
+  // share that file type — Chrome/Android refuses Office documents, and a "Del"
+  // that silently degrades to the download "Gem" already does is worse than no
+  // button at all.
   // useMediaQuery is undefined on first render (falsy) → safe desktop default.
-  const showOpen = isTouch || actions.fileType === "pdf"
+  const showOpen = actions.fileType === "pdf" || (!!isTouch && actions.canShare)
 
   // On touch devices "Åbn" hands the file to the OS share sheet (the user picks
   // an app), which Terkild noted is the better behaviour — so call it "Del"

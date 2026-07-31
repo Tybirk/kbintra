@@ -28,6 +28,8 @@ import { notifications } from "@mantine/notifications"
 
 import { showErrorNotification } from "../utils/errorNotification"
 
+import { htmlToPlainText } from "../utils/htmlText"
+
 import {
   IconSearch,
   IconBell,
@@ -576,14 +578,10 @@ function SubgroupCard({
 
         {subgroup.description && (
           <Text size="sm" c="dimmed" lineClamp={1}>
-            {(
+            {htmlToPlainText(
               subgroup.description.match(/<p[^>]*>(.*?)<\/p>/)?.[1] ??
-              subgroup.description
-            )
-
-              .replace(/<[^>]*>/g, "")
-
-              .trim()}
+                subgroup.description,
+            )}
           </Text>
         )}
 

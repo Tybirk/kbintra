@@ -206,7 +206,6 @@ describe("DashboardPage", () => {
         is_member: false,
         is_subscribed: false,
         unread_thread_count: 0,
-        last_activity_at: null,
       },
     ])
 

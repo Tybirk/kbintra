@@ -95,6 +95,8 @@ import ChatRichTextEditor from "../components/ChatRichTextEditor"
 
 import { clearDraft } from "../utils/draftStorage"
 
+import { htmlToPlainText } from "../utils/htmlText"
+
 import { getFileIcon, getFileTypeColor } from "../components/FilePreview"
 
 import { AttachmentCarousel } from "../components/AttachmentCarousel"
@@ -982,15 +984,7 @@ function ConversationItem({
                 : isGroupChat
                   ? `${otherParticipants.find((p) => p.id === conversation.last_message?.sender_id)?.first_name || ""}: `
                   : ""}
-              {conversation.last_message.content
-
-                .replace(/<\/[^>]+>/g, " ")
-
-                .replace(/<[^>]*>/g, "")
-
-                .replace(/\s+/g, " ")
-
-                .trim()}
+              {htmlToPlainText(conversation.last_message.content)}
             </Text>
           )}
         </div>
@@ -1847,17 +1841,9 @@ const MessageBubble = memo(function MessageBubble({
   }
 
   const handleCopy = () => {
-    const plainText = message.content
-
-      .replace(/<\/[^>]+>/g, " ")
-
-      .replace(/<[^>]*>/g, "")
-
-      .replace(/\s+/g, " ")
-
-      .trim()
-
-    navigator.clipboard.writeText(plainText).catch(() => {})
+    navigator.clipboard
+      .writeText(htmlToPlainText(message.content))
+      .catch(() => {})
   }
 
   const handleStartEdit = () => {

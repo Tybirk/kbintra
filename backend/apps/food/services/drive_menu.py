@@ -58,11 +58,16 @@ class DriveMenuService:
     # Marks the weekly grocery/veggie order block ("Gnavegrønt til ugen 18 stk
     # agurker ...") that some cooks append after Torsdag's dish. It carries no
     # weekday header, so without a terminator it gets swallowed into the last
-    # parsed day (Torsdag), polluting Thursday's menu text. Match the observed
-    # phrasing ("gnavegrønt") plus close variants, conservatively enough not to
-    # truncate a real dish name.
+    # parsed day (Torsdag), polluting Thursday's menu text.
+    #
+    # Anchored to the start of the paragraph on purpose: cooks routinely list
+    # gnavegrønt as a side dish for a single day ("Tilbehør: bulgursalat med kål
+    # og kerner + gnavegrønt"), and across the real menu archive those mid-line
+    # mentions outnumber the shopping block 21 to 6. Matching them would discard
+    # genuine menu text, whereas every real shopping block begins its paragraph
+    # with the word.
     STOP_SECTION_PATTERN = re.compile(
-        r"gnavegr(ø|oe?)nt|ugens\s+gr(ø|oe?)nt|gr(ø|oe?)nt\s+til\s+ugen",
+        r"\s*(gnavegr(ø|oe?)nt|ugens\s+gr(ø|oe?)nt|gr(ø|oe?)nt\s+til\s+ugen)\b",
         re.IGNORECASE,
     )
 
@@ -355,14 +360,16 @@ class DriveMenuService:
 
         for para in page1_paragraphs:
             # The weekly grocery/veggie order has no weekday header and would
-            # otherwise be appended to Torsdag (the last day parsed). Stop
-            # accumulating day content as soon as we reach it.
-            if self.STOP_SECTION_PATTERN.search(para):
+            # otherwise be appended to Torsdag (the last day parsed). Close off
+            # the day in progress and skip the block's lines — but keep scanning
+            # rather than breaking out, so that if this ever misfires it can only
+            # cost one day's text, never every day that follows.
+            if self.STOP_SECTION_PATTERN.match(para):
                 if current_day and menu_lines:
                     menus[current_day] = " ".join(menu_lines)
                 current_day = None
                 menu_lines = []
-                break
+                continue
 
             # Check if this is a day header (try strict pattern first, then flexible)
             day_found = None
