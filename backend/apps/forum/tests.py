@@ -2612,6 +2612,42 @@ class TestPostAttachmentThumbnail:
         assert "previews/" in data["preview_url"]
         assert data["preview_url"] != data["file_url"]
 
+    def test_thumbnail_and_preview_survive_concurrent_tasks(self, db, user, subgroup, thread):
+        """A HEIC upload queues both image tasks, and production runs two huey
+        workers, so each holds its own instance of the row loaded before either
+        writes. Saving the whole row wrote back the other worker's stale, empty
+        column — leaving the attachment with a thumbnail or a preview, whichever
+        committed last, but never both. Each task must persist only its own field.
+        """
+        from apps.forum.image_processing import generate_attachment_preview, generate_thumbnail
+        from apps.forum.models import PostAttachment
+
+        post = Post.objects.create(thread=thread, author=user, content="see file")
+        att = PostAttachment.objects.create(
+            post=post,
+            uploaded_by=user,
+            name="iphone.heic",
+            file=SimpleUploadedFile(
+                "iphone.heic", self._real_heic_bytes(800, 600), content_type="image/heic"
+            ),
+        )
+
+        # Both workers read the row before either commits.
+        worker_thumbnail = PostAttachment.objects.get(pk=att.pk)
+        worker_preview = PostAttachment.objects.get(pk=att.pk)
+
+        with worker_thumbnail.file.open("rb") as src:
+            thumb = generate_thumbnail(src)
+        worker_thumbnail.thumbnail.save(f"{worker_thumbnail.pk}.jpg", thumb, save=False)
+        worker_thumbnail.save(update_fields=["thumbnail"])
+
+        # Commits second, holding thumbnail="" from before the write above.
+        assert generate_attachment_preview(worker_preview) is True
+
+        att.refresh_from_db()
+        assert att.thumbnail, "the preview task clobbered the thumbnail"
+        assert att.preview, "the preview was not persisted"
+
     def test_non_heic_image_has_no_preview(self, db, user, subgroup, thread):
         """Browser-renderable formats don't need a converted preview; preview_url
         falls back to the original file URL."""

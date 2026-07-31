@@ -122,7 +122,12 @@ def generate_attachment_preview(attachment: object) -> bool:
         return False
     if preview is None:
         return False
-    attachment.preview.save(f"{attachment.pk}.jpg", preview, save=True)
+    # Write the file, then persist only this column. `save=True` would issue a
+    # full-row UPDATE from this instance, and the thumbnail task runs against its
+    # own instance concurrently (huey runs 2 workers) — whichever committed last
+    # wrote back the other's stale, empty column.
+    attachment.preview.save(f"{attachment.pk}.jpg", preview, save=False)
+    attachment.save(update_fields=["preview"])
     return True
 
 

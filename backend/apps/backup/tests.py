@@ -332,6 +332,40 @@ class SignedMediaUrlTest(TestCase):
             response = Client().get(f"/media/{self.rel_path}?exp={exp}&sig={sig}")
         assert response.status_code == 401
 
+    def test_danish_filename_serves_without_session_cookie(self):
+        """A signed URL must verify for names that percent-encode in the URL.
+
+        `FileField.url` quotes the name, so the URL carries
+        `%C3%85rsm%C3%B8de.heic` while the request Django routes to `serve_media`
+        carries the decoded `Årsmøde.heic`. Signing the encoded form yielded a
+        signature that could never verify, silently falling back to the session
+        cookie — so on a cookie-less iOS client every æ/ø/å file stayed broken.
+        """
+        from django.core.files.storage import default_storage
+
+        rel_path = "post_attachments/Årsmøde og bilag.heic"
+        (self.media_root / rel_path).write_text("dansk payload")
+
+        from apps.backup.signing import signed_media_url
+
+        with override_settings(MEDIA_ROOT=str(self.media_root)):
+            # Mint from FileField.url exactly as the serializers do.
+            signed = signed_media_url(default_storage.url(rel_path))
+            assert "%C3%85" in signed, "expected a percent-encoded URL to sign"
+            response = Client().get(signed)
+        assert response.status_code == 200
+        assert b"dansk payload" in b"".join(response.streaming_content)
+
+    def test_non_ascii_signature_is_rejected_not_a_500(self):
+        """`sig` is attacker-controlled: comparing it as a str raised TypeError
+        for non-ASCII input, turning a forged URL into a scriptable 500."""
+        from apps.backup.signing import _current_expiry
+
+        exp = _current_expiry()
+        with override_settings(MEDIA_ROOT=str(self.media_root)):
+            response = Client().get(f"/media/{self.rel_path}?exp={exp}&sig=øabc")
+        assert response.status_code == 401
+
     def test_round_trip_and_hour_aligned_expiry(self):
         from apps.backup.signing import (
             _current_expiry,

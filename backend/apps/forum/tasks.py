@@ -38,7 +38,10 @@ def generate_post_attachment_thumbnail_task(attachment_id: int) -> None:
     if thumb is None:
         return
 
-    att.thumbnail.save(f"{att.id}.jpg", thumb, save=True)
+    # Persist only this column — the preview task writes `preview` on its own
+    # instance at the same time, and a full-row save would clobber it.
+    att.thumbnail.save(f"{att.id}.jpg", thumb, save=False)
+    att.save(update_fields=["thumbnail"])
     logger.info("Generated thumbnail for attachment %s", attachment_id)
 
 

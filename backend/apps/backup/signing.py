@@ -20,6 +20,7 @@ import hmac
 import posixpath
 import time
 from typing import overload
+from urllib.parse import unquote
 
 from django.conf import settings
 
@@ -41,8 +42,15 @@ def _media_relative_path(url: str) -> str:
     with ``posixpath.normpath``. Mirror that here so a URL minted from
     ``FileField.url`` (e.g. ``media/profile_pictures/47.jpg``) signs the same
     string the request will be checked against.
+
+    The percent-decoding matters: ``FileField.url`` quotes the name, so a Danish
+    filename arrives here as ``post_attachments/%C3%85rsm%C3%B8de.heic`` while
+    the request Django routes to ``serve_media`` carries the decoded
+    ``post_attachments/Årsmøde.heic``. Signing the encoded form produced a
+    signature that could never verify, so every æ/ø/å file fell back to the
+    session cookie — exactly what signed URLs exist to avoid.
     """
-    path = url.split("?", 1)[0].lstrip("/")
+    path = unquote(url.split("?", 1)[0]).lstrip("/")
     media_prefix = settings.MEDIA_URL.lstrip("/")
     if media_prefix and path.startswith(media_prefix):
         path = path[len(media_prefix) :]
@@ -99,4 +107,7 @@ def verify_media_signature(path: str, exp: str | None, sig: str | None) -> bool:
     if exp_int < int(time.time()):
         return False
     expected = _sign(posixpath.normpath(path), exp_int)
-    return hmac.compare_digest(expected, sig)
+    # Compare as bytes: compare_digest() rejects str arguments containing
+    # non-ASCII characters with a TypeError, and `sig` is attacker-controlled
+    # query-string input, so a str comparison turns "?sig=øabc" into a 500.
+    return hmac.compare_digest(expected.encode(), sig.encode())
