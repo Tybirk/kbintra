@@ -1,0 +1,104 @@
+/* OrgChart.tsx — classic top-down org chart connector lines.
+   Technique: nested <ul>/<li> with ::before/::after pseudo-elements drawing
+   the vertical drop from the parent and the horizontal "elbow" connecting
+   siblings. Scoped under .org-chart so nothing leaks into the rest of the app. */
+
+.org-chart-scroll {
+  width: 100%;
+  overflow-x: auto;
+  padding: 8px 4px 16px;
+}
+
+.org-chart {
+  display: flex;
+  justify-content: center;
+  min-width: max-content;
+}
+
+.org-chart ul {
+  display: flex;
+  justify-content: center;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.org-chart li {
+  position: relative;
+  padding: 24px 12px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+/* Vertical line dropping down from this node to its children row */
+.org-chart li.has-children > .org-chart-node::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  width: 1px;
+  height: 24px;
+  background: var(--mantine-color-gray-5);
+}
+
+/* Horizontal connector above each child + vertical stub up to the shared line */
+.org-chart li::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 24px;
+  border-top: 1px solid var(--mantine-color-gray-5);
+}
+
+/* Only-children don't need a horizontal elbow, just the vertical stub */
+.org-chart li:only-child::before {
+  border-top: none;
+}
+
+/* Vertical stub connecting each child up to the horizontal row line */
+.org-chart li::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 1px;
+  height: 24px;
+  background: var(--mantine-color-gray-5);
+}
+
+/* Trim the horizontal line so it only spans between siblings, not past the edges */
+.org-chart li:first-child:not(:only-child)::before {
+  left: 50%;
+  width: 50%;
+}
+
+.org-chart li:last-child:not(:only-child)::before {
+  width: 50%;
+}
+
+/* The root level has no incoming connector */
+.org-chart > ul > li::before,
+.org-chart > ul > li.org-chart-root::after {
+  display: none;
+}
+
+.org-chart-node {
+  position: relative;
+  display: inline-block;
+}
+
+.org-chart-box {
+  width: 220px;
+  text-align: left;
+}
+
+.org-chart-accent {
+  height: 6px;
+  border-radius: var(--mantine-radius-md) var(--mantine-radius-md) 0 0;
+  margin: calc(-1 * var(--mantine-spacing-sm)) calc(-1 * var(--mantine-spacing-sm))
+    var(--mantine-spacing-xs);
+}

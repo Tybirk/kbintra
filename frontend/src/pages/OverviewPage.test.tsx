@@ -41,8 +41,8 @@ describe("OverviewPage", () => {
     mockGetOrganisation.mockReset()
   })
 
-  it("renders roots in the order returned by the API, with children nested", async () => {
-    const tree: OrgNode[] = [
+  function makeSampleTree(): OrgNode[] {
+    return [
       makeNode({
         id: 1,
         name: "Generalforsamling",
@@ -70,21 +70,55 @@ describe("OverviewPage", () => {
         group_type: "udvalg",
       }),
     ]
-    mockGetOrganisation.mockResolvedValue(tree)
+  }
+
+  it("defaults to the org chart view, showing root and nested names", async () => {
+    mockGetOrganisation.mockResolvedValue(makeSampleTree())
 
     render(<OverviewPage />)
 
     await waitFor(() => {
-      expect(screen.getByText("Generalforsamling")).toBeInTheDocument()
+      expect(screen.getByTestId("org-chart")).toBeInTheDocument()
+    })
+
+    // "Generalforsamling" matches both the node name and the type badge, so
+    // scope to the link element rendering the node's name.
+    expect(
+      screen.getByRole("link", { name: "Generalforsamling" }),
+    ).toBeInTheDocument()
+    expect(screen.getByText("Bestyrelsen")).toBeInTheDocument()
+    expect(screen.getByText("Grønt udvalg")).toBeInTheDocument()
+    // The arbejdsgruppe child is nested and rendered.
+    expect(screen.getByText("Arrangementsgruppen")).toBeInTheDocument()
+  })
+
+  it("switches to the tree view and back via the segmented control", async () => {
+    mockGetOrganisation.mockResolvedValue(makeSampleTree())
+
+    render(<OverviewPage />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId("org-chart")).toBeInTheDocument()
+    })
+
+    await userEvent.click(screen.getByText("Træ"))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("org-chart")).not.toBeInTheDocument()
     })
 
     const names = screen
       .getAllByText(/Generalforsamling|Bestyrelsen|Grønt udvalg/)
       .map((el) => el.textContent)
     expect(names).toEqual(["Generalforsamling", "Bestyrelsen", "Grønt udvalg"])
-
     // The arbejdsgruppe child is nested and rendered (expanded by default).
     expect(screen.getByText("Arrangementsgruppen")).toBeInTheDocument()
+
+    await userEvent.click(screen.getByText("Diagram"))
+
+    await waitFor(() => {
+      expect(screen.getByTestId("org-chart")).toBeInTheDocument()
+    })
   })
 
   it("toggles include_inactive when the switch is flipped", async () => {

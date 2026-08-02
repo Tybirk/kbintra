@@ -22,6 +22,7 @@ import {
   getTreeExpandedState,
   Tooltip,
   Button,
+  SegmentedControl,
 } from "@mantine/core"
 import type { RenderTreeNodePayload, TreeNodeData } from "@mantine/core"
 
@@ -40,7 +41,11 @@ import { forumApi } from "../api/forum"
 
 import CreateSubgroupModal from "../components/CreateSubgroupModal"
 
+import OrgChart from "../components/OrgChart"
+
 import type { OrgNode } from "../types"
+
+type ViewMode = "chart" | "tree"
 
 const MAX_VISIBLE_AVATARS = 4
 
@@ -170,6 +175,8 @@ export default function OverviewPage() {
 
   const [includeInactive, setIncludeInactive] = useState(false)
 
+  const [viewMode, setViewMode] = useState<ViewMode>("chart")
+
   const [createOpened, { open: openCreate, close: closeCreate }] =
     useDisclosure(false)
 
@@ -230,6 +237,14 @@ export default function OverviewPage() {
           <Title order={2}>Grafisk overblik</Title>
         </Group>
         <Group gap="md" wrap="wrap">
+          <SegmentedControl
+            value={viewMode}
+            onChange={(value) => setViewMode(value as ViewMode)}
+            data={[
+              { label: "Diagram", value: "chart" },
+              { label: "Træ", value: "tree" },
+            ]}
+          />
           <Switch
             label="Vis afsluttede arbejdsgrupper"
             checked={includeInactive}
@@ -241,8 +256,10 @@ export default function OverviewPage() {
         </Group>
       </Group>
 
-      {treeData.length === 0 ? (
+      {(data ?? []).length === 0 ? (
         <Text c="dimmed">Der er endnu ikke nogen organisationsstruktur.</Text>
+      ) : viewMode === "chart" ? (
+        <OrgChart data={data ?? []} />
       ) : (
         <Tree
           data={treeData}
