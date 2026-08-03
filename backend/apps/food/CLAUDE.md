@@ -36,9 +36,13 @@ When computing available portions for new ticket creation, both available AND cl
 
 No meals on Friday, Saturday, or Sunday.
 
-### Fixed portion pricing
+### Portion prices are date-versioned, never "current"
 
-Adult meat: 37 DKK, adult veg: 26 DKK, child: 18 DKK. Used for ticket auto-pricing and monthly cost reports. Defined in `constants.py`.
+Prices live in the `MealPrice` table: each row is a price set with an `effective_from` date. **Every lookup is anchored to the meal date**, never to today — that is what keeps past cost reports, economy pages and ticket prices from silently changing when prices go up. Resolution lives in `pricing.py` (`get_prices(meal_date)`, or `get_price_schedule()` once when pricing many dates in a loop).
+
+Current sets: 37/26/18 DKK from the beginning, 40/30/18 DKK from 2026-08-02 (adult meat / adult veg / child).
+
+Food admins manage prices from the Admin tab on `/mad/admin`. A price set that has already taken effect cannot be edited or deleted (enforced in `MealPriceSerializer` and `MealPriceDetailView`); backdating a new set is rejected for the same reason. The frontend mirrors the resolution logic in `utils/priceCalculation.ts` and reads the schedule via `useMealPrices()`.
 
 ### Monthly cost reports only use post-deadline data
 
@@ -81,7 +85,8 @@ Google Drive is the **source of truth** for weekly menus. Cooking teams write me
 | `models.py` | All 11 models |
 | `serializers.py` | Validation logic, deadline enforcement |
 | `views.py` | API endpoints (~1,460 lines) |
-| `constants.py` | Prices, day names |
+| `constants.py` | Day names, ticket sale cutoff |
+| `pricing.py` | Date-anchored portion price resolution |
 | `tasks.py` | Thursday materialization task |
 | `services/team_generator.py` | Team generation algorithm |
 | `services/drive_menu.py` | Google Drive menu fetching |

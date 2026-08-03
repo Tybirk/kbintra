@@ -14,6 +14,8 @@ import type {
   CreateFoodTicketData,
   ClaimFoodTicketData,
   ClosedFoodDay,
+  MealPrice,
+  CreateMealPriceData,
   DailyRegistrationStats,
   WeeklyRegistrationStats,
   FoodTeam,
@@ -553,5 +555,33 @@ export const foodApi = {
 
   deleteClosedDay: async (id: number): Promise<void> => {
     await apiClient.delete(`/food/closed-days/${id}/`)
+  },
+
+  // Meal Prices
+
+  getMealPrices: async (): Promise<MealPrice[]> => {
+    const response = await apiClient.get("/food/prices/")
+
+    return asArray(response.data)
+  },
+
+  createMealPrice: async (data: CreateMealPriceData): Promise<MealPrice> => {
+    const response = await apiClient.post("/food/prices/", data)
+
+    return response.data
+  },
+
+  updateMealPrice: async (
+    id: number,
+
+    data: Partial<CreateMealPriceData>,
+  ): Promise<MealPrice> => {
+    const response = await apiClient.patch(`/food/prices/${id}/`, data)
+
+    return response.data
+  },
+
+  deleteMealPrice: async (id: number): Promise<void> => {
+    await apiClient.delete(`/food/prices/${id}/`)
   },
 }

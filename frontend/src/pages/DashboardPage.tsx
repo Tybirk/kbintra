@@ -80,6 +80,8 @@ import { ErrorBoundary } from "../components/ErrorBoundary"
 
 import { calculateDefaultTicketPrice } from "../utils/priceCalculation"
 
+import { useMealPrices } from "../hooks/useMealPrices"
+
 import { isDateLocked, isAfterTicketSaleCutoff } from "../utils/foodDeadline"
 
 import type {
@@ -1436,7 +1438,15 @@ export function FoodDayWidget({
     availablePortions.adults_veg > 0 ||
     availablePortions.children_count > 0
 
-  const sellPrice = calculateDefaultTicketPrice(sellMeat, sellVeg, sellChildren)
+  const { data: mealPrices } = useMealPrices()
+
+  const sellPrice = calculateDefaultTicketPrice(
+    mealPrices,
+    date,
+    sellMeat,
+    sellVeg,
+    sellChildren,
+  )
 
   // Sync local state when registration data arrives or changes (initial load,
 
@@ -1622,6 +1632,9 @@ export function FoodDayWidget({
   }
 
   const handleSellTicket = () => {
+    // No `price`: the backend derives it from the price set in effect on the
+    // meal date. `sellPrice` is only a preview — sending it would let a stale
+    // or not-yet-loaded price schedule store the wrong amount.
     const ticketData: CreateFoodTicketData = {
       date,
 
@@ -1630,8 +1643,6 @@ export function FoodDayWidget({
       adults_veg: sellVeg,
 
       children_count: sellChildren,
-
-      price: sellPrice,
 
       description: sellDescription,
     }
