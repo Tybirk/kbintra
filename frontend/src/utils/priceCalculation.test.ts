@@ -2,73 +2,139 @@ import { describe, it, expect } from "vitest"
 
 import {
   calculateDefaultTicketPrice,
-  PRICE_ADULT_MEAT,
-  PRICE_ADULT_VEG,
-  PRICE_CHILD,
+  resolvePrices,
+  FALLBACK_PRICES,
 } from "./priceCalculation"
 
+import type { MealPrice } from "../types"
+
+function priceSet(
+  id: number,
+
+  effective_from: string,
+
+  adultMeat: number,
+
+  adultVeg: number,
+
+  child: number,
+): MealPrice {
+  return {
+    id,
+
+    effective_from,
+
+    price_adult_meat: adultMeat,
+
+    price_adult_veg: adultVeg,
+
+    price_child: child,
+
+    note: "",
+
+    created_by_name: "",
+
+    created_at: "2026-08-02T10:00:00Z",
+
+    is_locked: true,
+  }
+}
+
+// Newest first, as the API returns it.
+const schedule: MealPrice[] = [
+  priceSet(2, "2026-08-02", 40, 30, 18),
+
+  priceSet(1, "2000-01-01", 37, 26, 18),
+]
+
 describe("priceCalculation", () => {
-  describe("calculateDefaultTicketPrice", () => {
-    it("should calculate correct price for meat meal with 1 adult", () => {
-      const price = calculateDefaultTicketPrice(1, 0, 0)
+  describe("resolvePrices", () => {
+    it("uses the old prices for meals before the cutover", () => {
+      expect(resolvePrices(schedule, "2026-08-01")).toEqual({
+        adultMeat: 37,
 
-      expect(price).toBe(37)
+        adultVeg: 26,
+
+        child: 18,
+      })
     })
 
-    it("should calculate correct price for vegetarian meal with 1 adult", () => {
-      const price = calculateDefaultTicketPrice(0, 1, 0)
+    it("uses the new prices from the cutover date onwards", () => {
+      expect(resolvePrices(schedule, "2026-08-02")).toEqual({
+        adultMeat: 40,
 
-      expect(price).toBe(26)
+        adultVeg: 30,
+
+        child: 18,
+      })
+
+      expect(resolvePrices(schedule, "2027-03-15").adultVeg).toBe(30)
     })
 
-    it("should calculate correct price for meat meal with 2 adults and 1 child", () => {
-      // 2 adults @ 37 + 1 child @ 18 = 92
+    it("falls back when the schedule is missing or has not loaded", () => {
+      expect(resolvePrices(undefined, "2026-08-05")).toEqual(FALLBACK_PRICES)
 
-      const price = calculateDefaultTicketPrice(2, 0, 1)
-
-      expect(price).toBe(92)
+      expect(resolvePrices([], "2026-08-05")).toEqual(FALLBACK_PRICES)
     })
 
-    it("should calculate correct price for vegetarian meal with 2 adults and 1 child", () => {
-      // 2 adults @ 26 + 1 child @ 18 = 70
-
-      const price = calculateDefaultTicketPrice(0, 2, 1)
-
-      expect(price).toBe(70)
+    it("falls back for dates before the earliest price set", () => {
+      expect(resolvePrices(schedule, "1999-12-31")).toEqual(FALLBACK_PRICES)
     })
 
-    it("should calculate correct price for mixed meal (1 meat + 1 veg + 1 child)", () => {
-      // 1 adult @ 37 + 1 adult @ 26 + 1 child @ 18 = 81
+    it("picks the latest matching set regardless of array order", () => {
+      const unordered = [schedule[1], schedule[0]]
 
-      const price = calculateDefaultTicketPrice(1, 1, 1)
-
-      expect(price).toBe(81)
-    })
-
-    it("should calculate correct price for meal with only children", () => {
-      const price = calculateDefaultTicketPrice(0, 0, 3)
-
-      expect(price).toBe(54) // 3 * 18
-    })
-
-    it("should return 0 for no portions", () => {
-      const price = calculateDefaultTicketPrice(0, 0, 0)
-
-      expect(price).toBe(0)
+      expect(resolvePrices(unordered, "2026-12-01").adultMeat).toBe(40)
     })
   })
 
-  describe("price constants", () => {
-    it("should have correct adult meat price", () => {
-      expect(PRICE_ADULT_MEAT).toBe(37)
+  describe("calculateDefaultTicketPrice", () => {
+    it("prices a meat meal at the meal date's rate", () => {
+      expect(calculateDefaultTicketPrice(schedule, "2026-07-01", 1, 0, 0)).toBe(
+        37,
+      )
+
+      expect(calculateDefaultTicketPrice(schedule, "2026-08-05", 1, 0, 0)).toBe(
+        40,
+      )
     })
 
-    it("should have correct adult vegetarian price", () => {
-      expect(PRICE_ADULT_VEG).toBe(26)
+    it("prices a vegetarian meal at the meal date's rate", () => {
+      expect(calculateDefaultTicketPrice(schedule, "2026-07-01", 0, 1, 0)).toBe(
+        26,
+      )
+
+      expect(calculateDefaultTicketPrice(schedule, "2026-08-05", 0, 1, 0)).toBe(
+        30,
+      )
     })
 
-    it("should have correct child price", () => {
-      expect(PRICE_CHILD).toBe(18)
+    it("keeps the child price unchanged across the cutover", () => {
+      expect(calculateDefaultTicketPrice(schedule, "2026-07-01", 0, 0, 3)).toBe(
+        54,
+      )
+
+      expect(calculateDefaultTicketPrice(schedule, "2026-08-05", 0, 0, 3)).toBe(
+        54,
+      )
+    })
+
+    it("sums mixed portions", () => {
+      // 1 * 40 + 1 * 30 + 1 * 18 = 88
+      expect(calculateDefaultTicketPrice(schedule, "2026-08-05", 1, 1, 1)).toBe(
+        88,
+      )
+
+      // 2 * 26 + 1 * 18 = 70 at the old rates
+      expect(calculateDefaultTicketPrice(schedule, "2026-07-01", 0, 2, 1)).toBe(
+        70,
+      )
+    })
+
+    it("returns 0 for no portions", () => {
+      expect(calculateDefaultTicketPrice(schedule, "2026-08-05", 0, 0, 0)).toBe(
+        0,
+      )
     })
   })
 })

@@ -16,7 +16,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .constants import DAY_NAMES, calculate_meal_price
+from .constants import DAY_NAMES
 from .models import (
     ClosedFoodDay,
     FoodTeam,
@@ -24,10 +24,12 @@ from .models import (
     FoodTeamWish,
     FoodTicket,
     MealPreference,
+    MealPrice,
     MealRegistration,
     SwapRequestStatus,
     TeamSwapRequest,
 )
+from .pricing import get_price_schedule, get_prices
 from .serializers import (
     ClosedFoodDayCreateSerializer,
     ClosedFoodDaySerializer,
@@ -45,6 +47,7 @@ from .serializers import (
     GenerateTeamsSerializer,
     MealPreferenceCreateUpdateSerializer,
     MealPreferenceSerializer,
+    MealPriceSerializer,
     MealRegistrationCreateUpdateSerializer,
     MealRegistrationSerializer,
     MonthlyFoodCostReportSerializer,
@@ -766,10 +769,12 @@ class ClaimTicketView(APIView):
                 ticket.adults_meat = remaining_meat
                 ticket.adults_veg = remaining_veg
                 ticket.children_count = remaining_children
+                # One lookup for both halves of the split — same meal date.
+                prices = get_prices(ticket.date)
                 ticket.price = (
                     None
                     if is_free_ticket
-                    else calculate_meal_price(remaining_meat, remaining_veg, remaining_children)
+                    else prices.total(remaining_meat, remaining_veg, remaining_children)
                 )
                 ticket.save()
 
@@ -783,7 +788,7 @@ class ClaimTicketView(APIView):
                     price=(
                         None
                         if is_free_ticket
-                        else calculate_meal_price(adults_meat, adults_veg, children_count)
+                        else prices.total(adults_meat, adults_veg, children_count)
                     ),
                     description=ticket.description,
                     is_available=False,
@@ -1282,8 +1287,6 @@ class MonthlyFoodCostView(APIView):
 
         from apps.houses.models import House
 
-        from .constants import PRICE_ADULT_MEAT, PRICE_ADULT_VEG, PRICE_CHILD
-
         # Get all houses
         houses = House.objects.prefetch_related("inhabitants")
         house_costs = []
@@ -1310,6 +1313,10 @@ class MonthlyFoodCostView(APIView):
         from .tasks import _materialize_for_houses
 
         _materialize_for_houses(billing_dates)
+
+        # Prices are resolved per meal date, so a price change only affects meals
+        # served on or after its start date — past reports stay untouched.
+        schedule = get_price_schedule()
 
         for house in houses:
             house_total = Decimal("0.00")
@@ -1339,9 +1346,7 @@ class MonthlyFoodCostView(APIView):
 
                 if meat == 0 and veg == 0 and children == 0:
                     continue
-                cost = (
-                    (PRICE_ADULT_MEAT * meat) + (PRICE_ADULT_VEG * veg) + (PRICE_CHILD * children)
-                )
+                cost = schedule.for_date(billing_date).total(meat, veg, children)
                 house_total += cost
                 registration_count += 1
                 adult_meat_portions += meat
@@ -1447,6 +1452,7 @@ class MyMonthlyExpensesView(APIView):
 
         weeks_map: dict[tuple[int, int], dict] = {}
         total_cost = Decimal("0.00")
+        schedule = get_price_schedule()
 
         for billing_date in billing_dates:
             iso_year, iso_week, _ = billing_date.isocalendar()
@@ -1473,7 +1479,7 @@ class MyMonthlyExpensesView(APIView):
             children = reg.children_count
             if meat == 0 and veg == 0 and children == 0:
                 continue
-            cost = calculate_meal_price(meat, veg, children)
+            cost = schedule.for_date(billing_date).total(meat, veg, children)
             total_cost += cost
             week_entry["total_cost"] += cost
             week_entry["days"].append(
@@ -1725,5 +1731,77 @@ class ClosedFoodDayDeleteView(APIView):
             obj = ClosedFoodDay.objects.get(pk=pk)
         except ClosedFoodDay.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
+        obj.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# Meal Prices
+
+
+class MealPriceListCreateView(APIView):
+    """List price sets (everyone) and create new ones (food admin only).
+
+    The full schedule is returned — it is a handful of rows — so the frontend can
+    price any date with the same meal-date-anchored logic the backend uses.
+    """
+
+    def get_permissions(self) -> list:
+        if self.request.method == "POST":
+            return [permissions.IsAuthenticated(), IsFoodAdmin()]
+        return [permissions.IsAuthenticated()]
+
+    def get(self, request: Request) -> Response:
+        qs = MealPrice.objects.select_related("created_by").all()
+        return Response(MealPriceSerializer(qs, many=True).data)
+
+    def post(self, request: Request) -> Response:
+        serializer = MealPriceSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class MealPriceDetailView(APIView):
+    """Update or delete a price set that has not taken effect yet. Food admin only.
+
+    Price sets already in effect are immutable — past meals are billed at the
+    prices that applied on the day they were served.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsFoodAdmin]
+
+    def _get_object(self, pk: int) -> MealPrice | None:
+        return MealPrice.objects.filter(pk=pk).select_related("created_by").first()
+
+    def patch(self, request: Request, pk: int) -> Response:
+        obj = self._get_object(pk)
+        if obj is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        serializer = MealPriceSerializer(
+            obj, data=request.data, partial=True, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self, request: Request, pk: int) -> Response:
+        obj = self._get_object(pk)
+        if obj is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        if obj.effective_from < timezone.localdate():
+            return Response(
+                {
+                    "detail": (
+                        "Prissættet er allerede trådt i kraft og kan ikke slettes. "
+                        "Opret i stedet et nyt prissæt med en fremtidig startdato."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if MealPrice.objects.count() <= 1:
+            return Response(
+                {"detail": "Der skal altid findes mindst ét prissæt."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         obj.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

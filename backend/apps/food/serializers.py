@@ -4,6 +4,7 @@ Serializers for Food models.
 
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+from typing import Any
 
 from django.db.models import Sum
 from django.db.models.functions import Coalesce
@@ -16,7 +17,6 @@ from apps.users.serializer_mixins import AvatarUrlMixin
 from .constants import (
     DAY_NAMES,
     TICKET_SALE_CUTOFF_TIME,
-    calculate_meal_price,
 )
 from .models import (
     ClosedFoodDay,
@@ -28,6 +28,7 @@ from .models import (
     FoodTeamWish,
     FoodTicket,
     MealPreference,
+    MealPrice,
     MealRegistration,
     SwapRequestStatus,
     TeamSwapRequest,
@@ -352,10 +353,12 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
         return value
 
     def calculate_default_price(
-        self, adults_meat: int, adults_veg: int, children_count: int
+        self, adults_meat: int, adults_veg: int, children_count: int, meal_date: date
     ) -> Decimal:
-        """Calculate default price based on portion counts."""
-        return calculate_meal_price(adults_meat, adults_veg, children_count)
+        """Calculate default price from portion counts, at the meal date's prices."""
+        from .pricing import calculate_meal_price
+
+        return calculate_meal_price(adults_meat, adults_veg, children_count, meal_date)
 
     def validate(self, attrs: dict) -> dict:
         reg_date = attrs.get("date")
@@ -426,7 +429,10 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
         # Set default price if not provided
         if validated_data.get("price") is None:
             validated_data["price"] = self.calculate_default_price(
-                ticket_adults_meat, ticket_adults_veg, ticket_children
+                ticket_adults_meat,
+                ticket_adults_veg,
+                ticket_children,
+                validated_data["date"],
             )
 
         return super().create(validated_data)
@@ -946,3 +952,81 @@ class ClosedFoodDayCreateSerializer(serializers.Serializer):
             )
             results.append(obj)
         return results
+
+
+# Meal Price Serializers
+
+
+def _price_field(**kwargs: Any) -> serializers.DecimalField:
+    """A price in whole-krone range, serialized as a number so the UI can do math."""
+    return serializers.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        min_value=Decimal("0.00"),
+        max_value=Decimal("9999.99"),
+        coerce_to_string=False,
+        **kwargs,
+    )
+
+
+class MealPriceSerializer(serializers.ModelSerializer):
+    """A price set. Read-only for everyone but food admins (enforced in the view)."""
+
+    # Declared explicitly to drop the auto-generated UniqueValidator and its
+    # English message — `validate_effective_from` reports the clash in Danish.
+    effective_from = serializers.DateField()
+    price_adult_meat = _price_field()
+    price_adult_veg = _price_field()
+    price_child = _price_field()
+    created_by_name = serializers.SerializerMethodField()
+    is_locked = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MealPrice
+        fields = [
+            "id",
+            "effective_from",
+            "price_adult_meat",
+            "price_adult_veg",
+            "price_child",
+            "note",
+            "created_by_name",
+            "created_at",
+            "is_locked",
+        ]
+        read_only_fields = ["id", "created_by_name", "created_at", "is_locked"]
+
+    def get_created_by_name(self, obj: MealPrice) -> str:
+        return obj.created_by.get_full_name() if obj.created_by else ""
+
+    def get_is_locked(self, obj: MealPrice) -> bool:
+        """True once the price set has taken effect — it can no longer be changed."""
+        return obj.effective_from < timezone.localdate()
+
+    def validate_effective_from(self, value: date) -> date:
+        # Prices are resolved by meal date, so backdating a price set would
+        # silently rewrite past cost reports and economy pages.
+        if value < timezone.localdate():
+            raise serializers.ValidationError(
+                "Startdatoen kan ikke være i fortiden — det ville ændre allerede "
+                "afregnede madomkostninger."
+            )
+        existing = MealPrice.objects.filter(effective_from=value)
+        if self.instance is not None:
+            existing = existing.exclude(pk=self.instance.pk)
+        if existing.exists():
+            raise serializers.ValidationError("Der findes allerede et prissæt med denne startdato.")
+        return value
+
+    def validate(self, attrs: dict) -> dict:
+        # Editing a price set that is already in effect would change history too.
+        if self.instance is not None and self.instance.effective_from < timezone.localdate():
+            raise serializers.ValidationError(
+                "Prissættet er allerede trådt i kraft og kan ikke ændres. "
+                "Opret i stedet et nyt prissæt med en fremtidig startdato."
+            )
+        return attrs
+
+    def create(self, validated_data: dict) -> MealPrice:
+        validated_data["created_by"] = self.context["request"].user
+        return super().create(validated_data)
