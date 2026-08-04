@@ -265,6 +265,101 @@ class TestEventAPI:
         assert File.objects.filter(folder=event.folder).exists()
         assert not File.objects.filter(folder=event.folder).exclude(subgroup=udvalg).exists()
 
+    def test_moved_files_are_reindexed_for_search(self, authenticated_client, db):
+        """A moved file's search row must follow it into the new group.
+
+        The move used to run as a queryset .update(), which fires no post_save —
+        so index_file never re-ran and every moved file kept advertising the
+        group it had just left, sending searchers to a link the file isn't at.
+        """
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.db import connection
+
+        from apps.forum.models import File, Subgroup
+
+        now = timezone.now()
+        authenticated_client.post(
+            "/api/events/",
+            {
+                "title": "Event til indeksering",
+                "visibility": "community",
+                "start_datetime": (now + timedelta(days=3)).isoformat(),
+                "end_datetime": (now + timedelta(days=3, hours=2)).isoformat(),
+            },
+            format="json",
+        )
+        event = Event.objects.get(title="Event til indeksering")
+        authenticated_client.post(
+            f"/api/events/{event.slug}/files/",
+            {"files": SimpleUploadedFile("referat.pdf", b"%PDF-1.4 fake")},
+            format="multipart",
+        )
+
+        udvalg = Subgroup.objects.create(name="Havegruppen", slug="havegruppen", is_committee=True)
+        patch = authenticated_client.patch(
+            f"/api/events/{event.slug}/", {"subgroup_id": udvalg.id}, format="json"
+        )
+        assert patch.status_code == 200
+
+        event.refresh_from_db()
+        moved = File.objects.get(folder=event.folder)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT url, subtitle FROM search_index WHERE type = %s AND object_id = %s",
+                ["file", str(moved.id)],
+            )
+            row = cursor.fetchone()
+
+        assert row is not None, "the file should still be in the search index"
+        url, subtitle = row
+        assert url == f"/forum/{udvalg.slug}", f"search still points at {url}"
+        assert subtitle == udvalg.name, f"search still says {subtitle}"
+
+    def test_move_survives_a_name_collision_in_the_target_group(self, authenticated_client, db):
+        """Two events with the same title can both end up in the same udvalg.
+
+        Folder's unique constraints are scoped to the subgroup, so carrying the
+        old name and slug into the target group raised IntegrityError and 500'd
+        the edit — after the event and its thread had already been saved.
+        """
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from apps.forum.models import Subgroup
+
+        udvalg = Subgroup.objects.create(name="Festudvalg", slug="festudvalg", is_committee=True)
+        now = timezone.now()
+
+        slugs = []
+        for i in range(2):
+            authenticated_client.post(
+                "/api/events/",
+                {
+                    "title": "Fællesspisning",
+                    "visibility": "community",
+                    "start_datetime": (now + timedelta(days=3 + i)).isoformat(),
+                    "end_datetime": (now + timedelta(days=3 + i, hours=2)).isoformat(),
+                },
+                format="json",
+            )
+            event = Event.objects.filter(title="Fællesspisning").order_by("-id").first()
+            authenticated_client.post(
+                f"/api/events/{event.slug}/files/",
+                {"files": SimpleUploadedFile(f"plan{i}.pdf", b"%PDF-1.4 fake")},
+                format="multipart",
+            )
+            slugs.append(event.slug)
+
+        # Both are reassigned to the same udvalg; the second one collides.
+        for slug in slugs:
+            patch = authenticated_client.patch(
+                f"/api/events/{slug}/", {"subgroup_id": udvalg.id}, format="json"
+            )
+            assert patch.status_code == 200, patch.data
+
+        folders = [Event.objects.get(slug=s).folder for s in slugs]
+        assert all(f.subgroup_id == udvalg.id for f in folders)
+        assert len({f.slug for f in folders}) == 2, "the two folders need distinct slugs"
+
     def test_create_private_event_with_room(self, authenticated_client, db):
         from apps.bookings.models import Room
 

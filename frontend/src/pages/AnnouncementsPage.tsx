@@ -66,7 +66,7 @@ import {
   getFileTypeColor,
   FilePreviewModal,
   ImageThumbnail,
-  getFileType,
+  getRenderableFileType,
 } from "../components/FilePreview"
 
 import type {
@@ -458,7 +458,7 @@ function AnnouncementCard({
           </Text>
           <Group gap="xs">
             {announcement.attachments.map((attachment) => {
-              const fileType = getFileType(attachment.name)
+              const fileType = getRenderableFileType(attachment)
 
               const FileIcon = getFileIcon(attachment.name)
 

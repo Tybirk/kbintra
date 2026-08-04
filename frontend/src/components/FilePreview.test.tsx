@@ -170,4 +170,38 @@ describe("getRenderableFileType", () => {
       }),
     ).toBe("image")
   })
+
+  it("treats a preview_url equal to the original as no preview at all", () => {
+    // Post/message/announcement serializers always send a preview_url: when
+    // conversion failed they fall back to the original file. Only comparing the
+    // two URLs distinguishes "converted" from "gave up", and without that check
+    // the raw .heic goes into an <img> and renders broken outside Safari.
+    expect(
+      getRenderableFileType({
+        name: "iphone.heic",
+        file_url: "/media/x/iphone.heic",
+        preview_url: "/media/x/iphone.heic",
+      }),
+    ).toBe("other")
+  })
+
+  it("ignores the media signature when comparing the two URLs", () => {
+    // Both URLs are signed at the same instant, so they carry the same token —
+    // but the token is incidental to whether they point at the same file.
+    expect(
+      getRenderableFileType({
+        name: "iphone.heic",
+        file_url: "/media/x/iphone.heic?exp=1&sig=abc",
+        preview_url: "/media/x/iphone.heic?exp=1&sig=abc",
+      }),
+    ).toBe("other")
+
+    expect(
+      getRenderableFileType({
+        name: "iphone.heic",
+        file_url: "/media/x/iphone.heic?exp=1&sig=abc",
+        preview_url: "/media/x/previews/1.jpg?exp=1&sig=def",
+      }),
+    ).toBe("image")
+  })
 })

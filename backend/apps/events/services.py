@@ -84,6 +84,29 @@ def sync_event_thread_subgroup(event: Event) -> None:
         target.save(update_fields=["last_activity_at"])
 
 
+def free_folder_name(subgroup, parent, base: str, exclude_pk: int | None = None) -> str:
+    """`base`, suffixed until it is unused among `parent`'s folders in `subgroup`.
+
+    Folder's uniqueness is scoped to the subgroup, and event folders are named
+    after their event — so two events called "Fællesspisning" collide, both when
+    the second one's folder is created and when one is moved into a group that
+    already has the name. Suffix rather than fail, mirroring the `-2` convention
+    `Folder._generate_slug` already uses for slugs.
+    """
+    from apps.forum.models import Folder
+
+    name = base
+    n = 2
+    while (
+        Folder.objects.filter(subgroup=subgroup, parent=parent, name=name)
+        .exclude(pk=exclude_pk)
+        .exists()
+    ):
+        name = f"{base} ({n})"
+        n += 1
+    return name
+
+
 def sync_event_folder_subgroup(event: Event) -> None:
     """Move an event's file folder along with the event's subgroup.
 
@@ -115,6 +138,17 @@ def sync_event_folder_subgroup(event: Event) -> None:
     )
     folder.subgroup = target
     folder.parent = year_folder
-    folder.save(update_fields=["subgroup", "parent"])
+    # Both of Folder's unique constraints are scoped to the subgroup, so carrying
+    # the old name and slug into the target group can collide and raise. Re-derive
+    # both against the target: the name gets a suffix if taken, and clearing the
+    # slug makes Folder.save() regenerate it (it only generates when empty).
+    folder.name = free_folder_name(target, year_folder, folder.name, exclude_pk=folder.pk)
+    folder.slug = ""
+    folder.save(update_fields=["subgroup", "parent", "name", "slug"])
 
-    File.objects.filter(folder=folder).update(subgroup=target)
+    # Saved one by one rather than with a queryset .update(): .update() fires no
+    # post_save, so the search index would keep pointing every one of these files
+    # at the group they just left. Event folders hold a handful of files.
+    for f in File.objects.filter(folder=folder):
+        f.subgroup = target
+        f.save(update_fields=["subgroup"])

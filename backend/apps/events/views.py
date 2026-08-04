@@ -616,7 +616,7 @@ class EventFilesView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        from apps.events.services import get_events_fallback_subgroup
+        from apps.events.services import free_folder_name, get_events_fallback_subgroup
         from apps.forum.models import File, Folder
 
         # Resolve effective subgroup — fall back to the events catch-all subgroup
@@ -633,7 +633,10 @@ class EventFilesView(APIView):
             )
             event_folder = Folder.objects.create(
                 subgroup=file_subgroup,
-                name=event.title[:100],
+                # Folder names are unique per (subgroup, parent), and two events
+                # in the same year can share a title — "Fællesspisning" every
+                # month — so the second upload raised IntegrityError.
+                name=free_folder_name(file_subgroup, year_folder, event.title[:100]),
                 parent=year_folder,
             )
             event.folder = event_folder

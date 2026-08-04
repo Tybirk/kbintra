@@ -32,6 +32,8 @@ import {
 
 import type { ForumFile } from "../types"
 
+import { unsignedMediaUrl } from "../utils/mediaUrl"
+
 import { ErrorBoundary } from "./ErrorBoundary"
 
 // pdf.js is heavy — only load it when a PDF is actually opened.
@@ -124,16 +126,31 @@ export function isHeic(filename: string): boolean {
 /**
  * The type to *render* a file as, which isn't always what its name says.
  *
- * HEIC counts as an image only when the backend produced a JPEG `preview` for
- * it. Surfaces that carry no preview — forum documents, whose model has no such
- * field, and anything reached from search — would otherwise put the raw .heic in
- * an <img> and show a broken image everywhere except Safari. Falling back to the
- * generic file tile keeps those openable via Del/Gem instead.
+ * HEIC counts as an image only when the backend really produced a JPEG for it.
+ * There are two ways it might not have:
+ *
+ *  - the surface has no `preview` column at all (forum documents, search), so
+ *    `preview_url` is absent; or
+ *  - conversion failed — an HEVC 10-bit still that libheif won't decode, say —
+ *    and the serializer fell back to handing out the original .heic under both
+ *    names. An identical URL is exactly as much "no preview" as a missing one,
+ *    and only comparing them catches this case.
+ *
+ * Either way, putting the raw .heic in an <img> shows a broken image in
+ * everything but Safari; the generic file tile keeps it openable via Del/Gem.
  */
 export function getRenderableFileType(file: PreviewableFile): FileType {
   const type = getFileType(file.name)
 
-  if (type === "image" && isHeic(file.name) && !file.preview_url) return "other"
+  if (type !== "image" || !isHeic(file.name)) return type
+
+  if (!file.preview_url) return "other"
+
+  // Compare without the signature: both URLs are signed at the same instant, but
+  // the token is incidental to whether they point at the same file.
+  if (unsignedMediaUrl(file.preview_url) === unsignedMediaUrl(file.file_url)) {
+    return "other"
+  }
 
   return type
 }
@@ -220,10 +237,17 @@ function triggerDownload(url: string, filename: string) {
 export function useFileActions(file: PreviewableFile | null, enabled: boolean) {
   const fileType = file ? getRenderableFileType(file) : "other"
 
+  // Images are in here for sharing, not for rendering: they display straight
+  // from `src`, but navigator.canShare() needs a real File before it will say
+  // whether the browser accepts the type — and sharing a photo is precisely what
+  // Chrome/Android does allow. Without a blob, canShare is permanently false and
+  // the Del button never appears. The fetch hits the same URL the <img> already
+  // loaded, so it comes from the HTTP cache.
   const needsBlob =
     fileType === "pdf" ||
     fileType === "word" ||
     fileType === "powerpoint" ||
+    fileType === "image" ||
     fileType === "other"
 
   const [blobUrl, setBlobUrl] = useState<string | null>(null)
