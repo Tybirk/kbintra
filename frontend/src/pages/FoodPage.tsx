@@ -1270,9 +1270,13 @@ function MealPricesAdmin() {
               label="Note (valgfrit)"
               placeholder="F.eks. Prisstigning på råvarer"
               value={draft.note}
-              onChange={(e) =>
-                setDraft((d) => ({ ...d, note: e.currentTarget.value }))
-              }
+              onChange={(e) => {
+                // Read the value now: React nulls out currentTarget once the
+                // handler returns, and the updater below runs later.
+                const note = e.currentTarget.value
+
+                setDraft((d) => ({ ...d, note }))
+              }}
             />
             <Group justify="flex-end">
               <Button variant="light" onClick={closeModal}>
