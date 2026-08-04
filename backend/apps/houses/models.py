@@ -115,7 +115,8 @@ class Child(models.Model):
 class Car(models.Model):
     """
     Represents a car registered to a house.
-    Used to look up car owners by license plate number.
+    Used to look up car owners by license plate number, and — when in_pool is
+    set — to share the car in the community car pool (see apps.carsharing).
     """
 
     house = models.ForeignKey(
@@ -125,11 +126,44 @@ class Car(models.Model):
     )
     license_plate = models.CharField(max_length=15, blank=True, default="")
     is_electric = models.BooleanField(default=False)
+
+    # Car pool (bildeling)
+    in_pool = models.BooleanField(default=False, db_index=True)
+    rate_per_km = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Overrides the shared default rate when set.",
+    )
+    make = models.CharField(max_length=50, blank=True, default="")
+    # Deliberately not "model" — that name collides with Django's own namespace.
+    model_name = models.CharField(max_length=50, blank=True, default="")
+    color = models.CharField(max_length=30, blank=True, default="")
+    year = models.PositiveSmallIntegerField(null=True, blank=True)
+    seats = models.PositiveSmallIntegerField(null=True, blank=True)
+    has_tow_hitch = models.BooleanField(default=False)
+    has_isofix = models.BooleanField(default=False)
+    dogs_allowed = models.BooleanField(default=False)
+    has_charge_fob = models.BooleanField(default=False)
+    equipment_note = models.TextField(blank=True, default="")
+    practical_note = models.TextField(blank=True, default="")
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["license_plate"]
+
+    def clean(self) -> None:
+        """A pooled car must be identifiable, so borrowers know which car to find."""
+        from django.core.exceptions import ValidationError
+
+        from .utils import normalize_license_plate
+
+        super().clean()
+        if self.in_pool and not normalize_license_plate(self.license_plate):
+            raise ValidationError({"in_pool": "En bil i bilpølen skal have en nummerplade."})
 
     def save(self, *args, **kwargs):
         from .utils import normalize_license_plate
@@ -139,3 +173,11 @@ class Car(models.Model):
 
     def __str__(self) -> str:
         return f"{self.license_plate} ({self.house.name})"
+
+    @property
+    def display_name(self) -> str:
+        """Human label for the car — make/model when known, else the plate."""
+        from .utils import format_license_plate
+
+        described = " ".join(str(part) for part in (self.make, self.model_name) if part)
+        return described or format_license_plate(self.license_plate) or "Bil"

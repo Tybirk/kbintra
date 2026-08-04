@@ -8,6 +8,7 @@ import {
   IconHome,
   IconMessageCircle,
   IconCalendar,
+  IconCar,
   IconSoup,
   IconSpeakerphone,
   IconUsers,
@@ -75,6 +76,8 @@ const navItems: NavItem[] = [
   },
 
   { icon: IconDoor, label: "Bookingkalender", path: "/booking" },
+
+  { icon: IconCar, label: "Bildeling", path: "/bildeling" },
 
   { icon: IconReceipt2, label: "Udlæg", path: "/udlaeg" },
 

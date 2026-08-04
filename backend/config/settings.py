@@ -71,6 +71,7 @@ INSTALLED_APPS = [
     "apps.bookings",
     "apps.links",
     "apps.expenses",
+    "apps.carsharing",
     "apps.backup",
 ]
 

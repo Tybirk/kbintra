@@ -39,8 +39,28 @@ class ChildCreateUpdateSerializer(AvatarUrlMixin, serializers.ModelSerializer):
         read_only_fields = ["id"]
 
 
+# Car pool fields, shared by the read and write serializers so the two can't drift.
+CAR_POOL_FIELDS = [
+    "in_pool",
+    "rate_per_km",
+    "make",
+    "model_name",
+    "color",
+    "year",
+    "seats",
+    "has_tow_hitch",
+    "has_isofix",
+    "dogs_allowed",
+    "has_charge_fob",
+    "equipment_note",
+    "practical_note",
+]
+
+
 class CarSerializer(serializers.ModelSerializer):
     """Serializer for Car model."""
+
+    display_name = serializers.CharField(read_only=True)
 
     class Meta:
         model = Car
@@ -48,6 +68,8 @@ class CarSerializer(serializers.ModelSerializer):
             "id",
             "license_plate",
             "is_electric",
+            "display_name",
+            *CAR_POOL_FIELDS,
             "created_at",
         ]
         read_only_fields = ["id", "created_at"]
@@ -62,8 +84,22 @@ class CarCreateUpdateSerializer(serializers.ModelSerializer):
             "id",
             "license_plate",
             "is_electric",
+            *CAR_POOL_FIELDS,
         ]
         read_only_fields = ["id"]
+
+    def validate(self, attrs):
+        """Mirror Car.clean() — DRF never calls full_clean(), so admin and API
+        would otherwise disagree about whether a pooled car needs a plate."""
+        from .utils import normalize_license_plate
+
+        in_pool = attrs.get("in_pool", getattr(self.instance, "in_pool", False))
+        plate = attrs.get("license_plate", getattr(self.instance, "license_plate", ""))
+        if in_pool and not normalize_license_plate(plate):
+            raise serializers.ValidationError(
+                {"in_pool": "En bil i bilpølen skal have en nummerplade."}
+            )
+        return attrs
 
 
 class HouseInhabitantSerializer(AvatarUrlMixin, serializers.ModelSerializer):

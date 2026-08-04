@@ -8,6 +8,7 @@ import re
 import time
 import zoneinfo
 from collections.abc import Sequence
+from decimal import Decimal
 from typing import Any
 from urllib.parse import urlparse
 
@@ -162,6 +163,8 @@ def get_user_preference(user: User, notification_type: NotificationType) -> bool
         NotificationType.ANNOUNCEMENT_EDITED_BY_ADMIN: True,
         # Expense (udlæg) outcomes are always shown in-app — no opt-out toggle.
         NotificationType.EXPENSE_PROCESSED: True,
+        NotificationType.CAR_LOAN_REQUEST: prefs.notify_car_sharing,
+        NotificationType.CAR_LOAN_UPDATE: prefs.notify_car_sharing,
     }
 
     return preference_map.get(notification_type, True)
@@ -191,6 +194,8 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
         NotificationType.EVENT_REMINDER: prefs.push_event_reminders,
         NotificationType.FOOD_TICKET: prefs.push_food_tickets,
         NotificationType.MENTION: prefs.push_mentions,
+        NotificationType.CAR_LOAN_REQUEST: prefs.push_car_sharing,
+        NotificationType.CAR_LOAN_UPDATE: prefs.push_car_sharing,
     }
 
     # These types have no dedicated push toggle — they piggyback on whatever
@@ -214,6 +219,7 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
                 prefs.push_event_reminders,
                 prefs.push_food_tickets,
                 prefs.push_mentions,
+                prefs.push_car_sharing,
             )
         )
 
@@ -1375,3 +1381,230 @@ def notify_announcement_edited_by_admin(
         link=link,
         related_user=editor,
     )
+
+
+# -- Car sharing (bildeling) --
+
+
+def _car_loan_link(loan: Any) -> str:
+    return f"/bildeling/laan/{loan.id}"
+
+
+def _format_loan_window(loan: Any) -> str:
+    """Danish window description, e.g. "12-06-2027 09:00-14:00"."""
+    start = loan.start_at.astimezone(_CPH_TZ)
+    end = loan.end_at.astimezone(_CPH_TZ)
+    if start.date() == end.date():
+        return f"{start:%d-%m-%Y %H:%M}-{end:%H:%M}"
+    return f"{start:%d-%m-%Y %H:%M} til {end:%d-%m-%Y %H:%M}"
+
+
+def _car_household_recipients(car: Any, exclude_user_id: int | None = None) -> QuerySet[User]:
+    """The adults of the household that owns the car."""
+    recipients = User.objects.filter(house_id=car.house_id, is_active=True)
+    if exclude_user_id is not None:
+        recipients = recipients.exclude(id=exclude_user_id)
+    return recipients
+
+
+def notify_car_loan_requested(loan: Any) -> list[Notification]:
+    """Tell every asked household that someone wants to borrow their car.
+
+    The message says how many cars were asked, so an owner knows their yes is an
+    offer among several rather than an obligation.
+    """
+    candidates = list(loan.candidates.select_related("car", "car__house").all())
+    total = len(candidates)
+    window = _format_loan_window(loan)
+    created: list[Notification] = []
+    suffix = f" Du er en af {total} spurgte — lånerens valg er frit." if total > 1 else ""
+
+    for candidate in candidates:
+        message = (
+            f"{loan.borrower.first_name} vil låne {candidate.car.display_name} "
+            f"{window} (ca. {loan.expected_km} km).{suffix}"
+        )
+        for recipient in _car_household_recipients(candidate.car, loan.borrower_id):
+            notification = create_notification(
+                user=recipient,
+                notification_type=NotificationType.CAR_LOAN_REQUEST,
+                title="Forespørgsel om at låne din bil",
+                message=message,
+                link=_car_loan_link(loan),
+                related_user=loan.borrower,
+            )
+            if notification is not None:
+                created.append(notification)
+    return created
+
+
+def notify_car_loan_accepted(candidate: Any) -> Notification | None:
+    """Tell the borrower that an owner said yes.
+
+    The borrower is the one waiting for an answer, so without this they would
+    have to keep reopening the page to find out whether they have a car.
+    """
+    loan = candidate.loan
+    window = _format_loan_window(loan)
+    others = loan.candidates.exclude(pk=candidate.pk).count()
+    if others:
+        suffix = f" Du har spurgt {others + 1} biler — vælg den du vil låne."
+    else:
+        suffix = " Vælg den for at låne den."
+
+    return create_notification(
+        user=loan.borrower,
+        notification_type=NotificationType.CAR_LOAN_UPDATE,
+        title="Du kan låne en bil",
+        message=(
+            f"{candidate.car.house.name} siger ja til at du låner "
+            f"{candidate.car.display_name} {window}.{suffix}"
+        ),
+        link=_car_loan_link(loan),
+        related_user=candidate.responded_by,
+    )
+
+
+def notify_car_loan_declined(candidate: Any) -> Notification | None:
+    """Tell the borrower that an owner cannot lend the car this time."""
+    loan = candidate.loan
+    still_open = loan.candidates.filter(status="asked").count()
+    if still_open:
+        tail = f" Du afventer stadig svar på {still_open} bil{'' if still_open == 1 else 'er'}."
+    else:
+        tail = " Der er ikke flere biler at afvente svar fra."
+
+    return create_notification(
+        user=loan.borrower,
+        notification_type=NotificationType.CAR_LOAN_UPDATE,
+        title="En bil kan ikke lånes",
+        message=(
+            f"{candidate.car.house.name} kan ikke låne dig "
+            f"{candidate.car.display_name} i tidsrummet.{tail}"
+        ),
+        link=_car_loan_link(loan),
+        related_user=candidate.responded_by,
+    )
+
+
+def notify_car_loan_chosen(loan: Any) -> list[Notification]:
+    """Tell the chosen owner's household that their offer was accepted."""
+    if loan.car is None:
+        return []
+
+    window = _format_loan_window(loan)
+    message = f"{loan.borrower.first_name} har valgt {loan.car.display_name} og låner den {window}."
+    created = []
+    for recipient in _car_household_recipients(loan.car, loan.borrower_id):
+        notification = create_notification(
+            user=recipient,
+            notification_type=NotificationType.CAR_LOAN_UPDATE,
+            title="Dit tilbud er accepteret",
+            message=message,
+            link=_car_loan_link(loan),
+            related_user=loan.borrower,
+        )
+        if notification is not None:
+            created.append(notification)
+    return created
+
+
+def notify_car_loan_candidate_closed(candidate: Any) -> list[Notification]:
+    """Tell an owner who said yes that the borrower went with another car."""
+    loan = candidate.loan
+    message = (
+        f"{loan.borrower.first_name} valgte en anden bil. "
+        f"Tak for tilbuddet — {candidate.car.display_name} er fri."
+    )
+    created = []
+    for recipient in _car_household_recipients(candidate.car, loan.borrower_id):
+        notification = create_notification(
+            user=recipient,
+            notification_type=NotificationType.CAR_LOAN_UPDATE,
+            title="Bilen blev ikke valgt",
+            message=message,
+            link=_car_loan_link(loan),
+            related_user=loan.borrower,
+        )
+        if notification is not None:
+            created.append(notification)
+    return created
+
+
+def notify_car_loan_cancelled(loan: Any, by_user: User) -> list[Notification]:
+    """Tell the other party that the loan or request was cancelled."""
+    window = _format_loan_window(loan)
+    created = []
+
+    if by_user.id == loan.borrower_id:
+        # Borrower withdrew — tell the households still waiting or lending.
+        cars = (
+            [loan.car]
+            if loan.car is not None
+            else [
+                candidate.car
+                for candidate in loan.candidates.select_related("car", "car__house").exclude(
+                    status="declined"
+                )
+            ]
+        )
+        for car in cars:
+            if car is None:
+                continue
+            for recipient in _car_household_recipients(car, loan.borrower_id):
+                notification = create_notification(
+                    user=recipient,
+                    notification_type=NotificationType.CAR_LOAN_UPDATE,
+                    title="Bilforespørgsel aflyst",
+                    message=f"{loan.borrower.first_name} har aflyst lånet {window}.",
+                    link=_car_loan_link(loan),
+                    related_user=loan.borrower,
+                )
+                if notification is not None:
+                    created.append(notification)
+        return created
+
+    # An owner pulled out — tell the borrower.
+    car_name = loan.car.display_name if loan.car is not None else "bilen"
+    notification = create_notification(
+        user=loan.borrower,
+        notification_type=NotificationType.CAR_LOAN_UPDATE,
+        title="Dit billån er aflyst",
+        message=f"{by_user.first_name} har aflyst lånet af {car_name} {window}.",
+        link=_car_loan_link(loan),
+        related_user=by_user,
+    )
+    if notification is not None:
+        created.append(notification)
+    return created
+
+
+def notify_car_loan_completed(loan: Any) -> list[Notification]:
+    """Tell the owner the car is back, with the amount and any damage note."""
+    if loan.car is None:
+        return []
+
+    amount = loan.amount_due if loan.amount_due is not None else Decimal("0")
+    amount_text = f"{amount:.2f}".replace(".", ",")
+    if amount < 0:
+        money = f"Du skylder {loan.borrower.first_name} {amount_text.lstrip('-')} kr."
+    else:
+        money = f"{loan.borrower.first_name} skal betale dig {amount_text} kr."
+
+    message = f"{loan.car.display_name} er afleveret efter {loan.actual_km or 0} km. {money}"
+    if loan.damage_note:
+        message += f" Bemærkning: {loan.damage_note}"
+
+    created = []
+    for recipient in _car_household_recipients(loan.car, loan.borrower_id):
+        notification = create_notification(
+            user=recipient,
+            notification_type=NotificationType.CAR_LOAN_UPDATE,
+            title="Billån afsluttet",
+            message=message,
+            link=_car_loan_link(loan),
+            related_user=loan.borrower,
+        )
+        if notification is not None:
+            created.append(notification)
+    return created

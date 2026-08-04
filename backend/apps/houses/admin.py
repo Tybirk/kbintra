@@ -20,7 +20,7 @@ class CarInline(admin.TabularInline):
 
     model = Car
     extra = 0
-    fields = ("license_plate", "is_electric")
+    fields = ("license_plate", "is_electric", "in_pool", "make", "model_name", "seats")
 
 
 @admin.register(House)

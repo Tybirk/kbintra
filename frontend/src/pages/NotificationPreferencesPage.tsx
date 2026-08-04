@@ -448,6 +448,14 @@ export default function NotificationPreferencesPage() {
                   handleToggle("notify_mentions", e.currentTarget.checked)
                 }
               />
+              <Switch
+                label="Bildeling"
+                description="Når nogen vil låne din bil, eller der er nyt om et lån"
+                checked={preferences.notify_car_sharing}
+                onChange={(e) =>
+                  handleToggle("notify_car_sharing", e.currentTarget.checked)
+                }
+              />
             </Stack>
           </Tabs.Panel>
 
@@ -547,6 +555,14 @@ export default function NotificationPreferencesPage() {
                 checked={preferences.email_mentions}
                 onChange={(e) =>
                   handleToggle("email_mentions", e.currentTarget.checked)
+                }
+              />
+              <Switch
+                label="Bildeling"
+                description="E-mail om forespørgsler og lån af biler"
+                checked={preferences.email_car_sharing}
+                onChange={(e) =>
+                  handleToggle("email_car_sharing", e.currentTarget.checked)
                 }
               />
             </Stack>
@@ -695,6 +711,17 @@ export default function NotificationPreferencesPage() {
                         checked={preferences.push_mentions}
                         onChange={(e) =>
                           handleToggle("push_mentions", e.currentTarget.checked)
+                        }
+                      />
+                      <Switch
+                        label="Bildeling"
+                        description="Push-notifikation om forespørgsler og lån af biler"
+                        checked={preferences.push_car_sharing}
+                        onChange={(e) =>
+                          handleToggle(
+                            "push_car_sharing",
+                            e.currentTarget.checked,
+                          )
                         }
                       />
 

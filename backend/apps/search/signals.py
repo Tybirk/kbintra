@@ -85,14 +85,21 @@ def index_car(sender, instance, **kwargs):
         subtitle_parts = [instance.house.name]
         if instance.is_electric:
             subtitle_parts.append("Elbil")
+        if instance.in_pool:
+            subtitle_parts.append("Bilpøl")
         # Include both display ("AB 12 345") and canonical ("AB12345") forms in
         # the body so FTS finds plates whether the user types spaces or not.
         plate_compact = normalize_license_plate(instance.license_plate)
+        # Make/model in the body so searching "Skoda" finds the car, and the pool
+        # word so "bilpøl" lists everything shared.
+        body_parts = [instance.house.name, plate_compact, instance.make, instance.model_name]
+        if instance.in_pool:
+            body_parts.append("bilpøl bildeling")
         index_object(
             obj_type="car",
             object_id=instance.id,
             title=format_license_plate(instance.license_plate),
-            body=f"{instance.house.name} {plate_compact}",
+            body=" ".join(part for part in body_parts if part),
             url=f"/beboere/hus/{instance.house.slug}",
             subtitle=" · ".join(subtitle_parts),
             created_at=_isoformat(instance.created_at),

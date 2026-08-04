@@ -63,6 +63,7 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
             "notify_event_reminders",
             "notify_food_tickets",
             "notify_mentions",
+            "notify_car_sharing",
             # Email preferences
             "email_messages",
             "email_announcements",
@@ -75,6 +76,7 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
             "email_event_reminders",
             "email_food_tickets",
             "email_mentions",
+            "email_car_sharing",
             # Push preferences
             "push_messages",
             "push_announcements",
@@ -87,6 +89,7 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
             "push_event_reminders",
             "push_food_tickets",
             "push_mentions",
+            "push_car_sharing",
             "created_at",
             "updated_at",
         ]
