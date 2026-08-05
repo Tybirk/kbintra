@@ -454,18 +454,30 @@ Stop efter 2 hvis brugen udebliver. Det er hele pointen med opdelingen.
 Rækkefølgen der skal følges når bildeling går i produktion, i den rækkefølge
 tingene gør skade hvis de glemmes.
 
-1. **Migrationer.** `houses/0010` (13 kolonner på `houses_car`, SQLite bygger
-   tabellen om — trivielt for ~70 biler), `carsharing/0001`+`0002` (tre nye
+1. **Migrationer.** `houses/0010` (15 kolonner på `houses_car`, som går fra 6 til
+   21 — SQLite bygger tabellen om, trivielt for ~70 biler),
+   `carsharing/0001`+`0002` (tre nye
    tabeller) og `notifications/0018` (tre præferencekolonner). De kører
-   automatisk i `docker-entrypoint.sh`.
+   automatisk i `docker-entrypoint.sh`. Alle fire er rent additive og tog under
+   et sekund på en rigtig produktionskopi (se generalprøven nedenfor).
    **Bemærk:** `houses/0010` og `carsharing/0001` er blevet redigeret direkte
    fordi de aldrig havde nået `develop`. Efter merge er de urørlige som alle
    andre — ret dem ikke igen.
+   `houses/0007` er også rettet, og det er en *allerede kørt* migration: den
+   normaliserede nummerplader gennem den konkrete `Car`-model, som vælger alle
+   kolonner der findes i dag, så en `migrate` fra nul brød sammen i det øjeblik
+   `houses/0010` tilføjede delebil-kolonnerne (`no such column:
+   houses_car.is_shared`). Den bruger nu den historiske model. Produktionen har
+   kørt migrationen for længst og kører den ikke igen, så det ændrer intet på en
+   eksisterende database — det er kun en rettelse for nye installationer.
 2. **`rebuild_search_index` efter deploy.** Bilernes indekstekst er ændret
    (`Bilpøl` → `Delebil`, og `delebil delebilpark bildeling` i body), så
    eksisterende biler har forældede søgeord indtil indekset bygges om.
    `apps/search/signals.py` er ændret på både `develop` og denne gren; merge er
    ren, men kør søgetestene efter.
+   **Regn med cirka et minut:** på produktionskopien tog den 62 sekunder for
+   24.189 objekter. Søgning giver forældede resultater indtil den er færdig, så
+   kør den med vilje og ikke midt i myldretiden.
 3. **Bildeling er skjult i produktion.** `isTestEnvironment()` i
    `frontend/src/utils/environment.ts` holder både Bildeling og Udlæg ude af
    menuen på kb-intra.dk, mens de vises på kbintra.top og lokalt.
@@ -483,10 +495,40 @@ tingene gør skade hvis de glemmes.
    den version ejeren har accepteret, og en ny dato tager alle biler ud af
    delebilparken indtil ejerne accepterer på ny.
 
+### Generalprøve på en produktionskopi (2026-08-05)
+
+Migrationerne er kørt på et frisk `sqlite3 .backup`-øjebliksbillede af
+produktionen (111 brugere, 58 husstande, 71 biler, 15.882 indlæg) hentet samme
+dag. Udgangspunktet var `houses/0009`, `notifications/0017` og ingen
+`carsharing`-app — præcis det produktionen står på.
+
+- Alle fire migrationer kørte igennem på under et sekund. `PRAGMA
+  integrity_check` og `PRAGMA foreign_key_check` var rene bagefter, og alle
+  rækketal var uændrede.
+- `migrate --check`, `makemigrations --check` og `manage.py check` var alle rene
+  bagefter, og en gentaget kørsel fra samme øjebliksbillede gav samme resultat.
+- **Delebilparken er tom på dag ét.** Alle 71 biler får `is_shared = 0`, så
+  ingen bil bliver delt ved et uheld. Siden skriver "Der er ingen biler i
+  delebilparken endnu." — det er den rigtige tekst, ikke en fejl.
+- **`rate_per_km` er NULL på alle biler**, hvilket er meningen: feltet er en
+  *override*, og NULL falder tilbage til fællesskabets 3,94 kr./km.
+- **23 af de 71 biler har ingen nummerplade.** De kan ikke komme i
+  delebilparken før ejeren skriver en plade ind ("En bil i delebilparken skal
+  have en nummerplade."), og kortet viser dem som "Bil" med mærket "MANGLER
+  NUMMERPLADE". Altså cirka en tredjedel af bilerne kræver en handling fra
+  ejeren først — værd at vide inden man undrer sig over en tom delebilpark.
+- Hele forløbet er kørt igennem på de rigtige data: del bil → vis delebilpark →
+  forespørg → ejer ser `asked` → uvedkommende husstand ser intet → ejer siger ja
+  → afslut med udgift (120 km × 4,25 − 50,50 = 459,50 kr., korrekt) → negativ
+  udgift afvist → 45-dages vindue afvist. Ingen fejl i browserkonsollen.
+- En `migrate` fra nul på en tom database kører også igennem (73 tabeller).
+
 ### Endnu ikke testet
 
-- **E-mail og push** for bildeling-notifikationer er kun testet på
-  præferenceniveau; selve leveringen er aldrig verificeret.
+- **E-mail og push** for bildeling-notifikationer. Notifikationen udløses og
+  `send_email_task` kører færdig (verificeret i generalprøven, hvor begge
+  beboere i ejerens husstand fik en), men det var med udviklings-mailbackend —
+  levering til en rigtig indbakke er stadig ikke set. Push var slået fra.
 - **Ægte samtidighed** (to ejere der siger ja i samme millisekund) er aldrig
   reproduceret. Rækkefølgen der beskytter mod det er testet
   (`test_the_loser_of_a_race_is_not_recorded_as_the_lender`), men ikke under
