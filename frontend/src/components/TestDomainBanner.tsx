@@ -4,18 +4,13 @@ import { Box, CloseButton, Group, Stack, Text } from "@mantine/core"
 
 import { IconAlertTriangle } from "@tabler/icons-react"
 
-// Hostnames that are NOT the real production site. Users sometimes land on the
-// dev server by mistake (e.g. an old installed "app" pointing at the test
-// domain), so we warn them loudly and tell them to use kb-intra.dk instead.
-const TEST_HOSTNAMES = ["kbintra.top"]
+// Users sometimes land on the test site by mistake (e.g. an old installed "app"
+// pointing at the test domain), so we warn them and point them at kb-intra.dk.
+import { isTestDomain } from "../utils/environment"
 
 // How long the banner stays hidden after the user dismisses it.
 const DISMISS_DURATION_MS = 60 * 60 * 1000 // 1 hour
 const DISMISS_KEY = "test-domain-banner-dismissed-until"
-
-function isTestDomain(): boolean {
-  return TEST_HOSTNAMES.includes(window.location.hostname)
-}
 
 // Returns true if the user dismissed the banner less than DISMISS_DURATION_MS
 // ago. Robust against missing/garbage localStorage values.

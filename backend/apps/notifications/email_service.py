@@ -60,6 +60,8 @@ def should_send_email(user: User, notification_type: NotificationType) -> bool:
         NotificationType.EVENT_REMINDER: prefs.email_event_reminders,
         NotificationType.FOOD_TICKET: prefs.email_food_tickets,
         NotificationType.MENTION: prefs.email_mentions,
+        NotificationType.CAR_LOAN_REQUEST: prefs.email_car_sharing,
+        NotificationType.CAR_LOAN_UPDATE: prefs.email_car_sharing,
     }
 
     # Expense outcomes have no dedicated email toggle — they piggyback on

@@ -25,5 +25,11 @@ export function invalidateCacheForLink(queryClient: QueryClient, link: string) {
 
   if (link.startsWith("/mad/")) {
     queryClient.invalidateQueries({ queryKey: ["food"] })
+
+    return
+  }
+
+  if (link.startsWith("/bildeling")) {
+    queryClient.invalidateQueries({ queryKey: ["carsharing"] })
   }
 }

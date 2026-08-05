@@ -43,6 +43,7 @@ import {
   IconMailOpened,
   IconEdit,
   IconReceipt2,
+  IconCar,
 } from "@tabler/icons-react"
 
 import dayjs from "dayjs"
@@ -85,6 +86,10 @@ const notificationIcons: Record<NotificationType, React.ReactNode> = {
   announcement_edited_by_admin: <IconEdit size={20} />,
 
   expense_processed: <IconReceipt2 size={20} />,
+
+  car_loan_request: <IconCar size={20} />,
+
+  car_loan_update: <IconCar size={20} />,
 }
 
 const notificationColors: Record<NotificationType, string> = {
@@ -119,6 +124,10 @@ const notificationColors: Record<NotificationType, string> = {
   announcement_edited_by_admin: "orange",
 
   expense_processed: "teal",
+
+  car_loan_request: "grape",
+
+  car_loan_update: "grape",
 }
 
 export default function NotificationsPage() {

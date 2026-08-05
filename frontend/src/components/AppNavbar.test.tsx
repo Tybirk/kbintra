@@ -160,4 +160,34 @@ describe("AppNavbar", () => {
 
     expect(screen.queryByText("0")).not.toBeInTheDocument()
   })
+
+  // --- Trial features are kept off the real site ------------------------------
+  //
+  // jsdom serves these tests from localhost, which counts as a test environment,
+  // so the visible case needs no setup and the hidden case overrides the host.
+
+  it("shows the trial features on the test site and local dev", async () => {
+    render(<AppNavbar />)
+
+    expect(screen.getByText("Bildeling")).toBeInTheDocument()
+    expect(screen.getByText("Udlæg")).toBeInTheDocument()
+  })
+
+  it("hides the trial features on the real site", async () => {
+    vi.spyOn(window, "location", "get").mockReturnValue({
+      ...window.location,
+      hostname: "kb-intra.dk",
+    } as Location)
+
+    render(<AppNavbar />)
+
+    // Still being trialled, so residents on kb-intra.dk must not see them yet.
+    expect(screen.queryByText("Bildeling")).not.toBeInTheDocument()
+    expect(screen.queryByText("Udlæg")).not.toBeInTheDocument()
+    // Everything else is unaffected.
+    expect(screen.getByText("Forum")).toBeInTheDocument()
+    expect(screen.getByText("Bookingkalender")).toBeInTheDocument()
+
+    vi.restoreAllMocks()
+  })
 })

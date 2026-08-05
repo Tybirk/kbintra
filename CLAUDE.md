@@ -68,7 +68,7 @@ Note: Migrations run automatically on backend container startup via `docker-entr
 
 ### Backend Structure
 
-12 Django apps in `backend/apps/`:
+14 Django apps in `backend/apps/`:
 - `users` - Custom User model (email-based auth), invitations, profiles
 - `houses` - Resident directory by house
 - `forum` - Subgroups → Threads → Posts (Tiptap HTML), Files/Folders
@@ -80,6 +80,8 @@ Note: Migrations run automatically on backend container startup via `docker-entr
 - `search` - FTS5 full-text search index across other apps' models
 - `bookings` - Bookable room catalog with recurring bookings and exceptions
 - `links` - Shared community links page
+- `expenses` - Resident expense claims (udlæg) with treasurer workflow
+- `carsharing` - Bildeling: delebilpark (shared cars), advisory weekly schedules, loan requests → offers → settlement
 - `backup` - Media serving with S3 fallback restore + Litestream health checks
 
 ### Frontend Structure
@@ -92,7 +94,7 @@ Note: Migrations run automatically on backend container startup via `docker-entr
 
 ### API & Real-time
 
-- REST endpoints: `/api/{auth,users,houses,forum,announcements,food,events,messages,notifications,search,bookings,links}/`
+- REST endpoints: `/api/{auth,users,houses,forum,announcements,food,events,messages,notifications,search,bookings,links,expenses,carsharing}/`
 - WebSocket: `ws://localhost:7000/ws/chat/?token=<jwt>` - messaging, notifications, typing indicators
 - Health check: `GET /api/health/` (unauthenticated, used by Docker healthcheck)
 - Vite proxies `/api` and `/media` to backend in dev (configured in vite.config.ts)

@@ -387,7 +387,9 @@ export class ChatWebSocket {
 
     const host = window.location.hostname
 
-    const port = import.meta.env.DEV ? ":7000" : ""
+    const port = import.meta.env.DEV
+      ? `:${import.meta.env.VITE_BACKEND_PORT ?? "7000"}`
+      : ""
 
     const url = `${protocol}//${host}${port}/ws/chat/?token=${token}`
 
