@@ -28,6 +28,8 @@ export const AttachmentBadge = memo(function AttachmentBadge({
 
   const fileColor = getFileTypeColor(file.name)
 
+  // Native File, not a server attachment: the preview is a local blob, and
+  // Safari renders a freshly picked HEIC fine. Name-based typing is right here.
   const isImage = getFileType(file.name) === "image"
 
   // Create blob URL once when component mounts (for images only)

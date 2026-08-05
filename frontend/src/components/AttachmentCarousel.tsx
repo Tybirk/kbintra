@@ -35,7 +35,7 @@ import {
 } from "@tabler/icons-react"
 
 import {
-  getFileType,
+  getRenderableFileType,
   getFileIcon,
   getFileTypeColor,
   useFileActions,
@@ -133,11 +133,11 @@ export function AttachmentCarousel({
   // Separate images and other files, images come first
 
   const imageAttachments = attachments.filter(
-    (att) => getFileType(att.name) === "image",
+    (att) => getRenderableFileType(att) === "image",
   )
 
   const otherAttachments = attachments.filter(
-    (att) => getFileType(att.name) !== "image",
+    (att) => getRenderableFileType(att) !== "image",
   )
 
   const orderedAttachments = [...imageAttachments, ...otherAttachments]
@@ -155,7 +155,7 @@ export function AttachmentCarousel({
   // Single image: skip the carousel preview entirely and open the zoom viewer directly.
   if (
     orderedAttachments.length === 1 &&
-    getFileType(orderedAttachments[0].name) === "image"
+    getRenderableFileType(orderedAttachments[0]) === "image"
   ) {
     return (
       <ImageZoomViewer
@@ -307,7 +307,7 @@ function SlideContent({
 
   const [error, setError] = useState<string | null>(null)
 
-  const fileType = getFileType(attachment.name)
+  const fileType = getRenderableFileType(attachment)
 
   const actions = useFileActions(attachment, opened)
 

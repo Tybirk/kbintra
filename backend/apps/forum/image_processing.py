@@ -131,6 +131,32 @@ def generate_attachment_preview(attachment: object) -> bool:
     return True
 
 
+def ensure_attachment_preview(app_label: str, model_name: str, attachment: object) -> None:
+    """Generate a HEIC/HEIF `preview` *now*, falling back to the background task.
+
+    Upload paths hand the attachment straight into the response body and the
+    WebSocket broadcast, both of which read `preview` to build `preview_url`. A
+    queued task hasn't run at that point in production, so the payload carried
+    the undecodable original and every recipient saw a broken image until they
+    reloaded. Generating inline keeps those payloads correct by construction.
+
+    Cheap in practice: this no-ops for every format browsers can render, so only
+    genuine HEIC uploads (a handful in the whole archive) pay for the conversion.
+    """
+    from apps.forum.tasks import generate_attachment_preview_task
+
+    try:
+        generate_attachment_preview(attachment)
+    except Exception:  # noqa: BLE001 — an upload must not fail over a preview
+        logger.exception(
+            "Inline preview failed for %s.%s %s; falling back to the task queue",
+            app_label,
+            model_name,
+            getattr(attachment, "pk", None),
+        )
+        generate_attachment_preview_task(app_label, model_name, attachment.pk)
+
+
 def generate_thumbnail(source: BinaryIO) -> ContentFile | None:
     """Open `source`, return a JPEG ContentFile of a centered square crop.
 
@@ -154,16 +180,9 @@ def generate_thumbnail(source: BinaryIO) -> ContentFile | None:
         logger.warning("Pillow could not open attachment for thumbnailing: %s", exc)
         return None
 
-    img = ImageOps.exif_transpose(img)
-
-    # JPEG can't carry alpha — composite onto white so PNGs with transparency
-    # don't end up with a black background.
-    if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
-        background = Image.new("RGB", img.size, (255, 255, 255))
-        background.paste(img.convert("RGBA"), mask=img.convert("RGBA").split()[-1])
-        img = background
-    elif img.mode != "RGB":
-        img = img.convert("RGB")
+    # Applies EXIF orientation and composites alpha onto white: JPEG can't carry
+    # transparency, so a PNG would otherwise get a black background.
+    img = _flatten_to_rgb(img)
 
     # Clamp target side to the source's shortest edge to avoid upscaling small
     # images. ImageOps.fit crops to the target aspect ratio (square here),

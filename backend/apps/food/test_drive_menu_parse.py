@@ -300,3 +300,56 @@ def test_repeated_earlier_day_does_not_drop_later_days(service: DriveMenuService
     assert parsed.tuesday == "Thai karry"
     assert parsed.wednesday == "Frikadeller", "Wednesday must not be dropped"
     assert parsed.thursday == "Pasta pesto", "Thursday must not be dropped"
+
+
+def test_page2_rescue_keeps_a_dish_that_lists_gnavegroent_as_a_side(
+    service: DriveMenuService,
+) -> None:
+    """Torsdag's dish must survive spilling onto page 2 with a gnavegrønt side.
+
+    The rescue used to test the overflow paragraph with ``.search``, so any dish
+    mentioning gnavegrønt anywhere was read as the weekly shopping block and
+    discarded — leaving Torsdag blank. The main loop anchors the same pattern
+    with ``.match`` precisely because those mid-line mentions are ordinary menu
+    text and outnumber the real shopping blocks in the archive.
+    """
+    parsed = service._parse_docx(
+        _make_docx_with_pagebreak(
+            page1_lines=[
+                "Mandag",
+                "Lasagne",
+                "Tirsdag",
+                "Frikadeller",
+                "Onsdag",
+                "Fisk",
+                "Torsdag",
+            ],
+            page2_lines=[
+                "Butter chicken med ris. Tilbehør: bulgursalat med kål og kerner + gnavegrønt"
+            ],
+        ),
+        week_number=4,
+    )
+    assert parsed.thursday.startswith("Butter chicken"), "Thursday's dish was discarded"
+
+
+def test_page2_rescue_still_drops_the_weekly_shopping_block(
+    service: DriveMenuService,
+) -> None:
+    """A page-2 paragraph that *begins* with the shopping block is not a dish."""
+    parsed = service._parse_docx(
+        _make_docx_with_pagebreak(
+            page1_lines=[
+                "Mandag",
+                "Lasagne",
+                "Tirsdag",
+                "Frikadeller",
+                "Onsdag",
+                "Fisk",
+                "Torsdag",
+            ],
+            page2_lines=["Gnavegrønt til ugen: 18 stk agurker, 2 kg gulerødder"],
+        ),
+        week_number=4,
+    )
+    assert parsed.thursday == "", "the shopping block must not become Thursday's dish"

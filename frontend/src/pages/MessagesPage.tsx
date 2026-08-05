@@ -97,7 +97,11 @@ import { clearDraft } from "../utils/draftStorage"
 
 import { htmlToPlainText } from "../utils/htmlText"
 
-import { getFileIcon, getFileTypeColor } from "../components/FilePreview"
+import {
+  getFileIcon,
+  getFileTypeColor,
+  getRenderableFileType,
+} from "../components/FilePreview"
 
 import { AttachmentCarousel } from "../components/AttachmentCarousel"
 
@@ -1765,10 +1769,11 @@ interface MessageBubbleProps {
   onMarkMessageUnread?: (messageId: number) => void
 }
 
-function isImageFile(filename: string): boolean {
-  // heic/heif aren't browser-renderable, but the backend generates a viewable
-  // JPEG preview, so treat them as images (we display preview_url, not file_url).
-  return /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i.test(filename)
+function isImageFile(attachment: MessageAttachment): boolean {
+  // Goes through getRenderableFileType rather than the filename alone: a HEIC is
+  // only displayable when the backend actually produced a JPEG for it, and when
+  // conversion failed the preview URL is just the undecodable original again.
+  return getRenderableFileType(attachment) === "image"
 }
 
 const MessageBubble = memo(function MessageBubble({
@@ -1949,10 +1954,10 @@ const MessageBubble = memo(function MessageBubble({
   // Sort attachments: images first, then other files
 
   const imageAttachments =
-    message.attachments?.filter((att) => isImageFile(att.name)) || []
+    message.attachments?.filter((att) => isImageFile(att)) || []
 
   const otherAttachments =
-    message.attachments?.filter((att) => !isImageFile(att.name)) || []
+    message.attachments?.filter((att) => !isImageFile(att)) || []
 
   const allAttachments = [...imageAttachments, ...otherAttachments]
 

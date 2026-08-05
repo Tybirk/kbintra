@@ -32,6 +32,8 @@ import {
 
 import type { ForumFile } from "../types"
 
+import { unsignedMediaUrl } from "../utils/mediaUrl"
+
 import { ErrorBoundary } from "./ErrorBoundary"
 
 // pdf.js is heavy — only load it when a PDF is actually opened.
@@ -56,9 +58,9 @@ const IMAGE_EXTENSIONS = [
 
   "ico",
 
-  // Apple formats — not browser-renderable, but the backend generates a
-  // web-viewable JPEG `preview`; we classify them as images so the UI shows
-  // that preview instead of a generic "cannot preview" tile.
+  // Apple formats — not browser-renderable on their own. Classified as images
+  // so surfaces with a server-generated JPEG `preview` show it; where no preview
+  // exists, getRenderableFileType() demotes them to a file tile.
   "heic",
 
   "heif",
@@ -114,6 +116,45 @@ export function getFileType(filename: string): FileType {
   return "other"
 }
 
+/** True for Apple's HEIC/HEIF, which no browser but Safari can decode. */
+export function isHeic(filename: string): boolean {
+  const ext = getFileExtension(filename)
+
+  return ext === "heic" || ext === "heif"
+}
+
+/**
+ * The type to *render* a file as, which isn't always what its name says.
+ *
+ * HEIC counts as an image only when the backend really produced a JPEG for it.
+ * There are two ways it might not have:
+ *
+ *  - the surface has no `preview` column at all (forum documents, search), so
+ *    `preview_url` is absent; or
+ *  - conversion failed — an HEVC 10-bit still that libheif won't decode, say —
+ *    and the serializer fell back to handing out the original .heic under both
+ *    names. An identical URL is exactly as much "no preview" as a missing one,
+ *    and only comparing them catches this case.
+ *
+ * Either way, putting the raw .heic in an <img> shows a broken image in
+ * everything but Safari; the generic file tile keeps it openable via Del/Gem.
+ */
+export function getRenderableFileType(file: PreviewableFile): FileType {
+  const type = getFileType(file.name)
+
+  if (type !== "image" || !isHeic(file.name)) return type
+
+  if (!file.preview_url) return "other"
+
+  // Compare without the signature: both URLs are signed at the same instant, but
+  // the token is incidental to whether they point at the same file.
+  if (unsignedMediaUrl(file.preview_url) === unsignedMediaUrl(file.file_url)) {
+    return "other"
+  }
+
+  return type
+}
+
 export function getFileIcon(filename: string) {
   const type = getFileType(filename)
 
@@ -166,6 +207,9 @@ interface PreviewableFile {
   name: string
 
   file_url: string
+
+  /** Server-generated JPEG for formats browsers can't decode (HEIC/HEIF). */
+  preview_url?: string | null
 }
 
 function triggerDownload(url: string, filename: string) {
@@ -191,12 +235,19 @@ function triggerDownload(url: string, filename: string) {
  * and save it ("Gem") — all without navigating away or hitting the media 401.
  */
 export function useFileActions(file: PreviewableFile | null, enabled: boolean) {
-  const fileType = file ? getFileType(file.name) : "other"
+  const fileType = file ? getRenderableFileType(file) : "other"
 
+  // Images are in here for sharing, not for rendering: they display straight
+  // from `src`, but navigator.canShare() needs a real File before it will say
+  // whether the browser accepts the type — and sharing a photo is precisely what
+  // Chrome/Android does allow. Without a blob, canShare is permanently false and
+  // the Del button never appears. The fetch hits the same URL the <img> already
+  // loaded, so it comes from the HTTP cache.
   const needsBlob =
     fileType === "pdf" ||
     fileType === "word" ||
     fileType === "powerpoint" ||
+    fileType === "image" ||
     fileType === "other"
 
   const [blobUrl, setBlobUrl] = useState<string | null>(null)
@@ -509,7 +560,7 @@ export function FilePreviewModal({
           <Stack gap="md">
             <Center>
               <Image
-                src={file.file_url}
+                src={file.preview_url ?? file.file_url}
                 alt={file.name}
                 radius="md"
                 maw="100%"
@@ -742,7 +793,7 @@ export function ImageThumbnail({
 
   onClick,
 }: ImageThumbnailProps) {
-  const fileType = getFileType(file.name)
+  const fileType = getRenderableFileType(file)
 
   if (fileType !== "image") {
     const Icon = getFileIcon(file.name)
@@ -757,7 +808,7 @@ export function ImageThumbnail({
 
   return (
     <Image
-      src={file.file_url}
+      src={file.preview_url ?? file.file_url}
       alt={file.name}
       w={size}
       h={size}

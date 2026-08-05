@@ -201,12 +201,16 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
             event.thread.title = event.title
             event.thread.save(update_fields=["title"])
 
-        # Re-parent the discussion thread if the event's subgroup changed, so a
-        # reassigned event becomes visible in the new udvalg (not the old one /
-        # the fallback group).
-        from apps.events.services import sync_event_thread_subgroup
+        # Re-parent the discussion thread and the file folder if the event's
+        # subgroup changed, so a reassigned event — and its files — become
+        # visible in the new udvalg (not the old one / the fallback group).
+        from apps.events.services import (
+            sync_event_folder_subgroup,
+            sync_event_thread_subgroup,
+        )
 
         sync_event_thread_subgroup(event)
+        sync_event_folder_subgroup(event)
 
         # Notify if time/location changed
         time_changed = event.start_datetime != old_start
@@ -612,7 +616,7 @@ class EventFilesView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        from apps.events.services import get_events_fallback_subgroup
+        from apps.events.services import free_folder_name, get_events_fallback_subgroup
         from apps.forum.models import File, Folder
 
         # Resolve effective subgroup — fall back to the events catch-all subgroup
@@ -629,7 +633,10 @@ class EventFilesView(APIView):
             )
             event_folder = Folder.objects.create(
                 subgroup=file_subgroup,
-                name=event.title[:100],
+                # Folder names are unique per (subgroup, parent), and two events
+                # in the same year can share a title — "Fællesspisning" every
+                # month — so the second upload raised IntegrityError.
+                name=free_folder_name(file_subgroup, year_folder, event.title[:100]),
                 parent=year_folder,
             )
             event.folder = event_folder

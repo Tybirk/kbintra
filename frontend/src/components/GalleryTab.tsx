@@ -25,7 +25,11 @@ import { forumApi } from "../api/forum"
 
 import { AttachmentCarousel } from "./AttachmentCarousel"
 
-import { getFileType, getFileIcon, getFileTypeColor } from "./FilePreview"
+import {
+  getRenderableFileType,
+  getFileIcon,
+  getFileTypeColor,
+} from "./FilePreview"
 
 import type { GalleryItem } from "../types"
 
@@ -85,7 +89,7 @@ export default function GalleryTab({ subgroupSlug }: GalleryTabProps) {
   const [carouselIndex, setCarouselIndex] = useState(0)
 
   const imageItems = useMemo(
-    () => items.filter((item) => getFileType(item.name) === "image"),
+    () => items.filter((item) => getRenderableFileType(item) === "image"),
     [items],
   )
 
@@ -189,7 +193,7 @@ interface GalleryTileProps {
 }
 
 function GalleryTile({ item, onOpenImage, onOpenDoc }: GalleryTileProps) {
-  const fileType = getFileType(item.name)
+  const fileType = getRenderableFileType(item)
   const isImage = fileType === "image"
 
   const FileIcon = getFileIcon(item.name)

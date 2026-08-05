@@ -62,13 +62,7 @@ def generate_attachment_preview_task(app_label: str, model_name: str, attachment
     att = model.objects.filter(id=attachment_id).first()
     if not att:
         return
-    try:
-        if generate_attachment_preview(att):
-            logger.info("Generated web preview for %s.%s %s", app_label, model_name, attachment_id)
-    except FileNotFoundError:
-        logger.warning(
-            "Skipping preview for %s.%s %s: source file missing",
-            app_label,
-            model_name,
-            attachment_id,
-        )
+    # A missing source file is handled (and logged) inside the helper, which
+    # returns False for it — nothing is raised here.
+    if generate_attachment_preview(att):
+        logger.info("Generated web preview for %s.%s %s", app_label, model_name, attachment_id)

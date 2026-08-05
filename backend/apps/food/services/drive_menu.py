@@ -431,7 +431,11 @@ class DriveMenuService:
             is_day_header = any(
                 p.match(overflow_paragraph) for p in self.DAY_PATTERNS.values()
             ) or any(p.match(overflow_paragraph) for p in self.DAY_PATTERNS_FLEXIBLE.values())
-            if not is_day_header and not self.STOP_SECTION_PATTERN.search(overflow_paragraph):
+            # `.match`, not `.search`, for the same reason the main loop anchors:
+            # a dish that merely lists gnavegrønt as a side ("... + gnavegrønt")
+            # is real menu text, and searching mid-paragraph would discard the
+            # very dish this rescue exists to recover.
+            if not is_day_header and not self.STOP_SECTION_PATTERN.match(overflow_paragraph):
                 menus[current_day] = overflow_paragraph.replace("\n", " ")
 
         return ParsedMenu(

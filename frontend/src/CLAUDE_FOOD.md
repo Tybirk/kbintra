@@ -28,9 +28,11 @@ Tickets are a secondary trading layer. They don't modify registrations. They can
 
 No meals on Friday, Saturday, or Sunday. Week views show 4 days.
 
-### Fixed portion pricing
+### Portion prices are date-versioned
 
-Adult meat: 37 DKK, adult veg: 26 DKK, child: 18 DKK. Price calculation in `utils/priceCalculation.ts` (if it exists) or computed server-side.
+Prices depend on the **meal date**, not on today — meals before a price change keep the old prices forever. Fetch the schedule with `useMealPrices()` and resolve it with `resolvePrices(schedule, mealDate)` / `calculateDefaultTicketPrice(schedule, mealDate, ...)` from `utils/priceCalculation.ts`. Never hardcode a price.
+
+Current: 37/26/18 DKK until 2026-08-01, 40/30/18 DKK from 2026-08-02 (adult meat / adult veg / child). Food admins change them from the Admin tab on `/mad/admin`.
 
 ### Two seating times
 

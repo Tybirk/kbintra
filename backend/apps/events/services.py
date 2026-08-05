@@ -82,3 +82,73 @@ def sync_event_thread_subgroup(event: Event) -> None:
         event.thread.save(update_fields=["subgroup"])
         target.last_activity_at = timezone.now()
         target.save(update_fields=["last_activity_at"])
+
+
+def free_folder_name(subgroup, parent, base: str, exclude_pk: int | None = None) -> str:
+    """`base`, suffixed until it is unused among `parent`'s folders in `subgroup`.
+
+    Folder's uniqueness is scoped to the subgroup, and event folders are named
+    after their event — so two events called "Fællesspisning" collide, both when
+    the second one's folder is created and when one is moved into a group that
+    already has the name. Suffix rather than fail, mirroring the `-2` convention
+    `Folder._generate_slug` already uses for slugs.
+    """
+    from apps.forum.models import Folder
+
+    name = base
+    n = 2
+    while (
+        Folder.objects.filter(subgroup=subgroup, parent=parent, name=name)
+        .exclude(pk=exclude_pk)
+        .exists()
+    ):
+        name = f"{base} ({n})"
+        n += 1
+    return name
+
+
+def sync_event_folder_subgroup(event: Event) -> None:
+    """Move an event's file folder along with the event's subgroup.
+
+    The folder is created under whichever group the event had at upload time
+    (often the 'Begivenheder' fallback, because files are usually attached before
+    an udvalg is picked). Only moving the thread left the folder — and every file
+    in it — behind in the old group, where the udvalg's members can't find them.
+
+    Files carry their own subgroup FK for the group's file list, so they have to
+    move too, not just their parent folder.
+    """
+    if not event.folder_id:
+        return
+
+    from apps.forum.models import File, Folder
+
+    target = event.subgroup if event.subgroup_id else get_events_fallback_subgroup()
+    folder = event.folder
+
+    if folder.subgroup_id == target.id:
+        return
+
+    # Event folders live under a per-year folder; make sure the target group has
+    # one rather than pointing at the old group's.
+    year_folder, _ = Folder.objects.get_or_create(
+        subgroup=target,
+        name=str(event.start_datetime.year),
+        parent=None,
+    )
+    folder.subgroup = target
+    folder.parent = year_folder
+    # Both of Folder's unique constraints are scoped to the subgroup, so carrying
+    # the old name and slug into the target group can collide and raise. Re-derive
+    # both against the target: the name gets a suffix if taken, and clearing the
+    # slug makes Folder.save() regenerate it (it only generates when empty).
+    folder.name = free_folder_name(target, year_folder, folder.name, exclude_pk=folder.pk)
+    folder.slug = ""
+    folder.save(update_fields=["subgroup", "parent", "name", "slug"])
+
+    # Saved one by one rather than with a queryset .update(): .update() fires no
+    # post_save, so the search index would keep pointing every one of these files
+    # at the group they just left. Event folders hold a handful of files.
+    for f in File.objects.filter(folder=folder):
+        f.subgroup = target
+        f.save(update_fields=["subgroup"])

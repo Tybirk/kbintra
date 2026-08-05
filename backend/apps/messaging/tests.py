@@ -511,3 +511,62 @@ class TestConversationDetailQueryCount:
         assert len(big) == len(small), (
             f"query count scaled with message count: {len(small)} -> {len(big)}"
         )
+
+
+class TestHeicAttachmentBroadcast:
+    """A HEIC upload must be viewable the moment it is broadcast.
+
+    Browsers other than Safari can't decode HEIC, so the payload has to carry the
+    converted JPEG `preview`. Queueing that conversion meant the huey worker had
+    not run when the payload was built, so every recipient got the original and
+    saw a broken image until they reloaded the conversation.
+    """
+
+    def _heic_upload(self):
+        from io import BytesIO
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+
+        import apps.forum.image_processing  # noqa: F401 — registers the HEIF opener
+
+        buf = BytesIO()
+        Image.new("RGB", (800, 600), color=(10, 60, 110)).save(buf, format="HEIF", quality=80)
+        return SimpleUploadedFile("iphone.heic", buf.getvalue(), content_type="image/heic")
+
+    def test_broadcast_carries_a_converted_preview(
+        self, authenticated_client, user, conversation, monkeypatch
+    ):
+        captured: list[dict] = []
+
+        class FakeChannelLayer:
+            async def group_send(self, group, payload):
+                captured.append(payload)
+
+        monkeypatch.setattr("channels.layers.get_channel_layer", lambda: FakeChannelLayer())
+
+        # Simulate production: the huey worker has NOT run yet, so anything that
+        # relies on the queued task leaves `preview` empty at broadcast time.
+        import apps.forum.tasks as forum_tasks
+
+        monkeypatch.setattr(
+            forum_tasks.generate_attachment_preview_task, "__call__", lambda *a, **k: None
+        )
+
+        response = authenticated_client.post(
+            f"/api/messages/conversations/{conversation.id}/messages/",
+            {"content": "se billedet", "attachments": self._heic_upload()},
+            format="multipart",
+        )
+        assert response.status_code == 201, response.data
+
+        from apps.messaging.models import Message
+
+        att = Message.objects.filter(conversation=conversation).latest("id").attachments.get()
+        assert att.preview, "no preview was generated before the broadcast"
+
+        assert captured, "no WebSocket broadcast was sent"
+        broadcast = captured[0]["message"]["attachments"][0]
+        assert "previews/" in broadcast["preview_url"], (
+            "recipients received the undecodable original: " + broadcast["preview_url"]
+        )

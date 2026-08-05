@@ -61,17 +61,9 @@ class Command(BaseCommand):
                     continue
 
                 if sync:
-                    try:
-                        created = generate_attachment_preview(att)
-                    except FileNotFoundError:
-                        self.stdout.write(
-                            self.style.WARNING(
-                                f"  missing source for {model_name} {att.id} ({att.name})"
-                            )
-                        )
-                        failed += 1
-                        continue
-                    if not created:
+                    # Returns False for anything it couldn't convert — including a
+                    # missing source file, which it logs with the attachment id.
+                    if not generate_attachment_preview(att):
                         failed += 1
                         continue
                 else:

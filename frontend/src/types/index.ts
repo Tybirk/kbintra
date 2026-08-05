@@ -782,6 +782,10 @@ export interface ForumFile {
 
   file_url: string
 
+  /** JPEG rendition for formats browsers can't decode (HEIC/HEIF), when the
+   *  source model has one. Forum documents don't, so it may be absent. */
+  preview_url?: string
+
   preview_html?: string
 
   uploaded_by: Author | null
@@ -805,6 +809,8 @@ export interface AnnouncementAttachment {
   file: string
 
   file_url: string
+
+  preview_url?: string
 
   preview_html?: string
 
@@ -1102,6 +1108,49 @@ export interface ClosedFoodDay {
   reason: string
 
   created_at: string
+}
+
+/** A set of portion prices that applies from `effective_from` (inclusive). */
+export interface MealPrice {
+  id: number
+
+  effective_from: string
+
+  price_adult_meat: number
+
+  price_adult_veg: number
+
+  price_child: number
+
+  note: string
+
+  created_by_name: string
+
+  created_at: string
+
+  /** True once the set has taken effect — it can no longer be edited or deleted. */
+  is_locked: boolean
+}
+
+/** The three portion prices in effect for a given meal date. */
+export interface MealPrices {
+  adultMeat: number
+
+  adultVeg: number
+
+  child: number
+}
+
+export interface CreateMealPriceData {
+  effective_from: string
+
+  price_adult_meat: number
+
+  price_adult_veg: number
+
+  price_child: number
+
+  note?: string
 }
 
 export interface ClosedDayPlaceholder {
