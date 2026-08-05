@@ -70,7 +70,7 @@ export interface Car {
   display_name: string
 
   // Bildeling
-  in_pool: boolean
+  is_shared: boolean
 
   rate_per_km: string | null
 
@@ -96,6 +96,12 @@ export interface Car {
 
   practical_note: string
 
+  /** Which terms version this household accepted as a lender; "" if never. */
+  terms_accepted_version: string
+
+  /** Whether that acceptance covers the terms currently in force. */
+  has_accepted_current_terms: boolean
+
   created_at: string
 }
 
@@ -113,10 +119,10 @@ export interface CarBlock {
   end_time: string
 }
 
-/** Why a pool car may look busy. Only "loan" actually blocks selection. */
+/** Why a shared car may look busy. Only "loan" actually blocks selection. */
 export type CarConflict = "requested" | "schedule" | "loan" | null
 
-export interface PoolCar {
+export interface SharedCar {
   id: number
 
   display_name: string
@@ -164,7 +170,7 @@ export interface PoolCar {
   selectable: boolean
 }
 
-export interface PoolCarsResponse {
+export interface SharedCarsResponse {
   start: string
 
   end: string
@@ -173,10 +179,23 @@ export interface PoolCarsResponse {
 
   max_candidates: number
 
-  cars: PoolCar[]
+  /** Published so the client can warn before sending a window the server refuses. */
+  max_loan_days: number
+
+  cars: SharedCar[]
 }
 
-export type CarLoanStatus = "requested" | "active" | "completed" | "cancelled"
+/** "declined" is terminal: every asked household said no, so nobody is coming. */
+export type CarLoanStatus = "requested" | "active" | "completed" | "cancelled" | "declined"
+
+/**
+ * What the signed-in viewer is to a loan, decided by the server.
+ *
+ * One loan is visible to the borrower and to every asked household, so the UI
+ * must not infer this from `is_borrower` + `status`: that inference is what once
+ * showed nine uninvolved households a cancel button and another household's key.
+ */
+export type LoanViewerRole = "borrower" | "lender" | "asked" | "declined" | "closed_out" | "none"
 
 export type CarLoanCandidateStatus = "asked" | "accepted" | "declined" | "closed"
 
@@ -208,6 +227,14 @@ export interface CarLoan {
 
   is_borrower: boolean
 
+  viewer_role: LoanViewerRole
+
+  /** Whether the server would allow this viewer to cancel right now. */
+  can_cancel: boolean
+
+  /** Whether the borrowed window has begun, per the server's clock. */
+  has_started: boolean
+
   status: CarLoanStatus
 
   start_at: string
@@ -226,21 +253,26 @@ export interface CarLoan {
 
   terms_version: string
 
+  /** The lending household's accepted version, snapshotted when the loan began. */
+  owner_terms_version: string
+
   car: number | null
 
   car_display_name: string
 
   car_house_name: string
 
+  /** Empty unless you are the borrower or the lending household. */
   car_practical_note: string
 
   rate_per_km: string | null
 
   activated_at: string | null
 
+  /** The settlement is withheld from households not party to the loan. */
   actual_km: number | null
 
-  expense_amount: string
+  expense_amount: string | null
 
   expense_note: string
 

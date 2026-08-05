@@ -65,6 +65,7 @@ class Migration(migrations.Migration):
                             ("active", "Aktivt"),
                             ("completed", "Afsluttet"),
                             ("cancelled", "Aflyst"),
+                            ("declined", "Ingen kunne låne ud"),
                         ],
                         db_index=True,
                         default="requested",
@@ -79,6 +80,10 @@ class Migration(migrations.Migration):
                 ("min_seats", models.PositiveSmallIntegerField(blank=True, null=True)),
                 ("note", models.TextField(blank=True, default="")),
                 ("terms_version", models.CharField(max_length=20)),
+                (
+                    "owner_terms_version",
+                    models.CharField(blank=True, default="", max_length=20),
+                ),
                 (
                     "rate_per_km",
                     models.DecimalField(blank=True, decimal_places=2, max_digits=5, null=True),
@@ -147,7 +152,7 @@ class Migration(migrations.Migration):
                             ("asked", "Spurgt"),
                             ("accepted", "Accepteret"),
                             ("declined", "Afvist"),
-                            ("closed", "Låneren valgte en anden"),
+                            ("closed", "En anden ejer var først"),
                         ],
                         db_index=True,
                         default="asked",

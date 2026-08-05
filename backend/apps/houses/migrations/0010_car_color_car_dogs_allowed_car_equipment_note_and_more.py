@@ -41,7 +41,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddField(
             model_name="car",
-            name="in_pool",
+            name="is_shared",
             field=models.BooleanField(db_index=True, default=False),
         ),
         migrations.AddField(
@@ -74,6 +74,16 @@ class Migration(migrations.Migration):
             model_name="car",
             name="seats",
             field=models.PositiveSmallIntegerField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="car",
+            name="terms_accepted_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name="car",
+            name="terms_accepted_version",
+            field=models.CharField(blank=True, default="", max_length=20),
         ),
         migrations.AddField(
             model_name="car",

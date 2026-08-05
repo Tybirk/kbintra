@@ -81,7 +81,7 @@ Note: Migrations run automatically on backend container startup via `docker-entr
 - `bookings` - Bookable room catalog with recurring bookings and exceptions
 - `links` - Shared community links page
 - `expenses` - Resident expense claims (udlæg) with treasurer workflow
-- `carsharing` - Bildeling: car pool, advisory weekly schedules, loan requests → offers → settlement
+- `carsharing` - Bildeling: delebilpark (shared cars), advisory weekly schedules, loan requests → offers → settlement
 - `backup` - Media serving with S3 fallback restore + Litestream health checks
 
 ### Frontend Structure

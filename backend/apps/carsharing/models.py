@@ -71,10 +71,13 @@ class CarBlock(models.Model):
 
 
 class CarLoan(models.Model):
-    """A request that becomes the loan itself once the borrower picks a car.
+    """A request that becomes the loan itself the moment an owner says yes.
 
     One row for the whole lifecycle, so the state machine stays in one place
     rather than being split across a request table and a loan table.
+
+    First yes wins: the borrower already chose which cars to ask, so any of them
+    is acceptable and there is nothing left to decide afterwards.
     """
 
     class Status(models.TextChoices):
@@ -82,6 +85,10 @@ class CarLoan(models.Model):
         ACTIVE = "active", "Aktivt"
         COMPLETED = "completed", "Afsluttet"
         CANCELLED = "cancelled", "Aflyst"
+        # Every asked household said no. A terminal state rather than a derived
+        # "all candidates declined" check, so a dead request leaves the open list
+        # and stops counting as an unanswered request against the car.
+        DECLINED = "declined", "Ingen kunne låne ud"
 
     borrower = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="car_loans"
@@ -96,9 +103,14 @@ class CarLoan(models.Model):
     needs_tow_hitch = models.BooleanField(default=False)
     min_seats = models.PositiveSmallIntegerField(null=True, blank=True)
     note = models.TextField(blank=True, default="")
+    # The terms the borrower ticked when sending the request.
     terms_version = models.CharField(max_length=20)
+    # And the terms the lending household had accepted, copied from the car when
+    # the loan started. Snapshotted for the same reason as rate_per_km: the car's
+    # own value moves on, and a settled loan must stay answerable afterwards.
+    owner_terms_version = models.CharField(max_length=20, blank=True, default="")
 
-    # Filled in when the borrower picks a car (REQUESTED → ACTIVE).
+    # Filled in when the first owner says yes (REQUESTED → ACTIVE).
     car = models.ForeignKey(
         Car, on_delete=models.PROTECT, null=True, blank=True, related_name="loans"
     )
@@ -152,14 +164,18 @@ class CarLoan(models.Model):
 
 
 class CarLoanCandidate(models.Model):
-    """One car the borrower asked about. An owner's yes is an offer, not an
-    allocation: several owners may accept, and the borrower then picks one."""
+    """One car the borrower asked about.
+
+    Exactly one candidate can end up ACCEPTED: the first owner to say yes lends
+    their car out then and there, and the rest are CLOSED without having to do
+    anything. A slower owner is not rejected — just no longer needed.
+    """
 
     class Status(models.TextChoices):
         ASKED = "asked", "Spurgt"
         ACCEPTED = "accepted", "Accepteret"
         DECLINED = "declined", "Afvist"
-        CLOSED = "closed", "Låneren valgte en anden"
+        CLOSED = "closed", "En anden ejer var først"
 
     loan = models.ForeignKey(CarLoan, on_delete=models.CASCADE, related_name="candidates")
     car = models.ForeignKey(Car, on_delete=models.CASCADE, related_name="loan_candidacies")

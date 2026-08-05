@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react"
 
 import { Box, Button, Group, Stack, Text } from "@mantine/core"
 
+import { useMediaQuery } from "@mantine/hooks"
+
 import {
   countPaintedHours,
   DAY_LABELS_SHORT,
@@ -15,12 +17,20 @@ import {
 
 import type { GridCell, HourGrid } from "../utils/weekSchedule"
 
-// Fixed pixel geometry, because the hour axis is positioned against it: the
-// labels have to land exactly on the gaps between rows.
-const ROW_HEIGHT = 20
+// Pixel geometry, because the hour axis is positioned against it: the labels have
+// to land exactly on the gaps between rows. Derived from one row height so the
+// axis cannot drift out of alignment when that height changes.
 const ROW_GAP = 2
 const DAY_HEADER_HEIGHT = 20
-const GRID_HEIGHT = HOURS_IN_DAY * ROW_HEIGHT + (HOURS_IN_DAY - 1) * ROW_GAP
+// 20px rows are comfortable with a mouse but a poor touch target, so narrow
+// screens get taller ones. (Real touch accuracy has not been measured on a
+// device; this is a geometry improvement, not a verified fix.)
+const ROW_HEIGHT_DESKTOP = 20
+const ROW_HEIGHT_TOUCH = 30
+
+function gridHeight(rowHeight: number): number {
+  return HOURS_IN_DAY * rowHeight + (HOURS_IN_DAY - 1) * ROW_GAP
+}
 
 interface WeekHourGridProps {
   value: HourGrid
@@ -61,6 +71,12 @@ export function WeekHourGrid({
   disabled = false,
 }: WeekHourGridProps) {
   // "paint" or "erase" for the gesture in progress; null when not dragging.
+  // useMediaQuery returns undefined on the first render, so the falsy branch has
+  // to be the desktop default (same caveat as FilePreview.tsx).
+  const narrow = useMediaQuery("(max-width: 48em)")
+  const rowHeight = narrow ? ROW_HEIGHT_TOUCH : ROW_HEIGHT_DESKTOP
+  const height = gridHeight(rowHeight)
+
   const modeRef = useRef<"paint" | "erase" | null>(null)
   // Where the gesture started, and the grid as it was then: every move
   // recomputes the block from these, so dragging back shrinks the selection.
@@ -144,7 +160,7 @@ export function WeekHourGrid({
           style={{
             position: "relative",
             width: "2rem",
-            height: GRID_HEIGHT,
+            height,
             marginTop: DAY_HEADER_HEIGHT,
             flex: "none",
           }}
@@ -158,7 +174,7 @@ export function WeekHourGrid({
               style={{
                 position: "absolute",
                 right: 0,
-                top: boundary * (ROW_HEIGHT + ROW_GAP) - ROW_GAP / 2,
+                top: boundary * (rowHeight + ROW_GAP) - ROW_GAP / 2,
                 transform: "translateY(-50%)",
                 lineHeight: 1,
                 fontVariantNumeric: "tabular-nums",
@@ -176,6 +192,12 @@ export function WeekHourGrid({
               gridTemplateColumns: `repeat(${DAYS_IN_WEEK}, 1fr)`,
               gap: ROW_GAP,
               height: DAY_HEADER_HEIGHT,
+              // Which day a cell belongs to is the one thing you cannot infer
+              // once the header has scrolled past.
+              position: "sticky",
+              top: 0,
+              zIndex: 1,
+              background: "var(--mantine-color-body)",
             }}
           >
             {DAY_LABELS_SHORT.map((label) => (
@@ -197,7 +219,7 @@ export function WeekHourGrid({
             style={{
               display: "grid",
               gridTemplateColumns: `repeat(${DAYS_IN_WEEK}, 1fr)`,
-              gridTemplateRows: `repeat(${HOURS_IN_DAY}, ${ROW_HEIGHT}px)`,
+              gridTemplateRows: `repeat(${HOURS_IN_DAY}, ${rowHeight}px)`,
               gap: ROW_GAP,
               touchAction: "none",
               userSelect: "none",
@@ -241,10 +263,10 @@ export function WeekHourGrid({
       <Group justify="space-between" wrap="wrap" gap="xs">
         <Text size="xs" c="dimmed">
           {painted === 0
-            ? "Træk over felterne for at markere hvornår bilen normalt er i brug."
+            ? "Tryk eller træk over felterne for at markere hvornår bilen normalt er i brug."
             : `${painted} time${
                 painted === 1 ? "" : "r"
-              } markeret. Træk igen for at fjerne.`}
+              } markeret. Tryk igen for at fjerne.`}
         </Text>
         <Group gap="xs">
           <Button

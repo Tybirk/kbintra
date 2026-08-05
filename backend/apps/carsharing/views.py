@@ -9,7 +9,6 @@ request cannot settle the same loan twice.
 import datetime
 
 from django.db import transaction
-from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -20,9 +19,9 @@ from rest_framework.views import APIView
 from apps.houses.models import Car
 from apps.notifications.services import (
     notify_car_loan_accepted,
+    notify_car_loan_activated,
     notify_car_loan_cancelled,
     notify_car_loan_candidate_closed,
-    notify_car_loan_chosen,
     notify_car_loan_completed,
     notify_car_loan_declined,
     notify_car_loan_requested,
@@ -39,17 +38,22 @@ from .constants import (
 )
 from .models import CarBlock, CarLoan, CarLoanCandidate
 from .realtime import broadcast_car_sharing_update, loan_audience
+from .roles import LoanRole, can_cancel, loan_role
 from .serializers import (
     CandidateRespondSerializer,
     CarBlockReplaceSerializer,
     CarBlockSerializer,
     CarLoanCreateSerializer,
     CarLoanSerializer,
-    ChooseCandidateSerializer,
     CompleteLoanSerializer,
-    PoolCarSerializer,
+    SharedCarSerializer,
 )
-from .services import active_loan_conflict, pool_cars_with_availability, rate_for_car
+from .services import (
+    active_loan_conflict,
+    rate_for_car,
+    shared_cars_with_availability,
+    visible_loans,
+)
 
 
 def _parse_window(request) -> tuple[datetime.datetime, datetime.datetime]:
@@ -71,8 +75,8 @@ def _parse_window(request) -> tuple[datetime.datetime, datetime.datetime]:
     return start_at, end_at
 
 
-class PoolCarListView(APIView):
-    """GET /api/carsharing/cars/ — the pool with availability for a window."""
+class SharedCarListView(APIView):
+    """GET /api/carsharing/cars/ — the delebilpark with availability for a window."""
 
     permission_classes = [permissions.IsAuthenticated]
 
@@ -80,7 +84,7 @@ class PoolCarListView(APIView):
         start_at, end_at = _parse_window(request)
         min_seats = request.query_params.get("seats")
 
-        availability = pool_cars_with_availability(
+        availability = shared_cars_with_availability(
             start_at,
             end_at,
             needs_isofix=request.query_params.get("isofix") == "true",
@@ -88,7 +92,7 @@ class PoolCarListView(APIView):
             min_seats=int(min_seats) if min_seats and min_seats.isdigit() else None,
             exclude_house_id=request.user.house_id,
         )
-        serializer = PoolCarSerializer(
+        serializer = SharedCarSerializer(
             [item.car for item in availability],
             many=True,
             context={
@@ -102,6 +106,9 @@ class PoolCarListView(APIView):
                 "end": end_at,
                 "default_rate_per_km": str(DEFAULT_RATE_PER_KM),
                 "max_candidates": MAX_CANDIDATES_PER_LOAN,
+                # Published so the client can warn before sending a doomed window
+                # instead of hardcoding a third copy of the rule.
+                "max_loan_days": MAX_LOAN_DAYS,
                 "cars": serializer.data,
             }
         )
@@ -188,16 +195,7 @@ class CarLoanListCreateView(generics.ListCreateAPIView):
         return CarLoanSerializer
 
     def get_queryset(self):
-        user = self.request.user
-        visible = Q(borrower=user)
-        if user.house_id:
-            visible |= Q(candidates__car__house_id=user.house_id)
-        return (
-            CarLoan.objects.filter(visible)
-            .select_related("borrower", "car", "car__house")
-            .prefetch_related("candidates__car__house")
-            .distinct()
-        )
+        return visible_loans(self.request.user)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -218,20 +216,16 @@ class CarLoanDetailView(generics.RetrieveAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        user = self.request.user
-        visible = Q(borrower=user)
-        if user.house_id:
-            visible |= Q(candidates__car__house_id=user.house_id)
-        return (
-            CarLoan.objects.filter(visible)
-            .select_related("borrower", "car", "car__house")
-            .prefetch_related("candidates__car__house")
-            .distinct()
-        )
+        return visible_loans(self.request.user)
 
 
 class CandidateRespondView(APIView):
-    """Owner answers a request about their car: accept (an offer) or decline."""
+    """Owner answers a request about their car.
+
+    A yes is the whole decision: the borrower already picked which cars to ask,
+    so the first owner to accept lends their car out immediately and everyone
+    else is released. No second round, and nothing for the borrower to confirm.
+    """
 
     permission_classes = [permissions.IsAuthenticated]
 
@@ -245,97 +239,142 @@ class CandidateRespondView(APIView):
             raise PermissionDenied("Du skal være tilknyttet et hus.")
 
         candidate = get_object_or_404(
-            CarLoanCandidate.objects.select_related("loan", "car"),
+            CarLoanCandidate.objects.select_related("loan", "loan__borrower", "car"),
             pk=candidate_pk,
             loan_id=pk,
             car__house_id=user.house_id,
         )
-        if candidate.loan.status != CarLoan.Status.REQUESTED:
-            raise ValidationError("Forespørgslen er ikke længere åben.")
 
-        new_status = (
-            CarLoanCandidate.Status.ACCEPTED
-            if action == "accept"
-            else CarLoanCandidate.Status.DECLINED
-        )
-        updated = CarLoanCandidate.objects.filter(
-            pk=candidate.pk, status=CarLoanCandidate.Status.ASKED
-        ).update(status=new_status, responded_by=user, responded_at=timezone.now())
-        if not updated:
-            raise ValidationError("Der er allerede svaret på denne forespørgsel.")
+        # Both branches commit inside a transaction and only then notify: sending
+        # mail from inside one risks telling people about a state that rolls back.
+        if action == "accept":
+            loan, released = self._accept(candidate, user)
+            notify_car_loan_accepted(candidate)
+            notify_car_loan_activated(loan, user)
+            for item in released:
+                notify_car_loan_candidate_closed(item)
+        else:
+            loan = self._decline(candidate, user)
+            notify_car_loan_declined(candidate)
+
+        broadcast_car_sharing_update(loan_audience(loan))
+        return Response(CarLoanSerializer(loan, context={"request": request}).data)
+
+    @staticmethod
+    def _closed_reason(loan, candidate) -> str:
+        """Why an answer arrived too late, in words that fit what happened.
+
+        Read from the loan as it now stands rather than from a pre-check, because
+        the interesting case — someone else was faster — is invisible until the
+        conditional update has already lost the race.
+        """
+        if loan.status == CarLoan.Status.ACTIVE:
+            if loan.car_id == candidate.car_id:
+                return "Bilen er allerede udlånt."
+            return (
+                "En anden ejer var hurtigere — forespørgslen er lukket, og du skal ikke gøre mere."
+            )
+        if loan.status == CarLoan.Status.CANCELLED:
+            return "Låneren har aflyst forespørgslen."
+        if loan.status == CarLoan.Status.DECLINED:
+            return "Forespørgslen er lukket — ingen kunne låne ud."
+        return "Forespørgslen er ikke længere åben."
+
+    def _decline(self, candidate, user):
+        """A no from this household.
+
+        The request stays open for the others — unless this was the last household
+        that could still say yes, in which case the loan itself is finished and
+        must say so instead of leaving the borrower waiting for nobody.
+        """
+        loan = candidate.loan
+        with transaction.atomic():
+            declined = CarLoanCandidate.objects.filter(
+                pk=candidate.pk,
+                status=CarLoanCandidate.Status.ASKED,
+                loan__status=CarLoan.Status.REQUESTED,
+            ).update(
+                status=CarLoanCandidate.Status.DECLINED,
+                responded_by=user,
+                responded_at=timezone.now(),
+            )
+            if not declined:
+                loan.refresh_from_db()
+                if loan.status != CarLoan.Status.REQUESTED:
+                    raise ValidationError(self._closed_reason(loan, candidate))
+                raise ValidationError("Der er allerede svaret på denne forespørgsel.")
+
+            nobody_left = not loan.candidates.filter(status=CarLoanCandidate.Status.ASKED).exists()
+            if nobody_left:
+                CarLoan.objects.filter(pk=loan.pk, status=CarLoan.Status.REQUESTED).update(
+                    status=CarLoan.Status.DECLINED
+                )
+            loan.refresh_from_db()
 
         candidate.refresh_from_db()
-        if action == "accept":
-            notify_car_loan_accepted(candidate)
-        else:
-            notify_car_loan_declined(candidate)
-        broadcast_car_sharing_update(loan_audience(candidate.loan))
+        return loan
 
-        return Response(CarLoanSerializer(candidate.loan, context={"request": request}).data)
+    def _accept(self, candidate, user):
+        """A yes, which is the whole decision: the loan starts here.
 
-
-class ChooseCandidateView(APIView):
-    """Borrower picks one of the accepted offers, which starts the loan."""
-
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request, pk):
-        serializer = ChooseCandidateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        candidate_pk = serializer.validated_data["candidate"]
-
+        Returns the started loan and the candidates that were released, so the
+        caller can tell those households they need not answer.
+        """
+        loan = candidate.loan
         with transaction.atomic():
-            loan = get_object_or_404(
-                CarLoan.objects.select_related("borrower"),
-                pk=pk,
-                borrower=request.user,
-            )
-            if loan.status != CarLoan.Status.REQUESTED:
-                raise ValidationError("Lånet er allerede afgjort.")
-
-            candidate = get_object_or_404(
-                CarLoanCandidate.objects.select_related("car"),
-                pk=candidate_pk,
-                loan=loan,
-                status=CarLoanCandidate.Status.ACCEPTED,
-            )
-
-            # Two borrowers can independently be offered the same car for the
-            # same window; the owner sees two offers and may accept both. The
-            # guard against them both choosing it belongs here, on the server.
+            # The same car may already be promised to another borrower for an
+            # overlapping window, so check before committing to this one.
             if active_loan_conflict(
                 candidate.car_id, loan.start_at, loan.end_at, exclude_loan_id=loan.pk
             ):
                 raise ValidationError("Bilen er netop blevet udlånt i det tidsrum.")
 
-            updated = CarLoan.objects.filter(pk=loan.pk, status=CarLoan.Status.REQUESTED).update(
+            # Claim the loan *first*, and let this conditional update be the only
+            # gate. An earlier version pre-checked the status, which meant every
+            # late accept — a sleeping phone, a background tab — reported the
+            # generic "no longer open" and the reassuring message below was
+            # effectively unreachable.
+            claimed = CarLoan.objects.filter(pk=loan.pk, status=CarLoan.Status.REQUESTED).update(
                 status=CarLoan.Status.ACTIVE,
                 car=candidate.car,
-                approved_by=candidate.responded_by,
+                approved_by=user,
                 rate_per_km=rate_for_car(candidate.car),
+                owner_terms_version=candidate.car.terms_accepted_version,
                 activated_at=timezone.now(),
             )
-            if not updated:
-                raise ValidationError("Lånet er allerede afgjort.")
+            if not claimed:
+                loan.refresh_from_db()
+                raise ValidationError(self._closed_reason(loan, candidate))
 
-            # Everyone else who said yes is released.
-            closed = list(
+            # Only an unanswered candidate can become the accepted one. Raising
+            # here rolls the claim above back, so a household that already said no
+            # cannot quietly turn its own no into the yes that settles the loan.
+            accepted = CarLoanCandidate.objects.filter(
+                pk=candidate.pk, status=CarLoanCandidate.Status.ASKED
+            ).update(
+                status=CarLoanCandidate.Status.ACCEPTED,
+                responded_by=user,
+                responded_at=timezone.now(),
+            )
+            if not accepted:
+                raise ValidationError("Der er allerede svaret på denne forespørgsel.")
+
+            # Everyone still waiting is off the hook. A household that already
+            # declined keeps that answer — it is a real one.
+            released = list(
                 loan.candidates.select_related("car", "car__house")
-                .filter(status=CarLoanCandidate.Status.ACCEPTED)
+                .filter(status=CarLoanCandidate.Status.ASKED)
                 .exclude(pk=candidate.pk)
             )
-            CarLoanCandidate.objects.filter(pk__in=[c.pk for c in closed]).update(
+            CarLoanCandidate.objects.filter(pk__in=[item.pk for item in released]).update(
                 status=CarLoanCandidate.Status.CLOSED
             )
             loan.refresh_from_db()
+            candidate.refresh_from_db()
 
-        notify_car_loan_chosen(loan)
-        for released in closed:
-            released.status = CarLoanCandidate.Status.CLOSED
-            notify_car_loan_candidate_closed(released)
-        broadcast_car_sharing_update(loan_audience(loan))
-
-        return Response(CarLoanSerializer(loan, context={"request": request}).data)
+        for item in released:
+            item.status = CarLoanCandidate.Status.CLOSED
+        return loan, released
 
 
 class CompleteLoanView(APIView):
@@ -378,26 +417,35 @@ class CompleteLoanView(APIView):
 
 
 class CancelLoanView(APIView):
-    """Borrower may always cancel; an owner may cancel an active loan of their car."""
+    """Borrower may always cancel; an owner may cancel an active loan of their car.
+
+    The rule itself lives in roles.can_cancel, which the serializer also reports as
+    `can_cancel` — so the button a resident sees and the answer they get from here
+    are the same decision, not two implementations of it.
+    """
 
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, pk):
         user = request.user
         with transaction.atomic():
-            loan = get_object_or_404(CarLoan.objects.select_related("borrower", "car"), pk=pk)
-            is_borrower = loan.borrower_id == user.id
-            is_owner = (
-                loan.car is not None
-                and user.house_id is not None
-                and loan.car.house_id == user.house_id
+            loan = get_object_or_404(
+                CarLoan.objects.select_related("borrower", "car").prefetch_related(
+                    "candidates__car"
+                ),
+                pk=pk,
             )
-            if not (is_borrower or is_owner):
-                raise PermissionDenied("Du kan ikke aflyse dette lån.")
-            if loan.status not in (CarLoan.Status.REQUESTED, CarLoan.Status.ACTIVE):
+            if not can_cancel(loan, user):
+                # Separate the "not yours" case from "not cancellable any more",
+                # because they call for very different reactions from a resident.
+                role = loan_role(loan, user)
+                if role == LoanRole.NONE:
+                    raise PermissionDenied("Du kan ikke aflyse dette lån.")
+                if role == LoanRole.LENDER and loan.status == CarLoan.Status.REQUESTED:
+                    raise ValidationError("Svar på forespørgslen i stedet for at aflyse den.")
+                if role in (LoanRole.ASKED, LoanRole.DECLINED, LoanRole.CLOSED_OUT):
+                    raise PermissionDenied("Du kan ikke aflyse dette lån.")
                 raise ValidationError("Lånet kan ikke aflyses.")
-            if is_owner and not is_borrower and loan.status != CarLoan.Status.ACTIVE:
-                raise ValidationError("Svar på forespørgslen i stedet for at aflyse den.")
 
             updated = CarLoan.objects.filter(
                 pk=loan.pk, status__in=[CarLoan.Status.REQUESTED, CarLoan.Status.ACTIVE]

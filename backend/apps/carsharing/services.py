@@ -1,5 +1,5 @@
 """
-Availability for the car pool.
+Availability for the delebilpark.
 
 Three grades of "busy", deliberately not treated alike (see docs/bildeling-plan.md):
 an active loan is a fact, the weekly schedule is a guess, and someone else's
@@ -9,21 +9,48 @@ unanswered request is neither — it is information.
 import datetime
 from dataclasses import dataclass
 
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from django.utils import timezone
 
 from apps.houses.models import Car
 
-from .constants import DEFAULT_RATE_PER_KM
+from .constants import DEFAULT_RATE_PER_KM, TERMS_VERSION
 from .models import CarBlock, CarLoan, CarLoanCandidate
 
 # Ordering weight per conflict kind: free cars first, lent-out cars last.
 CONFLICT_ORDER = {None: 0, "requested": 1, "schedule": 2, "loan": 3}
 
 
+def borrowable_cars():
+    """The cars that may actually be lent out right now.
+
+    is_shared is the owner's intent and terms_accepted_version is their consent;
+    lending needs both, and this is the single place that says so — the borrow
+    list and the request validation must never disagree about it.
+    """
+    return Car.objects.filter(is_shared=True, terms_accepted_version=TERMS_VERSION)
+
+
+def visible_loans(user):
+    """Loans this user may see: their own, plus requests aimed at their household.
+
+    Shared by the list and the detail view so a change in who may see a loan
+    cannot land in one of them and be forgotten in the other.
+    """
+    visible = Q(borrower=user)
+    if user.house_id:
+        visible |= Q(candidates__car__house_id=user.house_id)
+    return (
+        CarLoan.objects.filter(visible)
+        .select_related("borrower", "car", "car__house")
+        .prefetch_related("candidates__car__house")
+        .distinct()
+    )
+
+
 @dataclass
 class CarAvailability:
-    """A pool car plus why it might look busy in the requested window."""
+    """A shared car plus why it might look busy in the requested window."""
 
     car: Car
     conflict: str | None
@@ -92,7 +119,7 @@ def has_open_request(car_id: int, start_at, end_at, *, exclude_loan_id: int | No
     """Whether someone else has an unanswered request out on this car.
 
     Goes through the candidate table on purpose: a REQUESTED loan has car=NULL
-    until the borrower chooses, so filtering CarLoan.car would never match.
+    until an owner accepts, so filtering CarLoan.car would never match.
     """
     qs = CarLoanCandidate.objects.filter(
         car_id=car_id,
@@ -106,7 +133,7 @@ def has_open_request(car_id: int, start_at, end_at, *, exclude_loan_id: int | No
     return qs.exists()
 
 
-def pool_cars_with_availability(
+def shared_cars_with_availability(
     start_at: datetime.datetime,
     end_at: datetime.datetime,
     *,
@@ -116,14 +143,14 @@ def pool_cars_with_availability(
     exclude_house_id: int | None = None,
     exclude_loan_id: int | None = None,
 ) -> list[CarAvailability]:
-    """Every pool car, each marked with why it may look busy.
+    """Every shared car, each marked with why it may look busy.
 
     Returns them all — including lent-out ones — so the borrower can see *why* a
     car is not an option instead of it simply being absent. Requirements
     (isofix/tow hitch/seats) never filter hard; they sort and mark.
     """
     cars = (
-        Car.objects.filter(in_pool=True)
+        borrowable_cars()
         .select_related("house")
         .prefetch_related(Prefetch("blocks", queryset=CarBlock.objects.all()))
     )

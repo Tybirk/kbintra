@@ -1410,14 +1410,19 @@ def _car_household_recipients(car: Any, exclude_user_id: int | None = None) -> Q
 def notify_car_loan_requested(loan: Any) -> list[Notification]:
     """Tell every asked household that someone wants to borrow their car.
 
-    The message says how many cars were asked, so an owner knows their yes is an
-    offer among several rather than an obligation.
+    The message says how many cars were asked and that the first yes settles it,
+    so an owner understands both that they are not the only hope and that
+    answering quickly is what decides it.
     """
     candidates = list(loan.candidates.select_related("car", "car__house").all())
     total = len(candidates)
     window = _format_loan_window(loan)
     created: list[Notification] = []
-    suffix = f" Du er en af {total} spurgte — lånerens valg er frit." if total > 1 else ""
+    suffix = (
+        f" Du er en af {total} spurgte — den første der siger ja, låner bilen ud."
+        if total > 1
+        else " Siger du ja, er bilen udlånt med det samme."
+    )
 
     for candidate in candidates:
         message = (
@@ -1439,26 +1444,20 @@ def notify_car_loan_requested(loan: Any) -> list[Notification]:
 
 
 def notify_car_loan_accepted(candidate: Any) -> Notification | None:
-    """Tell the borrower that an owner said yes.
+    """Tell the borrower the loan is settled — an owner said yes.
 
-    The borrower is the one waiting for an answer, so without this they would
-    have to keep reopening the page to find out whether they have a car.
+    This is the whole answer, not an offer to weigh up, so it names the car the
+    borrower is getting and leaves nothing to decide.
     """
     loan = candidate.loan
     window = _format_loan_window(loan)
-    others = loan.candidates.exclude(pk=candidate.pk).count()
-    if others:
-        suffix = f" Du har spurgt {others + 1} biler — vælg den du vil låne."
-    else:
-        suffix = " Vælg den for at låne den."
 
     return create_notification(
         user=loan.borrower,
         notification_type=NotificationType.CAR_LOAN_UPDATE,
-        title="Du kan låne en bil",
+        title="Du har fået en bil",
         message=(
-            f"{candidate.car.house.name} siger ja til at du låner "
-            f"{candidate.car.display_name} {window}.{suffix}"
+            f"{candidate.car.house.name} siger ja — du låner {candidate.car.display_name} {window}."
         ),
         link=_car_loan_link(loan),
         related_user=candidate.responded_by,
@@ -1487,20 +1486,27 @@ def notify_car_loan_declined(candidate: Any) -> Notification | None:
     )
 
 
-def notify_car_loan_chosen(loan: Any) -> list[Notification]:
-    """Tell the chosen owner's household that their offer was accepted."""
+def notify_car_loan_activated(loan: Any, by_user: User) -> list[Notification]:
+    """Tell the lending household that their car is now out on loan.
+
+    The person who answered already knows — they just clicked yes — but the rest
+    of the household has no idea their car is committed, which is exactly the
+    kind of surprise that makes a shared car annoying to live with.
+    """
     if loan.car is None:
         return []
 
     window = _format_loan_window(loan)
-    message = f"{loan.borrower.first_name} har valgt {loan.car.display_name} og låner den {window}."
+    message = f"{loan.borrower.first_name} låner {loan.car.display_name} {window}."
     created = []
     for recipient in _car_household_recipients(loan.car, loan.borrower_id):
+        if recipient.id == by_user.id:
+            continue
         notification = create_notification(
             user=recipient,
             notification_type=NotificationType.CAR_LOAN_UPDATE,
-            title="Dit tilbud er accepteret",
-            message=message,
+            title="Din bil er udlånt",
+            message=f"{message} {by_user.first_name} har sagt ja.",
             link=_car_loan_link(loan),
             related_user=loan.borrower,
         )
@@ -1510,18 +1516,22 @@ def notify_car_loan_chosen(loan: Any) -> list[Notification]:
 
 
 def notify_car_loan_candidate_closed(candidate: Any) -> list[Notification]:
-    """Tell an owner who said yes that the borrower went with another car."""
+    """Tell a household still deciding that another owner got there first.
+
+    Not a rejection of them, and nothing is expected in return — the point is
+    purely to clear the request out of their head.
+    """
     loan = candidate.loan
     message = (
-        f"{loan.borrower.first_name} valgte en anden bil. "
-        f"Tak for tilbuddet — {candidate.car.display_name} er fri."
+        f"En anden ejer sagde ja først, så {loan.borrower.first_name} har en bil. "
+        f"Du behøver ikke svare — {candidate.car.display_name} er fri."
     )
     created = []
     for recipient in _car_household_recipients(candidate.car, loan.borrower_id):
         notification = create_notification(
             user=recipient,
             notification_type=NotificationType.CAR_LOAN_UPDATE,
-            title="Bilen blev ikke valgt",
+            title="Forespørgslen er lukket",
             message=message,
             link=_car_loan_link(loan),
             related_user=loan.borrower,
@@ -1580,18 +1590,36 @@ def notify_car_loan_cancelled(loan: Any, by_user: User) -> list[Notification]:
 
 
 def notify_car_loan_completed(loan: Any) -> list[Notification]:
-    """Tell the owner the car is back, with the amount and any damage note."""
+    """Tell the owner the car is back, with the amount and any damage note.
+
+    The sum has to be checkable: neighbours settle this by MobilePay, so a bare
+    total the owner cannot reconcile against the kilometres is worse than useless.
+    """
     if loan.car is None:
         return []
 
+    def _kr(value: Decimal) -> str:
+        return f"{value:.2f}".replace(".", ",")
+
     amount = loan.amount_due if loan.amount_due is not None else Decimal("0")
-    amount_text = f"{amount:.2f}".replace(".", ",")
+    amount_text = _kr(amount)
     if amount < 0:
         money = f"Du skylder {loan.borrower.first_name} {amount_text.lstrip('-')} kr."
     else:
         money = f"{loan.borrower.first_name} skal betale dig {amount_text} kr."
 
-    message = f"{loan.car.display_name} er afleveret efter {loan.actual_km or 0} km. {money}"
+    # The breakdown, so km × takst − udgifter adds up to the amount above.
+    breakdown = f"{loan.actual_km or 0} km × {_kr(loan.effective_rate)} kr."
+    expenses = loan.expense_amount or Decimal("0")
+    if expenses > 0:
+        breakdown += f" − {_kr(expenses)} kr. i udgifter"
+        if loan.expense_note:
+            breakdown += f" ({loan.expense_note})"
+
+    message = (
+        f"{loan.car.display_name} er afleveret efter {loan.actual_km or 0} km. "
+        f"{money} ({breakdown})"
+    )
     if loan.damage_note:
         message += f" Bemærkning: {loan.damage_note}"
 

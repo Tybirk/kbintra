@@ -11,14 +11,13 @@ from .views import (
     CarBlockListCreateView,
     CarLoanDetailView,
     CarLoanListCreateView,
-    ChooseCandidateView,
     CompleteLoanView,
-    PoolCarListView,
+    SharedCarListView,
     TermsView,
 )
 
 urlpatterns = [
-    path("cars/", PoolCarListView.as_view(), name="carsharing-car-list"),
+    path("cars/", SharedCarListView.as_view(), name="carsharing-car-list"),
     path("cars/<int:pk>/blocks/", CarBlockListCreateView.as_view(), name="carsharing-block-list"),
     path("blocks/<int:pk>/", CarBlockDeleteView.as_view(), name="carsharing-block-delete"),
     path("terms/", TermsView.as_view(), name="carsharing-terms"),
@@ -29,7 +28,6 @@ urlpatterns = [
         CandidateRespondView.as_view(),
         name="carsharing-candidate-respond",
     ),
-    path("loans/<int:pk>/choose/", ChooseCandidateView.as_view(), name="carsharing-loan-choose"),
     path("loans/<int:pk>/complete/", CompleteLoanView.as_view(), name="carsharing-loan-complete"),
     path("loans/<int:pk>/cancel/", CancelLoanView.as_view(), name="carsharing-loan-cancel"),
 ]

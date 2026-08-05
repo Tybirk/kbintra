@@ -4,7 +4,7 @@ from django.db import migrations
 def normalize_existing_plates(apps, schema_editor):
     # Use the historical model: the concrete one selects every column that
     # exists *today*, which breaks a from-scratch migration run as soon as a
-    # later migration adds a field (e.g. houses.0010 adding car pool columns).
+    # later migration adds a field (e.g. houses.0010 adding delebilpark columns).
     # Every install that had plates to normalise has long since run this, and a
     # fresh database has no cars here, so no search reindex is needed — the
     # post_save signal this used to rely on has nothing to do either way.

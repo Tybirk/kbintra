@@ -10,7 +10,7 @@ import CarSharingPage from "./CarSharingPage"
 
 import { useAuthStore } from "../store/authStore"
 
-import type { CarLoan, PoolCar } from "../types"
+import type { Car, CarLoan, CarLoanCandidate, SharedCar } from "../types"
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual("react-router-dom")
@@ -30,7 +30,7 @@ vi.mock("@mantine/notifications", () => ({
   Notifications: () => null,
 }))
 
-const mockGetPoolCars = vi.fn()
+const mockGetSharedCars = vi.fn()
 
 const mockGetTerms = vi.fn()
 
@@ -39,6 +39,8 @@ const mockGetLoans = vi.fn()
 const mockGetBlocks = vi.fn()
 
 const mockCompleteLoan = vi.fn()
+
+const mockCancelLoan = vi.fn()
 
 vi.mock("../api/carsharing", async () => {
   const actual =
@@ -50,7 +52,7 @@ vi.mock("../api/carsharing", async () => {
     ...actual,
 
     carSharingApi: {
-      getPoolCars: () => mockGetPoolCars(),
+      getSharedCars: () => mockGetSharedCars(),
 
       getTerms: () => mockGetTerms(),
 
@@ -68,24 +70,50 @@ vi.mock("../api/carsharing", async () => {
 
       respondToCandidate: vi.fn(),
 
-      chooseCandidate: vi.fn(),
-
       completeLoan: (...args: unknown[]) => mockCompleteLoan(...args),
 
-      cancelLoan: vi.fn(),
+      cancelLoan: (...args: unknown[]) => mockCancelLoan(...args),
     },
   }
 })
 
+const mockGetCars = vi.fn()
+
 vi.mock("../api/houses", () => ({
   housesApi: {
-    getCars: () => Promise.resolve([]),
+    getCars: () => mockGetCars(),
 
     updateCar: vi.fn(),
   },
 }))
 
-function poolCar(overrides: Partial<PoolCar> = {}): PoolCar {
+function ownCar(overrides: Partial<Car> = {}): Car {
+  return {
+    id: 7,
+    license_plate: "AB12345",
+    is_electric: false,
+    display_name: "Skoda Octavia",
+    is_shared: true,
+    rate_per_km: null,
+    make: "Skoda",
+    model_name: "Octavia",
+    color: "blå",
+    year: 2020,
+    seats: 5,
+    has_tow_hitch: false,
+    has_isofix: false,
+    dogs_allowed: false,
+    has_charge_fob: false,
+    equipment_note: "",
+    practical_note: "",
+    terms_accepted_version: "2026-08-01",
+    has_accepted_current_terms: true,
+    created_at: "2026-01-01T00:00:00Z",
+    ...overrides,
+  }
+}
+
+function sharedCar(overrides: Partial<SharedCar> = {}): SharedCar {
   return {
     id: 1,
     display_name: "Skoda Octavia",
@@ -114,12 +142,31 @@ function poolCar(overrides: Partial<PoolCar> = {}): PoolCar {
   }
 }
 
+function candidate(
+  overrides: Partial<CarLoanCandidate> = {},
+): CarLoanCandidate {
+  return {
+    id: 7,
+    car: 1,
+    car_display_name: "Skoda Octavia",
+    car_house_name: "Kløverbakkevej 7",
+    status: "asked",
+    responded_by_name: "",
+    responded_at: null,
+    is_own_household: true,
+    ...overrides,
+  }
+}
+
 function activeLoan(overrides: Partial<CarLoan> = {}): CarLoan {
   return {
     id: 42,
     borrower: mockUser.id,
     borrower_name: "Test User",
     is_borrower: true,
+    viewer_role: "borrower",
+    can_cancel: true,
+    has_started: true,
     status: "active",
     start_at: "2027-06-12T09:00:00Z",
     end_at: "2027-06-12T14:00:00Z",
@@ -129,6 +176,7 @@ function activeLoan(overrides: Partial<CarLoan> = {}): CarLoan {
     min_seats: null,
     note: "",
     terms_version: "2026-08-01",
+    owner_terms_version: "2026-08-01",
     car: 1,
     car_display_name: "Skoda Octavia",
     car_house_name: "Kløverbakkevej 7",
@@ -151,33 +199,41 @@ describe("CarSharingPage", () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
+    // The page keeps the selected tab in the URL, and these tests share one
+    // jsdom window — without this a test that clicks a tab leaves ?tab= behind
+    // and the next one starts on the wrong panel.
+    window.history.replaceState({}, "", "/bildeling")
+
     useAuthStore.setState({ user: mockUser, isAuthenticated: true })
 
     mockGetTerms.mockResolvedValue({
       version: "2026-08-01",
-      title: "Vilkår for lån af bil i bilpølen",
+      title: "Vilkår for lån af bil i delebilparken",
       bullets: [
         "Du er ansvarlig for bilen, mens du har den.",
         "Prisen er 3,94 kr. pr. kørt km.",
       ],
-      text: "Vilkår for lån af bil i bilpølen\n\n- Prisen er 3,94 kr. pr. kørt km.",
+      text: "Vilkår for lån af bil i delebilparken\n\n- Prisen er 3,94 kr. pr. kørt km.",
       default_rate_per_km: "3.94",
     })
 
-    mockGetPoolCars.mockResolvedValue({
+    mockGetSharedCars.mockResolvedValue({
       start: "2027-06-12T09:00:00Z",
       end: "2027-06-12T11:00:00Z",
       default_rate_per_km: "3.94",
       max_candidates: 5,
-      cars: [poolCar()],
+      max_loan_days: 30,
+      cars: [sharedCar()],
     })
 
     mockGetLoans.mockResolvedValue([])
 
     mockGetBlocks.mockResolvedValue([])
+
+    mockGetCars.mockResolvedValue([])
   })
 
-  it("renders the pool list", async () => {
+  it("renders the shared car list", async () => {
     render(<CarSharingPage />)
 
     await waitFor(() => {
@@ -186,55 +242,69 @@ describe("CarSharingPage", () => {
     expect(screen.getByText(/Kløverbakkevej 7/)).toBeInTheDocument()
   })
 
-  it("does not refetch the pool in a loop on mount", async () => {
+  it("does not refetch the car list in a loop on mount", async () => {
     render(<CarSharingPage />)
 
-    await waitFor(() => expect(mockGetPoolCars).toHaveBeenCalled())
+    await waitFor(() => expect(mockGetSharedCars).toHaveBeenCalled())
     await new Promise((resolve) => setTimeout(resolve, 400))
 
-    expect(mockGetPoolCars.mock.calls.length).toBeLessThanOrEqual(2)
+    expect(mockGetSharedCars.mock.calls.length).toBeLessThanOrEqual(2)
   })
 
   it("does not refetch in a loop after the 'now' shortcut", async () => {
     render(<CarSharingPage />)
 
-    await waitFor(() => expect(mockGetPoolCars).toHaveBeenCalled())
+    await waitFor(() => expect(mockGetSharedCars).toHaveBeenCalled())
 
     await userEvent.click(
       screen.getByRole("button", { name: /Nu og de næste 2 timer/ }),
     )
-    const afterClick = mockGetPoolCars.mock.calls.length
+    const afterClick = mockGetSharedCars.mock.calls.length
     await new Promise((resolve) => setTimeout(resolve, 400))
 
     // One fetch for the new window is expected; a storm is not.
-    expect(mockGetPoolCars.mock.calls.length - afterClick).toBeLessThanOrEqual(
-      1,
-    )
+    expect(
+      mockGetSharedCars.mock.calls.length - afterClick,
+    ).toBeLessThanOrEqual(1)
   })
 
-  it("shows the terms as a list, with no markdown leaking through", async () => {
+  it("folds the terms away but keeps the consent reachable", async () => {
     render(<CarSharingPage />)
 
+    // The heading and the checkbox are always there; on a phone the seven bullets
+    // would otherwise push the consent far below the fold.
     await waitFor(() => {
       expect(
-        screen.getByText("Prisen er 3,94 kr. pr. kørt km."),
+        screen.getByText("Vilkår for lån af bil i delebilparken"),
       ).toBeInTheDocument()
     })
     expect(
-      screen.getByText("Vilkår for lån af bil i bilpølen"),
+      screen.getByRole("checkbox", {
+        name: "Jeg har læst og accepterer vilkårene",
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText("Prisen er 3,94 kr. pr. kørt km."),
+    ).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole("button", { name: "Læs vilkårene" }))
+
+    expect(
+      await screen.findByText("Prisen er 3,94 kr. pr. kørt km."),
     ).toBeInTheDocument()
     expect(screen.getAllByRole("listitem").length).toBeGreaterThanOrEqual(2)
     expect(document.body.textContent).not.toContain("**")
   })
 
   it("marks a car that is normally busy but keeps it selectable", async () => {
-    mockGetPoolCars.mockResolvedValue({
+    mockGetSharedCars.mockResolvedValue({
       start: "2027-06-12T09:00:00Z",
       end: "2027-06-12T11:00:00Z",
       default_rate_per_km: "3.94",
       max_candidates: 5,
+      max_loan_days: 30,
       cars: [
-        poolCar({
+        sharedCar({
           conflict: "schedule",
           conflict_note: "Normalt optaget (pendler)",
         }),
@@ -252,13 +322,14 @@ describe("CarSharingPage", () => {
   })
 
   it("disables selection for a car that is already lent out", async () => {
-    mockGetPoolCars.mockResolvedValue({
+    mockGetSharedCars.mockResolvedValue({
       start: "2027-06-12T09:00:00Z",
       end: "2027-06-12T11:00:00Z",
       default_rate_per_km: "3.94",
       max_candidates: 5,
+      max_loan_days: 30,
       cars: [
-        poolCar({
+        sharedCar({
           conflict: "loan",
           conflict_note: "Udlånt i tidsrummet",
           selectable: false,
@@ -286,7 +357,7 @@ describe("CarSharingPage", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/Du spørger 1 husstand om 1 bil/),
+        screen.getByText(/Du spørger 1 husstand om 1 af højst 5 biler/),
       ).toBeInTheDocument()
     })
   })
@@ -350,6 +421,8 @@ describe("CarSharingPage", () => {
       activeLoan({
         status: "requested",
         is_borrower: false,
+        viewer_role: "asked",
+        can_cancel: false,
         car: null,
         borrower_name: "Bo Låner",
         candidates: [
@@ -376,7 +449,10 @@ describe("CarSharingPage", () => {
         screen.getByRole("button", { name: "Ja, den må lånes" }),
       ).toBeInTheDocument()
     })
-    expect(screen.getByText(/Dit ja er et tilbud/)).toBeInTheDocument()
+    // A yes is now the whole decision, so the copy must not promise a later step.
+    expect(
+      screen.getByText(/er bilen udlånt med det samme/),
+    ).toBeInTheDocument()
   })
 
   it("offers no answer for another household's car in the same request", async () => {
@@ -384,6 +460,8 @@ describe("CarSharingPage", () => {
       activeLoan({
         status: "requested",
         is_borrower: false,
+        viewer_role: "asked",
+        can_cancel: false,
         car: null,
         borrower_name: "Bo Låner",
         candidates: [
@@ -425,7 +503,7 @@ describe("CarSharingPage", () => {
     expect(screen.getByText(/Låneren har spurgt 2 biler/)).toBeInTheDocument()
   })
 
-  it("lets the borrower choose between accepted offers", async () => {
+  it("gives the borrower nothing to pick while waiting for a yes", async () => {
     mockGetLoans.mockResolvedValue([
       activeLoan({
         status: "requested",
@@ -436,9 +514,9 @@ describe("CarSharingPage", () => {
             car: 1,
             car_display_name: "Skoda Octavia",
             car_house_name: "Kløverbakkevej 7",
-            status: "accepted",
-            responded_by_name: "Ove",
-            responded_at: "2027-06-11T10:00:00Z",
+            status: "asked",
+            responded_by_name: "",
+            responded_at: null,
             is_own_household: false,
           },
           {
@@ -446,7 +524,7 @@ describe("CarSharingPage", () => {
             car: 2,
             car_display_name: "Toyota Yaris",
             car_house_name: "Kløverbakkevej 8",
-            status: "accepted",
+            status: "declined",
             responded_by_name: "Bodil",
             responded_at: "2027-06-11T11:00:00Z",
             is_own_household: false,
@@ -460,8 +538,412 @@ describe("CarSharingPage", () => {
     await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
 
     await waitFor(() => {
-      expect(screen.getByText("Vælg den bil du vil låne:")).toBeInTheDocument()
+      // Scoped to the loan card: the request form carries similar copy.
+      expect(
+        screen.getByText(/Afventer svar\. Den første ejer der siger ja/),
+      ).toBeInTheDocument()
     })
-    expect(screen.getAllByRole("button", { name: "Vælg" })).toHaveLength(2)
+    // The choose step is gone: a yes settles it without the borrower acting.
+    expect(
+      screen.queryByRole("button", { name: "Vælg" }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByText(/Skoda Octavia \(afventer\), Toyota Yaris \(nej\)/),
+    ).toBeInTheDocument()
+  })
+
+  it("keeps each of my cars collapsed until I open it", async () => {
+    mockGetCars.mockResolvedValue([ownCar()])
+
+    render(<CarSharingPage />)
+
+    await userEvent.click(screen.getByRole("tab", { name: "Mine biler" }))
+
+    // The summary identifies the car and says whether it is shared...
+    await waitFor(() => {
+      expect(screen.getByText("I delebilparken")).toBeInTheDocument()
+    })
+    // ...but none of the options are reachable yet.
+    expect(screen.queryByLabelText("Mærke")).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole("button", { name: "Gem bil" }),
+    ).not.toBeInTheDocument()
+    // A collapsed card has no schedule to fetch.
+    expect(mockGetBlocks).not.toHaveBeenCalled()
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /Indstillinger for Skoda Octavia/ }),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Mærke")).toBeInTheDocument()
+    })
+    expect(screen.getByRole("button", { name: "Gem bil" })).toBeInTheDocument()
+    expect(mockGetBlocks).toHaveBeenCalled()
+  })
+
+  it("marks a car that is not shared and one that cannot be", async () => {
+    mockGetCars.mockResolvedValue([
+      ownCar({ is_shared: false, license_plate: "", display_name: "Skoda" }),
+    ])
+
+    render(<CarSharingPage />)
+
+    await userEvent.click(screen.getByRole("tab", { name: "Mine biler" }))
+
+    await waitFor(() => {
+      expect(screen.getByText("Ikke delt")).toBeInTheDocument()
+    })
+    expect(screen.getByText("Mangler nummerplade")).toBeInTheDocument()
+  })
+
+  it("will not send a request until the terms are confirmed", async () => {
+    render(<CarSharingPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Skoda Octavia")).toBeInTheDocument()
+    })
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /Vælg Skoda Octavia/ }),
+    )
+
+    const send = screen.getByRole("button", { name: /Send forespørgsel/ })
+    expect(send).toBeDisabled()
+
+    await userEvent.click(
+      screen.getByRole("checkbox", {
+        name: "Jeg har læst og accepterer vilkårene",
+      }),
+    )
+
+    expect(send).toBeEnabled()
+  })
+
+  it("makes an owner accept the terms before sharing a car", async () => {
+    mockGetCars.mockResolvedValue([
+      ownCar({
+        is_shared: true,
+        terms_accepted_version: "",
+        has_accepted_current_terms: false,
+      }),
+    ])
+
+    render(<CarSharingPage />)
+
+    await userEvent.click(screen.getByRole("tab", { name: "Mine biler" }))
+    await waitFor(() => {
+      expect(screen.getByText("Vilkår mangler accept")).toBeInTheDocument()
+    })
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /Indstillinger for Skoda Octavia/ }),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Gem bil" })).toBeDisabled()
+    })
+    await userEvent.click(
+      screen.getByRole("checkbox", {
+        name: /Jeg har læst og accepterer vilkårene for at udlåne min bil/,
+      }),
+    )
+
+    expect(screen.getByRole("button", { name: "Gem bil" })).toBeEnabled()
+  })
+
+  it("does not re-ask an owner who already accepted the current terms", async () => {
+    mockGetCars.mockResolvedValue([
+      ownCar({ has_accepted_current_terms: true }),
+    ])
+
+    render(<CarSharingPage />)
+
+    await userEvent.click(screen.getByRole("tab", { name: "Mine biler" }))
+    await userEvent.click(
+      screen.getByRole("button", { name: /Indstillinger for Skoda Octavia/ }),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Gem bil" })).toBeEnabled()
+    })
+    expect(
+      screen.queryByRole("checkbox", {
+        name: /accepterer vilkårene for at udlåne/,
+      }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText("Vilkår mangler accept")).not.toBeInTheDocument()
+  })
+
+  // --- What a household that is not party to the loan may see ----------------
+
+  it("shows a closed-out household nothing but the fact that it is closed", async () => {
+    // The server withholds the private fields; the card must not imply otherwise.
+    mockGetLoans.mockResolvedValue([
+      activeLoan({
+        is_borrower: false,
+        viewer_role: "closed_out",
+        can_cancel: false,
+        borrower_name: "Bo Låner",
+        car_practical_note: "",
+        amount_due: null,
+        candidates: [candidate({ status: "closed" })],
+      }),
+    ])
+
+    render(<CarSharingPage />)
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("En anden ejer var først — du skal ikke gøre mere."),
+      ).toBeInTheDocument()
+    })
+    expect(screen.getByText("Lukket")).toBeInTheDocument()
+    // No dead button, no other household's key, no settlement.
+    expect(
+      screen.queryByRole("button", { name: "Aflys" }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText("Nøglen hænger i skabet")).not.toBeInTheDocument()
+    expect(screen.queryByText(/Aktivt lån/)).not.toBeInTheDocument()
+  })
+
+  it("tells a household that said no that it said no", async () => {
+    mockGetLoans.mockResolvedValue([
+      activeLoan({
+        status: "requested",
+        is_borrower: false,
+        viewer_role: "declined",
+        can_cancel: false,
+        car: null,
+        borrower_name: "Bo Låner",
+        candidates: [candidate({ status: "declined" })],
+      }),
+    ])
+
+    render(<CarSharingPage />)
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    // It used to still read "Afventer svar", as if they owed an answer.
+    await waitFor(() => {
+      expect(screen.getByText("Du sagde nej")).toBeInTheDocument()
+    })
+    expect(screen.queryByText("Afventer svar")).not.toBeInTheDocument()
+  })
+
+  it("renders an owner's own no instead of silently dropping the row", async () => {
+    mockGetLoans.mockResolvedValue([
+      activeLoan({
+        status: "requested",
+        is_borrower: false,
+        viewer_role: "asked",
+        can_cancel: false,
+        car: null,
+        borrower_name: "Bo Låner",
+        candidates: [
+          candidate({
+            id: 7,
+            status: "declined",
+            car_display_name: "Skoda Octavia",
+          }),
+          candidate({
+            id: 8,
+            car: 2,
+            status: "asked",
+            car_display_name: "Toyota Yaris",
+          }),
+        ],
+      }),
+    ])
+
+    render(<CarSharingPage />)
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("I har sagt nej til Skoda Octavia."),
+      ).toBeInTheDocument()
+    })
+    // The unanswered car still offers both buttons.
+    expect(
+      screen.getByRole("button", { name: "Ja, den må lånes" }),
+    ).toBeInTheDocument()
+  })
+
+  // --- Cancelling ------------------------------------------------------------
+
+  it("only offers cancel when the server says it is allowed", async () => {
+    mockGetLoans.mockResolvedValue([activeLoan({ can_cancel: false })])
+
+    render(<CarSharingPage />)
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    await waitFor(() => {
+      expect(screen.getByText("Aktivt lån")).toBeInTheDocument()
+    })
+    expect(
+      screen.queryByRole("button", { name: "Aflys" }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("asks before voiding the km bill, and does nothing if you say no", async () => {
+    mockGetLoans.mockResolvedValue([activeLoan({ can_cancel: true })])
+    const confirmSpy = vi
+      .spyOn(window, "confirm")
+      .mockImplementation(() => false)
+
+    render(<CarSharingPage />)
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    const button = await screen.findByRole("button", { name: "Aflys" })
+    await userEvent.click(button)
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      expect.stringContaining("uden at afregne"),
+    )
+    expect(mockCancelLoan).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
+  })
+
+  it("calls the owner's cancel a withdrawal, not a cancellation", async () => {
+    mockGetLoans.mockResolvedValue([
+      activeLoan({
+        is_borrower: false,
+        viewer_role: "lender",
+        can_cancel: true,
+        borrower_name: "Bo Låner",
+      }),
+    ])
+
+    render(<CarSharingPage />)
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Træk bilen tilbage" }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  // --- Settlement ------------------------------------------------------------
+
+  it("shows a breakdown the owner can reconcile", async () => {
+    mockGetLoans.mockResolvedValue([
+      activeLoan({
+        status: "completed",
+        is_borrower: false,
+        viewer_role: "lender",
+        can_cancel: false,
+        borrower_name: "Bo Låner",
+        rate_per_km: "3.94",
+        actual_km: 120,
+        expense_amount: "50.50",
+        expense_note: "Ladning i Aarhus",
+        amount_due: "422.30",
+      }),
+    ])
+
+    render(<CarSharingPage />)
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    // 120 × 3,94 = 472,80 — unreconcilable without the deduction being shown.
+    await waitFor(() => {
+      expect(
+        screen.getByText(/120 km × 3,94 kr\. − 50,50 kr\. i udgifter/),
+      ).toBeInTheDocument()
+    })
+    expect(screen.getByText(/Ladning i Aarhus/)).toBeInTheDocument()
+    expect(
+      screen.getByText("Bo Låner skal betale dig 422,30 kr."),
+    ).toBeInTheDocument()
+  })
+
+  // --- The borrow tab --------------------------------------------------------
+
+  it("reports a failure instead of an empty delebilpark", async () => {
+    mockGetSharedCars.mockRejectedValue({
+      response: { data: { end: ["Et lån kan højst vare 30 dage."] } },
+    })
+
+    render(<CarSharingPage />)
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Et lån kan højst vare 30 dage."),
+      ).toBeInTheDocument()
+    })
+    expect(
+      screen.queryByText("Der er ingen biler i delebilparken endnu."),
+    ).not.toBeInTheDocument()
+  })
+
+  it("says nobody is coming when every household declined", async () => {
+    mockGetLoans.mockResolvedValue([
+      activeLoan({
+        status: "declined",
+        car: null,
+        candidates: [
+          candidate({ id: 7, status: "declined", is_own_household: false }),
+          candidate({
+            id: 8,
+            car: 2,
+            status: "declined",
+            is_own_household: false,
+          }),
+        ],
+      }),
+    ])
+
+    render(<CarSharingPage />)
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Alle 2 spurgte husstande har sagt nej/),
+      ).toBeInTheDocument()
+    })
+    // And it must not still claim a yes might arrive. Scoped to the card's own
+    // phrasing: the borrow tab carries similar copy and is always mounted.
+    expect(
+      screen.queryByText(/Afventer svar\. Den første ejer der siger ja/),
+    ).not.toBeInTheDocument()
+  })
+
+  it("does not open the settlement form before the loan starts", async () => {
+    mockGetLoans.mockResolvedValue([
+      activeLoan({ has_started: false, start_at: "2027-06-12T09:00:00Z" }),
+    ])
+
+    render(<CarSharingPage />)
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/Aftalt · starter/)).toBeInTheDocument()
+    })
+    expect(screen.queryByLabelText("Kørte kilometer")).not.toBeInTheDocument()
+
+    // Someone who really did drive early can still get at it.
+    await userEvent.click(
+      screen.getByRole("button", { name: "Afslut alligevel" }),
+    )
+    expect(await screen.findByLabelText("Kørte kilometer")).toBeInTheDocument()
+  })
+
+  it("refuses a garbled expense amount before submitting it", async () => {
+    mockGetLoans.mockResolvedValue([activeLoan()])
+
+    render(<CarSharingPage />)
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    const expenseInput = await screen.findByLabelText(
+      /Dine udgifter til strøm eller brændstof/,
+    )
+    await userEvent.clear(expenseInput)
+    await userEvent.type(expenseInput, "50 kr")
+
+    // It used to preview a tidy total and then fail on the server in English.
+    await waitFor(() => {
+      expect(screen.getByText(/Skriv kun et beløb/)).toBeInTheDocument()
+    })
+    expect(screen.getByRole("button", { name: "Afslut lån" })).toBeDisabled()
   })
 })

@@ -9,12 +9,12 @@ import type {
   CarBlock,
   CarLoan,
   CarSharingTerms,
-  PoolCarsResponse,
+  SharedCarsResponse,
 } from "../types"
 
 import type { BlockInput } from "../utils/weekSchedule"
 
-export interface PoolCarQuery {
+export interface SharedCarQuery {
   start: string
   end: string
   isofix?: boolean
@@ -37,6 +37,7 @@ export interface CarLoanRequestData {
   needs_tow_hitch: boolean
   min_seats: number | null
   note: string
+  accepted_terms: boolean
 }
 
 export interface CompleteLoanData {
@@ -47,8 +48,8 @@ export interface CompleteLoanData {
 }
 
 export const carSharingApi = {
-  // The pool with availability for a given window
-  getPoolCars: async (query: PoolCarQuery): Promise<PoolCarsResponse> => {
+  // The delebilpark with availability for a given window
+  getSharedCars: async (query: SharedCarQuery): Promise<SharedCarsResponse> => {
     const params = new URLSearchParams({ start: query.start, end: query.end })
     if (query.isofix) params.set("isofix", "true")
     if (query.tow) params.set("tow", "true")
@@ -124,20 +125,6 @@ export const carSharingApi = {
       `/carsharing/loans/${loanId}/candidates/${candidateId}/respond/`,
 
       { action },
-    )
-    return response.data
-  },
-
-  // Borrower picks one of the accepted offers
-  chooseCandidate: async (
-    loanId: number,
-    candidateId: number,
-  ): Promise<CarLoan> => {
-    const response = await apiClient.post(
-      `/carsharing/loans/${loanId}/choose/`,
-      {
-        candidate: candidateId,
-      },
     )
     return response.data
   },

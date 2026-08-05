@@ -3,6 +3,7 @@ Tests for the car sharing (bildeling) app.
 """
 
 import datetime
+import re
 from decimal import Decimal
 
 import pytest
@@ -14,17 +15,26 @@ from apps.carsharing.constants import (
     DEFAULT_RATE_PER_KM,
     MAX_BLOCKS_PER_CAR,
     MAX_CANDIDATES_PER_LOAN,
+    MAX_LOAN_DAYS,
     TERMS_VERSION,
 )
 from apps.carsharing.models import CarBlock, CarLoan, CarLoanCandidate
-from apps.carsharing.services import pool_cars_with_availability
+from apps.carsharing.services import has_open_request, shared_cars_with_availability
 from apps.houses.models import Car, House
 from apps.notifications.models import Notification, NotificationType
 from apps.users.models import User
 
 
 def _make_car(house, plate="AB12345", **overrides):
-    defaults = {"in_pool": True, "make": "Skoda", "model_name": "Octavia", "seats": 5}
+    """A car that is genuinely on offer: shared *and* with the terms accepted."""
+    defaults = {
+        "is_shared": True,
+        "make": "Skoda",
+        "model_name": "Octavia",
+        "seats": 5,
+        "terms_accepted_version": TERMS_VERSION,
+        "terms_accepted_at": timezone.now(),
+    }
     defaults.update(overrides)
     return Car.objects.create(house=house, license_plate=plate, **defaults)
 
@@ -91,34 +101,37 @@ def _create_loan(client, cars, *, start=None, end=None, **extra):
         "end_at": end_at.isoformat(),
         "expected_km": 40,
         "car_ids": [car.id for car in cars],
+        # The borrower has to confirm the terms; tests that check the gate itself
+        # override this.
+        "accepted_terms": True,
         **extra,
     }
     return client.post(reverse("carsharing-loan-list"), payload, format="json")
 
 
-# -- Car pool flag and rate --------------------------------------------------
+# -- Delebilpark flag and rate --------------------------------------------------
 
 
 @pytest.mark.django_db
-def test_pool_car_requires_license_plate(owner_house):
-    car = Car(house=owner_house, license_plate="", in_pool=True)
+def test_shared_car_requires_license_plate(owner_house):
+    car = Car(house=owner_house, license_plate="", is_shared=True)
     with pytest.raises(ValidationError) as exc:
         car.clean()
     assert "nummerplade" in str(exc.value)
 
 
 @pytest.mark.django_db
-def test_pool_car_with_plate_is_valid(owner_house):
-    Car(house=owner_house, license_plate="AB12345", in_pool=True).clean()
+def test_shared_car_with_plate_is_valid(owner_house):
+    Car(house=owner_house, license_plate="AB12345", is_shared=True).clean()
 
 
 @pytest.mark.django_db
-def test_api_rejects_pooling_car_without_plate(authenticated_client, user, house):
+def test_api_rejects_sharing_car_without_plate(authenticated_client, user, house):
     user.house = house
     user.save()
     car = Car.objects.create(house=house, license_plate="")
     response = authenticated_client.patch(
-        reverse("car-detail", args=[car.id]), {"in_pool": True}, format="json"
+        reverse("car-detail", args=[car.id]), {"is_shared": True}, format="json"
     )
     assert response.status_code == 400
     assert "nummerplade" in str(response.data)
@@ -131,13 +144,7 @@ def test_rate_falls_back_to_default(owner_house, borrower, borrower_client):
     candidate = CarLoanCandidate.objects.get(car=car)
     loan = candidate.loan
 
-    candidate.status = CarLoanCandidate.Status.ACCEPTED
-    candidate.save()
-    borrower_client.post(
-        reverse("carsharing-loan-choose", args=[loan.id]),
-        {"candidate": candidate.id},
-        format="json",
-    )
+    _accept(car)
 
     loan.refresh_from_db()
     assert loan.rate_per_km == DEFAULT_RATE_PER_KM
@@ -148,13 +155,7 @@ def test_rate_snapshot_survives_later_rate_change(owner_house, borrower, borrowe
     car = _make_car(owner_house, rate_per_km=Decimal("5.00"))
     _create_loan(borrower_client, [car])
     candidate = CarLoanCandidate.objects.get(car=car)
-    candidate.status = CarLoanCandidate.Status.ACCEPTED
-    candidate.save()
-    borrower_client.post(
-        reverse("carsharing-loan-choose", args=[candidate.loan_id]),
-        {"candidate": candidate.id},
-        format="json",
-    )
+    _accept(car)
 
     car.rate_per_km = Decimal("9.99")
     car.save()
@@ -163,6 +164,173 @@ def test_rate_snapshot_survives_later_rate_change(owner_house, borrower, borrowe
     assert loan.rate_per_km == Decimal("5.00")
     loan.actual_km = 10
     assert loan.calculate_amount_due() == Decimal("50.00")
+
+
+# -- Terms: the file, and both parties' consent ------------------------------
+
+
+def test_terms_come_from_the_markdown_file():
+    """The file is the only source, so a parse failure must not pass silently."""
+    from apps.carsharing.constants import LOAN_TERMS_TITLE, TERMS_FILE, loan_terms_bullets
+
+    assert TERMS_FILE.exists()
+    assert LOAN_TERMS_TITLE == "Vilkår for lån af bil i delebilparken"
+    bullets = loan_terms_bullets()
+    assert len(bullets) >= 5
+    # Editing instructions live in an HTML comment and are not terms.
+    assert not any(bullet.startswith("<!--") or "-->" in bullet for bullet in bullets)
+    # Wrapped lines are joined rather than truncated at the wrap.
+    assert any("aflever den i samme stand" in bullet for bullet in bullets)
+
+
+def test_terms_version_is_a_date():
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", TERMS_VERSION)
+
+
+def test_the_rate_placeholder_is_filled_in():
+    from apps.carsharing.constants import loan_terms_bullets, loan_terms_text
+
+    assert "{rate}" not in loan_terms_text()
+    assert any("3,94" in bullet for bullet in loan_terms_bullets())
+    assert any("9,50" in bullet for bullet in loan_terms_bullets(Decimal("9.50")))
+
+
+def test_docs_symlink_is_the_same_file():
+    """docs/bildeling-vilkaar.md is the path people edit; it must not be a copy."""
+    from apps.carsharing.constants import TERMS_FILE
+
+    docs_path = TERMS_FILE.parents[3] / "docs" / "bildeling-vilkaar.md"
+    assert docs_path.exists(), f"{docs_path} findes ikke"
+    assert docs_path.resolve() == TERMS_FILE.resolve()
+
+
+def test_a_malformed_terms_file_is_rejected(tmp_path):
+    """A silently empty set of terms would mean agreeing to nothing."""
+    from django.core.exceptions import ImproperlyConfigured
+
+    from apps.carsharing import constants
+
+    for text in ("", "# Kun en overskrift\n", "Version: 2026-08-04\n- Et vilkår\n"):
+        broken = tmp_path / "vilkaar.md"
+        broken.write_text(text, encoding="utf-8")
+        original = constants.TERMS_FILE
+        constants.TERMS_FILE = broken
+        try:
+            with pytest.raises(ImproperlyConfigured):
+                constants._load_terms()
+        finally:
+            constants.TERMS_FILE = original
+
+
+@pytest.mark.django_db
+def test_borrower_must_confirm_the_terms(owner_house, borrower_client):
+    car = _make_car(owner_house)
+
+    refused = _create_loan(borrower_client, [car], accepted_terms=False)
+
+    assert refused.status_code == 400
+    assert "vilkårene" in str(refused.data)
+    assert not CarLoan.objects.exists()
+
+
+@pytest.mark.django_db
+def test_a_request_without_the_field_is_refused(owner_house, borrower_client):
+    """Absent must not read as "declined quietly" — the client has to be explicit."""
+    car = _make_car(owner_house)
+    start_at, end_at = _window()
+
+    response = borrower_client.post(
+        reverse("carsharing-loan-list"),
+        {
+            "start_at": start_at.isoformat(),
+            "end_at": end_at.isoformat(),
+            "expected_km": 40,
+            "car_ids": [car.id],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "accepted_terms" in response.data
+
+
+@pytest.mark.django_db
+def test_the_loan_records_both_sides_accepted_version(owner_house, borrower_client):
+    car = _make_car(owner_house)
+    _create_loan(borrower_client, [car])
+
+    _accept(car)
+
+    loan = CarLoan.objects.get()
+    assert loan.terms_version == TERMS_VERSION
+    assert loan.owner_terms_version == TERMS_VERSION
+
+
+@pytest.mark.django_db
+def test_owner_must_accept_the_terms_to_share_a_car(authenticated_client, user, house):
+    user.house = house
+    user.save()
+    car = Car.objects.create(house=house, license_plate="AB12345")
+    url = reverse("car-detail", args=[car.id])
+
+    refused = authenticated_client.patch(url, {"is_shared": True}, format="json")
+    assert refused.status_code == 400
+    assert "vilkårene" in str(refused.data)
+    car.refresh_from_db()
+    assert car.is_shared is False
+
+    accepted = authenticated_client.patch(
+        url, {"is_shared": True, "accept_terms": True}, format="json"
+    )
+    assert accepted.status_code == 200
+    car.refresh_from_db()
+    assert car.is_shared is True
+    assert car.terms_accepted_version == TERMS_VERSION
+    assert car.terms_accepted_at is not None
+    assert car.has_accepted_current_terms is True
+
+
+@pytest.mark.django_db
+def test_owner_need_not_reaccept_on_every_edit(authenticated_client, user, house):
+    user.house = house
+    user.save()
+    car = Car.objects.create(
+        house=house,
+        license_plate="AB12345",
+        is_shared=True,
+        terms_accepted_version=TERMS_VERSION,
+        terms_accepted_at=timezone.now(),
+    )
+
+    response = authenticated_client.patch(
+        reverse("car-detail", args=[car.id]), {"color": "grøn"}, format="json"
+    )
+
+    assert response.status_code == 200
+    car.refresh_from_db()
+    assert car.color == "grøn"
+    assert car.is_shared is True
+
+
+@pytest.mark.django_db
+def test_a_car_with_stale_consent_is_not_offered(owner_house, borrower, borrower_client):
+    """A new terms date takes cars out of the delebilpark until owners re-accept."""
+    start_at, end_at = _window()
+    car = _make_car(owner_house, terms_accepted_version="1999-01-01")
+
+    result = shared_cars_with_availability(start_at, end_at)
+    assert result == []
+
+    listed = borrower_client.get(
+        reverse("carsharing-car-list"),
+        {"start": start_at.isoformat(), "end": end_at.isoformat()},
+    )
+    assert listed.data["cars"] == []
+
+    # And it cannot be asked for directly either.
+    refused = _create_loan(borrower_client, [car])
+    assert refused.status_code == 400
+    assert "delebilparken" in str(refused.data)
 
 
 # -- Availability -----------------------------------------------------------
@@ -180,7 +348,7 @@ def test_schedule_conflict_is_soft_and_marked(owner_house):
         end_time=datetime.time(16),
     )
 
-    result = pool_cars_with_availability(start_at, end_at)
+    result = shared_cars_with_availability(start_at, end_at)
     assert len(result) == 1
     assert result[0].conflict == "schedule"
     assert result[0].selectable is True
@@ -199,7 +367,7 @@ def test_block_outside_window_is_no_conflict(owner_house):
         end_time=datetime.time(22),
     )
 
-    result = pool_cars_with_availability(start_at, end_at)
+    result = shared_cars_with_availability(start_at, end_at)
     assert result[0].conflict is None
 
 
@@ -215,7 +383,7 @@ def test_block_on_other_weekday_is_no_conflict(owner_house):
         end_time=datetime.time(16),
     )
 
-    result = pool_cars_with_availability(start_at, end_at)
+    result = shared_cars_with_availability(start_at, end_at)
     assert result[0].conflict is None
 
 
@@ -225,7 +393,7 @@ def test_open_request_is_information_only(owner_house, borrower, borrower_client
     car = _make_car(owner_house)
     _create_loan(borrower_client, [car], start=start_at, end=end_at)
 
-    result = pool_cars_with_availability(start_at, end_at)
+    result = shared_cars_with_availability(start_at, end_at)
     assert result[0].conflict == "requested"
     assert result[0].selectable is True
 
@@ -244,7 +412,7 @@ def test_active_loan_is_hard_conflict(owner_house, borrower):
         car=car,
     )
 
-    result = pool_cars_with_availability(start_at, end_at)
+    result = shared_cars_with_availability(start_at, end_at)
     assert result[0].conflict == "loan"
     assert result[0].selectable is False
 
@@ -264,7 +432,7 @@ def test_cars_are_never_filtered_away_and_free_sort_first(owner_house, borrower)
         car=lent,
     )
 
-    result = pool_cars_with_availability(start_at, end_at)
+    result = shared_cars_with_availability(start_at, end_at)
     assert [item.car.id for item in result] == [free.id, lent.id]
 
 
@@ -288,7 +456,7 @@ def test_loan_boundary_does_not_collide(owner_house, borrower):
         car=car,
     )
 
-    result = pool_cars_with_availability(first_end, second_end)
+    result = shared_cars_with_availability(first_end, second_end)
     assert result[0].conflict is None
 
 
@@ -296,7 +464,7 @@ def test_loan_boundary_does_not_collide(owner_house, borrower):
 def test_requirements_mark_but_do_not_filter(owner_house):
     start_at, end_at = _window()
     _make_car(owner_house, has_isofix=False)
-    result = pool_cars_with_availability(start_at, end_at, needs_isofix=True)
+    result = shared_cars_with_availability(start_at, end_at, needs_isofix=True)
     assert len(result) == 1
     assert result[0].meets_requirements is False
 
@@ -306,15 +474,16 @@ def test_own_household_cars_are_excluded(house, owner_house):
     start_at, end_at = _window()
     _make_car(house, plate="GH33333")
     _make_car(owner_house, plate="IJ44444")
-    result = pool_cars_with_availability(start_at, end_at, exclude_house_id=house.id)
+    result = shared_cars_with_availability(start_at, end_at, exclude_house_id=house.id)
     assert [item.car.license_plate for item in result] == ["IJ44444"]
 
 
-# -- Request → offer → choice ----------------------------------------------
+# -- Request → first yes wins ----------------------------------------------
 
 
 @pytest.mark.django_db
-def test_full_flow_three_cars_two_accept_borrower_chooses(owner_house, borrower, borrower_client):
+def test_first_owner_to_accept_gets_the_loan(owner_house, borrower, borrower_client):
+    """Three cars asked, two owners try to say yes — only the first one counts."""
     house_b = House.objects.create(name="House 8", address="Kløverbakkevej 8")
     house_c = House.objects.create(name="House 9", address="Kløverbakkevej 9")
     owner_b = User.objects.create_user(
@@ -333,37 +502,104 @@ def test_full_flow_three_cars_two_accept_borrower_chooses(owner_house, borrower,
     assert len(response.data["candidates"]) == 3
     assert response.data["terms_version"] == TERMS_VERSION
 
-    # Owners of B and C accept; A never answers.
-    for owner_user, car in ((owner_b, car_b), (owner_c, car_c)):
-        api_client = _client_for(owner_user)
-        candidate = CarLoanCandidate.objects.get(loan_id=loan_id, car=car)
-        accept = api_client.post(
-            reverse("carsharing-candidate-respond", args=[loan_id, candidate.id]),
-            {"action": "accept"},
-            format="json",
-        )
-        assert accept.status_code == 200
+    # Bodil is first: that alone starts the loan, with no borrower step.
+    first = _accept(car_b, loan_id)
+    assert first.status_code == 200
+    assert first.data["status"] == CarLoan.Status.ACTIVE
+    assert first.data["car"] == car_b.id
 
-    chosen = CarLoanCandidate.objects.get(loan_id=loan_id, car=car_b)
-    response = borrower_client.post(
-        reverse("carsharing-loan-choose", args=[loan_id]), {"candidate": chosen.id}, format="json"
-    )
-    assert response.status_code == 200
-    assert response.data["status"] == CarLoan.Status.ACTIVE
-    assert response.data["car"] == car_b.id
+    # Carl is slower, and is told *why* — not the generic "no longer open".
+    second = _accept(car_c, loan_id)
+    assert second.status_code == 400
+    assert "hurtigere" in str(second.data)
 
     loan = CarLoan.objects.get(pk=loan_id)
+    assert loan.status == CarLoan.Status.ACTIVE
+    assert loan.car_id == car_b.id
     assert loan.approved_by_id == owner_b.id
-    assert loan.candidates.get(car=car_c).status == CarLoanCandidate.Status.CLOSED
-    assert loan.candidates.get(car=car_a).status == CarLoanCandidate.Status.ASKED
+    assert loan.rate_per_km == DEFAULT_RATE_PER_KM
+    assert loan.activated_at is not None
 
-    # The released owner is told, the chosen one too.
+    # The winner is ACCEPTED; everyone still waiting is released, not rejected.
+    assert loan.candidates.get(car=car_b).status == CarLoanCandidate.Status.ACCEPTED
+    assert loan.candidates.get(car=car_a).status == CarLoanCandidate.Status.CLOSED
+    assert loan.candidates.get(car=car_c).status == CarLoanCandidate.Status.CLOSED
+
+    # The borrower learns they have a car, and the released households learn
+    # they are off the hook.
+    assert Notification.objects.filter(
+        user=borrower, notification_type=NotificationType.CAR_LOAN_UPDATE
+    ).exists()
     assert Notification.objects.filter(
         user=owner_c, notification_type=NotificationType.CAR_LOAN_UPDATE
     ).exists()
-    assert Notification.objects.filter(
-        user=owner_b, notification_type=NotificationType.CAR_LOAN_UPDATE
-    ).exists()
+
+
+@pytest.mark.django_db
+def test_accepting_twice_is_rejected(owner_house, borrower_client):
+    """A double-click must not settle the same loan twice."""
+    car = _make_car(owner_house)
+    _create_loan(borrower_client, [car])
+
+    first = _accept(car)
+    second = _accept(car)
+
+    assert first.status_code == 200
+    assert second.status_code == 400
+    assert CarLoan.objects.filter(car=car, status=CarLoan.Status.ACTIVE).count() == 1
+
+
+@pytest.mark.django_db
+def test_lending_household_is_told_their_car_went_out(owner, owner_house, borrower_client):
+    """The one who clicked yes knows; the rest of the household would not."""
+    housemate = User.objects.create_user(
+        email="housemate@example.com", password="x", first_name="Hanne", house=owner_house
+    )
+    car = _make_car(owner_house)
+    _create_loan(borrower_client, [car])
+
+    _accept(car, as_user=owner)
+
+    assert Notification.objects.filter(user=housemate, title="Din bil er udlånt").exists()
+    # The responder is not told what they just did.
+    assert not Notification.objects.filter(user=owner, title="Din bil er udlånt").exists()
+
+
+@pytest.mark.django_db
+def test_declining_leaves_the_request_open_for_the_others(owner_house, borrower_client):
+    house_b = House.objects.create(name="House 8")
+    User.objects.create_user(
+        email="b3@example.com", password="x", first_name="Bodil", house=house_b
+    )
+    car_a = _make_car(owner_house, plate="AA11111")
+    car_b = _make_car(house_b, plate="BB22222")
+    _create_loan(borrower_client, [car_a, car_b])
+
+    candidate_a = CarLoanCandidate.objects.get(car=car_a)
+    declined = _decline(car_a)
+
+    assert declined.status_code == 200
+    assert declined.data["status"] == CarLoan.Status.REQUESTED
+    # The other household can still take it.
+    assert _accept(car_b, candidate_a.loan_id).status_code == 200
+
+
+@pytest.mark.django_db
+def test_a_declined_household_keeps_that_answer(owner_house, borrower_client):
+    """Being released is not the same as having said no, so DECLINED stands."""
+    house_b = House.objects.create(name="House 8")
+    User.objects.create_user(
+        email="b4@example.com", password="x", first_name="Bodil", house=house_b
+    )
+    car_a = _make_car(owner_house, plate="AA11111")
+    car_b = _make_car(house_b, plate="BB22222")
+    _create_loan(borrower_client, [car_a, car_b])
+
+    candidate_a = CarLoanCandidate.objects.get(car=car_a)
+    _decline(car_a)
+    _accept(car_b, candidate_a.loan_id)
+
+    assert CarLoanCandidate.objects.get(car=car_a).status == CarLoanCandidate.Status.DECLINED
 
 
 @pytest.mark.django_db
@@ -382,29 +618,13 @@ def test_request_notifies_owners_with_count(owner_house, borrower, borrower_clie
             user=recipient, notification_type=NotificationType.CAR_LOAN_REQUEST
         )
         assert "en af 2 spurgte" in notification.message
+        assert "den første der siger ja" in notification.message
         assert notification.link.startswith("/bildeling/laan/")
 
 
 @pytest.mark.django_db
-def test_choose_twice_is_rejected(owner_house, borrower_client):
-    car = _make_car(owner_house)
-    _create_loan(borrower_client, [car])
-    candidate = CarLoanCandidate.objects.get(car=car)
-    candidate.status = CarLoanCandidate.Status.ACCEPTED
-    candidate.save()
-    url = reverse("carsharing-loan-choose", args=[candidate.loan_id])
-
-    first = borrower_client.post(url, {"candidate": candidate.id}, format="json")
-    second = borrower_client.post(url, {"candidate": candidate.id}, format="json")
-
-    assert first.status_code == 200
-    assert second.status_code == 400
-    assert CarLoan.objects.filter(car=car, status=CarLoan.Status.ACTIVE).count() == 1
-
-
-@pytest.mark.django_db
-def test_double_booking_of_same_car_is_rejected(owner_house, house, house2, api_client):
-    """Two borrowers, one car, one window, both offered — only one may win."""
+def test_double_booking_of_same_car_is_rejected(owner_house, owner, house, house2, api_client):
+    """Two borrowers want the same car in the same window; only one can have it."""
     start_at, end_at = _window()
     car = _make_car(owner_house)
     borrower_one = User.objects.create_user(
@@ -421,28 +641,21 @@ def test_double_booking_of_same_car_is_rejected(owner_house, house, house2, api_
         assert response.status_code == 201
         loans.append(response.data["id"])
 
-    # The owner sees two offers and accepts both — entirely reasonable.
+    owner_client = _client_for(owner)
+    responses = []
     for loan_id in loans:
         candidate = CarLoanCandidate.objects.get(loan_id=loan_id, car=car)
-        candidate.status = CarLoanCandidate.Status.ACCEPTED
-        candidate.save()
+        responses.append(
+            owner_client.post(
+                reverse("carsharing-candidate-respond", args=[loan_id, candidate.id]),
+                {"action": "accept"},
+                format="json",
+            )
+        )
 
-    api_client.force_authenticate(user=borrower_one)
-    first = api_client.post(
-        reverse("carsharing-loan-choose", args=[loans[0]]),
-        {"candidate": CarLoanCandidate.objects.get(loan_id=loans[0], car=car).id},
-        format="json",
-    )
-    api_client.force_authenticate(user=borrower_two)
-    second = api_client.post(
-        reverse("carsharing-loan-choose", args=[loans[1]]),
-        {"candidate": CarLoanCandidate.objects.get(loan_id=loans[1], car=car).id},
-        format="json",
-    )
-
-    assert first.status_code == 200
-    assert second.status_code == 400
-    assert "udlånt" in str(second.data).lower()
+    assert responses[0].status_code == 200
+    assert responses[1].status_code == 400
+    assert "udlånt" in str(responses[1].data).lower()
     assert CarLoan.objects.filter(car=car, status=CarLoan.Status.ACTIVE).count() == 1
 
 
@@ -469,25 +682,348 @@ def test_cannot_request_own_household_car(house, borrower_client):
 
 
 @pytest.mark.django_db
-def test_cannot_request_car_outside_pool(owner_house, borrower_client):
-    car = _make_car(owner_house, in_pool=False)
+def test_cannot_request_car_outside_delebilpark(owner_house, borrower_client):
+    car = _make_car(owner_house, is_shared=False)
     response = _create_loan(borrower_client, [car])
     assert response.status_code == 400
+
+
+# -- Who a loan belongs to, and what that lets them see --------------------
+
+
+def _roles_setup(owner_house, borrower_client):
+    """A loan asked of two households, won by the second one."""
+    house_b = House.objects.create(name="House 8", address="Kløverbakkevej 8")
+    User.objects.create_user(
+        email="roles_b@example.com", password="x", first_name="Bodil", house=house_b
+    )
+    car_a = _make_car(owner_house, plate="AA11111", practical_note="Nøglen hos A.")
+    car_b = _make_car(house_b, plate="BB22222", practical_note="Nøglen hos B.")
+    _create_loan(borrower_client, [car_a, car_b])
+    loan_id = CarLoan.objects.get().pk
+    return car_a, car_b, loan_id
+
+
+def _loan_as(person, loan_id):
+    return _client_for(person).get(reverse("carsharing-loan-detail", args=[loan_id])).data
+
+
+@pytest.mark.django_db
+def test_the_server_names_each_viewers_role(owner, owner_house, borrower, borrower_client):
+    """The UI must not have to infer this from status flags — that is what broke."""
+    car_a, car_b, loan_id = _roles_setup(owner_house, borrower_client)
+
+    # While the request is open, the asked household still owes an answer.
+    assert _loan_as(owner, loan_id)["viewer_role"] == "asked"
+    assert _loan_as(borrower, loan_id)["viewer_role"] == "borrower"
+
+    _accept(car_b, loan_id)
+
+    lender = User.objects.get(email="roles_b@example.com")
+    assert _loan_as(lender, loan_id)["viewer_role"] == "lender"
+    # The household that was released is neither the lender nor still asked.
+    assert _loan_as(owner, loan_id)["viewer_role"] == "closed_out"
+    assert _loan_as(borrower, loan_id)["viewer_role"] == "borrower"
+
+
+@pytest.mark.django_db
+def test_a_declining_household_is_marked_declined(owner, owner_house, borrower_client):
+    car_a, car_b, loan_id = _roles_setup(owner_house, borrower_client)
+
+    _decline(car_a, loan_id)
+
+    assert _loan_as(owner, loan_id)["viewer_role"] == "declined"
+
+
+@pytest.mark.django_db
+def test_a_closed_out_household_is_told_nothing_private(owner, owner_house, borrower_client):
+    """Up to nine households per loan are not party to it and must not receive
+    the key location or the settlement."""
+    car_a, car_b, loan_id = _roles_setup(owner_house, borrower_client)
+    _accept(car_b, loan_id)
+
+    outsider = _loan_as(owner, loan_id)
+    assert outsider["car_practical_note"] == ""
+    assert outsider["amount_due"] is None
+    assert outsider["actual_km"] is None
+    assert outsider["expense_amount"] is None
+    assert outsider["expense_note"] == ""
+    assert outsider["damage_note"] == ""
+
+    # The two households actually party to the loan still see it.
+    lender = User.objects.get(email="roles_b@example.com")
+    assert _loan_as(lender, loan_id)["car_practical_note"] == "Nøglen hos B."
+
+
+@pytest.mark.django_db
+def test_a_declined_household_cannot_see_the_settlement(owner, owner_house, borrower_client):
+    car_a, car_b, loan_id = _roles_setup(owner_house, borrower_client)
+    _decline(car_a, loan_id)
+    _accept(car_b, loan_id)
+    borrower_client.post(
+        reverse("carsharing-loan-complete", args=[loan_id]),
+        {"actual_km": 100, "expense_amount": "50.50", "damage_note": "Ridse"},
+        format="json",
+    )
+
+    outsider = _loan_as(owner, loan_id)
+    assert outsider["amount_due"] is None
+    assert outsider["damage_note"] == ""
+    assert outsider["car_practical_note"] == ""
+
+
+@pytest.mark.django_db
+def test_can_cancel_agrees_with_the_cancel_endpoint(owner, owner_house, borrower, borrower_client):
+    """The anti-drift guard: the flag the button reads and the rule the endpoint
+    enforces are the same function, so they cannot disagree."""
+    car_a, car_b, loan_id = _roles_setup(owner_house, borrower_client)
+    lender = User.objects.get(email="roles_b@example.com")
+
+    def check(person):
+        claimed = _loan_as(person, loan_id)["can_cancel"]
+        response = _client_for(person).post(reverse("carsharing-loan-cancel", args=[loan_id]))
+        allowed = response.status_code == 200
+        assert claimed == allowed, (
+            f"{person.email}: can_cancel={claimed} but API gave {response.status_code}"
+        )
+        return allowed
+
+    # While requested: only the borrower may cancel; an asked owner answers instead.
+    assert _loan_as(owner, loan_id)["can_cancel"] is False
+    assert _loan_as(borrower, loan_id)["can_cancel"] is True
+    assert check(owner) is False
+
+    _accept(car_b, loan_id)
+    # Once active: the lender may withdraw, the closed-out household may not.
+    assert check(owner) is False
+    assert _loan_as(lender, loan_id)["can_cancel"] is True
+    assert check(lender) is True
+    # And nobody may cancel it twice.
+    assert check(borrower) is False
+
+
+@pytest.mark.django_db
+def test_a_loan_before_its_window_has_not_started(owner_house, borrower_client):
+    """A future loan must not offer the settlement form as if the trip happened."""
+    start_at, end_at = _window(days_ahead=4)
+    car = _make_car(owner_house)
+    _create_loan(borrower_client, [car], start=start_at, end=end_at)
+    _accept(car)
+    loan_id = CarLoan.objects.get().pk
+
+    assert (
+        borrower_client.get(reverse("carsharing-loan-detail", args=[loan_id])).data["has_started"]
+        is False
+    )
+
+
+# -- When everybody says no ------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_the_last_no_closes_the_request(owner_house, borrower, borrower_client):
+    """Otherwise the borrower waits forever on a request nobody can answer."""
+    car_a, car_b, loan_id = _roles_setup(owner_house, borrower_client)
+
+    first = _decline(car_a, loan_id)
+    assert first.data["status"] == CarLoan.Status.REQUESTED
+
+    last = _decline(car_b, loan_id)
+    assert last.data["status"] == CarLoan.Status.DECLINED
+
+    loan = CarLoan.objects.get(pk=loan_id)
+    assert loan.status == CarLoan.Status.DECLINED
+    # The borrower's last notification says there is nobody left to wait for.
+    assert Notification.objects.filter(
+        user=borrower, message__contains="ikke flere biler at afvente svar fra"
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_a_dead_request_stops_blocking_the_car(owner_house, borrower_client):
+    """A fully-declined request must not keep marking the car as already asked."""
+    start_at, end_at = _window()
+    car = _make_car(owner_house)
+    _create_loan(borrower_client, [car], start=start_at, end=end_at)
+    assert has_open_request(car.id, start_at, end_at) is True
+
+    _decline(car)
+
+    assert has_open_request(car.id, start_at, end_at) is False
+
+
+@pytest.mark.django_db
+def test_a_closed_request_cannot_be_cancelled(owner_house, borrower_client):
+    car = _make_car(owner_house)
+    _create_loan(borrower_client, [car])
+    loan_id = CarLoan.objects.get().pk
+    _decline(car)
+
+    response = borrower_client.post(reverse("carsharing-loan-cancel", args=[loan_id]))
+
+    assert response.status_code == 400
+    assert CarLoan.objects.get(pk=loan_id).status == CarLoan.Status.DECLINED
+
+
+@pytest.mark.django_db
+def test_a_household_cannot_turn_its_own_no_into_the_deciding_yes(owner_house, borrower_client):
+    """Accepting claims the loan first, so this must roll that claim back."""
+    car_a, car_b, loan_id = _roles_setup(owner_house, borrower_client)
+    _decline(car_a, loan_id)
+
+    late = _accept(car_a, loan_id)
+
+    assert late.status_code == 400
+    loan = CarLoan.objects.get(pk=loan_id)
+    assert loan.status == CarLoan.Status.REQUESTED
+    assert loan.car_id is None
+    # Still open for the household that has not answered.
+    assert _accept(car_b, loan_id).status_code == 200
+
+
+# -- Money cannot be negative ----------------------------------------------
+
+
+@pytest.mark.django_db
+def test_a_negative_expense_is_refused(owner_house, borrower_client):
+    """A negative expense would *raise* the borrower's own bill."""
+    car = _make_car(owner_house)
+    loan = _activate_loan(borrower_client, car)
+
+    response = borrower_client.post(
+        reverse("carsharing-loan-complete", args=[loan.id]),
+        {"actual_km": 10, "expense_amount": "-20.00"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "negativ" in str(response.data)
+    loan.refresh_from_db()
+    assert loan.status == CarLoan.Status.ACTIVE
+
+
+@pytest.mark.django_db
+def test_a_malformed_expense_is_refused_in_danish(owner_house, borrower_client):
+    car = _make_car(owner_house)
+    loan = _activate_loan(borrower_client, car)
+
+    response = borrower_client.post(
+        reverse("carsharing-loan-complete", args=[loan.id]),
+        {"actual_km": 10, "expense_amount": "50 kr"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "beløb" in str(response.data)
+    assert "valid number" not in str(response.data)
+
+
+@pytest.mark.django_db
+def test_a_negative_km_rate_is_refused(authenticated_client, user, house):
+    """It reached borrowers as "-3,50 kr./km" and inverted the bill."""
+    user.house = house
+    user.save()
+    car = Car.objects.create(house=house, license_plate="AB12345")
+
+    response = authenticated_client.patch(
+        reverse("car-detail", args=[car.id]), {"rate_per_km": "-3.50"}, format="json"
+    )
+
+    assert response.status_code == 400
+    assert "positivt" in str(response.data)
+    car.refresh_from_db()
+    assert car.rate_per_km is None
+
+
+@pytest.mark.django_db
+def test_a_malformed_km_rate_is_refused_in_danish(authenticated_client, user, house):
+    user.house = house
+    user.save()
+    car = Car.objects.create(house=house, license_plate="AB12345")
+
+    response = authenticated_client.patch(
+        reverse("car-detail", args=[car.id]), {"rate_per_km": "tre"}, format="json"
+    )
+
+    assert response.status_code == 400
+    assert "km-takst" in str(response.data)
+    assert "valid number" not in str(response.data)
+
+
+@pytest.mark.django_db
+def test_car_clean_also_refuses_a_negative_rate(owner_house):
+    """Mirrored so the admin cannot do what the API refuses."""
+    car = Car(house=owner_house, license_plate="AB12345", rate_per_km=Decimal("-1.00"))
+    with pytest.raises(ValidationError) as exc:
+        car.clean()
+    assert "positivt" in str(exc.value)
+
+
+@pytest.mark.django_db
+def test_the_completed_notification_shows_the_breakdown(owner, owner_house, borrower_client):
+    """The owner has to be able to reconcile the amount against the kilometres."""
+    car = _make_car(owner_house, rate_per_km=Decimal("4.00"))
+    loan = _activate_loan(borrower_client, car)
+
+    borrower_client.post(
+        reverse("carsharing-loan-complete", args=[loan.id]),
+        {"actual_km": 100, "expense_amount": "50.00", "expense_note": "Ladning"},
+        format="json",
+    )
+
+    notification = Notification.objects.get(user=owner, title="Billån afsluttet")
+    assert "100 km × 4,00 kr." in notification.message
+    assert "50,00 kr. i udgifter" in notification.message
+    assert "Ladning" in notification.message
+
+
+@pytest.mark.django_db
+def test_the_car_list_publishes_the_window_limit(borrower_client):
+    """So the client can warn before sending a window the server will refuse."""
+    response = borrower_client.get(reverse("carsharing-car-list"))
+
+    assert response.data["max_loan_days"] == MAX_LOAN_DAYS
 
 
 # -- Completion and settlement ---------------------------------------------
 
 
+def _respond(car, action, loan_id=None, as_user=None):
+    """The car's household answers a request. A yes is what starts a loan now."""
+    candidate = (
+        CarLoanCandidate.objects.get(car=car)
+        if loan_id is None
+        else CarLoanCandidate.objects.get(car=car, loan_id=loan_id)
+    )
+    owner_user = as_user or User.objects.filter(house=car.house).first()
+    if owner_user is None:
+        # Some fixtures set up a house with no residents; a car cannot answer
+        # for itself, so give it someone who can.
+        owner_user = User.objects.create_user(
+            email=f"owner-h{car.house_id}-c{car.id}@example.com",
+            password="x",
+            first_name="Ejer",
+            house=car.house,
+        )
+    return _client_for(owner_user).post(
+        reverse("carsharing-candidate-respond", args=[candidate.loan_id, candidate.id]),
+        {"action": action},
+        format="json",
+    )
+
+
+def _accept(car, loan_id=None, as_user=None):
+    return _respond(car, "accept", loan_id=loan_id, as_user=as_user)
+
+
+def _decline(car, loan_id=None, as_user=None):
+    return _respond(car, "decline", loan_id=loan_id, as_user=as_user)
+
+
 def _activate_loan(client, car):
     _create_loan(client, [car])
     candidate = CarLoanCandidate.objects.get(car=car)
-    candidate.status = CarLoanCandidate.Status.ACCEPTED
-    candidate.save()
-    client.post(
-        reverse("carsharing-loan-choose", args=[candidate.loan_id]),
-        {"candidate": candidate.id},
-        format="json",
-    )
+    _accept(car)
     return CarLoan.objects.get(pk=candidate.loan_id)
 
 
@@ -553,7 +1089,7 @@ def test_completed_loan_frees_the_car(owner_house, borrower_client):
         reverse("carsharing-loan-complete", args=[loan.id]), {"actual_km": 10}, format="json"
     )
     loan.refresh_from_db()
-    result = pool_cars_with_availability(loan.start_at, loan.end_at)
+    result = shared_cars_with_availability(loan.start_at, loan.end_at)
     assert result[0].conflict is None
 
 
@@ -687,7 +1223,7 @@ def test_terms_endpoint_serves_version_and_rate(authenticated_client):
 def test_terms_are_plain_sentences_not_markdown(authenticated_client):
     """Nothing in the app renders Markdown, so asterisks would show literally."""
     response = authenticated_client.get(reverse("carsharing-terms"))
-    assert response.data["title"] == "Vilkår for lån af bil i bilpølen"
+    assert response.data["title"] == "Vilkår for lån af bil i delebilparken"
     assert len(response.data["bullets"]) >= 5
     for bullet in response.data["bullets"]:
         assert "**" not in bullet
@@ -808,7 +1344,7 @@ def test_cannot_replace_schedule_for_another_household(owner_house, borrower_cli
 
 @pytest.mark.django_db
 def test_painted_schedule_shows_up_as_a_soft_conflict(owner_house, owner_client, borrower_client):
-    """End to end: paint a week, and the pool marks the car "normalt optaget"."""
+    """End to end: paint a week, and the list marks the car "normalt optaget"."""
     car = _make_car(owner_house)
     start_at, end_at = _window(start_hour=9, hours=2)
     weekday = timezone.localtime(start_at).weekday()
@@ -838,7 +1374,7 @@ def test_painted_schedule_shows_up_as_a_soft_conflict(owner_house, owner_client,
 
 
 @pytest.mark.django_db
-def test_pool_car_list_returns_availability(owner_house, borrower_client):
+def test_shared_car_list_returns_availability(owner_house, borrower_client):
     start_at, end_at = _window()
     _make_car(owner_house)
     response = borrower_client.get(
@@ -887,7 +1423,7 @@ def test_accepting_notifies_the_borrower(owner_house, owner, borrower, borrower_
         format="json",
     )
 
-    notification = Notification.objects.get(user=borrower, title="Du kan låne en bil")
+    notification = Notification.objects.get(user=borrower, title="Du har fået en bil")
     assert car.display_name in notification.message
     assert notification.link == f"/bildeling/laan/{candidate.loan_id}"
     assert notification.notification_type == NotificationType.CAR_LOAN_UPDATE
@@ -910,9 +1446,10 @@ def test_declining_notifies_the_borrower(owner_house, owner, borrower, borrower_
 
 
 @pytest.mark.django_db
-def test_accept_message_mentions_how_many_cars_were_asked(
+def test_accept_message_names_the_car_the_borrower_got(
     owner_house, owner, borrower, borrower_client
 ):
+    """No choice is left, so the message states the outcome rather than options."""
     other = House.objects.create(name="House 14")
     User.objects.create_user(email="h14@example.com", password="x", first_name="Hans", house=other)
     mine = _make_car(owner_house, plate="AA55555")
@@ -926,8 +1463,9 @@ def test_accept_message_mentions_how_many_cars_were_asked(
         format="json",
     )
 
-    notification = Notification.objects.get(user=borrower, title="Du kan låne en bil")
-    assert "spurgt 2 biler" in notification.message
+    notification = Notification.objects.get(user=borrower, title="Du har fået en bil")
+    assert mine.display_name in notification.message
+    assert "vælg" not in notification.message.lower()
 
 
 @pytest.mark.django_db

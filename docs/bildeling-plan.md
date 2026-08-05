@@ -1,6 +1,6 @@
 # Bildeling — implementeringsplan
 
-Deling af husstandenes biler i Kløverbakkens bilpøl. Appen er **et overblik og en
+Deling af husstandenes biler i Kløverbakkens delebilpark. Appen er **et overblik og en
 lommeregner** — ikke en myndighed der tildeler biler. Et lån opstår først når en
 ejer har sagt ja, og aftalen indgås mellem to mennesker der kender hinanden.
 
@@ -13,10 +13,15 @@ ejer har sagt ja, og aftalen indgås mellem to mennesker der kender hinanden.
 2. **Blød filtrering.** Biler der ifølge skemaet er optagede skjules ikke — de
    vises nedtonet med "normalt optaget". En bil der plejer at være væk om tirsdagen
    kan godt være fri netop denne tirsdag, og et uudfyldt skema forvrider intet.
-3. **Låneren spørger én eller flere ejere. Ejerens ja er et tilbud, ikke en
-   tildeling.** Får låneren flere ja, vælger låneren selv. Ingen kamp om
-   ressourcen, ingen først-til-mølle. Ejeren får at vide at hun er en af flere
-   spurgte.
+3. **Låneren spørger én eller flere ejere, og det første ja afgør sagen.**
+   Låneren har allerede valgt hvilke biler der spørges, så enhver af dem er i
+   orden — der er intet tilbage at vælge bagefter. To trin i alt: forespørg,
+   svar. Ejeren får at vide at hun er en af flere spurgte, og at den første der
+   siger ja, låner bilen ud. De øvrige får besked om at de ikke skal gøre mere.
+
+   Det koster den frihed at kunne vælge mellem flere ja, og til gengæld
+   forsvinder et helt trin fra fladen: ingen ventetid på lånerens valg, ingen
+   tilbud der udløber, ingen tvivl om hvem der har bolden.
 4. **Tre grader af "optaget" — de skal ikke behandles ens.** Ugeskemaet er et gæt,
    et aktivt lån er et faktum:
    - **Aktivt lån i tidsrummet → hård.** Bilen vises som udlånt og kan ikke
@@ -53,7 +58,7 @@ Bilen selv bliver i `apps.houses` — den findes allerede.
 
 | Felt | Type | Note |
 |---|---|---|
-| `in_pool` | `BooleanField(default=False, db_index=True)` | med i bilpølen |
+| `is_shared` | `BooleanField(default=False, db_index=True)` | med i delebilparken |
 | `rate_per_km` | `DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)` | `null` → falder tilbage til fælles standardsats |
 | `make` | `CharField(max_length=50, blank=True)` | mærke |
 | `model_name` | `CharField(max_length=50, blank=True)` | *ikke* `model` — for forvekslingsrisiko med Djangos eget navnerum |
@@ -67,15 +72,15 @@ Bilen selv bliver i `apps.houses` — den findes allerede.
 | `equipment_note` | `TextField(blank=True)` | andet udstyr |
 | `practical_note` | `TextField(blank=True)` | hvor nøglen og ladebrikken er, hvor bilen holder |
 
-**Validering:** `in_pool=True` kræver `license_plate` ≠ "". `rate_per_km` må være
+**Validering:** `is_shared=True` kræver `license_plate` ≠ "". `rate_per_km` må være
 `null` (→ standardsats). Læg det i `Car.clean()` **og** i
 `CarCreateUpdateSerializer.validate()`, så både admin og API dækkes.
-`license_plate` er i forvejen `blank=True`, så biler udenfor pølen er upåvirkede.
+`license_plate` er i forvejen `blank=True`, så biler udenfor delebilparken er upåvirkede.
 
 **Rettigheder:** uændret — enhver beboer i huset kan redigere husets biler
 (`CarDetailView.get_queryset` filtrerer på `user.house`). Det matcher "husstandens
 voksne vælger". Bivirkning at være bevidst om: din bofælle kan sætte din bil i
-pølen uden at spørge.
+delebilparken uden at spørge.
 
 ### 2. Ny model `CarBlock` — ugentligt skema
 
@@ -110,7 +115,8 @@ CarLoan
   min_seats       PositiveSmallIntegerField(null=True, blank=True)
   note            TextField(blank=True)          # øvrige behov, fritekst
   terms_version   CharField(max_length=20)       # hvilke vilkår låneren fik vist
-  # udfyldes når låneren vælger en bil (REQUESTED → ACTIVE):
+  owner_terms_version CharField(max_length=20, blank=True)  # og hvad ejeren havde accepteret
+  # udfyldes når den første ejer siger ja (REQUESTED → ACTIVE):
   car             FK(houses.Car, null=True, blank=True, related_name="loans")
   approved_by     FK(User, null=True, blank=True, related_name="approved_car_loans")
   rate_per_km     DecimalField(5,2, null=True)   # snapshot — satsen må kunne ændres bagefter
@@ -127,7 +133,7 @@ CarLoan
 CarLoanCandidate
   loan          FK(CarLoan, related_name="candidates")
   car           FK(houses.Car, related_name="loan_candidacies")
-  status        ASKED | ACCEPTED | DECLINED | CLOSED    # CLOSED = låneren valgte en anden
+  status        ASKED | ACCEPTED | DECLINED | CLOSED    # CLOSED = en anden ejer var først
   responded_by  FK(User, null=True, blank=True)
   responded_at  DateTimeField(null=True, blank=True)
   unique_together = ("loan", "car")
@@ -151,7 +157,7 @@ ikke ændrer historiske lån.
 ```python
 def pool_cars_with_availability(start_at, end_at, *, needs_isofix=False,
                                 needs_tow_hitch=False, min_seats=None):
-    """Alle biler i pølen, hver mærket med hvorfor den evt. ser optaget ud."""
+    """Alle delte biler, hver mærket med hvorfor den evt. ser optaget ud."""
 ```
 
 Returnerer hver bil med `conflict`, der afspejler de tre grader fra beslutning 4:
@@ -192,9 +198,12 @@ Nye funktioner i `services.py`, i stil med `notify_expense_processed`:
 
 - `notify_car_loan_requested(loan)` → alle `car.house.inhabitants` for hver
   kandidatbil. Beskeden skal nævne antal spurgte biler ("Du er en af 3 spurgt").
-- `notify_car_loan_chosen(loan)` → den valgte ejer ("dit tilbud er accepteret").
-- `notify_car_loan_candidate_closed(candidate)` → ejere der sagde ja men ikke blev
-  valgt.
+- `notify_car_loan_accepted(candidate)` → låneren ("du har fået en bil"). Dette er
+  hele svaret, ikke et tilbud der skal vejes op mod andre.
+- `notify_car_loan_activated(loan, by_user)` → resten af den udlånende husstand
+  ("din bil er udlånt"). Den der trykkede ja ved det godt; bofællerne gør ikke.
+- `notify_car_loan_candidate_closed(candidate)` → de husstande der stadig
+  overvejede ("en anden ejer var først — du skal ikke gøre mere").
 - `notify_car_loan_cancelled(loan, by_user)` → modparten.
 - `notify_car_loan_completed(loan)` → ejeren, med beløb og evt. skadesnote.
 
@@ -207,23 +216,22 @@ udvides. Resten under `/api/carsharing/`:
 
 | Metode | Sti | Hvem |
 |---|---|---|
-| `GET` | `/cars/?start=&end=&isofix=&tow=&seats=` | alle — pølens biler med tilgængelighed |
+| `GET` | `/cars/?start=&end=&isofix=&tow=&seats=` | alle — delebilparkens biler med tilgængelighed |
 | `GET` `POST` | `/cars/<pk>/blocks/` | kun egen husstand |
 | `DELETE` | `/blocks/<pk>/` | kun egen husstand |
 | `GET` | `/terms/` | vilkårstekst + aktuel version + standardsats |
 | `GET` `POST` | `/loans/` | egne lån + forespørgsler til husstandens biler |
 | `GET` | `/loans/<pk>/` | låner eller spurgt husstand |
-| `POST` | `/loans/<pk>/candidates/<pk>/respond/` | ejer — `{"action": "accept"\|"decline"}` |
-| `POST` | `/loans/<pk>/choose/` | låner — `{"candidate": <pk>}` → ACTIVE |
+| `POST` | `/loans/<pk>/candidates/<pk>/respond/` | ejer — `{"action": "accept"\|"decline"}`; accept → ACTIVE |
 | `POST` | `/loans/<pk>/complete/` | låner — km, udgifter, skadesnote |
 | `POST` | `/loans/<pk>/cancel/` | låner (altid) eller ejer (på aktivt lån) |
 
 `POST /loans/` tager `car_ids: [int]` og opretter én `CarLoanCandidate` pr. bil.
-Afvis bil-id'er der ikke er `in_pool`, og bil-id'er hvor lånerens egen husstand ejer
+Afvis bil-id'er der ikke er `is_shared`, og bil-id'er hvor lånerens egen husstand ejer
 bilen (man forespørger ikke sin egen bil).
 
-**Sæt et loft: `MAX_CANDIDATES_PER_LOAN = 5`.** Uden det er "vælg flere biler" bare
-broadcast med ekstra trin — spørger man alle 25 biler i pølen, får 30+ voksne en
+**Sæt et loft: `MAX_CANDIDATES_PER_LOAN = 10`.** Uden det er "vælg flere biler" bare
+broadcast med ekstra trin — spørger man alle 25 biler i delebilparken, får 30+ voksne en
 notifikation om det samme lån, og så er vi tilbage ved notifikationstræthed og
 ansvarsdiffusion. Loftet håndhæves i serializeren med en dansk fejlbesked, og
 UI'et må ikke have en "vælg alle"-knap.
@@ -232,20 +240,23 @@ UI'et må ikke have en "vælg alle"-knap.
 `borrower=user` eller `candidates__car__house=user.house` — samme mønster som
 `CarDetailView`. Ingen objekt-permission-klasser nødvendige.
 
-**Atomaritet.** `choose` skal værne mod to ting, og de er ikke det samme:
+**Atomaritet.** `respond` med `accept` skal værne mod tre ting:
 
-1. **Samme lån vælges to gange** (dobbeltklik, genindsendt request) — betinget
+1. **Samme lån afgøres to gange** (dobbeltklik, genindsendt request) — betinget
    update på status, tjek rowcount, aldrig read-modify-write.
-2. **Samme bil vælges af to forskellige lånere i overlappende tidsrum.** Det er den
-   reelle dobbeltbooking, og den kan opstå selvom ingen gør noget forkert: to
-   lånere spørger uafhængigt om bil X til lørdag, ejeren accepterer begge (hun ser
-   dem som to tilbud), og så vælger begge lånere bil X. Guarden hører på serveren —
-   ikke i UI'et.
+2. **To ejere siger ja i samme øjeblik.** Begge kommer forbi statustjekket; kun én
+   kan vinde den betingede update. Derfor skal lånet *claimes først*, og først
+   derefter markeres kandidaten som ACCEPTED — ellers står taberen som udlåner.
+3. **Samme bil siges ja til for to lånere i overlappende tidsrum.** Den reelle
+   dobbeltbooking, og den kan opstå uden at nogen gør noget forkert: to lånere
+   spørger uafhængigt om bil X til lørdag, og ejeren siger ja til begge.
+   Guarden hører på serveren — ikke i UI'et.
 
 ```python
 with transaction.atomic():
-    loan = CarLoan.objects.get(pk=pk, status=REQUESTED)
-    candidate = loan.candidates.get(pk=candidate_pk, status=ACCEPTED)
+    candidate = loan.candidates.get(pk=candidate_pk, car__house=user.house)
+    if loan.status != REQUESTED:
+        raise ValidationError("Forespørgslen er ikke længere åben.")
 
     clash = (
         CarLoan.objects.filter(
@@ -260,11 +271,14 @@ with transaction.atomic():
     if clash:
         raise ValidationError("Bilen er netop blevet udlånt i det tidsrum.")
 
-    updated = CarLoan.objects.filter(pk=pk, status=REQUESTED).update(
-        status=CarLoan.Status.ACTIVE, car=candidate.car, ...
+    claimed = CarLoan.objects.filter(pk=pk, status=REQUESTED).update(
+        status=CarLoan.Status.ACTIVE, car=candidate.car, approved_by=user, ...
     )
-    if not updated:
-        raise ValidationError("Lånet er allerede afgjort.")
+    if not claimed:
+        raise ValidationError("En anden ejer var hurtigere ...")
+
+    # først nu er kandidaten vinderen; de ventende slippes fri
+    loan.candidates.filter(status=ASKED).exclude(pk=candidate.pk).update(status=CLOSED)
 ```
 
 Overlap-testen er den sædvanlige halvåbne `start_a < end_b AND end_a > start_b`, så
@@ -275,7 +289,7 @@ også unødvendigt: begge sætninger ligger i samme `transaction.atomic()`, og S
 serialiserer skrivetransaktioner, så tjek og update kan ikke skilles af en anden
 skriver.
 
-Samme betingede-update-mønster i `complete` (`status=ACTIVE`) og i `respond`.
+Samme betingede-update-mønster i `complete` (`status=ACTIVE`).
 
 ### 7. Konstanter og vilkårstekst
 
@@ -283,40 +297,51 @@ Samme betingede-update-mønster i `complete` (`status=ACTIVE`) og i `respond`.
 
 ```python
 DEFAULT_RATE_PER_KM = Decimal("3.94")
-TERMS_VERSION = "2026-08-01"
-LOAN_TERMS = "..."
+MAX_CANDIDATES_PER_LOAN = 10
+TERMS_FILE = Path(__file__).resolve().parent / "vilkaar.md"
 ```
 
 Satsen ligger **ét sted** og bilens `rate_per_km` er kun et override — så en årlig
 satsændring er én linje, ikke 25 bilredigeringer. Serveres via `/terms/` så
 frontend og gemt `terms_version` altid stemmer.
 
-Udkast til teksten (skal godkendes på et fællesmøde — se åbne spørgsmål):
+**Vilkårene ligger i `backend/apps/carsharing/vilkaar.md`**, ikke i Python. En
+rettelse i teksten er dermed en redigering af et dokument, som kan læses og
+godkendes på et fællesmøde uden at nogen skal kunne kode.
+`docs/bildeling-vilkaar.md` er et **symlink** til filen, så teksten findes ét
+sted. Grunden til at kilden ligger i backend'en og ikke i `docs/` er prosaisk:
+serverimaget bygges med `context: ./backend`, så `docs/` er ikke med i imaget.
 
-> **Vilkår for lån af bil i bilpølen**
->
-> - Du er ansvarlig for bilen, mens du har den. Kør forsigtigt og aflever den i
->   samme stand, som du fik den.
-> - Sker der skade, eller virker noget ikke, giver du ejeren besked med det samme —
->   også småting. Udgangspunktet er, at låneren dækker selvrisikoen ved skader
->   opstået under lånet.
-> - Almindeligt slid og mekanisk svigt, der ikke skyldes lånerens brug, er ejerens.
-> - Bøder, parkerings- og broafgifter betaler du selv.
-> - Du skal have gyldigt kørekort til bilen.
-> - Der ligger en ladebrik i bilen, som virker de fleste steder. Har du haft
->   udgifter til strøm eller brændstof derudover, skriver du beløbet ind når du
->   afslutter lånet — det bliver trukket fra din betaling.
-> - Prisen er {sats} kr. pr. kørt km. Du oplyser de faktisk kørte kilometer, når du
->   afslutter lånet.
+Filen har en overskrift, en `Version: ÅÅÅÅ-MM-DD`-linje og ét vilkår pr. `- `.
+`constants.py` læser og validerer den ved import og nægter at starte på en
+ødelagt fil — tomme vilkår ville betyde at folk accepterede ingenting.
+`{rate}` erstattes af den gældende km-takst (`str.replace`, ikke `str.format`, så
+en tilfældig tuborgklamme i en håndredigeret fil ikke vælter importen).
 
-Vis teksten på forespørgselsformularen (før afsendelse) og på lånesiden, og gem
-`TERMS_VERSION` på lånet, så det altid kan slås op hvad der blev aftalt.
+**Begge parter accepterer, og begge accepter gemmes:**
+
+- **Låneren** sætter flueben før afsendelse (`accepted_terms` er *påkrævet* i
+  serializeren, så en klient der glemmer feltet får en fejl i stedet for at sende
+  en ubekræftet forespørgsel). Versionen gemmes som `CarLoan.terms_version`.
+- **Ejeren** accepterer én gang, når bilen meldes ind i delebilparken
+  (`Car.terms_accepted_version` + `terms_accepted_at`). Det holder svaret på en
+  forespørgsel på ét tryk. Versionen — ikke en boolean — gemmes, så en ny
+  vilkårsdato spørger alle igen i stedet for stiltiende at bære en accept af en
+  tekst ingen har set.
+- `is_shared` er ejerens *hensigt*, `terms_accepted_version` er hendes
+  *samtykke*, og der skal være begge, før bilen kan lånes.
+  `shared_cars_with_availability` filtrerer derfor på den aktuelle version, og en
+  bil med forældet samtykke forsvinder fra listen indtil ejeren accepterer igen.
+  "Mine biler" viser i så fald badge og advarsel, så det er til at forstå hvorfor.
+- `CarLoan.owner_terms_version` snapshotter ejerens version ved aktivering, af
+  samme grund som `rate_per_km`: bilens felt kan ændre sig bagefter, men et
+  afgjort lån skal stadig kunne gøres op.
 
 ### 8. Søgeindeks
 
 `index_car` i `apps/search/signals.py:77` indekserer allerede biler på nummerplade.
-Udvid `subtitle_parts` med "Bilpøl" når `in_pool`, og læg `make`/`model_name` i
-body — så finder søgning på "bilpøl" eller "Skoda" bilen. Husk
+Udvid `subtitle_parts` med "Delebil" når `is_shared`, og læg `make`/`model_name` i
+body — så finder søgning på "delebil" eller "Skoda" bilen. Husk
 `rebuild_search_index` efter deploy. Se `apps/search/SEARCH.md`.
 
 ### 9. Admin
@@ -334,8 +359,9 @@ body — så finder søgning på "bilpøl" eller "Skoda" bilen. Husk
 - **`src/api/carsharing.ts`** — samme form som `src/api/expenses.ts`.
 - **`src/pages/CarSharingPage.tsx`** — rute `/bildeling`, tre faner:
   1. **Lån en bil** — tidsrum (med "nu"-genvej), forventede km, krav; derunder
-     pølens biler med tilgængelighedsmarkering; vælg én eller flere (max 5, ingen
-     "vælg alle"); vilkårstekst; send. Vis løbende hvor mange husstande man er ved
+     delebilparkens biler med tilgængelighedsmarkering; vælg én eller flere (max 10, ingen
+     "vælg alle"); vilkårstekst med påkrævet flueben; send. Vis løbende hvor
+     mange husstande man er ved
      at spørge ("Du spørger 3 husstande"), så det er en bevidst handling og ikke et
      uheld.
   2. **Mine lån** — afventende forespørgsler med de ja'er der er kommet ind (vælg
@@ -357,26 +383,30 @@ Mobile-first, jf. CLAUDE.md. Al brugervendt tekst på dansk.
 
 Backend, `apps/carsharing/tests.py`:
 
-- `in_pool=True` uden nummerplade afvises; med nummerplade accepteres.
+- `is_shared=True` uden nummerplade afvises; med nummerplade accepteres.
 - Sats falder tilbage til 3,94 når `car.rate_per_km` er `null`.
 - Snapshot: ændres bilens sats efter aktivering, ændres lånets beløb ikke.
 - Tilgængelighed: ugeskema-overlap markeres `"schedule"`, ubesvaret forespørgsel
   `"requested"`, aktivt lån `"loan"`; biler filtreres **ikke** væk, og rækkefølgen
   er fri-først.
 - Overlap-grænse: et lån 10–12 og et lån 12–14 på samme bil kolliderer ikke.
-- Fuldt forløb: forespørgsel til 3 biler → 2 ejere accepterer → låneren vælger én →
-  lånet bliver ACTIVE, de øvrige kandidater bliver CLOSED, og de ejere notificeres.
-- `choose` to gange giver 400 og kun ét aktivt lån.
+- Fuldt forløb: forespørgsel til 3 biler → første ejer siger ja → lånet bliver
+  ACTIVE med den bil, de øvrige kandidater bliver CLOSED og notificeres, og den
+  langsomme ejers accept giver 400.
+- `accept` to gange giver 400 og kun ét aktivt lån.
+- Et nej holder forespørgslen åben for de andre, og et allerede afgivet nej
+  overskrives ikke af at en anden ejer siger ja (DECLINED, ikke CLOSED).
+- Resten af den udlånende husstand får "din bil er udlånt"; den der svarede gør ikke.
 - **Dobbeltbooking afvises:** to lånere spørger om samme bil i overlappende
-  tidsrum, ejeren accepterer begge, begge vælger bilen → den anden `choose` giver
-  400, og bilen har præcis ét aktivt lån.
+  tidsrum, ejeren siger ja til begge → det andet `accept` giver 400, og bilen har
+  præcis ét aktivt lån.
 - `complete`: `amount_due == km * sats − udgifter`; negativt beløb tillades; kun
   låneren kan afslutte.
 - Rettigheder: man kan ikke svare på en kandidat for en bil udenfor sin husstand,
   og ikke se andres lån.
 - `terms_version` gemmes på lånet.
 
-Frontend: `CarSharingPage.test.tsx` — pølelisten renderes, beløbet beregnes
+Frontend: `CarSharingPage.test.tsx` — billisten renderes, beløbet beregnes
 korrekt i afslutningsformularen (inkl. negativt), vilkårsteksten vises.
 
 Kør de sædvanlige tjek fra CLAUDE.md før commit (`ruff`, `ty`, `pytest`;
@@ -392,7 +422,7 @@ Kør de sædvanlige tjek fra CLAUDE.md før commit (`ruff`, `ty`, `pytest`;
 2. **Ugeskema + Bildeling-siden.** `CarBlock`, tilgængelighedsberegning, listen
    over relevante biler med kontaktinfo. Herefter kan folk låne biler ved at
    skrive til hinanden — uden noget forespørgselsflow.
-3. **Forespørgsel → tilbud → valg**, med de to notifikationstyper.
+3. **Forespørgsel → første ja afgør**, med de to notifikationstyper.
 4. **Afslutning + lommeregner + vilkårstekst.**
 
 Stop efter 2 hvis brugen udebliver. Det er hele pointen med opdelingen.

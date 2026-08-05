@@ -115,8 +115,8 @@ class Child(models.Model):
 class Car(models.Model):
     """
     Represents a car registered to a house.
-    Used to look up car owners by license plate number, and — when in_pool is
-    set — to share the car in the community car pool (see apps.carsharing).
+    Used to look up car owners by license plate number, and — when is_shared is
+    set — to offer the car in the community delebilpark (see apps.carsharing).
     """
 
     house = models.ForeignKey(
@@ -127,8 +127,8 @@ class Car(models.Model):
     license_plate = models.CharField(max_length=15, blank=True, default="")
     is_electric = models.BooleanField(default=False)
 
-    # Car pool (bildeling)
-    in_pool = models.BooleanField(default=False, db_index=True)
+    # Delebilpark (bildeling)
+    is_shared = models.BooleanField(default=False, db_index=True)
     rate_per_km = models.DecimalField(
         max_digits=5,
         decimal_places=2,
@@ -149,6 +149,14 @@ class Car(models.Model):
     equipment_note = models.TextField(blank=True, default="")
     practical_note = models.TextField(blank=True, default="")
 
+    # Which version of the loan terms this household has accepted as a lender.
+    # is_shared is the owner's intent; this is their consent, and both are needed
+    # before the car may actually be lent out. Kept as the version rather than a
+    # boolean so a new terms date asks everyone again instead of silently
+    # carrying an agreement to text nobody saw.
+    terms_accepted_version = models.CharField(max_length=20, blank=True, default="")
+    terms_accepted_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -156,14 +164,18 @@ class Car(models.Model):
         ordering = ["license_plate"]
 
     def clean(self) -> None:
-        """A pooled car must be identifiable, so borrowers know which car to find."""
+        """A shared car must be identifiable, so borrowers know which car to find."""
         from django.core.exceptions import ValidationError
 
         from .utils import normalize_license_plate
 
         super().clean()
-        if self.in_pool and not normalize_license_plate(self.license_plate):
-            raise ValidationError({"in_pool": "En bil i bilpølen skal have en nummerplade."})
+        if self.is_shared and not normalize_license_plate(self.license_plate):
+            raise ValidationError({"is_shared": "En bil i delebilparken skal have en nummerplade."})
+        # Mirrored in CarCreateUpdateSerializer, like the plate rule above: a
+        # negative rate reaches borrowers as "-3,50 kr./km" and inverts the bill.
+        if self.rate_per_km is not None and self.rate_per_km <= 0:
+            raise ValidationError({"rate_per_km": "Km-taksten skal være et positivt beløb."})
 
     def save(self, *args, **kwargs):
         from .utils import normalize_license_plate
@@ -173,6 +185,13 @@ class Car(models.Model):
 
     def __str__(self) -> str:
         return f"{self.license_plate} ({self.house.name})"
+
+    @property
+    def has_accepted_current_terms(self) -> bool:
+        """Whether the household's consent covers the terms in force right now."""
+        from apps.carsharing.constants import TERMS_VERSION
+
+        return bool(self.terms_accepted_version) and self.terms_accepted_version == TERMS_VERSION
 
     @property
     def display_name(self) -> str:
