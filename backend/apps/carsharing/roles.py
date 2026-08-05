@@ -56,10 +56,13 @@ def loan_role(loan, user) -> str:
         return LoanRole.NONE
 
     # A household can have two cars asked and have answered for only one of them.
-    # Still owing an answer outranks having given one.
+    # Still owing an answer outranks having given one — but only while the request
+    # is actually open. A cancelled request leaves its candidates ASKED, and
+    # reporting that as "your turn" is how a household ends up being offered
+    # buttons that can only fail.
     statuses = {candidate.status for candidate in mine}
     if CarLoanCandidate.Status.ASKED in statuses:
-        return LoanRole.ASKED
+        return LoanRole.ASKED if loan.status == CarLoan.Status.REQUESTED else LoanRole.CLOSED_OUT
     if CarLoanCandidate.Status.DECLINED in statuses:
         return LoanRole.DECLINED
     return LoanRole.CLOSED_OUT

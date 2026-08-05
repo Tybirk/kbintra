@@ -769,6 +769,35 @@ describe("CarSharingPage", () => {
     ).toBeInTheDocument()
   })
 
+  it("offers no answer buttons on a request the borrower withdrew", async () => {
+    // The server now reports closed_out here, and the card double-checks the
+    // status: an answerable request is by definition still open.
+    mockGetLoans.mockResolvedValue([
+      activeLoan({
+        status: "cancelled",
+        is_borrower: false,
+        viewer_role: "closed_out",
+        can_cancel: false,
+        car: null,
+        borrower_name: "Bo Låner",
+        candidates: [candidate({ status: "closed" })],
+      }),
+    ])
+
+    render(<CarSharingPage />)
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    await waitFor(() => {
+      expect(screen.getByText("Lukket")).toBeInTheDocument()
+    })
+    expect(
+      screen.queryByRole("button", { name: "Ja, den må lånes" }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole("button", { name: "Nej" }),
+    ).not.toBeInTheDocument()
+  })
+
   // --- Cancelling ------------------------------------------------------------
 
   it("only offers cancel when the server says it is allowed", async () => {

@@ -352,8 +352,10 @@ export function LoanCard({ loan, highlight }: LoanCardProps) {
               </Stack>
             )}
 
-            {/* Owner: answer a request about your own car */}
-            {loan.viewer_role === "asked" && (
+            {/* Owner: answer a request about your own car. The status check is
+                redundant with viewer_role today and deliberately kept: an
+                answerable request is by definition still open. */}
+            {loan.viewer_role === "asked" && loan.status === "requested" && (
               <Stack gap="xs">
                 {unanswered.map((candidate) => (
                   <Group key={candidate.id} justify="space-between" wrap="wrap">

@@ -128,9 +128,7 @@ class CarLoanCandidateSerializer(serializers.ModelSerializer):
 
     car_display_name = serializers.CharField(source="car.display_name", read_only=True)
     car_house_name = serializers.CharField(source="car.house.name", read_only=True)
-    responded_by_name = serializers.CharField(
-        source="responded_by.first_name", read_only=True, default=""
-    )
+    responded_by_name = serializers.SerializerMethodField()
     is_own_household = serializers.SerializerMethodField()
 
     class Meta:
@@ -157,6 +155,23 @@ class CarLoanCandidateSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         house_id = getattr(request.user, "house_id", None) if request else None
         return bool(house_id and candidate.car.house_id == house_id)
+
+    def get_responded_by_name(self, candidate) -> str:
+        """Which *person* answered — for the borrower and that household only.
+
+        Whether a car is available is everyone's business; which neighbour picked
+        up their phone is not. Other asked households still see the car and the
+        answer, just not the name behind it.
+        """
+        if candidate.responded_by is None:
+            return ""
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user is None:
+            return ""
+        if user.id == candidate.loan.borrower_id or self.get_is_own_household(candidate):
+            return candidate.responded_by.first_name
+        return ""
 
 
 class CarLoanSerializer(serializers.ModelSerializer):
@@ -227,9 +242,21 @@ class CarLoanSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         return getattr(request, "user", None)
 
+    def _role(self, loan) -> str:
+        """The viewer's role, worked out once per loan.
+
+        Seven fields below need it, and recomputing it seven times per row is
+        pure waste — it walks the prefetched candidates each time.
+        """
+        cache = self.context.setdefault("_loan_roles", {})
+        if loan.pk not in cache:
+            viewer = self._viewer()
+            cache[loan.pk] = loan_role(loan, viewer) if viewer else LoanRole.NONE
+        return cache[loan.pk]
+
     def _is_party(self, loan) -> bool:
         """The borrower and the lending household, and nobody else."""
-        return self.get_viewer_role(loan) in (LoanRole.BORROWER, LoanRole.LENDER)
+        return self._role(loan) in (LoanRole.BORROWER, LoanRole.LENDER)
 
     def get_borrower_name(self, loan) -> str:
         return f"{loan.borrower.first_name} {loan.borrower.last_name}".strip()
@@ -239,8 +266,7 @@ class CarLoanSerializer(serializers.ModelSerializer):
         return bool(viewer and viewer.id == loan.borrower_id)
 
     def get_viewer_role(self, loan) -> str:
-        viewer = self._viewer()
-        return loan_role(loan, viewer) if viewer else LoanRole.NONE
+        return self._role(loan)
 
     def get_can_cancel(self, loan) -> bool:
         viewer = self._viewer()

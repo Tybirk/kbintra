@@ -817,6 +817,96 @@ def test_a_loan_before_its_window_has_not_started(owner_house, borrower_client):
     )
 
 
+# -- A withdrawn request stops asking anything of anyone -------------------
+
+
+@pytest.mark.django_db
+def test_cancelling_a_request_releases_the_asked_households(owner, owner_house, borrower_client):
+    """A cancelled request must not still look answerable.
+
+    Cancelling used to leave candidates ASKED, so the role stayed "asked" and the
+    owner was offered accept/decline buttons that could only ever fail.
+    """
+    car_a, car_b, loan_id = _roles_setup(owner_house, borrower_client)
+
+    borrower_client.post(reverse("carsharing-loan-cancel", args=[loan_id]))
+
+    loan = CarLoan.objects.get(pk=loan_id)
+    assert loan.status == CarLoan.Status.CANCELLED
+    assert set(loan.candidates.values_list("status", flat=True)) == {CarLoanCandidate.Status.CLOSED}
+    assert _loan_as(owner, loan_id)["viewer_role"] == "closed_out"
+
+
+@pytest.mark.django_db
+def test_a_declined_answer_survives_a_cancellation(owner, owner_house, borrower_client):
+    """Releasing the undecided must not overwrite a real answer."""
+    car_a, car_b, loan_id = _roles_setup(owner_house, borrower_client)
+    _decline(car_a, loan_id)
+
+    borrower_client.post(reverse("carsharing-loan-cancel", args=[loan_id]))
+
+    assert CarLoanCandidate.objects.get(car=car_a).status == CarLoanCandidate.Status.DECLINED
+    assert CarLoanCandidate.objects.get(car=car_b).status == CarLoanCandidate.Status.CLOSED
+
+
+@pytest.mark.django_db
+def test_a_cancelled_request_cannot_be_answered(owner_house, borrower_client):
+    car_a, car_b, loan_id = _roles_setup(owner_house, borrower_client)
+    borrower_client.post(reverse("carsharing-loan-cancel", args=[loan_id]))
+
+    response = _accept(car_a, loan_id)
+
+    assert response.status_code == 400
+    assert "aflyst" in str(response.data)
+    assert CarLoan.objects.get(pk=loan_id).car_id is None
+
+
+# -- The claim-first ordering that makes the race safe ----------------------
+
+
+@pytest.mark.django_db
+def test_the_loser_of_a_race_is_not_recorded_as_the_lender(owner_house, borrower_client):
+    """The invariant behind claiming the loan before marking the candidate.
+
+    If the order were reversed, the household that lost the conditional update
+    would still be sitting there as ACCEPTED on a loan it never lent a car to.
+    """
+    car_a, car_b, loan_id = _roles_setup(owner_house, borrower_client)
+
+    assert _accept(car_b, loan_id).status_code == 200
+    assert _accept(car_a, loan_id).status_code == 400
+
+    loan = CarLoan.objects.get(pk=loan_id)
+    assert loan.car_id == car_b.id
+    assert loan.candidates.get(car=car_b).status == CarLoanCandidate.Status.ACCEPTED
+    # The loser is released, never ACCEPTED, and did not become the lender.
+    assert loan.candidates.get(car=car_a).status == CarLoanCandidate.Status.CLOSED
+    assert loan.candidates.filter(status=CarLoanCandidate.Status.ACCEPTED).count() == 1
+
+
+# -- Who answered is not everyone's business -------------------------------
+
+
+@pytest.mark.django_db
+def test_the_responder_name_reaches_only_the_borrower_and_their_own_household(
+    owner, owner_house, borrower, borrower_client
+):
+    car_a, car_b, loan_id = _roles_setup(owner_house, borrower_client)
+    _decline(car_a, loan_id, as_user=owner)
+
+    def name_seen_by(person):
+        data = _loan_as(person, loan_id)
+        return next(c["responded_by_name"] for c in data["candidates"] if c["car"] == car_a.id)
+
+    assert name_seen_by(borrower) == owner.first_name
+    assert name_seen_by(owner) == owner.first_name
+    # A different asked household sees the car and the answer, not the person.
+    other = User.objects.get(email="roles_b@example.com")
+    assert name_seen_by(other) == ""
+    statuses = {c["car"]: c["status"] for c in _loan_as(other, loan_id)["candidates"]}
+    assert statuses[car_a.id] == CarLoanCandidate.Status.DECLINED
+
+
 # -- When everybody says no ------------------------------------------------
 
 
@@ -879,6 +969,54 @@ def test_a_household_cannot_turn_its_own_no_into_the_deciding_yes(owner_house, b
     assert loan.car_id is None
     # Still open for the household that has not answered.
     assert _accept(car_b, loan_id).status_code == 200
+
+
+# -- Notification preferences actually gate car sharing ---------------------
+
+
+@pytest.mark.django_db
+def test_car_sharing_notifications_respect_the_in_app_preference(
+    owner, owner_house, borrower_client
+):
+    """The preference fields exist; this is the test that they are wired up."""
+    from apps.notifications.models import NotificationPreference
+
+    NotificationPreference.objects.update_or_create(
+        user=owner, defaults={"notify_car_sharing": False}
+    )
+    car = _make_car(owner_house)
+
+    _create_loan(borrower_client, [car])
+
+    assert not Notification.objects.filter(
+        user=owner, notification_type=NotificationType.CAR_LOAN_REQUEST
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_car_sharing_notifications_are_on_by_default(owner, owner_house, borrower_client):
+    """The opposite direction, so the test above cannot pass by silently sending
+    nothing at all."""
+    car = _make_car(owner_house)
+
+    _create_loan(borrower_client, [car])
+
+    assert Notification.objects.filter(
+        user=owner, notification_type=NotificationType.CAR_LOAN_REQUEST
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_email_for_car_sharing_is_opt_in_and_push_is_opt_out(owner):
+    """Matches how the rest of the app is configured; asserted so a later edit to
+    the defaults is a deliberate choice rather than an accident."""
+    from apps.notifications.models import NotificationPreference
+
+    prefs = NotificationPreference.objects.create(user=owner)
+
+    assert prefs.notify_car_sharing is True
+    assert prefs.email_car_sharing is False
+    assert prefs.push_car_sharing is True
 
 
 # -- Money cannot be negative ----------------------------------------------

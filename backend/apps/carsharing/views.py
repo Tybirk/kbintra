@@ -452,6 +452,18 @@ class CancelLoanView(APIView):
             ).update(status=CarLoan.Status.CANCELLED)
             if not updated:
                 raise ValidationError("Lånet kan ikke aflyses.")
+
+            # Release anyone still holding the question, exactly as accepting does.
+            # Leaving them ASKED would keep a withdrawn request looking live to
+            # households that can no longer do anything about it.
+            released = list(
+                loan.candidates.select_related("car", "car__house").filter(
+                    status=CarLoanCandidate.Status.ASKED
+                )
+            )
+            CarLoanCandidate.objects.filter(pk__in=[item.pk for item in released]).update(
+                status=CarLoanCandidate.Status.CLOSED
+            )
             loan.refresh_from_db()
 
         notify_car_loan_cancelled(loan, user)

@@ -446,3 +446,51 @@ Stop efter 2 hvis brugen udebliver. Det er hele pointen med opdelingen.
    senere, hvis det viser sig at være et problem.
 5. **Dækker satsen ladning via brikken?** Udkastet antager ja, og at kun udgifter
    *derudover* fratrækkes. Bekræft.
+
+---
+
+## Udrulning
+
+Rækkefølgen der skal følges når bildeling går i produktion, i den rækkefølge
+tingene gør skade hvis de glemmes.
+
+1. **Migrationer.** `houses/0010` (13 kolonner på `houses_car`, SQLite bygger
+   tabellen om — trivielt for ~70 biler), `carsharing/0001`+`0002` (tre nye
+   tabeller) og `notifications/0018` (tre præferencekolonner). De kører
+   automatisk i `docker-entrypoint.sh`.
+   **Bemærk:** `houses/0010` og `carsharing/0001` er blevet redigeret direkte
+   fordi de aldrig havde nået `develop`. Efter merge er de urørlige som alle
+   andre — ret dem ikke igen.
+2. **`rebuild_search_index` efter deploy.** Bilernes indekstekst er ændret
+   (`Bilpøl` → `Delebil`, og `delebil delebilpark bildeling` i body), så
+   eksisterende biler har forældede søgeord indtil indekset bygges om.
+   `apps/search/signals.py` er ændret på både `develop` og denne gren; merge er
+   ren, men kør søgetestene efter.
+3. **Bildeling er skjult i produktion.** `isTestEnvironment()` i
+   `frontend/src/utils/environment.ts` holder både Bildeling og Udlæg ude af
+   menuen på kb-intra.dk, mens de vises på kbintra.top og lokalt.
+   **Det skjuler kun menupunktet:** ruten og `/api/carsharing/` er åbne, og
+   notifikationer linker til `/bildeling/laan/<id>`. Vil man have funktionen
+   *lukket* og ikke blot ikke-synlig, kræver det en redirect på ruten eller en
+   `CARSHARING_ENABLED`-indstilling på serveren.
+4. **Vilkårene fejler højt.** `constants.py` læser og validerer `vilkaar.md` ved
+   import, så en ødelagt redigering giver `ImproperlyConfigured` og en container
+   der ikke starter. Det er med vilje — tomme vilkår ville betyde at folk
+   accepterede ingenting — men det betyder også at en tastefejl i en
+   Markdown-fil er et totalt udfald. CI importerer modulet, så det fanges før
+   deploy, hvis man husker at lade CI køre.
+5. **Ret ikke `Version:` i `vilkaar.md`** for en kommatering. Hver bil gemmer
+   den version ejeren har accepteret, og en ny dato tager alle biler ud af
+   delebilparken indtil ejerne accepterer på ny.
+
+### Endnu ikke testet
+
+- **E-mail og push** for bildeling-notifikationer er kun testet på
+  præferenceniveau; selve leveringen er aldrig verificeret.
+- **Ægte samtidighed** (to ejere der siger ja i samme millisekund) er aldrig
+  reproduceret. Rækkefølgen der beskytter mod det er testet
+  (`test_the_loser_of_a_race_is_not_recorded_as_the_lender`), men ikke under
+  reel parallelitet.
+- **Rigtig touch** på ugeskemaet. Geometrien er forbedret (30 px rækker på
+  smalle skærme), men kun målt — ikke prøvet på en telefon.
+
