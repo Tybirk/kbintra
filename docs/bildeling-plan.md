@@ -312,11 +312,27 @@ godkendes på et fællesmøde uden at nogen skal kunne kode.
 sted. Grunden til at kilden ligger i backend'en og ikke i `docs/` er prosaisk:
 serverimaget bygges med `context: ./backend`, så `docs/` er ikke med i imaget.
 
-Filen har en overskrift, en `Version: ÅÅÅÅ-MM-DD`-linje og ét vilkår pr. `- `.
-`constants.py` læser og validerer den ved import og nægter at starte på en
+Filen har en overskrift, en `Version: ÅÅÅÅ-MM-DD`-linje og derefter nummererede
+afsnit indledt med `## `. Under et afsnit må der stå brødtekst, punkter (`- `)
+eller begge, og rækkefølgen bevares. En tom linje afslutter et afsnit eller en
+punktopstilling — uden den ville to selvstændige bestemmelser i samme afsnit
+smelte sammen til én. Fed skrift i starten af et punkt bliver en fremhævet
+indledning (`{"lead": "Loft:", "text": "dit samlede ansvar ..."}`), fordi punkt 5
+er ni tilfælde der hver især indledes sådan.
+
+`constants.py` læser og validerer filen ved import og nægter at starte på en
 ødelagt fil — tomme vilkår ville betyde at folk accepterede ingenting.
 `{rate}` erstattes af den gældende km-takst (`str.replace`, ikke `str.format`, så
 en tilfældig tuborgklamme i en håndredigeret fil ikke vælter importen).
+
+**Serveren deler teksten op, ikke klienten.** `/terms/` leverer færdige afsnit og
+punkter, så frontend aldrig skal fortolke Markdown — en `**` der slap igennem
+ville ellers stå som to stjerner midt i en juridisk tekst.
+
+Baggrunden for teksten — hvorfor beløbene er som de er, forholdet til
+erstatningsansvarslovens § 19, og hvad der stadig mangler i koden — står i
+`docs/bildeling-vilkaar-baggrund.md`. Den læses **ikke** af appen og er med
+vilje ikke en del af vilkårene.
 
 **Begge parter accepterer, og begge accepter gemmes:**
 
@@ -431,11 +447,21 @@ Stop efter 2 hvis brugen udebliver. Det er hele pointen med opdelingen.
 
 ## Åbne spørgsmål til jer
 
-1. **Vilkårsteksten skal godkendes af fællesskabet**, ikke af mig. Særligt to
-   punkter: et generelt "lånerens ansvar at bilen ikke går i stykker" kan ikke
-   dække almindeligt slid og mekanisk svigt uden lånerens skyld — derfor har
-   udkastet delt det i skade (låner) og slid/svigt (ejer). Og hvem bærer tabet af
-   skadefri år ved en anmeldt skade? Det står der ikke noget om endnu.
+1. **Vilkårsteksten skal godkendes af fællesskabet**, ikke af mig. Den fulde
+   tekst ligger nu i appen med de foreslåede beløb som gældende: 3.000 kr. for
+   ejerens tab af skadefri år, 8.000 kr. som loft over lånerens samlede ansvar,
+   24 timer til at gøre en skade gældende, 7 og 14 dages betalingsfrist, mindst
+   2 års kørekortanciennitet, Danmark som geografisk grænse, bilgruppen som
+   mægler. **Det er ikke det samme som at fællesmødet har sagt ja** — bekræft
+   beløbene og ret dem i `vilkaar.md`, hvis mødet lander et andet sted.
+   To ting mangler i koden, før punkt 5 og punkt 7 kan bære en reel uenighed:
+   - **`insurance_deductible` på `houses.Car`**, vist på bilkortet. Punkt 5
+     siger "Beløbet står på bilens side i appen", og det gør det ikke endnu. En
+     selvrisiko låneren ikke har set, kan låneren ikke binde sig til.
+   - **`start_km` / `end_km` frem for kun `actual_km`.** Punkt 7 siger "Du
+     oplyser standen ved start og ved slut", men afslutningsformularen beder kun
+     om de kørte kilometer. En tællerstand kan efterprøves; et husket tal kan
+     ikke.
 2. **Forsikring:** tjek at kr/km-afregningen ikke af nogens forsikringsselskab kan
    læses som erhvervsmæssig udlejning. Derfor bruges ordet "lån" konsekvent i UI'en
    og satsen omtales som deling af faktiske omkostninger — ikke leje.
@@ -444,8 +470,8 @@ Stop efter 2 hvis brugen udebliver. Det er hele pointen med opdelingen.
 4. **Hvad hvis låneren aldrig afslutter?** v1: ingenting — lånet står som aktivt og
    er synligt for ejeren, som kan rykke personligt. En Huey-påmindelse kan komme
    senere, hvis det viser sig at være et problem.
-5. **Dækker satsen ladning via brikken?** Udkastet antager ja, og at kun udgifter
-   *derudover* fratrækkes. Bekræft.
+5. **Dækker satsen ladning via brikken?** Vilkårenes punkt 7 siger nu ja, og at
+   kun udgifter *derudover* fratrækkes. Bekræft på mødet.
 
 ---
 

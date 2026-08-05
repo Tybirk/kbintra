@@ -209,9 +209,31 @@ describe("CarSharingPage", () => {
     mockGetTerms.mockResolvedValue({
       version: "2026-08-01",
       title: "Vilkår for lån af bil i delebilparken",
-      bullets: [
-        "Du er ansvarlig for bilen, mens du har den.",
-        "Prisen er 3,94 kr. pr. kørt km.",
+      sections: [
+        {
+          heading: "Kort fortalt",
+          blocks: [
+            {
+              kind: "paragraph",
+              text: "Du er ansvarlig for bilen, mens du har den.",
+            },
+          ],
+        },
+        {
+          heading: "5. Hvad du betaler, hvis der er sket skade",
+          blocks: [
+            {
+              kind: "bullets",
+              items: [
+                {
+                  lead: "Loft:",
+                  text: "dit samlede ansvar er højst 8.000 kr.",
+                },
+                { lead: "", text: "Prisen er 3,94 kr. pr. kørt km." },
+              ],
+            },
+          ],
+        },
       ],
       text: "Vilkår for lån af bil i delebilparken\n\n- Prisen er 3,94 kr. pr. kørt km.",
       default_rate_per_km: "3.94",
@@ -271,8 +293,8 @@ describe("CarSharingPage", () => {
   it("folds the terms away but keeps the consent reachable", async () => {
     render(<CarSharingPage />)
 
-    // The heading and the checkbox are always there; on a phone the seven bullets
-    // would otherwise push the consent far below the fold.
+    // The heading and the checkbox are always there; the full agreement runs to a
+    // dozen sections and would otherwise push the consent far below the fold.
     await waitFor(() => {
       expect(
         screen.getByText("Vilkår for lån af bil i delebilparken"),
@@ -286,13 +308,23 @@ describe("CarSharingPage", () => {
     expect(
       screen.queryByText("Prisen er 3,94 kr. pr. kørt km."),
     ).not.toBeInTheDocument()
+    expect(screen.queryByText("Kort fortalt")).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole("button", { name: "Læs vilkårene" }))
 
     expect(
       await screen.findByText("Prisen er 3,94 kr. pr. kørt km."),
     ).toBeInTheDocument()
-    expect(screen.getAllByRole("listitem").length).toBeGreaterThanOrEqual(2)
+    // Section headings and paragraphs survive, not just the points.
+    expect(screen.getByText("Kort fortalt")).toBeInTheDocument()
+    expect(
+      screen.getByText("5. Hvad du betaler, hvis der er sket skade"),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText("Du er ansvarlig for bilen, mens du har den."),
+    ).toBeInTheDocument()
+    // A bold lead renders as emphasis, not as literal asterisks.
+    expect(screen.getByText(/Loft:/)).toBeInTheDocument()
     expect(document.body.textContent).not.toContain("**")
   })
 

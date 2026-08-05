@@ -169,18 +169,93 @@ def test_rate_snapshot_survives_later_rate_change(owner_house, borrower, borrowe
 # -- Terms: the file, and both parties' consent ------------------------------
 
 
+def _terms_lines(rate=None) -> list[str]:
+    """Every point and paragraph of the terms, flattened for assertions."""
+    from apps.carsharing.constants import loan_terms_sections
+
+    lines: list[str] = []
+    for section in loan_terms_sections(rate):
+        for block in section["blocks"]:
+            if block["kind"] == "bullets":
+                lines.extend(f"{item['lead']} {item['text']}".strip() for item in block["items"])
+            else:
+                lines.append(block["text"])
+    return lines
+
+
 def test_terms_come_from_the_markdown_file():
     """The file is the only source, so a parse failure must not pass silently."""
-    from apps.carsharing.constants import LOAN_TERMS_TITLE, TERMS_FILE, loan_terms_bullets
+    from apps.carsharing.constants import LOAN_TERMS_TITLE, TERMS_FILE, loan_terms_sections
 
     assert TERMS_FILE.exists()
     assert LOAN_TERMS_TITLE == "Vilkår for lån af bil i delebilparken"
-    bullets = loan_terms_bullets()
-    assert len(bullets) >= 5
+    sections = loan_terms_sections()
+    assert len(sections) >= 10
+    lines = _terms_lines()
     # Editing instructions live in an HTML comment and are not terms.
-    assert not any(bullet.startswith("<!--") or "-->" in bullet for bullet in bullets)
+    assert not any(line.startswith("<!--") or "-->" in line for line in lines)
     # Wrapped lines are joined rather than truncated at the wrap.
-    assert any("aflever den i samme stand" in bullet for bullet in bullets)
+    assert any("i samme stand som du fik den" in line for line in lines)
+
+
+def test_terms_keep_the_numbered_sections():
+    """The agreement is read by section number, so the headings must survive."""
+    from apps.carsharing.constants import loan_terms_sections
+
+    headings = [section["heading"] for section in loan_terms_sections()]
+    assert headings[0] == "Kort fortalt"
+    assert "5. Hvad du betaler, hvis der er sket skade" in headings
+    assert "11. Ændringer" in headings
+    # Every section carries something; an empty one means a parse slip.
+    assert all(section["blocks"] for section in loan_terms_sections())
+
+
+def test_a_blank_line_separates_two_paragraphs():
+    """A wrapped line continues a paragraph; a blank line starts a new one.
+
+    Without the distinction section 1 became one run-on block, which in a legal
+    text silently merges two separate provisions.
+    """
+    from apps.carsharing.constants import loan_terms_sections
+
+    section = next(s for s in loan_terms_sections() if s["heading"].startswith("1."))
+    paragraphs = [b["text"] for b in section["blocks"] if b["kind"] == "paragraph"]
+    assert len(paragraphs) == 2
+    assert paragraphs[0].startswith("Et lån er en privat aftale")
+    assert paragraphs[0].endswith("skader, tab eller udgifter.")
+    assert paragraphs[1].startswith("Når du sender en forespørgsel")
+
+
+def test_a_bold_opening_becomes_a_lead_label():
+    """Section 5 is nine cases, each introduced in bold. Losing that is unreadable."""
+    from apps.carsharing.constants import loan_terms_sections
+
+    section = next(s for s in loan_terms_sections() if s["heading"].startswith("5."))
+    bullets = [item for block in section["blocks"] for item in block.get("items", [])]
+    leads = [item["lead"] for item in bullets if item["lead"]]
+    assert "Anmeldes skaden:" in leads
+    assert "Loft:" in leads
+    # The lead is split off, not duplicated into the body.
+    anmeldes = next(item for item in bullets if item["lead"] == "Anmeldes skaden:")
+    assert anmeldes["text"].startswith("du betaler ejerens selvrisiko")
+
+
+def test_the_adopted_amounts_are_in_the_terms():
+    """The bracketed proposals were adopted; a stray bracket means a bad edit."""
+    lines = _terms_lines()
+    joined = " ".join(lines)
+    assert "3.000 kr." in joined
+    assert "8.000 kr." in joined
+    assert "24 timer" in joined
+    assert "[" not in joined and "]" not in joined
+
+
+def test_the_background_note_is_not_part_of_the_terms():
+    """The appendix reasons about insurance law; residents must not tick that."""
+    joined = " ".join(_terms_lines())
+    assert "erstatningsansvarsloven" not in joined
+    assert "bonusbeskyttelse" in joined.lower()  # the term itself does mention it
+    assert "telefonopringning" not in joined
 
 
 def test_terms_version_is_a_date():
@@ -188,11 +263,11 @@ def test_terms_version_is_a_date():
 
 
 def test_the_rate_placeholder_is_filled_in():
-    from apps.carsharing.constants import loan_terms_bullets, loan_terms_text
+    from apps.carsharing.constants import loan_terms_text
 
     assert "{rate}" not in loan_terms_text()
-    assert any("3,94" in bullet for bullet in loan_terms_bullets())
-    assert any("9,50" in bullet for bullet in loan_terms_bullets(Decimal("9.50")))
+    assert any("3,94" in line for line in _terms_lines())
+    assert any("9,50" in line for line in _terms_lines(Decimal("9.50")))
 
 
 def test_docs_symlink_is_the_same_file():
@@ -210,7 +285,16 @@ def test_a_malformed_terms_file_is_rejected(tmp_path):
 
     from apps.carsharing import constants
 
-    for text in ("", "# Kun en overskrift\n", "Version: 2026-08-04\n- Et vilkår\n"):
+    for text in (
+        "",
+        "# Kun en overskrift\n",
+        "Version: 2026-08-04\n- Et vilkår\n",
+        # Title and version, but the point sits before any section heading, so
+        # there are no terms to show.
+        "# En overskrift\n\nVersion: 2026-08-04\n\n- Et hjemløst vilkår\n",
+        # A heading with nothing under it is a slip, not an agreement.
+        "# En overskrift\n\nVersion: 2026-08-04\n\n## Tomt afsnit\n",
+    ):
         broken = tmp_path / "vilkaar.md"
         broken.write_text(text, encoding="utf-8")
         original = constants.TERMS_FILE
@@ -1358,15 +1442,27 @@ def test_terms_endpoint_serves_version_and_rate(authenticated_client):
 
 
 @pytest.mark.django_db
-def test_terms_are_plain_sentences_not_markdown(authenticated_client):
-    """Nothing in the app renders Markdown, so asterisks would show literally."""
+def test_terms_are_split_by_the_server_not_the_client(authenticated_client):
+    """The client renders no Markdown, so asterisks would show literally."""
     response = authenticated_client.get(reverse("carsharing-terms"))
     assert response.data["title"] == "Vilkår for lån af bil i delebilparken"
-    assert len(response.data["bullets"]) >= 5
-    for bullet in response.data["bullets"]:
-        assert "**" not in bullet
-        assert not bullet.startswith("- ")
-    assert "3,94 kr. pr. kørt km" in response.data["bullets"][-1]
+    sections = response.data["sections"]
+    assert len(sections) >= 10
+
+    for section in sections:
+        assert "#" not in section["heading"]
+        assert "**" not in section["heading"]
+        for block in section["blocks"]:
+            assert block["kind"] in ("paragraph", "bullets")
+            if block["kind"] == "bullets":
+                for item in block["items"]:
+                    assert "**" not in item["lead"]
+                    assert "**" not in item["text"]
+                    assert not item["text"].startswith("- ")
+            else:
+                assert "**" not in block["text"]
+
+    assert "3,94 kr. pr. kørt kilometer" in response.data["text"]
 
 
 # -- Replacing the whole schedule (the painting grid) ----------------------

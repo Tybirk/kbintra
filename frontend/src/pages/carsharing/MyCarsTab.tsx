@@ -246,6 +246,7 @@ function MyCarCard({ car }: MyCarCardProps) {
             {terms && !car.has_accepted_current_terms && (
               <TermsConsent
                 compact
+                collapsible
                 terms={terms}
                 intro="Dette er de vilkår, låneren accepterer, når din bil lånes. Som ejer bekræfter du, at din bil udlånes på dem."
                 label="Jeg har læst og accepterer vilkårene for at udlåne min bil"
