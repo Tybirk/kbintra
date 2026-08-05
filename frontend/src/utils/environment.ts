@@ -1,9 +1,11 @@
 /**
  * Which deployment the app is running in.
  *
- * Production is kb-intra.dk. kbintra.top is the test site, and it shares
- * production's database, so "test" here means *this browser is not on the real
- * domain* — it does not mean the data is throwaway.
+ * Production is kb-intra.dk. kbintra.top is the test site, and it runs on a
+ * *copy* of production's data: deploy-test.sh rsyncs prod's SQLite file and
+ * media into its own ./data on every test deploy, one-way, with prod as the
+ * source only. So writes on the test site never reach production, and anything
+ * created there is discarded by the next test deploy.
  *
  * Used to keep a feature that is still being trialled out of the way of the ~90
  * residents on the real site while the few of us testing it can reach it. Note
