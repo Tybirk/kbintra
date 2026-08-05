@@ -226,12 +226,38 @@ export function TermsConsent({
   // Collapsed by default when folding is on: the checkbox stays outside the fold
   // so consent is always one tap away, however long the terms get.
   const [open, setOpen] = useState(!collapsible)
-  const bullets = (
-    <List size="sm" spacing="xs">
-      {(terms.bullets ?? []).map((bullet) => (
-        <List.Item key={bullet}>{bullet}</List.Item>
+  const body = (
+    <Stack gap="md">
+      {(terms.sections ?? []).map((section) => (
+        <Stack gap="xs" key={section.heading}>
+          <Text size="sm" fw={600}>
+            {section.heading}
+          </Text>
+          {(section.blocks ?? []).map((block, index) =>
+            block.kind === "bullets" ? (
+              <List size="sm" spacing="xs" key={index}>
+                {(block.items ?? []).map((item) => (
+                  <List.Item key={item.lead + item.text}>
+                    {item.lead && (
+                      <Text
+                        component="span"
+                        fw={600}
+                        inherit
+                      >{`${item.lead} `}</Text>
+                    )}
+                    {item.text}
+                  </List.Item>
+                ))}
+              </List>
+            ) : (
+              <Text size="sm" key={index}>
+                {block.text}
+              </Text>
+            ),
+          )}
+        </Stack>
       ))}
-    </List>
+    </Stack>
   )
 
   return (
@@ -265,11 +291,11 @@ export function TermsConsent({
               {open ? "Skjul vilkårene" : "Læs vilkårene"}
             </Button>
             <Collapse expanded={open} keepMounted={false}>
-              {bullets}
+              {body}
             </Collapse>
           </>
         ) : (
-          bullets
+          body
         )}
         <Text size="xs" c="dimmed">
           Version {terms.version}

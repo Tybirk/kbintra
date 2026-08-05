@@ -36,19 +36,126 @@ TERMS_FILE = Path(__file__).resolve().parent / "vilkaar.md"
 # A date, so "which terms did they accept" is answerable by looking at a calendar.
 _VERSION_PATTERN = re.compile(r"^Version:\s*(\d{4}-\d{2}-\d{2})\s*$")
 _RATE_PLACEHOLDER = "{rate}"
+# A point that opens in bold carries a label for the case it covers ("**Anmeldes
+# skaden:** du betaler ..."). Section 5 is nine such cases, and losing the label
+# turns the one section where a misreading costs money into a wall of prose.
+_LEAD_PATTERN = re.compile(r"^\*\*(?P<lead>.+?)\*\*\s*(?P<rest>.*)$")
 
 
-def _parse_terms(text: str) -> tuple[str, str, tuple[str, ...]]:
-    """Pull the title, the date version and the bullets out of vilkaar.md.
+def _clean(text: str) -> str:
+    """Drop leftover bold markers, which would otherwise render as literal stars."""
+    return text.replace("**", "").strip()
 
-    Deliberately a hand-rolled reader rather than a Markdown library: the file is
-    a flat title-version-bullets document, the app renders the points as a plain
-    list, and adding a parser dependency for that would be the tail wagging the
-    dog. HTML comments carry the editing instructions and are skipped.
+
+class TermsBullet:
+    """One point, optionally introduced by a bold label."""
+
+    __slots__ = ("lead", "text")
+
+    def __init__(self, text: str, lead: str = "") -> None:
+        self.text = text
+        self.lead = lead
+
+    def filled(self, rate: str) -> "TermsBullet":
+        # str.replace, not str.format: the file is edited by hand, and format()
+        # would turn any stray brace into a crash at import.
+        return TermsBullet(self.text.replace(_RATE_PLACEHOLDER, rate), self.lead)
+
+    def as_dict(self) -> dict[str, str]:
+        return {"lead": self.lead, "text": self.text}
+
+    def as_line(self) -> str:
+        return f"{self.lead} {self.text}".strip() if self.lead else self.text
+
+
+class TermsSection:
+    """A numbered section: a heading, then paragraphs and points in file order."""
+
+    __slots__ = ("blocks", "heading", "open")
+
+    def __init__(self, heading: str) -> None:
+        self.heading = heading
+        # (kind, payload) where kind is "paragraph" (str) or "bullets" (list).
+        self.blocks: list[tuple[str, object]] = []
+        # Whether the last block is still taking wrapped lines. A blank line
+        # closes it, which is what separates two paragraphs of one section from
+        # one paragraph split across two lines for readability.
+        self.open = False
+
+    def _tail(self, kind: str) -> object | None:
+        if self.blocks and self.blocks[-1][0] == kind:
+            return self.blocks[-1][1]
+        return None
+
+    def add_bullet(self, bullet: TermsBullet) -> None:
+        existing = self._tail("bullets")
+        if isinstance(existing, list):
+            existing.append(bullet)
+        else:
+            self.blocks.append(("bullets", [bullet]))
+        self.open = True
+
+    def add_paragraph(self, text: str) -> None:
+        self.blocks.append(("paragraph", text))
+        self.open = True
+
+    def close(self) -> None:
+        self.open = False
+
+    def continue_last(self, text: str) -> bool:
+        """Append a wrapped line to whatever block is open. False if none is."""
+        if not self.open:
+            return False
+        bullets = self._tail("bullets")
+        if isinstance(bullets, list):
+            bullets[-1].text = f"{bullets[-1].text} {text}".strip()
+            return True
+        paragraph = self._tail("paragraph")
+        if isinstance(paragraph, str):
+            self.blocks[-1] = ("paragraph", f"{paragraph} {text}")
+            return True
+        return False
+
+    def filled(self, rate: str) -> "TermsSection":
+        copy = TermsSection(self.heading)
+        for kind, payload in self.blocks:
+            if kind == "bullets" and isinstance(payload, list):
+                copy.blocks.append(("bullets", [b.filled(rate) for b in payload]))
+            elif isinstance(payload, str):
+                copy.blocks.append(("paragraph", payload.replace(_RATE_PLACEHOLDER, rate)))
+        return copy
+
+    def as_dict(self) -> dict[str, object]:
+        blocks: list[dict[str, object]] = []
+        for kind, payload in self.blocks:
+            if kind == "bullets" and isinstance(payload, list):
+                blocks.append({"kind": "bullets", "items": [b.as_dict() for b in payload]})
+            elif isinstance(payload, str):
+                blocks.append({"kind": "paragraph", "text": payload})
+        return {"heading": self.heading, "blocks": blocks}
+
+    def as_lines(self) -> list[str]:
+        lines = [self.heading, ""]
+        for kind, payload in self.blocks:
+            if kind == "bullets" and isinstance(payload, list):
+                lines.extend(f"- {b.as_line()}" for b in payload)
+            elif isinstance(payload, str):
+                lines.append(payload)
+            lines.append("")
+        return lines
+
+
+def _parse_terms(text: str) -> tuple[str, str, tuple[TermsSection, ...]]:
+    """Pull the title, the date version and the sections out of vilkaar.md.
+
+    Deliberately a hand-rolled reader rather than a Markdown library: the file
+    uses one heading level, points and paragraphs, and nothing else. A Markdown
+    dependency would buy tables and images the terms must not contain anyway.
+    HTML comments carry the editing instructions and are skipped.
     """
     title = ""
     version = ""
-    bullets: list[str] = []
+    sections: list[TermsSection] = []
     in_comment = False
 
     for raw in text.splitlines():
@@ -62,6 +169,13 @@ def _parse_terms(text: str) -> tuple[str, str, tuple[str, ...]]:
             continue
 
         if not line:
+            # A blank line ends the current paragraph or list. Without this every
+            # section collapses into one run-on paragraph.
+            if sections:
+                sections[-1].close()
+            continue
+        if line.startswith("## "):
+            sections.append(TermsSection(line[3:].strip()))
             continue
         if line.startswith("# ") and not title:
             title = line[2:].strip()
@@ -70,17 +184,32 @@ def _parse_terms(text: str) -> tuple[str, str, tuple[str, ...]]:
         if match:
             version = match.group(1)
             continue
+        # Anything before the first heading is preamble, not a term.
+        if not sections:
+            continue
+
+        section = sections[-1]
         if line.startswith("- "):
-            bullets.append(line[2:].strip())
-        elif bullets:
-            # A bullet wrapped onto the next line, so the file can be read at a
-            # sane width without every point becoming one long line.
-            bullets[-1] = f"{bullets[-1]} {line}"
+            body = line[2:].strip()
+            lead_match = _LEAD_PATTERN.match(body)
+            if lead_match:
+                section.add_bullet(
+                    TermsBullet(
+                        _clean(lead_match.group("rest")),
+                        _clean(lead_match.group("lead")),
+                    )
+                )
+            else:
+                section.add_bullet(TermsBullet(_clean(body)))
+        # A point or paragraph wrapped onto the next line, so the file can be
+        # read at a sane width without every term becoming one long line.
+        elif not section.continue_last(_clean(line)):
+            section.add_paragraph(_clean(line))
 
-    return title, version, tuple(bullets)
+    return title, version, tuple(sections)
 
 
-def _load_terms() -> tuple[str, str, tuple[str, ...]]:
+def _load_terms() -> tuple[str, str, tuple[TermsSection, ...]]:
     """Read the terms at import, refusing to start on a broken file.
 
     Failing loudly is the point: a silently empty set of terms would mean
@@ -92,17 +221,19 @@ def _load_terms() -> tuple[str, str, tuple[str, ...]]:
     except OSError as exc:
         raise ImproperlyConfigured(f"Kunne ikke læse vilkårene i {TERMS_FILE}: {exc}") from exc
 
-    title, version, bullets = _parse_terms(text)
+    title, version, sections = _parse_terms(text)
     if not title:
         raise ImproperlyConfigured(f"{TERMS_FILE} mangler en overskrift ('# ...').")
     if not version:
         raise ImproperlyConfigured(f"{TERMS_FILE} mangler en 'Version: ÅÅÅÅ-MM-DD'-linje.")
-    if not bullets:
-        raise ImproperlyConfigured(f"{TERMS_FILE} indeholder ingen vilkår ('- ...').")
-    return title, version, bullets
+    if not sections:
+        raise ImproperlyConfigured(f"{TERMS_FILE} indeholder ingen afsnit ('## ...').")
+    if not any(section.blocks for section in sections):
+        raise ImproperlyConfigured(f"{TERMS_FILE} indeholder ingen vilkår under afsnittene.")
+    return title, version, sections
 
 
-LOAN_TERMS_TITLE, TERMS_VERSION, LOAN_TERMS_BULLETS = _load_terms()
+LOAN_TERMS_TITLE, TERMS_VERSION, LOAN_TERMS_SECTIONS = _load_terms()
 
 
 def _format_rate(rate: Decimal | None) -> str:
@@ -110,15 +241,16 @@ def _format_rate(rate: Decimal | None) -> str:
     return f"{effective:.2f}".replace(".", ",")
 
 
-def loan_terms_bullets(rate: Decimal | None = None) -> list[str]:
-    """The terms as separate points, with the applicable rate filled in."""
+def loan_terms_sections(rate: Decimal | None = None) -> list[dict[str, object]]:
+    """The terms as headed sections, with the applicable rate filled in."""
     formatted = _format_rate(rate)
-    # str.replace, not str.format: the file is edited by hand, and format() would
-    # turn any stray brace into a crash at import.
-    return [bullet.replace(_RATE_PLACEHOLDER, formatted) for bullet in LOAN_TERMS_BULLETS]
+    return [section.filled(formatted).as_dict() for section in LOAN_TERMS_SECTIONS]
 
 
 def loan_terms_text(rate: Decimal | None = None) -> str:
     """The terms as one plain-text block, for email and for the record."""
-    lines = "\n".join(f"- {bullet}" for bullet in loan_terms_bullets(rate))
-    return f"{LOAN_TERMS_TITLE}\n\n{lines}"
+    formatted = _format_rate(rate)
+    lines: list[str] = [LOAN_TERMS_TITLE, ""]
+    for section in LOAN_TERMS_SECTIONS:
+        lines.extend(section.filled(formatted).as_lines())
+    return "\n".join(lines).strip()

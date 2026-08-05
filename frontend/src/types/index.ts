@@ -287,13 +287,38 @@ export interface CarLoan {
   created_at: string
 }
 
+/** One point. `lead` is the bold label a point may open with, else empty. */
+export interface LoanTermsBullet {
+  lead: string
+
+  text: string
+}
+
+/**
+ * A paragraph or a run of points, in the order the terms file has them. The
+ * server does the splitting so the client never parses Markdown.
+ */
+export interface LoanTermsBlock {
+  kind: "paragraph" | "bullets"
+
+  text?: string
+
+  items?: LoanTermsBullet[]
+}
+
+export interface LoanTermsSection {
+  heading: string
+
+  blocks: LoanTermsBlock[]
+}
+
 export interface CarSharingTerms {
   version: string
 
   title: string
 
-  /** Plain sentences, rendered as a list. Deliberately not Markdown. */
-  bullets: string[]
+  /** The numbered sections of the agreement, already split by the server. */
+  sections: LoanTermsSection[]
 
   text: string
 

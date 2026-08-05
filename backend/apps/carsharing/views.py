@@ -33,7 +33,7 @@ from .constants import (
     MAX_CANDIDATES_PER_LOAN,
     MAX_LOAN_DAYS,
     TERMS_VERSION,
-    loan_terms_bullets,
+    loan_terms_sections,
     loan_terms_text,
 )
 from .models import CarBlock, CarLoan, CarLoanCandidate
@@ -124,7 +124,7 @@ class TermsView(APIView):
             {
                 "version": TERMS_VERSION,
                 "title": LOAN_TERMS_TITLE,
-                "bullets": loan_terms_bullets(),
+                "sections": loan_terms_sections(),
                 "text": loan_terms_text(),
                 "default_rate_per_km": str(DEFAULT_RATE_PER_KM),
             }
