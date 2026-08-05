@@ -108,6 +108,10 @@ function MyCarCard({ car }: MyCarCardProps) {
   // than letting the server reject it after the fact.
   const termsBlockSave =
     draft.is_shared && !car.has_accepted_current_terms && !acceptTerms
+  // The plate is edited here, so the rule the server enforces has to hold against
+  // the draft rather than the saved car: a shared car must be identifiable.
+  const plateFilled = draft.license_plate.trim() !== ""
+  const plateBlocksSave = draft.is_shared && !plateFilled
   // A negative or unparseable rate reached borrowers as "-3,50 kr./km" and
   // inverted the bill, so catch it here as well as on the server.
   const rateError = moneyInputError(draft.rate_per_km ?? "", "en takst")
@@ -115,6 +119,8 @@ function MyCarCard({ car }: MyCarCardProps) {
   const saveMutation = useCarSharingMutation({
     mutationFn: () =>
       housesApi.updateCar(car.id, {
+        license_plate: draft.license_plate.trim(),
+        is_electric: draft.is_electric,
         is_shared: draft.is_shared,
         rate_per_km: draft.rate_per_km
           ? normalizeDecimalSeparator(draft.rate_per_km)
@@ -220,7 +226,9 @@ function MyCarCard({ car }: MyCarCardProps) {
                 setDraft({ ...draft, is_shared: event.currentTarget.checked })
               }
             />
-            {!car.license_plate && (
+            {/* The draft, not the saved car: the notice should go away as soon as
+                the plate below is typed, not only once it is saved. */}
+            {!plateFilled && (
               <Alert
                 color="yellow"
                 variant="light"
@@ -262,6 +270,30 @@ function MyCarCard({ car }: MyCarCardProps) {
               </Text>
             )}
 
+            <Group grow align="flex-end" wrap="wrap">
+              <TextInput
+                label="Nummerplade"
+                description="Kræves for at bilen kan være i delebilparken."
+                value={draft.license_plate}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    license_plate: event.currentTarget.value.toUpperCase(),
+                  })
+                }
+                placeholder="AB 12 345"
+              />
+              <Checkbox
+                label="Elbil"
+                checked={draft.is_electric}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    is_electric: event.currentTarget.checked,
+                  })
+                }
+              />
+            </Group>
             <Group grow wrap="wrap">
               <TextInput
                 label="Mærke"
@@ -403,11 +435,16 @@ function MyCarCard({ car }: MyCarCardProps) {
             />
             <Button
               loading={saveMutation.isPending}
-              disabled={termsBlockSave || rateError !== null}
+              disabled={termsBlockSave || plateBlocksSave || rateError !== null}
               onClick={() => saveMutation.mutate(undefined)}
             >
               Gem bil
             </Button>
+            {plateBlocksSave && (
+              <Text size="xs" c="dimmed">
+                Udfyld nummerpladen, eller slå "Med i delebilparken" fra.
+              </Text>
+            )}
             {termsBlockSave && (
               <Text size="xs" c="dimmed">
                 Bekræft vilkårene for at have bilen i delebilparken.

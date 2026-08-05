@@ -79,11 +79,13 @@ vi.mock("../api/carsharing", async () => {
 
 const mockGetCars = vi.fn()
 
+const mockUpdateCar = vi.fn()
+
 vi.mock("../api/houses", () => ({
   housesApi: {
     getCars: () => mockGetCars(),
 
-    updateCar: vi.fn(),
+    updateCar: (...args: unknown[]) => mockUpdateCar(...args),
   },
 }))
 
@@ -627,6 +629,72 @@ describe("CarSharingPage", () => {
       expect(screen.getByText("Ikke delt")).toBeInTheDocument()
     })
     expect(screen.getByText("Mangler nummerplade")).toBeInTheDocument()
+  })
+
+  it("lets me fill in the missing plate on the car itself", async () => {
+    // The card is where the "Mangler nummerplade" warning appears, so it has to
+    // be where the plate can be typed — the fix used to live on another page.
+    mockGetCars.mockResolvedValue([
+      ownCar({ is_shared: false, license_plate: "", display_name: "Skoda" }),
+    ])
+    mockUpdateCar.mockResolvedValue(ownCar())
+
+    render(<CarSharingPage />)
+
+    await userEvent.click(screen.getByRole("tab", { name: "Mine biler" }))
+    await userEvent.click(
+      screen.getByRole("button", { name: /Indstillinger for Skoda/ }),
+    )
+
+    const plate = await screen.findByLabelText("Nummerplade")
+    await userEvent.type(plate, "cd45678")
+    // Stored uppercase, so the input does not let two spellings of one plate in.
+    expect(plate).toHaveValue("CD45678")
+
+    await userEvent.click(screen.getByRole("button", { name: "Gem bil" }))
+
+    await waitFor(() => {
+      expect(mockUpdateCar).toHaveBeenCalledWith(
+        7,
+        expect.objectContaining({ license_plate: "CD45678" }),
+      )
+    })
+  })
+
+  it("will not share a car until it has a plate", async () => {
+    mockGetCars.mockResolvedValue([
+      ownCar({ is_shared: false, license_plate: "", display_name: "Skoda" }),
+    ])
+
+    render(<CarSharingPage />)
+
+    await userEvent.click(screen.getByRole("tab", { name: "Mine biler" }))
+    await userEvent.click(
+      screen.getByRole("button", { name: /Indstillinger for Skoda/ }),
+    )
+
+    // Not shared and no plate: nothing to block yet.
+    const save = await screen.findByRole("button", { name: "Gem bil" })
+    expect(save).toBeEnabled()
+
+    await userEvent.click(
+      screen.getByRole("switch", { name: "Med i delebilparken" }),
+    )
+    expect(save).toBeDisabled()
+    expect(
+      screen.getByText(/Udfyld nummerpladen, eller slå/),
+    ).toBeInTheDocument()
+
+    // Typing the plate clears both the block and the warning above the form.
+    await userEvent.type(screen.getByLabelText("Nummerplade"), "CD45678")
+
+    expect(save).toBeEnabled()
+    expect(
+      screen.queryByText(
+        "Bilen skal have en nummerplade for at kunne være i delebilparken.",
+      ),
+    ).not.toBeInTheDocument()
+    expect(mockUpdateCar).not.toHaveBeenCalled()
   })
 
   it("will not send a request until the terms are confirmed", async () => {
