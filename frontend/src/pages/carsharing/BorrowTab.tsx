@@ -302,7 +302,7 @@ export function BorrowTab({ onRequested }: BorrowTabProps) {
         <Stack gap="sm">
           <Title order={4}>Biler i delebilparken</Title>
           <Text size="sm" c="dimmed">
-            Ugeskemaet er kun vejledende. En bil der plejer at være væk, kan
+            Ugeskemaet er kun vejledende. En bil der plejer at være optaget, kan
             godt være fri netop nu — spørg endelig. Den første ejer der siger
             ja, låner dig bilen, så vælg kun biler du gerne vil låne.
           </Text>
