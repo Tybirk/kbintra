@@ -6,7 +6,10 @@ import {
   formatRatePerKm,
   formatWindow,
   moneyInputError,
+  settlementBreakdown,
 } from "./shared"
+
+import type { CarLoan } from "../../types"
 
 function axiosError(data: unknown) {
   return { response: { data } }
@@ -80,6 +83,41 @@ describe("lending for free", () => {
     expect(moneyInputError("0", "en takst")).toBeNull()
     expect(moneyInputError("0,00", "en takst")).toBeNull()
     expect(moneyInputError("-3,50", "en takst")).not.toBeNull()
+  })
+})
+
+describe("settlementBreakdown", () => {
+  function settled(overrides: Partial<CarLoan>) {
+    return {
+      actual_km: 55,
+      rate_per_km: "3.94",
+      expense_amount: "0",
+      expense_note: "",
+      ...overrides,
+    } as CarLoan
+  }
+
+  it("explains an expense with the note the borrower wrote", () => {
+    expect(
+      settlementBreakdown(
+        settled({
+          expense_amount: "100.50",
+          expense_note: "Ladning på Circle K",
+        }),
+      ),
+    ).toBe("55 km × 3,94 kr. − 100,50 kr. i udgifter (Ladning på Circle K)")
+  })
+
+  // The note used to hang off "expenses > 0", so anything written against a
+  // 0 kr. expense was stored and shown to nobody — least of all the owner.
+  it("still shows a note that has no amount behind it", () => {
+    expect(
+      settlementBreakdown(settled({ expense_note: "Vaskede bilen" })),
+    ).toContain("Udgifter: Vaskede bilen")
+  })
+
+  it("says nothing about expenses when there were none", () => {
+    expect(settlementBreakdown(settled({}))).toBe("55 km × 3,94 kr.")
   })
 })
 

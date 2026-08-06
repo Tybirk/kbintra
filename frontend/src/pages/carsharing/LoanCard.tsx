@@ -50,6 +50,10 @@ function CompleteLoanForm({ loan }: CompleteFormProps) {
   const rate = loan.rate_per_km ?? "0"
   const km = typeof actualKm === "number" ? actualKm : Number(actualKm) || 0
   const expenseError = moneyInputError(expenseAmount, "et beløb")
+  // The note explains an amount, so there is nothing for it to explain until
+  // there is one. Asking first and showing it only when the amount is above zero
+  // is how a borrower ends up writing into a field nobody ever reads.
+  const hasExpense = parseDecimalInput(expenseAmount) > 0
   const amountDue = calculateAmountDue(
     km,
     rate,
@@ -61,7 +65,9 @@ function CompleteLoanForm({ loan }: CompleteFormProps) {
       carSharingApi.completeLoan(loan.id, {
         actual_km: km,
         expense_amount: normalizeDecimalSeparator(expenseAmount) || "0",
-        expense_note: expenseNote,
+        // Never send a note the owner will not be shown: the amount can be typed
+        // and then cleared again after the note was written.
+        expense_note: hasExpense ? expenseNote : "",
         damage_note: damageNote,
       }),
     successTitle: "Lånet er afsluttet",
@@ -87,11 +93,14 @@ function CompleteLoanForm({ loan }: CompleteFormProps) {
         inputMode="decimal"
         error={expenseError}
       />
-      <TextInput
-        label="Hvad dækker udgiften? (valgfrit)"
-        value={expenseNote}
-        onChange={(event) => setExpenseNote(event.currentTarget.value)}
-      />
+      {hasExpense && (
+        <TextInput
+          label="Hvad dækker udgiften? (valgfrit)"
+          description="Vises for ejeren sammen med beløbet."
+          value={expenseNote}
+          onChange={(event) => setExpenseNote(event.currentTarget.value)}
+        />
+      )}
       {/* Not "Skader ...": most of what is written here is a thank-you, and a
           field that only names damage invites nothing else. */}
       <Textarea

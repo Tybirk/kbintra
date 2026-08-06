@@ -104,6 +104,11 @@ export function settlementBreakdown(loan: CarLoan): string {
   if (expenses > 0) {
     text += ` − ${formatKr(expenses)} i udgifter`
     if (loan.expense_note) text += ` (${loan.expense_note})`
+  } else if (loan.expense_note) {
+    // A note with no amount behind it. The borrower wrote something and used to
+    // be the only person who ever saw it: this clause hung off "expenses > 0",
+    // so a note entered against a 0 kr. expense was stored and shown to nobody.
+    text += ` · Udgifter: ${loan.expense_note}`
   }
   return text
 }

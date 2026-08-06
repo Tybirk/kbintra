@@ -1307,6 +1307,33 @@ describe("CarSharingPage", () => {
     ).toBeInTheDocument()
   })
 
+  it("only asks what an expense covered once there is an expense", async () => {
+    // The note explains an amount and is only ever shown beside one, so with no
+    // amount it was a field the borrower wrote into and nobody read.
+    mockGetLoans.mockResolvedValue([activeLoan()])
+
+    render(<CarSharingPage />)
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    await screen.findByLabelText("Kørte kilometer")
+    expect(
+      screen.queryByLabelText("Hvad dækker udgiften? (valgfrit)"),
+    ).not.toBeInTheDocument()
+
+    const expense = screen.getByLabelText(
+      "Dine udgifter til strøm eller brændstof (kr.)",
+    )
+    await userEvent.clear(expense)
+    await userEvent.type(expense, "100,50")
+
+    expect(
+      screen.getByLabelText("Hvad dækker udgiften? (valgfrit)"),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText("Vises for ejeren sammen med beløbet."),
+    ).toBeInTheDocument()
+  })
+
   it("invites a message rather than only damage when closing a loan", async () => {
     mockGetLoans.mockResolvedValue([activeLoan()])
 
