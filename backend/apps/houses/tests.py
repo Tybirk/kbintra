@@ -259,6 +259,72 @@ class TestCarAPI:
         assert response.status_code == 204
         assert not Car.objects.filter(id=car.id).exists()
 
+    def test_delete_car_that_has_been_lent_out_is_refused_in_danish(
+        self, api_client, user_with_house, car
+    ):
+        """A lent-out car is PROTECTed; that must be a sentence, not a 500.
+
+        The unhandled ProtectedError used to reach the resident as a Django debug
+        page rendered inside the error toast.
+        """
+        from django.utils import timezone
+
+        from apps.carsharing.models import CarLoan
+
+        CarLoan.objects.create(
+            borrower=user_with_house,
+            status=CarLoan.Status.COMPLETED,
+            start_at=timezone.now(),
+            end_at=timezone.now() + timezone.timedelta(hours=2),
+            expected_km=10,
+            terms_version="2026-08-05",
+            car=car,
+        )
+
+        api_client.force_authenticate(user=user_with_house)
+        response = api_client.delete(f"/api/houses/my/cars/{car.id}/")
+
+        assert response.status_code == 400
+        assert "kan ikke fjernes" in str(response.json())
+        assert Car.objects.filter(id=car.id).exists()
+
+    def test_delete_car_ends_the_requests_still_waiting_on_it(
+        self, api_client, user_with_house, car, house
+    ):
+        """Removing a car must not leave a borrower waiting on nobody.
+
+        The candidacy is CASCADEd away with the car, so without this the request
+        stays REQUESTED with an empty "Spurgt:" line and no way to end it.
+        """
+        from django.contrib.auth import get_user_model
+        from django.utils import timezone
+
+        from apps.carsharing.models import CarLoan, CarLoanCandidate
+        from apps.houses.models import House
+
+        borrower = get_user_model().objects.create_user(
+            email="borrower@example.com",
+            password="testpass123",
+            first_name="Bo",
+            house=House.objects.create(name="Nabohuset"),
+        )
+        loan = CarLoan.objects.create(
+            borrower=borrower,
+            status=CarLoan.Status.REQUESTED,
+            start_at=timezone.now(),
+            end_at=timezone.now() + timezone.timedelta(hours=2),
+            expected_km=10,
+            terms_version="2026-08-05",
+        )
+        CarLoanCandidate.objects.create(loan=loan, car=car)
+
+        api_client.force_authenticate(user=user_with_house)
+        response = api_client.delete(f"/api/houses/my/cars/{car.id}/")
+
+        assert response.status_code == 204
+        loan.refresh_from_db()
+        assert loan.status == CarLoan.Status.DECLINED
+
     def test_update_car_is_electric(self, api_client, user_with_house, car):
         """Test updating the is_electric field on a car."""
         api_client.force_authenticate(user=user_with_house)

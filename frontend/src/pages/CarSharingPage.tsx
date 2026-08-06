@@ -51,7 +51,12 @@ export default function CarSharingPage() {
         </Tabs.List>
 
         <Tabs.Panel value="borrow">
-          <BorrowTab onRequested={() => selectTab("loans")} />
+          {/* Land on the new request itself, not just on the tab: the loan was
+              handed to this callback and thrown away, so the card a borrower had
+              just created was the one card that never got highlighted. */}
+          <BorrowTab
+            onRequested={(loan) => navigate(`/bildeling/laan/${loan.id}`)}
+          />
         </Tabs.Panel>
         <Tabs.Panel value="loans">
           <MyLoansTab highlightLoanId={highlightLoanId} />

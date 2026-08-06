@@ -1407,29 +1407,61 @@ def _car_household_recipients(car: Any, exclude_user_id: int | None = None) -> Q
     return recipients
 
 
+def close_car_request_notifications(loan: Any, car: Any = None) -> int:
+    """Mark a household's "may I borrow your car?" notification read once it is moot.
+
+    A request notification is a question. Once it has been answered, withdrawn or
+    won by someone else there is nothing left to do, but it kept its unread pill
+    and kept saying "Siger du ja, er bilen udlånt med det samme." Households
+    accumulated a list of dead questions, and the badge stopped meaning "things
+    that need you" — which is the only thing a badge is for.
+
+    Scoped by link, which is unique per loan. Passing a car narrows it to that
+    one household; omitting it closes the question for everyone still holding it.
+    """
+    unread = Notification.objects.filter(
+        notification_type=NotificationType.CAR_LOAN_REQUEST,
+        link=_car_loan_link(loan),
+        is_read=False,
+    )
+    if car is not None:
+        unread = unread.filter(user__house_id=car.house_id)
+    return unread.update(is_read=True)
+
+
 def notify_car_loan_requested(loan: Any) -> list[Notification]:
     """Tell every asked household that someone wants to borrow their car.
 
-    The message says how many cars were asked and that the first yes settles it,
-    so an owner understands both that they are not the only hope and that
-    answering quickly is what decides it.
+    The message says how many households were asked and that the first yes
+    settles it, so an owner understands both that they are not the only hope and
+    that answering quickly is what decides it.
     """
     candidates = list(loan.candidates.select_related("car", "car__house").all())
-    total = len(candidates)
+    # Grouped by household, because a household is who answers. Two of its cars
+    # asked used to mean two near-identical notifications, and a count of cars
+    # told two owners they were "en af 3 spurgte" when only two households had
+    # been asked at all — contradicting the borrower's own screen.
+    by_house: dict[int, list[Any]] = {}
+    for candidate in candidates:
+        by_house.setdefault(candidate.car.house_id, []).append(candidate)
+
+    total = len(by_house)
     window = _format_loan_window(loan)
     created: list[Notification] = []
     suffix = (
-        f" Du er en af {total} spurgte — den første der siger ja, låner bilen ud."
+        f" Du er en af {total} spurgte husstande — den første der siger ja, låner bilen ud."
         if total > 1
         else " Siger du ja, er bilen udlånt med det samme."
     )
 
-    for candidate in candidates:
+    for house_candidates in by_house.values():
+        # "din Volvo V70 eller din Toyota Yaris" — the household picks which.
+        cars_named = " eller ".join(item.car.display_name for item in house_candidates)
         message = (
-            f"{loan.borrower.first_name} vil låne {candidate.car.display_name} "
+            f"{loan.borrower.first_name} vil låne {cars_named} "
             f"{window} (ca. {loan.expected_km} km).{suffix}"
         )
-        for recipient in _car_household_recipients(candidate.car, loan.borrower_id):
+        for recipient in _car_household_recipients(house_candidates[0].car, loan.borrower_id):
             notification = create_notification(
                 user=recipient,
                 notification_type=NotificationType.CAR_LOAN_REQUEST,
@@ -1558,15 +1590,27 @@ def notify_car_loan_cancelled(loan: Any, by_user: User) -> list[Notification]:
                 )
             ]
         )
+        # One per household, naming its own cars: a household with two cars asked
+        # used to get two byte-identical notifications, neither of which said
+        # which car it was even about.
+        by_house: dict[int, list[Any]] = {}
         for car in cars:
-            if car is None:
-                continue
-            for recipient in _car_household_recipients(car, loan.borrower_id):
+            if car is not None:
+                by_house.setdefault(car.house_id, []).append(car)
+
+        # A request withdrawn before anyone accepted was never a loan; one that
+        # was already running is a different message to receive.
+        what = "lånet" if loan.car is not None else "forespørgslen om"
+        for house_cars in by_house.values():
+            cars_named = " og ".join(car.display_name for car in house_cars)
+            for recipient in _car_household_recipients(house_cars[0], loan.borrower_id):
                 notification = create_notification(
                     user=recipient,
                     notification_type=NotificationType.CAR_LOAN_UPDATE,
                     title="Bilforespørgsel aflyst",
-                    message=f"{loan.borrower.first_name} har aflyst lånet {window}.",
+                    message=(
+                        f"{loan.borrower.first_name} har aflyst {what} {cars_named} {window}."
+                    ),
                     link=_car_loan_link(loan),
                     related_user=loan.borrower,
                 )

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import {
   Alert,
@@ -107,9 +107,11 @@ function CompleteLoanForm({ loan }: CompleteFormProps) {
         bg="var(--mantine-color-gray-light)"
       >
         <Text size="sm" fw={600}>
-          {amountDue < 0
-            ? `Ejeren skylder dig ${formatKr(Math.abs(amountDue))}`
-            : `Du skal betale ${formatKr(amountDue)}`}
+          {amountDue === 0
+            ? "Intet at betale"
+            : amountDue < 0
+              ? `Ejeren skylder dig ${formatKr(Math.abs(amountDue))}`
+              : `Du skal betale ${formatKr(amountDue)}`}
         </Text>
         <Text size="xs" c="dimmed">
           {km} km × {formatKr(rate)}
@@ -152,16 +154,43 @@ interface LoanPresentation {
   closedNotice: string | null
 }
 
+/** Whether a car actually went out. `car` is only set when an owner said yes. */
+function wasLentOut(loan: CarLoan): boolean {
+  return loan.car !== null
+}
+
+/** Why a household that was asked has nothing left to do, in its own terms.
+ *
+ * Mirrors the vocabulary of `_closed_reason` in the backend's
+ * CandidateRespondView. It used to be the single sentence "En anden ejer var
+ * først", which told a household that a request the *borrower* had withdrawn
+ * had been won by a rival who never existed — while the notification sitting in
+ * the same list said the borrower cancelled.
+ */
+function closedOutReason(loan: CarLoan): string {
+  if (loan.status === "cancelled") {
+    return `${loan.borrower_name} har aflyst forespørgslen — du skal ikke gøre mere.`
+  }
+  if (loan.status === "declined") {
+    return "Forespørgslen er lukket — ingen kunne låne ud."
+  }
+  return "En anden ejer var først — du skal ikke gøre mere."
+}
+
 function presentLoan(loan: CarLoan): LoanPresentation {
   const role = loan.viewer_role
 
-  // Asked, but another household said yes first — or we said no ourselves. Either
-  // way the loan is somebody else's business now.
+  // Asked, but somebody else settled it — or we said no ourselves. Either way
+  // the loan is no longer this household's business.
+  const ownCars = ownCarNames(loan)
+
   if (role === "closed_out") {
     return {
       badge: "Lukket",
       badgeColor: "gray",
-      closedNotice: "En anden ejer var først — du skal ikke gøre mere.",
+      closedNotice: ownCars
+        ? `${closedOutReason(loan)} (${ownCars})`
+        : closedOutReason(loan),
     }
   }
   if (role === "declined") {
@@ -171,7 +200,7 @@ function presentLoan(loan: CarLoan): LoanPresentation {
       closedNotice:
         loan.status === "declined"
           ? "Ingen af de spurgte husstande kunne låne ud."
-          : "Din husstand har sagt nej.",
+          : `Din husstand har sagt nej til ${ownCars || "bilen"}.`,
     }
   }
 
@@ -182,46 +211,84 @@ function presentLoan(loan: CarLoan): LoanPresentation {
       closedNotice: null,
     }
   }
+  // A cancellation after the car actually went out leaves an unsettled trip:
+  // no kilometres, no bill, nothing recorded. Say so rather than filing it next
+  // to a request that was withdrawn before anyone lent anything.
+  if (loan.status === "cancelled" && loan.activated_at) {
+    return {
+      badge: "Aflyst uden afregning",
+      badgeColor: "orange",
+      closedNotice: null,
+    }
+  }
   if (loan.status === "active" && !loan.has_started) {
     return {
-      badge: `Aftalt · starter ${dayjs(loan.start_at).format("D. MMM")}`,
+      // With the date alone, a loan starting in 25 minutes read "starter 6. aug."
+      // — today's date, which says nothing.
+      badge: `Aftalt · starter ${dayjs(loan.start_at).format("D. MMM HH:mm")}`,
       badgeColor: "blue",
       closedNotice: null,
     }
   }
 
-  const labels: Record<CarLoan["status"], string> = {
-    requested: "Afventer svar",
-    active: "Aktivt lån",
-    completed: "Afsluttet",
-    cancelled: "Aflyst",
-    declined: "Ingen kunne låne ud",
+  // Colour lives beside the word so the two cannot drift: every everyday status
+  // used to compute the same default blue.
+  const labels: Record<CarLoan["status"], [string, string | undefined]> = {
+    requested: ["Afventer svar", "blue"],
+    active: ["Aktivt lån", "green"],
+    completed: ["Afsluttet", "gray"],
+    cancelled: ["Aflyst", "gray"],
+    declined: ["Ingen kunne låne ud", "orange"],
   }
-  return {
-    badge: labels[loan.status],
-    badgeColor: undefined,
-    closedNotice: null,
-  }
+  const [badge, badgeColor] = labels[loan.status]
+  return { badge, badgeColor, closedNotice: null }
 }
 
-/** Who is doing what, with the tense the status actually implies. */
+/** Who is doing what, in the tense of what actually happened.
+ *
+ * The rule is the union of two questions, not the status alone: a request that
+ * died (declined, or cancelled before any owner said yes) never became a loan,
+ * so nobody "lånte" anything — while a loan cancelled *after* the car went out
+ * genuinely was borrowed.
+ */
 function describeParties(loan: CarLoan): string {
-  const settled =
-    loan.status === "completed" ||
-    loan.status === "cancelled" ||
-    loan.status === "declined"
-  if (loan.is_borrower) {
-    if (loan.status === "requested") return "Du vil låne"
-    return settled ? "Du lånte" : "Du låner"
-  }
-  if (loan.status === "requested") return `${loan.borrower_name} vil låne`
-  return settled ? `${loan.borrower_name} lånte` : `${loan.borrower_name} låner`
+  const who = loan.is_borrower ? "Du" : loan.borrower_name
+
+  if (loan.status === "requested") return `${who} vil låne`
+  if (loan.status === "active") return `${who} låner`
+  if (loan.status === "completed") return `${who} lånte`
+  // declined, or cancelled — past tense only if a car actually went out.
+  return wasLentOut(loan) ? `${who} lånte` : `${who} ville låne`
+}
+
+/** Households asked, not cars asked — two cars in one house is one household. */
+function householdsAsked(loan: CarLoan): number {
+  return new Set(loan.candidates.map((candidate) => candidate.car_house_name))
+    .size
+}
+
+/** The viewer's own cars in this request, so an answered card still says which
+ *  car it was about — three "Din husstand har sagt nej." cards in "Tidligere"
+ *  are indistinguishable. */
+function ownCarNames(loan: CarLoan): string {
+  return loan.candidates
+    .filter((candidate) => candidate.is_own_household)
+    .map((candidate) => candidate.car_display_name)
+    .join(", ")
 }
 
 export function LoanCard({ loan, highlight }: LoanCardProps) {
   // Only relevant before the window opens: the form is folded away, but someone
   // who really did drive early can still get at it.
   const [settleEarly, setSettleEarly] = useState(false)
+
+  // A notification deep-links to one loan and this card gets a blue border —
+  // which is no help when the card is a screen and a half below the fold.
+  const cardRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!highlight) return
+    cardRef.current?.scrollIntoView({ block: "center", behavior: "smooth" })
+  }, [highlight])
 
   const respondMutation = useCarSharingMutation({
     mutationFn: (input: RespondInput) =>
@@ -255,9 +322,16 @@ export function LoanCard({ loan, highlight }: LoanCardProps) {
   // settles — so confirm, with wording that names the risk.
   const cancelLabel =
     isLender && loan.status === "active" ? "Træk bilen tilbage" : "Aflys"
+  // has_started, not status: an accepted loan is ACTIVE from the moment the
+  // owner says yes, so "har den lige nu" was told to owners of a car that is
+  // still parked outside their own house.
   const cancelPrompt =
     isLender && loan.status === "active"
-      ? `Vil du trække bilen tilbage? ${loan.borrower_name} har den lige nu.`
+      ? loan.has_started
+        ? `Vil du trække bilen tilbage? ${loan.borrower_name} har den lige nu.`
+        : `Vil du trække bilen tilbage? ${loan.borrower_name} regner med den ${dayjs(
+            loan.start_at,
+          ).format("D. MMM HH:mm")}.`
       : loan.status === "active"
         ? 'Vil du aflyse lånet uden at afregne? Brug "Afslut lån" hvis du har kørt i bilen.'
         : "Vil du aflyse din forespørgsel?"
@@ -278,6 +352,7 @@ export function LoanCard({ loan, highlight }: LoanCardProps) {
 
   return (
     <Card
+      ref={cardRef}
       withBorder
       radius="md"
       padding="md"
@@ -292,8 +367,14 @@ export function LoanCard({ loan, highlight }: LoanCardProps) {
             {presentation.badge}
           </Badge>
         </Group>
+        {/* Once settled, the kilometres that were actually driven — the estimate
+            sitting 60px above the bill it disagreed with was the wrong number to
+            leave on a card about money. */}
         <Text size="sm" c="dimmed">
-          {describeParties(loan)} · ca. {loan.expected_km} km
+          {describeParties(loan)} ·{" "}
+          {loan.status === "completed" && loan.actual_km !== null
+            ? `${loan.actual_km} km`
+            : `ca. ${loan.expected_km} km`}
         </Text>
 
         {/* Not party to this loan: say so and show nothing further. */}
@@ -342,9 +423,13 @@ export function LoanCard({ loan, highlight }: LoanCardProps) {
             {/* Borrower, and everybody said no: a dead end, said plainly */}
             {loan.is_borrower && loan.status === "declined" && (
               <Stack gap="xs">
+                {/* Households, matching the count the send confirmation gave —
+                    and singular when only one was asked, which "Alle 1 spurgte
+                    husstande" was not. */}
                 <Text size="sm" fw={500}>
-                  Alle {loan.candidates.length} spurgte husstande har sagt nej —
-                  der er ikke flere at afvente svar fra.
+                  {householdsAsked(loan) === 1
+                    ? "Husstanden du spurgte, kan ikke låne ud — der er ikke flere at afvente svar fra."
+                    : `Alle ${householdsAsked(loan)} spurgte husstande har sagt nej — der er ikke flere at afvente svar fra.`}
                 </Text>
                 <Text size="xs" c="dimmed">
                   Prøv et andet tidsrum, eller spørg flere biler.
@@ -360,9 +445,12 @@ export function LoanCard({ loan, highlight }: LoanCardProps) {
                 {unanswered.map((candidate) => (
                   <Group key={candidate.id} justify="space-between" wrap="wrap">
                     <Text size="sm">{candidate.car_display_name}</Text>
-                    <Group gap="xs">
+                    {/* sm, not xs, with a real gap: these were 30px tall and
+                        10px apart, and "Nej" ends a neighbour's whole request
+                        with no way back. */}
+                    <Group gap="sm">
                       <Button
-                        size="xs"
+                        size="sm"
                         loading={respondMutation.isPending}
                         onClick={() =>
                           respondMutation.mutate({
@@ -374,14 +462,27 @@ export function LoanCard({ loan, highlight }: LoanCardProps) {
                         Ja, den må lånes
                       </Button>
                       <Button
-                        size="xs"
+                        size="sm"
                         variant="default"
-                        onClick={() =>
+                        // "Ja" had a loading guard and "Nej" did not, so an
+                        // impatient second tap produced a green "Du har sagt
+                        // nej" beside a red "Kunne ikke svare".
+                        loading={respondMutation.isPending}
+                        // Only the irreversible answer asks. Confirming "Ja"
+                        // would tax the commonest, most desirable action in the
+                        // feature forever to guard against a cheap mistake.
+                        onClick={() => {
+                          if (
+                            !window.confirm(
+                              `Sig nej til at låne ${candidate.car_display_name} ud til ${loan.borrower_name}?`,
+                            )
+                          )
+                            return
                           respondMutation.mutate({
                             candidateId: candidate.id,
                             action: "decline",
                           })
-                        }
+                        }}
                       >
                         Nej
                       </Button>
@@ -405,9 +506,16 @@ export function LoanCard({ loan, highlight }: LoanCardProps) {
 
             {loan.status === "completed" && loan.amount_due !== null && (
               <Stack gap={2}>
-                <Text size="sm">{describeSettlement(loan)}</Text>
+                <Text size="sm" fw={500}>
+                  {describeSettlement(loan)}
+                </Text>
                 <Text size="xs" c="dimmed">
                   {settlementBreakdown(loan)}
+                </Text>
+                {/* The preview says how to settle; the settled card used to drop
+                    it, which is the moment it actually matters. */}
+                <Text size="xs" c="dimmed">
+                  Afregn selv med MobilePay.
                 </Text>
               </Stack>
             )}
@@ -448,7 +556,11 @@ export function LoanCard({ loan, highlight }: LoanCardProps) {
               <Button
                 variant="subtle"
                 color="red"
-                size="xs"
+                size="compact-xs"
+                // Not a full-width red target 10px under the primary "Afslut
+                // lån": cancelling an active loan silently voids the km bill.
+                style={{ alignSelf: "flex-start" }}
+                mt="sm"
                 loading={cancelMutation.isPending}
                 onClick={() => {
                   if (window.confirm(cancelPrompt))

@@ -34,6 +34,8 @@ EMAIL_SUBJECT_PREFIX: dict[str, str] = {
     NotificationType.EVENT_REMINDER: "[Kalender]",
     NotificationType.MENTION: "[Omtale]",
     NotificationType.EXPENSE_PROCESSED: "[Udlæg]",
+    NotificationType.CAR_LOAN_REQUEST: "[Bildeling]",
+    NotificationType.CAR_LOAN_UPDATE: "[Bildeling]",
 }
 
 

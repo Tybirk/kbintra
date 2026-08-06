@@ -129,9 +129,26 @@ export function WeekHourGrid({
     hour: number,
   ) {
     if (disabled) return
-    // Keep the page from scrolling under a touch drag.
+
+    const paint = !value[day]?.[hour]
+
+    // On touch, a press is a tap: toggle the one cell and never start a drag.
+    //
+    // The grid is taller than a phone screen, so drag-painting made the only way
+    // to scroll past it a swipe from the ~35px margins — a swipe anywhere over
+    // the cells painted hours instead of scrolling. Losing drag-paint on touch
+    // costs little (the presets cover the common shapes) and buys back the
+    // gesture people need most.
+    if (event.pointerType === "touch") {
+      const next = fillBlock(value, { day, hour }, { day, hour }, paint)
+      gridRef.current = next
+      onChange(next)
+      return
+    }
+
+    // Mouse and pen keep drag-paint, and still need the page held still.
     event.preventDefault()
-    modeRef.current = value[day]?.[hour] ? "erase" : "paint"
+    modeRef.current = paint ? "paint" : "erase"
     anchorRef.current = { day, hour }
     baseRef.current = value
     setDragging(true)
@@ -193,10 +210,16 @@ export function WeekHourGrid({
               gap: ROW_GAP,
               height: DAY_HEADER_HEIGHT,
               // Which day a cell belongs to is the one thing you cannot infer
-              // once the header has scrolled past.
+              // once the header has scrolled past. Two things are needed for
+              // this to pin at all: the app's own fixed 60px header has to be
+              // cleared here, and no ancestor may set `overflow: hidden` — that
+              // makes the ancestor the scrollport and silently kills sticky, so
+              // the card holding this grid sets `overflow: visible`.
               position: "sticky",
-              top: 0,
-              zIndex: 1,
+              // Same offset the app's own layout uses (App.tsx), so the labels
+              // land just below the fixed header instead of behind it.
+              top: "calc(var(--app-shell-header-height, 60px) + var(--test-banner-height, 0px))",
+              zIndex: 2,
               background: "var(--mantine-color-body)",
             }}
           >
@@ -221,7 +244,10 @@ export function WeekHourGrid({
               gridTemplateColumns: `repeat(${DAYS_IN_WEEK}, 1fr)`,
               gridTemplateRows: `repeat(${HOURS_IN_DAY}, ${rowHeight}px)`,
               gap: ROW_GAP,
-              touchAction: "none",
+              // Only forbid panning while a drag is actually in progress. As a
+              // constant it blocked scrolling over the whole grid — which is
+              // most of a phone screen — for every touch, dragging or not.
+              touchAction: dragging ? "none" : "auto",
               userSelect: "none",
             }}
           >
@@ -244,7 +270,9 @@ export function WeekHourGrid({
                     style={{
                       gridColumn: day + 1,
                       gridRow: hour + 1,
-                      border: "1px solid var(--mantine-color-gray-3)",
+                      // Theme-aware: gray-3 is a hairline in light mode but a
+                      // near-white cage over 168 cells on a dark background.
+                      border: "1px solid var(--mantine-color-default-border)",
                       borderRadius: 2,
                       padding: 0,
                       cursor: disabled ? "default" : "pointer",
@@ -289,7 +317,10 @@ export function WeekHourGrid({
             variant="subtle"
             color="red"
             disabled={disabled || isGridEmpty(value)}
+            // The smallest control on the screen wipes the whole week, so it
+            // asks first rather than being made bigger.
             onClick={() => {
+              if (!window.confirm("Ryd hele ugeskemaet?")) return
               const next = emptyGrid()
               gridRef.current = next
               onChange(next)

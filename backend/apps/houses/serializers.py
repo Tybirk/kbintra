@@ -103,10 +103,12 @@ class CarCreateUpdateSerializer(serializers.ModelSerializer):
         decimal_places=2,
         required=False,
         allow_null=True,
-        min_value=Decimal("0.01"),
+        # 0 is a legitimate rate — lending for free. Empty still means "use the
+        # community default"; 0 means "this one is on me".
+        min_value=Decimal("0"),
         error_messages={
             "invalid": "Angiv en gyldig km-takst, fx 3,94.",
-            "min_value": "Km-taksten skal være et positivt beløb.",
+            "min_value": "Km-taksten kan ikke være negativ.",
         },
     )
 

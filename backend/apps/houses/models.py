@@ -174,8 +174,12 @@ class Car(models.Model):
             raise ValidationError({"is_shared": "En bil i delebilparken skal have en nummerplade."})
         # Mirrored in CarCreateUpdateSerializer, like the plate rule above: a
         # negative rate reaches borrowers as "-3,50 kr./km" and inverts the bill.
-        if self.rate_per_km is not None and self.rate_per_km <= 0:
-            raise ValidationError({"rate_per_km": "Km-taksten skal være et positivt beløb."})
+        # Zero is allowed: an owner may lend their car for nothing. Only a
+        # negative rate is nonsense — it would pay the borrower per kilometre.
+        # Note the fallback to the community rate keys on None, not on falsiness,
+        # so 0 stays 0 rather than quietly becoming 3,94.
+        if self.rate_per_km is not None and self.rate_per_km < 0:
+            raise ValidationError({"rate_per_km": "Km-taksten kan ikke være negativ."})
 
     def save(self, *args, **kwargs):
         from .utils import normalize_license_plate

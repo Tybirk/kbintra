@@ -54,6 +54,14 @@ export function formatKr(amount: number | string): string {
   })} kr.`
 }
 
+/** A car's km-rate as a borrower reads it. Zero is a real choice — an owner
+ *  lending for nothing — and "0,00 kr./km" buries the one thing worth noticing. */
+export function formatRatePerKm(rate: number | string): string {
+  const value = typeof rate === "number" ? rate : Number.parseFloat(rate)
+  if (value === 0) return "Gratis"
+  return `${formatKr(rate)}/km`
+}
+
 export function formatWindow(start: string, end: string): string {
   const from = dayjs(start)
   const to = dayjs(end)
@@ -84,6 +92,9 @@ export function settlementBreakdown(loan: CarLoan): string {
 /** The settled amount, with a direction and in the second person. */
 export function describeSettlement(loan: CarLoan): string {
   const amount = Number.parseFloat(loan.amount_due ?? "0") || 0
+  // Nothing owed either way — a free car, or expenses that cancelled the bill.
+  // "Du skal betale 0,00 kr." invites a 0 kr. MobilePay transfer.
+  if (amount === 0) return "Intet at betale"
   const owedToBorrower = amount < 0
   const sum = formatKr(Math.abs(amount))
   if (loan.is_borrower) {
@@ -105,8 +116,13 @@ export function moneyInputError(value: string, label: string): string | null {
   const trimmed = value.trim()
   if (trimmed === "") return null
   const normalised = normalizeDecimalSeparator(trimmed)
+  // The pattern below already excludes a minus sign, which is the only thing an
+  // amount here can be wrong about. Zero is valid for both an expense and a
+  // km-rate: an owner may lend their car for nothing.
   if (!/^\d+(\.\d{1,2})?$/.test(normalised)) {
-    return `Skriv kun ${label}, fx 50,50.`
+    // "fx 50,50" sat directly under a description saying the community rate is
+    // 3,94 kr./km — an example a dozen times any realistic value.
+    return `Skriv kun ${label}, fx 3,94.`
   }
   return null
 }
@@ -114,7 +130,13 @@ export function moneyInputError(value: string, label: string): string | null {
 export function errorMessage(error: unknown, fallback: string): string {
   const response = (error as { response?: { data?: unknown } })?.response
   const data = response?.data
-  if (typeof data === "string") return data
+  // An unhandled 5xx answers with an HTML page, and a string body used to be
+  // passed straight through — so a Django debug page arrived as 77 kB of markup
+  // inside a toast, model names and all. Nothing renderable to a resident ever
+  // starts with a tag, so this both fixes that and contains the next one.
+  if (typeof data === "string") {
+    return data.trimStart().startsWith("<") ? fallback : data
+  }
   if (data && typeof data === "object") {
     const first = Object.values(data as Record<string, unknown>)[0]
     if (Array.isArray(first) && typeof first[0] === "string") return first[0]
@@ -206,6 +228,12 @@ interface TermsConsentProps {
   intro?: string
   /** Fold the terms away, so a long list cannot push the consent off-screen. */
   collapsible?: boolean
+  /**
+   * Render the terms without their tick, because the caller puts the checkbox
+   * somewhere the reader can always reach — the borrow tab keeps it in the
+   * sticky bar, which would otherwise sit on top of it.
+   */
+  hideCheckbox?: boolean
 }
 
 /**
@@ -221,6 +249,7 @@ export function TermsConsent({
   compact = false,
   intro,
   collapsible = false,
+  hideCheckbox = false,
 }: TermsConsentProps) {
   const heading = terms.title ?? "Vilkår"
   // Collapsed by default when folding is on: the checkbox stays outside the fold
@@ -300,11 +329,13 @@ export function TermsConsent({
         <Text size="xs" c="dimmed">
           Version {terms.version}
         </Text>
-        <Checkbox
-          label={label}
-          checked={checked}
-          onChange={(event) => onChange(event.currentTarget.checked)}
-        />
+        {!hideCheckbox && (
+          <Checkbox
+            label={label}
+            checked={checked}
+            onChange={(event) => onChange(event.currentTarget.checked)}
+          />
+        )}
       </Stack>
     </Card>
   )
