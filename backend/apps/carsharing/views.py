@@ -117,11 +117,16 @@ class SharedCarListView(APIView):
 
 
 class TermsView(APIView):
-    """GET /api/carsharing/terms/ — the terms text, version and default rate."""
+    """GET /api/carsharing/terms/ — the terms text, version and default rate.
+
+    Also reports whether this resident has already accepted them as a borrower, so
+    the borrow form can ask once rather than at every request.
+    """
 
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        accepted_version = request.user.carsharing_terms_accepted_version
         return Response(
             {
                 "version": TERMS_VERSION,
@@ -129,6 +134,11 @@ class TermsView(APIView):
                 "sections": loan_terms_sections(),
                 "text": loan_terms_text(),
                 "default_rate_per_km": str(DEFAULT_RATE_PER_KM),
+                # Against the version in force, not merely "has accepted
+                # something": new terms have to be seen again.
+                "accepted": accepted_version == TERMS_VERSION,
+                "accepted_version": accepted_version,
+                "accepted_at": request.user.carsharing_terms_accepted_at,
             }
         )
 

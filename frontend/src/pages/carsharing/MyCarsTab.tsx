@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 import {
   Alert,
@@ -40,17 +40,17 @@ import { WeekHourGrid } from "../../components/WeekHourGrid"
 
 import { formatLicensePlate } from "../../utils/licensePlate"
 
-import {
-  normalizeDecimalSeparator,
-  toDanishDecimal,
-} from "../../utils/decimalInput"
+import { toDanishDecimal } from "../../utils/decimalInput"
 
 import {
   blocksToGrid,
   describeGrid,
   emptyGrid,
+  gridsEqual,
   gridToBlocks,
 } from "../../utils/weekSchedule"
+
+import { carDraftDirty, carPayload, unsavedChangesHint } from "./carDraft"
 
 import {
   errorMessage,
@@ -71,18 +71,36 @@ interface MyCarCardProps {
   car: Car
 }
 
+/**
+ * Thrown when the car's fields saved but its week schedule did not.
+ *
+ * One button, two endpoints, so a press can land halfway. A household that is
+ * only told "kunne ikke gemme" will retype the half that did save, so the toast
+ * has to distinguish this case — that is all this type is for.
+ */
+class ScheduleSaveError extends Error {
+  constructor() {
+    super("Ugeskemaet blev ikke gemt.")
+  }
+}
+
 function MyCarCard({ car }: MyCarCardProps) {
   const queryClient = useQueryClient()
   const [expanded, setExpanded] = useState(false)
   const [acceptTerms, setAcceptTerms] = useState(false)
   const [draft, setDraft] = useState(car)
   const [grid, setGrid] = useState<HourGrid>(emptyGrid)
-  // What the server currently holds, so "Gem ugeskema" can tell whether the
-  // painted week actually differs from it.
-  const [savedGrid, setSavedGrid] = useState<HourGrid>(emptyGrid)
+  // Whether the household has painted since the week was loaded or last saved.
+  // Needed because every refetch below carries a fresh blocks array: a
+  // window-focus refetch, or the ["carsharing"] invalidation any neighbour's loan
+  // event triggers, used to wipe a week that was still being painted.
+  const [gridTouched, setGridTouched] = useState(false)
 
   useEffect(() => {
-    setDraft(car)
+    // Take the server's version only when there is nothing unsaved to lose. The
+    // cars query refetches on focus and after every save, and it used to reset
+    // fields the household was still filling in.
+    setDraft((current) => (carDraftDirty(current, car) ? current : car))
   }, [car])
 
   const { data: blocks } = useQuery({
@@ -95,14 +113,21 @@ function MyCarCard({ car }: MyCarCardProps) {
 
   const { data: terms } = useCarSharingTerms()
 
-  useEffect(() => {
-    if (!blocks) return
-    const loaded = blocksToGrid(blocks)
-    setGrid(loaded)
-    setSavedGrid(loaded)
-  }, [blocks])
+  // What the server holds, so the save can tell whether the painted week differs
+  // from it. Derived rather than kept in state: one fewer copy to get out of step.
+  const savedGrid = useMemo(() => blocksToGrid(blocks ?? []), [blocks])
 
-  const scheduleDirty = JSON.stringify(grid) !== JSON.stringify(savedGrid)
+  useEffect(() => {
+    if (!blocks || gridTouched) return
+    setGrid(savedGrid)
+  }, [blocks, savedGrid, gridTouched])
+
+  const scheduleDirty = gridTouched && !gridsEqual(grid, savedGrid)
+  // The terms tick is consent rather than a field, so it counts as something to
+  // save on its own: a car already in the delebilpark whose terms got a new
+  // version has nothing else to change.
+  const carDirty = carDraftDirty(draft, car) || acceptTerms
+  const dirty = carDirty || scheduleDirty
 
   // Sharing needs consent to the terms in force, so the save is blocked rather
   // than letting the server reject it after the fact.
@@ -116,32 +141,66 @@ function MyCarCard({ car }: MyCarCardProps) {
   // inverted the bill, so catch it here as well as on the server.
   const rateError = moneyInputError(draft.rate_per_km ?? "", "en takst")
 
+  // Why the save is unavailable, in the words of the thing to fix. The button now
+  // sits below the week grid, far from the field at fault, so a disabled button
+  // with nothing beside it would be a dead end.
+  const blockedReason = plateBlocksSave
+    ? 'Udfyld nummerpladen, eller slå "Med i delebilparken" fra.'
+    : termsBlockSave
+      ? "Bekræft vilkårene for at have bilen i delebilparken."
+      : rateError
+        ? "Ret km-taksten, før du kan gemme."
+        : null
+
+  /**
+   * One press saves the whole card: the fields, the week schedule, or both.
+   *
+   * The two used to have a button each, which left a household guessing whether
+   * it had to press both. Only the halves that actually changed are sent, so a
+   * painted week does not also re-PATCH fifteen unchanged fields.
+   */
   const saveMutation = useCarSharingMutation({
-    mutationFn: () =>
-      housesApi.updateCar(car.id, {
-        license_plate: draft.license_plate.trim(),
-        is_electric: draft.is_electric,
-        is_shared: draft.is_shared,
-        rate_per_km: draft.rate_per_km
-          ? normalizeDecimalSeparator(draft.rate_per_km)
-          : null,
-        make: draft.make,
-        model_name: draft.model_name,
-        color: draft.color,
-        year: draft.year,
-        seats: draft.seats,
-        has_tow_hitch: draft.has_tow_hitch,
-        has_isofix: draft.has_isofix,
-        dogs_allowed: draft.dogs_allowed,
-        has_charge_fob: draft.has_charge_fob,
-        equipment_note: draft.equipment_note,
-        practical_note: draft.practical_note,
-        accept_terms: acceptTerms,
-      }),
-    successTitle: "Bilen er gemt",
-    errorTitle: "Kunne ikke gemme bilen",
-    onDone: () => {
-      queryClient.invalidateQueries({ queryKey: ["cars"] })
+    mutationFn: async () => {
+      if (carDirty) {
+        await housesApi.updateCar(car.id, {
+          ...carPayload(draft),
+          accept_terms: acceptTerms,
+        })
+        // Refresh the list here rather than in onDone: the schedule below may
+        // still fail, and this half is stored either way. Leaving it until
+        // afterwards let the card go on offering to save fields the server had
+        // already taken, while the toast said they were saved.
+        await queryClient.invalidateQueries({ queryKey: ["cars"] })
+      }
+      if (!scheduleDirty) return null
+      try {
+        return await carSharingApi.replaceBlocks(car.id, gridToBlocks(grid))
+      } catch (error) {
+        // The fields are already stored at this point. Reporting this as a plain
+        // failure would read as "nothing was saved" and invite retyping them.
+        if (carDirty) throw new ScheduleSaveError()
+        throw error
+      }
+    },
+    successTitle: "Ændringerne er gemt",
+    successMessage: (saved: CarBlock[] | null) =>
+      saved ? describeGrid(blocksToGrid(saved)) : "",
+    errorTitle: (error: unknown) =>
+      error instanceof ScheduleSaveError
+        ? "Ugeskemaet blev ikke gemt"
+        : "Kunne ikke gemme ændringerne",
+    errorFallback: (error: unknown) =>
+      error instanceof ScheduleSaveError
+        ? "Bilens oplysninger er gemt. Ugeskemaet er ikke — prøv at gemme igen."
+        : "Prøv igen.",
+    onDone: (saved: CarBlock[] | null) => {
+      setAcceptTerms(false)
+      setGridTouched(false)
+      // Show what the server actually stored — hour runs collapse into blocks —
+      // without waiting for the refetch the wrapper has just triggered.
+      if (saved) {
+        queryClient.setQueryData(["carsharing", "blocks", car.id], saved)
+      }
     },
   })
 
@@ -155,17 +214,12 @@ function MyCarCard({ car }: MyCarCardProps) {
     },
   })
 
-  const saveScheduleMutation = useCarSharingMutation({
-    mutationFn: () => carSharingApi.replaceBlocks(car.id, gridToBlocks(grid)),
-    successTitle: "Ugeskemaet er gemt",
-    successMessage: (saved: CarBlock[]) => describeGrid(blocksToGrid(saved)),
-    errorTitle: "Kunne ikke gemme ugeskemaet",
-    onDone: (saved: CarBlock[]) => {
-      const loaded = blocksToGrid(saved)
-      setGrid(loaded)
-      setSavedGrid(loaded)
-    },
-  })
+  function discardChanges() {
+    setDraft(car)
+    setAcceptTerms(false)
+    setGrid(savedGrid)
+    setGridTouched(false)
+  }
 
   return (
     // overflow must stay visible: Mantine's Card sets overflow:hidden, which
@@ -204,6 +258,14 @@ function MyCarCard({ car }: MyCarCardProps) {
               {car.is_shared && !car.has_accepted_current_terms && (
                 <Badge color="yellow" variant="light" size="sm">
                   Vilkår mangler accept
+                </Badge>
+              )}
+              {/* The one badge that is about the draft rather than the saved car.
+                  The save sits below the week grid now, so a card folded away
+                  mid-edit has to admit that something is still waiting. */}
+              {dirty && (
+                <Badge color="blue" variant="light" size="sm">
+                  Ikke gemt
                 </Badge>
               )}
             </Group>
@@ -329,7 +391,7 @@ function MyCarCard({ car }: MyCarCardProps) {
                 max={2100}
               />
               <NumberInput
-                label="Pladser"
+                label="Sæder"
                 value={draft.seats ?? ""}
                 onChange={(value) =>
                   setDraft({
@@ -441,24 +503,6 @@ function MyCarCard({ car }: MyCarCardProps) {
               autosize
               minRows={2}
             />
-            <Button
-              loading={saveMutation.isPending}
-              disabled={termsBlockSave || plateBlocksSave || rateError !== null}
-              onClick={() => saveMutation.mutate(undefined)}
-            >
-              Gem bil
-            </Button>
-            {plateBlocksSave && (
-              <Text size="xs" c="dimmed">
-                Udfyld nummerpladen, eller slå "Med i delebilparken" fra.
-              </Text>
-            )}
-            {termsBlockSave && (
-              <Text size="xs" c="dimmed">
-                Bekræft vilkårene for at have bilen i delebilparken.
-              </Text>
-            )}
-
             <Divider
               label="Ugeskema — hvornår er bilen normalt i brug?"
               labelPosition="left"
@@ -468,29 +512,39 @@ function MyCarCard({ car }: MyCarCardProps) {
               sjældent passer.
             </Text>
 
-            <WeekHourGrid value={grid} onChange={setGrid} />
+            <WeekHourGrid
+              value={grid}
+              onChange={(next) => {
+                setGrid(next)
+                setGridTouched(true)
+              }}
+            />
 
             <Text size="xs" c="dimmed">
               {describeGrid(grid)}
             </Text>
+
+            {/* One save for the whole card, at the bottom of it: the fields and
+                the week used to have a button each, which left a household
+                wondering whether it had to press both. */}
             <Group gap="xs" wrap="wrap">
               <Button
-                variant="light"
-                loading={saveScheduleMutation.isPending}
-                disabled={!scheduleDirty}
-                onClick={() => saveScheduleMutation.mutate(undefined)}
+                loading={saveMutation.isPending}
+                disabled={!dirty || blockedReason !== null}
+                onClick={() => saveMutation.mutate(undefined)}
               >
-                Gem ugeskema
+                Gem ændringer
               </Button>
-              {scheduleDirty && (
-                <Button
-                  variant="subtle"
-                  onClick={() => setGrid(blocksToGrid(blocks ?? []))}
-                >
+              {dirty && !saveMutation.isPending && (
+                <Button variant="subtle" onClick={discardChanges}>
                   Fortryd
                 </Button>
               )}
             </Group>
+            <Text size="xs" c="dimmed">
+              {blockedReason ??
+                unsavedChangesHint({ car: carDirty, schedule: scheduleDirty })}
+            </Text>
 
             <Divider />
             <Group justify="flex-end">

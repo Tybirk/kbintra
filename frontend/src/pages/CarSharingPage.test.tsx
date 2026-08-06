@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
-import { screen, waitFor } from "@testing-library/react"
+import { fireEvent, screen, waitFor } from "@testing-library/react"
 
 import userEvent from "@testing-library/user-event"
+
+import { notifications } from "@mantine/notifications"
 
 import { render, mockUser } from "../test/testUtils"
 
@@ -38,6 +40,8 @@ const mockGetLoans = vi.fn()
 
 const mockGetBlocks = vi.fn()
 
+const mockReplaceBlocks = vi.fn()
+
 const mockCompleteLoan = vi.fn()
 
 const mockCancelLoan = vi.fn()
@@ -65,6 +69,8 @@ vi.mock("../api/carsharing", async () => {
       createBlock: vi.fn(),
 
       deleteBlock: vi.fn(),
+
+      replaceBlocks: (...args: unknown[]) => mockReplaceBlocks(...args),
 
       requestLoan: vi.fn(),
 
@@ -239,6 +245,11 @@ describe("CarSharingPage", () => {
       ],
       text: "Vilkår for lån af bil i delebilparken\n\n- Prisen er 3,94 kr. pr. kørt km.",
       default_rate_per_km: "3.94",
+      // Consent is per terms version. Most tests borrow as someone who has not
+      // accepted yet, so the tick is on screen.
+      accepted: false,
+      accepted_version: "",
+      accepted_at: null,
     })
 
     mockGetSharedCars.mockResolvedValue({
@@ -600,7 +611,7 @@ describe("CarSharingPage", () => {
     // ...but none of the options are reachable yet.
     expect(screen.queryByLabelText("Mærke")).not.toBeInTheDocument()
     expect(
-      screen.queryByRole("button", { name: "Gem bil" }),
+      screen.queryByRole("button", { name: "Gem ændringer" }),
     ).not.toBeInTheDocument()
     // A collapsed card has no schedule to fetch.
     expect(mockGetBlocks).not.toHaveBeenCalled()
@@ -612,8 +623,170 @@ describe("CarSharingPage", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Mærke")).toBeInTheDocument()
     })
-    expect(screen.getByRole("button", { name: "Gem bil" })).toBeInTheDocument()
     expect(mockGetBlocks).toHaveBeenCalled()
+
+    // One save for the whole card. The fields and the week schedule used to have
+    // a button each, which left a household wondering whether to press both.
+    expect(screen.getAllByRole("button", { name: /^Gem/ })).toHaveLength(1)
+    const save = screen.getByRole("button", { name: "Gem ændringer" })
+    expect(save).toBeDisabled()
+    expect(screen.getByText("Alt er gemt.")).toBeInTheDocument()
+    expect(screen.queryByText("Ikke gemt")).not.toBeInTheDocument()
+  })
+
+  /** A save that the car list then reflects, the way the server's would. */
+  function updateCarLikeTheServer(overrides: Partial<Car>) {
+    mockUpdateCar.mockImplementation(async () => {
+      const saved = ownCar(overrides)
+      mockGetCars.mockResolvedValue([saved])
+      return saved
+    })
+  }
+
+  it("saves the fields and the painted week in a single press", async () => {
+    mockGetCars.mockResolvedValue([ownCar()])
+    updateCarLikeTheServer({ color: "sort" })
+    mockReplaceBlocks.mockResolvedValue([
+      {
+        id: 1,
+        days_of_week: [0],
+        start_time: "07:00:00",
+        end_time: "08:00:00",
+      },
+    ])
+
+    render(<CarSharingPage />)
+
+    await userEvent.click(screen.getByRole("tab", { name: "Mine biler" }))
+    await userEvent.click(
+      screen.getByRole("button", { name: /Indstillinger for Skoda Octavia/ }),
+    )
+
+    await userEvent.clear(await screen.findByLabelText("Farve"))
+    await userEvent.type(screen.getByLabelText("Farve"), "sort")
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Man 07:00" }))
+    fireEvent.pointerUp(window)
+
+    // The card says what the one press covers, and admits it even folded away.
+    expect(
+      screen.getByText("Bilens oplysninger og ugeskemaet er ændret."),
+    ).toBeInTheDocument()
+    expect(screen.getByText("Ikke gemt")).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole("button", { name: "Gem ændringer" }))
+
+    await waitFor(() => {
+      expect(mockUpdateCar).toHaveBeenCalledWith(
+        7,
+        expect.objectContaining({ color: "sort" }),
+      )
+    })
+    expect(mockReplaceBlocks).toHaveBeenCalledWith(7, [
+      { days_of_week: [0], start_time: "07:00", end_time: "08:00" },
+    ])
+    await waitFor(() => {
+      expect(screen.getByText("Alt er gemt.")).toBeInTheDocument()
+    })
+  })
+
+  it("only sends the half that changed", async () => {
+    // Painting a week must not also re-PATCH fifteen untouched fields, and vice
+    // versa — otherwise one button would mean two requests every time.
+    mockGetCars.mockResolvedValue([ownCar()])
+    mockReplaceBlocks.mockResolvedValue([])
+
+    render(<CarSharingPage />)
+
+    await userEvent.click(screen.getByRole("tab", { name: "Mine biler" }))
+    await userEvent.click(
+      screen.getByRole("button", { name: /Indstillinger for Skoda Octavia/ }),
+    )
+
+    fireEvent.pointerDown(
+      await screen.findByRole("button", { name: "Man 07:00" }),
+    )
+    fireEvent.pointerUp(window)
+    expect(screen.getByText("Ugeskemaet er ændret.")).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole("button", { name: "Gem ændringer" }))
+
+    await waitFor(() => {
+      expect(mockReplaceBlocks).toHaveBeenCalled()
+    })
+    expect(mockUpdateCar).not.toHaveBeenCalled()
+  })
+
+  it("keeps a painted week when only the schedule fails to save", async () => {
+    // Two endpoints behind one button, so a press can land halfway. The week has
+    // to survive for "prøv at gemme igen" to be a real instruction.
+    mockGetCars.mockResolvedValue([ownCar()])
+    updateCarLikeTheServer({ color: "sort" })
+    mockReplaceBlocks.mockRejectedValue(new Error("offline"))
+
+    render(<CarSharingPage />)
+
+    await userEvent.click(screen.getByRole("tab", { name: "Mine biler" }))
+    await userEvent.click(
+      screen.getByRole("button", { name: /Indstillinger for Skoda Octavia/ }),
+    )
+
+    await userEvent.clear(await screen.findByLabelText("Farve"))
+    await userEvent.type(screen.getByLabelText("Farve"), "sort")
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Man 07:00" }))
+    fireEvent.pointerUp(window)
+
+    await userEvent.click(screen.getByRole("button", { name: "Gem ændringer" }))
+
+    await waitFor(() => {
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Ugeskemaet blev ikke gemt",
+          message: expect.stringContaining("Bilens oplysninger er gemt"),
+          color: "red",
+        }),
+      )
+    })
+    // The refetch that follows a failed save must not wipe the painted hour.
+    await waitFor(() => {
+      expect(screen.getByText("Ugeskemaet er ændret.")).toBeInTheDocument()
+    })
+    expect(screen.getByRole("button", { name: "Man 07:00" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+    expect(screen.getByRole("button", { name: "Gem ændringer" })).toBeEnabled()
+  })
+
+  it("lets me put the whole card back the way it was", async () => {
+    mockGetCars.mockResolvedValue([ownCar()])
+
+    render(<CarSharingPage />)
+
+    await userEvent.click(screen.getByRole("tab", { name: "Mine biler" }))
+    await userEvent.click(
+      screen.getByRole("button", { name: /Indstillinger for Skoda Octavia/ }),
+    )
+
+    await userEvent.clear(await screen.findByLabelText("Farve"))
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Man 07:00" }))
+    fireEvent.pointerUp(window)
+
+    expect(screen.getByRole("button", { name: "Man 07:00" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+    expect(screen.getByText("Ikke gemt")).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole("button", { name: "Fortryd" }))
+
+    expect(screen.getByLabelText("Farve")).toHaveValue("blå")
+    expect(screen.getByRole("button", { name: "Man 07:00" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    )
+    expect(screen.getByText("Alt er gemt.")).toBeInTheDocument()
+    expect(mockUpdateCar).not.toHaveBeenCalled()
+    expect(mockReplaceBlocks).not.toHaveBeenCalled()
   })
 
   it("marks a car that is not shared and one that cannot be", async () => {
@@ -651,7 +824,7 @@ describe("CarSharingPage", () => {
     // Stored uppercase, so the input does not let two spellings of one plate in.
     expect(plate).toHaveValue("CD45678")
 
-    await userEvent.click(screen.getByRole("button", { name: "Gem bil" }))
+    await userEvent.click(screen.getByRole("button", { name: "Gem ændringer" }))
 
     await waitFor(() => {
       expect(mockUpdateCar).toHaveBeenCalledWith(
@@ -673,13 +846,15 @@ describe("CarSharingPage", () => {
       screen.getByRole("button", { name: /Indstillinger for Skoda/ }),
     )
 
-    // Not shared and no plate: nothing to block yet.
-    const save = await screen.findByRole("button", { name: "Gem bil" })
-    expect(save).toBeEnabled()
+    // Nothing edited yet, so there is nothing to save either way.
+    const save = await screen.findByRole("button", { name: "Gem ændringer" })
+    expect(save).toBeDisabled()
+    expect(screen.getByText("Alt er gemt.")).toBeInTheDocument()
 
     await userEvent.click(
       screen.getByRole("switch", { name: "Med i delebilparken" }),
     )
+    // Now there is something to save, and a reason it cannot be.
     expect(save).toBeDisabled()
     expect(
       screen.getByText(/Udfyld nummerpladen, eller slå/),
@@ -719,6 +894,45 @@ describe("CarSharingPage", () => {
     expect(send).toBeEnabled()
   })
 
+  it("does not ask a borrower who has already accepted the terms", async () => {
+    // Consent belongs to a version of the text, not to a single loan. Asking at
+    // every request is what teaches people to tick without reading.
+    mockGetTerms.mockResolvedValue({
+      version: "2026-08-01",
+      title: "Vilkår for lån af bil i delebilparken",
+      sections: [],
+      text: "Vilkår",
+      default_rate_per_km: "3.94",
+      accepted: true,
+      accepted_version: "2026-08-01",
+      accepted_at: "2027-06-01T08:00:00Z",
+    })
+
+    render(<CarSharingPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Skoda Octavia")).toBeInTheDocument()
+    })
+    expect(
+      screen.queryByRole("checkbox", {
+        name: "Jeg har læst og accepterer vilkårene",
+      }),
+    ).not.toBeInTheDocument()
+    // Silence would look like a form that forgot to ask, so it says why.
+    expect(
+      screen.getByText(/Du accepterede disse vilkår.*ikke spurgt igen/),
+    ).toBeInTheDocument()
+
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /Vælg Skoda Octavia/ }),
+    )
+
+    // Nothing left to confirm: picking a car is enough to send.
+    expect(
+      screen.getByRole("button", { name: /Send forespørgsel/ }),
+    ).toBeEnabled()
+  })
+
   it("makes an owner accept the terms before sharing a car", async () => {
     mockGetCars.mockResolvedValue([
       ownCar({
@@ -740,7 +954,9 @@ describe("CarSharingPage", () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Gem bil" })).toBeDisabled()
+      expect(
+        screen.getByRole("button", { name: "Gem ændringer" }),
+      ).toBeDisabled()
     })
     await userEvent.click(
       screen.getByRole("checkbox", {
@@ -748,7 +964,9 @@ describe("CarSharingPage", () => {
       }),
     )
 
-    expect(screen.getByRole("button", { name: "Gem bil" })).toBeEnabled()
+    // The tick is the only thing to save on a car that is already shared, so it
+    // has to count as a change of its own.
+    expect(screen.getByRole("button", { name: "Gem ændringer" })).toBeEnabled()
   })
 
   it("does not re-ask an owner who already accepted the current terms", async () => {
@@ -764,7 +982,7 @@ describe("CarSharingPage", () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Gem bil" })).toBeEnabled()
+      expect(screen.getByLabelText("Mærke")).toBeInTheDocument()
     })
     expect(
       screen.queryByRole("checkbox", {
@@ -1087,6 +1305,62 @@ describe("CarSharingPage", () => {
     expect(
       screen.getByText("Bo Låner skal betale dig 422,30 kr."),
     ).toBeInTheDocument()
+  })
+
+  it("invites a message rather than only damage when closing a loan", async () => {
+    mockGetLoans.mockResolvedValue([activeLoan()])
+
+    render(<CarSharingPage />)
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    // A field that only names damage invites nothing else — most of what people
+    // write here is "tak for lån".
+    expect(
+      await screen.findByLabelText("Besked til ejeren (valgfrit)"),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByLabelText("Skader eller ting der ikke virker (valgfrit)"),
+    ).not.toBeInTheDocument()
+    expect(screen.getByText(/Fx\. tak for lån/)).toBeInTheDocument()
+  })
+
+  it("presents the borrower's message as a message, not a warning", async () => {
+    mockGetLoans.mockResolvedValue([
+      activeLoan({
+        status: "completed",
+        is_borrower: false,
+        viewer_role: "lender",
+        can_cancel: false,
+        borrower_name: "Bo Låner",
+        actual_km: 40,
+        amount_due: "160.00",
+        damage_note: "Tak for lån!",
+      }),
+    ])
+
+    render(<CarSharingPage />)
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    await waitFor(() => {
+      expect(screen.getByText("Tak for lån!")).toBeInTheDocument()
+    })
+    // Labelled, so the owner knows who wrote it — and framed neutrally, because
+    // an orange warning triangle turned every courtesy into a claim.
+    expect(screen.getByText("Besked fra låneren")).toBeInTheDocument()
+  })
+
+  it("prefixes dates with the weekday", async () => {
+    // "12. jun." makes an owner count; "lør. 12. jun." does not.
+    mockGetLoans.mockResolvedValue([activeLoan()])
+
+    render(<CarSharingPage />)
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/^(man|tir|ons|tor|fre|lør|søn)\. \d{1,2}\. /),
+      ).toBeInTheDocument()
+    })
   })
 
   // --- The borrow tab --------------------------------------------------------

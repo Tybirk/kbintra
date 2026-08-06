@@ -62,13 +62,32 @@ export function formatRatePerKm(rate: number | string): string {
   return `${formatKr(rate)}/km`
 }
 
+/**
+ * One date vocabulary for bildeling, weekday first.
+ *
+ * "Hvornår skal bilen bruges" is a question about the day of the week before it
+ * is one about the date: a borrower planning a Saturday trip, and an owner
+ * checking whether that is a workday, both had to count from "12. jun." on their
+ * own. The Danish dayjs locale renders `ddd` as "man.", "tir.", … (set in
+ * main.tsx and in the test setup).
+ */
+export const SHORT_DATE_TIME = "ddd D. MMM HH:mm"
+
+/** The same, with the year — for a window that may be months old or ahead. */
+export const LONG_DATE_TIME = "ddd D. MMM YYYY HH:mm"
+
+/** A single moment, e.g. "man. 12. jun. 09:00". */
+export function formatDateTime(value: string): string {
+  return dayjs(value).format(SHORT_DATE_TIME)
+}
+
 export function formatWindow(start: string, end: string): string {
   const from = dayjs(start)
   const to = dayjs(end)
   if (from.isSame(to, "day")) {
-    return `${from.format("D. MMM YYYY HH:mm")}–${to.format("HH:mm")}`
+    return `${from.format(LONG_DATE_TIME)}–${to.format("HH:mm")}`
   }
-  return `${from.format("D. MMM YYYY HH:mm")} til ${to.format("D. MMM YYYY HH:mm")}`
+  return `${from.format(LONG_DATE_TIME)} til ${to.format(LONG_DATE_TIME)}`
 }
 
 /**
@@ -158,8 +177,13 @@ interface CarSharingMutationOptions<TArgs, TResult> {
   mutationFn: (args: TArgs) => Promise<TResult>
   successTitle?: string | ((result: TResult) => string)
   successMessage?: string | ((result: TResult) => string)
-  errorTitle: string
-  errorFallback?: string
+  /**
+   * A function when one press can fail in more than one way. The car card saves
+   * two endpoints behind a single button, so it has to be able to say which half
+   * failed instead of reporting a save that half-landed as a plain failure.
+   */
+  errorTitle: string | ((error: unknown) => string)
+  errorFallback?: string | ((error: unknown) => string)
   onDone?: (result: TResult) => void
 }
 
@@ -193,8 +217,14 @@ export function useCarSharingMutation<TArgs, TResult>({
     },
     onError: (error: unknown) => {
       notifications.show({
-        title: errorTitle,
-        message: errorMessage(error, errorFallback),
+        title:
+          typeof errorTitle === "function" ? errorTitle(error) : errorTitle,
+        message: errorMessage(
+          error,
+          typeof errorFallback === "function"
+            ? errorFallback(error)
+            : errorFallback,
+        ),
         color: "red",
       })
       // Refetch on failure too: the usual cause is a card that has gone stale

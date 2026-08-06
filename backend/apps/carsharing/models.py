@@ -129,6 +129,11 @@ class CarLoan(models.Model):
     actual_km = models.PositiveIntegerField(null=True, blank=True)
     expense_amount = models.DecimalField(max_digits=7, decimal_places=2, default=Decimal("0"))
     expense_note = models.CharField(max_length=200, blank=True, default="")
+    # Anything the borrower wants to tell the owner when handing the car back —
+    # damage, something that stopped working, or just "tak for lån". Named for the
+    # case that costs money, but it is not presented as a warning: most of what
+    # lands here is a thank-you, and framing that in orange with a warning
+    # triangle made a courtesy look like a claim.
     damage_note = models.TextField(blank=True, default="")
     amount_due = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)

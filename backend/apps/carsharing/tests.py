@@ -317,13 +317,10 @@ def test_borrower_must_confirm_the_terms(owner_house, borrower_client):
     assert not CarLoan.objects.exists()
 
 
-@pytest.mark.django_db
-def test_a_request_without_the_field_is_refused(owner_house, borrower_client):
-    """Absent must not read as "declined quietly" — the client has to be explicit."""
-    car = _make_car(owner_house)
+def _create_loan_without_terms_field(client, car):
+    """A request that omits accepted_terms entirely, as an accepted borrower's would."""
     start_at, end_at = _window()
-
-    response = borrower_client.post(
+    return client.post(
         reverse("carsharing-loan-list"),
         {
             "start_at": start_at.isoformat(),
@@ -334,8 +331,104 @@ def test_a_request_without_the_field_is_refused(owner_house, borrower_client):
         format="json",
     )
 
+
+@pytest.mark.django_db
+def test_a_first_request_without_the_field_is_refused(owner_house, borrower_client):
+    """Absent must not read as consent from someone who has never given any."""
+    car = _make_car(owner_house)
+
+    response = _create_loan_without_terms_field(borrower_client, car)
+
     assert response.status_code == 400
     assert "accepted_terms" in response.data
+
+
+@pytest.mark.django_db
+def test_the_terms_are_confirmed_once_not_at_every_loan(owner_house, borrower, borrower_client):
+    """The tick is consent to a text, and the text has not changed since.
+
+    Asking at every request is what teaches people to tick without reading.
+    """
+    car = _make_car(owner_house)
+
+    first = _create_loan(borrower_client, [car])
+    assert first.status_code == 201
+
+    borrower.refresh_from_db()
+    assert borrower.carsharing_terms_accepted_version == TERMS_VERSION
+    assert borrower.carsharing_terms_accepted_at is not None
+
+    # A second request, with no tick at all, is accepted on the strength of the
+    # first one.
+    second = _create_loan_without_terms_field(borrower_client, car)
+    assert second.status_code == 201
+    assert CarLoan.objects.count() == 2
+    assert CarLoan.objects.filter(terms_version=TERMS_VERSION).count() == 2
+
+
+@pytest.mark.django_db
+def test_new_terms_ask_the_borrower_again(owner_house, borrower, borrower_client):
+    """A stored acceptance covers one version, not the agreement in general."""
+    car = _make_car(owner_house)
+    borrower.carsharing_terms_accepted_version = "2020-01-01"
+    borrower.carsharing_terms_accepted_at = timezone.now()
+    borrower.save(
+        update_fields=["carsharing_terms_accepted_version", "carsharing_terms_accepted_at"]
+    )
+
+    refused = _create_loan_without_terms_field(borrower_client, car)
+
+    assert refused.status_code == 400
+    assert "vilkårene" in str(refused.data)
+    assert not CarLoan.objects.exists()
+
+    # And accepting the new text is remembered in place of the old.
+    assert _create_loan(borrower_client, [car]).status_code == 201
+    borrower.refresh_from_db()
+    assert borrower.carsharing_terms_accepted_version == TERMS_VERSION
+
+
+@pytest.mark.django_db
+def test_a_refused_request_records_no_acceptance(owner_house, borrower, borrower_client):
+    """The tick is only remembered by a request that actually became a loan."""
+    car = _make_car(owner_house)
+
+    refused = _create_loan(borrower_client, [car], expected_km=0)
+
+    assert refused.status_code == 400
+    borrower.refresh_from_db()
+    assert borrower.carsharing_terms_accepted_version == ""
+
+
+@pytest.mark.django_db
+def test_terms_endpoint_reports_the_borrowers_own_acceptance(borrower, borrower_client):
+    """So the borrow form knows whether to ask, rather than guessing."""
+    before = borrower_client.get(reverse("carsharing-terms"))
+    assert before.data["accepted"] is False
+    assert before.data["accepted_version"] == ""
+    assert before.data["accepted_at"] is None
+
+    borrower.carsharing_terms_accepted_version = TERMS_VERSION
+    borrower.carsharing_terms_accepted_at = timezone.now()
+    borrower.save(
+        update_fields=["carsharing_terms_accepted_version", "carsharing_terms_accepted_at"]
+    )
+
+    after = borrower_client.get(reverse("carsharing-terms"))
+    assert after.data["accepted"] is True
+    assert after.data["accepted_version"] == TERMS_VERSION
+    assert after.data["accepted_at"] is not None
+
+
+@pytest.mark.django_db
+def test_stale_acceptance_is_not_read_as_current(borrower, borrower_client):
+    borrower.carsharing_terms_accepted_version = "2020-01-01"
+    borrower.save(update_fields=["carsharing_terms_accepted_version"])
+
+    response = borrower_client.get(reverse("carsharing-terms"))
+
+    assert response.data["accepted"] is False
+    assert response.data["accepted_version"] == "2020-01-01"
 
 
 @pytest.mark.django_db
@@ -706,6 +799,23 @@ def test_request_notifies_owners_with_count(owner_house, borrower, borrower_clie
         assert "en af 2 spurgte" in notification.message
         assert "den første der siger ja" in notification.message
         assert notification.link.startswith("/bildeling/laan/")
+
+
+@pytest.mark.django_db
+def test_the_notified_window_names_the_weekday(owner_house, owner, borrower_client):
+    """An owner reading "12-06-2027" has to go and count which day that is."""
+    car = _make_car(owner_house)
+    start_at, end_at = _window()
+
+    _create_loan(borrower_client, [car], start=start_at, end=end_at)
+
+    notification = Notification.objects.get(
+        user=owner, notification_type=NotificationType.CAR_LOAN_REQUEST
+    )
+    expected_day = ("man.", "tir.", "ons.", "tor.", "fre.", "lør.", "søn.")[
+        timezone.localtime(start_at).weekday()
+    ]
+    assert f"{expected_day} {timezone.localtime(start_at):%d-%m-%Y %H:%M}" in notification.message
 
 
 @pytest.mark.django_db

@@ -1390,13 +1390,24 @@ def _car_loan_link(loan: Any) -> str:
     return f"/bildeling/laan/{loan.id}"
 
 
+# Monday first, matching datetime.weekday(). Hardcoded rather than left to
+# strftime("%a"), which follows the server's C locale and would say "Mon".
+_DANISH_WEEKDAYS_SHORT = ("man.", "tir.", "ons.", "tor.", "fre.", "lør.", "søn.")
+
+
 def _format_loan_window(loan: Any) -> str:
-    """Danish window description, e.g. "12-06-2027 09:00-14:00"."""
+    """Danish window description, e.g. "lør. 12-06-2027 09:00-14:00".
+
+    The weekday leads, because "when do they need the car" is a question about the
+    day of the week first — an owner reading "12-06-2027" has to go and count.
+    """
     start = loan.start_at.astimezone(_CPH_TZ)
     end = loan.end_at.astimezone(_CPH_TZ)
+    start_day = _DANISH_WEEKDAYS_SHORT[start.weekday()]
     if start.date() == end.date():
-        return f"{start:%d-%m-%Y %H:%M}-{end:%H:%M}"
-    return f"{start:%d-%m-%Y %H:%M} til {end:%d-%m-%Y %H:%M}"
+        return f"{start_day} {start:%d-%m-%Y %H:%M}-{end:%H:%M}"
+    end_day = _DANISH_WEEKDAYS_SHORT[end.weekday()]
+    return f"{start_day} {start:%d-%m-%Y %H:%M} til {end_day} {end:%d-%m-%Y %H:%M}"
 
 
 def _car_household_recipients(car: Any, exclude_user_id: int | None = None) -> QuerySet[User]:

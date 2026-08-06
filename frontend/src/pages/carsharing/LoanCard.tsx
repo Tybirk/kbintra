@@ -14,9 +14,7 @@ import {
   TextInput,
 } from "@mantine/core"
 
-import { IconAlertTriangle, IconInfoCircle } from "@tabler/icons-react"
-
-import dayjs from "dayjs"
+import { IconInfoCircle, IconMessage2 } from "@tabler/icons-react"
 
 import { calculateAmountDue, carSharingApi } from "../../api/carsharing"
 
@@ -27,6 +25,7 @@ import {
 
 import {
   describeSettlement,
+  formatDateTime,
   formatKr,
   formatWindow,
   moneyInputError,
@@ -93,8 +92,11 @@ function CompleteLoanForm({ loan }: CompleteFormProps) {
         value={expenseNote}
         onChange={(event) => setExpenseNote(event.currentTarget.value)}
       />
+      {/* Not "Skader ...": most of what is written here is a thank-you, and a
+          field that only names damage invites nothing else. */}
       <Textarea
-        label="Skader eller ting der ikke virker (valgfrit)"
+        label="Besked til ejeren (valgfrit)"
+        description="Fx. tak for lån, en bemærkning om turen, eller skader og ting der ikke virker."
         value={damageNote}
         onChange={(event) => setDamageNote(event.currentTarget.value)}
         autosize
@@ -225,7 +227,7 @@ function presentLoan(loan: CarLoan): LoanPresentation {
     return {
       // With the date alone, a loan starting in 25 minutes read "starter 6. aug."
       // — today's date, which says nothing.
-      badge: `Aftalt · starter ${dayjs(loan.start_at).format("D. MMM HH:mm")}`,
+      badge: `Aftalt · starter ${formatDateTime(loan.start_at)}`,
       badgeColor: "blue",
       closedNotice: null,
     }
@@ -329,9 +331,9 @@ export function LoanCard({ loan, highlight }: LoanCardProps) {
     isLender && loan.status === "active"
       ? loan.has_started
         ? `Vil du trække bilen tilbage? ${loan.borrower_name} har den lige nu.`
-        : `Vil du trække bilen tilbage? ${loan.borrower_name} regner med den ${dayjs(
+        : `Vil du trække bilen tilbage? ${loan.borrower_name} regner med den ${formatDateTime(
             loan.start_at,
-          ).format("D. MMM HH:mm")}.`
+          )}.`
       : loan.status === "active"
         ? 'Vil du aflyse lånet uden at afregne? Brug "Afslut lån" hvis du har kørt i bilen.'
         : "Vil du aflyse din forespørgsel?"
@@ -520,11 +522,15 @@ export function LoanCard({ loan, highlight }: LoanCardProps) {
               </Stack>
             )}
 
+            {/* Neutral on purpose: this line carries "tak for lån" as often as
+                it carries a scratch, and an orange warning triangle turned every
+                courtesy into something the owner had to brace for. */}
             {loan.status === "completed" && loan.damage_note && (
               <Alert
-                icon={<IconAlertTriangle size={18} />}
-                color="orange"
+                icon={<IconMessage2 size={18} />}
+                color="gray"
                 variant="light"
+                title={loan.is_borrower ? "Din besked" : "Besked fra låneren"}
               >
                 {loan.damage_note}
               </Alert>
@@ -537,8 +543,8 @@ export function LoanCard({ loan, highlight }: LoanCardProps) {
               ) : (
                 <Stack gap="xs">
                   <Text size="xs" c="dimmed">
-                    Lånet starter {dayjs(loan.start_at).format("D. MMM HH:mm")}{" "}
-                    — afslut det først når du har haft bilen.
+                    Lånet starter {formatDateTime(loan.start_at)} — afslut det
+                    først når du har haft bilen.
                   </Text>
                   <Button
                     variant="subtle"

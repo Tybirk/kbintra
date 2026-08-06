@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest"
 
-import { errorMessage, formatRatePerKm, moneyInputError } from "./shared"
+import {
+  errorMessage,
+  formatDateTime,
+  formatRatePerKm,
+  formatWindow,
+  moneyInputError,
+} from "./shared"
 
 function axiosError(data: unknown) {
   return { response: { data } }
@@ -74,5 +80,32 @@ describe("lending for free", () => {
     expect(moneyInputError("0", "en takst")).toBeNull()
     expect(moneyInputError("0,00", "en takst")).toBeNull()
     expect(moneyInputError("-3,50", "en takst")).not.toBeNull()
+  })
+})
+
+// The weekday, not the exact rendering: asserting "lør. 12. juni" would only
+// hold in a timezone, and the point of the change is the prefix.
+const WEEKDAY = String.raw`(man|tir|ons|tor|fre|lør|søn)\.`
+
+describe("dates lead with the weekday", () => {
+  it("puts it in front of a single moment", () => {
+    expect(formatDateTime("2027-06-12T09:00:00Z")).toMatch(
+      new RegExp(String.raw`^${WEEKDAY} \d{1,2}\. \S+ \d{2}:\d{2}$`),
+    )
+  })
+
+  it("puts it in front of a window, and of both ends when they differ", () => {
+    expect(
+      formatWindow("2027-06-12T09:00:00Z", "2027-06-12T14:00:00Z"),
+    ).toMatch(
+      new RegExp(
+        String.raw`^${WEEKDAY} \d{1,2}\. \S+ 2027 \d{2}:\d{2}–\d{2}:\d{2}$`,
+      ),
+    )
+    expect(
+      formatWindow("2027-06-12T09:00:00Z", "2027-06-14T14:00:00Z"),
+    ).toMatch(
+      new RegExp(String.raw`^${WEEKDAY} .* til ${WEEKDAY} .*2027 \d{2}:\d{2}$`),
+    )
   })
 })

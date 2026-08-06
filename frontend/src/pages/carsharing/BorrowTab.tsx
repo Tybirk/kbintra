@@ -35,18 +35,32 @@ import { formatLicensePlate } from "../../utils/licensePlate"
 import {
   conflictMeta,
   errorMessage,
+  formatDateTime,
   formatRatePerKm,
+  LONG_DATE_TIME,
+  SHORT_DATE_TIME,
   TermsConsent,
   useCarSharingMutation,
   useCarSharingTerms,
 } from "./shared"
 
-import type { CarLoan, SharedCar } from "../../types"
+import type { CarLoan, CarSharingTerms, SharedCar } from "../../types"
 
 // --- Tab 1: borrow a car -----------------------------------------------------
 
 interface BorrowTabProps {
   onRequested: (loan: CarLoan) => void
+}
+
+/**
+ * What replaces the tick once a resident has accepted the terms.
+ *
+ * Says when, and says that the silence is deliberate — otherwise a form that
+ * stops asking looks like a form that forgot to.
+ */
+function acceptedTermsNote(terms: CarSharingTerms): string {
+  const when = terms.accepted_at ? ` ${formatDateTime(terms.accepted_at)}` : ""
+  return `Du accepterede disse vilkår${when}, så du bliver ikke spurgt igen — først når vilkårene ændres.`
 }
 
 export function BorrowTab({ onRequested }: BorrowTabProps) {
@@ -71,6 +85,13 @@ export function BorrowTab({ onRequested }: BorrowTabProps) {
   // modal there. Same hook and breakpoint as WeekHourGrid; undefined on the first
   // render, so the falsy branch has to be the desktop one.
   const narrow = useMediaQuery("(max-width: 48em)")
+
+  const { data: terms } = useCarSharingTerms()
+  // Consent belongs to a version of the terms, not to a single loan. Asking at
+  // every request taught people to tick without reading — which is the opposite
+  // of what the tick is for. A new terms date asks again (see TermsView).
+  const termsAlreadyAccepted = terms?.accepted ?? false
+  const termsConfirmed = termsAlreadyAccepted || acceptedTerms
 
   const windowValid = Boolean(start && end && dayjs(end).isAfter(dayjs(start)))
   // The server refuses a longer window; without mirroring it the request 400s and
@@ -98,7 +119,7 @@ export function BorrowTab({ onRequested }: BorrowTabProps) {
         ? "Tidsrummet er allerede forbi — vælg et senere tidspunkt."
         : selected.length === 0
           ? "Vælg mindst én bil."
-          : !acceptedTerms
+          : !termsConfirmed
             ? "Bekræft vilkårene for at sende forespørgslen."
             : null
 
@@ -107,8 +128,6 @@ export function BorrowTab({ onRequested }: BorrowTabProps) {
   // string instead of a Date, which @mantine/dates 9.0-alpha is known to do.
   const startIso = windowValid ? dayjs(start).toISOString() : ""
   const endIso = windowValid ? dayjs(end).toISOString() : ""
-
-  const { data: terms } = useCarSharingTerms()
 
   const {
     data: sharedCars,
@@ -169,7 +188,9 @@ export function BorrowTab({ onRequested }: BorrowTabProps) {
   // buttons ("‹", "›", "✓"), which is the whole month navigation.
   const pickerProps = {
     clearable: false,
-    valueFormat: narrow ? "D. MMM HH:mm" : "D. MMM YYYY HH:mm",
+    // Weekday first, for the same reason as everywhere else in bildeling: the
+    // trip is planned as "on Saturday" long before it is planned as "the 12th".
+    valueFormat: narrow ? SHORT_DATE_TIME : LONG_DATE_TIME,
     dropdownType: narrow ? "modal" as const : "popover" as const,
     minDate: new Date(),
     nextLabel: "Næste måned",
@@ -282,7 +303,7 @@ export function BorrowTab({ onRequested }: BorrowTabProps) {
             />
           </Group>
           <NumberInput
-            label="Mindst antal pladser (valgfrit)"
+            label="Mindst antal sæder (valgfrit)"
             value={minSeats}
             onChange={setMinSeats}
             min={1}
@@ -389,7 +410,7 @@ export function BorrowTab({ onRequested }: BorrowTabProps) {
                       </Group>
                       <Text size="sm" c="dimmed">
                         {[
-                          car.seats ? `${car.seats} pladser` : null,
+                          car.seats ? `${car.seats} sæder` : null,
                           car.is_electric ? "Elbil" : null,
                           car.has_isofix ? "Isofix" : null,
                           car.has_tow_hitch ? "Træk" : null,
@@ -420,12 +441,14 @@ export function BorrowTab({ onRequested }: BorrowTabProps) {
 
       {/* The terms themselves stay here, where there is room to read them; the
           tick that accepts them lives in the bar below. The bar used to cover
-          the checkbox it was telling the borrower to find. */}
+          the checkbox it was telling the borrower to find. Once accepted they
+          stay readable — only the tick goes away. */}
       {terms && (
         <TermsConsent
           collapsible
           hideCheckbox
           terms={terms}
+          intro={termsAlreadyAccepted ? acceptedTermsNote(terms) : undefined}
           label="Jeg har læst og accepterer vilkårene"
           checked={acceptedTerms}
           onChange={setAcceptedTerms}
@@ -449,7 +472,7 @@ export function BorrowTab({ onRequested }: BorrowTabProps) {
         }}
       >
         <Stack gap="xs">
-          {terms && (
+          {terms && !termsAlreadyAccepted && (
             <Checkbox
               label="Jeg har læst og accepterer vilkårene"
               checked={acceptedTerms}

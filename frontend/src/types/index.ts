@@ -323,6 +323,15 @@ export interface CarSharingTerms {
   text: string
 
   default_rate_per_km: string
+
+  /** Whether this resident has already accepted the version in force as a
+   *  borrower. Consent is asked for once per version, not once per loan. */
+  accepted: boolean
+
+  /** The version they did accept; "" if never. */
+  accepted_version: string
+
+  accepted_at: string | null
 }
 
 export interface House {

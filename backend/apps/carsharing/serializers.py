@@ -315,16 +315,10 @@ class CarLoanCreateSerializer(serializers.Serializer):
     needs_tow_hitch = serializers.BooleanField(required=False, default=False)
     min_seats = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=9)
     note = serializers.CharField(required=False, allow_blank=True, default="")
-    # Required rather than defaulting to False, so a client that forgets the field
-    # is told to fix it instead of quietly sending an unconfirmed request.
-    accepted_terms = serializers.BooleanField()
-
-    def validate_accepted_terms(self, value):
-        if not value:
-            raise serializers.ValidationError(
-                "Du skal bekræfte at du har læst vilkårene, før du kan låne en bil."
-            )
-        return value
+    # The tick from *this* request. Optional, because a resident who has already
+    # accepted the terms in force is not asked again — see validate(), which is
+    # where the two sources of consent are weighed together.
+    accepted_terms = serializers.BooleanField(required=False, default=False)
 
     def validate(self, attrs):
         start_at, end_at = attrs["start_at"], attrs["end_at"]
@@ -349,6 +343,18 @@ class CarLoanCreateSerializer(serializers.Serializer):
             )
 
         user = self.context["request"].user
+        # Consent, from either the tick just given or the one this resident gave
+        # the last time the terms changed. Asking at every request taught people
+        # to tick without reading, which is the opposite of what consent is for.
+        if not attrs["accepted_terms"] and user.carsharing_terms_accepted_version != TERMS_VERSION:
+            raise serializers.ValidationError(
+                {
+                    "accepted_terms": (
+                        "Du skal bekræfte at du har læst vilkårene, før du kan låne en bil."
+                    )
+                }
+            )
+
         cars = list(borrowable_cars().filter(id__in=car_ids).select_related("house"))
         if len(cars) != len(car_ids):
             raise serializers.ValidationError(
@@ -368,9 +374,21 @@ class CarLoanCreateSerializer(serializers.Serializer):
         validated_data.pop("car_ids")
         # Consent is recorded as terms_version on the loan, not as a column of
         # its own; the tick itself has served its purpose once validated.
-        validated_data.pop("accepted_terms")
+        ticked = validated_data.pop("accepted_terms")
+        user = self.context["request"].user
+        if ticked and user.carsharing_terms_accepted_version != TERMS_VERSION:
+            # Remember it, so this is the last time this resident is asked for
+            # these terms. Written with update() rather than save(): a concurrent
+            # profile edit must not be clobbered by a stale in-memory user.
+            now = timezone.now()
+            type(user).objects.filter(pk=user.pk).update(
+                carsharing_terms_accepted_version=TERMS_VERSION,
+                carsharing_terms_accepted_at=now,
+            )
+            user.carsharing_terms_accepted_version = TERMS_VERSION
+            user.carsharing_terms_accepted_at = now
         loan = CarLoan.objects.create(
-            borrower=self.context["request"].user,
+            borrower=user,
             terms_version=TERMS_VERSION,
             **validated_data,
         )
