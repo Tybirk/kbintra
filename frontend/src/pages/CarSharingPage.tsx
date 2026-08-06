@@ -35,8 +35,11 @@ export default function CarSharingPage() {
 
   return (
     <Container size="md" py="md">
+      {/* The navbar entry stays "Bildeling" — this says so on the page itself,
+          where a resident who arrived from a notification or a shared link also
+          sees it. Remove the parenthesis when the feature goes live for real. */}
       <Title order={2} mb="xs">
-        Bildeling
+        Bildeling (kun til test)
       </Title>
       <Text size="sm" c="dimmed" mb="md">
         Et overblik og en lommeregner. Et lån bliver til, når en ejer siger ja —
