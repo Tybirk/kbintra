@@ -166,4 +166,21 @@ export const DA_SCHEDULE_LABELS = {
   viewSelectLabel: "Kalendervisning",
 
   moreLabel: (hiddenEventsCount: number) => `+${hiddenEventsCount} mere`,
+
+  // Shown by MobileMonthView on a day with nothing in it. Each page overrides it
+  // with its own noun; this is the fallback so the label can never be English.
+  noEvents: "Ingen begivenheder",
+}
+
+/**
+ * What `@mantine/schedule` hands `onTimeSlotClick`.
+ *
+ * It passes the whole slot (plus the native event); a handler that only needs
+ * the start is still assignable, so this deliberately names just the two fields
+ * the app uses. Declared here rather than inline because oxlint mangles inline
+ * object types (see CLAUDE.md), and because both calendars need the same shape.
+ */
+export interface TimeSlotClickData {
+  slotStart: string
+  slotEnd: string
 }
