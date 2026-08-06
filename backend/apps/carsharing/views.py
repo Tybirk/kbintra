@@ -18,6 +18,7 @@ from rest_framework.views import APIView
 
 from apps.houses.models import Car
 from apps.notifications.services import (
+    close_car_request_notifications,
     notify_car_loan_accepted,
     notify_car_loan_activated,
     notify_car_loan_cancelled,
@@ -50,6 +51,7 @@ from .serializers import (
 )
 from .services import (
     active_loan_conflict,
+    close_loan_if_unanswerable,
     rate_for_car,
     shared_cars_with_availability,
     visible_loans,
@@ -247,14 +249,24 @@ class CandidateRespondView(APIView):
 
         # Both branches commit inside a transaction and only then notify: sending
         # mail from inside one risks telling people about a state that rolls back.
+        # Answering closes the question — for this household, and for everyone
+        # released by a yes. Without this their request notification keeps its
+        # unread pill and keeps offering an answer that is no longer wanted.
         if action == "accept":
             loan, released = self._accept(candidate, user)
+            close_car_request_notifications(loan)
             notify_car_loan_accepted(candidate)
             notify_car_loan_activated(loan, user)
             for item in released:
+                # A household that offered two cars releases its own other car by
+                # saying yes. Telling it "en anden ejer sagde ja først" would be a
+                # lie to the very people who just accepted — the rival is them.
+                if item.car.house_id == candidate.car.house_id:
+                    continue
                 notify_car_loan_candidate_closed(item)
         else:
             loan = self._decline(candidate, user)
+            close_car_request_notifications(loan, candidate.car)
             notify_car_loan_declined(candidate)
 
         broadcast_car_sharing_update(loan_audience(loan))
@@ -304,11 +316,7 @@ class CandidateRespondView(APIView):
                     raise ValidationError(self._closed_reason(loan, candidate))
                 raise ValidationError("Der er allerede svaret på denne forespørgsel.")
 
-            nobody_left = not loan.candidates.filter(status=CarLoanCandidate.Status.ASKED).exists()
-            if nobody_left:
-                CarLoan.objects.filter(pk=loan.pk, status=CarLoan.Status.REQUESTED).update(
-                    status=CarLoan.Status.DECLINED
-                )
+            close_loan_if_unanswerable(loan)
             loan.refresh_from_db()
 
         candidate.refresh_from_db()
@@ -466,6 +474,8 @@ class CancelLoanView(APIView):
             )
             loan.refresh_from_db()
 
+        # A withdrawn request is no longer anybody's to answer.
+        close_car_request_notifications(loan)
         notify_car_loan_cancelled(loan, user)
         broadcast_car_sharing_update(loan_audience(loan))
         return Response(CarLoanSerializer(loan, context={"request": request}).data)

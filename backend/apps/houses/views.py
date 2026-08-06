@@ -2,8 +2,10 @@
 Views for House models.
 """
 
+from django.db import transaction
+from django.db.models import ProtectedError
 from rest_framework import generics, permissions, status
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -230,3 +232,43 @@ class CarDetailView(generics.RetrieveUpdateDestroyAPIView):
 
         output_serializer = CarSerializer(instance)
         return Response(output_serializer.data)
+
+    def perform_destroy(self, instance):
+        """Remove a car, leaving no neighbour waiting on it and no 500 behind.
+
+        Two things can go wrong here and both used to reach the resident raw.
+        A car that has ever been lent out is referenced by CarLoan.car, which is
+        PROTECTed so the settled history stays answerable — that has to be a
+        sentence, not an unhandled ProtectedError. And a car with an unanswered
+        request would take its candidacy down with it (CarLoanCandidate.car is
+        CASCADE), leaving the borrower waiting for a household that no longer has
+        anything to answer with.
+
+        ProtectedError is caught rather than pre-checked so that any protected
+        relation added later is covered too, with no check-then-delete window.
+        """
+        from apps.carsharing.realtime import broadcast_car_sharing_update, loan_audience
+        from apps.carsharing.services import withdraw_car_from_open_requests
+        from apps.notifications.services import (
+            close_car_request_notifications,
+            notify_car_loan_declined,
+        )
+
+        with transaction.atomic():
+            withdrawn = withdraw_car_from_open_requests(instance, by_user=self.request.user)
+            try:
+                instance.delete()
+            except ProtectedError as exc:
+                # Rolls back the withdrawals above, so a refused delete changes
+                # nothing at all.
+                raise ValidationError(
+                    "Bilen kan ikke fjernes, fordi den har været lånt ud. "
+                    'Slå "Med i delebilparken" fra i stedet, hvis den ikke skal kunne lånes.'
+                ) from exc
+
+        # Only once the removal is real: telling someone their request is dead and
+        # then rolling the delete back would be worse than saying nothing.
+        for candidate in withdrawn:
+            close_car_request_notifications(candidate.loan, instance)
+            notify_car_loan_declined(candidate)
+            broadcast_car_sharing_update(loan_audience(candidate.loan))

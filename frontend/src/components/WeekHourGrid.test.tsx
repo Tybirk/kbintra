@@ -235,14 +235,34 @@ describe("WeekHourGrid", () => {
     expect(state.grid[5][7]).toBe(false)
   })
 
-  it("clears everything with Ryd", () => {
+  it("clears everything with Ryd, once confirmed", () => {
+    const confirmSpy = vi
+      .spyOn(window, "confirm")
+      .mockImplementation(() => true)
     const filled = emptyGrid()
     filled[3][9] = true
     const { state } = renderGrid(filled)
 
     fireEvent.click(screen.getByRole("button", { name: "Ryd" }))
 
+    expect(confirmSpy).toHaveBeenCalled()
     expect(countPaintedHours(state.grid)).toBe(0)
+    confirmSpy.mockRestore()
+  })
+
+  // The smallest control on the screen wipes a whole week of painting.
+  it("keeps the week when Ryd is declined", () => {
+    const confirmSpy = vi
+      .spyOn(window, "confirm")
+      .mockImplementation(() => false)
+    const filled = emptyGrid()
+    filled[3][9] = true
+    const { state } = renderGrid(filled)
+
+    fireEvent.click(screen.getByRole("button", { name: "Ryd" }))
+
+    expect(countPaintedHours(state.grid)).toBe(1)
+    confirmSpy.mockRestore()
   })
 
   it("counts the painted hours in the hint text", () => {

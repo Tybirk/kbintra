@@ -168,7 +168,10 @@ function MyCarCard({ car }: MyCarCardProps) {
   })
 
   return (
-    <Card withBorder radius="md" padding="md">
+    // overflow must stay visible: Mantine's Card sets overflow:hidden, which
+    // makes it the scrollport for anything inside and silently stops the week
+    // grid's sticky day header (Man…Søn) from pinning at all.
+    <Card withBorder radius="md" padding="md" style={{ overflow: "visible" }}>
       <Stack gap="sm">
         <UnstyledButton
           onClick={() => setExpanded((open) => !open)}
@@ -226,9 +229,10 @@ function MyCarCard({ car }: MyCarCardProps) {
                 setDraft({ ...draft, is_shared: event.currentTarget.checked })
               }
             />
-            {/* The draft, not the saved car: the notice should go away as soon as
-                the plate below is typed, not only once it is saved. */}
-            {!plateFilled && (
+            {/* Only while sharing is actually intended — a household keeping a
+                private car in the directory is not missing anything. The draft,
+                not the saved car, so it clears as soon as the plate is typed. */}
+            {draft.is_shared && !plateFilled && (
               <Alert
                 color="yellow"
                 variant="light"
@@ -251,7 +255,9 @@ function MyCarCard({ car }: MyCarCardProps) {
               </Alert>
             )}
 
-            {terms && !car.has_accepted_current_terms && (
+            {/* Consent to lending terms belongs to a car being lent out. It used
+                to greet every car, pushing Mærke/Model below the fold. */}
+            {draft.is_shared && terms && !car.has_accepted_current_terms && (
               <TermsConsent
                 compact
                 collapsible
@@ -270,30 +276,22 @@ function MyCarCard({ car }: MyCarCardProps) {
               </Text>
             )}
 
-            <Group grow align="flex-end" wrap="wrap">
-              <TextInput
-                label="Nummerplade"
-                description="Kræves for at bilen kan være i delebilparken."
-                value={draft.license_plate}
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    license_plate: event.currentTarget.value.toUpperCase(),
-                  })
-                }
-                placeholder="AB 12 345"
-              />
-              <Checkbox
-                label="Elbil"
-                checked={draft.is_electric}
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    is_electric: event.currentTarget.checked,
-                  })
-                }
-              />
-            </Group>
+            {/* Full width, not sharing a <Group grow> with the Elbil checkbox:
+                that gave a 7-character field half a 360px screen while its
+                two-line label and description wrapped beside a lone tickbox.
+                Elbil now sits with the other yes/no facts about the car. */}
+            <TextInput
+              label="Nummerplade"
+              description="Kræves for at bilen kan være i delebilparken."
+              value={draft.license_plate}
+              onChange={(event) =>
+                setDraft({
+                  ...draft,
+                  license_plate: event.currentTarget.value.toUpperCase(),
+                })
+              }
+              placeholder="AB 12 345"
+            />
             <Group grow wrap="wrap">
               <TextInput
                 label="Mærke"
@@ -366,6 +364,16 @@ function MyCarCard({ car }: MyCarCardProps) {
               }
             />
             <Group gap="md" wrap="wrap">
+              <Checkbox
+                label="Elbil"
+                checked={draft.is_electric}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    is_electric: event.currentTarget.checked,
+                  })
+                }
+              />
               <Checkbox
                 label="Træk"
                 checked={draft.has_tow_hitch}
@@ -546,22 +554,23 @@ function AddCarCard() {
     <Card withBorder radius="md" padding="md">
       <Stack gap="sm">
         <Text fw={600}>Tilføj en bil til din husstand</Text>
-        <Group grow align="flex-end" wrap="wrap">
-          <TextInput
-            label="Nummerplade (valgfri)"
-            description="Kræves først når bilen skal med i delebilparken."
-            value={plate}
-            onChange={(event) =>
-              setPlate(event.currentTarget.value.toUpperCase())
-            }
-            placeholder="AB 12 345"
-          />
-          <Checkbox
-            label="Elbil"
-            checked={isElectric}
-            onChange={(event) => setIsElectric(event.currentTarget.checked)}
-          />
-        </Group>
+        {/* Full width, like the edit form: halving a 360px screen left the label
+            "Nummerplade (valgfri)" wrapping over two lines and its description
+            over three, beside a column holding one 20px tickbox. */}
+        <TextInput
+          label="Nummerplade (valgfri)"
+          description="Kræves først når bilen skal med i delebilparken."
+          value={plate}
+          onChange={(event) =>
+            setPlate(event.currentTarget.value.toUpperCase())
+          }
+          placeholder="AB 12 345"
+        />
+        <Checkbox
+          label="Elbil"
+          checked={isElectric}
+          onChange={(event) => setIsElectric(event.currentTarget.checked)}
+        />
         <Button
           variant="light"
           leftSection={<IconPlus size={16} />}

@@ -168,10 +168,18 @@ def shared_cars_with_availability(
             conflict, note = "loan", "Udlånt i tidsrummet"
         else:
             block = schedule_conflict(list(car.blocks.all()), start_at, end_at)
+            asked = has_open_request(car.id, start_at, end_at, exclude_loan_id=exclude_loan_id)
             if block is not None:
                 conflict = "schedule"
-                note = "Normalt optaget"
-            elif has_open_request(car.id, start_at, end_at, exclude_loan_id=exclude_loan_id):
+                # The badge already says "Normalt optaget"; repeating it here told
+                # the borrower nothing the badge had not, so say what it means for
+                # them instead — that the schedule is a guess they may override.
+                note = "Bilen plejer at være i brug her, men spørg endelig"
+                # A real, concrete request used to be hidden behind the advisory
+                # schedule because this was an if/elif on the same slot.
+                if asked:
+                    note += ". Der er også allerede spurgt om den i tidsrummet"
+            elif asked:
                 conflict = "requested"
                 note = "Der er allerede spurgt om denne bil i tidsrummet"
 
@@ -202,3 +210,56 @@ def shared_cars_with_availability(
 def rate_for_car(car: Car):
     """The rate to snapshot onto a loan when it is activated."""
     return car.rate_per_km if car.rate_per_km is not None else DEFAULT_RATE_PER_KM
+
+
+def close_loan_if_unanswerable(loan) -> bool:
+    """Finish a request that nobody can answer any more.
+
+    A REQUESTED loan with no ASKED candidate left is over: leaving it open makes
+    the borrower wait for households that have nothing left to say. Both ways a
+    candidate can stop being answerable — a household declining, and a car being
+    removed from the delebilpark — go through here, so the rule cannot end up
+    implemented twice and differently.
+    """
+    if loan.candidates.filter(status=CarLoanCandidate.Status.ASKED).exists():
+        return False
+    return bool(
+        CarLoan.objects.filter(pk=loan.pk, status=CarLoan.Status.REQUESTED).update(
+            status=CarLoan.Status.DECLINED
+        )
+    )
+
+
+def withdraw_car_from_open_requests(car: Car, *, by_user) -> list:
+    """Answer, on a departing car's behalf, every request still waiting on it.
+
+    Removing a car cascades its candidacies away. Without this the borrower is
+    left waiting on a household that no longer has anything to answer with — an
+    open request with a blank "Spurgt:" line and nobody who can end it.
+
+    Removal is treated as that household saying no, because that is what it means
+    to the borrower. Returns the candidates as they were answered, so the caller
+    can notify from them after the delete has actually gone through.
+    """
+    candidates = list(
+        CarLoanCandidate.objects.select_related(
+            "loan", "loan__borrower", "car", "car__house"
+        ).filter(
+            car=car,
+            status=CarLoanCandidate.Status.ASKED,
+            loan__status=CarLoan.Status.REQUESTED,
+        )
+    )
+    if not candidates:
+        return []
+
+    CarLoanCandidate.objects.filter(pk__in=[item.pk for item in candidates]).update(
+        status=CarLoanCandidate.Status.DECLINED,
+        responded_by=by_user,
+        responded_at=timezone.now(),
+    )
+    for candidate in candidates:
+        candidate.status = CarLoanCandidate.Status.DECLINED
+        candidate.responded_by = by_user
+        close_loan_if_unanswerable(candidate.loan)
+    return candidates

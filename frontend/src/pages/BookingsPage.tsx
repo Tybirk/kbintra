@@ -54,6 +54,8 @@ import {
   expandMultiDayEvents,
 } from "../utils/scheduleHelpers"
 
+import type { TimeSlotClickData } from "../utils/scheduleHelpers"
+
 import { CreateBookingModal, EditBookingModal } from "./bookings/BookingModals"
 
 import { showErrorNotification } from "../utils/errorNotification"
@@ -343,7 +345,7 @@ export default function BookingsPage() {
   )
 
   const handleTimeSlotClick = useCallback(
-    (slotStart: string) => {
+    ({ slotStart }: TimeSlotClickData) => {
       const date = new Date(slotStart.replace(" ", "T"))
 
       setInitialCreateDate(date)
@@ -526,7 +528,7 @@ export default function BookingsPage() {
           date={currentDate}
           onDateChange={setCurrentDate}
           locale="da"
-          labels={DA_SCHEDULE_LABELS}
+          labels={{ ...DA_SCHEDULE_LABELS, noEvents: "Ingen reserveringer" }}
           layout={
             isMobile && mobileViewMode === "oversigt" ? "responsive" : undefined
           }
@@ -639,8 +641,6 @@ export default function BookingsPage() {
             monthYearSelectProps: { labels: DA_SCHEDULE_LABELS },
           }}
           mobileMonthViewProps={{
-            noEventsText: "Ingen reserveringer",
-
             renderHeader: () => (
               <Group justify="space-between" align="center" w="100%">
                 <ActionIcon

@@ -28,8 +28,15 @@ export function MyLoansTab({ highlightLoanId }: MyLoansTabProps) {
 
   // Two lists, and every status must land in exactly one of them — a loan that
   // matches neither disappears from the page altogether.
+  //
+  // "Open" means open *for this viewer*: a household that lost the race or said
+  // no has nothing left to do, so its card belongs under "Tidligere" rather than
+  // sitting above the household's own live loan for the whole of someone else's
+  // booking.
   const isOpen = (loan: CarLoan) =>
-    loan.status === "requested" || loan.status === "active"
+    (loan.status === "requested" || loan.status === "active") &&
+    loan.viewer_role !== "closed_out" &&
+    loan.viewer_role !== "declined"
   const open = (loans ?? []).filter(isOpen)
   const closed = (loans ?? []).filter((loan) => !isOpen(loan))
 

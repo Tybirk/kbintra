@@ -472,7 +472,10 @@ function NotificationCard({
                 </Badge>
               )}
             </Group>
-            <Text size="sm" c="dimmed" lineClamp={3}>
+            {/* Four, not three: at three lines a settlement notification lost
+                its damage note entirely and a bildeling request was cut at
+                "Du er en af 2 spurgt…". */}
+            <Text size="sm" c="dimmed" lineClamp={4}>
               {notification.message}
             </Text>
             <Text size="xs" c="dimmed" mt={4}>

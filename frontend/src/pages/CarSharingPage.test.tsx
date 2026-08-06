@@ -794,8 +794,11 @@ describe("CarSharingPage", () => {
     await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
 
     await waitFor(() => {
+      // Names the car, so several closed cards in "Tidligere" stay apart.
       expect(
-        screen.getByText("En anden ejer var først — du skal ikke gøre mere."),
+        screen.getByText(
+          "En anden ejer var først — du skal ikke gøre mere. (Skoda Octavia)",
+        ),
       ).toBeInTheDocument()
     })
     expect(screen.getByText("Lukket")).toBeInTheDocument()
@@ -828,6 +831,106 @@ describe("CarSharingPage", () => {
       expect(screen.getByText("Du sagde nej")).toBeInTheDocument()
     })
     expect(screen.queryByText("Afventer svar")).not.toBeInTheDocument()
+  })
+
+  // --- The card must not describe things that did not happen ----------------
+
+  it("tells a closed-out household who actually ended the request", async () => {
+    // The borrower withdrew; there was no rival owner. This card used to say
+    // "En anden ejer var først" while the notification beside it said the
+    // borrower had cancelled.
+    mockGetLoans.mockResolvedValue([
+      activeLoan({
+        status: "cancelled",
+        is_borrower: false,
+        viewer_role: "closed_out",
+        can_cancel: false,
+        car: null,
+        borrower_name: "Bo Låner",
+        candidates: [candidate({ status: "closed" })],
+      }),
+    ])
+
+    render(<CarSharingPage />)
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Bo Låner har aflyst forespørgslen/),
+      ).toBeInTheDocument()
+    })
+    expect(
+      screen.queryByText(/En anden ejer var først/),
+    ).not.toBeInTheDocument()
+  })
+
+  it("does not say anyone borrowed a car when nobody did", async () => {
+    mockGetLoans.mockResolvedValue([
+      activeLoan({
+        status: "declined",
+        is_borrower: true,
+        can_cancel: false,
+        car: null,
+        candidates: [
+          candidate({ status: "declined", is_own_household: false }),
+        ],
+      }),
+    ])
+
+    render(<CarSharingPage />)
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    // "Du lånte" for a request no owner ever accepted.
+    await waitFor(() => {
+      expect(screen.getByText(/Du ville låne/)).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/Du lånte/)).not.toBeInTheDocument()
+  })
+
+  it("marks a loan cancelled after the car went out as unsettled", async () => {
+    // Cancelling never settles, so the km bill is silently void — that has to
+    // read differently from a request withdrawn before anyone lent anything.
+    mockGetLoans.mockResolvedValue([
+      activeLoan({
+        status: "cancelled",
+        is_borrower: true,
+        can_cancel: false,
+        activated_at: "2027-06-10T09:00:00Z",
+      }),
+    ])
+
+    render(<CarSharingPage />)
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    await waitFor(() => {
+      expect(screen.getByText("Aflyst uden afregning")).toBeInTheDocument()
+    })
+    // A car did go out, so the past tense is right here.
+    expect(screen.getByText(/Du lånte/)).toBeInTheDocument()
+  })
+
+  it("shows the kilometres actually driven on a settled loan", async () => {
+    mockGetLoans.mockResolvedValue([
+      activeLoan({
+        status: "completed",
+        is_borrower: true,
+        can_cancel: false,
+        expected_km: 25,
+        actual_km: 29,
+        rate_per_km: "3.94",
+        amount_due: "114.26",
+      }),
+    ])
+
+    render(<CarSharingPage />)
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    // The estimate used to sit 60px above the bill it disagreed with. Matched
+    // on the header line specifically — the breakdown below also says "29 km".
+    await waitFor(() => {
+      expect(screen.getByText(/Du lånte · 29 km/)).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/ca\. 25 km/)).not.toBeInTheDocument()
   })
 
   it("renders an owner's own no instead of silently dropping the row", async () => {
@@ -1010,11 +1113,15 @@ describe("CarSharingPage", () => {
       activeLoan({
         status: "declined",
         car: null,
+        // Two *households*, so the count means what the sentence says. Both
+        // candidates used to share one house name, which is the miscount this
+        // line now guards against.
         candidates: [
           candidate({ id: 7, status: "declined", is_own_household: false }),
           candidate({
             id: 8,
             car: 2,
+            car_house_name: "Kløverbakkevej 9",
             status: "declined",
             is_own_household: false,
           }),
