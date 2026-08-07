@@ -251,10 +251,14 @@ def test_the_adopted_amounts_are_in_the_terms():
     joined = " ".join(lines)
     assert "3.000 kr." in joined
     # The three that have to add up: the deductible share, the no-claims sum and
-    # the cap. 7.000 + 3.000 is exactly the cap, so a borrower can never owe more
+    # the cap. 6.000 + 3.000 is exactly the cap, so a borrower can never owe more
     # than the ceiling promises however the bill is composed.
-    assert "7.000 kr." in joined
-    assert "10.000 kr." in joined
+    assert "6.000 kr." in joined
+    assert "9.000 kr." in joined
+    # Each amount is written out in several places, so lowering one and missing a
+    # copy would leave the text promising two different ceilings. The superseded
+    # figures are named here so a half-finished edit fails rather than ships.
+    assert "7.000 kr." not in joined and "10.000 kr." not in joined
     assert "24 timer" in joined
     assert "[" not in joined and "]" not in joined
 
