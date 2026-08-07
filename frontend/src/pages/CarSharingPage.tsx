@@ -46,7 +46,15 @@ export default function CarSharingPage() {
         resten aftaler I selv.
       </Text>
 
-      <Tabs value={tab} onChange={selectTab}>
+      {/* keepMounted={false} is not the default, and the default is wrong here.
+          Sending a request navigates to the new loan, which switches tab while
+          leaving BorrowTab mounted behind it — Mantine hides an inactive panel
+          with React's <Activity>, which preserves state by design. The send
+          button therefore kept the loading state the finished request had put it
+          in, and coming back to borrow a second car met a blank blue bar that
+          could not be clicked. An unmounted tab cannot carry a spent request's
+          state into the next one. */}
+      <Tabs value={tab} onChange={selectTab} keepMounted={false}>
         <Tabs.List grow>
           <Tabs.Tab value="borrow">Lån en bil</Tabs.Tab>
           <Tabs.Tab value="loans">Mine lån</Tabs.Tab>

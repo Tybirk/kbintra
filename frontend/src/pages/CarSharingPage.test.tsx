@@ -894,6 +894,31 @@ describe("CarSharingPage", () => {
     expect(send).toBeEnabled()
   })
 
+  it("unmounts the borrow tab when you leave it", async () => {
+    // Mantine hides an inactive panel with React's <Activity>, which preserves
+    // state by design. Sending a request navigates to the new loan and switches
+    // tab, so the send button stayed behind in the loading state the finished
+    // request had put it in — and coming back to borrow a second car met a blank
+    // blue bar that could not be clicked. keepMounted={false} is what stops a
+    // spent request's state from reaching the next one.
+    render(<CarSharingPage />)
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Send forespørgsel/ }),
+      ).toBeInTheDocument()
+    })
+
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    // queryByRole would pass either way: it skips elements hidden from the
+    // accessibility tree, so a kept-mounted panel looks identical to an absent
+    // one. Ask the DOM instead — the whole bug is a node that is still there.
+    await waitFor(() => {
+      expect(screen.queryByText("Send forespørgsel")).not.toBeInTheDocument()
+    })
+  })
+
   it("does not ask a borrower who has already accepted the terms", async () => {
     // Consent belongs to a version of the text, not to a single loan. Asking at
     // every request is what teaches people to tick without reading.
