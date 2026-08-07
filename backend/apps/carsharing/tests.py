@@ -227,17 +227,22 @@ def test_a_blank_line_separates_two_paragraphs():
 
 
 def test_a_bold_opening_becomes_a_lead_label():
-    """Section 5 is nine cases, each introduced in bold. Losing that is unreadable."""
+    """Section 5 is a list of cases, each introduced in bold. Losing that is unreadable."""
     from apps.carsharing.constants import loan_terms_sections
 
     section = next(s for s in loan_terms_sections() if s["heading"].startswith("5."))
     bullets = [item for block in section["blocks"] for item in block.get("items", [])]
     leads = [item["lead"] for item in bullets if item["lead"]]
-    assert "Anmeldes skaden:" in leads
+    # Keyed on the case that decides the money rather than on one phrasing of it:
+    # the leads are the labels a resident reads to find their own situation, and
+    # they get reworded — "Anmeldes skaden:" became two cases when cars without
+    # kasko were let into the pool.
+    assert any(lead.startswith("Er bilen") for lead in leads)
     assert "Loft:" in leads
     # The lead is split off, not duplicated into the body.
-    anmeldes = next(item for item in bullets if item["lead"] == "Anmeldes skaden:")
-    assert anmeldes["text"].startswith("du betaler ejerens selvrisiko")
+    cap = next(item for item in bullets if item["lead"] == "Loft:")
+    assert cap["text"].startswith("dit samlede ansvar")
+    assert not cap["text"].startswith("Loft:")
 
 
 def test_the_adopted_amounts_are_in_the_terms():
@@ -245,7 +250,11 @@ def test_the_adopted_amounts_are_in_the_terms():
     lines = _terms_lines()
     joined = " ".join(lines)
     assert "3.000 kr." in joined
-    assert "8.000 kr." in joined
+    # The three that have to add up: the deductible share, the no-claims sum and
+    # the cap. 7.000 + 3.000 is exactly the cap, so a borrower can never owe more
+    # than the ceiling promises however the bill is composed.
+    assert "7.000 kr." in joined
+    assert "10.000 kr." in joined
     assert "24 timer" in joined
     assert "[" not in joined and "]" not in joined
 
@@ -262,12 +271,24 @@ def test_terms_version_is_a_date():
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", TERMS_VERSION)
 
 
-def test_the_rate_placeholder_is_filled_in():
+def test_the_terms_quote_no_km_rate():
+    """One text covers every car, and the rate is per car.
+
+    The terms used to state the community default via a {rate} placeholder. Each
+    car may set its own rate, and /terms/ has no car in hand, so the number shown
+    was the default rather than the one the borrower would actually be charged —
+    a figure in a legal text that the loan itself could contradict. The terms now
+    say "en fastsat takst" and leave the amount to the car and the settlement.
+    """
     from apps.carsharing.constants import loan_terms_text
 
-    assert "{rate}" not in loan_terms_text()
-    assert any("3,94" in line for line in _terms_lines())
-    assert any("9,50" in line for line in _terms_lines(Decimal("9.50")))
+    text = loan_terms_text()
+    # An unsubstituted placeholder would render as literal braces in a legal
+    # text, so this stays asserted even though nothing fills one in today.
+    assert "{rate}" not in text
+    # "3.000 kr." for the no-claims loss is a fixed sum and stays; what must not
+    # come back is a rate attached to distance.
+    assert not re.search(r"\d[\d.,]*\s*kr\.\s*pr\.\s*(kørt|km|kilometer)", text)
 
 
 def test_docs_symlink_is_the_same_file():
@@ -1570,8 +1591,11 @@ def test_terms_endpoint_serves_version_and_rate(authenticated_client):
     response = authenticated_client.get(reverse("carsharing-terms"))
     assert response.status_code == 200
     assert response.data["version"] == TERMS_VERSION
+    # Still served, and still needed: the borrow form quotes it in the estimate
+    # even though the agreement itself no longer names a figure, because a car
+    # may set its own rate and one text covers every car.
     assert response.data["default_rate_per_km"] == str(DEFAULT_RATE_PER_KM)
-    assert "kr. pr. kørt km" in response.data["text"]
+    assert "takst pr. kørt km" in response.data["text"]
 
 
 @pytest.mark.django_db
@@ -1595,7 +1619,10 @@ def test_terms_are_split_by_the_server_not_the_client(authenticated_client):
             else:
                 assert "**" not in block["text"]
 
-    assert "3,94 kr. pr. kørt kilometer" in response.data["text"]
+    # The endpoint also ships the whole agreement as one plain block, for email
+    # and for the record. Keyed on a sentence rather than on the km rate, which
+    # the terms deliberately no longer quote — see test_the_terms_quote_no_km_rate.
+    assert "Du dækker ejerens omkostninger" in response.data["text"]
 
 
 # -- Replacing the whole schedule (the painting grid) ----------------------

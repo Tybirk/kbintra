@@ -35,6 +35,11 @@ TERMS_FILE = Path(__file__).resolve().parent / "vilkaar.md"
 
 # A date, so "which terms did they accept" is answerable by looking at a calendar.
 _VERSION_PATTERN = re.compile(r"^Version:\s*(\d{4}-\d{2}-\d{2})\s*$")
+# Currently unused by vilkaar.md, and deliberately so: each car may set its own
+# rate, /terms/ has no car in hand, and a figure in the agreement that the loan
+# itself could contradict is worse than no figure. Kept because the substitution
+# is the only way a per-car rate could ever appear in the text, and because an
+# unsubstituted brace in a legal document is exactly what this guards against.
 _RATE_PLACEHOLDER = "{rate}"
 # A point that opens in bold carries a label for the case it covers ("**Anmeldes
 # skaden:** du betaler ..."). Section 5 is nine such cases, and losing the label
