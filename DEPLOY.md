@@ -86,11 +86,15 @@ When enabled, media files are automatically synced to S3 via background tasks an
 
 ## Container Images (CI builds)
 
-App images are **built by CI, not on the server**. On every push to `main`, after
-tests pass, `.github/workflows/ci.yml` builds the backend and frontend images on
-GitHub's runners and pushes them to GitHub Container Registry (ghcr.io), tagged with
-both `latest` and the commit SHA. `deploy.sh` then only pulls — the 4 GB prod box
-never compiles, so deploys no longer starve the live app of RAM/CPU.
+App images are **built by CI, not on the server**. On every push to `develop` or
+`main`, after tests pass, `.github/workflows/ci.yml` builds the backend and frontend
+images on GitHub's runners and pushes them to GitHub Container Registry (ghcr.io),
+tagged with both `latest` and the commit SHA. `deploy.sh` then only pulls — the 4 GB
+prod box never compiles, so deploys no longer starve the live app of RAM/CPU.
+
+Only those two branch tips get images. Deploying any other commit (a feature branch,
+or a commit that was never the tip of a push) cannot work — `deploy.sh` detects this
+up front and fails immediately instead of waiting for an image that will never exist.
 
 Images:
 - `ghcr.io/tybirk/kbintra-backend` — used by the `backend`, `backend-ws`, and `huey` services
@@ -135,7 +139,7 @@ The script handles everything automatically:
 3. Pulls latest changes
 4. Backs up SQLite database locally (keeps last 10 in `./data/backups/`)
 5. Backs up SQLite database to S3 (if configured)
-6. **Pulls** the prebuilt images for the current commit from ghcr.io (waits up to 10 min if CI is still building), then restarts all containers (migrations run automatically on startup)
+6. **Pulls** the prebuilt images for the current commit from ghcr.io (waits up to 10 min if CI is still building this commit; fails right away if HEAD is not the tip of `develop` or `main`, since CI never builds an image for such a commit), then restarts all containers (migrations run automatically on startup)
 7. Prunes old Docker images
 8. Waits for backend health check
 
