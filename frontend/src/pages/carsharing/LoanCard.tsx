@@ -393,7 +393,24 @@ export function LoanCard({ loan, highlight }: LoanCardProps) {
           <Text size="sm">{presentation.closedNotice}</Text>
         ) : (
           <>
-            {loan.note && <Text size="sm">{loan.note}</Text>}
+            {/* The borrower's own words when they asked. Presented like the
+                settlement note further down, so a message from a person is
+                recognisable as one wherever it sits on the card — unlabelled it
+                read as one more system line about the loan. */}
+            {loan.note && (
+              <Alert
+                icon={<IconMessage2 size={18} />}
+                color="gray"
+                variant="light"
+                title={
+                  loan.is_borrower
+                    ? "Din besked"
+                    : `Besked fra ${loan.borrower_name}`
+                }
+              >
+                {loan.note}
+              </Alert>
+            )}
 
             {loan.car !== null && (
               <Text size="sm">

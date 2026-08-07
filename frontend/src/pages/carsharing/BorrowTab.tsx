@@ -37,6 +37,7 @@ import {
   errorMessage,
   formatDateTime,
   formatRatePerKm,
+  LicensePlateBadge,
   LONG_DATE_TIME,
   SHORT_DATE_TIME,
   TermsConsent,
@@ -310,7 +311,7 @@ export function BorrowTab({ onRequested }: BorrowTabProps) {
             max={9}
           />
           <Textarea
-            label="Andre behov (valgfrit)"
+            label="Besked til bilejeren (valgfrit)"
             value={note}
             onChange={(event) => setNote(event.currentTarget.value)}
             autosize
@@ -393,9 +394,7 @@ export function BorrowTab({ onRequested }: BorrowTabProps) {
                         {car.license_plate &&
                           car.display_name !==
                             formatLicensePlate(car.license_plate) && (
-                            <Badge variant="default" size="sm">
-                              {formatLicensePlate(car.license_plate)}
-                            </Badge>
+                            <LicensePlateBadge plate={car.license_plate} />
                           )}
                         {meta && (
                           <Badge color={meta.color} variant="light" size="sm">

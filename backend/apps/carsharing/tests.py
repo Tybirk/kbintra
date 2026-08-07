@@ -1988,6 +1988,57 @@ def test_request_notification_counts_households_not_cars(owner, owner_house, bor
 
 
 @pytest.mark.django_db
+def test_the_request_notification_carries_the_borrowers_message(
+    owner, owner_house, borrower_client
+):
+    """What the borrower wrote reaches the owner without them opening the app.
+
+    The note only lived on the loan card, so the one sentence written for this
+    household — "jeg skal hente et skab" — was the one thing the notification
+    left out, and it sat ahead of the boilerplate suffix that a push notification
+    is most likely to cut off.
+    """
+    car = _make_car(owner_house, plate="NN11111")
+
+    _create_loan(borrower_client, [car], note="Jeg skal hente et skab i Ikea.")
+
+    message = Notification.objects.get(
+        user=owner, notification_type=NotificationType.CAR_LOAN_REQUEST
+    ).message
+    assert "Jeg skal hente et skab i Ikea." in message
+    assert message.index("Besked:") < message.index("Siger du ja")
+
+
+@pytest.mark.django_db
+def test_a_long_message_is_cut_down_in_the_notification(owner, owner_house, borrower_client):
+    """A notification is a nudge to open the request, not the place to read an essay."""
+    car = _make_car(owner_house, plate="NN22222")
+
+    _create_loan(borrower_client, [car], note="x" * 200)
+
+    message = Notification.objects.get(
+        user=owner, notification_type=NotificationType.CAR_LOAN_REQUEST
+    ).message
+    assert "x" * 100 + "..." in message
+    assert "x" * 101 not in message
+    # And the mechanics still survive the note.
+    assert "Siger du ja" in message
+
+
+@pytest.mark.django_db
+def test_no_message_leaves_no_empty_quotes_in_the_notification(owner, owner_house, borrower_client):
+    """Most requests carry no note; none of them should say 'Besked: ""'."""
+    car = _make_car(owner_house, plate="NN33333")
+
+    _create_loan(borrower_client, [car])
+
+    message = Notification.objects.get(
+        user=owner, notification_type=NotificationType.CAR_LOAN_REQUEST
+    ).message
+    assert "Besked" not in message
+
+
+@pytest.mark.django_db
 def test_a_household_lending_one_of_its_two_cars_is_not_told_it_lost(
     owner, owner_house, borrower_client
 ):

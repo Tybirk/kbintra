@@ -55,6 +55,7 @@ import { carDraftDirty, carPayload, unsavedChangesHint } from "./carDraft"
 import {
   errorMessage,
   formatKr,
+  LicensePlateBadge,
   moneyInputError,
   TermsConsent,
   useCarSharingMutation,
@@ -237,9 +238,7 @@ function MyCarCard({ car }: MyCarCardProps) {
               <Text fw={600}>{car.display_name}</Text>
               {car.license_plate &&
                 car.display_name !== formatLicensePlate(car.license_plate) && (
-                  <Badge variant="default" size="sm">
-                    {formatLicensePlate(car.license_plate)}
-                  </Badge>
+                  <LicensePlateBadge plate={car.license_plate} />
                 )}
               {/* The saved state, not the draft — the badge should say what the
                   rest of the community can see right now. */}
@@ -492,7 +491,7 @@ function MyCarCard({ car }: MyCarCardProps) {
             />
             <Textarea
               label="Praktisk info til låneren"
-              description="Hvor nøglen og ladebrikken er."
+              description="Fx. hvor nøglen og ladebrikken er."
               value={draft.practical_note}
               onChange={(event) =>
                 setDraft({

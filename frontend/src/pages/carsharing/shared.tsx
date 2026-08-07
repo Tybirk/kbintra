@@ -6,6 +6,7 @@
 import { useState } from "react"
 
 import {
+  Badge,
   Button,
   Card,
   Checkbox,
@@ -26,7 +27,42 @@ import { carSharingApi } from "../../api/carsharing"
 
 import { normalizeDecimalSeparator } from "../../utils/decimalInput"
 
+import { formatLicensePlate } from "../../utils/licensePlate"
+
 import type { CarConflict, CarLoan, CarSharingTerms } from "../../types"
+
+interface LicensePlateBadgeProps {
+  plate: string
+}
+
+/**
+ * A registration number, rendered as a plate.
+ *
+ * Squared-off corners and a red border, the way a Danish plate looks. As a grey
+ * pill it sat in a row with "Udlånt" and "Ikke delt" and read as one more status
+ * about the car, when it is the one thing on the card that identifies it.
+ */
+export function LicensePlateBadge({ plate }: LicensePlateBadgeProps) {
+  return (
+    <Badge
+      variant="default"
+      size="sm"
+      radius="xs"
+      // The frame of a smaller badge around the text of this one: a plate is
+      // read rather than glanced at, so the number keeps its size while the box
+      // tightens around it. The border is a hairline — thinner than this and the
+      // browser rounds it away on a non-retina screen, leaving no red at all.
+      style={{
+        borderColor: "var(--mantine-color-red-6)",
+        borderWidth: "0.5px",
+        height: "var(--badge-height-xs)",
+        paddingInline: "calc(0.25rem * var(--mantine-scale))",
+      }}
+    >
+      {formatLicensePlate(plate)}
+    </Badge>
+  )
+}
 
 export interface ConflictMeta {
   color: string

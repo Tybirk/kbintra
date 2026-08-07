@@ -1465,12 +1465,23 @@ def notify_car_loan_requested(loan: Any) -> list[Notification]:
         else " Siger du ja, er bilen udlånt med det samme."
     )
 
+    # Whatever the borrower wrote to the household. Ahead of the suffix, which is
+    # the same boilerplate on every request: what a push notification cuts off
+    # should be the part the owner already knows by heart, not the one sentence
+    # written for them. Truncated like a message preview — the notification is a
+    # nudge to open the request, not the place to read a long note.
+    written = loan.note.strip()
+    note_part = ""
+    if written:
+        preview = written[:100] + ("..." if len(written) > 100 else "")
+        note_part = f' Besked: "{preview}"'
+
     for house_candidates in by_house.values():
         # "din Volvo V70 eller din Toyota Yaris" — the household picks which.
         cars_named = " eller ".join(item.car.display_name for item in house_candidates)
         message = (
             f"{loan.borrower.first_name} vil låne {cars_named} "
-            f"{window} (ca. {loan.expected_km} km).{suffix}"
+            f"{window} (ca. {loan.expected_km} km).{note_part}{suffix}"
         )
         for recipient in _car_household_recipients(house_candidates[0].car, loan.borrower_id):
             notification = create_notification(
