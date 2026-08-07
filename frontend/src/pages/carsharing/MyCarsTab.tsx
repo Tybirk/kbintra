@@ -492,7 +492,7 @@ function MyCarCard({ car }: MyCarCardProps) {
             />
             <Textarea
               label="Praktisk info til låneren"
-              description="Hvor nøglen og ladebrikken er, og hvor bilen holder."
+              description="Hvor nøglen og ladebrikken er."
               value={draft.practical_note}
               onChange={(event) =>
                 setDraft({

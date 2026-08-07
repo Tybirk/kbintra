@@ -1319,6 +1319,27 @@ def test_the_car_list_publishes_the_window_limit(borrower_client):
     assert response.data["max_loan_days"] == MAX_LOAN_DAYS
 
 
+@pytest.mark.django_db
+def test_the_car_list_does_not_say_where_the_key_is(borrower_client, owner_house):
+    """The borrow list is browsable by everyone; the key location is not.
+
+    CarLoanSerializer withholds practical_note from households who are not party
+    to the loan. This list used to hand the same string to every resident for
+    every shared car, which undid that on purpose-built infrastructure — and
+    nothing rendered it, so it was exposure with no benefit.
+    """
+    _make_car(owner_house, practical_note="Nøglen ligger under måtten, P-plads 4.")
+
+    response = borrower_client.get(reverse("carsharing-car-list"))
+
+    car = response.data["cars"][0]
+    assert "practical_note" not in car
+    # The rest of the spec is still there, so this cannot pass by the list having
+    # gone empty or the fields having been dropped wholesale.
+    assert car["make"] == "Skoda"
+    assert "equipment_note" in car
+
+
 # -- Completion and settlement ---------------------------------------------
 
 

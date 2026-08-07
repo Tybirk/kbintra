@@ -501,6 +501,13 @@ tingene gør skade hvis de glemmes.
    eksisterende biler har forældede søgeord indtil indekset bygges om.
    `apps/search/signals.py` er ændret på både `develop` og denne gren; merge er
    ren, men kør søgetestene efter.
+   **Den samme kørsel dækker også omdøbningen Arrangementer → Begivenheder.**
+   `forum/0046` omdøber gruppen med `queryset.update()`, som ikke udløser
+   `post_save`, og historiske modeller i `RunPython` har alligevel ingen signaler
+   tilkoblet — så indekset bærer `Arrangementer` videre, både for gruppen selv og
+   som `subtitle` på hver eneste tråd og indlæg i den, indtil der bygges om.
+   Containeren gør det ikke af sig selv: opstart kører `--if-empty`, og
+   produktionens indeks er ikke tomt.
    **Regn med cirka et minut:** på produktionskopien tog den 62 sekunder for
    24.189 objekter. Søgning giver forældede resultater indtil den er færdig, så
    kør den med vilje og ikke midt i myldretiden.

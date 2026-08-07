@@ -155,8 +155,9 @@ export interface SharedCar {
 
   equipment_note: string
 
-  practical_note: string
-
+  /** No practical_note here on purpose: the borrow list is browsable by every
+   * resident, and that field says where the key and the charge fob are kept. It
+   * arrives as CarLoan.car_practical_note once an owner has said yes. */
   effective_rate_per_km: string
 
   blocks: CarBlock[]

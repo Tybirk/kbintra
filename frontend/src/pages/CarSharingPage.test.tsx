@@ -139,7 +139,6 @@ function sharedCar(overrides: Partial<SharedCar> = {}): SharedCar {
     dogs_allowed: false,
     has_charge_fob: true,
     equipment_note: "",
-    practical_note: "Nøglen hænger i skabet",
     effective_rate_per_km: "3.94",
     blocks: [],
     conflict: null,

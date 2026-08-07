@@ -41,8 +41,15 @@ class ChildCreateUpdateSerializer(AvatarUrlMixin, serializers.ModelSerializer):
         read_only_fields = ["id"]
 
 
-# What a car *is*. Also used by carsharing.SharedCarSerializer, so a new attribute
-# cannot show up in the owner's editor and be missing from the borrower's list.
+# What a car *is*, to anyone who may see it. Also used by
+# carsharing.SharedCarSerializer, so a new attribute cannot show up in the owner's
+# editor and be missing from the borrower's list.
+#
+# practical_note is deliberately *not* here: it says where the key and the charge
+# fob are kept. CarLoanSerializer withholds that string from households who are
+# not party to a loan, and the borrow list used to hand it to every resident for
+# every shared car, undoing that. Anything added here is public to the community;
+# put owner-only fields in CAR_OWNER_SPEC_FIELDS instead.
 CAR_SPEC_FIELDS = [
     "make",
     "model_name",
@@ -54,6 +61,11 @@ CAR_SPEC_FIELDS = [
     "dogs_allowed",
     "has_charge_fob",
     "equipment_note",
+]
+
+# What the owning household sees and edits: the public spec plus where the key is.
+CAR_OWNER_SPEC_FIELDS = [
+    *CAR_SPEC_FIELDS,
     "practical_note",
 ]
 
@@ -61,7 +73,7 @@ CAR_SPEC_FIELDS = [
 CAR_SHARING_FIELDS = [
     "is_shared",
     "rate_per_km",
-    *CAR_SPEC_FIELDS,
+    *CAR_OWNER_SPEC_FIELDS,
 ]
 
 
