@@ -329,10 +329,11 @@ en tilfældig tuborgklamme i en håndredigeret fil ikke vælter importen).
 punkter, så frontend aldrig skal fortolke Markdown — en `**` der slap igennem
 ville ellers stå som to stjerner midt i en juridisk tekst.
 
-Baggrunden for teksten — hvorfor beløbene er som de er, forholdet til
-erstatningsansvarslovens § 19, og hvad der stadig mangler i koden — står i
-`docs/bildeling-vilkaar-baggrund.md`. Den læses **ikke** af appen og er med
-vilje ikke en del af vilkårene.
+Der lå tidligere et baggrundsnotat, `docs/bildeling-vilkaar-baggrund.md`, med
+ræsonnementet bag beløbene og forholdet til erstatningsansvarslovens § 19. Det er
+fjernet, fordi det blev overhalet af de beløb fællesskabet selv landede på —
+7.000/3.000/10.000 og biler uden kasko. Teksten står i git-historikken, hvis den
+skal bruges igen.
 
 **Begge parter accepterer, og begge accepter gemmes:**
 

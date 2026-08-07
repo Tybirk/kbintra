@@ -21,9 +21,10 @@ Regler for filen:
 - Vilkårene nævner med vilje ingen km-takst. Taksten kan være forskellig fra bil
   til bil, og ét tal i en fælles tekst ville kunne modsige det lånerens egen bil
   koster. Beløbet står på bilkortet og i afregningen, hvor bilen er kendt.
-- Baggrunden for teksten — hvorfor beløbene ser ud som de gør, og hvad der
-  stadig mangler i koden — står i `docs/bildeling-vilkaar-baggrund.md`. Den er
-  med vilje ikke en del af vilkårene og læses ikke af appen.
+- Beløbene i punkt 5 hænger sammen: 7.000 kr. for selvrisikoen plus 3.000 kr.
+  for tab af skadefri år er præcis loftet på 10.000 kr. Ændrer du ét af dem,
+  skal de andre to følge med, ellers kan en låner komme til at skylde mere end
+  loftet lover.
 
 Filen ligger i backend'en fordi den skal med i serverimaget.
 `docs/bildeling-vilkaar.md` er et symlink hertil, så der kun findes én tekst.
