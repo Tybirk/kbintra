@@ -193,3 +193,43 @@ describe("an empty kilometre field is the caller's call, not a zero", () => {
     expect(Number("") || 0).toBe(0)
   })
 })
+
+// The contact on a settled card is the *other side of the loan*, whichever way
+// the money runs. Keying it on who pays instead told a lending household being
+// paid by its borrower that its own member would pay them.
+describe("who a settled loan points you at", () => {
+  function settled(overrides: Partial<CarLoan>) {
+    return {
+      amount_due: "250.00",
+      is_borrower: true,
+      borrower_name: "Carsten",
+      borrower_phone: "11 11 11 11",
+      approved_by_name: "Bo",
+      approved_by_phone: "22 22 22 22",
+      ...overrides,
+    } as CarLoan
+  }
+
+  // settleCounterpart mirrors the component's choice; the component renders it.
+  const counterpart = (loan: CarLoan) =>
+    loan.is_borrower
+      ? [loan.approved_by_name, loan.approved_by_phone]
+      : [loan.borrower_name, loan.borrower_phone]
+
+  it("shows the borrower the person who said yes", () => {
+    expect(counterpart(settled({}))).toEqual(["Bo", "22 22 22 22"])
+  })
+
+  it("shows the lending household the borrower, even though the borrower pays", () => {
+    expect(counterpart(settled({ is_borrower: false }))).toEqual([
+      "Carsten",
+      "11 11 11 11",
+    ])
+  })
+
+  it("still shows the other side when the money runs backwards", () => {
+    expect(
+      counterpart(settled({ is_borrower: false, amount_due: "-150.00" })),
+    ).toEqual(["Carsten", "11 11 11 11"])
+  })
+})

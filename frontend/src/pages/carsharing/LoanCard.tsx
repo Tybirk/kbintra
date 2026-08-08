@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 
 import {
   Alert,
+  Anchor,
   Badge,
   Button,
   Card,
@@ -171,6 +172,63 @@ function CompleteLoanForm({ loan }: CompleteFormProps) {
         Afslut lån
       </Button>
     </Stack>
+  )
+}
+
+interface SettleInstructionProps {
+  loan: CarLoan
+}
+
+/**
+ * Who to pay, and on what number.
+ *
+ * "Afregn selv med MobilePay." was the whole instruction, and MobilePay is paid
+ * to a person: the card named only the household, so the borrower had to leave
+ * the loan, open Beboeroversigt and guess which of two adults said yes. The
+ * number is the one the resident directory already shows every resident — this
+ * is a shorter path to it, not a new disclosure.
+ */
+function SettleInstruction({ loan }: SettleInstructionProps) {
+  const amount = Number.parseFloat(loan.amount_due ?? "0") || 0
+  if (amount === 0) return null
+
+  // The number I need is always the other side's, whichever way the money runs:
+  // keying it on who pays named the wrong person to a lending household being
+  // paid by its borrower. Direction only decides the verb.
+  const [name, phone] = loan.is_borrower
+    ? [loan.approved_by_name, loan.approved_by_phone]
+    : [loan.borrower_name, loan.borrower_phone]
+  // A negative amount means the borrower spent more on fuel than the trip cost,
+  // so it runs the other way and the lending household pays.
+  const borrowerPays = amount > 0
+  const iAmPayer = loan.is_borrower === borrowerPays
+
+  if (!name) {
+    return (
+      <Text size="xs" c="dimmed">
+        Afregn selv med MobilePay.
+      </Text>
+    )
+  }
+
+  return (
+    <Text size="xs" c="dimmed">
+      {iAmPayer
+        ? `Betal ${name} med MobilePay`
+        : `${name} betaler dig med MobilePay`}
+      {phone ? (
+        <>
+          {" på "}
+          {/* tel: rather than plain text — MobilePay is looked up by number, and
+              on a phone this is one tap instead of a transcription. */}
+          <Anchor href={`tel:${phone.replace(/\s/g, "")}`} size="xs">
+            {phone}
+          </Anchor>
+        </>
+      ) : (
+        "."
+      )}
+    </Text>
   )
 }
 
@@ -578,9 +636,7 @@ export function LoanCard({ loan, highlight }: LoanCardProps) {
                 </Text>
                 {/* The preview says how to settle; the settled card used to drop
                     it, which is the moment it actually matters. */}
-                <Text size="xs" c="dimmed">
-                  Afregn selv med MobilePay.
-                </Text>
+                <SettleInstruction loan={loan} />
               </Stack>
             )}
 

@@ -2562,3 +2562,66 @@ def test_the_loan_tells_the_client_how_many_adults_it_is_talking_to(
     data = _client_for(borrower).get(reverse("carsharing-loan-detail", args=[loan.pk])).data
 
     assert data["car_household_size"] == 2
+
+
+# -- Who to pay, and on what number -----------------------------------------
+
+
+@pytest.mark.django_db
+def test_the_settled_loan_names_the_person_who_said_yes_and_their_number(
+    owner, owner_house, borrower, borrower_client
+):
+    """MobilePay is paid to a person, and the card only named the household.
+
+    With two adults in the house the borrower could not tell which of them to
+    pay, and had to leave the loan for Beboeroversigt to find a number.
+    """
+    owner.phone_number = "12 34 56 78"
+    owner.save()
+    car = _make_car(owner_house)
+    loan = _activate_loan(borrower_client, car)
+    borrower_client.post(
+        reverse("carsharing-loan-complete", args=[loan.pk]),
+        {"actual_km": 100, "expense_amount": "0"},
+        format="json",
+    )
+
+    data = _loan_as(borrower, loan.pk)
+
+    assert data["approved_by_name"] == f"{owner.first_name} {owner.last_name}".strip()
+    assert data["approved_by_phone"] == "12 34 56 78"
+
+
+@pytest.mark.django_db
+def test_a_household_that_was_only_asked_gets_no_phone_numbers(owner, owner_house, borrower_client):
+    """Which neighbour picked up their phone is not everyone's business.
+
+    Scoped like car_practical_note: the borrower and the lending household, and
+    nobody else — a household that lost the race is party to nothing.
+    """
+    car_a, car_b, loan_id = _roles_setup(owner_house, borrower_client)
+    loser = User.objects.get(email="roles_b@example.com")
+    loser.phone_number = "99 99 99 99"
+    loser.save()
+    owner.phone_number = "12 34 56 78"
+    owner.save()
+
+    _accept(car_a, loan_id)
+
+    theirs = _loan_as(loser, loan_id)
+    assert theirs["viewer_role"] == "closed_out"
+    assert theirs["approved_by_name"] == ""
+    assert theirs["approved_by_phone"] == ""
+    assert theirs["borrower_phone"] == ""
+
+
+@pytest.mark.django_db
+def test_a_missing_number_is_simply_absent(owner, owner_house, borrower, borrower_client):
+    """Not every resident has filled one in — 24 of 111 at the time of writing."""
+    car = _make_car(owner_house)
+    loan = _activate_loan(borrower_client, car)
+
+    data = _loan_as(borrower, loan.pk)
+
+    assert data["approved_by_name"]
+    assert data["approved_by_phone"] == ""

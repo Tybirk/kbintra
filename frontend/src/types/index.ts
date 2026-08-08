@@ -269,6 +269,14 @@ export interface CarLoan {
   /** Adults in the lending household. Above one, the money is addressed to "I". */
   car_household_size: number
 
+  /** The person who said yes, and their number — the two parties only. */
+  approved_by_name: string
+
+  approved_by_phone: string
+
+  /** For a negative amount, when the lending household is the one paying. */
+  borrower_phone: string
+
   /** Empty unless you are the borrower or the lending household. */
   car_practical_note: string
 

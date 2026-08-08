@@ -195,6 +195,9 @@ class CarLoanSerializer(serializers.ModelSerializer):
         source="car.has_charge_fob", read_only=True, default=False
     )
     car_household_size = serializers.SerializerMethodField()
+    approved_by_name = serializers.SerializerMethodField()
+    approved_by_phone = serializers.SerializerMethodField()
+    borrower_phone = serializers.SerializerMethodField()
     candidates = CarLoanCandidateSerializer(many=True, read_only=True)
     is_borrower = serializers.SerializerMethodField()
     viewer_role = serializers.SerializerMethodField()
@@ -215,6 +218,9 @@ class CarLoanSerializer(serializers.ModelSerializer):
             "id",
             "borrower",
             "borrower_name",
+            "borrower_phone",
+            "approved_by_name",
+            "approved_by_phone",
             "is_borrower",
             "viewer_role",
             "can_cancel",
@@ -270,6 +276,35 @@ class CarLoanSerializer(serializers.ModelSerializer):
 
     def get_borrower_name(self, loan) -> str:
         return f"{loan.borrower.first_name} {loan.borrower.last_name}".strip()
+
+    def get_approved_by_name(self, loan) -> str:
+        """The person who said yes — not the household.
+
+        The card tells the borrower to settle by MobilePay, which is paid to a
+        person. Naming the household is not enough when two adults live there,
+        and it got worse once the amount started saying "I skylder".
+
+        Scoped like car_practical_note: the two parties to the loan, nobody else.
+        """
+        if loan.approved_by is None or not self._is_party(loan):
+            return ""
+        return f"{loan.approved_by.first_name} {loan.approved_by.last_name}".strip()
+
+    def get_approved_by_phone(self, loan) -> str:
+        """Their number, so the payment does not need a detour via Beboeroversigt.
+
+        Not a new disclosure — the resident directory already shows it to every
+        resident. This is the same number, on the screen that needs it.
+        """
+        if loan.approved_by is None or not self._is_party(loan):
+            return ""
+        return loan.approved_by.phone_number
+
+    def get_borrower_phone(self, loan) -> str:
+        """For the other direction: a negative amount means the owner pays."""
+        if not self._is_party(loan):
+            return ""
+        return loan.borrower.phone_number
 
     def get_is_borrower(self, loan) -> bool:
         viewer = self._viewer()
