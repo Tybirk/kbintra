@@ -1,6 +1,12 @@
-import { Container, Tabs, Text, Title } from "@mantine/core"
+import { Badge, Container, Tabs, Text, Title } from "@mantine/core"
+
+import { useMediaQuery } from "@mantine/hooks"
+
+import { useQuery } from "@tanstack/react-query"
 
 import { useNavigate, useParams, useSearchParams } from "react-router-dom"
+
+import { carSharingApi } from "../api/carsharing"
 
 import { BorrowTab } from "./carsharing/BorrowTab"
 
@@ -27,6 +33,25 @@ export default function CarSharingPage() {
       ? requested
       : "borrow"
 
+  // A neighbour asking for your car is the one thing here that is waiting on
+  // *you*, and the page opened on "Lån en bil" — a list of other people's cars —
+  // with nothing anywhere to say so. Only the global header bell knew.
+  //
+  // Same query key as MyLoansTab, so this is the cache that tab already fills
+  // rather than a second request.
+  const { data: loans } = useQuery({
+    queryKey: ["carsharing", "loans"],
+    queryFn: carSharingApi.getLoans,
+  })
+  const awaitingMyAnswer = (loans ?? []).filter(
+    (loan) => loan.viewer_role === "asked" && loan.status === "requested",
+  ).length
+
+  // A phone held sideways has ~390px of height, and the standfirst plus the page
+  // padding spent a fifth of it on prose. That pushed the date fields down under
+  // the sticky send bar, where a thumb aiming at "Fra" hit "Send forespørgsel".
+  const shortViewport = useMediaQuery("(max-height: 30em)")
+
   function selectTab(value: string | null) {
     if (!value) return
     if (highlightLoanId) navigate(`/bildeling?tab=${value}`)
@@ -34,17 +59,19 @@ export default function CarSharingPage() {
   }
 
   return (
-    <Container size="md" py="md">
-      {/* The navbar entry stays "Bildeling" — this says so on the page itself,
-          where a resident who arrived from a notification or a shared link also
-          sees it. Remove the parenthesis when the feature goes live for real. */}
+    <Container size="md" py={shortViewport ? "xs" : "md"}>
       <Title order={2} mb="xs">
-        Bildeling (kun til test)
+        Bildeling
       </Title>
-      <Text size="sm" c="dimmed" mb="md">
-        Et overblik og en lommeregner. Et lån bliver til, når en ejer siger ja —
-        resten aftaler I selv.
-      </Text>
+      {/* Dropped in landscape: it is an orientation sentence a resident reads
+          once, and the pixels it costs are the ones the date fields need to
+          clear the sticky bar. */}
+      {!shortViewport && (
+        <Text size="sm" c="dimmed" mb="md">
+          Et overblik og en lommeregner. Et lån bliver til, når en ejer siger ja
+          — resten aftaler I selv.
+        </Text>
+      )}
 
       {/* keepMounted={false} is not the default, and the default is wrong here.
           Sending a request navigates to the new loan, which switches tab while
@@ -57,7 +84,23 @@ export default function CarSharingPage() {
       <Tabs value={tab} onChange={selectTab} keepMounted={false}>
         <Tabs.List grow>
           <Tabs.Tab value="borrow">Lån en bil</Tabs.Tab>
-          <Tabs.Tab value="loans">Mine lån</Tabs.Tab>
+          <Tabs.Tab
+            value="loans"
+            rightSection={
+              awaitingMyAnswer > 0 ? (
+                <Badge
+                  size="sm"
+                  circle
+                  color="red"
+                  aria-label="Venter på dit svar"
+                >
+                  {awaitingMyAnswer}
+                </Badge>
+              ) : null
+            }
+          >
+            Mine lån
+          </Tabs.Tab>
           <Tabs.Tab value="cars">Mine biler</Tabs.Tab>
         </Tabs.List>
 

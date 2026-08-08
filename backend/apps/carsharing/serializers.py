@@ -10,6 +10,7 @@ from rest_framework import serializers
 
 from apps.houses.models import Car
 from apps.houses.serializers import CAR_SPEC_FIELDS
+from apps.users.models import User
 
 from .constants import (
     MAX_BLOCKS_PER_CAR,
@@ -19,7 +20,7 @@ from .constants import (
 )
 from .models import CarBlock, CarLoan, CarLoanCandidate
 from .roles import LoanRole, can_cancel, loan_role
-from .services import borrowable_cars
+from .services import active_loan_conflict, borrowable_cars
 
 
 class CarBlockSerializer(serializers.ModelSerializer):
@@ -187,6 +188,13 @@ class CarLoanSerializer(serializers.ModelSerializer):
     borrower_name = serializers.SerializerMethodField()
     car_display_name = serializers.CharField(source="car.display_name", read_only=True, default="")
     car_house_name = serializers.CharField(source="car.house.name", read_only=True, default="")
+    # The settlement form used to tell every borrower that charging with the fob
+    # was covered — including someone who had just filled a petrol tank and was
+    # about to be talked out of claiming it.
+    car_has_charge_fob = serializers.BooleanField(
+        source="car.has_charge_fob", read_only=True, default=False
+    )
+    car_household_size = serializers.SerializerMethodField()
     candidates = CarLoanCandidateSerializer(many=True, read_only=True)
     is_borrower = serializers.SerializerMethodField()
     viewer_role = serializers.SerializerMethodField()
@@ -224,6 +232,8 @@ class CarLoanSerializer(serializers.ModelSerializer):
             "car",
             "car_display_name",
             "car_house_name",
+            "car_has_charge_fob",
+            "car_household_size",
             "car_practical_note",
             "rate_per_km",
             "activated_at",
@@ -286,6 +296,17 @@ class CarLoanSerializer(serializers.ModelSerializer):
             return ""
         return loan.car.practical_note
 
+    def get_car_household_size(self, loan) -> int:
+        """How many adults the settlement is addressed to.
+
+        One debt, several readers: with two adults in the house, "Du skal betale"
+        reads as a bill to each of them, and both could pay it. The card needs to
+        know whether it is talking to a person or to a household.
+        """
+        if loan.car_id is None:
+            return 0
+        return User.objects.filter(house_id=loan.car.house_id, is_active=True).count()
+
     def get_actual_km(self, loan) -> int | None:
         return loan.actual_km if self._is_party(loan) else None
 
@@ -309,7 +330,19 @@ class CarLoanCreateSerializer(serializers.Serializer):
 
     start_at = serializers.DateTimeField()
     end_at = serializers.DateTimeField()
-    expected_km = serializers.IntegerField(min_value=1, max_value=100_000)
+    expected_km = serializers.IntegerField(
+        min_value=1,
+        max_value=100_000,
+        # Without these, DRF answers in English — "Ensure this value is greater
+        # than or equal to 1." reached the borrower in a red toast.
+        error_messages={
+            "required": "Skriv hvor mange kilometer du regner med at køre.",
+            "null": "Skriv hvor mange kilometer du regner med at køre.",
+            "invalid": "Skriv antal kilometer som et helt tal.",
+            "min_value": "Skriv mindst 1 km.",
+            "max_value": "Skriv højst 100.000 km.",
+        },
+    )
     car_ids = serializers.ListField(child=serializers.IntegerField(), allow_empty=False)
     needs_isofix = serializers.BooleanField(required=False, default=False)
     needs_tow_hitch = serializers.BooleanField(required=False, default=False)
@@ -365,6 +398,21 @@ class CarLoanCreateSerializer(serializers.Serializer):
                 {"car_ids": "Du behøver ikke forespørge om din egen husstands bil."}
             )
 
+        # A car already lent out in this window cannot answer, so asking it makes
+        # a request nobody can close: the owner is offered a yes that fails with
+        # "Bilen er netop blevet udlånt" every time, and the borrower's only exit
+        # is a no. The list already refuses to tick such a car — this is the same
+        # rule for a client whose list is out of date.
+        taken = [
+            car.display_name
+            for car in cars
+            if active_loan_conflict(car.id, start_at, end_at) is not None
+        ]
+        if taken:
+            raise serializers.ValidationError(
+                {"car_ids": f"{', '.join(taken)} er allerede udlånt i tidsrummet."}
+            )
+
         attrs["car_ids"] = car_ids
         attrs["cars"] = cars
         return attrs
@@ -407,6 +455,7 @@ class CompleteLoanSerializer(serializers.Serializer):
         error_messages={
             "invalid": "Skriv antal kilometer som et helt tal.",
             "min_value": "Kilometer kan ikke være negativt.",
+            "max_value": "Skriv højst 100.000 km.",
         },
     )
     # min_value is not decoration: without it a negative expense *raises* the

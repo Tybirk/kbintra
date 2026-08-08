@@ -1192,6 +1192,191 @@ def test_a_household_cannot_turn_its_own_no_into_the_deciding_yes(owner_house, b
     assert _accept(car_b, loan_id).status_code == 200
 
 
+# -- Leaving the delebilpark answers what the car was asked -----------------
+
+
+@pytest.mark.django_db
+def test_unsharing_a_car_says_no_to_its_open_requests(
+    owner, owner_house, borrower, borrower_client
+):
+    """Un-sharing is the same thing to a borrower as removing the car.
+
+    Either way the car is gone from the list and nobody is coming to answer, so
+    the household's silence would be permanent. Removal already said no on the
+    household's behalf; turning off "Med i delebilparken" did not, and left the
+    request open against a car no borrower could even see.
+    """
+    car = _make_car(owner_house)
+    _create_loan(borrower_client, [car])
+    loan_id = CarLoan.objects.get().pk
+
+    response = _client_for(owner).patch(
+        reverse("car-detail", args=[car.id]), {"is_shared": False}, format="json"
+    )
+
+    assert response.status_code == 200
+    assert CarLoanCandidate.objects.get(car=car).status == CarLoanCandidate.Status.DECLINED
+    assert CarLoan.objects.get(pk=loan_id).status == CarLoan.Status.DECLINED
+    # And the borrower hears it, rather than discovering it by waiting.
+    assert Notification.objects.filter(
+        user=borrower,
+        notification_type=NotificationType.CAR_LOAN_UPDATE,
+        message__contains="ikke flere biler at afvente svar fra",
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_unsharing_one_car_leaves_the_other_households_asked(owner, owner_house, borrower_client):
+    """One household bowing out is not the whole request dying."""
+    car_a, car_b, loan_id = _roles_setup(owner_house, borrower_client)
+
+    _client_for(owner).patch(
+        reverse("car-detail", args=[car_a.id]), {"is_shared": False}, format="json"
+    )
+
+    assert CarLoanCandidate.objects.get(car=car_a).status == CarLoanCandidate.Status.DECLINED
+    assert CarLoanCandidate.objects.get(car=car_b).status == CarLoanCandidate.Status.ASKED
+    assert CarLoan.objects.get(pk=loan_id).status == CarLoan.Status.REQUESTED
+
+
+@pytest.mark.django_db
+def test_a_car_taken_out_of_the_park_can_no_longer_be_lent(owner, owner_house, borrower_client):
+    """The owner's stale "Ja, den må lånes" must not lend out a withdrawn car.
+
+    CandidateRespondView._accept only re-checks for a clashing active loan, so
+    without the withdrawal above an owner could turn a request into a live loan
+    on a car that had left the delebilpark.
+    """
+    car = _make_car(owner_house)
+    _create_loan(borrower_client, [car])
+
+    _client_for(owner).patch(
+        reverse("car-detail", args=[car.id]), {"is_shared": False}, format="json"
+    )
+    late = _accept(car)
+
+    assert late.status_code == 400
+    loan = CarLoan.objects.get()
+    assert loan.status == CarLoan.Status.DECLINED
+    assert loan.car_id is None
+
+
+@pytest.mark.django_db
+def test_an_ordinary_edit_answers_nothing(owner, owner_house, borrower_client):
+    """Only leaving the park declines. Saving a new colour must not."""
+    car = _make_car(owner_house)
+    _create_loan(borrower_client, [car])
+
+    _client_for(owner).patch(reverse("car-detail", args=[car.id]), {"color": "grøn"}, format="json")
+
+    assert CarLoanCandidate.objects.get(car=car).status == CarLoanCandidate.Status.ASKED
+    assert CarLoan.objects.get().status == CarLoan.Status.REQUESTED
+
+
+@pytest.mark.django_db
+def test_unsharing_a_car_nobody_asked_about_is_quiet(owner, owner_house):
+    """No request, no notification — the common case must stay uneventful."""
+    car = _make_car(owner_house)
+
+    response = _client_for(owner).patch(
+        reverse("car-detail", args=[car.id]), {"is_shared": False}, format="json"
+    )
+
+    assert response.status_code == 200
+    assert Car.objects.get(pk=car.id).is_shared is False
+    assert not Notification.objects.exists()
+
+
+# -- Nothing a resident types comes back in English -------------------------
+
+
+@pytest.mark.django_db
+def test_the_km_bounds_are_refused_in_danish(owner_house, borrower_client):
+    """DRF's own wording ("Ensure this value is ...") reached the borrower raw."""
+    car = _make_car(owner_house)
+
+    for value, expected in [
+        (0, "Skriv mindst 1 km."),
+        (100_001, "Skriv højst 100.000 km."),
+        ("tolv", "Skriv antal kilometer som et helt tal."),
+    ]:
+        response = _create_loan(borrower_client, [car], expected_km=value)
+        assert response.status_code == 400
+        assert expected in str(response.data["expected_km"])
+
+
+@pytest.mark.django_db
+def test_a_settlement_over_the_ceiling_is_refused_in_danish(owner_house, borrower_client):
+    """The frontend used to clamp this to 100.000 and settle at 394.000 kr."""
+    car = _make_car(owner_house)
+    loan = _activate_loan(borrower_client, car)
+
+    response = borrower_client.post(
+        reverse("carsharing-loan-complete", args=[loan.pk]),
+        {"actual_km": 999_999, "expense_amount": "0"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "Skriv højst 100.000 km." in str(response.data["actual_km"])
+    assert CarLoan.objects.get(pk=loan.pk).status == CarLoan.Status.ACTIVE
+
+
+@pytest.mark.django_db
+def test_an_impossible_km_rate_is_refused_in_danish(owner, owner_house):
+    """1000 for 10,00 is the plausible typo, and it answered in English."""
+    car = _make_car(owner_house)
+
+    response = _client_for(owner).patch(
+        reverse("car-detail", args=[car.id]), {"rate_per_km": "1000"}, format="json"
+    )
+
+    assert response.status_code == 400
+    assert "999,99" in str(response.data)
+
+
+# -- A car already lent out cannot be asked ---------------------------------
+
+
+@pytest.mark.django_db
+def test_a_car_lent_out_in_the_window_cannot_be_asked(owner_house, borrower_client, borrower):
+    """Otherwise the request can never be closed.
+
+    The owner is offered a yes that fails with "Bilen er netop blevet udlånt" on
+    every press, and the borrower's only way out is to be told no. The borrow
+    list already refuses to tick such a car; this is the same rule for a client
+    whose list is out of date.
+    """
+    start_at, end_at = _window()
+    car = _make_car(owner_house)
+    other = User.objects.create_user(
+        email="second_borrower@example.com",
+        password="x",
+        first_name="Sofie",
+        house=House.objects.create(name="House 14", address="Kløverbakkevej 14"),
+    )
+    _create_loan(_client_for(other), [car], start=start_at, end=end_at)
+    _accept(car)
+
+    refused = _create_loan(borrower_client, [car], start=start_at, end=end_at)
+
+    assert refused.status_code == 400
+    assert "allerede udlånt i tidsrummet" in str(refused.data["car_ids"])
+    assert CarLoan.objects.filter(borrower=borrower).count() == 0
+
+
+@pytest.mark.django_db
+def test_a_car_lent_out_at_another_time_can_still_be_asked(owner_house, borrower_client):
+    """The guard is about the window, not about the car."""
+    car = _make_car(owner_house)
+    _activate_loan(borrower_client, car)
+
+    later_start, later_end = _window(days_ahead=9)
+    response = _create_loan(borrower_client, [car], start=later_start, end=later_end)
+
+    assert response.status_code == 201
+
+
 # -- Notification preferences actually gate car sharing ---------------------
 
 
@@ -1228,15 +1413,21 @@ def test_car_sharing_notifications_are_on_by_default(owner, owner_house, borrowe
 
 
 @pytest.mark.django_db
-def test_email_for_car_sharing_is_opt_in_and_push_is_opt_out(owner):
-    """Matches how the rest of the app is configured; asserted so a later edit to
-    the defaults is a deliberate choice rather than an accident."""
+def test_every_car_sharing_channel_is_on_by_default(owner):
+    """Bildeling email is on, unlike the rest of the app. Deliberately.
+
+    A borrow request is the one notification here that is waiting on the person
+    who gets it: nobody else can answer it, and until they do a neighbour is
+    standing there without a car. Push is not configured, so with email off the
+    only signal was the in-app bell — which you have to already be in the app to
+    see. This assertion exists so changing it back is a decision, not a drift.
+    """
     from apps.notifications.models import NotificationPreference
 
     prefs = NotificationPreference.objects.create(user=owner)
 
     assert prefs.notify_car_sharing is True
-    assert prefs.email_car_sharing is False
+    assert prefs.email_car_sharing is True
     assert prefs.push_car_sharing is True
 
 
@@ -2177,19 +2368,25 @@ def test_lending_one_car_leaves_the_households_other_car_available(owner_house, 
 
 @pytest.mark.django_db
 def test_the_same_car_cannot_be_lent_twice_in_one_window(owner_house, borrower_client):
-    """The per-car rule still holds — this is what stops double-booking."""
+    """The per-car rule still holds — this is what stops double-booking.
+
+    Both requests are made before either is answered, which is the only way this
+    state can arise now that asking about an already-lent car is refused up
+    front. It is also the real race: two neighbours want the same car for the
+    same evening, and the owner works through their inbox.
+    """
     volvo = _make_car(owner_house, plate="QQ11111", make="Volvo", model_name="V70")
     start_at, end_at = _window()
-
-    _create_loan(borrower_client, [volvo], start=start_at, end=end_at)
-    _accept(volvo)
 
     other_house = House.objects.create(name="House 15", address="Kløverbakkevej 15")
     rival = User.objects.create_user(
         email="rival@example.com", password="x", first_name="Rita", house=other_house
     )
+    _create_loan(borrower_client, [volvo], start=start_at, end=end_at)
     _create_loan(_client_for(rival), [volvo], start=start_at, end=end_at)
     second_loan = CarLoan.objects.get(borrower=rival)
+
+    _accept(volvo, loan_id=CarLoan.objects.exclude(pk=second_loan.pk).get().pk)
 
     # The owning household says yes to the second request too — the server has to
     # be the one that refuses, since the same car cannot be in two places.
@@ -2270,3 +2467,98 @@ def test_a_free_car_still_reimburses_the_borrowers_outlay(owner_house, borrower_
 
     loan.refresh_from_db()
     assert loan.amount_due == Decimal("-150.00")
+
+
+# -- One household, several adults, one debt --------------------------------
+
+
+def _second_adult(house, email="housemate@example.com", first_name="Aske"):
+    return User.objects.create_user(email=email, password="x", first_name=first_name, house=house)
+
+
+@pytest.mark.django_db
+def test_the_settlement_is_addressed_to_the_household_when_it_has_two_adults(
+    owner, owner_house, borrower_client, borrower
+):
+    """Both adults read the same message, and it is one payment.
+
+    In the second person singular it is a bill to each of them, and two people
+    settling by MobilePay could each send the same amount in good faith.
+    """
+    _second_adult(owner_house)
+    car = _make_car(owner_house)
+    loan = _activate_loan(borrower_client, car)
+
+    borrower_client.post(
+        reverse("carsharing-loan-complete", args=[loan.pk]),
+        {"actual_km": 100, "expense_amount": "0"},
+        format="json",
+    )
+
+    messages = list(
+        Notification.objects.filter(
+            notification_type=NotificationType.CAR_LOAN_UPDATE, title="Billån afsluttet"
+        ).values_list("message", flat=True)
+    )
+    assert len(messages) == 2, "both adults of the household are told"
+    for message in messages:
+        assert f"{borrower.first_name} skal betale jer" in message
+        assert "skal betale dig" not in message
+        assert "Beløbet er for hele husstanden — ikke per person." in message
+
+
+@pytest.mark.django_db
+def test_a_single_adult_household_is_still_addressed_as_one_person(
+    owner, owner_house, borrower_client, borrower
+):
+    """ "I skylder" to somebody who lives alone is worse than the bug it fixes."""
+    car = _make_car(owner_house)
+    loan = _activate_loan(borrower_client, car)
+
+    borrower_client.post(
+        reverse("carsharing-loan-complete", args=[loan.pk]),
+        {"actual_km": 100, "expense_amount": "0"},
+        format="json",
+    )
+
+    message = Notification.objects.get(title="Billån afsluttet").message
+    assert f"{borrower.first_name} skal betale dig" in message
+    assert "husstanden" not in message
+
+
+@pytest.mark.django_db
+def test_the_household_hears_when_one_of_them_withdraws_the_car(
+    owner, owner_house, borrower_client
+):
+    """The adult who said yes was left holding "Din bil er udlånt", now false.
+
+    Every other branch of the cancellation notifier fans out to the household;
+    the owner-withdraw branch told only the borrower.
+    """
+    housemate = _second_adult(owner_house)
+    car = _make_car(owner_house)
+    loan = _activate_loan(borrower_client, car)
+
+    _client_for(owner).post(reverse("carsharing-loan-cancel", args=[loan.pk]))
+
+    theirs = Notification.objects.filter(user=housemate, title="Bilen er ikke udlånt alligevel")
+    assert theirs.count() == 1
+    assert car.display_name in theirs.get().message
+    # And the one who pressed the button is not told about their own press.
+    assert not Notification.objects.filter(
+        user=owner, title="Bilen er ikke udlånt alligevel"
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_the_loan_tells_the_client_how_many_adults_it_is_talking_to(
+    owner, owner_house, borrower_client, borrower
+):
+    """The card words the money from this, so it has to be on the wire."""
+    _second_adult(owner_house)
+    car = _make_car(owner_house)
+    loan = _activate_loan(borrower_client, car)
+
+    data = _client_for(borrower).get(reverse("carsharing-loan-detail", args=[loan.pk])).data
+
+    assert data["car_household_size"] == 2

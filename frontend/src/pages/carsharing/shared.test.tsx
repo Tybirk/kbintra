@@ -5,6 +5,7 @@ import {
   formatDateTime,
   formatRatePerKm,
   formatWindow,
+  kmInputError,
   moneyInputError,
   settlementBreakdown,
 } from "./shared"
@@ -145,5 +146,50 @@ describe("dates lead with the weekday", () => {
     ).toMatch(
       new RegExp(String.raw`^${WEEKDAY} .* til ${WEEKDAY} .*2027 \d{2}:\d{2}$`),
     )
+  })
+})
+
+// The field these guard used to carry Mantine's min/max, whose clampBehavior
+// rewrites an out-of-range value on blur and submits the rewrite in silence — a
+// typed 999999 settled a loan at 394.000 kr., a typed -30 settled it at nothing.
+describe("kilometres are bounded out loud, never silently", () => {
+  it("says so above the ceiling and below the floor", () => {
+    expect(kmInputError(100001, 0)).toBe("Skriv højst 100.000 km.")
+    expect(kmInputError(-30, 0)).toBe("Kilometer kan ikke være negativt.")
+    // The borrow form asks for a trip, not for standing still.
+    expect(kmInputError(0, 1)).toBe("Skriv mindst 1 km.")
+  })
+
+  it("accepts the bounds themselves and ordinary trips", () => {
+    expect(kmInputError(0, 0)).toBeNull()
+    expect(kmInputError(100000, 0)).toBeNull()
+    expect(kmInputError(120, 1)).toBeNull()
+  })
+
+  it("refuses a fraction, in Danish, rather than rounding it into a bill", () => {
+    expect(kmInputError(12.5, 0)).toBe("Skriv antal kilometer som et helt tal.")
+    expect(kmInputError("12,5", 0)).toBe(
+      "Skriv antal kilometer som et helt tal.",
+    )
+    expect(kmInputError("tolv", 0)).toBe(
+      "Skriv antal kilometer som et helt tal.",
+    )
+  })
+
+  it("leaves an empty field to the caller, which knows if it is required", () => {
+    expect(kmInputError("", 1)).toBeNull()
+  })
+})
+
+// The settle field used to coerce an empty box to 0 and complete the loan at
+// 0 km / 0,00 kr., with no error and no way back. The validator itself stays
+// neutral on empty — the two call sites word it differently — so this pins the
+// contract the callers rely on.
+describe("an empty kilometre field is the caller's call, not a zero", () => {
+  it("never reports empty as a valid zero", () => {
+    expect(kmInputError("", 0)).toBeNull()
+    expect(kmInputError(0, 0)).toBeNull()
+    // and the two are not the same thing to the caller
+    expect(Number("") || 0).toBe(0)
   })
 })

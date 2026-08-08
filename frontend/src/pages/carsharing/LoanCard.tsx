@@ -28,6 +28,7 @@ import {
   formatDateTime,
   formatKr,
   formatWindow,
+  kmInputError,
   moneyInputError,
   settlementBreakdown,
   useCarSharingMutation,
@@ -36,6 +37,13 @@ import {
 import type { CarLoan } from "../../types"
 
 // --- Tab 2: my loans ---------------------------------------------------------
+
+// Free text from a resident can hold a pasted link or an unbroken word. Without
+// this the Alert's message box grows past the card — measured at 33.684px for a
+// pathological note — and the root's overflow:hidden then cuts every line off
+// mid-sentence, taking the ordinary Danish around it with it. The card does not
+// scroll sideways, so the text is not merely awkward, it is gone.
+const WRAP_LONG_WORDS = { message: { overflowWrap: "anywhere" } } as const
 
 interface CompleteFormProps {
   loan: CarLoan
@@ -50,6 +58,13 @@ function CompleteLoanForm({ loan }: CompleteFormProps) {
   const rate = loan.rate_per_km ?? "0"
   const km = typeof actualKm === "number" ? actualKm : Number(actualKm) || 0
   const expenseError = moneyInputError(expenseAmount, "et beløb")
+  // An empty field is not "I drove nothing" — it is a question nobody answered,
+  // and settling on it wrote 0 km / 0,00 kr. into a state with no way back. The
+  // borrow form already treats empty as an error; this one coerced it to 0.
+  const kmError =
+    actualKm === "" || actualKm === null
+      ? "Skriv hvor mange kilometer du kørte."
+      : kmInputError(actualKm, 0)
   // The note explains an amount, so there is nothing for it to explain until
   // there is one. Asking first and showing it only when the amount is above zero
   // is how a borrower ends up writing into a field nobody ever reads.
@@ -78,16 +93,24 @@ function CompleteLoanForm({ loan }: CompleteFormProps) {
   return (
     <Stack gap="sm" mt="sm">
       <Divider label="Afslut lån" labelPosition="left" />
+      {/* No min/max: Mantine's default clampBehavior rewrites an out-of-range
+          value on blur and submits the rewritten one without a word, so a
+          mistyped 999999 settled a loan at 394.000 kr. and a -30 settled it at
+          nothing at all. A settlement is terminal and nobody can correct it
+          afterwards, so the bounds are said out loud and the button waits. */}
       <NumberInput
         label="Kørte kilometer"
         value={actualKm}
         onChange={setActualKm}
-        min={0}
-        max={100000}
+        error={kmError}
       />
       <TextInput
         label="Dine udgifter til strøm eller brændstof (kr.)"
-        description="Ladning med brikken i bilen er dækket — skriv kun ekstra udgifter."
+        description={
+          loan.car_has_charge_fob
+            ? "Ladning med brikken i bilen er dækket — skriv kun ekstra udgifter."
+            : "Skriv hvad du selv har lagt ud til strøm eller brændstof."
+        }
         value={expenseAmount}
         onChange={(event) => setExpenseAmount(event.currentTarget.value)}
         inputMode="decimal"
@@ -111,32 +134,38 @@ function CompleteLoanForm({ loan }: CompleteFormProps) {
         autosize
         minRows={2}
       />
-      <Card
-        withBorder
-        radius="sm"
-        padding="sm"
-        bg="var(--mantine-color-gray-light)"
-      >
-        <Text size="sm" fw={600}>
-          {amountDue === 0
-            ? "Intet at betale"
-            : amountDue < 0
-              ? `Ejeren skylder dig ${formatKr(Math.abs(amountDue))}`
-              : `Du skal betale ${formatKr(amountDue)}`}
-        </Text>
-        <Text size="xs" c="dimmed">
-          {km} km × {formatKr(rate)}
-          {parseDecimalInput(expenseAmount) > 0
-            ? ` − ${formatKr(parseDecimalInput(expenseAmount))} i udgifter`
-            : ""}
-        </Text>
-        <Text size="xs" c="dimmed">
-          Afregn selv med MobilePay.
-        </Text>
-      </Card>
+      {/* An amount computed from a value the server will refuse is worse than no
+          amount: a negative expense quoted "444,00 kr." over a breakdown reading
+          "100 km × 3,94 kr.", because the total used the raw value and the
+          breakdown only rendered the expense when it was positive. */}
+      {kmError === null && expenseError === null && (
+        <Card
+          withBorder
+          radius="sm"
+          padding="sm"
+          bg="var(--mantine-color-gray-light)"
+        >
+          <Text size="sm" fw={600}>
+            {amountDue === 0
+              ? "Intet at betale"
+              : amountDue < 0
+                ? `Ejeren skylder dig ${formatKr(Math.abs(amountDue))}`
+                : `Du skal betale ${formatKr(amountDue)}`}
+          </Text>
+          <Text size="xs" c="dimmed">
+            {km.toLocaleString("da-DK")} km × {formatKr(rate)}
+            {parseDecimalInput(expenseAmount) > 0
+              ? ` − ${formatKr(parseDecimalInput(expenseAmount))} i udgifter`
+              : ""}
+          </Text>
+          <Text size="xs" c="dimmed">
+            Afregn selv med MobilePay.
+          </Text>
+        </Card>
+      )}
       <Button
         loading={mutation.isPending}
-        disabled={expenseError !== null}
+        disabled={expenseError !== null || kmError !== null}
         onClick={() => mutation.mutate(undefined)}
       >
         Afslut lån
@@ -402,6 +431,7 @@ export function LoanCard({ loan, highlight }: LoanCardProps) {
                 icon={<IconMessage2 size={18} />}
                 color="gray"
                 variant="light"
+                styles={WRAP_LONG_WORDS}
                 title={
                   loan.is_borrower
                     ? "Din besked"
@@ -423,6 +453,7 @@ export function LoanCard({ loan, highlight }: LoanCardProps) {
                 icon={<IconInfoCircle size={18} />}
                 color="blue"
                 variant="light"
+                styles={WRAP_LONG_WORDS}
               >
                 {loan.car_practical_note}
               </Alert>
@@ -453,11 +484,16 @@ export function LoanCard({ loan, highlight }: LoanCardProps) {
               <Stack gap="xs">
                 {/* Households, matching the count the send confirmation gave —
                     and singular when only one was asked, which "Alle 1 spurgte
-                    husstande" was not. */}
+                    husstande" was not. The count can also reach zero: removing a
+                    car takes its candidacy with it (CarLoanCandidate.car is
+                    CASCADE), and "Alle 0 spurgte husstande har sagt nej" is not a
+                    sentence to show anyone. */}
                 <Text size="sm" fw={500}>
-                  {householdsAsked(loan) === 1
-                    ? "Husstanden du spurgte, kan ikke låne ud — der er ikke flere at afvente svar fra."
-                    : `Alle ${householdsAsked(loan)} spurgte husstande har sagt nej — der er ikke flere at afvente svar fra.`}
+                  {householdsAsked(loan) === 0
+                    ? "Der er ikke flere at afvente svar fra."
+                    : householdsAsked(loan) === 1
+                      ? "Husstanden du spurgte, kan ikke låne ud — der er ikke flere at afvente svar fra."
+                      : `Alle ${householdsAsked(loan)} spurgte husstande har sagt nej — der er ikke flere at afvente svar fra.`}
                 </Text>
                 <Text size="xs" c="dimmed">
                   Prøv et andet tidsrum, eller spørg flere biler.
@@ -556,6 +592,7 @@ export function LoanCard({ loan, highlight }: LoanCardProps) {
                 icon={<IconMessage2 size={18} />}
                 color="gray"
                 variant="light"
+                styles={WRAP_LONG_WORDS}
                 title={loan.is_borrower ? "Din besked" : "Besked fra låneren"}
               >
                 {loan.damage_note}

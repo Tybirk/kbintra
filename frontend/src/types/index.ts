@@ -263,6 +263,12 @@ export interface CarLoan {
 
   car_house_name: string
 
+  /** Decides whether the settlement form may say the energy is already covered. */
+  car_has_charge_fob: boolean
+
+  /** Adults in the lending household. Above one, the money is addressed to "I". */
+  car_household_size: number
+
   /** Empty unless you are the borrower or the lending household. */
   car_practical_note: string
 

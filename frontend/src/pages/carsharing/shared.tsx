@@ -35,12 +35,18 @@ interface LicensePlateBadgeProps {
   plate: string
 }
 
+/** The EU band down the left edge. The real plate's Reflex Blue (#003399) goes
+ *  nearly black at five pixels wide; this is the band as it reads on a car. */
+const EU_BLUE = "var(--mantine-color-blue-8)"
+
 /**
  * A registration number, rendered as a plate.
  *
- * Squared-off corners and a red border, the way a Danish plate looks. As a grey
- * pill it sat in a row with "Udlånt" and "Ikke delt" and read as one more status
- * about the car, when it is the one thing on the card that identifies it.
+ * Squared-off corners, a red border and the blue EU band, the way a Danish plate
+ * looks. As a grey pill it sat in a row with "Udlånt" and "Ikke delt" and read as
+ * one more status about the car, when it is the one thing on the card that
+ * identifies it. The band carries no stars and no "DK": at sixteen pixels tall
+ * either one is a smudge, and a plain blue field says plate on its own.
  */
 export function LicensePlateBadge({ plate }: LicensePlateBadgeProps) {
   return (
@@ -48,15 +54,29 @@ export function LicensePlateBadge({ plate }: LicensePlateBadgeProps) {
       variant="default"
       size="sm"
       radius="xs"
-      // The frame of a smaller badge around the text of this one: a plate is
-      // read rather than glanced at, so the number keeps its size while the box
-      // tightens around it. The border is a hairline — thinner than this and the
-      // browser rounds it away on a non-retina screen, leaving no red at all.
-      style={{
-        borderColor: "var(--mantine-color-red-6)",
-        borderWidth: "0.5px",
-        height: "var(--badge-height-xs)",
-        paddingInline: "calc(0.25rem * var(--mantine-scale))",
+      leftSection={<span aria-hidden />}
+      styles={{
+        // The frame of a smaller badge around the text of this one: a plate is
+        // read rather than glanced at, so the number keeps its size while the box
+        // tightens around it. The border is a hairline — thinner than this and
+        // the browser rounds it away on a non-retina screen, leaving no red.
+        root: {
+          borderColor: "var(--mantine-color-red-6)",
+          borderWidth: "0.5px",
+          height: "var(--badge-height-xs)",
+          // No padding of its own: the band has to reach the border, the way it
+          // does on a plate. The number below carries the padding instead.
+          paddingInline: 0,
+        },
+        section: {
+          alignSelf: "stretch",
+          marginInlineEnd: 0,
+          width: "calc(0.3125rem * var(--mantine-scale))",
+          background: EU_BLUE,
+        },
+        label: {
+          paddingInline: "calc(0.25rem * var(--mantine-scale))",
+        },
       }}
     >
       {formatLicensePlate(plate)}
@@ -160,6 +180,14 @@ export function describeSettlement(loan: CarLoan): string {
   if (loan.is_borrower) {
     return owedToBorrower ? `Du får ${sum} tilbage` : `Du skal betale ${sum}`
   }
+  // Every adult of the lending household reads this, and it is one debt. In the
+  // second person singular it is a bill to each of them, and two people settling
+  // by MobilePay could each pay it in good faith.
+  if (loan.car_household_size > 1) {
+    return owedToBorrower
+      ? `I skylder ${loan.borrower_name} ${sum}`
+      : `${loan.borrower_name} skal betale jer ${sum}`
+  }
   return owedToBorrower
     ? `Du skylder ${loan.borrower_name} ${sum}`
     : `${loan.borrower_name} skal betale dig ${sum}`
@@ -184,6 +212,39 @@ export function moneyInputError(value: string, label: string): string | null {
     // 3,94 kr./km — an example a dozen times any realistic value.
     return `Skriv kun ${label}, fx 3,94.`
   }
+  return null
+}
+
+/** The bound both km serializers enforce. Whole kilometres, 0–100.000. */
+export const MAX_KM = 100000
+
+/**
+ * One validator for every kilometre field, for the same reason as money.
+ *
+ * These fields used to carry Mantine's `min`/`max`, whose default clampBehavior
+ * rewrites an out-of-range value on blur and submits the rewritten one in
+ * silence — settling a loan at 394.000 kr. for a typed 999999, and at nothing
+ * for a typed -30. Saying the bound out loud and blocking the button is the only
+ * version a borrower can argue with, and a settlement cannot be undone.
+ */
+export function kmInputError(
+  value: number | string,
+  minKm: number,
+): string | null {
+  if (value === "" || value === null || value === undefined) return null
+  const km =
+    typeof value === "number"
+      ? value
+      : Number(normalizeDecimalSeparator(String(value)))
+  if (Number.isNaN(km) || !Number.isInteger(km)) {
+    return "Skriv antal kilometer som et helt tal."
+  }
+  if (km < minKm) {
+    return minKm > 0
+      ? "Skriv mindst 1 km."
+      : "Kilometer kan ikke være negativt."
+  }
+  if (km > MAX_KM) return `Skriv højst ${MAX_KM.toLocaleString("da-DK")} km.`
   return null
 }
 

@@ -121,6 +121,12 @@ class CarCreateUpdateSerializer(serializers.ModelSerializer):
         error_messages={
             "invalid": "Angiv en gyldig km-takst, fx 3,94.",
             "min_value": "Km-taksten kan ikke være negativ.",
+            # The plausible typo is 1000 for 10,00, and DRF answered it with
+            # "Ensure that there are no more than 3 digits before the decimal
+            # point." Both digit bounds say the same thing to an owner.
+            "max_digits": "Km-taksten er for høj — skriv højst 999,99.",
+            "max_whole_digits": "Km-taksten er for høj — skriv højst 999,99.",
+            "max_decimal_places": "Skriv km-taksten med højst to decimaler.",
         },
     )
 

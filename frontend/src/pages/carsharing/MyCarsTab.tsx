@@ -141,6 +141,18 @@ function MyCarCard({ car }: MyCarCardProps) {
   // A negative or unparseable rate reached borrowers as "-3,50 kr./km" and
   // inverted the bill, so catch it here as well as on the server.
   const rateError = moneyInputError(draft.rate_per_km ?? "", "en takst")
+  // Same trap as the kilometre fields: min/max clamp on blur and then save the
+  // clamped number under "Ændringerne er gemt", so a typed 1800 became 1950 and
+  // 9999 seats became 9, both without a word. 1900 is the floor because a
+  // veteran car is a real thing an owner may own.
+  const yearError =
+    typeof draft.year === "number" && (draft.year < 1900 || draft.year > 2100)
+      ? "Skriv et årstal mellem 1900 og 2100."
+      : null
+  const seatsError =
+    typeof draft.seats === "number" && (draft.seats < 1 || draft.seats > 9)
+      ? "Skriv et antal sæder mellem 1 og 9."
+      : null
 
   // Why the save is unavailable, in the words of the thing to fix. The button now
   // sits below the week grid, far from the field at fault, so a disabled button
@@ -151,7 +163,11 @@ function MyCarCard({ car }: MyCarCardProps) {
       ? "Bekræft vilkårene for at have bilen i delebilparken."
       : rateError
         ? "Ret km-taksten, før du kan gemme."
-        : null
+        : yearError
+          ? "Ret årgangen, før du kan gemme."
+          : seatsError
+            ? "Ret antal sæder, før du kan gemme."
+            : null
 
   /**
    * One press saves the whole card: the fields, the week schedule, or both.
@@ -386,8 +402,7 @@ function MyCarCard({ car }: MyCarCardProps) {
                     year: typeof value === "number" ? value : null,
                   })
                 }
-                min={1950}
-                max={2100}
+                error={yearError}
               />
               <NumberInput
                 label="Sæder"
@@ -398,8 +413,7 @@ function MyCarCard({ car }: MyCarCardProps) {
                     seats: typeof value === "number" ? value : null,
                   })
                 }
-                min={1}
-                max={9}
+                error={seatsError}
               />
             </Group>
             <TextInput

@@ -1652,6 +1652,26 @@ def notify_car_loan_cancelled(loan: Any, by_user: User) -> list[Notification]:
     )
     if notification is not None:
         created.append(notification)
+
+    # And tell the rest of the lending household. Every other branch here fans
+    # out to the household; this one did not, so the adult who said yes — and who
+    # was told "Din bil er udlånt" — kept a message that had become false, with
+    # nothing to say the car was theirs again.
+    if loan.car is not None:
+        for recipient in _car_household_recipients(loan.car, by_user.id):
+            housemate_note = create_notification(
+                user=recipient,
+                notification_type=NotificationType.CAR_LOAN_UPDATE,
+                title="Bilen er ikke udlånt alligevel",
+                message=(
+                    f"{by_user.first_name} har trukket {car_name} tilbage {window}. "
+                    f"{loan.borrower.first_name} skulle have lånt den."
+                ),
+                link=_car_loan_link(loan),
+                related_user=by_user,
+            )
+            if housemate_note is not None:
+                created.append(housemate_note)
     return created
 
 
@@ -1667,12 +1687,27 @@ def notify_car_loan_completed(loan: Any) -> list[Notification]:
     def _kr(value: Decimal) -> str:
         return f"{value:.2f}".replace(".", ",")
 
+    # Everyone in the household gets this message, and it is one debt. Addressed
+    # as "du" it read as a bill to each of them personally — two adults could
+    # each MobilePay the same 150 kr. and neither would have reason to suspect.
+    recipients = list(_car_household_recipients(loan.car, loan.borrower_id))
+    shared = len(recipients) > 1
+
     amount = loan.amount_due if loan.amount_due is not None else Decimal("0")
     amount_text = _kr(amount)
     if amount < 0:
-        money = f"Du skylder {loan.borrower.first_name} {amount_text.lstrip('-')} kr."
+        owed = amount_text.lstrip("-")
+        money = (
+            f"I skylder {loan.borrower.first_name} {owed} kr."
+            if shared
+            else f"Du skylder {loan.borrower.first_name} {owed} kr."
+        )
     else:
-        money = f"{loan.borrower.first_name} skal betale dig {amount_text} kr."
+        money = (
+            f"{loan.borrower.first_name} skal betale jer {amount_text} kr."
+            if shared
+            else f"{loan.borrower.first_name} skal betale dig {amount_text} kr."
+        )
 
     # The breakdown, so km × takst − udgifter adds up to the amount above.
     breakdown = f"{loan.actual_km or 0} km × {_kr(loan.effective_rate)} kr."
@@ -1686,11 +1721,13 @@ def notify_car_loan_completed(loan: Any) -> list[Notification]:
         f"{loan.car.display_name} er afleveret efter {loan.actual_km or 0} km. "
         f"{money} ({breakdown})"
     )
+    if shared:
+        message += " Beløbet er for hele husstanden — ikke per person."
     if loan.damage_note:
         message += f" Bemærkning: {loan.damage_note}"
 
     created = []
-    for recipient in _car_household_recipients(loan.car, loan.borrower_id):
+    for recipient in recipients:
         notification = create_notification(
             user=recipient,
             notification_type=NotificationType.CAR_LOAN_UPDATE,

@@ -818,3 +818,37 @@ class TestNotificationChannelDedup:
         assert Notification.objects.filter(
             user=user, notification_type=NotificationType.SUBGROUP_ACTIVITY
         ).exists()
+
+
+@pytest.mark.django_db
+class TestEmailPreferenceFallback:
+    """A resident who never opened the settings page still gets their email.
+
+    NotificationPreference is created lazily by the settings endpoint, so anyone
+    who never visited it had no row — and should_send_email answered False for
+    every notification type in the whole app. Not an opt-out: a silence. The task
+    still ran, sent nothing, and logged success.
+    """
+
+    def test_a_user_without_preferences_falls_back_to_the_defaults(self, user):
+        from apps.notifications.email_service import should_send_email
+
+        NotificationPreference.objects.filter(user=user).delete()
+        user.refresh_from_db()
+        defaults = NotificationPreference(user=user)
+
+        for notification_type, default in (
+            (NotificationType.NEW_MESSAGE, defaults.email_messages),
+            (NotificationType.NEW_ANNOUNCEMENT, defaults.email_announcements),
+            (NotificationType.CAR_LOAN_REQUEST, defaults.email_car_sharing),
+        ):
+            assert should_send_email(user, notification_type) is default
+
+    def test_an_explicit_opt_out_still_wins(self, user):
+        from apps.notifications.email_service import should_send_email
+
+        NotificationPreference.objects.update_or_create(
+            user=user, defaults={"email_messages": False}
+        )
+
+        assert should_send_email(user, NotificationType.NEW_MESSAGE) is False

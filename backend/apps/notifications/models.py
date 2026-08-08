@@ -126,7 +126,11 @@ class NotificationPreference(models.Model):
     email_event_reminders = models.BooleanField(default=False)
     email_food_tickets = models.BooleanField(default=False)
     email_mentions = models.BooleanField(default=False)
-    email_car_sharing = models.BooleanField(default=False)
+    # On by default, unlike the other email toggles. A borrow request is the one
+    # notification in the app that is waiting on the recipient: nobody else can
+    # answer it, and until they do a neighbour is standing there without a car.
+    # Push is not configured, so without email the only signal is the in-app bell.
+    email_car_sharing = models.BooleanField(default=True)
 
     # Push notification preferences (per notification type)
     push_messages = models.BooleanField(default=True)

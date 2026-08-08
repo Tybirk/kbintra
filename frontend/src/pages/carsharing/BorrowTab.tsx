@@ -37,6 +37,7 @@ import {
   errorMessage,
   formatDateTime,
   formatRatePerKm,
+  kmInputError,
   LicensePlateBadge,
   LONG_DATE_TIME,
   SHORT_DATE_TIME,
@@ -86,6 +87,11 @@ export function BorrowTab({ onRequested }: BorrowTabProps) {
   // modal there. Same hook and breakpoint as WeekHourGrid; undefined on the first
   // render, so the falsy branch has to be the desktop one.
   const narrow = useMediaQuery("(max-width: 48em)")
+  // A phone held sideways leaves ~390px of height, of which the sticky bar takes
+  // 90 — and it took them off the top of the form, sitting squarely over the
+  // "Fra" field. A finger aimed at the date picker hit "Send forespørgsel" and
+  // asked the neighbours. Below this height the bar rejoins the flow.
+  const shortViewport = useMediaQuery("(max-height: 30em)")
 
   const { data: terms } = useCarSharingTerms()
   // Consent belongs to a version of the terms, not to a single loan. Asking at
@@ -112,17 +118,26 @@ export function BorrowTab({ onRequested }: BorrowTabProps) {
   // Why "Send forespørgsel" is disabled, in the order a borrower can act on it.
   // The bar used to explain only the terms case and leave the rest silent, with
   // the real reason printed thousands of pixels up the page.
+  // An empty field is not a zero-kilometre trip, it is an unanswered question —
+  // and the server says so in English if it ever gets there.
+  const expectedKmError =
+    expectedKm === "" || expectedKm === null
+      ? "Skriv hvor mange kilometer du regner med at køre."
+      : kmInputError(expectedKm, 1)
+
   const blockedReason = !windowValid
     ? "Sluttidspunktet skal ligge efter starttidspunktet."
     : windowTooLong
       ? `Et lån kan højst vare ${maxLoanDays} dage.`
       : windowInPast
         ? "Tidsrummet er allerede forbi — vælg et senere tidspunkt."
-        : selected.length === 0
-          ? "Vælg mindst én bil."
-          : !termsConfirmed
-            ? "Bekræft vilkårene for at sende forespørgslen."
-            : null
+        : expectedKmError
+          ? expectedKmError
+          : selected.length === 0
+            ? "Vælg mindst én bil."
+            : !termsConfirmed
+              ? "Bekræft vilkårene for at sende forespørgslen."
+              : null
 
   // Key off the exact strings sent to the server. Going through dayjs rather
   // than start.toISOString() also survives the date picker handing back a
@@ -172,6 +187,22 @@ export function BorrowTab({ onRequested }: BorrowTabProps) {
   useEffect(() => {
     if (!windowUsable) setSelected([])
   }, [windowUsable])
+
+  // A tick made for one window can become impossible in the next: move the dates
+  // onto an active loan and the car goes UDLÅNT, its checkbox disabled — while
+  // staying checked, so it could not be removed and was sent anyway. The owner
+  // then got a "Ja, den må lånes" that could only ever fail. Prune against the
+  // list itself, which is the only thing that knows what is still selectable.
+  useEffect(() => {
+    const cars = sharedCars?.cars
+    if (!cars) return
+    setSelected((current) => {
+      const kept = current.filter(
+        (id) => cars.find((car) => car.id === id)?.selectable,
+      )
+      return kept.length === current.length ? current : kept
+    })
+  }, [sharedCars])
 
   // Households, not cars: two cars from the same house is one household asked.
   const householdCount = useMemo(() => {
@@ -282,12 +313,16 @@ export function BorrowTab({ onRequested }: BorrowTabProps) {
               {blockedReason}
             </Text>
           )}
+          {/* Same reason as the settlement field: min/max clamp on blur and
+              submit the clamped number in silence. Here the server also
+              answered an empty field in English ("Ensure this value is greater
+              than or equal to 1."), because Send stayed enabled with nothing in
+              it. */}
           <NumberInput
             label="Forventede kilometer"
             value={expectedKm}
             onChange={setExpectedKm}
-            min={1}
-            max={100000}
+            error={expectedKmError}
           />
           <Group gap="md" wrap="wrap">
             <Checkbox
@@ -414,11 +449,20 @@ export function BorrowTab({ onRequested }: BorrowTabProps) {
                           car.has_isofix ? "Isofix" : null,
                           car.has_tow_hitch ? "Træk" : null,
                           car.dogs_allowed ? "Hunde tilladt" : null,
+                          car.has_charge_fob ? "Ladebrik" : null,
                           formatRatePerKm(car.effective_rate_per_km),
                         ]
                           .filter(Boolean)
                           .join(" · ")}
                       </Text>
+                      {/* The owner is invited to list autostol, tagbøjler and
+                          the rest, and until now wrote it into a void: nothing
+                          rendered it anywhere a borrower could see. */}
+                      {car.equipment_note && (
+                        <Text size="xs" c="dimmed">
+                          {car.equipment_note}
+                        </Text>
+                      )}
                       {car.conflict_note && (
                         <Text size="xs" c="dimmed">
                           {car.conflict_note}
@@ -457,20 +501,23 @@ export function BorrowTab({ onRequested }: BorrowTabProps) {
       <Card
         withBorder
         radius="md"
-        padding="sm"
+        padding={shortViewport ? "xs" : "sm"}
         // Sticky rather than a phone-only variant: one code path, and on a short
         // desktop page it simply never detaches. Kept as small as it can be —
-        // every pixel here is taken from the car list on a phone.
+        // every pixel here is taken from the car list on a phone, and on a phone
+        // held sideways there are only 390 of them. It stays sticky even there:
+        // dropping that put "Send forespørgsel" below eight screens of cars.
         style={{
           position: "sticky",
           bottom: 0,
           zIndex: 2,
           background: "var(--mantine-color-body)",
-          paddingBottom:
-            "max(var(--mantine-spacing-sm), env(safe-area-inset-bottom))",
+          paddingBottom: shortViewport
+            ? "max(var(--mantine-spacing-xs), env(safe-area-inset-bottom))"
+            : "max(var(--mantine-spacing-sm), env(safe-area-inset-bottom))",
         }}
       >
-        <Stack gap="xs">
+        <Stack gap={shortViewport ? 4 : "xs"}>
           {terms && !termsAlreadyAccepted && (
             <Checkbox
               label="Jeg har læst og accepterer vilkårene"

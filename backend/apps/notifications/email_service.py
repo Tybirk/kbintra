@@ -44,7 +44,12 @@ def should_send_email(user: User, notification_type: NotificationType) -> bool:
     try:
         prefs = user.notification_preferences
     except NotificationPreference.DoesNotExist:
-        return False
+        # No row is not the same as opting out. The row is only created lazily by
+        # the settings endpoint, so every resident who never opened that page got
+        # no email from any part of the app — 14 of them at the time of writing,
+        # silently, because the task still ran and simply sent nothing. Fall back
+        # to the model's own defaults, which is what the in-app path already does.
+        prefs = NotificationPreference(user=user)
 
     preference_map = {
         NotificationType.NEW_MESSAGE: prefs.email_messages,
