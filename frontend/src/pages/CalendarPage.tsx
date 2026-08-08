@@ -49,6 +49,8 @@ import {
   DA_SCHEDULE_LABELS,
 } from "../utils/scheduleHelpers"
 
+import type { TimeSlotClickData } from "../utils/scheduleHelpers"
+
 import type { Event } from "../types"
 
 type DisplayMode = "calendar" | "list"
@@ -187,7 +189,7 @@ export default function CalendarPage() {
   )
 
   const handleTimeSlotClick = useCallback(
-    (slotStart: string) => {
+    ({ slotStart }: TimeSlotClickData) => {
       const date = dayjs(slotStart).format("YYYY-MM-DD")
 
       const time = dayjs(slotStart).format("HH:mm")
@@ -548,8 +550,6 @@ export default function CalendarPage() {
                 }}
                 mobileMonthViewProps={{
                   firstDayOfWeek: 1,
-
-                  noEventsText: "Ingen begivenheder",
 
                   renderHeader: () => (
                     <Group justify="space-between" align="center" w="100%">

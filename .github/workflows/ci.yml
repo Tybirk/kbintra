@@ -112,11 +112,15 @@ jobs:
 
   # Build the production images on GitHub's runners (4 vCPU / 16 GB, free) and push
   # them to ghcr.io. The 4 GB prod box then only pulls — it never compiles. Runs only
-  # after all tests pass, and only on pushes to main (skipped on pull requests).
+  # after all tests pass, and only on pushes to develop or main (skipped on pull
+  # requests). Both branches build, so either one can be deployed; deploy.sh fails
+  # immediately on any other commit rather than waiting for an image CI never builds.
   build-push:
     name: Build & Push Images
     needs: [backend-lint, backend-test, frontend-lint, frontend-test]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    if: >-
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     permissions:
       contents: read

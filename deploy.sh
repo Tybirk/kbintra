@@ -53,16 +53,30 @@ trap cleanup EXIT
 # never compiles. IMAGE_TAG = the exact commit we just checked out, so the running
 # code and the pulled image can never drift apart.
 export IMAGE_TAG=$(git rev-parse HEAD)
+
+# CI only builds images for the tips of develop and main (.github/workflows/ci.yml).
+# Waiting is worth it only while CI is plausibly building this very commit; for any
+# other commit no image will ever appear, so fail at once instead of stalling 10 min.
+pull_timeout=0
+if git ls-remote origin refs/heads/develop refs/heads/main 2>/dev/null | grep -q "^$IMAGE_TAG"; then
+    pull_timeout=600
+fi
+
 echo "Pulling images for $IMAGE_TAG from ghcr.io (old containers keep serving)..."
 
 # Normal case: you ran deploy.sh right after pushing and CI is still building/pushing
 # this commit's images. Retry the pull until they appear, up to 10 minutes.
-pull_timeout=600
 pull_elapsed=0
 until docker compose pull; do
     if [ "$pull_elapsed" -ge "$pull_timeout" ]; then
-        echo "ERROR: images for $IMAGE_TAG are not on ghcr.io after ${pull_timeout}s."
-        echo "Has CI finished building this commit? Check the Actions tab on GitHub."
+        if [ "$pull_timeout" -eq 0 ]; then
+            echo "ERROR: no image on ghcr.io for $IMAGE_TAG, and CI never builds one for it."
+            echo "HEAD ($(git rev-parse --abbrev-ref HEAD)) is not the tip of develop or main,"
+            echo "so no CI run ever built this commit. Check out develop (or main) and retry."
+        else
+            echo "ERROR: images for $IMAGE_TAG are not on ghcr.io after ${pull_timeout}s."
+            echo "Has CI finished building this commit? Check the Actions tab on GitHub."
+        fi
         echo "Is this host logged in? Run: docker login ghcr.io"
         exit 1
     fi

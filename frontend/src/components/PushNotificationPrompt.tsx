@@ -66,7 +66,12 @@ export function PushNotificationPrompt() {
           prefs.push_events ||
           prefs.push_event_reminders ||
           prefs.push_food_tickets ||
-          prefs.push_mentions
+          prefs.push_mentions ||
+          // Must stay in step with get_user_push_preference in the backend —
+          // this list once omitted car sharing, so a resident who muted
+          // everything else was never asked to subscribe while the server was
+          // still willing to push bildeling events at them.
+          prefs.push_car_sharing
 
         if (!anyPushEnabled) return
       } catch {

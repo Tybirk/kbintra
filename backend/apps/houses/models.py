@@ -115,7 +115,8 @@ class Child(models.Model):
 class Car(models.Model):
     """
     Represents a car registered to a house.
-    Used to look up car owners by license plate number.
+    Used to look up car owners by license plate number, and — when is_shared is
+    set — to offer the car in the community delebilpark (see apps.carsharing).
     """
 
     house = models.ForeignKey(
@@ -125,11 +126,60 @@ class Car(models.Model):
     )
     license_plate = models.CharField(max_length=15, blank=True, default="")
     is_electric = models.BooleanField(default=False)
+
+    # Delebilpark (bildeling)
+    is_shared = models.BooleanField(default=False, db_index=True)
+    rate_per_km = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Overrides the shared default rate when set.",
+    )
+    make = models.CharField(max_length=50, blank=True, default="")
+    # Deliberately not "model" — that name collides with Django's own namespace.
+    model_name = models.CharField(max_length=50, blank=True, default="")
+    color = models.CharField(max_length=30, blank=True, default="")
+    year = models.PositiveSmallIntegerField(null=True, blank=True)
+    seats = models.PositiveSmallIntegerField(null=True, blank=True)
+    has_tow_hitch = models.BooleanField(default=False)
+    has_isofix = models.BooleanField(default=False)
+    dogs_allowed = models.BooleanField(default=False)
+    has_charge_fob = models.BooleanField(default=False)
+    equipment_note = models.TextField(blank=True, default="")
+    practical_note = models.TextField(blank=True, default="")
+
+    # Which version of the loan terms this household has accepted as a lender.
+    # is_shared is the owner's intent; this is their consent, and both are needed
+    # before the car may actually be lent out. Kept as the version rather than a
+    # boolean so a new terms date asks everyone again instead of silently
+    # carrying an agreement to text nobody saw.
+    terms_accepted_version = models.CharField(max_length=20, blank=True, default="")
+    terms_accepted_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["license_plate"]
+
+    def clean(self) -> None:
+        """A shared car must be identifiable, so borrowers know which car to find."""
+        from django.core.exceptions import ValidationError
+
+        from .utils import normalize_license_plate
+
+        super().clean()
+        if self.is_shared and not normalize_license_plate(self.license_plate):
+            raise ValidationError({"is_shared": "En bil i delebilparken skal have en nummerplade."})
+        # Mirrored in CarCreateUpdateSerializer, like the plate rule above: a
+        # negative rate reaches borrowers as "-3,50 kr./km" and inverts the bill.
+        # Zero is allowed: an owner may lend their car for nothing. Only a
+        # negative rate is nonsense — it would pay the borrower per kilometre.
+        # Note the fallback to the community rate keys on None, not on falsiness,
+        # so 0 stays 0 rather than quietly becoming 3,94.
+        if self.rate_per_km is not None and self.rate_per_km < 0:
+            raise ValidationError({"rate_per_km": "Km-taksten kan ikke være negativ."})
 
     def save(self, *args, **kwargs):
         from .utils import normalize_license_plate
@@ -139,3 +189,18 @@ class Car(models.Model):
 
     def __str__(self) -> str:
         return f"{self.license_plate} ({self.house.name})"
+
+    @property
+    def has_accepted_current_terms(self) -> bool:
+        """Whether the household's consent covers the terms in force right now."""
+        from apps.carsharing.constants import TERMS_VERSION
+
+        return bool(self.terms_accepted_version) and self.terms_accepted_version == TERMS_VERSION
+
+    @property
+    def display_name(self) -> str:
+        """Human label for the car — make/model when known, else the plate."""
+        from .utils import format_license_plate
+
+        described = " ".join(str(part) for part in (self.make, self.model_name) if part)
+        return described or format_license_plate(self.license_plate) or "Bil"
