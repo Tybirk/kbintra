@@ -1694,6 +1694,37 @@ export interface CreateCycleData {
   wish_deadline: string
 }
 
+/** What deleting a cycle's teams destroys (see cycles/<id>/reset-teams/). */
+export interface CycleResetCounts {
+  teams: number
+
+  memberships: number
+
+  pending_swap_requests: number
+
+  open_broadcasts: number
+
+  favours: number
+}
+
+/** GET cycles/<id>/reset-teams/ — a dry preview for the confirmation modal. */
+export interface CycleResetPreview
+  extends CycleResetCounts {
+  /** True when a cooking date has already passed, which blocks the reset. */
+  has_past_dates: boolean
+
+  past_dates: string[]
+}
+
+/** POST cycles/<id>/reset-teams/ — what was actually deleted. */
+export interface CycleResetResult {
+  detail: string
+
+  status: CycleStatus
+
+  deleted: CycleResetCounts
+}
+
 export interface SuggestedCyclePlan {
   eligible_count: number
 

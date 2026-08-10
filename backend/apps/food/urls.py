@@ -10,6 +10,7 @@ from .views import (
     ClaimTicketView,
     ClosedFoodDayDeleteView,
     ClosedFoodDayListCreateView,
+    CycleResetTeamsView,
     CycleWishesListView,
     DailyRegistrationStatsView,
     DefaultCookingDaysView,
@@ -124,6 +125,11 @@ urlpatterns = [
     path("cycles/active/", ActiveCycleView.as_view(), name="cycle-active"),
     path("cycles/suggested/", SuggestedCyclePlanView.as_view(), name="cycle-suggested"),
     path("cycles/<int:pk>/", FoodTeamCycleDetailView.as_view(), name="cycle-detail"),
+    path(
+        "cycles/<int:pk>/reset-teams/",
+        CycleResetTeamsView.as_view(),
+        name="cycle-reset-teams",
+    ),
     path("cycles/<int:cycle_id>/wishes/", CycleWishesListView.as_view(), name="cycle-wishes"),
     path("cycles/<int:cycle_id>/my-wish/", MyWishView.as_view(), name="my-wish"),
     # Team Generation

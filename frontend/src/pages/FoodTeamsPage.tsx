@@ -30,6 +30,7 @@ import {
   Chip,
   MultiSelect,
   Select,
+  List,
 } from "@mantine/core"
 
 import { useDisclosure } from "@mantine/hooks"
@@ -59,6 +60,7 @@ import {
   IconHeartHandshake,
   IconBroadcast,
   IconExternalLink,
+  IconTrash,
 } from "@tabler/icons-react"
 
 import dayjs from "dayjs"
@@ -81,6 +83,7 @@ import type {
   TeamFavour,
   SwapBroadcast,
   MyFoodProfile,
+  CycleResetPreview,
 } from "../types"
 
 interface WishSubmitData {
@@ -379,7 +382,7 @@ export default function FoodTeamsPage() {
 
         {canFoodAdmin && (
           <Tabs.Panel value="admin">
-            <AdminPanel />
+            <AdminPanel canFoodAdmin={canFoodAdmin} />
           </Tabs.Panel>
         )}
       </Tabs>
@@ -769,7 +772,11 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
 
 // Admin Panel for managing cycles and generating teams
 
-function AdminPanel() {
+interface AdminPanelProps {
+  canFoodAdmin: boolean
+}
+
+function AdminPanel({ canFoodAdmin }: AdminPanelProps) {
   const queryClient = useQueryClient()
 
   const [
@@ -875,6 +882,7 @@ function AdminPanel() {
             <CycleAdminCard
               key={cycle.id}
               cycle={cycle}
+              canFoodAdmin={canFoodAdmin}
               onGenerate={(dryRun) =>
                 generateTeamsMutation.mutate({ cycleId: cycle.id, dryRun })
               }
@@ -978,6 +986,8 @@ function AdminPanel() {
 interface CycleAdminCardProps {
   cycle: FoodTeamCycle
 
+  canFoodAdmin: boolean
+
   onGenerate: (dryRun: boolean) => void
 
   isGenerating: boolean
@@ -986,10 +996,15 @@ interface CycleAdminCardProps {
 function CycleAdminCard({
   cycle,
 
+  canFoodAdmin,
+
   onGenerate,
 
   isGenerating,
 }: CycleAdminCardProps) {
+  const [resetModalOpened, { open: openResetModal, close: closeResetModal }] =
+    useDisclosure(false)
+
   const statusColors: Record<string, string> = {
     draft: "gray",
 
@@ -1074,7 +1089,177 @@ function CycleAdminCard({
           </Button>
         </Group>
       )}
+
+      {/* A finalized cycle refuses regeneration, so the only way back to a new
+          plan is to delete the teams and reopen the period for wishes. */}
+      {canFoodAdmin && cycle.status === "finalized" && (
+        <>
+          <Group>
+            <Button
+              variant="light"
+              color="red"
+              leftSection={<IconTrash size={16} />}
+              onClick={openResetModal}
+            >
+              Slet hold og åbn perioden igen
+            </Button>
+          </Group>
+
+          <ResetTeamsModal
+            cycle={cycle}
+            opened={resetModalOpened}
+            onClose={closeResetModal}
+          />
+        </>
+      )}
     </Card>
+  )
+}
+
+// Reset Teams Modal — deletes a finalized cycle's teams after an explicit,
+// itemised confirmation. This throws away a plan ~90 people depend on.
+
+interface ResetTeamsModalProps {
+  cycle: FoodTeamCycle
+
+  opened: boolean
+
+  onClose: () => void
+}
+
+function ResetTeamsModal({ cycle, opened, onClose }: ResetTeamsModalProps) {
+  const queryClient = useQueryClient()
+
+  const {
+    data: preview,
+    isLoading: previewLoading,
+    isError: previewFailed,
+  } = useQuery<CycleResetPreview>({
+    queryKey: ["food", "cycles", cycle.id, "reset-preview"],
+
+    queryFn: () => foodApi.getCycleResetPreview(cycle.id),
+
+    enabled: opened,
+  })
+
+  const resetMutation = useMutation({
+    mutationFn: () => foodApi.resetCycleTeams(cycle.id),
+
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["food", "cycles"] })
+
+      queryClient.invalidateQueries({ queryKey: ["food", "teams"] })
+
+      notifications.show({
+        title: "Holdene er slettet",
+
+        message: `${result.deleted.teams} hold blev slettet. Perioden indsamler ønsker igen, så du kan generere hold på ny.`,
+
+        color: "green",
+      })
+
+      onClose()
+    },
+
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke slette holdene.")
+    },
+  })
+
+  const blocked = preview?.has_past_dates ?? false
+
+  // Also treat "opened, nothing yet, no error" as loading so the error alert
+  // can't flash in the frame before the disabled query starts fetching.
+  const showLoading = previewLoading || (!preview && !previewFailed)
+
+  return (
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title="Slet hold og åbn perioden igen"
+      size="lg"
+    >
+      <Stack gap="md">
+        {showLoading ? (
+          <Center h={120}>
+            <Loader />
+          </Center>
+        ) : previewFailed || !preview ? (
+          <Alert color="red" icon={<IconAlertCircle size={16} />}>
+            Kunne ikke hente overblik over, hvad der bliver slettet. Prøv igen.
+          </Alert>
+        ) : blocked ? (
+          <Alert color="red" icon={<IconAlertCircle size={16} />}>
+            <Text size="sm" fw={600} mb={4}>
+              Holdene kan ikke slettes
+            </Text>
+            <Text size="sm">
+              Perioden har madlavningsdage, der allerede er passeret (
+              {preview.past_dates
+                .slice(0, 3)
+                .map((d) => dayjs(d).format("D. MMM"))
+                .join(", ")}
+              {preview.past_dates.length > 3 ? " m.fl." : ""}). Der er allerede
+              lavet mad på dem, og en sletning ville slette historikken om
+              afholdte vagter, bytninger og tjenester. Opret i stedet en ny
+              periode.
+            </Text>
+          </Alert>
+        ) : (
+          <>
+            <Alert color="red" icon={<IconAlertCircle size={16} />}>
+              <Text size="sm" fw={600}>
+                Dette kan ikke fortrydes.
+              </Text>
+            </Alert>
+
+            <Text size="sm">
+              Hele madholdsplanen for <strong>{cycle.name}</strong> bliver
+              slettet. Følgende forsvinder permanent:
+            </Text>
+
+            <List size="sm" spacing={4}>
+              <List.Item>{preview.teams} madhold</List.Item>
+              <List.Item>
+                {preview.memberships} tildelte madlavningsvagter
+              </List.Item>
+              <List.Item>
+                {preview.pending_swap_requests} afventende bytteanmodninger
+              </List.Item>
+              <List.Item>{preview.open_broadcasts} åbne bytteopslag</List.Item>
+              <List.Item>
+                {preview.favours} tjenester (»du skylder mig en«)
+              </List.Item>
+            </List>
+
+            <Text size="sm">
+              Perioden og beboernes indsendte ønsker bliver bevaret, og perioden
+              går tilbage til at indsamle ønsker, så du kan generere hold på ny.
+            </Text>
+
+            <Text size="sm" c="dimmed">
+              Beboerne får ikke automatisk besked — husk selv at fortælle dem
+              det, hvis planen allerede er meldt ud.
+            </Text>
+          </>
+        )}
+
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>
+            Annuller
+          </Button>
+          <Button
+            color="red"
+            leftSection={<IconTrash size={16} />}
+            disabled={showLoading || previewFailed || !preview || blocked}
+            loading={resetMutation.isPending}
+            onClick={() => resetMutation.mutate()}
+          >
+            Ja, slet holdene
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
   )
 }
 

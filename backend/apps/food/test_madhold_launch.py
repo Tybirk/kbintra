@@ -437,3 +437,207 @@ class TestSwapDoubleBookingGuard:
         bob_on_2.refresh_from_db()
         assert alice_on_1.user == bob
         assert bob_on_2.user == alice
+
+
+@pytest.mark.django_db
+class TestCycleResetTeams:
+    """`cycles/<id>/reset-teams/` undoes a finalized cycle so it can be regenerated.
+
+    Generation refuses to run on a FINALIZED cycle, and nothing in the app
+    could delete the teams — the only escape was the Django admin.
+    """
+
+    def _finalize(self, cycle):
+        from apps.food.models import CycleStatus
+
+        cycle.status = CycleStatus.FINALIZED
+        cycle.save(update_fields=["status"])
+
+    def _populate(self, cycle, team1, team2, d1, house, house2, suffix="a"):
+        """Two members plus the swap/broadcast/favour rows hanging off them."""
+        from apps.food.models import TeamSwapRequest
+
+        alice = User.objects.create_user(
+            email=f"alice-{suffix}@reset.dk", password="x", first_name="Alice", house=house
+        )
+        bob = User.objects.create_user(
+            email=f"bob-{suffix}@reset.dk", password="x", first_name="Bob", house=house2
+        )
+        m1 = FoodTeamMember.objects.create(team=team1, user=alice, house_number="1")
+        m2 = FoodTeamMember.objects.create(team=team2, user=bob, house_number="2")
+        TeamSwapRequest.objects.create(
+            requester=alice, requester_membership=m1, target_membership=m2
+        )
+        SwapBroadcast.objects.create(
+            requester=alice,
+            requester_membership=m1,
+            available_dates=[team2.date.isoformat()],
+        )
+        TeamFavour.objects.create(creditor=alice, debtor=bob, cycle=cycle, origin_date=d1)
+        return alice, bob
+
+    def test_reset_deletes_teams_and_reopens_cycle(
+        self, api_client, admin_user, house, house2, cycle_with_two_teams
+    ):
+        from apps.food.models import CycleStatus, TeamSwapRequest
+
+        cycle, team1, team2, d1, _d2 = cycle_with_two_teams
+        self._finalize(cycle)
+        self._populate(cycle, team1, team2, d1, house, house2)
+
+        api_client.force_authenticate(user=admin_user)
+        resp = api_client.post(reverse("food:cycle-reset-teams", args=[cycle.id]))
+
+        assert resp.status_code == 200, resp.data
+        assert resp.data["status"] == CycleStatus.COLLECTING_WISHES
+        assert resp.data["deleted"] == {
+            "teams": 2,
+            "memberships": 2,
+            "pending_swap_requests": 1,
+            "open_broadcasts": 1,
+            "favours": 1,
+        }
+
+        cycle.refresh_from_db()
+        assert cycle.status == CycleStatus.COLLECTING_WISHES
+        assert not FoodTeam.objects.filter(cycle=cycle).exists()
+        assert not FoodTeamMember.objects.exists()
+        assert not TeamSwapRequest.objects.exists()
+        assert not SwapBroadcast.objects.exists()
+        assert not TeamFavour.objects.exists()
+
+    def test_preview_reports_what_will_be_deleted(
+        self, api_client, admin_user, house, house2, cycle_with_two_teams
+    ):
+        cycle, team1, team2, d1, _d2 = cycle_with_two_teams
+        self._finalize(cycle)
+        self._populate(cycle, team1, team2, d1, house, house2, suffix="preview")
+
+        api_client.force_authenticate(user=admin_user)
+        resp = api_client.get(reverse("food:cycle-reset-teams", args=[cycle.id]))
+
+        assert resp.status_code == 200, resp.data
+        assert resp.data["teams"] == 2
+        assert resp.data["memberships"] == 2
+        assert resp.data["pending_swap_requests"] == 1
+        assert resp.data["open_broadcasts"] == 1
+        assert resp.data["favours"] == 1
+        assert resp.data["has_past_dates"] is False
+        assert resp.data["past_dates"] == []
+        # Nothing was destroyed by looking.
+        assert FoodTeam.objects.filter(cycle=cycle).count() == 2
+
+    def test_refused_when_a_cooking_date_has_passed(self, api_client, admin_user, house):
+        """People have already cooked — deleting the teams would erase history."""
+        from django.utils import timezone
+
+        from apps.food.models import CycleStatus, FoodTeamCycle
+
+        yesterday = timezone.localdate() - timedelta(days=1)
+        tomorrow = timezone.localdate() + timedelta(days=1)
+        cycle = FoodTeamCycle.objects.create(
+            name="Igangværende",
+            cooking_dates=[yesterday.isoformat(), tomorrow.isoformat()],
+            wish_deadline=timezone.now() - timedelta(days=2),
+            status=CycleStatus.FINALIZED,
+            created_by=admin_user,
+        )
+        old_team = FoodTeam.objects.create(cycle=cycle, date=yesterday)
+        FoodTeam.objects.create(cycle=cycle, date=tomorrow)
+        cook = User.objects.create_user(
+            email="cook@reset.dk", password="x", first_name="Cook", house=house
+        )
+        FoodTeamMember.objects.create(team=old_team, user=cook, house_number="1")
+
+        api_client.force_authenticate(user=admin_user)
+        resp = api_client.post(reverse("food:cycle-reset-teams", args=[cycle.id]))
+
+        assert resp.status_code == 400, resp.data
+        assert "passeret" in resp.data["detail"]
+        cycle.refresh_from_db()
+        assert cycle.status == CycleStatus.FINALIZED
+        assert FoodTeam.objects.filter(cycle=cycle).count() == 2
+        assert FoodTeamMember.objects.filter(team=old_team).exists()
+
+        # The preview flags it too, so the UI can block the button.
+        preview = api_client.get(reverse("food:cycle-reset-teams", args=[cycle.id]))
+        assert preview.data["has_past_dates"] is True
+        assert yesterday.isoformat() in preview.data["past_dates"]
+
+    def test_non_food_admin_is_forbidden(self, api_client, user, cycle_with_two_teams):
+        cycle, _team1, _team2, _d1, _d2 = cycle_with_two_teams
+        self._finalize(cycle)
+
+        api_client.force_authenticate(user=user)
+        assert api_client.get(reverse("food:cycle-reset-teams", args=[cycle.id])).status_code == 403
+        assert (
+            api_client.post(reverse("food:cycle-reset-teams", args=[cycle.id])).status_code == 403
+        )
+        assert FoodTeam.objects.filter(cycle=cycle).count() == 2
+
+    def test_food_admin_without_staff_is_allowed(self, api_client, cycle_with_two_teams):
+        cycle, _team1, _team2, _d1, _d2 = cycle_with_two_teams
+        self._finalize(cycle)
+        food_admin = User.objects.create_user(
+            email="madadmin@reset.dk", password="x", first_name="Mad", is_food_admin=True
+        )
+
+        api_client.force_authenticate(user=food_admin)
+        resp = api_client.post(reverse("food:cycle-reset-teams", args=[cycle.id]))
+        assert resp.status_code == 200, resp.data
+
+    def test_regeneration_works_after_reset(
+        self, api_client, admin_user, house, house2, future_monday
+    ):
+        from django.utils import timezone
+
+        from apps.food.models import CycleStatus, FoodTeamCycle
+
+        dates = [
+            (future_monday + timedelta(days=i)).isoformat()
+            for i in range(16)
+            if (future_monday + timedelta(days=i)).weekday() <= 3
+        ]
+        cycle = FoodTeamCycle.objects.create(
+            name="Regenerering",
+            cooking_dates=dates,
+            wish_deadline=timezone.now() + timedelta(days=1),
+            status=CycleStatus.COLLECTING_WISHES,
+            created_by=admin_user,
+        )
+        for i in range(8):
+            User.objects.create_user(
+                email=f"cook{i}@regen.dk",
+                password="x",
+                first_name=f"Cook{i}",
+                house=house if i % 2 == 0 else house2,
+            )
+
+        api_client.force_authenticate(user=admin_user)
+        first = api_client.post(
+            reverse("food:generate-teams"), {"cycle_id": cycle.id}, format="json"
+        )
+        assert first.status_code == 200, first.data
+        cycle.refresh_from_db()
+        assert cycle.status == CycleStatus.FINALIZED
+        assert FoodTeam.objects.filter(cycle=cycle).exists()
+
+        # Without a reset the admin is stuck: generation refuses a finalized cycle.
+        blocked = api_client.post(
+            reverse("food:generate-teams"), {"cycle_id": cycle.id}, format="json"
+        )
+        assert blocked.status_code == 400
+
+        reset = api_client.post(reverse("food:cycle-reset-teams", args=[cycle.id]))
+        assert reset.status_code == 200, reset.data
+        cycle.refresh_from_db()
+        assert cycle.status == CycleStatus.COLLECTING_WISHES
+        assert not FoodTeam.objects.filter(cycle=cycle).exists()
+
+        again = api_client.post(
+            reverse("food:generate-teams"), {"cycle_id": cycle.id}, format="json"
+        )
+        assert again.status_code == 200, again.data
+        cycle.refresh_from_db()
+        assert cycle.status == CycleStatus.FINALIZED
+        assert FoodTeam.objects.filter(cycle=cycle).exists()

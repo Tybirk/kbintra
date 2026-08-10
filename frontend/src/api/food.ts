@@ -24,6 +24,8 @@ import type {
   FoodTeamCycle,
   SuggestedCyclePlan,
   CreateCycleData,
+  CycleResetPreview,
+  CycleResetResult,
   FoodTeamWish,
   CreateWishData,
   TeamGenerationResult,
@@ -363,6 +365,26 @@ export const foodApi = {
     data: Partial<CreateCycleData>,
   ): Promise<FoodTeamCycle> => {
     const response = await apiClient.patch(`/food/cycles/${id}/`, data)
+
+    return response.data
+  },
+
+  /**
+   * Preview what deleting a finalized cycle's teams would destroy, without
+   * touching anything. Feeds the confirmation modal.
+   */
+  getCycleResetPreview: async (id: number): Promise<CycleResetPreview> => {
+    const response = await apiClient.get(`/food/cycles/${id}/reset-teams/`)
+
+    return response.data
+  },
+
+  /**
+   * Delete a finalized cycle's teams and reopen it for wishes so it can be
+   * regenerated. Refused by the backend once a cooking date has passed.
+   */
+  resetCycleTeams: async (id: number): Promise<CycleResetResult> => {
+    const response = await apiClient.post(`/food/cycles/${id}/reset-teams/`)
 
     return response.data
   },

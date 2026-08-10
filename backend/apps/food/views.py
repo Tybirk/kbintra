@@ -1185,6 +1185,142 @@ class SuggestedCyclePlanView(APIView):
         )
 
 
+class CycleResetTeamsView(APIView):
+    """Undo a finalized cycle: delete its teams and reopen it for wishes.
+
+    Generation refuses to run on a FINALIZED cycle, so without this the only
+    escape from a plan the admin dislikes was the Django admin. GET previews
+    what a reset would destroy (so the UI can warn), POST performs it.
+
+    Deleting the teams cascades: FoodTeam -> FoodTeamMember -> TeamSwapRequest
+    (CASCADE on both membership FKs) and SwapBroadcast (CASCADE on
+    requester_membership). TeamFavour does *not* cascade — it only points at
+    the cycle (SET_NULL) and a bare origin_date — so the favours from this
+    cycle's takeovers are deleted explicitly; the shift they were earned on is
+    about to stop existing.
+
+    Refused once any cooking date has passed: people have then actually cooked,
+    and deleting the teams would erase that history.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsFoodAdmin]
+
+    def _cycle_dates(self, cycle: FoodTeamCycle) -> list[date]:
+        """Parsed cooking dates, skipping anything unparseable."""
+        dates = []
+        for value in cycle.cooking_dates or []:
+            with contextlib.suppress(TypeError, ValueError):
+                dates.append(date.fromisoformat(value))
+        return sorted(dates)
+
+    def _collect(
+        self, cycle: FoodTeamCycle
+    ) -> tuple[QuerySet[FoodTeam], QuerySet[TeamFavour], dict[str, int]]:
+        """Return (teams, favours, counts) for what a reset would remove."""
+        dates = self._cycle_dates(cycle)
+        # Match save_teams(): teams are keyed by date, but include anything
+        # still linked to the cycle so a stale row can't survive the reset.
+        teams = FoodTeam.objects.filter(Q(cycle=cycle) | Q(date__in=dates))
+        membership_ids = list(
+            FoodTeamMember.objects.filter(team__in=teams).values_list("id", flat=True)
+        )
+        favours = TeamFavour.objects.filter(Q(cycle=cycle) | Q(origin_date__in=dates))
+        counts = {
+            "teams": teams.count(),
+            "memberships": len(membership_ids),
+            "pending_swap_requests": TeamSwapRequest.objects.filter(
+                Q(requester_membership_id__in=membership_ids)
+                | Q(target_membership_id__in=membership_ids),
+                status=SwapRequestStatus.PENDING,
+            ).count(),
+            "open_broadcasts": SwapBroadcast.objects.filter(
+                requester_membership_id__in=membership_ids,
+                status=BroadcastStatus.OPEN,
+            ).count(),
+            "favours": favours.count(),
+        }
+        return teams, favours, counts
+
+    def _past_dates(self, cycle: FoodTeamCycle, teams: QuerySet[FoodTeam]) -> list[date]:
+        """Cooking dates already behind us — the reason a reset is refused."""
+        today = timezone.localdate()
+        all_dates = set(self._cycle_dates(cycle)) | set(teams.values_list("date", flat=True))
+        return sorted(d for d in all_dates if d < today)
+
+    def get_object(self, pk: int) -> FoodTeamCycle | None:
+        return FoodTeamCycle.objects.filter(pk=pk).first()
+
+    def get(self, request: Request, pk: int) -> Response:
+        cycle = self.get_object(pk)
+        if cycle is None:
+            return Response(
+                {"detail": "Perioden blev ikke fundet."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        teams, _favours, counts = self._collect(cycle)
+        past = self._past_dates(cycle, teams)
+        return Response(
+            {
+                **counts,
+                "has_past_dates": bool(past),
+                "past_dates": [d.isoformat() for d in past],
+            }
+        )
+
+    def post(self, request: Request, pk: int) -> Response:
+        from .models import CycleStatus
+
+        cycle = self.get_object(pk)
+        if cycle is None:
+            return Response(
+                {"detail": "Perioden blev ikke fundet."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        with transaction.atomic():
+            teams, favours, counts = self._collect(cycle)
+            past = self._past_dates(cycle, teams)
+            if past:
+                shown = ", ".join(_danish_date_label(d) for d in past[:3])
+                if len(past) > 3:
+                    shown += " m.fl."
+                return Response(
+                    {
+                        "detail": (
+                            f"Perioden har madlavningsdage, der allerede er passeret "
+                            f"({shown}). Holdene kan ikke slettes, fordi det ville slette "
+                            "historikken om afholdte vagter, bytninger og tjenester. "
+                            "Opret i stedet en ny periode."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            favours.delete()
+            teams.delete()
+            cycle.status = CycleStatus.COLLECTING_WISHES  # ty: ignore[invalid-assignment]
+            cycle.save(update_fields=["status", "updated_at"])
+
+        logger.info(
+            "Food admin %s (id=%s) reset teams for cycle %s (id=%s): deleted %s",
+            request.user.email,
+            request.user.id,
+            cycle.name,
+            cycle.id,
+            counts,
+        )
+
+        return Response(
+            {
+                "detail": (
+                    "Holdene er slettet, og perioden indsamler ønsker igen. "
+                    "Du kan nu generere hold på ny."
+                ),
+                "status": cycle.status,
+                "deleted": counts,
+            }
+        )
+
+
 # Food Team Wish Views
 
 
