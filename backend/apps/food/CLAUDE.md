@@ -52,7 +52,13 @@ Teams are planned in explicit `FoodTeamCycle` periods with status flow: `COLLECT
 
 ### Next-cycle planning (create form defaults)
 
-`services/cycle_planning.py` centralises "what should the next period look like": **eligible cooks** = active users with `is_exempt_from_food_teams=False` (children aren't users); **suggested cooking days** = `round(eligible / 6)` (teams target 6, overflow 7); **dates** = the next Mon–Thu days skipping `ClosedFoodDay`s, continuing after the latest existing cycle so periods don't overlap. `GET cycles/suggested/` (food-admin) returns `{eligible_count, suggested_day_count, name, cooking_dates, wish_deadline}` and the "Opret periode" modal auto-prefills (editable) from it. The seeder reuses the same helpers. Initial resident flags were seeded from the cooking team's roster in `users/migrations/0012_seed_food_team_flags.py`.
+`services/cycle_planning.py` centralises "what should the next period look like": **eligible cooks** = active users with `is_exempt_from_food_teams=False` (children aren't users); **suggested cooking days** = `eligible // 6` (teams target 6 and never go below it — leftovers overflow to 7 rather than opening a half-staffed day, so 89 cooks means 14 days, not 15); **dates** = the next Mon–Thu days skipping `ClosedFoodDay`s, continuing after the latest existing cycle so periods don't overlap. `GET cycles/suggested/` (food-admin) returns `{eligible_count, suggested_day_count, name, cooking_dates, wish_deadline}` and the "Opret periode" modal auto-prefills (editable) from it. The seeder reuses the same helpers. Initial resident flags were seeded from the cooking team's roster in `users/migrations/0012_seed_food_team_flags.py`.
+
+### Too few cooks shortens the period, it never thins the teams
+
+The pool moves between cycle creation and generation — people set `is_unavailable` on their wish, or get exempted, after the admin picked the dates. So `TeamGenerator._trim_dates_to_capacity()` re-applies the `eligible // 6` rule at generation time and **drops dates from the end** until every remaining team can be full (overflowing to 7). Dropped dates are *not* closed food days and need no admin action: `cycle_planning.suggested_start_date()` starts the next period the day after this cycle's last cooking date, so the leftovers are simply the first dates of the next cycle. `save_teams()` therefore writes the trimmed list back to `cycle.cooking_dates` — without that the next cycle would skip past them.
+
+Anyone whose wish covered *only* dropped dates is stood down for this cycle rather than forced onto a day they said they couldn't do; they're named in a warning and are first in line next period. The dropped dates come back in `TeamGenerationResult.dropped_dates` and the admin sees them in the result modal.
 
 ### Wish-based allocation
 

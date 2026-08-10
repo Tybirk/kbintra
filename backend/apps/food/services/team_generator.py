@@ -58,6 +58,9 @@ class TeamGenerationResult:
     teams_created: int = 0
     unassigned_persons: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # Trailing dates dropped because there weren't enough cooks (ISO strings).
+    # They roll into the next cycle, which starts where this one really ended.
+    dropped_dates: list[str] = field(default_factory=list)
 
 
 # A unit is a tuple of member user-ids (1 for singles, 2 for couples) plus the
@@ -90,9 +93,13 @@ class TeamGenerator:
 
     def __init__(self, cycle: FoodTeamCycle):
         self.cycle = cycle
-        # Convert ISO strings to date objects.
-        self.cooking_dates = [date.fromisoformat(d) for d in cycle.cooking_dates]
+        # Convert ISO strings to date objects. ``requested_dates`` is what the
+        # admin asked for; ``cooking_dates`` is what we actually staff, which
+        # _trim_dates_to_capacity may shorten from the end.
+        self.requested_dates = [date.fromisoformat(d) for d in cycle.cooking_dates]
+        self.cooking_dates = list(self.requested_dates)
         self.cooking_dates_set: set[date] = set(self.cooking_dates)
+        self.dropped_dates: list[date] = []
 
         # Person data (populated by load_data).
         self.persons: dict[int, PersonData] = {}
@@ -162,6 +169,67 @@ class TeamGenerator:
                 self.special_persons.append(user.id)
             else:
                 self.regular_persons.append(user.id)
+
+    def _trim_dates_to_capacity(self) -> None:
+        """Drop trailing dates the community isn't big enough to staff.
+
+        Teams target ``TEAM_SIZE`` and never go below it on purpose — it is
+        better to cook fewer days with full teams (overflowing to
+        ``TEAM_SIZE + OVERFLOW``) than to spread everyone thin. So the number of
+        dates we can actually staff is ``eligible // TEAM_SIZE``.
+
+        The count is computed here rather than at cycle creation because the
+        pool moves in between: people set ``is_unavailable`` on their wish for
+        this cycle, or get exempted, after the admin picked the dates.
+
+        Dates are dropped from the *end*, so the leftover ones simply roll into
+        the next cycle — ``cycle_planning.suggested_start_date()`` starts the
+        day after this cycle's last cooking date, and ``save_teams`` writes the
+        trimmed list back to the cycle.
+        """
+        eligible = len(self.persons)
+        if not eligible or not self.cooking_dates:
+            return
+
+        capacity_per_date = self.TEAM_SIZE + self.OVERFLOW
+        # Enough dates for full teams, but never so few that people can't fit
+        # even at the overflow cap (matters only for very small communities).
+        usable = max(eligible // self.TEAM_SIZE, -(-eligible // capacity_per_date), 1)
+        usable = min(usable, len(self.cooking_dates))
+        if usable >= len(self.cooking_dates):
+            return
+
+        self.dropped_dates = self.cooking_dates[usable:]
+        self.cooking_dates = self.cooking_dates[:usable]
+        self.cooking_dates_set = set(self.cooking_dates)
+
+        # Wishes were filtered against the full list in load_data, so re-filter.
+        # Anyone whose only wished dates were dropped sits this cycle out rather
+        # than being forced onto a day they said they couldn't do — the next
+        # cycle starts on exactly those dates, so they are first in line there.
+        stood_down: list[str] = []
+        for user_id, person in list(self.persons.items()):
+            person.available_dates = [
+                d for d in person.available_dates if d in self.cooking_dates_set
+            ]
+            if not person.available_dates:
+                stood_down.append(person.first_name)
+                del self.persons[user_id]
+                for bucket in (self.special_persons, self.regular_persons):
+                    if user_id in bucket:
+                        bucket.remove(user_id)
+
+        dropped_labels = ", ".join(d.isoformat() for d in self.dropped_dates)
+        self.warnings.append(
+            f"Der er {eligible} tilmeldte kokke, hvilket rækker til {usable} maddage "
+            f"med fulde hold. Følgende datoer er derfor ikke planlagt og rykker til "
+            f"næste periode: {dropped_labels}."
+        )
+        if stood_down:
+            self.warnings.append(
+                f"{', '.join(stood_down)} ønskede kun de datoer, der rykker til næste "
+                f"periode, og er derfor ikke sat på hold denne gang."
+            )
 
     def _reset_assignment(self) -> None:
         """Clear all per-attempt assignment state (used before each escalation)."""
@@ -617,8 +685,9 @@ class TeamGenerator:
     @transaction.atomic
     def save_teams(self) -> int:
         """Save the generated teams to the database."""
-        # Delete existing teams for this cycle's dates.
-        FoodTeam.objects.filter(date__in=self.cooking_dates).delete()
+        # Delete existing teams across everything the admin asked for, not just
+        # the trimmed list, so a dropped date can't keep a stale team.
+        FoodTeam.objects.filter(date__in=self.requested_dates).delete()
 
         teams_created = 0
         for d, member_ids in self.date_to_persons.items():
@@ -637,6 +706,14 @@ class TeamGenerator:
 
             teams_created += 1
 
+        # Hand the dropped dates to the next cycle: cycle_planning starts the
+        # next period the day after this one's last cooking date, so the cycle
+        # has to record what it actually covered. Saved inside this transaction
+        # so the teams and the date list can never disagree.
+        if self.dropped_dates:
+            self.cycle.cooking_dates = [d.isoformat() for d in self.cooking_dates]
+            self.cycle.save(update_fields=["cooking_dates", "updated_at"])
+
         return teams_created
 
     def generate(self, save: bool = True) -> TeamGenerationResult:
@@ -650,6 +727,7 @@ class TeamGenerator:
                     message="Ingen kvalificerede personer fundet til holddannelse",
                 )
 
+            self._trim_dates_to_capacity()
             self.run_assignment()
             self.validate_result()
 
@@ -673,6 +751,7 @@ class TeamGenerator:
                 teams_created=teams_created,
                 unassigned_persons=unassigned_names,
                 warnings=self.warnings,
+                dropped_dates=[d.isoformat() for d in self.dropped_dates],
             )
 
         except Exception as e:  # noqa: BLE001 - web action, never let it 500

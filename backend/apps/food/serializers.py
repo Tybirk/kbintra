@@ -840,6 +840,7 @@ class TeamGenerationResultSerializer(serializers.Serializer):
     teams_created = serializers.IntegerField()
     unassigned_persons = serializers.ListField(child=serializers.CharField())
     warnings = serializers.ListField(child=serializers.CharField())
+    dropped_dates = serializers.ListField(child=serializers.CharField())
 
 
 class DefaultCookingDaysSerializer(serializers.Serializer):

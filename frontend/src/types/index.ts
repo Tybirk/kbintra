@@ -1683,6 +1683,9 @@ export interface TeamGenerationResult {
   unassigned_persons: string[]
 
   warnings: string[]
+
+  /** Trailing dates that had too few cooks and roll into the next period. */
+  dropped_dates: string[]
 }
 
 // Madhold launch: takeover/favours, broadcast swaps, action box, profile

@@ -45,6 +45,7 @@ import {
   IconCalendar,
   IconArrowsExchange,
   IconAlertCircle,
+  IconInfoCircle,
   IconChevronDown,
   IconChevronUp,
   IconCheck,
@@ -905,6 +906,28 @@ function AdminPanel() {
             </Alert>
 
             <Text>Hold oprettet: {generationResult.teams_created}</Text>
+
+            {generationResult.dropped_dates.length > 0 && (
+              <Alert
+                color="blue"
+                variant="light"
+                icon={<IconInfoCircle size={16} />}
+              >
+                <Text size="sm" fw={500} mb={4}>
+                  {generationResult.dropped_dates.length === 1
+                    ? "1 dato rykker til næste periode"
+                    : `${generationResult.dropped_dates.length} datoer rykker til næste periode`}
+                </Text>
+                <Text size="sm">
+                  Der var ikke kokke nok til fulde hold på alle datoer, så
+                  perioden slutter tidligere:{" "}
+                  {generationResult.dropped_dates
+                    .map((d) => dayjs(d).format("ddd D. MMM"))
+                    .join(", ")}
+                  . Næste periode starter automatisk på den første af dem.
+                </Text>
+              </Alert>
+            )}
 
             {generationResult.unassigned_persons.length > 0 && (
               <div>

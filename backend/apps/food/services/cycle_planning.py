@@ -50,10 +50,19 @@ def eligible_food_team_count() -> int:
 
 
 def suggested_day_count(eligible: int | None = None) -> int:
-    """Suggested number of cooking days for a cycle: ``round(eligible / 6)``."""
+    """Suggested number of cooking days for a cycle: ``eligible // 6``.
+
+    Floor, not round: a team never goes below ``TARGET_TEAM_SIZE`` on purpose,
+    so leftover cooks overflow onto existing days (up to 7) rather than opening
+    a day that can only be half-staffed. 89 cooks means 14 days, not 15.
+
+    ``TeamGenerator._trim_dates_to_capacity`` applies the same rule at
+    generation time, since people can opt out of the cycle after these dates
+    were picked. Keep the two in step.
+    """
     if eligible is None:
         eligible = eligible_food_team_count()
-    return max(1, round(eligible / TARGET_TEAM_SIZE))
+    return max(1, eligible // TARGET_TEAM_SIZE)
 
 
 def _latest_cycle_end() -> date | None:
