@@ -17,7 +17,10 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from apps.backup.views import serve_media
 
-_AUTH_BACKEND = "django.contrib.auth.backends.ModelBackend"
+# Recorded in the session by `auth.login()` below. Must appear in
+# settings.AUTHENTICATION_BACKENDS, or `auth.get_user()` drops the session and
+# same-origin /media/* requests lose their credentials.
+_AUTH_BACKEND = "apps.users.auth_backends.CaseInsensitiveEmailBackend"
 
 
 class ThrottledTokenObtainPairView(TokenObtainPairView):

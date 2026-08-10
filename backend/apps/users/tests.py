@@ -356,6 +356,83 @@ class TestRegisterAPI:
         assert response.status_code == 400
 
 
+class TestLoginAPI:
+    """Tests for the token (login) API endpoint."""
+
+    def test_login_with_exact_email(self, api_client, user):
+        """Test logging in with the address exactly as stored."""
+        response = api_client.post(
+            "/api/auth/token/",
+            {"email": user.email, "password": "testpass123"},
+            format="json",
+        )
+        assert response.status_code == 200
+        assert "access" in response.json()
+
+    def test_login_with_capitalised_email(self, api_client, user):
+        """Test that a capitalised address still logs in (phone keyboards)."""
+        response = api_client.post(
+            "/api/auth/token/",
+            {"email": "Test@Example.com", "password": "testpass123"},
+            format="json",
+        )
+        assert response.status_code == 200
+        assert "access" in response.json()
+
+    def test_login_with_surrounding_whitespace(self, api_client, user):
+        """Test that a pasted address with stray whitespace still logs in."""
+        response = api_client.post(
+            "/api/auth/token/",
+            {"email": "  test@example.com  ", "password": "testpass123"},
+            format="json",
+        )
+        assert response.status_code == 200
+
+    def test_login_with_wrong_password_still_fails(self, api_client, user):
+        """Test that case-insensitivity does not weaken the password check."""
+        response = api_client.post(
+            "/api/auth/token/",
+            {"email": "TEST@EXAMPLE.COM", "password": "wrongpass"},
+            format="json",
+        )
+        assert response.status_code == 401
+
+    def test_login_with_unknown_email_fails(self, api_client, db):
+        """Test that an unregistered address is rejected."""
+        response = api_client.post(
+            "/api/auth/token/",
+            {"email": "nobody@example.com", "password": "testpass123"},
+            format="json",
+        )
+        assert response.status_code == 401
+
+    def test_inactive_user_cannot_log_in(self, api_client, user):
+        """Test that a deactivated member is still refused."""
+        user.is_active = False
+        user.save(update_fields=["is_active"])
+        response = api_client.post(
+            "/api/auth/token/",
+            {"email": "Test@example.com", "password": "testpass123"},
+            format="json",
+        )
+        assert response.status_code == 401
+
+    def test_exact_match_wins_over_case_variant(self, api_client, db, user):
+        """Test that legacy rows differing only by case resolve to the exact one."""
+        User.objects.create_user(
+            email="TEST@example.com",
+            password="otherpass123",
+            first_name="Case",
+            last_name="Variant",
+        )
+        response = api_client.post(
+            "/api/auth/token/",
+            {"email": "TEST@example.com", "password": "otherpass123"},
+            format="json",
+        )
+        assert response.status_code == 200
+
+
 class TestChangePasswordAPI:
     """Tests for the Change Password API endpoint."""
 

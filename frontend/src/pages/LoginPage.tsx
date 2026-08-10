@@ -84,6 +84,10 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.currentTarget.value)}
               type="email"
+              autoComplete="email"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
             />
 
             <PasswordInput

@@ -153,6 +153,12 @@ DATABASES = {
 # Custom User Model
 AUTH_USER_MODEL = "users.User"
 
+# Email is the username field, so match it case-insensitively — a capitalised
+# address (phone keyboards do this) must still log in. Keep every backend here
+# in sync with `_AUTH_BACKEND` in config/urls.py: `auth.get_user()` silently
+# ignores a session whose recorded backend is not in this list.
+AUTHENTICATION_BACKENDS = ["apps.users.auth_backends.CaseInsensitiveEmailBackend"]
+
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {
