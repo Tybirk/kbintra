@@ -14,6 +14,20 @@ services:
       - DEBUG=False
       - MESSAGES_ENCRYPTION_KEY=Lp9LAKi3V8rD1uEGsCcsIlIoGHkrnRWh4omC4I_crUo=
 
+  # backend-ws (Daphne) is defined in docker-compose.local.yml; override its env
+  # for prod-like load testing (DEBUG=False needs the messaging encryption key).
+  backend-ws:
+    environment:
+      - DEBUG=False
+      - DATA_DIR=/app/data
+      - SKIP_STARTUP_TASKS=1
+      - SECRET_KEY=local-dev-secret-key-not-for-production
+      - ALLOWED_HOSTS=localhost,127.0.0.1
+      - CORS_ALLOWED_ORIGINS=http://localhost,http://127.0.0.1
+      - CSRF_TRUSTED_ORIGINS=http://localhost,http://127.0.0.1
+      - REDIS_URL=redis://redis:6379/0
+      - MESSAGES_ENCRYPTION_KEY=Lp9LAKi3V8rD1uEGsCcsIlIoGHkrnRWh4omC4I_crUo=
+
   huey:
     build: ./backend
     command: ["uv", "run", "python", "manage.py", "run_huey", "-w", "2", "-k", "thread", "--flush-locks"]

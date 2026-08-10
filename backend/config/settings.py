@@ -70,6 +70,7 @@ INSTALLED_APPS = [
     "apps.search",
     "apps.bookings",
     "apps.links",
+    "apps.expenses",
     "apps.backup",
 ]
 
@@ -235,6 +236,13 @@ STORAGES = {
 MEDIA_URL = "media/"
 MEDIA_ROOT = DATA_DIR / "media"
 
+# Key for signing short-lived /media URLs (apps.backup.signing). Lets <img> tags
+# authenticate via a token in the URL instead of the session cookie, so images
+# keep working when the cookie is dropped (common on iOS). Defaults to
+# SECRET_KEY so no new secret is required in production; set a dedicated value to
+# rotate media URLs independently (rotating invalidates outstanding ones, ≤2h).
+MEDIA_URL_SIGNING_KEY = os.getenv("MEDIA_URL_SIGNING_KEY", SECRET_KEY)
+
 # Session cookie used to gate /media/* requests. JWT remains the primary auth
 # for the API; the session is set as a side-effect of the JWT login flow so
 # same-origin <img src="/media/..."> tags carry credentials automatically.
@@ -263,6 +271,20 @@ EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "False").lower() == "true"
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "KB Intra <noreply@kbintra.local>")
+
+# Treasurer/economy inbox that receives a notice whenever a new udlæg is
+# submitted. Empty disables the notice (e.g. in dev).
+ECONOMY_EMAIL = os.getenv("ECONOMY_EMAIL", "")
+
+# Max raw bytes of receipts attached to the udlæg notice, and the per-file cap
+# enforced on receipt uploads (so a receipt always fits the mail). Cloudflare
+# accepts 25 MiB only for *verified* destination addresses; ECONOMY_EMAIL is
+# verified, so 18 MB raw leaves room for base64 (~+33%) under that. Bigger
+# receipts are rejected on upload (and the in-app link covers the multi-file
+# overflow case where the running total exceeds the budget).
+EXPENSE_EMAIL_MAX_ATTACHMENT_BYTES = int(
+    os.getenv("EXPENSE_EMAIL_MAX_ATTACHMENT_BYTES", str(18_000_000))
+)
 
 # Cloudflare Email Service (used when EMAIL_BACKEND points at CloudflareEmailBackend).
 # Token must be scoped to email_sending:write.
@@ -396,8 +418,10 @@ if SENTRY_DSN:
         ],
         # Performance: capture 10% of requests as traces in production
         traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
-        # Profiling: sample 10% of traced requests for CPU profiling
-        profiles_sample_rate=float(os.getenv("SENTRY_PROFILES_SAMPLE_RATE", "0.1")),
+        # Profiling disabled by default — the transaction profiler runs extract_stack()
+        # via a daemon thread at 100Hz and has caused SIGSEGV crashes in production
+        # (see docs/daphne-segfault.md). Opt in with SENTRY_PROFILES_SAMPLE_RATE=0.1.
+        profiles_sample_rate=float(os.getenv("SENTRY_PROFILES_SAMPLE_RATE", "0")),
         # Include authenticated user email/name in error reports
         send_default_pii=True,
         before_send=_sentry_before_send,

@@ -31,6 +31,8 @@ export interface User {
 
   is_food_admin: boolean
 
+  is_economy_admin: boolean
+
   date_joined: string
 
   accessibility_mode: boolean
@@ -38,6 +40,12 @@ export interface User {
   rainbow_mode: boolean
 
   hide_closed_threads: boolean
+
+  // Private bank details for prefilling udlæg. Only returned for the current
+  // user (GET /users/me/), never in the shared user list/detail.
+  bank_reg_nr?: string
+
+  bank_account_number?: string
 }
 
 export interface Child {
@@ -241,7 +249,8 @@ export interface Subgroup {
 
   created_at: string
 
-  last_activity_at: string | null
+  // No `last_activity_at`: the API deliberately doesn't expose it, because it is
+  // bumped by private threads too. Sort on latest_thread_activity_at instead.
 
   allows_members: boolean
 
@@ -271,8 +280,6 @@ export interface SubgroupSubscription {
 
   notify_new_threads: boolean
 
-  notify_replies: boolean
-
   created_at: string
 }
 
@@ -286,6 +293,8 @@ export interface PostAttachment {
   file_url: string
 
   thumbnail_url: string
+
+  preview_url?: string
 
   preview_html?: string
 
@@ -302,6 +311,8 @@ export interface GalleryItem {
   file_url: string
 
   thumbnail_url: string
+
+  preview_url?: string
 
   preview_html?: string
 
@@ -541,6 +552,10 @@ export interface ForumFile {
 
   file_url: string
 
+  /** JPEG rendition for formats browsers can't decode (HEIC/HEIF), when the
+   *  source model has one. Forum documents don't, so it may be absent. */
+  preview_url?: string
+
   preview_html?: string
 
   uploaded_by: Author | null
@@ -564,6 +579,8 @@ export interface AnnouncementAttachment {
   file: string
 
   file_url: string
+
+  preview_url?: string
 
   preview_html?: string
 
@@ -739,7 +756,8 @@ export interface DailyRegistrationStats {
 
   eat_in_1830: RegistrationCount
 
-  total: TotalRegistrationCount
+  // Gross registration totals. Tickets never reduce these.
+  total_registrations: TotalRegistrationCount
 }
 
 // Backend returns this shape (instead of DailyRegistrationStats) for dates
@@ -860,6 +878,49 @@ export interface ClosedFoodDay {
   reason: string
 
   created_at: string
+}
+
+/** A set of portion prices that applies from `effective_from` (inclusive). */
+export interface MealPrice {
+  id: number
+
+  effective_from: string
+
+  price_adult_meat: number
+
+  price_adult_veg: number
+
+  price_child: number
+
+  note: string
+
+  created_by_name: string
+
+  created_at: string
+
+  /** True once the set has taken effect — it can no longer be edited or deleted. */
+  is_locked: boolean
+}
+
+/** The three portion prices in effect for a given meal date. */
+export interface MealPrices {
+  adultMeat: number
+
+  adultVeg: number
+
+  child: number
+}
+
+export interface CreateMealPriceData {
+  effective_from: string
+
+  price_adult_meat: number
+
+  price_adult_veg: number
+
+  price_child: number
+
+  note?: string
 }
 
 export interface ClosedDayPlaceholder {
@@ -1067,6 +1128,8 @@ export interface MessageAttachment {
 
   file_url: string
 
+  preview_url?: string
+
   preview_html?: string
 
   uploaded_at: string
@@ -1250,7 +1313,7 @@ export type WsMessage = WsNewMessage | WsMessagesRead | WsTyping | WsNewConversa
 
 // Notification Types
 
-export type NotificationType = "new_message" | "message_reaction" | "new_announcement" | "announcement_updated" | "new_thread" | "thread_reply" | "post_reply" | "subgroup_activity" | "post_reaction" | "event_created" | "event_updated" | "event_cancelled" | "event_reminder" | "food_ticket" | "food_team_reminder" | "food_takeaway_ready" | "food_leftovers_ready" | "food_swap_request" | "mention" | "subgroup_member_added" | "subgroup_member_removed" | "post_edited_by_admin" | "event_edited_by_admin" | "announcement_edited_by_admin"
+export type NotificationType = "new_message" | "message_reaction" | "new_announcement" | "announcement_updated" | "new_thread" | "thread_reply" | "post_reply" | "subgroup_activity" | "post_reaction" | "event_created" | "event_updated" | "event_cancelled" | "event_reminder" | "food_ticket" | "food_team_reminder" | "food_takeaway_ready" | "food_leftovers_ready" | "food_swap_request" | "mention" | "subgroup_member_added" | "subgroup_member_removed" | "post_edited_by_admin" | "event_edited_by_admin" | "announcement_edited_by_admin" | "expense_processed"
 
 export interface MentionUser {
   id: number
@@ -1961,4 +2024,70 @@ export interface AvailabilityResult {
   available_rooms: number[]
 
   conflicts_by_room: Record<number, string[]>
+}
+
+// Udlæg (expense reimbursements)
+
+export type ExpenseStatus = "pending" | "paid" | "rejected"
+
+export interface ExpenseAttachment {
+  id: number
+
+  name: string
+
+  download_url: string
+}
+
+export interface ExpenseSubmitter {
+  id: number
+
+  first_name: string
+
+  last_name: string
+
+  profile_picture: string | null
+}
+
+export interface Expense {
+  id: number
+
+  submitted_by: ExpenseSubmitter | null
+
+  reg_nr: string
+
+  account_number: string
+
+  amount: string
+
+  description: string
+
+  approval_reference: string
+
+  food_related: boolean
+
+  status: ExpenseStatus
+
+  status_display: string
+
+  admin_note: string
+
+  paid_at: string | null
+
+  created_at: string
+
+  updated_at: string
+
+  attachments: ExpenseAttachment[]
+}
+
+export interface AdminExpenseList {
+  results: Expense[]
+
+  total: string
+
+  count: number
+
+  page: number
+
+  num_pages: number
 }

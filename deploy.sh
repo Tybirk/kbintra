@@ -49,8 +49,27 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "Building new images (old containers keep serving)..."
-docker compose build --pull
+# Images are built by CI (.github/workflows/ci.yml) and pulled here — the prod box
+# never compiles. IMAGE_TAG = the exact commit we just checked out, so the running
+# code and the pulled image can never drift apart.
+export IMAGE_TAG=$(git rev-parse HEAD)
+echo "Pulling images for $IMAGE_TAG from ghcr.io (old containers keep serving)..."
+
+# Normal case: you ran deploy.sh right after pushing and CI is still building/pushing
+# this commit's images. Retry the pull until they appear, up to 10 minutes.
+pull_timeout=600
+pull_elapsed=0
+until docker compose pull; do
+    if [ "$pull_elapsed" -ge "$pull_timeout" ]; then
+        echo "ERROR: images for $IMAGE_TAG are not on ghcr.io after ${pull_timeout}s."
+        echo "Has CI finished building this commit? Check the Actions tab on GitHub."
+        echo "Is this host logged in? Run: docker login ghcr.io"
+        exit 1
+    fi
+    echo "Images not ready yet (CI may still be building). Retrying in 15s..."
+    sleep 15
+    pull_elapsed=$((pull_elapsed + 15))
+done
 
 echo "Running startup tasks with new image (old server still serving)..."
 docker compose run --rm -T --entrypoint sh backend -c "
@@ -76,7 +95,7 @@ while [ $elapsed -lt $timeout ]; do
     if docker compose exec -T backend uv run python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/')" 2>/dev/null; then
         echo "Backend is healthy."
         echo ""
-        echo "Deploy complete. To rollback: git checkout $DEPLOY_TAG && docker compose up -d --build"
+        echo "Deploy complete. To rollback: git checkout $DEPLOY_TAG && IMAGE_TAG=\$(git rev-parse HEAD) docker compose pull && docker compose up -d"
         exit 0
     fi
     sleep 2
@@ -85,5 +104,5 @@ done
 
 echo "WARNING: Backend did not become healthy within ${timeout}s."
 echo "Check logs with: docker compose logs backend"
-echo "To rollback: git checkout $DEPLOY_TAG && docker compose up -d --build"
+echo "To rollback: git checkout $DEPLOY_TAG && IMAGE_TAG=\$(git rev-parse HEAD) docker compose pull && docker compose up -d"
 exit 1

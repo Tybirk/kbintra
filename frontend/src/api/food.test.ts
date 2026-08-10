@@ -45,6 +45,7 @@ describe("foodApi", () => {
 
       expect(apiClient.get).toHaveBeenCalledWith("/food/drive-menu/", {
         params: {},
+        skipConnectionToast: true,
       })
 
       expect(result).toEqual(mockMenu)
@@ -67,6 +68,7 @@ describe("foodApi", () => {
 
       expect(apiClient.get).toHaveBeenCalledWith("/food/drive-menu/", {
         params: { week: 5, year: 2026 },
+        skipConnectionToast: true,
       })
 
       expect(result).toEqual(mockMenu)
@@ -81,6 +83,8 @@ describe("foodApi", () => {
 
       expect(apiClient.post).toHaveBeenCalledWith(
         "/food/drive-menu/refresh-all/",
+        undefined,
+        { skipConnectionToast: true },
       )
 
       expect(result).toEqual(mockResult)

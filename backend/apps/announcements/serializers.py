@@ -3,11 +3,26 @@ Serializers for Announcements models.
 """
 
 from rest_framework import serializers
+from rest_framework.fields import empty
 
+from apps.backup.signing import signed_media_url
 from apps.users.models import User
 from apps.users.serializer_mixins import AvatarUrlMixin
 
 from .models import Announcement, AnnouncementAttachment
+
+
+class DefaultingBooleanField(serializers.BooleanField):
+    """BooleanField that falls back to its default when omitted, even in multipart.
+
+    DRF maps a missing boolean in HTML/multipart input to False (the unchecked-checkbox
+    convention), bypassing the field default. That silently saved announcements created
+    *with* an attachment — sent as multipart/form-data — with is_active=False, so they
+    never appeared in the list. Restoring default_empty_html to `empty` makes a missing
+    value use the field default (True) the same way the JSON path already does.
+    """
+
+    default_empty_html = empty
 
 
 class AuthorSerializer(AvatarUrlMixin, serializers.ModelSerializer):
@@ -23,6 +38,7 @@ class AnnouncementAttachmentSerializer(serializers.ModelSerializer):
 
     uploaded_by = AuthorSerializer(read_only=True)
     file_url = serializers.SerializerMethodField()
+    preview_url = serializers.SerializerMethodField()
 
     class Meta:
         model = AnnouncementAttachment
@@ -31,6 +47,7 @@ class AnnouncementAttachmentSerializer(serializers.ModelSerializer):
             "name",
             "file",
             "file_url",
+            "preview_url",
             "preview_html",
             "uploaded_by",
             "uploaded_at",
@@ -38,7 +55,15 @@ class AnnouncementAttachmentSerializer(serializers.ModelSerializer):
 
     def get_file_url(self, obj: AnnouncementAttachment) -> str:
         if obj.file:
-            return obj.file.url
+            return signed_media_url(obj.file.url)
+        return ""
+
+    def get_preview_url(self, obj: AnnouncementAttachment) -> str:
+        """View URL: converted web preview for HEIC, else the original file."""
+        if obj.preview:
+            return signed_media_url(obj.preview.url)
+        if obj.file:
+            return signed_media_url(obj.file.url)
         return ""
 
 
@@ -106,6 +131,9 @@ class AnnouncementCreateSerializer(serializers.ModelSerializer):
         required=False,
         allow_empty=True,
     )
+    # Use defaults instead of False when omitted from multipart (attachment) uploads.
+    is_active = DefaultingBooleanField(required=False, default=True)
+    show_on_dashboard = DefaultingBooleanField(required=False, default=True)
 
     class Meta:
         model = Announcement
@@ -124,16 +152,18 @@ class AnnouncementCreateSerializer(serializers.ModelSerializer):
         announcement = super().create(validated_data)
 
         # Create attachments
+        from apps.forum.image_processing import ensure_attachment_preview
         from apps.forum.utils import generate_docx_preview
 
         for attachment_file in attachments:
-            AnnouncementAttachment.objects.create(
+            att = AnnouncementAttachment.objects.create(
                 announcement=announcement,
                 uploaded_by=announcement.author,
                 file=attachment_file,
                 name=attachment_file.name,
                 preview_html=generate_docx_preview(attachment_file),
             )
+            ensure_attachment_preview("announcements", "AnnouncementAttachment", att)
 
         # Send notifications to all users (except author) if announcement is active
         if announcement.is_active:

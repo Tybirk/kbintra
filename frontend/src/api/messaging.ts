@@ -145,6 +145,18 @@ export const messagingApi = {
     return response.data
   },
 
+  // Mark a conversation as unread (clears the latest message's read status)
+
+  markUnread: async (conversationId: number): Promise<void> => {
+    await apiClient.post(`/messages/conversations/${conversationId}/unread/`)
+  },
+
+  // Mark a single message as unread (clears this user's read status for it)
+
+  markMessageUnread: async (messageId: number): Promise<void> => {
+    await apiClient.post(`/messages/messages/${messageId}/unread/`)
+  },
+
   // Get total unread count
 
   getUnreadCount: async (): Promise<{ unread_count: number }> => {

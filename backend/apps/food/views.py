@@ -16,7 +16,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .constants import DAY_NAMES, calculate_meal_price
+from .constants import DAY_NAMES
 from .models import (
     BroadcastStatus,
     ClosedFoodDay,
@@ -26,12 +26,14 @@ from .models import (
     FoodTeamWish,
     FoodTicket,
     MealPreference,
+    MealPrice,
     MealRegistration,
     SwapBroadcast,
     SwapRequestStatus,
     TeamFavour,
     TeamSwapRequest,
 )
+from .pricing import get_price_schedule, get_prices
 from .serializers import (
     AcceptSwapBroadcastSerializer,
     ClosedFoodDayCreateSerializer,
@@ -53,6 +55,7 @@ from .serializers import (
     GenerateTeamsSerializer,
     MealPreferenceCreateUpdateSerializer,
     MealPreferenceSerializer,
+    MealPriceSerializer,
     MealRegistrationCreateUpdateSerializer,
     MealRegistrationSerializer,
     MonthlyFoodCostReportSerializer,
@@ -76,6 +79,18 @@ class IsFoodAdmin(permissions.BasePermission):
     def has_permission(self, request: Request, view) -> bool:  # type: ignore[no-untyped-def]
         u = request.user
         return bool(u and u.is_authenticated and (u.is_staff or getattr(u, "is_food_admin", False)))
+
+
+class IsFoodOrEconomyAdmin(permissions.BasePermission):
+    """Allow food admins or economy admins (the treasurer reads the cost report)."""
+
+    def has_permission(self, request: Request, view) -> bool:  # type: ignore[no-untyped-def]
+        u = request.user
+        return bool(
+            u
+            and u.is_authenticated
+            and (getattr(u, "has_food_admin", False) or getattr(u, "has_economy_admin", False))
+        )
 
 
 def get_week_start(d: date) -> date:
@@ -217,8 +232,10 @@ class DailyRegistrationStatsView(APIView):
     def _get_stats_for_dates(self, dates: list[date]) -> dict[str, dict[str, Any]]:
         """Get registration statistics for multiple dates in batched queries.
 
-        Effective portions = active registrations minus available (unsold) tickets.
-        Claimed tickets are NOT subtracted (the claimer eats in place of the seller).
+        Totals are gross registrations — tickets do not reduce them. Available
+        (unsold) tickets are ignored entirely; claimed tickets only move a
+        portion between dining/seating buckets (the buyer controls where they
+        eat), never changing the per-date total.
 
         With unique_together = ["house", "date"], each house has exactly one
         registration per date — no deduplication needed.
@@ -341,18 +358,6 @@ class DailyRegistrationStatsView(APIView):
                         virt[b]["children"] += children
                 virtual_by_date[d] = virt
 
-        # 5. Available tickets for all dates (1 query)
-        ticket_rows = (
-            FoodTicket.objects.filter(date__in=dates, is_available=True)
-            .values("date")
-            .annotate(
-                ticket_meat=Coalesce(Sum("adults_meat"), 0),
-                ticket_veg=Coalesce(Sum("adults_veg"), 0),
-                ticket_children=Coalesce(Sum("children_count"), 0),
-            )
-        )
-        tickets_by_date: dict[date, dict[str, int]] = {row["date"]: row for row in ticket_rows}
-        empty_tickets: dict[str, int] = {"ticket_meat": 0, "ticket_veg": 0, "ticket_children": 0}
         empty_virt: dict[str, dict[str, int]] = {
             "take_away": {"adults_meat": 0, "adults_veg": 0, "children": 0},
             "eat_in_1730": {"adults_meat": 0, "adults_veg": 0, "children": 0},
@@ -360,7 +365,7 @@ class DailyRegistrationStatsView(APIView):
             "total": {"adults_meat": 0, "adults_veg": 0, "children": 0},
         }
 
-        # 5b. Claimed ticket bucket adjustments (up to 2 queries)
+        # 5. Claimed ticket bucket adjustments (up to 2 queries)
         # Portions from claimed tickets are counted via the seller's registration,
         # but the buyer controls where/when they eat. Move claimed portions from
         # the seller's dining/seating bucket to the buyer's.
@@ -445,14 +450,10 @@ class DailyRegistrationStatsView(APIView):
                     agg[f"{bk}_veg"] = max(0, agg[f"{bk}_veg"] + delta["veg"])
                     agg[f"{bk}_children"] = max(0, agg[f"{bk}_children"] + delta["children"])
             virt = virtual_by_date.get(d, empty_virt)
-            tickets = tickets_by_date.get(d, empty_tickets)
 
             combined_meat = agg["total_meat"] + virt["total"]["adults_meat"]
             combined_veg = agg["total_veg"] + virt["total"]["adults_veg"]
             combined_children = agg["total_children"] + virt["total"]["children"]
-            eff_meat = max(0, combined_meat - tickets["ticket_meat"])
-            eff_veg = max(0, combined_veg - tickets["ticket_veg"])
-            eff_children = max(0, combined_children - tickets["ticket_children"])
 
             result[d.isoformat()] = {
                 "date": d.isoformat(),
@@ -465,11 +466,16 @@ class DailyRegistrationStatsView(APIView):
                 "eat_in_1830": _merge(
                     agg["e18_meat"], agg["e18_veg"], agg["e18_children"], virt["eat_in_1830"]
                 ),
-                "total": {
-                    "adults": eff_meat + eff_veg,
-                    "adults_meat": eff_meat,
-                    "adults_veg": eff_veg,
-                    "children": eff_children,
+                # Gross registration totals. Tickets are intentionally NOT
+                # deducted: an unsold (available) ticket does not reduce the
+                # number of portions registered, and the seller is still billed
+                # for their registration regardless of whether it sells. Ticket
+                # trading is peer-to-peer and never changes community aggregates.
+                "total_registrations": {
+                    "adults": combined_meat + combined_veg,
+                    "adults_meat": combined_meat,
+                    "adults_veg": combined_veg,
+                    "children": combined_children,
                 },
             }
 
@@ -775,10 +781,12 @@ class ClaimTicketView(APIView):
                 ticket.adults_meat = remaining_meat
                 ticket.adults_veg = remaining_veg
                 ticket.children_count = remaining_children
+                # One lookup for both halves of the split — same meal date.
+                prices = get_prices(ticket.date)
                 ticket.price = (
                     None
                     if is_free_ticket
-                    else calculate_meal_price(remaining_meat, remaining_veg, remaining_children)
+                    else prices.total(remaining_meat, remaining_veg, remaining_children)
                 )
                 ticket.save()
 
@@ -792,7 +800,7 @@ class ClaimTicketView(APIView):
                     price=(
                         None
                         if is_free_ticket
-                        else calculate_meal_price(adults_meat, adults_veg, children_count)
+                        else prices.total(adults_meat, adults_veg, children_count)
                     ),
                     description=ticket.description,
                     is_available=False,
@@ -1332,9 +1340,9 @@ def _parse_date_range(request: Request, default_weeks: int) -> tuple[date, date]
 
 
 class MonthlyFoodCostView(APIView):
-    """Get food cost breakdown per house over a date range (food admin only)."""
+    """Food cost breakdown per house over a date range (food or economy admin)."""
 
-    permission_classes = [permissions.IsAuthenticated, IsFoodAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsFoodOrEconomyAdmin]
 
     def get(self, request: Request) -> Response:
         parsed = _parse_date_range(request, default_weeks=4)
@@ -1345,8 +1353,6 @@ class MonthlyFoodCostView(APIView):
         from decimal import Decimal
 
         from apps.houses.models import House
-
-        from .constants import PRICE_ADULT_MEAT, PRICE_ADULT_VEG, PRICE_CHILD
 
         # Get all houses
         houses = House.objects.prefetch_related("inhabitants")
@@ -1374,6 +1380,10 @@ class MonthlyFoodCostView(APIView):
         from .tasks import _materialize_for_houses
 
         _materialize_for_houses(billing_dates)
+
+        # Prices are resolved per meal date, so a price change only affects meals
+        # served on or after its start date — past reports stay untouched.
+        schedule = get_price_schedule()
 
         for house in houses:
             house_total = Decimal("0.00")
@@ -1403,9 +1413,7 @@ class MonthlyFoodCostView(APIView):
 
                 if meat == 0 and veg == 0 and children == 0:
                     continue
-                cost = (
-                    (PRICE_ADULT_MEAT * meat) + (PRICE_ADULT_VEG * veg) + (PRICE_CHILD * children)
-                )
+                cost = schedule.for_date(billing_date).total(meat, veg, children)
                 house_total += cost
                 registration_count += 1
                 adult_meat_portions += meat
@@ -1511,6 +1519,7 @@ class MyMonthlyExpensesView(APIView):
 
         weeks_map: dict[tuple[int, int], dict] = {}
         total_cost = Decimal("0.00")
+        schedule = get_price_schedule()
 
         for billing_date in billing_dates:
             iso_year, iso_week, _ = billing_date.isocalendar()
@@ -1537,7 +1546,7 @@ class MyMonthlyExpensesView(APIView):
             children = reg.children_count
             if meat == 0 and veg == 0 and children == 0:
                 continue
-            cost = calculate_meal_price(meat, veg, children)
+            cost = schedule.for_date(billing_date).total(meat, veg, children)
             total_cost += cost
             week_entry["total_cost"] += cost
             week_entry["days"].append(
@@ -2475,3 +2484,75 @@ class FoodRosterDetailView(generics.UpdateAPIView):
         from apps.users.models import User
 
         return User.objects.all()
+
+
+# Meal Prices
+
+
+class MealPriceListCreateView(APIView):
+    """List price sets (everyone) and create new ones (food admin only).
+
+    The full schedule is returned — it is a handful of rows — so the frontend can
+    price any date with the same meal-date-anchored logic the backend uses.
+    """
+
+    def get_permissions(self) -> list:
+        if self.request.method == "POST":
+            return [permissions.IsAuthenticated(), IsFoodAdmin()]
+        return [permissions.IsAuthenticated()]
+
+    def get(self, request: Request) -> Response:
+        qs = MealPrice.objects.select_related("created_by").all()
+        return Response(MealPriceSerializer(qs, many=True).data)
+
+    def post(self, request: Request) -> Response:
+        serializer = MealPriceSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class MealPriceDetailView(APIView):
+    """Update or delete a price set that has not taken effect yet. Food admin only.
+
+    Price sets already in effect are immutable — past meals are billed at the
+    prices that applied on the day they were served.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsFoodAdmin]
+
+    def _get_object(self, pk: int) -> MealPrice | None:
+        return MealPrice.objects.filter(pk=pk).select_related("created_by").first()
+
+    def patch(self, request: Request, pk: int) -> Response:
+        obj = self._get_object(pk)
+        if obj is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        serializer = MealPriceSerializer(
+            obj, data=request.data, partial=True, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self, request: Request, pk: int) -> Response:
+        obj = self._get_object(pk)
+        if obj is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        if obj.effective_from < timezone.localdate():
+            return Response(
+                {
+                    "detail": (
+                        "Prissættet er allerede trådt i kraft og kan ikke slettes. "
+                        "Opret i stedet et nyt prissæt med en fremtidig startdato."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if MealPrice.objects.count() <= 1:
+            return Response(
+                {"detail": "Der skal altid findes mindst ét prissæt."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        obj.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

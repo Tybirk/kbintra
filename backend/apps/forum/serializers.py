@@ -4,6 +4,7 @@ Serializers for Forum models.
 
 from rest_framework import serializers
 
+from apps.backup.signing import signed_media_url
 from apps.users.models import User
 from apps.users.serializer_mixins import AvatarUrlMixin
 
@@ -25,7 +26,8 @@ from .models import (
 def _create_post_attachment(
     post: Post, uploaded_by: User, attachment_file: object
 ) -> PostAttachment:
-    """Create a PostAttachment row and queue its thumbnail generation."""
+    """Create a PostAttachment row and queue its thumbnail/preview generation."""
+    from .image_processing import ensure_attachment_preview
     from .tasks import generate_post_attachment_thumbnail_task
     from .utils import generate_docx_preview
 
@@ -37,6 +39,10 @@ def _create_post_attachment(
         preview_html=generate_docx_preview(attachment_file),
     )
     generate_post_attachment_thumbnail_task(attachment.id)
+    # HEIC/HEIF gets a web-viewable JPEG so browsers that can't decode it (Chrome,
+    # Android) can still display it in the carousel/zoom. Generated inline: the
+    # response this attachment goes into already carries preview_url.
+    ensure_attachment_preview("forum", "PostAttachment", attachment)
     return attachment
 
 
@@ -55,9 +61,21 @@ def _attachment_thumbnail_url(obj: PostAttachment) -> str:
     and gets the right thing whether or not the small variant exists yet.
     """
     if obj.thumbnail:
-        return obj.thumbnail.url
+        return signed_media_url(obj.thumbnail.url)
     if obj.file:
-        return obj.file.url
+        return signed_media_url(obj.file.url)
+    return ""
+
+
+def _attachment_preview_url(obj: PostAttachment) -> str:
+    """URL for *viewing* the attachment full-size: the converted web preview for
+    formats the browser can't render (HEIC), otherwise the original file. Both
+    signed. The frontend uses this for the carousel/zoom while keeping
+    `file_url` for downloads (the original, e.g. the real .heic)."""
+    if obj.preview:
+        return signed_media_url(obj.preview.url)
+    if obj.file:
+        return signed_media_url(obj.file.url)
     return ""
 
 
@@ -67,6 +85,7 @@ class PostAttachmentSerializer(serializers.ModelSerializer):
     uploaded_by = AuthorSerializer(read_only=True)
     file_url = serializers.SerializerMethodField()
     thumbnail_url = serializers.SerializerMethodField()
+    preview_url = serializers.SerializerMethodField()
 
     class Meta:
         model = PostAttachment
@@ -76,6 +95,7 @@ class PostAttachmentSerializer(serializers.ModelSerializer):
             "file",
             "file_url",
             "thumbnail_url",
+            "preview_url",
             "preview_html",
             "uploaded_by",
             "uploaded_at",
@@ -83,11 +103,14 @@ class PostAttachmentSerializer(serializers.ModelSerializer):
 
     def get_file_url(self, obj: PostAttachment) -> str:
         if obj.file:
-            return obj.file.url
+            return signed_media_url(obj.file.url)
         return ""
 
     def get_thumbnail_url(self, obj: PostAttachment) -> str:
         return _attachment_thumbnail_url(obj)
+
+    def get_preview_url(self, obj: PostAttachment) -> str:
+        return _attachment_preview_url(obj)
 
 
 class GalleryItemSerializer(serializers.ModelSerializer):
@@ -96,6 +119,7 @@ class GalleryItemSerializer(serializers.ModelSerializer):
     uploaded_by = AuthorSerializer(read_only=True)
     file_url = serializers.SerializerMethodField()
     thumbnail_url = serializers.SerializerMethodField()
+    preview_url = serializers.SerializerMethodField()
     post_id = serializers.IntegerField(source="post.id", read_only=True)
     thread_id = serializers.IntegerField(source="post.thread.id", read_only=True)
     thread_slug = serializers.CharField(source="post.thread.slug", read_only=True)
@@ -112,6 +136,7 @@ class GalleryItemSerializer(serializers.ModelSerializer):
             "name",
             "file_url",
             "thumbnail_url",
+            "preview_url",
             "preview_html",
             "uploaded_at",
             "uploaded_by",
@@ -126,9 +151,12 @@ class GalleryItemSerializer(serializers.ModelSerializer):
     def get_thumbnail_url(self, obj: PostAttachment) -> str:
         return _attachment_thumbnail_url(obj)
 
+    def get_preview_url(self, obj: PostAttachment) -> str:
+        return _attachment_preview_url(obj)
+
     def get_file_url(self, obj: PostAttachment) -> str:
         if obj.file:
-            return obj.file.url
+            return signed_media_url(obj.file.url)
         return ""
 
 
@@ -193,8 +221,12 @@ class SubgroupSerializer(serializers.ModelSerializer):
             "members",
             "subscriber_count",
             "created_at",
-            "last_activity_at",
         ]
+        # NOTE: `last_activity_at` is deliberately not exposed. It's bumped by
+        # private threads too, so sorting on it floats a group up for people who
+        # can't see why (the bug in "Sortering af forum grupper skal ikke tælle
+        # private tråde med"). Clients must use the privacy-aware
+        # `latest_thread_activity_at` instead.
 
     def get_members(self, obj: Subgroup) -> list[dict]:
         if not obj.allows_members:
@@ -336,7 +368,6 @@ class SubgroupSubscriptionSerializer(serializers.ModelSerializer):
             "id",
             "subgroup",
             "notify_new_threads",
-            "notify_replies",
             "created_at",
         ]
 
@@ -1123,6 +1154,11 @@ class FolderSerializer(serializers.ModelSerializer):
         ]
 
     def get_file_count(self, obj: Folder) -> int:
+        # Precomputed aggregate map (set by the list view) avoids a query per folder.
+        count_map = self.context.get("file_count_map")
+        if count_map is not None:
+            return count_map.get(obj.id, 0)
+
         from .services import visible_files_q
 
         files_q = self.context.get("visible_files_filter")
@@ -1133,6 +1169,11 @@ class FolderSerializer(serializers.ModelSerializer):
         return obj.files.filter(files_q).count()
 
     def get_subfolder_count(self, obj: Folder) -> int:
+        # Precomputed aggregate map (set by the list view) avoids a query per folder.
+        count_map = self.context.get("subfolder_count_map")
+        if count_map is not None:
+            return count_map.get(obj.id, 0)
+
         from .services import visible_folder_ids
 
         visible_ids = self.context.get("visible_folder_ids")
@@ -1214,7 +1255,7 @@ class FileSerializer(serializers.ModelSerializer):
 
     def get_file_url(self, obj: File) -> str:
         if obj.file:
-            return obj.file.url
+            return signed_media_url(obj.file.url)
         return ""
 
 

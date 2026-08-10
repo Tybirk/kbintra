@@ -123,7 +123,6 @@ export function CompactEventCard({
               <LocationText
                 location={event.resolved_location}
                 size="sm"
-                c="dimmed"
                 truncate
               />
             </Group>

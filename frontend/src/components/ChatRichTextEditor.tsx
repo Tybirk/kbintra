@@ -653,17 +653,7 @@ export default function ChatRichTextEditor({
       return
     }
 
-    // On mobile, Enter creates a newline (more natural for touch keyboards)
-
-    // On desktop, Enter submits (Shift+Enter for newline)
-
-    if (event.key === "Enter" && !event.shiftKey && !isMobile) {
-      event.preventDefault()
-
-      if (!giphyState && (content.trim() || attachments.length > 0)) {
-        onSend()
-      }
-    }
+    // Plain Enter always creates a newline; only Ctrl/Cmd+Enter sends (handled above)
   }
 
   const handleEmojiSelect = (emoji: string) => {
@@ -726,11 +716,11 @@ export default function ChatRichTextEditor({
 
   const isEmpty = !content.trim() && attachments.length === 0
 
-  // Add hint about Shift+Enter on desktop
+  // Add hint about Ctrl/Cmd+Enter on desktop
 
   const actualPlaceholder = isMobile
     ? placeholder
-    : `${placeholder} (Shift+Enter for ny linje)`
+    : `${placeholder} (Ctrl+Enter for at sende)`
 
   return (
     <Stack gap="xs">

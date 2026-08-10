@@ -190,6 +190,20 @@ class TestSubgroupSerializer:
         assert response.status_code == 200
         assert response.data["is_subscribed"] is True
 
+    def test_subgroup_serializer_hides_privacy_blind_last_activity(
+        self, authenticated_client, subgroup
+    ):
+        """last_activity_at must never reach a client: it counts private threads.
+
+        Clients sort on latest_thread_activity_at, which is filtered per viewer.
+        """
+        detail = authenticated_client.get(f"/api/forum/subgroups/{subgroup.slug}/")
+        assert "last_activity_at" not in detail.data
+        assert "latest_thread_activity_at" in detail.data
+
+        listing = authenticated_client.get("/api/forum/subgroups/")
+        assert all("last_activity_at" not in row for row in listing.data)
+
 
 class TestThreadSerializer:
     """Tests for the ThreadSerializer."""
@@ -535,6 +549,66 @@ class TestFolderViews:
         results = get_results(response.data)
         assert len(results) == 1
         assert results[0]["name"] == "Test Subfolder"
+
+    def test_folder_list_query_count_does_not_scale(self, authenticated_client, user, subgroup):
+        """Regression: file_count/subfolder_count must not run a query per folder (N+1)."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        def make_folders(n: int, start: int) -> None:
+            for i in range(start, start + n):
+                f = Folder.objects.create(subgroup=subgroup, name=f"F{i}")
+                File.objects.create(
+                    subgroup=subgroup,
+                    folder=f,
+                    uploaded_by=user,
+                    file=SimpleUploadedFile(f"f{i}.txt", b"x"),
+                    name=f"f{i}.txt",
+                )
+                Folder.objects.create(subgroup=subgroup, name=f"S{i}", parent=f)
+
+        url = f"/api/forum/subgroups/{subgroup.slug}/folders/"
+        make_folders(2, 0)
+        assert authenticated_client.get(url).status_code == 200  # warm up
+        with CaptureQueriesContext(connection) as small:
+            assert authenticated_client.get(url).status_code == 200
+
+        make_folders(8, 2)
+        with CaptureQueriesContext(connection) as big:
+            assert authenticated_client.get(url).status_code == 200
+
+        assert len(big) == len(small), (
+            f"query count scaled with folder count: {len(small)} -> {len(big)}"
+        )
+
+    def test_folder_counts_are_correct_with_multiple_children(
+        self, authenticated_client, user, subgroup
+    ):
+        """The precomputed aggregate maps must report the true counts.
+
+        The N+1 fix replaced a per-folder ``.count()`` with two GROUP BY aggregate
+        queries; this asserts a folder with several files/subfolders still reports
+        the correct totals (the sibling query-count test only used one child each,
+        which would mask a miscounting aggregate).
+        """
+        parent = Folder.objects.create(subgroup=subgroup, name="WithChildren")
+        for i in range(3):
+            File.objects.create(
+                subgroup=subgroup,
+                folder=parent,
+                uploaded_by=user,
+                file=SimpleUploadedFile(f"file{i}.txt", b"x"),
+                name=f"file{i}.txt",
+            )
+        for i in range(2):
+            Folder.objects.create(subgroup=subgroup, name=f"Sub{i}", parent=parent)
+
+        url = f"/api/forum/subgroups/{subgroup.slug}/folders/"
+        response = authenticated_client.get(url)
+        assert response.status_code == 200
+        row = next(r for r in get_results(response.data) if r["name"] == "WithChildren")
+        assert row["file_count"] == 3
+        assert row["subfolder_count"] == 2
 
     def test_create_folder(self, authenticated_client, subgroup):
         """Test creating a new folder."""
@@ -1865,6 +1939,33 @@ class TestLinksInfoMembers:
         subgroup.refresh_from_db()
         assert subgroup.links_info_members == ""
 
+    def test_non_member_can_patch_public_links_info_in_open_subgroup(
+        self, second_authenticated_client, subgroup
+    ):
+        """Open subgroups (allows_members=False) have no privacy boundary, so
+        any authenticated user can edit the public links_info."""
+        assert subgroup.allows_members is False
+        response = second_authenticated_client.patch(
+            f"/api/forum/subgroups/{subgroup.slug}/update/",
+            {"links_info": "<p>Nyt</p>"},
+            format="json",
+        )
+        assert response.status_code == 200
+        subgroup.refresh_from_db()
+        assert subgroup.links_info == "<p>Nyt</p>"
+
+    def test_non_member_cannot_patch_public_links_info_in_member_subgroup(
+        self, second_authenticated_client, member_subgroup
+    ):
+        response = second_authenticated_client.patch(
+            f"/api/forum/subgroups/{member_subgroup.slug}/update/",
+            {"links_info": "<p>Nyt</p>"},
+            format="json",
+        )
+        assert response.status_code == 403
+        member_subgroup.refresh_from_db()
+        assert member_subgroup.links_info == ""
+
 
 class TestPrivateThreadVisibility:
     """Tests for members-only thread visibility."""
@@ -2481,3 +2582,100 @@ class TestPostAttachmentThumbnail:
             assert thumb_img.size == (400, 400)
             # We always emit JPEG regardless of source format.
             assert thumb_img.format == "JPEG"
+
+    def test_heic_upload_generates_web_preview(self, db, user, subgroup, thread):
+        """HEIC uploads also get a full-size web-viewable JPEG `preview` so the
+        carousel/zoom can show them in browsers that can't decode HEIC."""
+        from PIL import Image as PILImage
+
+        from apps.forum.serializers import PostAttachmentSerializer, _create_post_attachment
+
+        post = Post.objects.create(thread=thread, author=user, content="see file")
+        upload = SimpleUploadedFile(
+            "iphone.heic",
+            self._real_heic_bytes(2000, 1500),
+            content_type="image/heic",
+        )
+        att = _create_post_attachment(post, user, upload)
+        att.refresh_from_db()
+
+        assert att.preview
+        with att.preview.open("rb") as fh, PILImage.open(fh) as prev_img:
+            # Full-size (not square-cropped), longest edge capped at 2000, JPEG.
+            assert max(prev_img.size) <= 2000
+            assert prev_img.size == (2000, 1500)
+            assert prev_img.format == "JPEG"
+
+        data = PostAttachmentSerializer(att).data
+        # preview_url points at the converted JPEG (not the original .heic), while
+        # file_url stays the original for download.
+        assert "previews/" in data["preview_url"]
+        assert data["preview_url"] != data["file_url"]
+
+    def test_thumbnail_and_preview_survive_concurrent_tasks(self, db, user, subgroup, thread):
+        """A HEIC upload queues both image tasks, and production runs two huey
+        workers, so each holds its own instance of the row loaded before either
+        writes. Saving the whole row wrote back the other worker's stale, empty
+        column — leaving the attachment with a thumbnail or a preview, whichever
+        committed last, but never both. Each task must persist only its own field.
+        """
+        from apps.forum.image_processing import generate_attachment_preview, generate_thumbnail
+        from apps.forum.models import PostAttachment
+
+        post = Post.objects.create(thread=thread, author=user, content="see file")
+        att = PostAttachment.objects.create(
+            post=post,
+            uploaded_by=user,
+            name="iphone.heic",
+            file=SimpleUploadedFile(
+                "iphone.heic", self._real_heic_bytes(800, 600), content_type="image/heic"
+            ),
+        )
+
+        # Both workers read the row before either commits.
+        worker_thumbnail = PostAttachment.objects.get(pk=att.pk)
+        worker_preview = PostAttachment.objects.get(pk=att.pk)
+
+        with worker_thumbnail.file.open("rb") as src:
+            thumb = generate_thumbnail(src)
+        worker_thumbnail.thumbnail.save(f"{worker_thumbnail.pk}.jpg", thumb, save=False)
+        worker_thumbnail.save(update_fields=["thumbnail"])
+
+        # Commits second, holding thumbnail="" from before the write above.
+        assert generate_attachment_preview(worker_preview) is True
+
+        att.refresh_from_db()
+        assert att.thumbnail, "the preview task clobbered the thumbnail"
+        assert att.preview, "the preview was not persisted"
+
+    def test_non_heic_image_has_no_preview(self, db, user, subgroup, thread):
+        """Browser-renderable formats don't need a converted preview; preview_url
+        falls back to the original file URL."""
+        from apps.forum.serializers import PostAttachmentSerializer, _create_post_attachment
+
+        post = Post.objects.create(thread=thread, author=user, content="see file")
+        upload = SimpleUploadedFile("photo.jpg", self._real_jpeg_bytes(), content_type="image/jpeg")
+        att = _create_post_attachment(post, user, upload)
+        att.refresh_from_db()
+
+        assert not att.preview
+        data = PostAttachmentSerializer(att).data
+        assert data["preview_url"] == data["file_url"]
+
+    def test_delete_removes_preview_file(self, db, user, subgroup, thread):
+        import os
+
+        from apps.forum.serializers import _create_post_attachment
+
+        post = Post.objects.create(thread=thread, author=user, content="see file")
+        upload = SimpleUploadedFile(
+            "iphone.heic", self._real_heic_bytes(), content_type="image/heic"
+        )
+        att = _create_post_attachment(post, user, upload)
+        att.refresh_from_db()
+        assert att.preview
+        preview_path = att.preview.path
+
+        att.delete()
+
+        assert not os.path.exists(preview_path)

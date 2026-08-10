@@ -2,9 +2,29 @@
 
 Backend has crashed 5 times between 2026-05-03 and 2026-05-08 with `exit status 139` (SIGSEGV). The container auto-recovers via `restart: unless-stopped`. Each restart causes a brief outage; the search-index rebuild now skips when the index is non-empty (`--if-empty`), so cold-restart downtime is shorter than it was originally.
 
-**Current state (2026-05-09):** the NVX hypothesis below is invalidated. NVX has been off since 2026-05-07 (`HAS_NVX=True, USES_NVX=False` verified in the running container) but the backend crashed again on 2026-05-08. The fault-handler traceback puts the crash inside the **SQLite backend, in a thread spawned by asgiref's sync-in-async pool, wrapped by Sentry's `execute`/`connect` patches**. New leading suspect: **Sentry SDK 2.X profiler + threading integration** (multiple public reports of SIGSEGV under similar conditions).
+**Current state (2026-05-31): root cause confirmed, fix deployed.** Two more crashes occurred tonight at 19:06 and 19:15 UTC (exit 139, container auto-recovered). This time `PYTHONFAULTHANDLER=1` caught the faulting thread directly — it was the Sentry profiler sampler itself, mid-`extract_stack`, not a coincidental bystander. Profiling has now been **permanently disabled** (see Actions §5). The NVX hypothesis was invalidated earlier; the SQLite/Litestream hypotheses remain unconfirmed and are lower priority now that the profiler is confirmed as the cause.
 
-## Crash signature
+**Previous state (2026-05-09):** the NVX hypothesis below is invalidated. NVX has been off since 2026-05-07 (`HAS_NVX=True, USES_NVX=False` verified in the running container) but the backend crashed again on 2026-05-08. The fault-handler traceback puts the crash inside the **SQLite backend, in a thread spawned by asgiref's sync-in-async pool, wrapped by Sentry's `execute`/`connect` patches**. New leading suspect: **Sentry SDK 2.X profiler + threading integration** (multiple public reports of SIGSEGV under similar conditions).
+
+## 2026-05-31 crashes — root cause confirmed
+
+Two crashes 8 minutes apart (19:06 and 19:15 UTC). `PYTHONFAULTHANDLER=1` finally caught the faulting thread directly:
+
+```
+Fatal Python error: Segmentation fault
+
+Current thread 0x0000716ca48ac6c0 (most recent call first):
+  sentry_sdk/profiler/utils.py:163 in extract_stack
+  sentry_sdk/profiler/transaction_profiler.py:602 in <listcomp>
+  sentry_sdk/profiler/transaction_profiler.py:601 in _sample_stack
+  sentry_sdk/profiler/transaction_profiler.py:711 in run
+```
+
+This is the `ThreadScheduler` daemon thread calling `sys._current_frames()` and then iterating every live thread's frame chain. If any other thread frees a frame object mid-walk, the pointer becomes dangling and the next dereference segfaults. This is a known-unfixed race in the sentry-sdk 2.x transaction profiler (see References → #2386).
+
+The fix is **disabling the profiler entirely** — the `.env` approach documented in Step 1 had been written down but never applied (container was not recreated after .env was modified). The code default has now been changed to `0` so it's safe on any future redeploy without needing the env var.
+
+## Crash signature (pre-2026-05-31)
 
 Four pre-fix crashes, two kernel-level patterns — same root cause:
 
@@ -116,6 +136,26 @@ Added to `docker-compose.yml` for the `backend` service. On signal-based crashes
 
 Modified `docker-entrypoint.sh` to skip the search-index rebuild when the index is non-empty. Cuts cold-restart downtime substantially.
 
+### 5. **Sentry profiling permanently disabled (2026-05-31, confirmed fix)**
+
+Root cause confirmed: the `ThreadScheduler` daemon thread in `sentry_sdk/profiler/transaction_profiler.py` calls `sys._current_frames()` at 100 Hz and walks every thread's frame chain. It segfaults if another thread frees a frame mid-walk — a known unfixed race in sentry-sdk 2.x (see [#2386](https://github.com/getsentry/sentry-python/issues/2386)).
+
+The fix is applied in two places so it is robust to any future env/config drift:
+
+1. **`backend/config/settings.py`** — default changed from `"0.1"` to `"0"`:
+   ```python
+   profiles_sample_rate=float(os.getenv("SENTRY_PROFILES_SAMPLE_RATE", "0")),
+   ```
+   Profiling is now off unless explicitly opted back in via the env var.
+
+2. **`/root/kbintra-prod/.env`** on the prod server — `SENTRY_PROFILES_SAMPLE_RATE=0` added as belt-and-suspenders in case the env var is ever read before the new code is deployed.
+
+Why `rate=0` is a complete stop, not a sampling bypass: `has_profiling_enabled()` in `transaction_profiler.py` checks `profiles_sample_rate > 0`. With `0`, this returns False and `setup_profiler()` is never called — no `ThreadScheduler` is instantiated, no daemon thread is spawned, and `extract_stack()` is never invoked. There is no profiler overhead at all.
+
+**On Python 3.12 as a potential fix:** [#2386](https://github.com/getsentry/sentry-python/issues/2386) has some discussion suggesting Python 3.12's improved GIL or frame lifecycle may reduce the race window, but there is no confirmed fix and no sentry-sdk release that claims to resolve it. Treat as "maybe someday" — do not re-enable profiling based on a Python version upgrade alone without evidence the race is resolved.
+
+To re-enable profiling in the future (e.g. if sentry-sdk ships a confirmed fix): set `SENTRY_PROFILES_SAMPLE_RATE=0.1` in `.env` and redeploy. Error reporting and tracing are unaffected.
+
 ### 4. **`AUTOBAHN_USE_NVX=0` (2026-05-07, primary fix attempt)**
 
 Added to `docker-compose.yml` for the `backend` service. Forces Autobahn to use pure-Python `Utf8Validator` and `XorMaskerSimple` instead of the native C extensions. Verified after restart:
@@ -137,22 +177,9 @@ We are now on the "NVX disabled and it still crashes" branch. The next crash sho
 docker compose logs backend --since 24h > /tmp/pre-crash-backend.log
 ```
 
-### Step 1 — turn off Sentry profiling (env-only, no code change)
+### Step 1 — turn off Sentry profiling ✅ DONE (2026-05-31)
 
-Most likely fix and the cheapest to try. In `.env` on prod:
-
-```
-SENTRY_PROFILES_SAMPLE_RATE=0
-```
-
-Then `docker compose up -d backend` (no rebuild needed — it's already read from env in `backend/config/settings.py:391`). Verify it's actually 0 in the live container:
-
-```bash
-docker exec kbintra-prod-backend-1 uv run python -c \
-  "from django.conf import settings; import os; print(os.getenv('SENTRY_PROFILES_SAMPLE_RATE'))"
-```
-
-If crashes stop within ~7 days of uptime, the Sentry profiler was it.
+**Confirmed root cause and fixed.** See Actions §5 for full details. The fix is in both `backend/config/settings.py` (default changed to `"0"`) and `/root/kbintra-prod/.env` (`SENTRY_PROFILES_SAMPLE_RATE=0`). The container must be recreated after any code/env change for it to take effect — an env-only change to `.env` without `docker compose up -d backend` is silently ignored by the already-running container.
 
 ### Step 2 — drop Sentry DB instrumentation (small code change)
 
@@ -191,7 +218,7 @@ Force the non-Litestream branch in `backend/docker-entrypoint.sh` (set `S3_BACKU
 
 ## References
 
-- [getsentry/sentry-python#2386 — Segmentation fault in sentry profiler](https://github.com/getsentry/sentry-python/issues/2386) — Django + gunicorn workers, frame-extraction crash
+- [getsentry/sentry-python#2386 — Segmentation fault in sentry profiler](https://github.com/getsentry/sentry-python/issues/2386) — Django + gunicorn workers, frame-extraction crash. The thread walks `sys._current_frames()` at 100 Hz; if another thread's frame is freed mid-walk, the next dereference segfaults. Some commenters suggest Python 3.12's frame lifecycle changes narrow the race window, but this is inconclusive — there is no confirmed fix in either CPython or sentry-sdk, and no release that claims to resolve it.
 - [getsentry/sentry-python discussion #3115 — Segfault possibly caused by sentry-python 2.3](https://github.com/getsentry/sentry-python/discussions/3115) — daily SIGSEGV after upgrade from 1.32 → 2.3 with profiling on
 - [django/asgiref#71 — ThreadPool execution should preserve contextvar context](https://github.com/django/asgiref/issues/71) — relevant to how Sentry's threading integration interacts with sync-in-async
 - [autobahn#1717 — SIGILL in `_xormasker.py`](https://github.com/crossbario/autobahn-python/issues/1717) — original NVX crash family; introduced the `AUTOBAHN_USE_NVX` kill switch (demoted but kept for context)

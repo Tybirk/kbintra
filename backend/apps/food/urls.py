@@ -28,6 +28,8 @@ from .views import (
     GenerateTeamsView,
     MealPreferenceDetailView,
     MealPreferenceListCreateView,
+    MealPriceDetailView,
+    MealPriceListCreateView,
     MealRegistrationDetailView,
     MealRegistrationListCreateView,
     MonthlyFoodCostView,
@@ -148,4 +150,7 @@ urlpatterns = [
     # Closed Food Days
     path("closed-days/", ClosedFoodDayListCreateView.as_view(), name="closed-day-list"),
     path("closed-days/<int:pk>/", ClosedFoodDayDeleteView.as_view(), name="closed-day-detail"),
+    # Meal Prices
+    path("prices/", MealPriceListCreateView.as_view(), name="price-list"),
+    path("prices/<int:pk>/", MealPriceDetailView.as_view(), name="price-detail"),
 ]

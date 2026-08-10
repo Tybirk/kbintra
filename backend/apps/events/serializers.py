@@ -301,18 +301,13 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
                         error_messages.append(f"{room.name}: {'; '.join(conflicts)}")
                     raise serializers.ValidationError({"non_field_errors": error_messages})
 
+            from apps.events.services import get_events_fallback_subgroup
             from apps.forum.models import Subgroup
 
             if subgroup_id:
                 validated_data["subgroup"] = Subgroup.objects.get(id=subgroup_id)
             else:
-                validated_data["subgroup"], _ = Subgroup.objects.get_or_create(
-                    slug="arrangementer",
-                    defaults={
-                        "name": "Arrangementer",
-                        "description": "Diskussioner om arrangementer",
-                    },
-                )
+                validated_data["subgroup"] = get_events_fallback_subgroup()
 
             event = Event.objects.create(**validated_data)
 

@@ -14,6 +14,14 @@ export const usersApi = {
     return response.data
   },
 
+  // The /users/ endpoint is not paginated (community is ~90 users), so it
+  // returns a plain array. asArray tolerates both shapes defensively.
+  async getAllUsers(): Promise<User[]> {
+    const response = await apiClient.get("/users/")
+
+    return asArray(response.data)
+  },
+
   async getUpcomingBirthdays(days = 7): Promise<User[]> {
     const response = await apiClient.get(`/users/birthdays/?days=${days}`)
 

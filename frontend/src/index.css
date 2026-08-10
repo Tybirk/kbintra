@@ -34,6 +34,15 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
+/* Hide NumberInput up/down stepper arrows on touch devices: scrolling can
+   easily mis-tap them, silently changing (and auto-saving) meal portion
+   counts. Mouse users keep the arrows; touch users type the value instead. */
+@media (pointer: coarse) {
+  .meal-portion-input-controls {
+    display: none;
+  }
+}
+
 /* Safari fix: Schedule nav chevrons use SVG transform attribute on the root <svg>
    element, which Safari ignores. Override with CSS transform. */
 .schedule-wrapper [data-type="next"] svg {
@@ -41,6 +50,20 @@ h1, h2, h3, h4, h5, h6 {
 }
 .schedule-wrapper [data-type="previous"] svg {
   transform: rotate(90deg);
+}
+
+/* macOS-Calendar behaviour for the current-time line. @mantine/schedule draws the
+   indicator as a full-width root (left:0; right:0) whose ::before paints a faint
+   (opacity 0.2) red line across ALL day columns, plus a separate solid line
+   (currentTimeIndicatorLine) constrained to today's column. Hiding the root's
+   ::before removes the cross-day line so the red line only shows on today; the
+   solid today-only line stays.
+   NB: the static selector is namespaced by the view (WeekView reused by Day view),
+   so it renders as `mantine-WeekView-currentTimeIndicator`, NOT
+   `mantine-CurrentTimeIndicator-currentTimeIndicator`. The exact class token below
+   matches only the root element, not the *Line/*Thumb/*Bubble children. */
+.schedule-wrapper .mantine-WeekView-currentTimeIndicator::before {
+  display: none;
 }
 
 /* Result rows on advanced search page — give the button-styled boxes tap/hover

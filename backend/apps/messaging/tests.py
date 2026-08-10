@@ -212,6 +212,127 @@ class TestMarkMessagesReadAPI:
         assert MessageReadStatus.objects.filter(message=message, user=second_user).exists()
 
 
+class TestMarkMessagesUnreadAPI:
+    """Tests for the Mark Messages Unread API endpoint."""
+
+    def test_mark_messages_unread(self, api_client, second_user, conversation, message):
+        """Reading then marking unread makes the conversation unread again."""
+        api_client.force_authenticate(user=second_user)
+
+        # Read the conversation first (creates a read status for second_user).
+        api_client.post(f"/api/messages/conversations/{conversation.id}/read/")
+        assert MessageReadStatus.objects.filter(message=message, user=second_user).exists()
+        assert api_client.get("/api/messages/unread-count/").json()["unread_count"] == 0
+
+        # Now mark it as unread.
+        response = api_client.post(f"/api/messages/conversations/{conversation.id}/unread/")
+        assert response.status_code == 200
+        assert response.json()["marked_unread"] == 1
+
+        # The read status is gone and the conversation is unread again.
+        assert not MessageReadStatus.objects.filter(message=message, user=second_user).exists()
+        assert api_client.get("/api/messages/unread-count/").json()["unread_count"] == 1
+
+    def test_mark_unread_only_affects_latest_message(
+        self, api_client, user, second_user, conversation, message
+    ):
+        """Marking a conversation unread clears only the latest message, not all."""
+        # A second, later message from the other participant.
+        latest = Message.objects.create(
+            conversation=conversation,
+            sender=user,
+            content="A later message",
+        )
+
+        api_client.force_authenticate(user=second_user)
+        api_client.post(f"/api/messages/conversations/{conversation.id}/read/")
+
+        response = api_client.post(f"/api/messages/conversations/{conversation.id}/unread/")
+        assert response.status_code == 200
+        assert response.json()["marked_unread"] == 1
+
+        # Only the latest message is unread; the earlier one stays read.
+        assert not MessageReadStatus.objects.filter(message=latest, user=second_user).exists()
+        assert MessageReadStatus.objects.filter(message=message, user=second_user).exists()
+        assert api_client.get("/api/messages/unread-count/").json()["unread_count"] == 1
+
+    def test_mark_unread_leaves_own_messages_untouched(
+        self, api_client, second_user, conversation, message
+    ):
+        """Marking unread must not delete read statuses for the user's own messages."""
+        # second_user sends their own message and reads the whole conversation.
+        own_message = Message.objects.create(
+            conversation=conversation,
+            sender=second_user,
+            content="My own reply",
+        )
+        own_read = MessageReadStatus.objects.create(message=own_message, user=second_user)
+
+        api_client.force_authenticate(user=second_user)
+        api_client.post(f"/api/messages/conversations/{conversation.id}/read/")
+
+        response = api_client.post(f"/api/messages/conversations/{conversation.id}/unread/")
+        assert response.status_code == 200
+
+        # The other user's message read status is deleted...
+        assert not MessageReadStatus.objects.filter(message=message, user=second_user).exists()
+        # ...but the read status for second_user's own message is preserved.
+        assert MessageReadStatus.objects.filter(pk=own_read.pk).exists()
+
+    def test_mark_unread_unauthenticated(self, api_client, conversation):
+        """Unauthenticated users cannot mark a conversation unread."""
+        response = api_client.post(f"/api/messages/conversations/{conversation.id}/unread/")
+        assert response.status_code == 401
+
+    def test_cannot_mark_unread_others_conversation(self, api_client, admin_user, conversation):
+        """Users cannot mark a conversation they're not part of as unread."""
+        api_client.force_authenticate(user=admin_user)
+        response = api_client.post(f"/api/messages/conversations/{conversation.id}/unread/")
+        assert response.status_code == 404
+
+
+class TestMarkMessageUnreadAPI:
+    """Tests for the per-message Mark Unread API endpoint."""
+
+    def test_mark_message_unread(self, api_client, second_user, conversation, message):
+        """Reading then marking a single message unread makes it unread again."""
+        api_client.force_authenticate(user=second_user)
+
+        api_client.post(f"/api/messages/conversations/{conversation.id}/read/")
+        assert MessageReadStatus.objects.filter(message=message, user=second_user).exists()
+
+        response = api_client.post(f"/api/messages/messages/{message.id}/unread/")
+        assert response.status_code == 200
+        assert response.json()["marked_unread"] == 1
+
+        assert not MessageReadStatus.objects.filter(message=message, user=second_user).exists()
+        assert api_client.get("/api/messages/unread-count/").json()["unread_count"] == 1
+
+    def test_mark_own_message_unread_is_noop(self, api_client, second_user, conversation):
+        """Marking one's own message unread is a no-op (own messages aren't tracked)."""
+        own_message = Message.objects.create(
+            conversation=conversation,
+            sender=second_user,
+            content="My own message",
+        )
+        api_client.force_authenticate(user=second_user)
+
+        response = api_client.post(f"/api/messages/messages/{own_message.id}/unread/")
+        assert response.status_code == 200
+        assert response.json()["marked_unread"] == 0
+
+    def test_mark_message_unread_unauthenticated(self, api_client, message):
+        """Unauthenticated users cannot mark a message unread."""
+        response = api_client.post(f"/api/messages/messages/{message.id}/unread/")
+        assert response.status_code == 401
+
+    def test_cannot_mark_message_in_others_conversation(self, api_client, admin_user, message):
+        """Users cannot mark a message in a conversation they're not part of."""
+        api_client.force_authenticate(user=admin_user)
+        response = api_client.post(f"/api/messages/messages/{message.id}/unread/")
+        assert response.status_code == 404
+
+
 class TestUnreadCountAPI:
     """Tests for the Unread Count API endpoint."""
 
@@ -354,3 +475,98 @@ class TestMessageUnsendAPI:
         """Unauthenticated request is rejected."""
         response = api_client.delete(f"/api/messages/messages/{message.id}/unsend/")
         assert response.status_code == 401
+
+
+class TestConversationDetailQueryCount:
+    """Regression: serializing a conversation's messages must not run queries that
+    scale with the number of messages (read-status / attachments were N+1)."""
+
+    def _seed(self, conversation, sender, count, start=0):
+        from apps.messaging.models import Message
+
+        for i in range(start, start + count):
+            Message.objects.create(conversation=conversation, sender=sender, content=f"msg {i}")
+
+    def test_detail_query_count_does_not_scale_with_messages(
+        self, authenticated_client, conversation, second_user
+    ):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/api/messages/conversations/{conversation.id}/"
+
+        # A few messages from the other participant.
+        self._seed(conversation, second_user, 3)
+        # Warm up (first request marks messages read / primes any one-off queries).
+        assert authenticated_client.get(url).status_code == 200
+        with CaptureQueriesContext(connection) as small:
+            assert authenticated_client.get(url).status_code == 200
+
+        # Many more messages — query count must stay the same (no N+1).
+        self._seed(conversation, second_user, 20, start=3)
+        assert authenticated_client.get(url).status_code == 200
+        with CaptureQueriesContext(connection) as big:
+            assert authenticated_client.get(url).status_code == 200
+
+        assert len(big) == len(small), (
+            f"query count scaled with message count: {len(small)} -> {len(big)}"
+        )
+
+
+class TestHeicAttachmentBroadcast:
+    """A HEIC upload must be viewable the moment it is broadcast.
+
+    Browsers other than Safari can't decode HEIC, so the payload has to carry the
+    converted JPEG `preview`. Queueing that conversion meant the huey worker had
+    not run when the payload was built, so every recipient got the original and
+    saw a broken image until they reloaded the conversation.
+    """
+
+    def _heic_upload(self):
+        from io import BytesIO
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+
+        import apps.forum.image_processing  # noqa: F401 — registers the HEIF opener
+
+        buf = BytesIO()
+        Image.new("RGB", (800, 600), color=(10, 60, 110)).save(buf, format="HEIF", quality=80)
+        return SimpleUploadedFile("iphone.heic", buf.getvalue(), content_type="image/heic")
+
+    def test_broadcast_carries_a_converted_preview(
+        self, authenticated_client, user, conversation, monkeypatch
+    ):
+        captured: list[dict] = []
+
+        class FakeChannelLayer:
+            async def group_send(self, group, payload):
+                captured.append(payload)
+
+        monkeypatch.setattr("channels.layers.get_channel_layer", lambda: FakeChannelLayer())
+
+        # Simulate production: the huey worker has NOT run yet, so anything that
+        # relies on the queued task leaves `preview` empty at broadcast time.
+        import apps.forum.tasks as forum_tasks
+
+        monkeypatch.setattr(
+            forum_tasks.generate_attachment_preview_task, "__call__", lambda *a, **k: None
+        )
+
+        response = authenticated_client.post(
+            f"/api/messages/conversations/{conversation.id}/messages/",
+            {"content": "se billedet", "attachments": self._heic_upload()},
+            format="multipart",
+        )
+        assert response.status_code == 201, response.data
+
+        from apps.messaging.models import Message
+
+        att = Message.objects.filter(conversation=conversation).latest("id").attachments.get()
+        assert att.preview, "no preview was generated before the broadcast"
+
+        assert captured, "no WebSocket broadcast was sent"
+        broadcast = captured[0]["message"]["attachments"][0]
+        assert "previews/" in broadcast["preview_url"], (
+            "recipients received the undecodable original: " + broadcast["preview_url"]
+        )

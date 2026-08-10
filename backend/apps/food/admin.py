@@ -3,6 +3,7 @@ Admin configuration for Food models.
 """
 
 from django.contrib import admin
+from django.utils import timezone
 
 from .models import (
     ClosedFoodDay,
@@ -13,6 +14,7 @@ from .models import (
     FoodTeamWish,
     FoodTicket,
     MealPreference,
+    MealPrice,
     MealRegistration,
     SwapBroadcast,
     TeamFavour,
@@ -138,3 +140,38 @@ class ClosedFoodDayAdmin(admin.ModelAdmin):
     search_fields = ["reason"]
     date_hierarchy = "date"
     raw_id_fields = ["created_by"]
+
+
+@admin.register(MealPrice)
+class MealPriceAdmin(admin.ModelAdmin):
+    """Price sets already in effect are read-only — editing them rewrites past billing.
+
+    Same rule as the API (`MealPriceSerializer` / `MealPriceDetailView`); enforced
+    here too so the admin cannot bypass it.
+    """
+
+    list_display = [
+        "effective_from",
+        "price_adult_meat",
+        "price_adult_veg",
+        "price_child",
+        "note",
+        "created_by",
+    ]
+    search_fields = ["note"]
+    date_hierarchy = "effective_from"
+    raw_id_fields = ["created_by"]
+
+    @staticmethod
+    def _is_in_effect(obj: MealPrice | None) -> bool:
+        return obj is not None and obj.effective_from < timezone.localdate()
+
+    def has_change_permission(self, request, obj=None) -> bool:  # type: ignore[no-untyped-def]
+        if self._is_in_effect(obj):
+            return False
+        return super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None) -> bool:  # type: ignore[no-untyped-def]
+        if self._is_in_effect(obj):
+            return False
+        return super().has_delete_permission(request, obj)

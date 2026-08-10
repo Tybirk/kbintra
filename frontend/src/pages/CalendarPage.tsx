@@ -437,7 +437,6 @@ export default function CalendarPage() {
                               <LocationText
                                 location={ev.resolved_location}
                                 size="sm"
-                                c="dimmed"
                                 lineClamp={1}
                               />
                             </Group>
@@ -511,7 +510,7 @@ export default function CalendarPage() {
                       {ev?.resolved_location && (
                         <Group gap={2} wrap="nowrap">
                           <IconMapPin size={10} />
-                          <Text size="xs" c="dimmed" lineClamp={1}>
+                          <Text size="xs" lineClamp={1}>
                             {ev.resolved_location}
                           </Text>
                         </Group>

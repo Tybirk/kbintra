@@ -16,6 +16,7 @@ HTTP 200 + ``success: true`` + an empty ``result.permanent_bounces`` array; we
 check all three.
 """
 
+import base64
 import logging
 from email.utils import parseaddr
 
@@ -100,7 +101,33 @@ class CloudflareEmailBackend(BaseEmailBackend):
             payload["reply_to"] = message.reply_to[0]
         if message.extra_headers:
             payload["headers"] = dict(message.extra_headers)
+        attachments = [self._format_attachment(a) for a in message.attachments]
+        if attachments:
+            payload["attachments"] = attachments
         return payload
+
+    @staticmethod
+    def _format_attachment(attachment) -> dict:
+        """Translate a Django attachment into Cloudflare's base64 form.
+
+        Django carries attachments either as ``(filename, content, mimetype)``
+        tuples (the common ``EmailMessage.attach()`` case) or as ``MIMEBase``
+        objects; handle both. Cloudflare wants base64 content + a disposition.
+        """
+        if isinstance(attachment, tuple):
+            filename, content, mimetype = attachment
+        else:
+            filename = attachment.get_filename() or "vedhaeftning"
+            content = attachment.get_payload(decode=True) or b""
+            mimetype = attachment.get_content_type()
+        if isinstance(content, str):
+            content = content.encode("utf-8")
+        return {
+            "content": base64.b64encode(content).decode("ascii"),
+            "filename": filename or "vedhaeftning",
+            "type": mimetype or "application/octet-stream",
+            "disposition": "attachment",
+        }
 
     def _send_one(self, message, url: str) -> bool:
         if not message.recipients():

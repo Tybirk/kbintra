@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -109,3 +109,63 @@ jobs:
 
       - name: Run tests
         run: npm run test:run
+
+  # Build the production images on GitHub's runners (4 vCPU / 16 GB, free) and push
+  # them to ghcr.io. The 4 GB prod box then only pulls — it never compiles. Runs only
+  # after all tests pass, and only on pushes to main (skipped on pull requests).
+  build-push:
+    name: Build & Push Images
+    needs: [backend-lint, backend-test, frontend-lint, frontend-test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          # Tag with both `latest` and the exact commit SHA. deploy.sh pulls the SHA
+          # tag so the running image always matches the deployed code; the SHA tags
+          # also stay around for rollback.
+          tags: |
+            ghcr.io/tybirk/kbintra-backend:latest
+            ghcr.io/tybirk/kbintra-backend:${{ github.sha }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Build & push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ghcr.io/tybirk/kbintra-frontend:latest
+            ghcr.io/tybirk/kbintra-frontend:${{ github.sha }}
+          # Build-time args (formerly passed via docker-compose on the server).
+          # VITE_SENTRY_DSN is a public key embedded in the bundle; SENTRY_AUTH_TOKEN
+          # is only used to upload source maps. Configure these as repo secrets.
+          build-args: |
+            VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN_FRONTEND }}
+            VITE_SENTRY_ENVIRONMENT=production
+            VITE_GIPHY_API_KEY=${{ secrets.VITE_GIPHY_API_KEY }}
+            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
+            SENTRY_ORG=${{ secrets.SENTRY_ORG }}
+            SENTRY_PROJECT=${{ secrets.SENTRY_PROJECT }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend

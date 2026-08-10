@@ -91,7 +91,7 @@ class PushSubscriptionInline(admin.TabularInline):
 class SubgroupSubscriptionInline(admin.TabularInline):
     model = SubgroupSubscription
     extra = 0
-    fields = ["subgroup", "notify_new_threads", "notify_replies", "created_at"]
+    fields = ["subgroup", "notify_new_threads", "created_at"]
     readonly_fields = ["created_at"]
 
 
@@ -139,6 +139,7 @@ class UserAdmin(BaseUserAdmin):
                     "is_active",
                     "is_staff",
                     "is_food_admin",
+                    "is_economy_admin",
                     "is_superuser",
                     "groups",
                     "user_permissions",

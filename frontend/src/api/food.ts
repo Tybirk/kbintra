@@ -38,6 +38,8 @@ import type {
   TodayLeftoversPost,
   MyFoodProfile,
   FoodRosterEntry,
+  MealPrice,
+  CreateMealPriceData,
 } from "../types"
 
 export interface ExpenseDay {
@@ -496,7 +498,10 @@ export const foodApi = {
 
     if (year !== undefined) params.year = year
 
-    const response = await apiClient.get("/food/drive-menu/", { params })
+    const response = await apiClient.get("/food/drive-menu/", {
+      params,
+      skipConnectionToast: true,
+    })
 
     return response.data
   },
@@ -512,7 +517,9 @@ export const foodApi = {
 
     if (year !== undefined) data.year = year
 
-    const response = await apiClient.post("/food/drive-menu/", data)
+    const response = await apiClient.post("/food/drive-menu/", data, {
+      skipConnectionToast: true,
+    })
 
     return response.data
   },
@@ -524,7 +531,13 @@ export const foodApi = {
 
     failed: number
   }> => {
-    const response = await apiClient.post("/food/drive-menu/refresh-all/")
+    const response = await apiClient.post(
+      "/food/drive-menu/refresh-all/",
+      undefined,
+      {
+        skipConnectionToast: true,
+      },
+    )
 
     return response.data
   },
@@ -712,5 +725,33 @@ export const foodApi = {
     const response = await apiClient.patch(`/food/admin/roster/${id}/`, data)
 
     return response.data
+  },
+
+  // Meal Prices
+
+  getMealPrices: async (): Promise<MealPrice[]> => {
+    const response = await apiClient.get("/food/prices/")
+
+    return asArray(response.data)
+  },
+
+  createMealPrice: async (data: CreateMealPriceData): Promise<MealPrice> => {
+    const response = await apiClient.post("/food/prices/", data)
+
+    return response.data
+  },
+
+  updateMealPrice: async (
+    id: number,
+
+    data: Partial<CreateMealPriceData>,
+  ): Promise<MealPrice> => {
+    const response = await apiClient.patch(`/food/prices/${id}/`, data)
+
+    return response.data
+  },
+
+  deleteMealPrice: async (id: number): Promise<void> => {
+    await apiClient.delete(`/food/prices/${id}/`)
   },
 }

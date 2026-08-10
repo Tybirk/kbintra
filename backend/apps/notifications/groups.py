@@ -74,17 +74,17 @@ NOTIFICATION_GROUPS: list[dict] = [
     },
     {
         "key": "events",
-        "label": "Arrangementer",
+        "label": "Begivenheder",
         "fields": [
             {
                 "key": "events",
-                "label": "Arrangementer",
-                "description": "Få besked om nye, ændrede eller aflyste arrangementer",
+                "label": "Begivenheder",
+                "description": "Få besked om nye, ændrede eller aflyste begivenheder",
             },
             {
                 "key": "event_reminders",
                 "label": "Påmindelser",
-                "description": "Få en påmindelse før et arrangement, du deltager i",
+                "description": "Få en påmindelse før en begivenhed, du deltager i",
             },
         ],
     },

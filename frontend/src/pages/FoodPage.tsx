@@ -33,6 +33,8 @@ import {
   Anchor,
   TextInput,
   Tooltip,
+  Alert,
+  Checkbox,
 } from "@mantine/core"
 
 import {
@@ -67,6 +69,9 @@ import {
   IconRefresh,
   IconDownload,
   IconBook2,
+  IconCoins,
+  IconInfoCircle,
+  IconAlertTriangle,
 } from "@tabler/icons-react"
 
 import dayjs from "dayjs"
@@ -80,17 +85,20 @@ import { foodApi } from "../api/food"
 import { notificationsApi } from "../api/notifications"
 
 import { MealFormFields } from "../components/MealFormFields"
+import UserLink from "../components/UserLink"
 
 import { useAuthStore } from "../store/authStore"
 
 import {
   calculateDefaultTicketPrice,
-  PRICE_ADULT_MEAT,
-  PRICE_ADULT_VEG,
-  PRICE_CHILD,
+  resolvePrices,
 } from "../utils/priceCalculation"
 
+import { useMealPrices, MEAL_PRICES_QUERY_KEY } from "../hooks/useMealPrices"
+
 import { isDateLocked, isAfterTicketSaleCutoff } from "../utils/foodDeadline"
+
+import { copyToClipboard } from "../utils/clipboard"
 
 import type {
   MealRegistration,
@@ -103,9 +111,15 @@ import type {
   DailyRegistrationStats,
   ClosedDayPlaceholder,
   WeeklyRegistrationStats,
+  MealPrice,
 } from "../types"
 
 import { isClosedDayPlaceholder, isClosedDayStats } from "../types"
+
+// How far back the week navigation may go. Past weeks are read-only anyway (the
+// Wednesday deadline locks them), but being able to look back at an earlier
+// week's menu and recipes is useful — and makes menu-import bugs verifiable.
+const MIN_REG_WEEK_OFFSET = -8
 
 // The stats endpoint returns a closed-day marker for closed dates.
 
@@ -133,6 +147,14 @@ export default function FoodPage() {
   const { user } = useAuthStore()
 
   const canFoodAdmin = !!(user?.is_staff || user?.is_food_admin)
+
+  // Economy admins (the treasurer) may view the cost report, but not the
+  // operational food-admin tools (closed days, etc.).
+  const canEconomyAdmin = !!(user?.is_staff || user?.is_economy_admin)
+
+  const canSeeAdminTab = canFoodAdmin || canEconomyAdmin
+
+  const { data: mealPrices } = useMealPrices()
 
   // Path-based tab state
 
@@ -375,8 +397,6 @@ export default function FoodPage() {
 
   // Aggregate weekly budget and per-day shopping numbers from stats
 
-  const purchaseClipboard = useClipboard({ timeout: 1500 })
-
   let weeklyBudget = 0
 
   const purchaseColumns: number[] = []
@@ -386,14 +406,23 @@ export default function FoodPage() {
 
     const stats = getDailyStats(weeklyStats, dateStr)
 
-    const veg = stats?.total.adults_veg ?? 0
+    // Budget is an income figure: use gross registrations, not effective
+    // portions. Available (unsold) tickets must NOT reduce it — the seller is
+    // still billed for their registration regardless of whether it sells.
+    const veg = stats?.total_registrations.adults_veg ?? 0
 
-    const meat = stats?.total.adults_meat ?? 0
+    const meat = stats?.total_registrations.adults_meat ?? 0
 
-    const kids = stats?.total.children ?? 0
+    const kids = stats?.total_registrations.children ?? 0
 
-    weeklyBudget +=
-      meat * PRICE_ADULT_MEAT + veg * PRICE_ADULT_VEG + kids * PRICE_CHILD
+    // Priced per day, so a week straddling a price change budgets correctly.
+    weeklyBudget += calculateDefaultTicketPrice(
+      mealPrices,
+      dateStr,
+      meat,
+      veg,
+      kids,
+    )
 
     purchaseColumns.push(veg, 0, meat, kids)
   }
@@ -450,7 +479,7 @@ export default function FoodPage() {
           <Tabs.Tab value="okonomi" leftSection={<IconWallet size={16} />}>
             Økonomi
           </Tabs.Tab>
-          {canFoodAdmin && (
+          {canSeeAdminTab && (
             <Tabs.Tab value="admin" leftSection={<IconSettings size={16} />}>
               Admin
             </Tabs.Tab>
@@ -466,7 +495,7 @@ export default function FoodPage() {
                   variant="light"
                   size="lg"
                   onClick={() => setRegWeekOffset(regWeekOffset - 1)}
-                  disabled={regWeekOffset <= 0}
+                  disabled={regWeekOffset <= MIN_REG_WEEK_OFFSET}
                 >
                   <IconChevronLeft size={20} />
                 </ActionIcon>
@@ -539,25 +568,37 @@ export default function FoodPage() {
               )}
               <Group gap="xs">
                 {canFoodAdmin && (
-                  <Text size="xs" c="dimmed" style={{ lineHeight: 1.1 }}>
-                    Budget
-                    <br />
-                    {weeklyBudget} kr.
-                  </Text>
+                  <Stack gap={0} style={{ lineHeight: 1.1 }}>
+                    <Text size="xs" c="dimmed">
+                      Budget (inkl. moms): {weeklyBudget} kr.
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      Budget (ekskl. moms): {Math.round(weeklyBudget * 0.8)} kr.
+                    </Text>
+                  </Stack>
                 )}
                 {canFoodAdmin && weekIsLocked && (
                   <Button
                     variant="light"
                     size="sm"
                     leftSection={<IconCopy size={14} />}
-                    onClick={() => {
-                      purchaseClipboard.copy(purchaseTSV)
+                    onClick={async () => {
+                      const copied = await copyToClipboard(purchaseTSV)
 
-                      notifications.show({
-                        color: "green",
+                      if (copied) {
+                        notifications.show({
+                          color: "green",
 
-                        message: "Indkøbstal kopieret til udklipsholder.",
-                      })
+                          message: "Indkøbstal kopieret til udklipsholder.",
+                        })
+                      } else {
+                        notifications.show({
+                          color: "red",
+
+                          message:
+                            "Kunne ikke kopiere automatisk. Prøv at markere tallene og kopiere manuelt.",
+                        })
+                      }
                     }}
                   >
                     Kopier indkøbstal
@@ -754,11 +795,17 @@ export default function FoodPage() {
           <MyFoodExpenses />
         </Tabs.Panel>
 
-        {canFoodAdmin && (
+        {canSeeAdminTab && (
           <Tabs.Panel value="admin">
             <Stack gap="xl">
-              <ClosedDaysAdmin />
-              <Divider />
+              {canFoodAdmin && (
+                <>
+                  <ClosedDaysAdmin />
+                  <Divider />
+                  <MealPricesAdmin />
+                  <Divider />
+                </>
+              )}
               <MonthlyCostReport />
             </Stack>
           </Tabs.Panel>
@@ -928,6 +975,427 @@ function ClosedDaysAdmin() {
           Ingen kommende lukkede dage.
         </Text>
       )}
+    </Stack>
+  )
+}
+
+// Meal Prices Admin Component (food admin only)
+
+interface PriceDraft {
+  effectiveFrom: Date | null
+  adultMeat: number
+  adultVeg: number
+  child: number
+  note: string
+}
+
+// Resolving against this yields the last price set in the schedule, whether or
+// not it has taken effect yet.
+const END_OF_TIME = "9999-12-31"
+
+// A price change moves the numbers on the cost report and the economy page, so
+// their cached results must be thrown away too.
+const PRICE_DEPENDENT_QUERY_KEYS = [
+  ["food", "monthly-cost"],
+  ["food", "my-expenses"],
+]
+
+function MealPricesAdmin() {
+  const queryClient = useQueryClient()
+
+  const { data: prices, isLoading } = useMealPrices()
+
+  const [modalOpened, { open: openModal, close: closeModal }] =
+    useDisclosure(false)
+
+  // Two-step modal: fill in the prices, then confirm the change explicitly.
+  const [step, setStep] = useState<"form" | "confirm">("form")
+
+  const [confirmed, setConfirmed] = useState(false)
+
+  // Deleting is confirmed separately — it changes prices just as much as adding.
+  const [deleteTarget, setDeleteTarget] = useState<MealPrice | null>(null)
+
+  const today = dayjs().format("YYYY-MM-DD")
+
+  const currentPrices = resolvePrices(prices, today)
+
+  const invalidatePriceDependentQueries = () => {
+    queryClient.invalidateQueries({ queryKey: MEAL_PRICES_QUERY_KEY })
+
+    for (const queryKey of PRICE_DEPENDENT_QUERY_KEYS) {
+      queryClient.invalidateQueries({ queryKey })
+    }
+  }
+
+  const [draft, setDraft] = useState<PriceDraft>({
+    effectiveFrom: null,
+    adultMeat: 0,
+    adultVeg: 0,
+    child: 0,
+    note: "",
+  })
+
+  const handleOpen = () => {
+    // Start from the last set in the schedule — a new set is normally appended
+    // after any already-scheduled change, so that is what it replaces.
+    const latestPrices = resolvePrices(prices, END_OF_TIME)
+
+    setDraft({
+      effectiveFrom: null,
+      adultMeat: latestPrices.adultMeat,
+      adultVeg: latestPrices.adultVeg,
+      child: latestPrices.child,
+      note: "",
+    })
+
+    setStep("form")
+
+    setConfirmed(false)
+
+    openModal()
+  }
+
+  const createMutation = useMutation({
+    mutationFn: foodApi.createMealPrice,
+
+    onSuccess: () => {
+      invalidatePriceDependentQueries()
+
+      closeModal()
+
+      notifications.show({
+        color: "green",
+
+        message: "Det nye prissæt er gemt.",
+      })
+    },
+
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke gemme prissættet.")
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: foodApi.deleteMealPrice,
+
+    onSuccess: () => {
+      invalidatePriceDependentQueries()
+
+      setDeleteTarget(null)
+
+      notifications.show({
+        color: "green",
+
+        message: "Prissættet er slettet.",
+      })
+    },
+
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke slette prissættet.")
+    },
+  })
+
+  const draftDateStr = draft.effectiveFrom
+    ? dayjs(draft.effectiveFrom).format("YYYY-MM-DD")
+    : null
+
+  // What applies the day before the new set starts — that is what changes.
+  const replacedPrices = resolvePrices(
+    prices,
+    draftDateStr
+      ? dayjs(draftDateStr).subtract(1, "day").format("YYYY-MM-DD")
+      : today,
+  )
+
+  const handleSubmit = () => {
+    if (!draftDateStr) return
+
+    createMutation.mutate({
+      effective_from: draftDateStr,
+      price_adult_meat: draft.adultMeat,
+      price_adult_veg: draft.adultVeg,
+      price_child: draft.child,
+      note: draft.note || undefined,
+    })
+  }
+
+  const changeRows: [string, number, number][] = [
+    ["Kød (voksen)", replacedPrices.adultMeat, draft.adultMeat],
+    ["Vegetar (voksen)", replacedPrices.adultVeg, draft.adultVeg],
+    ["Børn (1-12 år)", replacedPrices.child, draft.child],
+  ]
+
+  return (
+    <Stack gap="md">
+      <Group justify="space-between" wrap="wrap">
+        <Title order={3}>
+          <Group gap="xs">
+            <IconCoins size={24} />
+            Portionspriser
+          </Group>
+        </Title>
+        <Button onClick={handleOpen} variant="light">
+          Nyt prissæt
+        </Button>
+      </Group>
+
+      <Alert color="blue" icon={<IconInfoCircle size={18} />}>
+        Priser gælder ud fra <b>maddagen</b>, ikke ud fra hvornår de blev
+        oprettet. Ændrer du priserne, påvirker det kun måltider fra startdatoen
+        og frem — tidligere regnskaber og økonomisider står uændret. Derfor kan
+        et prissæt ikke ændres eller slettes, når det først er trådt i kraft.
+      </Alert>
+
+      <Paper withBorder p="md" radius="md">
+        <Text fw={600} mb={4}>
+          Gældende priser i dag
+        </Text>
+        <Text size="sm">
+          Kød {currentPrices.adultMeat} kr · Vegetar {currentPrices.adultVeg} kr
+          · Børn (1-12 år) {currentPrices.child} kr
+        </Text>
+      </Paper>
+
+      {isLoading ? (
+        <Center h={100}>
+          <Loader size="md" />
+        </Center>
+      ) : (
+        <Paper withBorder p="md" radius="md">
+          <Text fw={600} mb="sm">
+            Alle prissæt
+          </Text>
+          <Table.ScrollContainer minWidth={520}>
+            <Table striped highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Gælder fra</Table.Th>
+                  <Table.Th>Kød</Table.Th>
+                  <Table.Th>Vegetar</Table.Th>
+                  <Table.Th>Børn</Table.Th>
+                  <Table.Th>Note</Table.Th>
+                  <Table.Th w={50} />
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {prices?.map((p) => (
+                  <Table.Tr key={p.id}>
+                    <Table.Td>
+                      <Group gap="xs" wrap="nowrap">
+                        {dayjs(p.effective_from).format("D. MMMM YYYY")}
+                        {p.effective_from > today && (
+                          <Badge size="sm" color="blue" variant="light">
+                            Kommende
+                          </Badge>
+                        )}
+                      </Group>
+                    </Table.Td>
+                    <Table.Td>{p.price_adult_meat} kr</Table.Td>
+                    <Table.Td>{p.price_adult_veg} kr</Table.Td>
+                    <Table.Td>{p.price_child} kr</Table.Td>
+                    <Table.Td>{p.note || "-"}</Table.Td>
+                    <Table.Td>
+                      {p.is_locked ? (
+                        <Tooltip label="Trådt i kraft — kan ikke ændres">
+                          <ThemeIcon variant="subtle" color="gray">
+                            <IconLock size={16} />
+                          </ThemeIcon>
+                        </Tooltip>
+                      ) : (
+                        <ActionIcon
+                          color="red"
+                          variant="subtle"
+                          aria-label="Slet prissæt"
+                          onClick={() => setDeleteTarget(p)}
+                        >
+                          <IconTrash size={16} />
+                        </ActionIcon>
+                      )}
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Paper>
+      )}
+
+      <Modal
+        opened={modalOpened}
+        onClose={closeModal}
+        title={step === "form" ? "Nyt prissæt" : "Bekræft prisændring"}
+      >
+        {step === "form" ? (
+          <Stack gap="sm">
+            <DatePickerInput
+              label="Gælder fra og med"
+              placeholder="Vælg startdato"
+              value={draft.effectiveFrom}
+              onChange={(value) =>
+                setDraft((d) => ({
+                  ...d,
+                  effectiveFrom: value as unknown as Date | null,
+                }))
+              }
+              minDate={dayjs().toDate()}
+              valueFormat="D. MMMM YYYY"
+              description="Måltider før denne dato beholder de gamle priser"
+            />
+            <NumberInput
+              label="Kød (voksen), kr"
+              value={draft.adultMeat}
+              onChange={(v) =>
+                setDraft((d) => ({
+                  ...d,
+                  adultMeat: typeof v === "number" ? v : 0,
+                }))
+              }
+              min={0}
+              allowNegative={false}
+              decimalScale={2}
+            />
+            <NumberInput
+              label="Vegetar (voksen), kr"
+              value={draft.adultVeg}
+              onChange={(v) =>
+                setDraft((d) => ({
+                  ...d,
+                  adultVeg: typeof v === "number" ? v : 0,
+                }))
+              }
+              min={0}
+              allowNegative={false}
+              decimalScale={2}
+            />
+            <NumberInput
+              label="Børn (1-12 år), kr"
+              value={draft.child}
+              onChange={(v) =>
+                setDraft((d) => ({
+                  ...d,
+                  child: typeof v === "number" ? v : 0,
+                }))
+              }
+              min={0}
+              allowNegative={false}
+              decimalScale={2}
+            />
+            <TextInput
+              label="Note (valgfrit)"
+              placeholder="F.eks. Prisstigning på råvarer"
+              value={draft.note}
+              onChange={(e) => {
+                // Read the value now: React nulls out currentTarget once the
+                // handler returns, and the updater below runs later.
+                const note = e.currentTarget.value
+
+                setDraft((d) => ({ ...d, note }))
+              }}
+            />
+            <Group justify="flex-end">
+              <Button variant="light" onClick={closeModal}>
+                Annuller
+              </Button>
+              <Button
+                disabled={!draft.effectiveFrom}
+                onClick={() => {
+                  setConfirmed(false)
+
+                  setStep("confirm")
+                }}
+              >
+                Fortsæt
+              </Button>
+            </Group>
+          </Stack>
+        ) : (
+          <Stack gap="sm">
+            <Text size="sm">
+              Fra og med{" "}
+              <b>{dayjs(draft.effectiveFrom).format("D. MMMM YYYY")}</b> koster
+              portionerne:
+            </Text>
+
+            <Table>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Portion</Table.Th>
+                  <Table.Th>Før</Table.Th>
+                  <Table.Th>Efter</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {changeRows.map(([label, before, after]) => (
+                  <Table.Tr key={label}>
+                    <Table.Td>{label}</Table.Td>
+                    <Table.Td c="dimmed">{before} kr</Table.Td>
+                    <Table.Td fw={before === after ? undefined : 700}>
+                      {after} kr
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+
+            <Alert color="orange" icon={<IconAlertTriangle size={18} />}>
+              Når prissættet er trådt i kraft, kan det ikke ændres eller
+              slettes. Måltider før startdatoen er ikke berørt.
+            </Alert>
+
+            <Checkbox
+              checked={confirmed}
+              onChange={(e) => setConfirmed(e.currentTarget.checked)}
+              label="Jeg har tjekket priserne og startdatoen"
+            />
+
+            <Group justify="flex-end">
+              <Button variant="light" onClick={() => setStep("form")}>
+                Tilbage
+              </Button>
+              <Button
+                color="red"
+                disabled={!confirmed}
+                loading={createMutation.isPending}
+                onClick={handleSubmit}
+              >
+                Gem prissæt
+              </Button>
+            </Group>
+          </Stack>
+        )}
+      </Modal>
+
+      <Modal
+        opened={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        title="Slet prissæt?"
+      >
+        {deleteTarget && (
+          <Stack gap="sm">
+            <Text size="sm">
+              Prissættet fra{" "}
+              <b>{dayjs(deleteTarget.effective_from).format("D. MMMM YYYY")}</b>{" "}
+              (kød {deleteTarget.price_adult_meat} kr, vegetar{" "}
+              {deleteTarget.price_adult_veg} kr, børn {deleteTarget.price_child}{" "}
+              kr) slettes. Måltider fra den dato prises derefter efter det
+              foregående prissæt.
+            </Text>
+            <Group justify="flex-end">
+              <Button variant="light" onClick={() => setDeleteTarget(null)}>
+                Annuller
+              </Button>
+              <Button
+                color="red"
+                loading={deleteMutation.isPending}
+                onClick={() => deleteMutation.mutate(deleteTarget.id)}
+              >
+                Slet
+              </Button>
+            </Group>
+          </Stack>
+        )}
+      </Modal>
     </Stack>
   )
 }
@@ -1456,7 +1924,17 @@ function DayRegistrationCard({
 
   const allPortionsSold = ticketsForDate.length > 0 && !hasSomethingToSell
 
-  const sellPrice = calculateDefaultTicketPrice(sellMeat, sellVeg, sellChildren)
+  const { data: mealPrices } = useMealPrices()
+
+  const sellPrice = calculateDefaultTicketPrice(
+    mealPrices,
+    date,
+    sellMeat,
+    sellVeg,
+    sellChildren,
+  )
+
+  const prices = resolvePrices(mealPrices, date)
 
   const createMutation = useMutation({
     mutationFn: (data: CreateMealRegistrationData) =>
@@ -1672,6 +2150,9 @@ function DayRegistrationCard({
   }
 
   const handleSellTicket = () => {
+    // No `price`: the backend derives it from the price set in effect on the
+    // meal date. `sellPrice` is only a preview — sending it would let a stale
+    // or not-yet-loaded price schedule store the wrong amount.
     const ticketData: CreateFoodTicketData = {
       date,
 
@@ -1680,8 +2161,6 @@ function DayRegistrationCard({
       adults_veg: sellVeg,
 
       children_count: sellChildren,
-
-      price: sellPrice,
 
       description: sellDescription,
     }
@@ -2055,15 +2534,15 @@ function DayRegistrationCard({
             <Text size="xs" c="dimmed">
               {[
                 availablePortions.adults_meat > 0
-                  ? `${PRICE_ADULT_MEAT} kr/Kødportioner`
+                  ? `${prices.adultMeat} kr/Kødportioner`
                   : null,
 
                 availablePortions.adults_veg > 0
-                  ? `${PRICE_ADULT_VEG} kr/Vegetarportioner`
+                  ? `${prices.adultVeg} kr/Vegetarportioner`
                   : null,
 
                 availablePortions.children_count > 0
-                  ? `${PRICE_CHILD} kr/Børneportioner`
+                  ? `${prices.child} kr/Børneportioner`
                   : null,
               ]
 
@@ -2130,9 +2609,17 @@ function TicketCard({ ticket }: TicketCardProps) {
     openBuyModal()
   }
 
+  const { data: mealPrices } = useMealPrices()
+
   const buyPrice = ticket.is_free
     ? 0
-    : calculateDefaultTicketPrice(buyMeat, buyVeg, buyChildren)
+    : calculateDefaultTicketPrice(
+        mealPrices,
+        ticket.date,
+        buyMeat,
+        buyVeg,
+        buyChildren,
+      )
 
   const claimMutation = useMutation({
     mutationFn: () =>
@@ -2231,9 +2718,12 @@ function TicketCard({ ticket }: TicketCardProps) {
             </Avatar>
             <div style={{ flex: 1, minWidth: 0 }}>
               <Group gap="xs" mb={2}>
-                <Text fw={500}>
-                  {ticket.owner.first_name} {ticket.owner.last_name}
-                </Text>
+                <UserLink
+                  id={ticket.owner.id}
+                  firstName={ticket.owner.first_name}
+                  lastName={ticket.owner.last_name}
+                  fw={500}
+                />
                 {ticket.is_free ? (
                   <Badge color="green" variant="light">
                     Gratis
@@ -2410,9 +2900,12 @@ function TicketCard({ ticket }: TicketCardProps) {
                 {ticket.owner.first_name?.[0]}
                 {ticket.owner.last_name?.[0]}
               </Avatar>
-              <Text fw={500}>
-                {ticket.owner.first_name} {ticket.owner.last_name}
-              </Text>
+              <UserLink
+                id={ticket.owner.id}
+                firstName={ticket.owner.first_name}
+                lastName={ticket.owner.last_name}
+                fw={500}
+              />
             </Group>
           </div>
 
@@ -2562,11 +3055,32 @@ function FoodPageCommunityStats({ stats }: FoodPageCommunityStatsProps) {
     return parts.join(" · ")
   }
 
+  // Weighted headcount where children count as half a person.
+  const weightedCount = (slot: DailyRegistrationStats["eat_in_1730"]) =>
+    slot.adults + slot.children * 0.5
+
+  const totalWeighted =
+    weightedCount(stats.eat_in_1730) +
+    weightedCount(stats.eat_in_1830) +
+    weightedCount(stats.takeaway)
+
+  const formatPercent = (slot: DailyRegistrationStats["eat_in_1730"]) => {
+    if (totalWeighted <= 0) return null
+
+    return Math.round((weightedCount(slot) / totalWeighted) * 100)
+  }
+
   const slot1730 = formatSlot(stats.eat_in_1730)
 
   const slot1830 = formatSlot(stats.eat_in_1830)
 
   const slotTakeaway = formatSlot(stats.takeaway)
+
+  const pct1730 = formatPercent(stats.eat_in_1730)
+
+  const pct1830 = formatPercent(stats.eat_in_1830)
+
+  const pctTakeaway = formatPercent(stats.takeaway)
 
   if (!slot1730 && !slot1830 && !slotTakeaway) {
     return (
@@ -2585,6 +3099,11 @@ function FoodPageCommunityStats({ stats }: FoodPageCommunityStatsProps) {
           </Text>
           <Text size="xs" c="dimmed">
             {slot1730}
+            {pct1730 != null && (
+              <Text span fw={600}>
+                {` · ${pct1730}%`}
+              </Text>
+            )}
           </Text>
         </Group>
       )}
@@ -2595,6 +3114,11 @@ function FoodPageCommunityStats({ stats }: FoodPageCommunityStatsProps) {
           </Text>
           <Text size="xs" c="dimmed">
             {slot1830}
+            {pct1830 != null && (
+              <Text span fw={600}>
+                {` · ${pct1830}%`}
+              </Text>
+            )}
           </Text>
         </Group>
       )}
@@ -2605,6 +3129,11 @@ function FoodPageCommunityStats({ stats }: FoodPageCommunityStatsProps) {
           </Text>
           <Text size="xs" c="dimmed">
             {slotTakeaway}
+            {pctTakeaway != null && (
+              <Text span fw={600}>
+                {` · ${pctTakeaway}%`}
+              </Text>
+            )}
           </Text>
         </Group>
       )}

@@ -53,6 +53,7 @@ import {
   IconUsers,
   IconExternalLink,
   IconEyeOff,
+  IconPencil,
 } from "@tabler/icons-react"
 
 import dayjs from "dayjs"
@@ -81,7 +82,11 @@ import { ErrorBoundary } from "../components/ErrorBoundary"
 
 import { calculateDefaultTicketPrice } from "../utils/priceCalculation"
 
+import { useMealPrices } from "../hooks/useMealPrices"
+
 import { isDateLocked, isAfterTicketSaleCutoff } from "../utils/foodDeadline"
+
+import { htmlToPreview } from "../utils/htmlText"
 
 import type {
   Announcement,
@@ -204,18 +209,27 @@ export default function DashboardPage() {
     queryFn: forumApi.getSubgroups,
   })
 
+  // The main "Fælles" group. Several groups can be flagged is_default in
+  // production, so match the known slug with a loose name fallback instead.
+  const faellesGroup =
+    subgroups?.find((s) => s.slug === "faelles") ??
+    subgroups?.find((s) => s.name.trim().toLowerCase() === "fælles")
+
   const myGroups = useMemo(() => {
     if (!subgroups) return [] as Subgroup[]
 
     return subgroups
       .filter((s) => s.is_member || s.is_subscribed)
       .sort((a, b) => {
-        const aTime = a.last_activity_at
-          ? new Date(a.last_activity_at).getTime()
+        // Sort by the privacy-aware latest *visible* thread activity. The raw
+        // last_activity_at is bumped by private threads too and would float a
+        // group up for people who can't see why, so the API no longer sends it.
+        const aTime = a.latest_thread_activity_at
+          ? new Date(a.latest_thread_activity_at).getTime()
           : 0
 
-        const bTime = b.last_activity_at
-          ? new Date(b.last_activity_at).getTime()
+        const bTime = b.latest_thread_activity_at
+          ? new Date(b.latest_thread_activity_at).getTime()
           : 0
 
         return bTime - aTime
@@ -482,6 +496,28 @@ export default function DashboardPage() {
 
   return (
     <>
+      {faellesGroup && (
+        <Group mb="xl" gap="sm">
+          <Button
+            component={Link}
+            to={`/forum/${faellesGroup.slug}?nytraad=1`}
+            leftSection={<IconPencil size={16} />}
+            size="sm"
+          >
+            Skriv på Fælles
+          </Button>
+          <Button
+            component={Link}
+            to={`/forum/${faellesGroup.slug}`}
+            variant="light"
+            leftSection={<IconUsers size={16} />}
+            size="sm"
+          >
+            Se Fælles
+          </Button>
+        </Group>
+      )}
+
       {hasError && (
         <Alert color="red" title="Fejl" mb="xl">
           Kunne ikke hente data. Prøv at genindlæse siden.
@@ -837,10 +873,10 @@ export default function DashboardPage() {
           </Paper>
         </ErrorBoundary>
 
-        <ErrorBoundary compact title="Kunne ikke vise arrangementer">
+        <ErrorBoundary compact title="Kunne ikke vise begivenheder">
           <Paper withBorder p="lg" radius="md">
             <Group justify="space-between" mb="md">
-              <Title order={3}>Kommende arrangementer</Title>
+              <Title order={3}>Kommende begivenheder</Title>
               <Button
                 component={Link}
                 to="/kalender"
@@ -861,7 +897,7 @@ export default function DashboardPage() {
                 ))}
               </Stack>
             ) : (
-              <Text c="dimmed">Ingen kommende arrangementer.</Text>
+              <Text c="dimmed">Ingen kommende begivenheder.</Text>
             )}
           </Paper>
         </ErrorBoundary>
@@ -875,20 +911,7 @@ interface AnnouncementPreviewProps {
 }
 
 function AnnouncementPreview({ announcement }: AnnouncementPreviewProps) {
-  // Strip HTML tags for preview
-
-  const plainText = announcement.content
-
-    .replace(/<\/[^>]+>/g, " ")
-
-    .replace(/<[^>]*>/g, "")
-
-    .replace(/\s+/g, " ")
-
-    .trim()
-
-  const preview =
-    plainText.length > 150 ? `${plainText.slice(0, 150)}...` : plainText
+  const preview = htmlToPreview(announcement.content, 150)
 
   return (
     <Paper
@@ -1120,6 +1143,16 @@ function BirthdayPreview({ birthday }: BirthdayPreviewProps) {
             Fylder {age} år
           </Text>
         </div>
+        {daysUntil === 0 && (
+          <Text
+            size="xl"
+            lh={1}
+            style={{ flexShrink: 0 }}
+            aria-label="Dansk flag"
+          >
+            🇩🇰
+          </Text>
+        )}
         <Badge color={daysUntil === 0 ? "pink" : "gray"} size="sm">
           {dateLabel}
         </Badge>
@@ -1181,20 +1214,7 @@ interface ActivityPreviewProps {
 }
 
 function ActivityPreview({ activity }: ActivityPreviewProps) {
-  // Strip HTML tags for preview
-
-  const plainText = activity.content
-
-    .replace(/<\/[^>]+>/g, " ")
-
-    .replace(/<[^>]*>/g, "")
-
-    .replace(/\s+/g, " ")
-
-    .trim()
-
-  const preview =
-    plainText.length > 100 ? `${plainText.slice(0, 100)}...` : plainText
+  const preview = htmlToPreview(activity.content, 100)
 
   return (
     <Paper
@@ -1427,7 +1447,15 @@ export function FoodDayWidget({
     availablePortions.adults_veg > 0 ||
     availablePortions.children_count > 0
 
-  const sellPrice = calculateDefaultTicketPrice(sellMeat, sellVeg, sellChildren)
+  const { data: mealPrices } = useMealPrices()
+
+  const sellPrice = calculateDefaultTicketPrice(
+    mealPrices,
+    date,
+    sellMeat,
+    sellVeg,
+    sellChildren,
+  )
 
   // Sync local state when registration data arrives or changes (initial load,
 
@@ -1613,6 +1641,9 @@ export function FoodDayWidget({
   }
 
   const handleSellTicket = () => {
+    // No `price`: the backend derives it from the price set in effect on the
+    // meal date. `sellPrice` is only a preview — sending it would let a stale
+    // or not-yet-loaded price schedule store the wrong amount.
     const ticketData: CreateFoodTicketData = {
       date,
 
@@ -1621,8 +1652,6 @@ export function FoodDayWidget({
       adults_veg: sellVeg,
 
       children_count: sellChildren,
-
-      price: sellPrice,
 
       description: sellDescription,
     }
@@ -1971,11 +2000,32 @@ function CommunityRegistrationStats({
     return parts.join(" · ")
   }
 
+  // Weighted headcount where children count as half a person.
+  const weightedCount = (slot: DailyRegistrationStats["eat_in_1730"]) =>
+    slot.adults + slot.children * 0.5
+
+  const totalWeighted =
+    weightedCount(stats.eat_in_1730) +
+    weightedCount(stats.eat_in_1830) +
+    weightedCount(stats.takeaway)
+
+  const formatPercent = (slot: DailyRegistrationStats["eat_in_1730"]) => {
+    if (totalWeighted <= 0) return null
+
+    return Math.round((weightedCount(slot) / totalWeighted) * 100)
+  }
+
   const slot1730 = formatSlot(stats.eat_in_1730)
 
   const slot1830 = formatSlot(stats.eat_in_1830)
 
   const slotTakeaway = formatSlot(stats.takeaway)
+
+  const pct1730 = formatPercent(stats.eat_in_1730)
+
+  const pct1830 = formatPercent(stats.eat_in_1830)
+
+  const pctTakeaway = formatPercent(stats.takeaway)
 
   if (!slot1730 && !slot1830 && !slotTakeaway) {
     return (
@@ -1994,6 +2044,11 @@ function CommunityRegistrationStats({
           </Text>
           <Text size="xs" c="dimmed">
             {slot1730}
+            {pct1730 != null && (
+              <Text span fw={600}>
+                {` · ${pct1730}%`}
+              </Text>
+            )}
           </Text>
         </Group>
       )}
@@ -2004,6 +2059,11 @@ function CommunityRegistrationStats({
           </Text>
           <Text size="xs" c="dimmed">
             {slot1830}
+            {pct1830 != null && (
+              <Text span fw={600}>
+                {` · ${pct1830}%`}
+              </Text>
+            )}
           </Text>
         </Group>
       )}
@@ -2014,6 +2074,11 @@ function CommunityRegistrationStats({
           </Text>
           <Text size="xs" c="dimmed">
             {slotTakeaway}
+            {pctTakeaway != null && (
+              <Text span fw={600}>
+                {` · ${pctTakeaway}%`}
+              </Text>
+            )}
           </Text>
         </Group>
       )}

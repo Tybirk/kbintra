@@ -3,6 +3,7 @@ import { describe, it, expect } from "vitest"
 import {
   eventToScheduleData,
   bookingToScheduleData,
+  expandMultiDayEvents,
   DA_SCHEDULE_LABELS,
 } from "./scheduleHelpers"
 
@@ -157,6 +158,96 @@ describe("bookingToScheduleData", () => {
     const result = bookingToScheduleData(baseBooking)
 
     expect(result.payload).toEqual({ booking: baseBooking })
+  })
+})
+
+describe("expandMultiDayEvents", () => {
+  it("leaves a single-day event unchanged", () => {
+    const single = bookingToScheduleData(baseBooking)
+
+    const result = expandMultiDayEvents([single])
+
+    expect(result).toHaveLength(1)
+
+    expect(result[0]).toEqual(single)
+  })
+
+  it("splits a multi-day event into one single-day chip per covered day", () => {
+    const multi = bookingToScheduleData({
+      ...baseBooking,
+      start_datetime: "2026-06-22T14:00:00",
+      end_datetime: "2026-06-23T11:00:00",
+    })
+
+    const result = expandMultiDayEvents([multi])
+
+    expect(result).toHaveLength(2)
+
+    // First day keeps the real start time, ends at end-of-day
+    expect(result[0].start).toBe("2026-06-22 14:00:00")
+    expect(result[0].end).toBe("2026-06-22 23:59:59")
+
+    // Last day starts at midnight, keeps the real end time
+    expect(result[1].start).toBe("2026-06-23 00:00:00")
+    expect(result[1].end).toBe("2026-06-23 11:00:00")
+  })
+
+  it("gives each segment a per-day unique id and keeps the payload", () => {
+    const booking: CalendarBooking = {
+      ...baseBooking,
+      start_datetime: "2026-06-22T14:00:00",
+      end_datetime: "2026-06-24T11:00:00",
+    }
+    const multi = bookingToScheduleData(booking)
+
+    const result = expandMultiDayEvents([multi])
+
+    expect(result.map((e) => e.id)).toEqual([
+      "booking-1__2026-06-22",
+      "booking-1__2026-06-23",
+      "booking-1__2026-06-24",
+    ])
+
+    // A fully-covered middle day spans the whole day
+    expect(result[1].start).toBe("2026-06-23 00:00:00")
+    expect(result[1].end).toBe("2026-06-23 23:59:59")
+
+    // Payload (used to resolve clicks back to the booking) is preserved
+    for (const seg of result) {
+      expect(seg.payload).toEqual({ booking })
+    }
+  })
+
+  it("treats an end at exactly midnight as the previous day (no empty next-day chip)", () => {
+    const multi = bookingToScheduleData({
+      ...baseBooking,
+      start_datetime: "2026-06-22T14:00:00",
+      end_datetime: "2026-06-23T00:00:00",
+    })
+
+    const result = expandMultiDayEvents([multi])
+
+    // Covers only 22 Jun — no zero-length 23 Jun segment
+    expect(result).toHaveLength(1)
+    expect(result[0].start).toBe("2026-06-22 14:00:00")
+    expect(result[0].end).toBe("2026-06-22 23:59:59")
+  })
+
+  it("does not add an empty trailing day for a multi-day event ending at midnight", () => {
+    const multi = bookingToScheduleData({
+      ...baseBooking,
+      start_datetime: "2026-06-22T14:00:00",
+      end_datetime: "2026-06-24T00:00:00",
+    })
+
+    const result = expandMultiDayEvents([multi])
+
+    // Last covered day is 23 Jun, not an empty 24 Jun
+    expect(result.map((e) => e.id)).toEqual([
+      "booking-1__2026-06-22",
+      "booking-1__2026-06-23",
+    ])
+    expect(result[1].end).toBe("2026-06-23 23:59:59")
   })
 })
 

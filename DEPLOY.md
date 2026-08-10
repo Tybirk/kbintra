@@ -84,6 +84,44 @@ Works with any S3-compatible storage (AWS S3, Cloudflare R2, MinIO, etc.).
 
 When enabled, media files are automatically synced to S3 via background tasks and the database is backed up to S3 on each deploy. If a local media file goes missing, it's transparently restored from S3 on access.
 
+## Container Images (CI builds)
+
+App images are **built by CI, not on the server**. On every push to `main`, after
+tests pass, `.github/workflows/ci.yml` builds the backend and frontend images on
+GitHub's runners and pushes them to GitHub Container Registry (ghcr.io), tagged with
+both `latest` and the commit SHA. `deploy.sh` then only pulls — the 4 GB prod box
+never compiles, so deploys no longer starve the live app of RAM/CPU.
+
+Images:
+- `ghcr.io/tybirk/kbintra-backend` — used by the `backend`, `backend-ws`, and `huey` services
+- `ghcr.io/tybirk/kbintra-frontend`
+
+### One-time: GitHub Actions secrets
+
+The frontend build args (formerly passed via `docker-compose` on the server) are now
+sourced from repo secrets. Add these under **Settings → Secrets and variables →
+Actions** (all optional — leave unset to disable that feature in the build):
+
+- `SENTRY_DSN_FRONTEND` — frontend Sentry DSN (public key, embedded in the bundle)
+- `VITE_GIPHY_API_KEY` — Giphy API key
+- `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` — only for source-map upload
+
+`GITHUB_TOKEN` (used to push to ghcr.io) is provided automatically.
+
+### One-time: let each server pull from ghcr.io
+
+Each deploy host (prod **and** the test runner) needs to authenticate to ghcr.io
+once. Create a classic Personal Access Token with the `read:packages` scope, then on
+the server:
+
+```bash
+echo "<YOUR_PAT>" | docker login ghcr.io -u tybirk --password-stdin
+```
+
+Docker stores the credential, so this survives reboots. Alternatively, make the two
+packages public (ghcr.io package → Package settings → Change visibility) and no login
+is required to pull.
+
 ## Deploy
 
 ```bash
@@ -97,9 +135,14 @@ The script handles everything automatically:
 3. Pulls latest changes
 4. Backs up SQLite database locally (keeps last 10 in `./data/backups/`)
 5. Backs up SQLite database to S3 (if configured)
-6. Rebuilds and restarts all Docker containers (migrations run automatically on startup)
+6. **Pulls** the prebuilt images for the current commit from ghcr.io (waits up to 10 min if CI is still building), then restarts all containers (migrations run automatically on startup)
 7. Prunes old Docker images
 8. Waits for backend health check
+
+> The prod box no longer compiles anything — images are built by CI on GitHub's
+> runners and pulled here. See [Container Images](#container-images-ci-builds) below.
+> Your data is unaffected: the SQLite database is a host file bind-mounted at
+> `./data:/app/data` and is never part of the image.
 
 ### First Deploy
 
@@ -118,15 +161,19 @@ docker compose exec backend uv run python manage.py sync_media_to_s3            
 
 ### Rollback
 
+Check out the tagged commit and pull that commit's image (CI keeps an image tagged
+per commit SHA, so no rebuild is needed):
+
 ```bash
-git checkout deploy-YYYYMMDD-HHMMSS && docker compose up -d --build
+git checkout deploy-YYYYMMDD-HHMMSS
+IMAGE_TAG=$(git rev-parse HEAD) docker compose pull && docker compose up -d
 ```
 
 ## Backups
 
 ### Database — Litestream continuous replication
 
-[Litestream](https://litestream.io/) runs as a wrapper around Daphne in the backend container, continuously replicating SQLite WAL changes to S3. This provides:
+[Litestream](https://litestream.io/) runs as a wrapper around the gunicorn HTTP server in the backend container, continuously replicating SQLite WAL changes to S3. (Writes from the `backend-ws` and `huey` containers go to the same SQLite file and are captured too — Litestream replicates the shared WAL regardless of which process wrote it.) This provides:
 
 - **~60 second RPO** — WAL changes ship every minute (vs. daily snapshots before)
 - **Automatic restore** — on first deploy (or data loss), the entrypoint restores from the latest replica
@@ -278,8 +325,8 @@ docker compose exec backend uv run python manage.py shell
 ### Common Issues
 
 **WebSocket connection fails:**
-- Ensure Daphne is running (check `docker compose logs backend`)
-- Verify Traefik is forwarding WebSocket connections
+- Ensure the Daphne `backend-ws` container is running (check `docker compose logs backend-ws`)
+- Verify Traefik is routing `/ws` to the `backend-ws` service
 
 **Push notifications not working:**
 - Check VAPID keys are set in `.env`

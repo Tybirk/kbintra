@@ -15,6 +15,7 @@ import {
   IconBell,
   IconDoor,
   IconLink,
+  IconReceipt2,
   IconSettings,
   IconUsersGroup,
 } from "@tabler/icons-react"
@@ -64,7 +65,7 @@ const navItems: NavItem[] = [
 
   { icon: IconUsersGroup, label: "Madhold", path: "/madhold" },
 
-  { icon: IconCalendar, label: "Kalender", path: "/kalender" },
+  { icon: IconCalendar, label: "Begivenhedskalender", path: "/kalender" },
 
   {
     icon: IconBuildingCommunity,
@@ -74,10 +75,25 @@ const navItems: NavItem[] = [
     path: "/beboere",
   },
 
-  { icon: IconDoor, label: "Booking", path: "/booking" },
+  { icon: IconDoor, label: "Bookingkalender", path: "/booking" },
+
+  { icon: IconReceipt2, label: "Udlæg", path: "/udlaeg" },
 
   { icon: IconLink, label: "Nyttige links", path: "/links" },
 ]
+
+// The Udlæg feature is still being trialled, so only expose its nav entry on
+// local dev and the test site (kbintra.top) for now.
+function isExpensesNavVisible(): boolean {
+  if (typeof window === "undefined") return false
+  const host = window.location.hostname
+  return (
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "kbintra.top" ||
+    host.endsWith(".kbintra.top")
+  )
+}
 
 interface AppNavbarProps {
   onNavigate?: () => void
@@ -151,10 +167,14 @@ export default function AppNavbar({ onNavigate }: AppNavbarProps) {
     return item.label
   }
 
+  const visibleNavItems = navItems.filter(
+    (item) => item.path !== "/udlaeg" || isExpensesNavVisible(),
+  )
+
   return (
     <ScrollArea>
       <Stack gap={4}>
-        {navItems.map((item) => (
+        {visibleNavItems.map((item) => (
           <NavLink
             key={item.path}
             component={Link}

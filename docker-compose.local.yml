@@ -24,11 +24,12 @@ services:
       timeout: 3s
       retries: 3
 
+  # HTTP server (gunicorn/WSGI). WebSockets (/ws) go to backend-ws (Daphne) below.
   backend:
     build: ./backend
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.backend.rule=PathPrefix(`/api`) || PathPrefix(`/admin`) || PathPrefix(`/media`) || PathPrefix(`/ws`) || PathPrefix(`/static`)"
+      - "traefik.http.routers.backend.rule=PathPrefix(`/api`) || PathPrefix(`/admin`) || PathPrefix(`/media`) || PathPrefix(`/static`)"
       - "traefik.http.routers.backend.entrypoints=web"
       - "traefik.http.services.backend.loadbalancer.server.port=8000"
     volumes:
@@ -48,6 +49,38 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    restart: unless-stopped
+
+  # WebSocket server (ASGI/Daphne) — only /ws is routed here. Skips startup tasks
+  # (backend owns migrations); shares the same image and ./data volume.
+  backend-ws:
+    build: ./backend
+    command: ["uv", "run", "daphne", "--proxy-headers", "-b", "0.0.0.0", "-p", "8000", "config.asgi:application"]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend-ws.rule=PathPrefix(`/ws`)"
+      - "traefik.http.routers.backend-ws.entrypoints=web"
+      - "traefik.http.services.backend-ws.loadbalancer.server.port=8000"
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      - DEBUG=True
+      - DATA_DIR=/app/data
+      - SKIP_STARTUP_TASKS=1
+      - SECRET_KEY=local-dev-secret-key-not-for-production
+      - ALLOWED_HOSTS=localhost,127.0.0.1
+      - CORS_ALLOWED_ORIGINS=http://localhost,http://127.0.0.1
+      - CSRF_TRUSTED_ORIGINS=http://localhost,http://127.0.0.1
+      - REDIS_URL=redis://redis:6379/0
+    networks:
+      - web
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
     restart: unless-stopped
 
   frontend:

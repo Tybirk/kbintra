@@ -77,14 +77,31 @@ class User(AbstractUser):
     )
     bio = models.TextField(blank=True, max_length=1000)
 
+    # Bank details for reimbursing expenses (udlæg). Optional; used to prefill
+    # the expense form. Private — only ever exposed to the user themselves
+    # (see CurrentUserSerializer), never in the shared user list/detail.
+    bank_reg_nr = models.CharField(
+        max_length=10,
+        blank=True,
+        help_text="Bank reg. nr. (4 cifre) til udbetaling af udlæg",
+    )
+    bank_account_number = models.CharField(
+        max_length=20,
+        blank=True,
+        help_text="Kontonummer til udbetaling af udlæg",
+    )
+
     @property
     def avatar_url(self) -> str | None:
         """Best URL for displaying this user's avatar. Falls back to the
-        original if the thumbnail hasn't been generated yet."""
+        original if the thumbnail hasn't been generated yet. Signed so <img>
+        tags authenticate without the session cookie (see apps.backup.signing)."""
+        from apps.backup.signing import signed_media_url
+
         if self.profile_picture_thumbnail:
-            return self.profile_picture_thumbnail.url
+            return signed_media_url(self.profile_picture_thumbnail.url)
         if self.profile_picture:
-            return self.profile_picture.url
+            return signed_media_url(self.profile_picture.url)
         return None
 
     # House relationship (nullable - user might not be assigned to a house yet)
@@ -126,11 +143,23 @@ class User(AbstractUser):
         default=False,
         help_text="User has food admin privileges (cost reports, refresh menus, etc.)",
     )
+    is_economy_admin = models.BooleanField(
+        default=False,
+        help_text=(
+            "User has economy admin privileges (manage udlæg/expense reimbursements "
+            "and view the food cost report)."
+        ),
+    )
 
     @property
     def has_food_admin(self) -> bool:
         """Regular admins (is_staff) implicitly have food admin privileges."""
         return self.is_staff or self.is_food_admin
+
+    @property
+    def has_economy_admin(self) -> bool:
+        """Regular admins (is_staff) implicitly have economy admin privileges."""
+        return self.is_staff or self.is_economy_admin
 
     # Accessibility preference
     accessibility_mode = models.BooleanField(

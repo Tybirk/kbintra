@@ -10,6 +10,9 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.backup.signing import signed_media_url
+from apps.forum.image_processing import ensure_attachment_preview
+
 from .models import Conversation, Message, MessageAttachment, MessageReaction, MessageReadStatus
 from .serializers import (
     AddParticipantsSerializer,
@@ -18,6 +21,7 @@ from .serializers import (
     CreateConversationSerializer,
     CreateMessageSerializer,
     MessageSerializer,
+    message_attachment_preview_url,
 )
 
 
@@ -111,6 +115,8 @@ class ConversationListCreateView(generics.ListCreateAPIView):
                                 uploaded_by=request.user,
                             )
                             attachment_objects.append(att)
+                            # Inline: the broadcast below reads `preview`.
+                            ensure_attachment_preview("messaging", "MessageAttachment", att)
 
                         # Broadcast message via WebSocket so all clients update instantly
                         from asgiref.sync import async_to_sync
@@ -136,7 +142,8 @@ class ConversationListCreateView(generics.ListCreateAPIView):
                                 {
                                     "id": att.id,
                                     "name": att.name,
-                                    "file_url": att.file.url if att.file else "",
+                                    "file_url": signed_media_url(att.file.url) if att.file else "",
+                                    "preview_url": message_attachment_preview_url(att),
                                 }
                                 for att in attachment_objects
                             ],
@@ -175,12 +182,13 @@ class ConversationListCreateView(generics.ListCreateAPIView):
 
             # Create attachments
             for attachment_file in attachments:
-                MessageAttachment.objects.create(
+                att = MessageAttachment.objects.create(
                     message=message,
                     file=attachment_file,
                     name=attachment_file.name,
                     uploaded_by=request.user,
                 )
+                ensure_attachment_preview("messaging", "MessageAttachment", att)
 
             # Send notifications to other participants in background
             from apps.notifications.tasks import notify_new_message_task
@@ -226,8 +234,11 @@ class ConversationDetailView(generics.RetrieveAPIView):
     serializer_class = ConversationDetailSerializer
 
     def get_queryset(self) -> QuerySet[Conversation]:
+        # Only `participants` is prefetched here; the serializer's get_messages
+        # fetches (and prefetches) just the last 50 messages itself, so prefetching
+        # the full message history on the conversation would be wasted work.
         return Conversation.objects.filter(participants=self.request.user).prefetch_related(
-            "participants", "messages", "messages__sender", "messages__reactions__user"
+            "participants"
         )
 
     def retrieve(self, request: Request, *args, **kwargs) -> Response:
@@ -309,6 +320,54 @@ class MarkMessagesReadView(APIView):
         MessageReadStatus.objects.bulk_create(read_statuses, ignore_conflicts=True)
 
         return Response({"marked_read": len(read_statuses)})
+
+
+class MarkMessagesUnreadView(APIView):
+    """Mark a conversation as unread.
+
+    By default this only clears the read status of the latest message from
+    another participant, so the conversation reappears as unread (with one
+    unread message) — a reminder to reply — without resurfacing the whole
+    history. Own messages are never tracked as unread.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request, conversation_id: int) -> Response:
+        conversation = get_object_or_404(
+            Conversation.objects.filter(participants=request.user),
+            pk=conversation_id,
+        )
+        latest = (
+            conversation.messages.exclude(sender=request.user)
+            .order_by("-created_at", "-id")
+            .first()
+        )
+        if latest is None:
+            return Response({"marked_unread": 0})
+        deleted, _ = MessageReadStatus.objects.filter(user=request.user, message=latest).delete()
+        return Response({"marked_unread": deleted})
+
+
+class MarkMessageUnreadView(APIView):
+    """Mark a single message as unread for the current user.
+
+    Deletes the user's read status for that message so the conversation
+    reappears as unread. Own messages are never tracked as unread, so marking
+    one is a no-op.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Request, message_id: int) -> Response:
+        message = get_object_or_404(
+            Message.objects.filter(conversation__participants=request.user),
+            pk=message_id,
+        )
+        if message.sender_id == request.user.id:
+            return Response({"marked_unread": 0})
+        deleted, _ = MessageReadStatus.objects.filter(user=request.user, message=message).delete()
+        return Response({"marked_unread": deleted})
 
 
 class UnreadCountView(APIView):

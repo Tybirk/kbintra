@@ -62,6 +62,7 @@ import {
   IconTrash,
   IconCopy,
   IconMoodSmile,
+  IconMailOpened,
 } from "@tabler/icons-react"
 
 import dayjs from "dayjs"
@@ -94,7 +95,13 @@ import ChatRichTextEditor from "../components/ChatRichTextEditor"
 
 import { clearDraft } from "../utils/draftStorage"
 
-import { getFileIcon, getFileTypeColor } from "../components/FilePreview"
+import { htmlToPlainText } from "../utils/htmlText"
+
+import {
+  getFileIcon,
+  getFileTypeColor,
+  getRenderableFileType,
+} from "../components/FilePreview"
 
 import { AttachmentCarousel } from "../components/AttachmentCarousel"
 
@@ -557,6 +564,50 @@ export default function MessagesPage() {
     }
   }
 
+  // Shared cleanup after marking (part of) a conversation unread. We must leave
+  // the conversation so opening/listing it doesn't instantly re-mark it read
+  // (both via the server fetch and the auto-mark-read effect), reset the
+  // "already marked read this session" guard so re-opening marks it read again,
+  // and refresh the conversation list + unread badge.
+
+  const settleAfterMarkUnread = () => {
+    lastMarkedReadConversation.current = null
+
+    setSelectedConversation(null)
+
+    navigate("/beskeder", { replace: true })
+
+    queryClient.invalidateQueries({ queryKey: ["conversations"] })
+
+    queryClient.invalidateQueries({ queryKey: ["messages", "unread-count"] })
+  }
+
+  const handleMarkUnread = async () => {
+    const id = selectedConversation
+
+    if (!id) return
+
+    try {
+      await messagingApi.markUnread(id)
+
+      settleAfterMarkUnread()
+    } catch (error) {
+      showErrorNotification(error, "Kunne ikke markere samtalen som ulæst")
+    }
+  }
+
+  const handleMarkMessageUnread = async (messageId: number) => {
+    if (!selectedConversation) return
+
+    try {
+      await messagingApi.markMessageUnread(messageId)
+
+      settleAfterMarkUnread()
+    } catch (error) {
+      showErrorNotification(error, "Kunne ikke markere beskeden som ulæst")
+    }
+  }
+
   return (
     <Box
       style={{
@@ -572,7 +623,7 @@ export default function MessagesPage() {
 
               position: "fixed",
 
-              top: "var(--app-shell-header-height, 60px)",
+              top: "var(--app-shell-header-offset, 60px)",
 
               left: 0,
 
@@ -770,6 +821,8 @@ export default function MessagesPage() {
                   })
                 }}
                 onLeave={handleLeaveConversation}
+                onMarkUnread={handleMarkUnread}
+                onMarkMessageUnread={handleMarkMessageUnread}
                 isMobile={isMobile ?? false}
                 onMessageUpdated={(messageId, content, editedAt) => {
                   queryClient.setQueryData<ConversationDetail>(
@@ -935,15 +988,7 @@ function ConversationItem({
                 : isGroupChat
                   ? `${otherParticipants.find((p) => p.id === conversation.last_message?.sender_id)?.first_name || ""}: `
                   : ""}
-              {conversation.last_message.content
-
-                .replace(/<\/[^>]+>/g, " ")
-
-                .replace(/<[^>]*>/g, "")
-
-                .replace(/\s+/g, " ")
-
-                .trim()}
+              {htmlToPlainText(conversation.last_message.content)}
             </Text>
           )}
         </div>
@@ -973,6 +1018,10 @@ interface ChatAreaProps {
   onParticipantsAdded?: () => void
 
   onLeave?: () => void
+
+  onMarkUnread?: () => void
+
+  onMarkMessageUnread?: (messageId: number) => void
 
   onMessageUpdated?: (
     messageId: number,
@@ -1020,6 +1069,8 @@ interface MessageListProps {
 
   onUnsend?: (messageId: number) => void
 
+  onMarkMessageUnread?: (messageId: number) => void
+
   scrollViewportRef: RefObject<HTMLDivElement | null>
 }
 
@@ -1031,6 +1082,8 @@ const MessageList = memo(function MessageList({
   onEdit,
 
   onUnsend,
+
+  onMarkMessageUnread,
 
   scrollViewportRef,
 }: MessageListProps) {
@@ -1113,6 +1166,7 @@ const MessageList = memo(function MessageList({
                 showInlineTime={!isMobile}
                 onEdit={onEdit}
                 onUnsend={onUnsend}
+                onMarkMessageUnread={onMarkMessageUnread}
               />
             </Box>
           )
@@ -1132,6 +1186,10 @@ function ChatArea({
   onParticipantsAdded,
 
   onLeave,
+
+  onMarkUnread,
+
+  onMarkMessageUnread,
 
   onMessageUpdated,
 
@@ -1448,6 +1506,13 @@ function ChatArea({
             </Menu.Target>
             <Menu.Dropdown>
               <Menu.Item
+                leftSection={<IconMailOpened size={16} />}
+                onClick={() => onMarkUnread?.()}
+              >
+                Markér som ulæst
+              </Menu.Item>
+              <Menu.Divider />
+              <Menu.Item
                 leftSection={<IconPencil size={16} />}
                 onClick={() => {
                   setRenameName(conversation.name || "")
@@ -1561,6 +1626,7 @@ function ChatArea({
         isMobile={isMobile}
         onEdit={onMessageUpdated}
         onUnsend={onMessageDeleted}
+        onMarkMessageUnread={onMarkMessageUnread}
         scrollViewportRef={scrollRef}
       />
 
@@ -1699,10 +1765,15 @@ interface MessageBubbleProps {
   onEdit?: (messageId: number, content: string, editedAt: string) => void
 
   onUnsend?: (messageId: number) => void
+
+  onMarkMessageUnread?: (messageId: number) => void
 }
 
-function isImageFile(filename: string): boolean {
-  return /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(filename)
+function isImageFile(attachment: MessageAttachment): boolean {
+  // Goes through getRenderableFileType rather than the filename alone: a HEIC is
+  // only displayable when the backend actually produced a JPEG for it, and when
+  // conversion failed the preview URL is just the undecodable original again.
+  return getRenderableFileType(attachment) === "image"
 }
 
 const MessageBubble = memo(function MessageBubble({
@@ -1717,6 +1788,8 @@ const MessageBubble = memo(function MessageBubble({
   onEdit,
 
   onUnsend,
+
+  onMarkMessageUnread,
 }: MessageBubbleProps) {
   const [carouselOpened, setCarouselOpened] = useState(false)
 
@@ -1773,17 +1846,9 @@ const MessageBubble = memo(function MessageBubble({
   }
 
   const handleCopy = () => {
-    const plainText = message.content
-
-      .replace(/<\/[^>]+>/g, " ")
-
-      .replace(/<[^>]*>/g, "")
-
-      .replace(/\s+/g, " ")
-
-      .trim()
-
-    navigator.clipboard.writeText(plainText).catch(() => {})
+    navigator.clipboard
+      .writeText(htmlToPlainText(message.content))
+      .catch(() => {})
   }
 
   const handleStartEdit = () => {
@@ -1889,10 +1954,10 @@ const MessageBubble = memo(function MessageBubble({
   // Sort attachments: images first, then other files
 
   const imageAttachments =
-    message.attachments?.filter((att) => isImageFile(att.name)) || []
+    message.attachments?.filter((att) => isImageFile(att)) || []
 
   const otherAttachments =
-    message.attachments?.filter((att) => !isImageFile(att.name)) || []
+    message.attachments?.filter((att) => !isImageFile(att)) || []
 
   const allAttachments = [...imageAttachments, ...otherAttachments]
 
@@ -1948,6 +2013,14 @@ const MessageBubble = memo(function MessageBubble({
         <Menu.Item leftSection={<IconCopy size={14} />} onClick={handleCopy}>
           Kopiér
         </Menu.Item>
+        {!isOwn && (
+          <Menu.Item
+            leftSection={<IconMailOpened size={14} />}
+            onClick={() => onMarkMessageUnread?.(message.id)}
+          >
+            Markér som ulæst
+          </Menu.Item>
+        )}
         {isOwn && (
           <>
             <Menu.Divider />
@@ -2166,6 +2239,23 @@ const MessageBubble = memo(function MessageBubble({
               <Text size="sm">Kopiér</Text>
             </Group>
           </UnstyledButton>
+          {!isOwn && (
+            <UnstyledButton
+              px="xs"
+              py={6}
+              style={{ borderRadius: "var(--mantine-radius-sm)" }}
+              onClick={() => {
+                onMarkMessageUnread?.(message.id)
+
+                setReactionPickerOpened(false)
+              }}
+            >
+              <Group gap="xs">
+                <IconMailOpened size={14} color="var(--mantine-color-dimmed)" />
+                <Text size="sm">Markér som ulæst</Text>
+              </Group>
+            </UnstyledButton>
+          )}
           {isOwn && (
             <UnstyledButton
               px="xs"
@@ -2224,7 +2314,7 @@ const MessageBubble = memo(function MessageBubble({
           maxRows={20}
           autoFocus
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
               e.preventDefault()
 
               void handleSaveEdit()
@@ -2305,7 +2395,7 @@ const MessageBubble = memo(function MessageBubble({
                   onClick={() => handleAttachmentClick(attachment)}
                 >
                   <Image
-                    src={attachment.file_url}
+                    src={attachment.preview_url ?? attachment.file_url}
                     alt={attachment.name}
                     radius="md"
                     maw={200}

@@ -42,6 +42,8 @@ import { notifications } from "@mantine/notifications"
 
 import { showErrorNotification } from "../utils/errorNotification"
 
+import { unsignedMediaUrl } from "../utils/mediaUrl"
+
 import {
   IconPlus,
   IconPin,
@@ -246,7 +248,7 @@ export default function SubgroupPage() {
 
         start: dayjs().toISOString(),
 
-        end: dayjs().add(30, "day").toISOString(),
+        end: dayjs().add(6, "month").toISOString(),
       }),
 
     enabled: !!subgroup,
@@ -361,6 +363,29 @@ export default function SubgroupPage() {
       showErrorNotification(error, "Kunne ikke opdatere gruppen.")
     },
   })
+
+  // Allow opening the "Ny tråd" modal directly via a ?nytraad=1 query param
+  // (used by the "Skriv på Fælles" shortcut on the dashboard). Strip the param
+  // afterwards so it doesn't reopen on refresh or back-navigation.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+
+    if (params.get("nytraad") === "1") {
+      openCreateThreadModal()
+
+      params.delete("nytraad")
+
+      const newSearch = params.toString()
+
+      navigate(
+        {
+          pathname: location.pathname,
+          search: newSearch ? `?${newSearch}` : "",
+        },
+        { replace: true },
+      )
+    }
+  }, [location.search, location.pathname, navigate, openCreateThreadModal])
 
   const hasUnread = (subgroup?.unread_thread_count ?? 0) > 0
 
@@ -608,9 +633,10 @@ When done, print a short summary:
             parts.push("Attachments:\n")
 
             for (const att of post.attachments) {
-              const attUrl = att.file_url.startsWith("http")
-                ? att.file_url
-                : `${origin}${att.file_url}`
+              const fileUrl = unsignedMediaUrl(att.file_url)
+              const attUrl = fileUrl.startsWith("http")
+                ? fileUrl
+                : `${origin}${fileUrl}`
               parts.push(
                 `- ${attUrl} (${att.name}) — fetch with \`curl -O '${attUrl}'\`\n`,
               )
@@ -785,7 +811,7 @@ When done, print a short summary:
 
       {upcomingEvents && upcomingEvents.length > 0 && (
         <SimpleGrid cols={{ base: 1, sm: 2 }} mb="md">
-          {upcomingEvents.slice(0, 2).map((event) => (
+          {upcomingEvents.slice(0, 5).map((event) => (
             <CompactEventCard key={event.id} event={event} />
           ))}
         </SimpleGrid>
@@ -856,18 +882,15 @@ When done, print a short summary:
                   </ActionIcon>
                 </Tooltip>
               )}
-              <Tooltip label="Opret begivenhed">
-                <ActionIcon
-                  variant="light"
-                  size="lg"
-                  onClick={() =>
-                    navigate(`/kalender/opret?subgroup=${subgroup.id}`)
-                  }
-                  aria-label="Opret begivenhed"
-                >
-                  <IconCalendarPlus size={18} />
-                </ActionIcon>
-              </Tooltip>
+              <Button
+                variant="light"
+                leftSection={<IconCalendarPlus size={16} />}
+                onClick={() =>
+                  navigate(`/kalender/opret?subgroup=${subgroup.id}`)
+                }
+              >
+                Ny begivenhed
+              </Button>
               <Button
                 leftSection={<IconPlus size={16} />}
                 onClick={openCreateThreadModal}
@@ -937,7 +960,7 @@ When done, print a short summary:
           {(() => {
             const canEditPublic =
               !!user &&
-              (user.is_staff || (subgroup.allows_members && subgroup.is_member))
+              (user.is_staff || !subgroup.allows_members || subgroup.is_member)
 
             const canSeeMembersSection =
               subgroup.allows_members &&
@@ -1439,7 +1462,7 @@ function CreateThreadModal({
           <Stack gap="md">
             <TextInput
               label="Titel"
-              placeholder="Hvad vil du diskutere?"
+              placeholder=""
               value={title}
               onChange={(e) => setTitle(e.currentTarget.value)}
               required
@@ -1451,7 +1474,7 @@ function CreateThreadModal({
               <RichTextEditor
                 content={content}
                 onChange={setContent}
-                placeholder="Skriv dit første indlæg..."
+                placeholder=""
                 minHeight={200}
                 onFilePaste={handleAddFiles}
                 onSubmit={handleSubmit}
@@ -2549,7 +2572,9 @@ function FileRow({
               onClick={(e: React.MouseEvent) => {
                 e.stopPropagation()
 
-                const url = `${window.location.origin}${file.file_url}`
+                // Unsigned: the signature would expire within hours, and
+                // until then it grants access without a login.
+                const url = `${window.location.origin}${unsignedMediaUrl(file.file_url)}`
 
                 navigator.clipboard.writeText(url).then(
                   () =>

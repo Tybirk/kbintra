@@ -212,6 +212,25 @@ def index_subgroup(sender, instance, **kwargs):
             subtitle=create_excerpt(instance.description, 80) if instance.description else "",
             created_at=_isoformat(instance.created_at),
         )
+
+        # Cascade: the group's threads, files and folders all carry its name as
+        # their subtitle, and index rows are only rewritten when their own object
+        # is saved — so without this a rename leaves every one of them showing
+        # the old name until something else happens to touch it.
+        #
+        # Skipped for the `last_activity_at` bumps that run on every new thread
+        # and post, since those pass update_fields and can't have changed a name.
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None and "name" not in update_fields:
+            return
+        if kwargs.get("created", False):
+            return
+        for thread in instance.threads.all():
+            index_thread(None, thread)
+        for folder in instance.folders.all():
+            index_folder(None, folder)
+        for file in instance.files.all():
+            index_file(None, file)
     except OperationalError:
         logger.exception("Failed to index subgroup %s", instance.id)
 

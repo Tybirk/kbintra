@@ -71,8 +71,6 @@ const mockSubgroups = [
     unread_thread_count: 0,
 
     latest_thread_title: "Velkommen",
-
-    last_activity_at: "2026-01-20T10:00:00Z",
   },
 
   {
@@ -99,8 +97,6 @@ const mockSubgroups = [
     unread_thread_count: 2,
 
     latest_thread_title: "Menuplan uge 4",
-
-    last_activity_at: "2026-01-21T12:00:00Z",
   },
 ]
 

@@ -138,7 +138,7 @@ Internet → Cloudflare Tunnel → Traefik → Backend (Daphne, port 8000)
 
 **SubgroupSubscription** - User subscriptions
 - `user`, `subgroup` (unique together)
-- `notify_new_threads`, `notify_replies`
+- `notify_new_threads`
 
 **Thread** - Discussion threads
 - `subgroup` (FK), `title`, `author` (FK)

@@ -18,9 +18,9 @@ class NotificationType(models.TextChoices):
     POST_REPLY = "post_reply", "Nyt svar på dit opslag"
     SUBGROUP_ACTIVITY = "subgroup_activity", "Ny aktivitet i gruppen"
     POST_REACTION = "post_reaction", "Reaktion på dit opslag"
-    EVENT_CREATED = "event_created", "Nyt arrangement"
-    EVENT_UPDATED = "event_updated", "Arrangement opdateret"
-    EVENT_CANCELLED = "event_cancelled", "Arrangement aflyst"
+    EVENT_CREATED = "event_created", "Ny begivenhed"
+    EVENT_UPDATED = "event_updated", "Begivenhed opdateret"
+    EVENT_CANCELLED = "event_cancelled", "Begivenhed aflyst"
     EVENT_REMINDER = "event_reminder", "Begivenhedsreminder"
     FOOD_TICKET = "food_ticket", "Madbillet tilgængelig"
     FOOD_TEAM_REMINDER = "food_team_reminder", "Madlavning i morgen"
@@ -39,6 +39,7 @@ class NotificationType(models.TextChoices):
         "announcement_edited_by_admin",
         "Dit opslag blev redigeret af en administrator",
     )
+    EXPENSE_PROCESSED = "expense_processed", "Udlæg behandlet"
 
 
 class Notification(models.Model):

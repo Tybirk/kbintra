@@ -128,6 +128,12 @@ class MessageAttachment(models.Model):
         related_name="attachments",
     )
     file = models.FileField(upload_to="message_attachments/")
+    preview = models.ImageField(
+        upload_to="message_attachments/previews/",
+        blank=True,
+        null=True,
+        help_text="Full-size web-viewable JPEG for formats browsers can't render (e.g. HEIC).",
+    )
     name = models.CharField(max_length=255)
     preview_html = models.TextField(blank=True, default="")
     uploaded_by = models.ForeignKey(
@@ -144,4 +150,6 @@ class MessageAttachment(models.Model):
         """Delete the file from storage when the model is deleted."""
         if self.file:
             self.file.delete(save=False)
+        if self.preview:
+            self.preview.delete(save=False)
         super().delete(*args, **kwargs)

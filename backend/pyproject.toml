@@ -9,12 +9,13 @@ dependencies = [
     "channels>=4.3.2",
     "channels-redis>=4.2.1",
     "cryptography>=46.0.3",
-    "daphne>=4.2.1",
+    "daphne>=4.2.1", # ASGI server — WebSockets only (the backend-ws service); HTTP is served by gunicorn
     "django>=5.2.9",
     "django-cors-headers>=4.9.0",
     "djangorestframework>=3.16.1",
     "djangorestframework-simplejwt>=5.5.1",
     "google-api-python-client>=2.188.0",
+    "gunicorn>=23.0.0", # WSGI server for HTTP — gthread workers give per-thread persistent DB connections (CONN_MAX_AGE), avoiding per-request SQLite connect churn that Daphne/ASGI suffered
     "huey>=2.6.0",
     "mammoth>=1.11.0",
     "openpyxl>=3.1.0",
@@ -24,7 +25,7 @@ dependencies = [
     "python-dotenv>=1.2.1",
     "pywebpush>=2.1.2",
     "requests>=2.32.0",
-    "sentry-sdk[django]>=2.59",  # 2.55 + 2.59 fix profiler teardown/race conditions implicated in our daphne segfaults — see docs/daphne-segfault.md
+    "sentry-sdk[django]>=2.59", # 2.55 + 2.59 fix profiler teardown/race conditions implicated in our daphne segfaults — see docs/daphne-segfault.md
     "whitenoise>=6.7.0",
 ]
 

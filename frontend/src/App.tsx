@@ -84,6 +84,8 @@ const EventFormPage = lazy(() => import("./pages/EventFormPage"))
 
 const BookingsPage = lazy(() => import("./pages/BookingsPage"))
 
+const ExpensesPage = lazy(() => import("./pages/ExpensesPage"))
+
 const NotificationPreferencesPage = lazy(
   () => import("./pages/NotificationPreferencesPage"),
 )
@@ -107,6 +109,8 @@ import { GlobalSearch } from "./components/GlobalSearch"
 import { InstallPrompt } from "./components/InstallPrompt"
 
 import { PushNotificationPrompt } from "./components/PushNotificationPrompt"
+
+import { TestDomainBanner } from "./components/TestDomainBanner"
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -174,59 +178,62 @@ function App() {
   if (!isAuthenticated) {
     return (
       <ErrorBoundary>
-        <Suspense fallback={<LoadingOverlay visible />}>
-          <SentryRoutes>
-            <Route
-              path="/login"
-              element={
-                <ErrorBoundary>
-                  <LoginPage />
-                </ErrorBoundary>
-              }
-            />
-            <Route
-              path="/register"
-              element={
-                <ErrorBoundary>
-                  <RegisterPage />
-                </ErrorBoundary>
-              }
-            />
-            <Route
-              path="/forgot-password"
-              element={
-                <ErrorBoundary>
-                  <ForgotPasswordPage />
-                </ErrorBoundary>
-              }
-            />
-            <Route
-              path="/reset-password"
-              element={
-                <ErrorBoundary>
-                  <ResetPasswordPage />
-                </ErrorBoundary>
-              }
-            />
-            <Route
-              path="/bekraeft-email"
-              element={
-                <ErrorBoundary>
-                  <ConfirmEmailChangePage />
-                </ErrorBoundary>
-              }
-            />
-            <Route
-              path="/privatlivspolitik"
-              element={
-                <ErrorBoundary>
-                  <PrivacyPolicyPage />
-                </ErrorBoundary>
-              }
-            />
-            <Route path="*" element={<Navigate to="/login" replace />} />
-          </SentryRoutes>
-        </Suspense>
+        <TestDomainBanner />
+        <div style={{ paddingTop: "var(--test-banner-height, 0px)" }}>
+          <Suspense fallback={<LoadingOverlay visible />}>
+            <SentryRoutes>
+              <Route
+                path="/login"
+                element={
+                  <ErrorBoundary>
+                    <LoginPage />
+                  </ErrorBoundary>
+                }
+              />
+              <Route
+                path="/register"
+                element={
+                  <ErrorBoundary>
+                    <RegisterPage />
+                  </ErrorBoundary>
+                }
+              />
+              <Route
+                path="/forgot-password"
+                element={
+                  <ErrorBoundary>
+                    <ForgotPasswordPage />
+                  </ErrorBoundary>
+                }
+              />
+              <Route
+                path="/reset-password"
+                element={
+                  <ErrorBoundary>
+                    <ResetPasswordPage />
+                  </ErrorBoundary>
+                }
+              />
+              <Route
+                path="/bekraeft-email"
+                element={
+                  <ErrorBoundary>
+                    <ConfirmEmailChangePage />
+                  </ErrorBoundary>
+                }
+              />
+              <Route
+                path="/privatlivspolitik"
+                element={
+                  <ErrorBoundary>
+                    <PrivacyPolicyPage />
+                  </ErrorBoundary>
+                }
+              />
+              <Route path="*" element={<Navigate to="/login" replace />} />
+            </SentryRoutes>
+          </Suspense>
+        </div>
       </ErrorBoundary>
     )
   }
@@ -235,6 +242,7 @@ function App() {
 
   return (
     <ErrorBoundary>
+      <TestDomainBanner />
       <GlobalSearch onAction={() => setNavbarOpened(false)} />
       <InstallPrompt />
       <PushNotificationPrompt />
@@ -248,8 +256,15 @@ function App() {
           collapsed: { mobile: !navbarOpened },
         }}
         padding="md"
+        // Push the whole shell (fixed header top, navbar top, main padding-top)
+        // down by the test-domain banner height. Defaults to 0 on the real
+        // domain where the banner is absent and the variable is unset.
+        style={{
+          "--app-shell-header-offset":
+            "calc(var(--app-shell-header-height) + var(--test-banner-height, 0px))",
+        }}
       >
-        <AppShell.Header>
+        <AppShell.Header style={{ top: "var(--test-banner-height, 0px)" }}>
           <AppHeader
             navbarOpened={navbarOpened}
             toggleNavbar={() => setNavbarOpened((o) => !o)}
@@ -586,6 +601,18 @@ const AuthenticatedRoutes = memo(function AuthenticatedRoutes() {
             <ProtectedRoute>
               <ErrorBoundary>
                 <BookingsPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Udlæg */}
+        <Route
+          path="/udlaeg"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <ExpensesPage />
               </ErrorBoundary>
             </ProtectedRoute>
           }

@@ -2,6 +2,7 @@
 Serializers for User models.
 """
 
+import re
 from typing import Any
 
 from django.contrib.auth.password_validation import validate_password
@@ -10,6 +11,9 @@ from rest_framework import serializers
 
 from .models import EmailChangeToken, Invitation, PasswordResetToken, User
 from .serializer_mixins import AvatarUrlMixin
+
+_REG_NR_RE = re.compile(r"^\d{4}$")
+_ACCOUNT_RE = re.compile(r"^\d{1,10}$")
 
 
 class UserSerializer(AvatarUrlMixin, serializers.ModelSerializer):
@@ -36,12 +40,20 @@ class UserSerializer(AvatarUrlMixin, serializers.ModelSerializer):
             "house_inhabitant_count",
             "is_staff",
             "is_food_admin",
+            "is_economy_admin",
             "date_joined",
             "default_cooking_days",
             "accessibility_mode",
             "hide_closed_threads",
         ]
-        read_only_fields = ["id", "email", "is_staff", "is_food_admin", "date_joined"]
+        read_only_fields = [
+            "id",
+            "email",
+            "is_staff",
+            "is_food_admin",
+            "is_economy_admin",
+            "date_joined",
+        ]
 
     def get_house_inhabitant_count(self, obj: User) -> int:
         """Get the number of inhabitants in the user's house."""
@@ -51,6 +63,34 @@ class UserSerializer(AvatarUrlMixin, serializers.ModelSerializer):
         if obj.house:
             return obj.house.inhabitants.count()
         return 0
+
+
+class CurrentUserSerializer(UserSerializer):
+    """Serializer for the *current* user (``/users/me/``).
+
+    Extends ``UserSerializer`` with the private bank details. These must never
+    appear in the shared user list/detail (which everyone can read) — only the
+    user themselves sees their own reg. nr./account number.
+    """
+
+    class Meta(UserSerializer.Meta):
+        fields = [*UserSerializer.Meta.fields, "bank_reg_nr", "bank_account_number"]
+
+
+def _validate_optional_reg_nr(value: str) -> str:
+    """Allow an empty reg. nr. but require 4 digits when one is given."""
+    value = value.strip()
+    if value and not _REG_NR_RE.match(value):
+        raise serializers.ValidationError("Reg. nr. skal være 4 cifre.")
+    return value
+
+
+def _validate_optional_account_number(value: str) -> str:
+    """Allow an empty account number but require 1-10 digits when one is given."""
+    value = value.strip()
+    if value and not _ACCOUNT_RE.match(value):
+        raise serializers.ValidationError("Kontonummer skal være 1-10 cifre.")
+    return value
 
 
 class UserProfileUpdateSerializer(AvatarUrlMixin, serializers.ModelSerializer):
@@ -68,8 +108,16 @@ class UserProfileUpdateSerializer(AvatarUrlMixin, serializers.ModelSerializer):
             "house",
             "accessibility_mode",
             "hide_closed_threads",
+            "bank_reg_nr",
+            "bank_account_number",
         ]
         read_only_fields = ["house"]
+
+    def validate_bank_reg_nr(self, value: str) -> str:
+        return _validate_optional_reg_nr(value)
+
+    def validate_bank_account_number(self, value: str) -> str:
+        return _validate_optional_account_number(value)
 
 
 class MentionUserSerializer(AvatarUrlMixin, serializers.ModelSerializer):

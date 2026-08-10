@@ -28,6 +28,8 @@ import { notifications } from "@mantine/notifications"
 
 import { showErrorNotification } from "../utils/errorNotification"
 
+import { htmlToPlainText } from "../utils/htmlText"
+
 import {
   IconSearch,
   IconBell,
@@ -196,12 +198,12 @@ export default function ForumPage() {
         ) || []
 
       const byActivity = (a: Subgroup, b: Subgroup) => {
-        const aTime = new Date(
-          a.latest_thread_activity_at ?? a.last_activity_at ?? 0,
-        ).getTime()
-        const bTime = new Date(
-          b.latest_thread_activity_at ?? b.last_activity_at ?? 0,
-        ).getTime()
+        const aTime = a.latest_thread_activity_at
+          ? new Date(a.latest_thread_activity_at).getTime()
+          : 0
+        const bTime = b.latest_thread_activity_at
+          ? new Date(b.latest_thread_activity_at).getTime()
+          : 0
         return bTime - aTime
       }
 
@@ -576,18 +578,14 @@ function SubgroupCard({
 
         {subgroup.description && (
           <Text size="sm" c="dimmed" lineClamp={1}>
-            {(
+            {htmlToPlainText(
               subgroup.description.match(/<p[^>]*>(.*?)<\/p>/)?.[1] ??
-              subgroup.description
-            )
-
-              .replace(/<[^>]*>/g, "")
-
-              .trim()}
+                subgroup.description,
+            )}
           </Text>
         )}
 
-        {subgroup.last_activity_at && (
+        {subgroup.latest_thread_activity_at && (
           <Text
             size="xs"
             c="dimmed"
@@ -595,11 +593,8 @@ function SubgroupCard({
             style={{ overflow: "hidden", textOverflow: "ellipsis" }}
           >
             {subgroup.latest_thread_title
-              ? `Seneste: ${subgroup.latest_thread_title} \u2014 ${dayjs(subgroup.latest_thread_activity_at ?? subgroup.last_activity_at).fromNow()}`
-              : dayjs(
-                  subgroup.latest_thread_activity_at ??
-                    subgroup.last_activity_at,
-                ).fromNow()}
+              ? `Seneste: ${subgroup.latest_thread_title} \u2014 ${dayjs(subgroup.latest_thread_activity_at).fromNow()}`
+              : dayjs(subgroup.latest_thread_activity_at).fromNow()}
           </Text>
         )}
       </Stack>

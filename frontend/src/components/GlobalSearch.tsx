@@ -178,6 +178,11 @@ export function GlobalSearch({ onAction }: GlobalSearchProps) {
 
   const closingFromHistoryRef = useRef(false)
 
+  // Track whether the spotlight is currently open so popstate can decide
+  // between reopening (returning to the pushed entry) and closing.
+
+  const openRef = useRef(false)
+
   // Track visual viewport height so the actions list fits above the keyboard
 
   const [vpHeight, setVpHeight] = useState<number | null>(null)
@@ -197,8 +202,22 @@ export function GlobalSearch({ onAction }: GlobalSearchProps) {
   }, [isMobile])
 
   useEffect(() => {
-    const handlePopState = () => {
-      if (historyPushedRef.current) {
+    const handlePopState = (e: PopStateEvent) => {
+      // Returning (Back) onto the search history entry while the spotlight is
+      // closed → reopen the search with the retained query.
+      if (
+        (e.state as { spotlight?: boolean } | null)?.spotlight &&
+        !openRef.current
+      ) {
+        historyPushedRef.current = true
+
+        spotlight.open()
+
+        return
+      }
+
+      // Back pressed while the spotlight is open → close it (existing behaviour).
+      if (historyPushedRef.current && openRef.current) {
         closingFromHistoryRef.current = true
 
         historyPushedRef.current = false
@@ -268,13 +287,12 @@ export function GlobalSearch({ onAction }: GlobalSearchProps) {
 
         spotlight.close()
       } else {
-        // Replace the spotlight history entry with the destination so the back-button
+        // Push the destination on top of the spotlight history entry so Back
+        // returns to the search (which reopens via the popstate handler).
 
-        // goes to the originating page, not the ghost spotlight entry.
+        historyPushedRef.current = false // prevents onSpotlightClose from popping the entry
 
-        historyPushedRef.current = false
-
-        navigate(item.url, { replace: true })
+        navigate(item.url)
 
         spotlight.close()
       }
@@ -430,11 +448,21 @@ export function GlobalSearch({ onAction }: GlobalSearchProps) {
         highlightQuery
         fullScreen={isMobile}
         onSpotlightOpen={() => {
-          history.pushState({ spotlight: true }, "")
+          openRef.current = true
 
-          historyPushedRef.current = true
+          // Only push a new ghost entry when one isn't already in place. When
+          // reopening via Back (popstate), historyPushedRef is already set and
+          // we are sitting on the existing spotlight entry — pushing again would
+          // leave a stale entry behind.
+          if (!historyPushedRef.current) {
+            history.pushState({ spotlight: true }, "")
+
+            historyPushedRef.current = true
+          }
         }}
         onSpotlightClose={() => {
+          openRef.current = false
+
           if (closingFromHistoryRef.current) {
             closingFromHistoryRef.current = false
           } else if (historyPushedRef.current) {
@@ -452,7 +480,13 @@ export function GlobalSearch({ onAction }: GlobalSearchProps) {
             <ActionIcon
               variant="subtle"
               color="gray"
-              onClick={() => spotlight.close()}
+              // Explicit dismiss via the X clears the query (unlike Back /
+              // reopen, which keeps it — see clearQueryOnClose below).
+              onClick={() => {
+                setQuery("")
+
+                spotlight.close()
+              }}
               aria-label="Luk søgning"
             >
               <IconX size={16} />
@@ -467,6 +501,10 @@ export function GlobalSearch({ onAction }: GlobalSearchProps) {
         }}
         query={query}
         onQueryChange={setQuery}
+        // Keep the last query when the spotlight closes so reopening it (incl.
+        // via Back after viewing a result) restores the previous search instead
+        // of an empty box. Mantine clears it by default.
+        clearQueryOnClose={false}
         transitionProps={{ duration: 0 }}
         shortcut={["mod + K"]}
         scrollable

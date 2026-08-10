@@ -288,7 +288,6 @@ def subgroup_subscription(db, user, subgroup):
         user=user,
         subgroup=subgroup,
         notify_new_threads=True,
-        notify_replies=True,
     )
 
 

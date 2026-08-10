@@ -1,11 +1,25 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
+import { AxiosError, type AxiosRequestConfig } from "axios"
+
 import {
+  apiClient,
   getAccessToken,
   getRefreshToken,
   setTokens,
   clearTokens,
 } from "./client"
+
+vi.mock("@mantine/notifications", () => ({
+  notifications: { show: vi.fn() },
+}))
+
+vi.mock("@sentry/react", () => ({
+  withScope: vi.fn((cb: (scope: unknown) => void) =>
+    cb({ setTag: vi.fn(), setLevel: vi.fn() }),
+  ),
+  addBreadcrumb: vi.fn(),
+}))
 
 describe("API Client Token Management", () => {
   const mockLocalStorage: Record<string, string> = {}
@@ -84,5 +98,90 @@ describe("API Client Token Management", () => {
 
       expect(mockLocalStorage["kbintra_refresh_token"]).toBeUndefined()
     })
+  })
+})
+
+describe("Connection toast gating", () => {
+  // Drive the real interceptor by swapping the axios adapter to simulate
+  // no-response (network) failures and successful round-trips.
+  const okAdapter = (config: AxiosRequestConfig) =>
+    Promise.resolve({
+      data: {},
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      config: config as never,
+    })
+
+  const networkErrorAdapter = (config: AxiosRequestConfig) =>
+    Promise.reject(
+      new AxiosError("Network Error", "ERR_NETWORK", config as never),
+    )
+
+  let show: ReturnType<typeof vi.fn>
+
+  const fail = async () => {
+    apiClient.defaults.adapter = networkErrorAdapter
+    await apiClient.get("/ping").catch(() => {})
+  }
+
+  const succeed = async () => {
+    apiClient.defaults.adapter = okAdapter
+    await apiClient.get("/ping")
+  }
+
+  beforeEach(async () => {
+    const { notifications } = await import("@mantine/notifications")
+    show = (notifications.show as ReturnType<typeof vi.fn>)
+    // A success resets the module-level failure streak between tests.
+    await succeed()
+    show.mockClear()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it("stays quiet for fewer than 3 consecutive failures", async () => {
+    await fail()
+    await fail()
+
+    expect(show).not.toHaveBeenCalled()
+  })
+
+  it("shows the toast on the 3rd consecutive failure", async () => {
+    await fail()
+    await fail()
+    await fail()
+
+    expect(show).toHaveBeenCalledTimes(1)
+    expect(show).toHaveBeenCalledWith(
+      expect.objectContaining({ color: "orange" }),
+    )
+  })
+
+  it("a successful request resets the streak", async () => {
+    await fail()
+    await fail()
+    await succeed()
+    await fail()
+    await fail()
+
+    expect(show).not.toHaveBeenCalled()
+  })
+
+  it("does not count or toast for skipConnectionToast requests", async () => {
+    apiClient.defaults.adapter = networkErrorAdapter
+    await apiClient
+      .get("/food/drive-menu/", { skipConnectionToast: true })
+      .catch(() => {})
+    await apiClient
+      .get("/food/drive-menu/", { skipConnectionToast: true })
+      .catch(() => {})
+    await apiClient
+      .get("/food/drive-menu/", { skipConnectionToast: true })
+      .catch(() => {})
+
+    expect(show).not.toHaveBeenCalled()
   })
 })

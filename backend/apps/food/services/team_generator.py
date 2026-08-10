@@ -711,7 +711,9 @@ class TeamGenerator:
         # has to record what it actually covered. Saved inside this transaction
         # so the teams and the date list can never disagree.
         if self.dropped_dates:
-            self.cycle.cooking_dates = [d.isoformat() for d in self.cooking_dates]
+            self.cycle.cooking_dates = [  # ty: ignore[invalid-assignment]
+                d.isoformat() for d in self.cooking_dates
+            ]
             self.cycle.save(update_fields=["cooking_dates", "updated_at"])
 
         return teams_created

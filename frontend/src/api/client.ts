@@ -7,6 +7,15 @@ import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios"
 import { notifications } from "@mantine/notifications"
 import * as Sentry from "@sentry/react"
 
+declare module "axios" {
+  interface AxiosRequestConfig {
+    // Opt a known-slow request out of the "slow/lost connection" toast.
+    // E.g. the Google Drive menu fetch/refresh is inherently slow and should
+    // not raise a connectivity alarm when it takes a while.
+    skipConnectionToast?: boolean
+  }
+}
+
 const API_BASE_URL = "/api"
 
 // Throttle each toast type independently — a page that fires 8 queries on mount
@@ -14,6 +23,15 @@ const API_BASE_URL = "/api"
 const TOAST_THROTTLE_MS = 30_000
 
 const lastToastAt: Record<string, number> = {}
+
+// Connectivity toast gating: only alarm the user after several *consecutive*
+// failures. A single transient blip on WiFi/mobile (AP roaming, tab resume,
+// momentary packet loss) shouldn't raise a toast — but a sustained outage
+// should. Any successful response resets the streak, so a page firing 8 queries
+// where one blips and the rest succeed stays quiet.
+const CONSECUTIVE_FAILURES_BEFORE_TOAST = 3
+
+let consecutiveConnectionFailures = 0
 
 const showThrottledToast = (
   id: string,
@@ -38,7 +56,7 @@ type ErrorKind = "maintenance" | "offline" | "timeout" | "network" | "other"
 //     proxy-level failures. This avoids false positives like a Django view
 //     returning 503 for "feature not configured".
 //   - navigator.onLine === false → device is offline (mobile/wifi dropped)
-//   - axios timeout (15s) → request hung; usually flaky network or slow server
+//   - axios timeout (30s) → request hung; usually flaky network or slow server
 //   - any other no-response error → generic network error
 //   - cancelled request → ignore (user navigated away)
 const classifyError = (error: AxiosError): ErrorKind | null => {
@@ -129,7 +147,7 @@ const tagSentry = (kind: ErrorKind, error: AxiosError) => {
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
 
-  timeout: 15000,
+  timeout: 30000,
 
   headers: {
     "Content-Type": "application/json",
@@ -217,7 +235,11 @@ const onTokenRefreshFailed = (error: unknown) => {
 }
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // A successful round-trip means connectivity is fine — clear the streak.
+    consecutiveConnectionFailures = 0
+    return response
+  },
 
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & {
@@ -304,7 +326,22 @@ apiClient.interceptors.response.use(
 
     const kind = classifyError(error)
     if (kind) {
-      reportToast(kind)
+      if (error.config?.skipConnectionToast) {
+        // Known-slow request (e.g. Drive menu): never alarm, and don't let it
+        // count toward the connectivity streak — a slow Drive fetch tells us
+        // nothing about the user's network.
+      } else if (kind === "maintenance") {
+        // Reliable signal (proxy returned a non-JSON 5xx during a deploy) — no
+        // need to wait for a streak.
+        reportToast(kind)
+      } else {
+        consecutiveConnectionFailures += 1
+        if (
+          consecutiveConnectionFailures >= CONSECUTIVE_FAILURES_BEFORE_TOAST
+        ) {
+          reportToast(kind)
+        }
+      }
       tagSentry(kind, error)
     }
 
