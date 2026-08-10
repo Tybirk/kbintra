@@ -1,6 +1,6 @@
 import { useState } from "react"
 
-import { useQuery, useMutation } from "@tanstack/react-query"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 
 import {
   Paper,
@@ -30,6 +30,7 @@ import {
   IconPhoto,
   IconBook2,
   IconFileText,
+  IconCheck,
 } from "@tabler/icons-react"
 
 import { foodApi } from "../api/food"
@@ -51,10 +52,20 @@ function weightedCount(count: RegistrationCount): number {
 }
 
 export default function TodayFoodTeamActionBox() {
+  const queryClient = useQueryClient()
+
   const { data } = useQuery({
     queryKey: ["today-food-team"],
     queryFn: foodApi.getTodayActionBox,
   })
+
+  // The backend is the source of truth for "already announced today" — refetch
+  // after every attempt (sent or rejected) so the buttons settle on it.
+  const refreshActionBox = () =>
+    queryClient.invalidateQueries({
+      queryKey: ["today-food-team"],
+      exact: true,
+    })
 
   // Recipes are loaded separately — they require a Drive API round-trip on
   // cache miss, so we don't want them blocking the box's first paint.
@@ -86,6 +97,8 @@ export default function TodayFoodTeamActionBox() {
     mutationFn: () => foodApi.notifyTakeaway(teamId as number),
 
     onSuccess: (res) => {
+      refreshActionBox()
+
       if (res.sent) {
         notifications.show({
           title: "Takeaway-besked sendt",
@@ -117,6 +130,8 @@ export default function TodayFoodTeamActionBox() {
 
       setLeftoverMessage("")
 
+      refreshActionBox()
+
       if (res.sent) {
         notifications.show({
           title: "Rester-besked sendt",
@@ -141,6 +156,9 @@ export default function TodayFoodTeamActionBox() {
   if (!data?.on_team) return null
 
   const members = data.members ?? []
+
+  const takeawaySent = data.takeaway_sent === true
+  const leftoversSent = data.leftovers_sent === true
 
   const recipes = [...(recipesData?.recipes ?? [])].sort(
     (a, b) => a.index - b.index,
@@ -269,32 +287,41 @@ export default function TodayFoodTeamActionBox() {
 
         <Divider />
 
-        {/* Notify actions */}
+        {/* Notify actions. Each announcement goes out once per day, so a button
+            whose broadcast already fired renders as sent and disabled. */}
         <Group gap="sm">
           <Button
             color="orange"
             size="sm"
-            leftSection={<IconToolsKitchen2 size={16} />}
+            leftSection={
+              takeawaySent ? (
+                <IconCheck size={16} />
+              ) : (
+                <IconToolsKitchen2 size={16} />
+              )
+            }
             loading={takeawayMutation.isPending}
-            disabled={takeawayMutation.isPending || !teamId}
+            disabled={takeawayMutation.isPending || !teamId || takeawaySent}
             onClick={() => takeawayMutation.mutate()}
           >
-            Takeaway er klar
+            {takeawaySent ? "Takeaway-besked sendt" : "Takeaway er klar"}
           </Button>
 
           <Button
             color="green"
             variant="light"
             size="sm"
-            leftSection={<IconBowl size={16} />}
+            leftSection={
+              leftoversSent ? <IconCheck size={16} /> : <IconBowl size={16} />
+            }
             onClick={() => setLeftoversOpen((o) => !o)}
-            disabled={!teamId}
+            disabled={!teamId || leftoversSent}
           >
-            Rester er klar
+            {leftoversSent ? "Rester-besked sendt" : "Rester er klar"}
           </Button>
         </Group>
 
-        <Collapse expanded={leftoversOpen}>
+        <Collapse expanded={leftoversOpen && !leftoversSent}>
           <Stack gap="xs">
             <Text size="sm" c="dimmed">
               Beskriv evt. resterne og tilføj et billede. Begge dele er valgfri.

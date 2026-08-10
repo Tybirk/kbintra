@@ -2,8 +2,11 @@
 self-service profile, today action box, and per-cycle unavailability."""
 
 from datetime import timedelta
+from io import BytesIO
+from unittest.mock import patch
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 
 from apps.food.models import (
@@ -273,6 +276,62 @@ class TestLeftoversAndTakeawayBroadcastFiltering:
         assert ua.id in notified  # take-away
         assert ub.id in notified  # eat-in 17:30
         assert uc.id not in notified  # eat-in 18:30 — sees them in person
+
+    def _extra_takeaway_house(self, team, label):
+        """A house registered for take-away, plus its (non-cooking) resident."""
+        from apps.food.models import DiningOption, MealRegistration, SeatingTime
+        from apps.houses.models import House
+
+        house = House.objects.create(name=f"House {label}")
+        resident = User.objects.create_user(
+            email=f"{label.lower()}@x", password="x", first_name=label, house=house
+        )
+        MealRegistration.objects.create(
+            house=house,
+            date=team.date,
+            adults_veg=1,
+            dining_option=DiningOption.TAKE_AWAY,
+            seating_time=SeatingTime.FIRST,
+        )
+        return resident
+
+    def test_takeaway_excludes_todays_cooking_team(self, monday_date):
+        """The cooks are standing next to the food — no push about their own meal."""
+        from apps.notifications.models import Notification, NotificationType
+        from apps.notifications.tasks import broadcast_takeaway_ready
+
+        team, actor, ua, _ub, _uc = self._setup(monday_date)
+        # ua's house ordered take-away, but ua is on today's team.
+        FoodTeamMember.objects.create(team=team, user=ua, house_number="1")
+        outsider = self._extra_takeaway_house(team, "D")
+
+        broadcast_takeaway_ready(team.id, actor.id)
+
+        notified = set(
+            Notification.objects.filter(
+                notification_type=NotificationType.FOOD_TEAM_TAKEAWAY_READY
+            ).values_list("user_id", flat=True)
+        )
+        assert outsider.id in notified
+        assert ua.id not in notified
+
+    def test_leftovers_excludes_todays_cooking_team(self, monday_date):
+        from apps.notifications.models import Notification, NotificationType
+        from apps.notifications.tasks import broadcast_leftovers_ready
+
+        team, actor, ua, ub, _uc = self._setup(monday_date)
+        # ub's house eats in at 17:30, but ub is on today's team.
+        FoodTeamMember.objects.create(team=team, user=ub, house_number="2")
+
+        broadcast_leftovers_ready(team.id, actor.id, "", "")
+
+        notified = set(
+            Notification.objects.filter(
+                notification_type=NotificationType.FOOD_TEAM_LEFTOVERS_READY
+            ).values_list("user_id", flat=True)
+        )
+        assert ua.id in notified
+        assert ub.id not in notified
 
 
 @pytest.mark.django_db
@@ -641,3 +700,233 @@ class TestCycleResetTeams:
         cycle.refresh_from_db()
         assert cycle.status == CycleStatus.FINALIZED
         assert FoodTeam.objects.filter(cycle=cycle).exists()
+
+
+@pytest.fixture
+def todays_team(db, admin_user):
+    """A finalized team cooking *today*, with one member (the announcer)."""
+    from django.utils import timezone
+
+    from apps.food.models import CycleStatus, FoodTeamCycle
+
+    today = timezone.localdate()
+    cycle = FoodTeamCycle.objects.create(
+        name="I dag",
+        cooking_dates=[today.isoformat()],
+        wish_deadline=timezone.now(),
+        status=CycleStatus.FINALIZED,
+        created_by=admin_user,
+    )
+    team = FoodTeam.objects.create(cycle=cycle, date=today)
+    cook = User.objects.create_user(email="cook@example.com", password="x", first_name="Kok")
+    FoodTeamMember.objects.create(team=team, user=cook, house_number="7")
+    return team, cook
+
+
+@pytest.mark.django_db
+class TestAnnouncementSentOnce:
+    """Each announcement fans out to ~90 people, so it must fire exactly once.
+
+    The guard has to be a synchronous write on the team row: the broadcast is a
+    Huey task (async in production), and create_notification honours per-user
+    preferences, so counting Notification rows can never be trusted.
+    """
+
+    def test_second_takeaway_press_does_not_enqueue_second_broadcast(self, api_client, todays_team):
+        team, cook = todays_team
+        api_client.force_authenticate(user=cook)
+        url = reverse("food:team-notify-takeaway", kwargs={"pk": team.id})
+
+        with patch("apps.notifications.tasks.broadcast_takeaway_ready") as broadcast:
+            first = api_client.post(url)
+            second = api_client.post(url)
+
+        assert first.status_code == 200, first.data
+        assert first.data["sent"] is True
+        assert second.status_code == 200
+        assert second.data["sent"] is False
+        assert broadcast.call_count == 1
+
+        team.refresh_from_db()
+        assert team.takeaway_announced_at is not None
+
+    def test_takeaway_guard_holds_even_when_nobody_gets_a_notification(
+        self, api_client, todays_team
+    ):
+        """No Notification rows exist (nobody ordered take-away) — still once."""
+        from apps.notifications.models import Notification
+
+        team, cook = todays_team
+        api_client.force_authenticate(user=cook)
+        url = reverse("food:team-notify-takeaway", kwargs={"pk": team.id})
+
+        assert api_client.post(url).data["sent"] is True
+        assert Notification.objects.count() == 0
+        assert api_client.post(url).data["sent"] is False
+
+    def test_second_leftovers_press_does_not_enqueue_second_broadcast(
+        self, api_client, todays_team
+    ):
+        team, cook = todays_team
+        api_client.force_authenticate(user=cook)
+        url = reverse("food:team-notify-leftovers", kwargs={"pk": team.id})
+
+        with patch("apps.notifications.tasks.broadcast_leftovers_ready") as broadcast:
+            first = api_client.post(url, {"message": "Lasagne"}, format="multipart")
+            second = api_client.post(url, {"message": "Lasagne igen"}, format="multipart")
+
+        assert first.data["sent"] is True
+        assert second.data["sent"] is False
+        assert broadcast.call_count == 1
+
+        team.refresh_from_db()
+        assert team.leftovers_message == "Lasagne"
+
+    def test_action_box_reports_already_sent_state(self, api_client, todays_team):
+        team, cook = todays_team
+        api_client.force_authenticate(user=cook)
+
+        before = api_client.get(reverse("food:team-today"))
+        assert before.data["takeaway_sent"] is False
+        assert before.data["leftovers_sent"] is False
+
+        with patch("apps.notifications.tasks.broadcast_takeaway_ready"):
+            api_client.post(reverse("food:team-notify-takeaway", kwargs={"pk": team.id}))
+
+        after = api_client.get(reverse("food:team-today"))
+        assert after.data["takeaway_sent"] is True
+        assert after.data["leftovers_sent"] is False
+
+
+def _heic_photo(width: int = 3000, height: int = 2000) -> bytes:
+    """A real HEIC image — what an iPhone camera actually uploads."""
+    from PIL import Image
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
+    img = Image.new("RGB", (width, height), (200, 120, 40))
+    buf = BytesIO()
+    img.save(buf, format="HEIF")
+    return buf.getvalue()
+
+
+@pytest.mark.django_db
+class TestLeftoversImageHandling:
+    """The photo must be web-safe on disk and reachable from an email client."""
+
+    def _post_photo(self, api_client, team, upload):
+        url = reverse("food:team-notify-leftovers", kwargs={"pk": team.id})
+        with patch("apps.notifications.tasks.broadcast_leftovers_ready") as broadcast:
+            resp = api_client.post(url, {"message": "Rester", "image": upload}, format="multipart")
+        return resp, broadcast
+
+    def test_heic_photo_is_converted_to_a_bounded_jpeg(
+        self, api_client, todays_team, settings, tmp_path
+    ):
+        from pathlib import Path
+
+        from PIL import Image
+
+        settings.MEDIA_ROOT = str(tmp_path)
+        team, cook = todays_team
+        api_client.force_authenticate(user=cook)
+
+        upload = SimpleUploadedFile("IMG_4711.HEIC", _heic_photo(), content_type="image/heic")
+        resp, _broadcast = self._post_photo(api_client, team, upload)
+        assert resp.status_code == 200, resp.data
+
+        team.refresh_from_db()
+        assert team.leftovers_image_url.endswith(".jpg")
+
+        stored = list((Path(tmp_path) / "food_leftovers").glob("*"))
+        assert len(stored) == 1
+        # Chrome/Firefox can't render HEIC, so what we keep must be a JPEG —
+        # and not a 12-megapixel one.
+        with Image.open(stored[0]) as img:
+            assert img.format == "JPEG"
+            assert max(img.size) <= 2000
+
+    def test_email_image_url_is_signed_so_a_mail_client_can_load_it(
+        self, api_client, todays_team, settings, tmp_path
+    ):
+        from django.test import Client
+
+        settings.MEDIA_ROOT = str(tmp_path)
+        team, cook = todays_team
+        api_client.force_authenticate(user=cook)
+
+        upload = SimpleUploadedFile("rester.jpg", _heic_photo(400, 300), content_type="image/jpeg")
+        resp, broadcast = self._post_photo(api_client, team, upload)
+        assert resp.status_code == 200, resp.data
+
+        email_image_url = broadcast.call_args[0][2]
+        assert email_image_url.startswith(settings.SITE_URL)
+        assert "sig=" in email_image_url and "exp=" in email_image_url
+
+        # An email client sends no JWT and no session cookie. The signed URL is
+        # the whole point: this request must still return the photo.
+        path_with_query = email_image_url[len(settings.SITE_URL) :]
+        anonymous = Client()
+        media_resp = anonymous.get(path_with_query)
+        assert media_resp.status_code == 200
+
+        # The same path without the signature stays gated.
+        assert anonymous.get(path_with_query.split("?")[0]).status_code == 401
+
+    def test_non_image_upload_is_rejected_without_announcing(
+        self, api_client, todays_team, settings, tmp_path
+    ):
+        settings.MEDIA_ROOT = str(tmp_path)
+        team, cook = todays_team
+        api_client.force_authenticate(user=cook)
+
+        upload = SimpleUploadedFile("menu.pdf", b"%PDF-1.4 not a photo", "application/pdf")
+        resp, broadcast = self._post_photo(api_client, team, upload)
+
+        assert resp.status_code == 400
+        assert broadcast.call_count == 0
+        team.refresh_from_db()
+        # Nothing was claimed, so the team can retry (with or without a photo).
+        assert team.leftovers_announced_at is None
+
+
+@pytest.mark.django_db
+class TestLeftoversImageIsSignedForReaders:
+    """/mad/rester renders the photo with a plain <img>, and /media is
+    auth-gated, so the URL the API hands out has to carry a signature like
+    every other media URL in the app."""
+
+    def test_today_leftovers_image_url_is_signed(self, api_client, user, future_monday):
+        from django.utils import timezone
+
+        from apps.food.models import FoodTeam
+
+        team = FoodTeam.objects.create(date=timezone.localdate())
+        team.leftovers_message = "Der er lasagne tilbage"
+        team.leftovers_image_url = "http://testserver/media/food_leftovers/x.jpg"
+        team.leftovers_announced_at = timezone.now()
+        team.save()
+
+        api_client.force_authenticate(user=user)
+        response = api_client.get(reverse("food:leftovers-today"))
+
+        assert response.status_code == 200
+        assert response.data["has_leftovers"] is True
+        url = response.data["image_url"]
+        assert "exp=" in url and "sig=" in url, url
+
+    def test_no_image_stays_empty(self, api_client, user):
+        from django.utils import timezone
+
+        from apps.food.models import FoodTeam
+
+        team = FoodTeam.objects.create(date=timezone.localdate())
+        team.leftovers_message = "Ingen billede i dag"
+        team.leftovers_announced_at = timezone.now()
+        team.save()
+
+        api_client.force_authenticate(user=user)
+        response = api_client.get(reverse("food:leftovers-today"))
+
+        assert response.status_code == 200
+        assert response.data["image_url"] == ""

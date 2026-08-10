@@ -1990,6 +1990,10 @@ class TodayTeamActionBoxView(APIView):
                 "date": today.isoformat(),
                 "day_name": team.day_name,
                 "members": members,
+                # Let the widget render the buttons as already-sent on load
+                # instead of only learning it from a rejected press.
+                "takeaway_sent": team.takeaway_announced_at is not None,
+                "leftovers_sent": team.leftovers_announced_at is not None,
             }
         )
 
@@ -2108,14 +2112,20 @@ class WeekRecipesView(APIView):
         )
 
 
-def _already_notified_today(notification_type: str) -> bool:
-    """Soft guard: was a notification of this type already created today?"""
-    from apps.notifications.models import Notification
+def _claim_announcement(team: FoodTeam, field: str, **extra_fields: Any) -> bool:
+    """Atomically mark an announcement as sent; False if it already was.
 
-    return Notification.objects.filter(
-        notification_type=notification_type,
-        created_at__date=timezone.localdate(),
-    ).exists()
+    A single conditional UPDATE, so two simultaneous presses can't both win and
+    fan out to ~90 people twice. Guarding on the team row (a synchronous write
+    in the same request) rather than on Notification rows matters because the
+    broadcast is a Huey task: in production it hasn't run yet when the second
+    press arrives, and per-user preferences mean it may never create a single
+    Notification row to guard on.
+    """
+    claimed = FoodTeam.objects.filter(pk=team.pk, **{f"{field}__isnull": True}).update(
+        **{field: timezone.now()}, **extra_fields
+    )
+    return bool(claimed)
 
 
 class NotifyTakeawayReadyView(APIView):
@@ -2138,16 +2148,12 @@ class NotifyTakeawayReadyView(APIView):
                 {"detail": "Kun medlemmer af dagens madhold kan sende denne besked."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        from apps.notifications.models import NotificationType
         from apps.notifications.tasks import broadcast_takeaway_ready
 
-        if _already_notified_today(NotificationType.FOOD_TEAM_TAKEAWAY_READY):
+        if not _claim_announcement(team, "takeaway_announced_at"):
             return Response({"detail": "Beskeden er allerede sendt i dag.", "sent": False})
         broadcast_takeaway_ready(team.id, request.user.id)
         return Response({"detail": "Besked sendt.", "sent": True})
-
-
-_ALLOWED_LEFTOVERS_IMAGE_EXTS = {"jpg", "jpeg", "png", "webp", "heic", "heif", "gif"}
 
 
 class NotifyLeftoversReadyView(APIView):
@@ -2171,39 +2177,67 @@ class NotifyLeftoversReadyView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        # Match the takeaway view's once-per-day guard so a double-tap doesn't
-        # fan out duplicate community notifications. team.leftovers_announced_at
-        # is the per-team marker; treat the existence of any prior announcement
-        # today as "already sent".
+        # Once-per-day guard, same as the takeaway view: a double-tap must not
+        # fan out duplicate community notifications.
         if team.leftovers_announced_at is not None:
             return Response({"detail": "Beskeden er allerede sendt i dag.", "sent": False})
 
         image_url = ""
+        email_image_url = ""
         image = request.FILES.get("image")
         if image:
+            from apps.forum.image_processing import generate_web_preview, is_image_attachment
+
+            if not is_image_attachment(image.name):
+                return Response(
+                    {"detail": "Filen er ikke et billede."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            # Always re-encode: a photo straight off an iPhone is HEIC (which
+            # Chrome and Firefox refuse to render) at full camera resolution.
+            # generate_web_preview gives a rotation-corrected JPEG bounded at
+            # 2000px — the same treatment every other upload path gets.
+            image.seek(0)
+            processed = generate_web_preview(image)
+            if processed is None:
+                return Response(
+                    {"detail": "Billedet kunne ikke behandles. Prøv et andet, eller send uden."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            from django.conf import settings as dj_settings
             from django.core.files.storage import default_storage
 
-            raw_ext = (image.name.rsplit(".", 1)[-1] if "." in image.name else "jpg").lower()
-            ext = raw_ext if raw_ext in _ALLOWED_LEFTOVERS_IMAGE_EXTS else "jpg"
-            path = default_storage.save(
-                f"food_leftovers/{team.date.isoformat()}_{team.id}.{ext}", image
-            )
-            from django.conf import settings as dj_settings
+            from apps.backup.signing import EMAIL_TTL_HOURS, signed_media_url
 
-            image_url = request.build_absolute_uri(dj_settings.MEDIA_URL + path)
+            path = default_storage.save(
+                f"food_leftovers/{team.date.isoformat()}_{team.id}.jpg", processed
+            )
+            rel_url = default_storage.url(path)
+            image_url = request.build_absolute_uri(rel_url)
+            # /media is auth-gated (see apps.backup.views.serve_media) and an
+            # <img> in an email carries neither JWT nor session cookie, so the
+            # email needs a signed URL. Built off SITE_URL, like every other
+            # link in an email — request.get_host() is the API origin, which is
+            # not the origin the recipient's mail client should hit in dev.
+            email_image_url = (
+                f"{dj_settings.SITE_URL.rstrip('/')}"
+                f"{signed_media_url(rel_url, ttl_hours=EMAIL_TTL_HOURS)}"
+            )
 
         message = str(request.data.get("message", "")).strip()
 
-        team.leftovers_message = message
-        team.leftovers_image_url = image_url
-        team.leftovers_announced_at = timezone.now()
-        team.save(
-            update_fields=["leftovers_message", "leftovers_image_url", "leftovers_announced_at"]
-        )
+        if not _claim_announcement(
+            team,
+            "leftovers_announced_at",
+            leftovers_message=message,
+            leftovers_image_url=image_url,
+        ):
+            return Response({"detail": "Beskeden er allerede sendt i dag.", "sent": False})
 
         from apps.notifications.tasks import broadcast_leftovers_ready
 
-        broadcast_leftovers_ready(team.id, request.user.id, image_url, message)
+        broadcast_leftovers_ready(team.id, request.user.id, email_image_url, message)
         return Response({"detail": "Besked sendt.", "sent": True})
 
 
@@ -2222,6 +2256,11 @@ class TodayLeftoversView(APIView):
         if not team:
             return Response({"has_leftovers": False})
         member_names = [m.user.first_name for m in team.members.all()]
+        # Sign like every other media URL the API hands out (see messaging
+        # serializers, houses models): /media is auth-gated, and on iOS the
+        # session cookie backing a plain <img> is not reliably present.
+        from apps.backup.signing import signed_media_url
+
         return Response(
             {
                 "has_leftovers": True,
@@ -2230,7 +2269,7 @@ class TodayLeftoversView(APIView):
                 "day_name": team.day_name,
                 "members": member_names,
                 "message": team.leftovers_message,
-                "image_url": team.leftovers_image_url,
+                "image_url": signed_media_url(team.leftovers_image_url or ""),
                 "announced_at": team.leftovers_announced_at,
             }
         )

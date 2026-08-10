@@ -261,6 +261,15 @@ class FoodTeam(models.Model):
         blank=True,
         help_text="Optional notes about this team/day",
     )
+    # Take-away announcement. Written in the same request that enqueues the
+    # broadcast, so a double-tap can't fan out twice: in production the Huey
+    # worker hasn't created any Notification rows yet when the second press
+    # arrives, and per-user preferences mean it may never create any at all.
+    takeaway_announced_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the 'Takeaway er klar' announcement was sent.",
+    )
     # Leftovers announcement (one per team; overwritten if announced more than once).
     leftovers_message = models.TextField(
         blank=True,

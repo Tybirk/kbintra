@@ -1136,13 +1136,26 @@ def notify_announcement_edited_by_admin_task(
 # ---------------------------------------------------------------------------
 
 
+def _cooking_team_user_ids(team, actor_user_id: int) -> list[int]:
+    """User ids to leave out of a food broadcast: today's whole cooking team.
+
+    They cooked the food and are standing next to it — pushing "maden er klar"
+    to the five people in the fælleshus is pure noise. The actor is included
+    even if they somehow aren't a member of the team row.
+    """
+    ids = set(team.members.values_list("user_id", flat=True))
+    ids.add(actor_user_id)
+    return list(ids)
+
+
 @db_task(retries=1, retry_delay=60)
 def broadcast_takeaway_ready(team_id: int, actor_user_id: int) -> None:
     """Notify the people who actually ordered take-away today.
 
     Only users whose house has an active MealRegistration for today with
     dining_option=take_away are notified (the per-user preference toggle still
-    gates inside create_notification on top of this).
+    gates inside create_notification on top of this). Today's cooking team is
+    excluded — they are standing in the fælleshus with the food.
     """
     logger.info("broadcast_takeaway_ready STARTED: team=%d actor=%d", team_id, actor_user_id)
     from apps.food.models import DiningOption, FoodTeam, MealRegistration
@@ -1169,7 +1182,7 @@ def broadcast_takeaway_ready(team_id: int, actor_user_id: int) -> None:
         ).values_list("house_id", flat=True)
     )
     recipients = User.objects.filter(is_active=True, house_id__in=house_ids).exclude(
-        id=actor_user_id
+        id__in=_cooking_team_user_ids(team, actor_user_id)
     )
 
     count = 0
@@ -1197,11 +1210,17 @@ def broadcast_takeaway_ready(team_id: int, actor_user_id: int) -> None:
 def broadcast_leftovers_ready(
     team_id: int, actor_user_id: int, image_url: str = "", custom_message: str = ""
 ) -> None:
-    """Notify all active users (except the actor) that there are leftovers.
+    """Notify the residents who might come back for leftovers.
 
-    The notification links to /mad/rester, a page that renders the team's
-    leftovers message and image so recipients see them in context (not just a
-    raw URL in the notification body).
+    Today's cooking team is excluded — they made the food. The notification
+    links to /mad/rester, a page that renders the team's leftovers message and
+    image so recipients see them in context (not just a raw URL in the
+    notification body).
+
+    ``image_url`` must already be a fully-qualified, *signed* media URL: it is
+    only ever used as the ``<img src>`` of the notification email, and /media is
+    auth-gated, so an unsigned URL is a broken image in every inbox. The caller
+    mints it (see NotifyLeftoversReadyView); pass "" for no photo.
     """
     logger.info("broadcast_leftovers_ready STARTED: team=%d actor=%d", team_id, actor_user_id)
     from django.db.models import Q
@@ -1240,7 +1259,7 @@ def broadcast_leftovers_ready(
         .values_list("house_id", flat=True)
     )
     recipients = User.objects.filter(is_active=True, house_id__in=house_ids).exclude(
-        id=actor_user_id
+        id__in=_cooking_team_user_ids(team, actor_user_id)
     )
 
     from html import escape as html_escape

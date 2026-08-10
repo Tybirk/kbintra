@@ -1882,6 +1882,10 @@ export interface TodayTeamActionBox {
   date?: string
   day_name?: string
   members?: FoodTeamMember[]
+  // Whether today's team has already broadcast each announcement, so the
+  // buttons can render as sent on load instead of only after a rejected press.
+  takeaway_sent?: boolean
+  leftovers_sent?: boolean
 }
 
 // Lazy recipe payload — fetched separately from the action box so the widget
