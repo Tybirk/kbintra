@@ -311,3 +311,129 @@ class TestUnavailableWishExcludesFromGeneration:
 
         generate_teams_for_cycle(cycle, save=True)
         assert not FoodTeamMember.objects.filter(team__cycle=cycle, user=opted_out).exists()
+
+
+@pytest.mark.django_db
+class TestSwapDoubleBookingGuard:
+    """A takeover deliberately leaves the taker on two teams in a cycle, so the
+    swap paths must refuse a swap that would put someone on the same team twice.
+    Without the guard this raised IntegrityError (500) on the unique
+    (team, user) constraint mid-transaction."""
+
+    def _people(self, house, house2):
+        alice = User.objects.create_user(
+            email="alice@guard.dk", password="x", first_name="Alice", house=house
+        )
+        bob = User.objects.create_user(
+            email="bob@guard.dk", password="x", first_name="Bob", house=house2
+        )
+        return alice, bob
+
+    def test_swap_request_rejected_when_requester_already_on_target_team(
+        self, api_client, cycle_with_two_teams, house, house2
+    ):
+        _cycle, team1, team2, _d1, _d2 = cycle_with_two_teams
+        alice, bob = self._people(house, house2)
+        alice_on_1 = FoodTeamMember.objects.create(team=team1, user=alice, house_number="1")
+        FoodTeamMember.objects.create(team=team2, user=alice, house_number="1")
+        bob_on_2 = FoodTeamMember.objects.create(team=team2, user=bob, house_number="2")
+
+        api_client.force_authenticate(user=alice)
+        response = api_client.post(
+            reverse("food:swap-request-list"),
+            {
+                "requester_membership_id": alice_on_1.id,
+                "target_membership_id": bob_on_2.id,
+            },
+            format="json",
+        )
+        assert response.status_code == 400
+        assert "allerede mad" in str(response.data)
+
+    def test_swap_accept_rejected_when_state_changed_after_request(
+        self, api_client, cycle_with_two_teams, house, house2
+    ):
+        """The request was legal when created; a takeover then put the requester
+        on the target's team. Accepting must 400, not 500."""
+        from apps.food.models import TeamSwapRequest
+
+        _cycle, team1, team2, _d1, _d2 = cycle_with_two_teams
+        alice, bob = self._people(house, house2)
+        alice_on_1 = FoodTeamMember.objects.create(team=team1, user=alice, house_number="1")
+        bob_on_2 = FoodTeamMember.objects.create(team=team2, user=bob, house_number="2")
+
+        swap = TeamSwapRequest.objects.create(
+            requester=alice,
+            requester_membership=alice_on_1,
+            target_membership=bob_on_2,
+        )
+        # Alice later also ends up on team2 (e.g. via a takeover).
+        FoodTeamMember.objects.create(team=team2, user=alice, house_number="1")
+
+        api_client.force_authenticate(user=bob)
+        response = api_client.post(
+            reverse("food:swap-request-respond", args=[swap.id]),
+            {"action": "accept"},
+            format="json",
+        )
+        assert response.status_code == 400
+        assert "allerede mad" in str(response.data)
+
+    def test_broadcast_accept_rejected_when_it_would_double_book(
+        self, api_client, cycle_with_two_teams, house, house2
+    ):
+        _cycle, team1, team2, d1, _d2 = cycle_with_two_teams
+        alice, bob = self._people(house, house2)
+        alice_on_1 = FoodTeamMember.objects.create(team=team1, user=alice, house_number="1")
+        FoodTeamMember.objects.create(team=team2, user=alice, house_number="1")
+        bob_on_2 = FoodTeamMember.objects.create(team=team2, user=bob, house_number="2")
+
+        broadcast = SwapBroadcast.objects.create(
+            requester=bob,
+            requester_membership=bob_on_2,
+            available_dates=[d1.isoformat()],
+            candidate_user_ids=[alice.id],
+            status=BroadcastStatus.OPEN,
+        )
+
+        api_client.force_authenticate(user=alice)
+        response = api_client.post(
+            reverse("food:swap-broadcast-accept", args=[broadcast.id]),
+            {"membership_id": alice_on_1.id},
+            format="json",
+        )
+        assert response.status_code == 400
+        assert "allerede mad" in str(response.data)
+
+    def test_normal_swap_still_works(self, api_client, cycle_with_two_teams, house, house2):
+        """Guard must not block the ordinary case."""
+        from apps.food.models import TeamSwapRequest
+
+        _cycle, team1, team2, _d1, _d2 = cycle_with_two_teams
+        alice, bob = self._people(house, house2)
+        alice_on_1 = FoodTeamMember.objects.create(team=team1, user=alice, house_number="1")
+        bob_on_2 = FoodTeamMember.objects.create(team=team2, user=bob, house_number="2")
+
+        api_client.force_authenticate(user=alice)
+        create = api_client.post(
+            reverse("food:swap-request-list"),
+            {
+                "requester_membership_id": alice_on_1.id,
+                "target_membership_id": bob_on_2.id,
+            },
+            format="json",
+        )
+        assert create.status_code == 201
+
+        swap = TeamSwapRequest.objects.latest("id")
+        api_client.force_authenticate(user=bob)
+        accept = api_client.post(
+            reverse("food:swap-request-respond", args=[swap.id]),
+            {"action": "accept"},
+            format="json",
+        )
+        assert accept.status_code == 200
+        alice_on_1.refresh_from_db()
+        bob_on_2.refresh_from_db()
+        assert alice_on_1.user == bob
+        assert bob_on_2.user == alice

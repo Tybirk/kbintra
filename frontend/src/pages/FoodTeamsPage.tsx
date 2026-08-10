@@ -103,6 +103,10 @@ export default function FoodTeamsPage() {
 
   const { user } = useAuthStore()
 
+  // Matches the backend IsFoodAdmin permission (is_staff OR is_food_admin) —
+  // the food admin who runs the rotation is usually not a Django superuser.
+  const canFoodAdmin = !!(user?.is_staff || user?.is_food_admin)
+
   // Path-based tab state
 
   const validTabs = [
@@ -243,7 +247,7 @@ export default function FoodTeamsPage() {
           <Tabs.Tab value="profil" leftSection={<IconUser size={16} />}>
             Min profil
           </Tabs.Tab>
-          {user?.is_staff && (
+          {canFoodAdmin && (
             <Tabs.Tab value="admin" leftSection={<IconSettings size={16} />}>
               Admin
             </Tabs.Tab>
@@ -372,7 +376,7 @@ export default function FoodTeamsPage() {
           )}
         </Tabs.Panel>
 
-        {user?.is_staff && (
+        {canFoodAdmin && (
           <Tabs.Panel value="admin">
             <AdminPanel />
           </Tabs.Panel>

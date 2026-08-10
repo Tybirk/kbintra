@@ -1039,6 +1039,14 @@ class RespondSwapRequestView(APIView):
             requester_membership = swap_request.requester_membership
             target_membership = swap_request.target_membership
 
+            # Re-check inside the transaction: memberships may have moved via a
+            # takeover or another swap since this request was created.
+            from .utils import membership_swap_conflict
+
+            conflict = membership_swap_conflict(requester_membership, target_membership)
+            if conflict:
+                return Response({"detail": conflict}, status=status.HTTP_400_BAD_REQUEST)
+
             # Swap the users between teams
             requester_user = requester_membership.user
             requester_house = requester_membership.house_number
@@ -2352,6 +2360,12 @@ class AcceptSwapBroadcastView(APIView):
                     {"detail": "Anmodningen er allerede afsluttet."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+
+            from .utils import membership_swap_conflict
+
+            conflict = membership_swap_conflict(requester_membership, my_membership)
+            if conflict:
+                return Response({"detail": conflict}, status=status.HTTP_400_BAD_REQUEST)
 
             r_user, r_house = requester_membership.user, requester_membership.house_number
             m_user, m_house = my_membership.user, my_membership.house_number

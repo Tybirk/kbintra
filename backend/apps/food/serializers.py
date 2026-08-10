@@ -628,6 +628,21 @@ class CreateSwapRequestSerializer(serializers.Serializer):
                 "You already have a pending swap request for this combination."
             )
 
+        # Don't let someone create a request that could never be accepted (it
+        # would double-book one of them on a team). The accept path re-checks,
+        # since memberships move via takeovers in the meantime.
+        from .utils import membership_swap_conflict
+
+        memberships = FoodTeamMember.objects.select_related("team").in_bulk(
+            [attrs["requester_membership_id"], attrs["target_membership_id"]]
+        )
+        conflict = membership_swap_conflict(
+            memberships[attrs["requester_membership_id"]],
+            memberships[attrs["target_membership_id"]],
+        )
+        if conflict:
+            raise serializers.ValidationError(conflict)
+
         return attrs
 
     def create(self, validated_data: dict) -> TeamSwapRequest:
