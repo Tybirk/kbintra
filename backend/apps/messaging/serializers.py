@@ -247,7 +247,7 @@ class CreateConversationSerializer(serializers.Serializer):
     participant_ids = serializers.ListField(
         child=serializers.IntegerField(),
         min_length=1,
-        max_length=10,
+        max_length=200,
     )
     initial_message = serializers.CharField(required=False, allow_blank=True)
     attachments = serializers.ListField(
@@ -265,7 +265,7 @@ class CreateConversationSerializer(serializers.Serializer):
     def validate_participant_ids(self, value: list) -> list:
         request = self.context.get("request")
         if request and request.user.id in value:
-            raise serializers.ValidationError("Cannot include yourself in participant_ids")
+            raise serializers.ValidationError("Du kan ikke tilføje dig selv som deltager.")
         # Verify all users exist
         existing_ids = set(User.objects.filter(id__in=value).values_list("id", flat=True))
         invalid_ids = set(value) - existing_ids
@@ -280,7 +280,7 @@ class AddParticipantsSerializer(serializers.Serializer):
     user_ids = serializers.ListField(
         child=serializers.IntegerField(),
         min_length=1,
-        max_length=10,
+        max_length=200,
     )
 
     def validate_user_ids(self, value: list) -> list:
@@ -323,7 +323,9 @@ class CreateMessageSerializer(serializers.ModelSerializer):
         content = attrs.get("content", "").strip()
         attachments = attrs.get("attachments", [])
         if not content and not attachments:
-            raise serializers.ValidationError("Message must have content or attachments.")
+            raise serializers.ValidationError(
+                "Beskeden skal indeholde tekst eller en vedhæftet fil."
+            )
 
         # Filter mentioned_user_ids to only include actual conversation participants
         mentioned_ids = attrs.get("mentioned_user_ids", [])

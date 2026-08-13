@@ -208,7 +208,7 @@ class PushSubscriptionView(APIView):
 
         if deleted_count == 0:
             return Response(
-                {"error": "Subscription not found"},
+                {"error": "Abonnementet blev ikke fundet."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
@@ -239,7 +239,7 @@ class TestPushNotificationView(APIView):
         if subscription_count == 0:
             return Response(
                 {
-                    "error": "No push subscriptions found for this user",
+                    "error": "Der er ikke registreret nogen push-abonnementer for din bruger.",
                     "subscription_count": 0,
                     "configured": True,
                 },

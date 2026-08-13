@@ -278,7 +278,7 @@ export default function NotificationPreferencesPage() {
       const error = err as { response?: { data?: { error?: string } } }
 
       setTestPushError(
-        error.response?.data?.error || "Failed to send test notification",
+        error.response?.data?.error || "Testnotifikationen kunne ikke sendes.",
       )
     } finally {
       setTestPushLoading(false)
@@ -310,7 +310,8 @@ export default function NotificationPreferencesPage() {
       const error = err as { response?: { data?: { error?: string } } }
 
       setTestPushError(
-        error.response?.data?.error || "Failed to schedule test notification",
+        error.response?.data?.error ||
+          "Testnotifikationen kunne ikke planlægges.",
       )
     } finally {
       setTestPushDelayedLoading(false)

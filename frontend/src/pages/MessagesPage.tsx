@@ -1483,18 +1483,20 @@ function ChatArea({
                 </UnstyledButton>
               </Popover.Target>
               <Popover.Dropdown>
-                <Stack gap="xs">
-                  {allParticipants.map((p) => (
-                    <Group key={p.id} gap="sm" wrap="nowrap">
-                      <Avatar src={p.profile_picture} radius="xl" size="sm">
-                        {p.first_name?.[0]}
-                      </Avatar>
-                      <Text size="sm">
-                        {p.first_name} {p.last_name}
-                      </Text>
-                    </Group>
-                  ))}
-                </Stack>
+                <ScrollArea.Autosize mah={320}>
+                  <Stack gap="xs">
+                    {allParticipants.map((p) => (
+                      <Group key={p.id} gap="sm" wrap="nowrap">
+                        <Avatar src={p.profile_picture} radius="xl" size="sm">
+                          {p.first_name?.[0]}
+                        </Avatar>
+                        <Text size="sm">
+                          {p.first_name} {p.last_name}
+                        </Text>
+                      </Group>
+                    ))}
+                  </Stack>
+                </ScrollArea.Autosize>
               </Popover.Dropdown>
             </Popover>
           </Group>

@@ -541,7 +541,7 @@ class TestGlobalSearchAPI:
         """Test that query parameter is required."""
         response = authenticated_client.get("/api/search/")
         assert response.status_code == 400
-        assert "Query must be at least 2 characters" in str(response.data)
+        assert "Søgningen skal være på mindst 2 tegn" in str(response.data)
 
     def test_search_min_query_length(self, authenticated_client):
         """Test minimum query length validation."""

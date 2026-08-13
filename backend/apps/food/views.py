@@ -653,12 +653,12 @@ class FoodTicketDetailView(generics.RetrieveDestroyAPIView):
         ticket = self.get_object()
         if ticket.house_id != request.user.house_id:
             return Response(
-                {"detail": "You can only delete your own house's tickets."},
+                {"detail": "Du kan kun slette dit eget hus' billetter."},
                 status=status.HTTP_403_FORBIDDEN,
             )
         if not ticket.is_available:
             return Response(
-                {"detail": "Cannot delete a claimed ticket."},
+                {"detail": "En købt billet kan ikke slettes."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         ticket.delete()
@@ -695,7 +695,7 @@ class ClaimTicketView(APIView):
 
             if ticket.date < timezone.now().date():
                 return Response(
-                    {"detail": "Cannot claim ticket for past dates."},
+                    {"detail": "Der kan ikke købes billet til datoer i fortiden."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -827,7 +827,7 @@ class ReleaseTicketView(APIView):
         if ticket.claimed_by != request.user and ticket.house_id != request.user.house_id:
             return Response(
                 {
-                    "detail": "You can only release tickets you claimed or that belong to your house."
+                    "detail": "Du kan kun frigive billetter, du har købt, eller som tilhører dit hus."
                 },
                 status=status.HTTP_403_FORBIDDEN,
             )
@@ -967,13 +967,13 @@ class SwapRequestDetailView(generics.RetrieveDestroyAPIView):
         # Only requester can cancel
         if swap_request.requester != request.user:
             return Response(
-                {"detail": "Only the requester can cancel a swap request."},
+                {"detail": "Kun afsenderen kan annullere en bytteanmodning."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
         if swap_request.status != SwapRequestStatus.PENDING:
             return Response(
-                {"detail": "Can only cancel pending requests."},
+                {"detail": "Kun afventende anmodninger kan annulleres."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -998,14 +998,14 @@ class RespondSwapRequestView(APIView):
             ).get(pk=pk)
         except TeamSwapRequest.DoesNotExist:
             return Response(
-                {"detail": "Swap request not found."},
+                {"detail": "Bytteanmodningen blev ikke fundet."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
         # Only target user can respond
         if swap_request.target_membership.user != request.user:
             return Response(
-                {"detail": "Only the target user can respond to this request."},
+                {"detail": "Kun modtageren kan svare på denne anmodning."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -1114,7 +1114,7 @@ class ActiveCycleView(APIView):
 
         if not cycle:
             return Response(
-                {"detail": "No active or upcoming cycle found."},
+                {"detail": "Der blev ikke fundet en aktiv eller kommende periode."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
@@ -1135,7 +1135,7 @@ class MyWishView(APIView):
             cycle = FoodTeamCycle.objects.get(id=cycle_id)
         except FoodTeamCycle.DoesNotExist:
             return Response(
-                {"detail": "Cycle not found."},
+                {"detail": "Perioden blev ikke fundet."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
@@ -1145,7 +1145,7 @@ class MyWishView(APIView):
             return Response(serializer.data)
         except FoodTeamWish.DoesNotExist:
             return Response(
-                {"detail": "No wish submitted for this cycle."},
+                {"detail": "Der er ikke indsendt ønsker for denne periode."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
@@ -1154,7 +1154,7 @@ class MyWishView(APIView):
             cycle = FoodTeamCycle.objects.get(id=cycle_id)
         except FoodTeamCycle.DoesNotExist:
             return Response(
-                {"detail": "Cycle not found."},
+                {"detail": "Perioden blev ikke fundet."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
@@ -1209,7 +1209,7 @@ class GenerateTeamsView(APIView):
             cycle = FoodTeamCycle.objects.get(id=cycle_id)
         except FoodTeamCycle.DoesNotExist:
             return Response(
-                {"detail": "Cycle not found."},
+                {"detail": "Perioden blev ikke fundet."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
@@ -1587,7 +1587,7 @@ class DriveMenuView(APIView):
                 week_number = int(week_number)
             except ValueError:
                 return Response(
-                    {"detail": "Invalid week number."},
+                    {"detail": "Ugyldigt ugenummer."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -1596,7 +1596,7 @@ class DriveMenuView(APIView):
                 year = int(year)
             except ValueError:
                 return Response(
-                    {"detail": "Invalid year."},
+                    {"detail": "Ugyldigt årstal."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -1614,7 +1614,7 @@ class DriveMenuView(APIView):
                 return Response(DriveMenuCacheSerializer(menu).data)
             else:
                 return Response(
-                    {"detail": "No menu found for this week."},
+                    {"detail": "Der blev ikke fundet en menu for denne uge."},
                     status=status.HTTP_404_NOT_FOUND,
                 )
         except ValueError as e:
@@ -1625,7 +1625,7 @@ class DriveMenuView(APIView):
         except Exception:
             logger.exception("Error fetching menu")
             return Response(
-                {"detail": "Error fetching menu. Please try again later."},
+                {"detail": "Kunne ikke hente menuen. Prøv igen senere."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1646,7 +1646,7 @@ class DriveMenuView(APIView):
                     return Response(DriveMenuCacheSerializer(menu).data)
                 else:
                     return Response(
-                        {"detail": "No menu found for this week."},
+                        {"detail": "Der blev ikke fundet en menu for denne uge."},
                         status=status.HTTP_404_NOT_FOUND,
                     )
             else:
@@ -1656,7 +1656,7 @@ class DriveMenuView(APIView):
                     return Response(DriveMenuCacheSerializer(menu).data)
                 else:
                     return Response(
-                        {"detail": "No menu found for current week."},
+                        {"detail": "Der blev ikke fundet en menu for den aktuelle uge."},
                         status=status.HTTP_404_NOT_FOUND,
                     )
         except ValueError as e:
@@ -1667,7 +1667,7 @@ class DriveMenuView(APIView):
         except Exception:
             logger.exception("Error refreshing menu")
             return Response(
-                {"detail": "Error refreshing menu. Please try again later."},
+                {"detail": "Kunne ikke opdatere menuen. Prøv igen senere."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
