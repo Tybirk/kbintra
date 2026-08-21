@@ -5,6 +5,7 @@ Tests for the Users app.
 from datetime import timedelta
 
 import pytest
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.users.models import EmailChangeToken, Invitation, PasswordResetToken, User
@@ -58,6 +59,29 @@ class TestUserModel:
         )
         assert admin.is_staff is True
         assert admin.is_superuser is True
+
+    def test_email_is_stored_lowercased(self, db):
+        """Test that a capitalised address is normalised on the way in."""
+        created = User.objects.create_user(email="Anna@Example.COM", password="pass12345")
+        assert created.email == "anna@example.com"
+        assert User.objects.get(pk=created.pk).email == "anna@example.com"
+
+    def test_email_whitespace_is_stripped(self, db):
+        """Test that a pasted address with stray whitespace is trimmed."""
+        created = User.objects.create_user(email="  bo@example.com  ", password="pass12345")
+        assert created.email == "bo@example.com"
+
+    def test_email_is_normalised_when_changed_later(self, user):
+        """Test that the normalisation also covers updates, not just creation."""
+        user.email = "Changed@Example.com"
+        user.save(update_fields=["email"])
+        user.refresh_from_db()
+        assert user.email == "changed@example.com"
+
+    def test_case_variant_email_cannot_be_created(self, user):
+        """Test that normalisation makes `unique=True` reject case variants."""
+        with pytest.raises(IntegrityError), transaction.atomic():
+            User.objects.create_user(email="TEST@Example.com", password="pass12345")
 
 
 class TestInvitationModel:
@@ -354,6 +378,68 @@ class TestRegisterAPI:
             format="json",
         )
         assert response.status_code == 400
+
+
+class TestLoginAPI:
+    """Tests for the token (login) API endpoint."""
+
+    def test_login_with_exact_email(self, api_client, user):
+        """Test logging in with the address exactly as stored."""
+        response = api_client.post(
+            "/api/auth/token/",
+            {"email": user.email, "password": "testpass123"},
+            format="json",
+        )
+        assert response.status_code == 200
+        assert "access" in response.json()
+
+    def test_login_with_capitalised_email(self, api_client, user):
+        """Test that a capitalised address still logs in (phone keyboards)."""
+        response = api_client.post(
+            "/api/auth/token/",
+            {"email": "Test@Example.com", "password": "testpass123"},
+            format="json",
+        )
+        assert response.status_code == 200
+        assert "access" in response.json()
+
+    def test_login_with_surrounding_whitespace(self, api_client, user):
+        """Test that a pasted address with stray whitespace still logs in."""
+        response = api_client.post(
+            "/api/auth/token/",
+            {"email": "  test@example.com  ", "password": "testpass123"},
+            format="json",
+        )
+        assert response.status_code == 200
+
+    def test_login_with_wrong_password_still_fails(self, api_client, user):
+        """Test that case-insensitivity does not weaken the password check."""
+        response = api_client.post(
+            "/api/auth/token/",
+            {"email": "TEST@EXAMPLE.COM", "password": "wrongpass"},
+            format="json",
+        )
+        assert response.status_code == 401
+
+    def test_login_with_unknown_email_fails(self, api_client, db):
+        """Test that an unregistered address is rejected."""
+        response = api_client.post(
+            "/api/auth/token/",
+            {"email": "nobody@example.com", "password": "testpass123"},
+            format="json",
+        )
+        assert response.status_code == 401
+
+    def test_inactive_user_cannot_log_in(self, api_client, user):
+        """Test that a deactivated member is still refused."""
+        user.is_active = False
+        user.save(update_fields=["is_active"])
+        response = api_client.post(
+            "/api/auth/token/",
+            {"email": "Test@example.com", "password": "testpass123"},
+            format="json",
+        )
+        assert response.status_code == 401
 
 
 class TestChangePasswordAPI:

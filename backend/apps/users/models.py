@@ -197,6 +197,21 @@ class User(AbstractUser):
     def __str__(self) -> str:
         return self.get_full_name() or self.email
 
+    def save(self, *args: object, **kwargs: object) -> None:
+        """Store the email address in canonical (stripped, lowercased) form.
+
+        Email addresses are case-insensitive in practice, and phone keyboards
+        routinely capitalise the first letter of one. Normalising here rather
+        than in each serializer covers the admin and the management commands
+        too, and it makes the `unique=True` on the column mean what it looks
+        like it means: SQLite compares text with a binary collation, so without
+        this it would happily store both `anna@example.com` and
+        `Anna@example.com` as separate members.
+        """
+        if self.email:
+            self.email = self.email.strip().lower()
+        super().save(*args, **kwargs)
+
     def get_full_name(self) -> str:
         """Return the first_name plus the last_name, with a space in between."""
         full_name = f"{self.first_name} {self.last_name}".strip()
