@@ -102,6 +102,7 @@ urlpatterns = [
     path("api/bookings/", include("apps.bookings.urls")),
     path("api/links/", include("apps.links.urls")),
     path("api/expenses/", include("apps.expenses.urls")),
+    path("api/carsharing/", include("apps.carsharing.urls")),
 ]
 
 # Serve media files with S3 fallback (restores missing files from backup)

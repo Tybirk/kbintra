@@ -411,7 +411,7 @@ class AddParticipantsView(APIView):
 
         if not new_user_ids:
             return Response(
-                {"detail": "All specified users are already participants"},
+                {"detail": "De valgte personer er allerede deltagere i samtalen."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

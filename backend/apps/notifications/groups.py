@@ -119,4 +119,15 @@ NOTIFICATION_GROUPS: list[dict] = [
             },
         ],
     },
+    {
+        "key": "car_sharing",
+        "label": "Bildeling",
+        "fields": [
+            {
+                "key": "car_sharing",
+                "label": "Bildeling",
+                "description": "Få besked når nogen vil låne din bil, eller der er nyt om et lån",
+            },
+        ],
+    },
 ]

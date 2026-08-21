@@ -470,9 +470,9 @@ class PollCreateSerializer(serializers.Serializer):
 
     def validate_options(self, value: list) -> list:
         if len(value) < 2:
-            raise serializers.ValidationError("A poll must have at least 2 options.")
+            raise serializers.ValidationError("En afstemning skal have mindst 2 valgmuligheder.")
         if len(value) > 20:
-            raise serializers.ValidationError("A poll can have at most 20 options.")
+            raise serializers.ValidationError("En afstemning kan højst have 20 valgmuligheder.")
         return value
 
 

@@ -173,6 +173,19 @@ class User(AbstractUser):
         help_text="Hide closed threads from subgroup thread lists",
     )
 
+    # Which version of the bildeling loan terms this resident accepted as a
+    # borrower. The owner's side of the same agreement lives on houses.Car; this
+    # is the borrower's, and it is asked for once rather than at every request.
+    # Stored as the version, not a boolean, so new terms ask again instead of
+    # silently carrying an agreement to text nobody saw.
+    carsharing_terms_accepted_version = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        help_text="Version of the car sharing loan terms accepted as a borrower",
+    )
+    carsharing_terms_accepted_at = models.DateTimeField(null=True, blank=True)
+
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS: list[str] = []
 

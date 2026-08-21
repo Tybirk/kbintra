@@ -85,6 +85,7 @@ const EventFormPage = lazy(() => import("./pages/EventFormPage"))
 const BookingsPage = lazy(() => import("./pages/BookingsPage"))
 
 const ExpensesPage = lazy(() => import("./pages/ExpensesPage"))
+const CarSharingPage = lazy(() => import("./pages/CarSharingPage"))
 
 const NotificationPreferencesPage = lazy(
   () => import("./pages/NotificationPreferencesPage"),
@@ -613,6 +614,30 @@ const AuthenticatedRoutes = memo(function AuthenticatedRoutes() {
             <ProtectedRoute>
               <ErrorBoundary>
                 <ExpensesPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Bildeling */}
+        <Route
+          path="/bildeling"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <CarSharingPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Bildeling — dybt link fra notifikationer */}
+        <Route
+          path="/bildeling/laan/:id"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <CarSharingPage />
               </ErrorBoundary>
             </ProtectedRoute>
           }

@@ -29,7 +29,39 @@ export interface CreateCarData {
   is_electric?: boolean
 }
 
-export interface UpdateCarData {
+/** Bildeling attributes, editable from "Mine biler". */
+export interface CarSharingFields {
+  is_shared?: boolean
+
+  rate_per_km?: string | null
+
+  make?: string
+
+  model_name?: string
+
+  color?: string
+
+  year?: number | null
+
+  seats?: number | null
+
+  has_tow_hitch?: boolean
+
+  has_isofix?: boolean
+
+  dogs_allowed?: boolean
+
+  has_charge_fob?: boolean
+
+  equipment_note?: string
+
+  practical_note?: string
+
+  /** Ticking this records acceptance of the terms currently in force. */
+  accept_terms?: boolean
+}
+
+export interface UpdateCarData extends CarSharingFields {
   license_plate?: string
 
   is_electric?: boolean

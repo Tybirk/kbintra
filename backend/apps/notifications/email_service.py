@@ -38,6 +38,8 @@ EMAIL_SUBJECT_PREFIX: dict[str, str] = {
     NotificationType.EVENT_REMINDER: "[Kalender]",
     NotificationType.MENTION: "[Omtale]",
     NotificationType.EXPENSE_PROCESSED: "[Udlæg]",
+    NotificationType.CAR_LOAN_REQUEST: "[Bildeling]",
+    NotificationType.CAR_LOAN_UPDATE: "[Bildeling]",
 }
 
 
@@ -46,7 +48,12 @@ def should_send_email(user: User, notification_type: NotificationType) -> bool:
     try:
         prefs = user.notification_preferences
     except NotificationPreference.DoesNotExist:
-        return False
+        # No row is not the same as opting out. The row is only created lazily by
+        # the settings endpoint, so every resident who never opened that page got
+        # no email from any part of the app — 14 of them at the time of writing,
+        # silently, because the task still ran and simply sent nothing. Fall back
+        # to the model's own defaults, which is what the in-app path already does.
+        prefs = NotificationPreference(user=user)
 
     preference_map = {
         NotificationType.NEW_MESSAGE: prefs.email_messages,
@@ -68,6 +75,8 @@ def should_send_email(user: User, notification_type: NotificationType) -> bool:
         NotificationType.FOOD_TEAM_LEFTOVERS_READY: prefs.email_food_leftovers_ready,
         NotificationType.FOOD_TEAM_SWAP_REQUEST: prefs.email_food_swap_request,
         NotificationType.MENTION: prefs.email_mentions,
+        NotificationType.CAR_LOAN_REQUEST: prefs.email_car_sharing,
+        NotificationType.CAR_LOAN_UPDATE: prefs.email_car_sharing,
     }
 
     # Expense outcomes have no dedicated email toggle — they piggyback on

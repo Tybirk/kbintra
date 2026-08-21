@@ -43,6 +43,7 @@ import {
   IconMailOpened,
   IconEdit,
   IconReceipt2,
+  IconCar,
 } from "@tabler/icons-react"
 
 import dayjs from "dayjs"
@@ -103,6 +104,10 @@ const notificationIcons: Record<NotificationType, React.ReactNode> = {
   announcement_edited_by_admin: <IconEdit size={20} />,
 
   expense_processed: <IconReceipt2 size={20} />,
+
+  car_loan_request: <IconCar size={20} />,
+
+  car_loan_update: <IconCar size={20} />,
 }
 
 const notificationColors: Record<NotificationType, string> = {
@@ -155,6 +160,10 @@ const notificationColors: Record<NotificationType, string> = {
   announcement_edited_by_admin: "orange",
 
   expense_processed: "teal",
+
+  car_loan_request: "grape",
+
+  car_loan_update: "grape",
 }
 
 export default function NotificationsPage() {
@@ -499,7 +508,10 @@ function NotificationCard({
                 </Badge>
               )}
             </Group>
-            <Text size="sm" c="dimmed" lineClamp={3}>
+            {/* Four, not three: at three lines a settlement notification lost
+                its damage note entirely and a bildeling request was cut at
+                "Du er en af 2 spurgt…". */}
+            <Text size="sm" c="dimmed" lineClamp={4}>
               {notification.message}
             </Text>
             <Text size="xs" c="dimmed" mt={4}>

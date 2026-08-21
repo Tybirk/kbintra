@@ -8,6 +8,7 @@ import {
   IconHome,
   IconMessageCircle,
   IconCalendar,
+  IconCar,
   IconSoup,
   IconSpeakerphone,
   IconUsers,
@@ -27,6 +28,8 @@ import { messagingApi } from "../api/messaging"
 import { notificationsApi } from "../api/notifications"
 
 import { useAuthStore } from "../store/authStore"
+
+import { isTestEnvironment } from "../utils/environment"
 
 interface NavItem {
   icon: typeof IconHome
@@ -77,23 +80,17 @@ const navItems: NavItem[] = [
 
   { icon: IconDoor, label: "Bookingkalender", path: "/booking" },
 
+  { icon: IconCar, label: "Bildeling", path: "/bildeling" },
+
   { icon: IconReceipt2, label: "Udlæg", path: "/udlaeg" },
 
   { icon: IconLink, label: "Nyttige links", path: "/links" },
 ]
 
-// The Udlæg feature is still being trialled, so only expose its nav entry on
-// local dev and the test site (kbintra.top) for now.
-function isExpensesNavVisible(): boolean {
-  if (typeof window === "undefined") return false
-  const host = window.location.hostname
-  return (
-    host === "localhost" ||
-    host === "127.0.0.1" ||
-    host === "kbintra.top" ||
-    host.endsWith(".kbintra.top")
-  )
-}
+// Features still being trialled: shown on local dev and the test site, kept off
+// the real site until we are happy with them. Only the nav entry is hidden — the
+// route and the API stay open, so this is discovery-hiding, not access control.
+const TRIAL_ONLY_PATHS = ["/udlaeg"]
 
 interface AppNavbarProps {
   onNavigate?: () => void
@@ -168,7 +165,7 @@ export default function AppNavbar({ onNavigate }: AppNavbarProps) {
   }
 
   const visibleNavItems = navItems.filter(
-    (item) => item.path !== "/udlaeg" || isExpensesNavVisible(),
+    (item) => !TRIAL_ONLY_PATHS.includes(item.path) || isTestEnvironment(),
   )
 
   return (

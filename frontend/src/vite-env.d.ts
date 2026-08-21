@@ -10,6 +10,9 @@ interface ImportMetaEnv {
   readonly VITE_SENTRY_ENVIRONMENT: string | undefined
 
   readonly VITE_GIPHY_API_KEY: string | undefined
+
+  // Backend port for the dev WebSocket URL; defaults to 7000 (see dev.py)
+  readonly VITE_BACKEND_PORT: string | undefined
 }
 
 interface ImportMeta {

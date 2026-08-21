@@ -198,6 +198,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 )
             )
 
+    async def car_sharing_update(self, event):
+        """Tell the client that car sharing data changed, so it refetches.
+
+        Intentionally payload-free — see apps/carsharing/realtime.py.
+        """
+        await self.send(json.dumps({"type": "car_sharing_update"}))
+
     async def user_typing(self, event):
         """Send typing indicator."""
         # Don't send to the typer themselves

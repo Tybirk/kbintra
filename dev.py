@@ -8,6 +8,7 @@ Usage:
     uv run dev.py
 """
 
+import os
 import signal
 import subprocess
 import sys
@@ -17,6 +18,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 BACKEND = ROOT / "backend"
 FRONTEND = ROOT / "frontend"
+
+# Overridable so a second checkout (e.g. a git worktree) can run alongside the default one.
+BACKEND_PORT = os.getenv("BACKEND_PORT", "7000")
+FRONTEND_PORT = os.getenv("FRONTEND_PORT", "5173")
 
 BOLD = "\033[1m"
 RESET = "\033[0m"
@@ -32,8 +37,8 @@ def prefix_stream(stream, prefix: str) -> None:
 
 def main() -> None:
     print(f"{BOLD}KB Intra — Dev Servers{RESET}\n")
-    print("  Backend:  http://localhost:7000")
-    print("  Frontend: http://localhost:5173")
+    print(f"  Backend:  http://localhost:{BACKEND_PORT}")
+    print(f"  Frontend: http://localhost:{FRONTEND_PORT}")
     print("  Press Ctrl+C to stop\n")
 
     backend_prefix = f"{BLUE}[backend]{RESET}  "
@@ -49,7 +54,7 @@ def main() -> None:
             "-b",
             "0.0.0.0",
             "-p",
-            "7000",
+            BACKEND_PORT,
             "config.asgi:application",
         ],
         cwd=BACKEND,
@@ -66,6 +71,11 @@ def main() -> None:
         stderr=subprocess.STDOUT,
         text=True,
         shell=_shell,
+        env={
+            **os.environ,
+            "VITE_DEV_PORT": FRONTEND_PORT,
+            "VITE_BACKEND_PORT": BACKEND_PORT,
+        },
     )
 
     procs = [backend, frontend]

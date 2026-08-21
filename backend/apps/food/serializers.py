@@ -209,7 +209,7 @@ class MealRegistrationCreateUpdateSerializer(serializers.ModelSerializer):
     def validate_date(self, value: date) -> date:
         # Only allow Mon-Thu
         if value.weekday() > 3:
-            raise serializers.ValidationError("Meals are only served Monday through Thursday.")
+            raise serializers.ValidationError("Der serveres kun mad mandag til torsdag.")
         from .utils import is_closed_food_day
 
         if is_closed_food_day(value):
@@ -329,14 +329,14 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
     def validate_date(self, value: date) -> date:
         # Only allow Mon-Thu
         if value.weekday() > 3:
-            raise serializers.ValidationError("Meals are only served Monday through Thursday.")
+            raise serializers.ValidationError("Der serveres kun mad mandag til torsdag.")
         from .utils import is_closed_food_day
 
         if is_closed_food_day(value):
             raise serializers.ValidationError("Denne dag er lukket for fællesspisning.")
         # Don't allow past dates
         if value < timezone.now().date():
-            raise serializers.ValidationError("Cannot create ticket for past dates.")
+            raise serializers.ValidationError("Der kan ikke oprettes billet til datoer i fortiden.")
 
         # Don't allow selling tickets after the cutoff time on the meal day
         now = timezone.now()
@@ -602,10 +602,10 @@ class CreateSwapRequestSerializer(serializers.Serializer):
         try:
             membership = FoodTeamMember.objects.get(id=value)
         except FoodTeamMember.DoesNotExist as e:
-            raise serializers.ValidationError("Membership does not exist.") from e
+            raise serializers.ValidationError("Medlemskabet findes ikke.") from e
 
         if membership.user_id != request.user.id:
-            raise serializers.ValidationError("You can only swap your own team memberships.")
+            raise serializers.ValidationError("Du kan kun bytte dine egne holdmedlemskaber.")
 
         return value
 
@@ -613,11 +613,11 @@ class CreateSwapRequestSerializer(serializers.Serializer):
         try:
             membership = FoodTeamMember.objects.get(id=value)
         except FoodTeamMember.DoesNotExist as e:
-            raise serializers.ValidationError("Target membership does not exist.") from e
+            raise serializers.ValidationError("Det valgte medlemskab findes ikke.") from e
 
         request = self.context.get("request")
         if membership.user_id == request.user.id:
-            raise serializers.ValidationError("You cannot swap with yourself.")
+            raise serializers.ValidationError("Du kan ikke bytte med dig selv.")
 
         return value
 
@@ -772,7 +772,7 @@ class FoodTeamWishCreateUpdateSerializer(serializers.ModelSerializer):
 
     def validate_cycle(self, value: FoodTeamCycle) -> FoodTeamCycle:
         if not value.is_accepting_wishes:
-            raise serializers.ValidationError("This cycle is no longer accepting wishes.")
+            raise serializers.ValidationError("Perioden tager ikke længere imod ønsker.")
         return value
 
     def validate_available_dates(self, value: list) -> list:
@@ -784,7 +784,7 @@ class FoodTeamWishCreateUpdateSerializer(serializers.ModelSerializer):
                     date.fromisoformat(d)
                     validated.append(d)
                 except ValueError as e:
-                    raise serializers.ValidationError(f"Invalid date format: {d}") from e
+                    raise serializers.ValidationError(f"Ugyldigt datoformat: {d}") from e
             elif isinstance(d, date):
                 validated.append(d.isoformat())
 
@@ -828,7 +828,7 @@ class GenerateTeamsSerializer(serializers.Serializer):
         try:
             cycle = FoodTeamCycle.objects.get(id=value)
         except FoodTeamCycle.DoesNotExist as e:
-            raise serializers.ValidationError("Cycle not found.") from e
+            raise serializers.ValidationError("Perioden blev ikke fundet.") from e
 
         if cycle.status == CycleStatus.FINALIZED:
             raise serializers.ValidationError(

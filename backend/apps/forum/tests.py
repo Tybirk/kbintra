@@ -258,7 +258,7 @@ class TestSubscriptionViews:
         """Test subscribing to a subgroup."""
         response = authenticated_client.post(f"/api/forum/subgroups/{subgroup.slug}/subscribe/")
         assert response.status_code == 201
-        assert "subscribed" in response.data["detail"].lower()
+        assert "følger nu" in response.data["detail"].lower()
 
     def test_subscribe_already_subscribed(
         self, authenticated_client, subgroup, subgroup_subscription
@@ -266,19 +266,19 @@ class TestSubscriptionViews:
         """Test subscribing when already subscribed."""
         response = authenticated_client.post(f"/api/forum/subgroups/{subgroup.slug}/subscribe/")
         assert response.status_code == 200
-        assert "already" in response.data["detail"].lower()
+        assert "allerede" in response.data["detail"].lower()
 
     def test_unsubscribe_from_subgroup(self, authenticated_client, subgroup, subgroup_subscription):
         """Test unsubscribing from a subgroup."""
         response = authenticated_client.post(f"/api/forum/subgroups/{subgroup.slug}/unsubscribe/")
         assert response.status_code == 200
-        assert "unsubscribed" in response.data["detail"].lower()
+        assert "ikke længere" in response.data["detail"].lower()
 
     def test_unsubscribe_not_subscribed(self, authenticated_client, subgroup):
         """Test unsubscribing when not subscribed."""
         response = authenticated_client.post(f"/api/forum/subgroups/{subgroup.slug}/unsubscribe/")
         assert response.status_code == 200
-        assert "not subscribed" in response.data["detail"].lower()
+        assert "følger ikke" in response.data["detail"].lower()
 
     def test_get_my_subscriptions(self, authenticated_client, subgroup_subscription):
         """Test getting user's subscriptions."""
@@ -962,7 +962,7 @@ class TestFileMoveViews:
             {"folder_id": other_folder.id},
         )
         assert response.status_code == 400
-        assert "different subgroup" in response.data["detail"].lower()
+        assert "anden gruppe" in response.data["detail"].lower()
 
 
 # =============================================================================
