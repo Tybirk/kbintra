@@ -17,6 +17,7 @@ from .views import (
     DriveMenuRefreshAllView,
     DriveMenuView,
     FavourListView,
+    FavourRepayOptionsView,
     FavourSettleView,
     FoodRosterDetailView,
     FoodRosterListView,
@@ -115,6 +116,11 @@ urlpatterns = [
     # Favours ("you owe me one")
     path("favours/", FavourListView.as_view(), name="favour-list"),
     path("favours/<int:pk>/settle/", FavourSettleView.as_view(), name="favour-settle"),
+    path(
+        "favours/<int:pk>/repay-options/",
+        FavourRepayOptionsView.as_view(),
+        name="favour-repay-options",
+    ),
     # Personal food-team profile (self-service)
     path("my-food-profile/", MyFoodProfileView.as_view(), name="my-food-profile"),
     # Admin roster

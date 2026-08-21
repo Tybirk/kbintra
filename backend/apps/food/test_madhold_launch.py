@@ -1100,3 +1100,166 @@ class TestBalanceTeamSizes:
         assert len(generator.date_to_persons[d1]) == 7
         assert len(generator.date_to_persons[d2]) == 5
         assert any("udjævne" in w for w in generator.warnings)
+
+
+# =============================================================================
+# Takeover as repayment: working a favour off instead of minting a new one
+# =============================================================================
+
+
+@pytest.mark.django_db
+class TestTakeoverSettlesADebt:
+    def _owe(self, debtor, creditor, cycle, origin):
+        return TeamFavour.objects.create(
+            creditor=creditor, debtor=debtor, cycle=cycle, origin_date=origin
+        )
+
+    def test_taking_a_day_from_someone_you_owe_clears_the_debt(
+        self, api_client, house, house2, cycle_with_two_teams
+    ):
+        cycle, team1, team2, d1, _d2 = cycle_with_two_teams
+        me = User.objects.create_user(
+            email="debtor@example.com", password="x", first_name="Skyldner", house=house
+        )
+        them = User.objects.create_user(
+            email="creditor@example.com", password="x", first_name="Kreditor", house=house2
+        )
+        their_shift = FoodTeamMember.objects.create(team=team1, user=them, house_number="2")
+        favour = self._owe(me, them, cycle, d1)
+
+        api_client.force_authenticate(user=me)
+        response = api_client.post(
+            reverse("food:team-takeover"),
+            {"target_membership_id": their_shift.id, "settle_favour_id": favour.id},
+            format="json",
+        )
+
+        assert response.status_code == 201, response.data
+        favour.refresh_from_db()
+        assert favour.settled is True
+        assert favour.settled_at is not None
+        # The shift moved, and no new debt was created in the taker's name.
+        their_shift.refresh_from_db()
+        assert their_shift.user_id == me.id
+        assert TeamFavour.objects.filter(creditor=me).count() == 0
+
+    def test_a_plain_takeover_still_creates_a_favour(
+        self, api_client, house, house2, cycle_with_two_teams
+    ):
+        _cycle, team1, _team2, _d1, _d2 = cycle_with_two_teams
+        me = User.objects.create_user(
+            email="taker@example.com", password="x", first_name="Tager", house=house
+        )
+        them = User.objects.create_user(
+            email="freed@example.com", password="x", first_name="Fritaget", house=house2
+        )
+        their_shift = FoodTeamMember.objects.create(team=team1, user=them, house_number="2")
+
+        api_client.force_authenticate(user=me)
+        response = api_client.post(
+            reverse("food:team-takeover"), {"target_membership_id": their_shift.id}, format="json"
+        )
+
+        assert response.status_code == 201
+        assert TeamFavour.objects.filter(creditor=me, debtor=them, settled=False).count() == 1
+
+    def test_you_cannot_settle_a_debt_against_the_wrong_person(
+        self, api_client, house, house2, cycle_with_two_teams
+    ):
+        """Cooking for Anna does not clear what you owe Bo."""
+        cycle, team1, _team2, d1, _d2 = cycle_with_two_teams
+        me = User.objects.create_user(
+            email="me2@example.com", password="x", first_name="Mig", house=house
+        )
+        anna = User.objects.create_user(
+            email="anna@example.com", password="x", first_name="Anna", house=house2
+        )
+        bo = User.objects.create_user(
+            email="bo@example.com", password="x", first_name="Bo", house=house2
+        )
+        annas_shift = FoodTeamMember.objects.create(team=team1, user=anna, house_number="2")
+        owed_to_bo = self._owe(me, bo, cycle, d1)
+
+        api_client.force_authenticate(user=me)
+        response = api_client.post(
+            reverse("food:team-takeover"),
+            {"target_membership_id": annas_shift.id, "settle_favour_id": owed_to_bo.id},
+            format="json",
+        )
+
+        assert response.status_code == 400
+        owed_to_bo.refresh_from_db()
+        assert owed_to_bo.settled is False
+        # The shift must not have moved either.
+        annas_shift.refresh_from_db()
+        assert annas_shift.user_id == anna.id
+
+    def test_you_cannot_settle_a_debt_that_is_not_yours(
+        self, api_client, house, house2, cycle_with_two_teams
+    ):
+        cycle, team1, _team2, d1, _d2 = cycle_with_two_teams
+        me = User.objects.create_user(
+            email="bystander@example.com", password="x", first_name="Tilskuer", house=house
+        )
+        them = User.objects.create_user(
+            email="owed@example.com", password="x", first_name="Ejer", house=house2
+        )
+        other = User.objects.create_user(
+            email="other@example.com", password="x", first_name="Anden", house=house
+        )
+        their_shift = FoodTeamMember.objects.create(team=team1, user=them, house_number="2")
+        someone_elses_debt = self._owe(other, them, cycle, d1)
+
+        api_client.force_authenticate(user=me)
+        response = api_client.post(
+            reverse("food:team-takeover"),
+            {"target_membership_id": their_shift.id, "settle_favour_id": someone_elses_debt.id},
+            format="json",
+        )
+
+        assert response.status_code == 400
+        someone_elses_debt.refresh_from_db()
+        assert someone_elses_debt.settled is False
+
+
+@pytest.mark.django_db
+class TestFavourRepayOptions:
+    def test_it_lists_the_creditors_upcoming_days(
+        self, api_client, house, house2, cycle_with_two_teams
+    ):
+        cycle, team1, team2, d1, d2 = cycle_with_two_teams
+        me = User.objects.create_user(
+            email="owes@example.com", password="x", first_name="Skylder", house=house
+        )
+        them = User.objects.create_user(
+            email="isowed@example.com", password="x", first_name="Tilgode", house=house2
+        )
+        FoodTeamMember.objects.create(team=team1, user=them, house_number="2")
+        FoodTeamMember.objects.create(team=team2, user=them, house_number="2")
+        # A day I already cook is not an option — it would double-book me.
+        FoodTeamMember.objects.create(team=team2, user=me, house_number="1")
+        favour = TeamFavour.objects.create(creditor=them, debtor=me, cycle=cycle, origin_date=d1)
+
+        api_client.force_authenticate(user=me)
+        response = api_client.get(reverse("food:favour-repay-options", kwargs={"pk": favour.id}))
+
+        assert response.status_code == 200
+        assert [row["date"] for row in response.data] == [d1]
+
+    def test_only_the_debtor_may_ask(self, api_client, house, house2, cycle_with_two_teams):
+        cycle, _team1, _team2, d1, _d2 = cycle_with_two_teams
+        me = User.objects.create_user(
+            email="nosy@example.com", password="x", first_name="Nysgerrig", house=house
+        )
+        a = User.objects.create_user(
+            email="a2@example.com", password="x", first_name="A", house=house2
+        )
+        b = User.objects.create_user(
+            email="b2@example.com", password="x", first_name="B", house=house2
+        )
+        favour = TeamFavour.objects.create(creditor=a, debtor=b, cycle=cycle, origin_date=d1)
+
+        api_client.force_authenticate(user=me)
+        response = api_client.get(reverse("food:favour-repay-options", kwargs={"pk": favour.id}))
+
+        assert response.status_code == 403

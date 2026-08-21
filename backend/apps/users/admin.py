@@ -146,6 +146,23 @@ class UserAdmin(BaseUserAdmin):
                 ),
             },
         ),
+        (
+            "Food team",
+            {
+                "fields": (
+                    "can_be_head_chef",
+                    "is_over_50",
+                    "prefers_cooking_with_housemate",
+                    "is_exempt_from_food_teams",
+                    "default_cooking_days",
+                    "food_team_comment",
+                ),
+                "description": (
+                    "Residents write food_team_comment to the madhold organiser from "
+                    "their own profile page; this is where it can be read."
+                ),
+            },
+        ),
         ("Important dates", {"fields": ("last_login", "date_joined")}),
     )
 

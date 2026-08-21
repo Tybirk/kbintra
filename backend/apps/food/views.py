@@ -11,7 +11,7 @@ from django.db import transaction
 from django.db.models import Count, Q, QuerySet, Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
-from rest_framework import generics, permissions, status
+from rest_framework import generics, permissions, serializers, status
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -2316,13 +2316,31 @@ class TakeoverView(APIView):
             locked_membership.house_number = _house_number_for(request.user)  # ty: ignore[invalid-assignment]
             locked_membership.save()
 
-            favour = TeamFavour.objects.create(
-                creditor=request.user,
-                debtor=debtor,
-                cycle=team.cycle,
-                origin_date=team.date,
-                note=serializer.validated_data.get("note", ""),
-            )
+            settling: TeamFavour | None = serializer.context.get("settle_favour")
+            if settling is not None:
+                # Working off a debt: the shift moves, but the ledger goes down
+                # by one instead of up. Re-check the debtor inside the lock --
+                # the shift may have changed hands since validation, and settling
+                # against whoever holds it now would clear the wrong debt.
+                if settling.creditor_id != debtor.id:
+                    # Raise, don't return: a return here would leave the atomic
+                    # block normally and commit the reassignment we just made
+                    # without settling anything.
+                    raise serializers.ValidationError(
+                        {"settle_favour_id": "Maddagen har skiftet hænder. Prøv igen."}
+                    )
+                favour = settling
+                favour.settled = True
+                favour.settled_at = timezone.now()
+                favour.save(update_fields=["settled", "settled_at"])
+            else:
+                favour = TeamFavour.objects.create(
+                    creditor=request.user,
+                    debtor=debtor,
+                    cycle=team.cycle,
+                    origin_date=team.date,
+                    note=serializer.validated_data.get("note", ""),
+                )
 
         # Notify the freed user.
         from apps.notifications.services import notify_food_swap_request
@@ -2620,6 +2638,54 @@ class FavourSettleView(APIView):
         favour.settled_at = timezone.now()
         favour.save(update_fields=["settled", "settled_at"])
         return Response(TeamFavourSerializer(favour, context={"request": request}).data)
+
+
+class FavourRepayOptionsView(APIView):
+    """The creditor's upcoming shifts, so the debtor can work the favour off.
+
+    Answers exactly the question the "Jeg skylder" card asks: which of this
+    person's cooking days could I take over to settle up? Days the debtor
+    already cooks are left out — taking those would double-book them.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: Request, pk: int) -> Response:
+        try:
+            favour = TeamFavour.objects.get(pk=pk)
+        except TeamFavour.DoesNotExist:
+            return Response({"detail": "Ikke fundet."}, status=status.HTTP_404_NOT_FOUND)
+        if favour.debtor_id != request.user.id:
+            return Response(
+                {"detail": "Kun den, der skylder tjenesten, kan indfri den."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if favour.settled:
+            return Response([])
+
+        my_dates = set(
+            FoodTeamMember.objects.filter(
+                user=request.user, team__date__gte=timezone.localdate()
+            ).values_list("team__date", flat=True)
+        )
+        options = (
+            FoodTeamMember.objects.filter(
+                user_id=favour.creditor_id, team__date__gte=timezone.localdate()
+            )
+            .select_related("team")
+            .order_by("team__date")
+        )
+        return Response(
+            [
+                {
+                    "membership_id": m.id,
+                    "date": m.team.date,
+                    "day_name": m.team.day_name,
+                }
+                for m in options
+                if m.team.date not in my_dates
+            ]
+        )
 
 
 class MyFoodProfileView(generics.RetrieveUpdateAPIView):

@@ -2096,6 +2096,16 @@ export interface TeamFavour {
 export interface TakeoverData {
   target_membership_id: number
   note?: string
+  // Set to work off a favour you owe this person, instead of being owed a new
+  // one. The shift still moves; the named favour is marked settled.
+  settle_favour_id?: number
+}
+
+// One of the creditor's upcoming shifts, offered as a way to settle up.
+export interface FavourRepayOption {
+  membership_id: number
+  date: string
+  day_name: string
 }
 
 export interface SwapBroadcastMembership {

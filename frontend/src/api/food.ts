@@ -31,6 +31,7 @@ import type {
   TeamGenerationResult,
   DriveMenu,
   TeamFavour,
+  FavourRepayOption,
   TakeoverData,
   SwapBroadcast,
   CreateSwapBroadcastData,
@@ -714,6 +715,13 @@ export const foodApi = {
     const response = await apiClient.post(`/food/favours/${id}/settle/`)
 
     return response.data
+  },
+
+  /** The creditor's upcoming maddage, which the debtor can take to settle up. */
+  getFavourRepayOptions: async (id: number): Promise<FavourRepayOption[]> => {
+    const response = await apiClient.get(`/food/favours/${id}/repay-options/`)
+
+    return asArray(response.data)
   },
 
   // Personal food-team profile (self-service)

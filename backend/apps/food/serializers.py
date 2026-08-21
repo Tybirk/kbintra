@@ -1009,10 +1009,17 @@ class TeamFavourSerializer(serializers.ModelSerializer):
 
 
 class TakeoverSerializer(serializers.Serializer):
-    """Take over another user's cooking shift (they owe you one)."""
+    """Take over another user's cooking shift.
+
+    Normally the person taking the shift is owed a favour afterwards. Pass
+    ``settle_favour_id`` to go the other way and work off a favour you already
+    owe: the shift still moves, but the named debt is marked settled instead of
+    a new one being created in your name.
+    """
 
     target_membership_id = serializers.IntegerField()
     note = serializers.CharField(required=False, allow_blank=True, default="")
+    settle_favour_id = serializers.IntegerField(required=False, allow_null=True)
 
     def validate_target_membership_id(self, value: int) -> int:
         try:
@@ -1030,6 +1037,40 @@ class TakeoverSerializer(serializers.Serializer):
             raise serializers.ValidationError("Du er allerede på dette madhold.")
         self.context["target_membership"] = membership
         return value
+
+    def validate(self, attrs: dict) -> dict:
+        """Check the favour being settled is one this takeover can actually settle."""
+        favour_id = attrs.get("settle_favour_id")
+        if favour_id is None:
+            return attrs
+
+        user = self.context["request"].user
+        membership: FoodTeamMember = self.context["target_membership"]
+        try:
+            favour = TeamFavour.objects.select_related("creditor").get(pk=favour_id)
+        except TeamFavour.DoesNotExist as e:
+            raise serializers.ValidationError({"settle_favour_id": "Tjenesten findes ikke."}) from e
+
+        if favour.settled:
+            raise serializers.ValidationError(
+                {"settle_favour_id": "Tjenesten er allerede udlignet."}
+            )
+        # Only the person who owes can work a favour off, and only by cooking
+        # for the person they owe it to.
+        if favour.debtor_id != user.id:
+            raise serializers.ValidationError(
+                {"settle_favour_id": "Det er ikke dig, der skylder denne tjeneste."}
+            )
+        if favour.creditor_id != membership.user_id:
+            raise serializers.ValidationError(
+                {
+                    "settle_favour_id": f"Du skylder {favour.creditor.first_name} en tjeneste, "
+                    f"ikke {membership.user.first_name}."
+                }
+            )
+
+        self.context["settle_favour"] = favour
+        return attrs
 
 
 class SwapBroadcastMembershipSerializer(serializers.ModelSerializer):
@@ -1167,8 +1208,9 @@ class FoodRosterSerializer(serializers.ModelSerializer):
             "is_over_50",
             "is_exempt_from_food_teams",
             "is_food_admin",
+            "food_team_comment",
         ]
-        read_only_fields = ["id", "first_name", "last_name", "house_name"]
+        read_only_fields = ["id", "first_name", "last_name", "house_name", "food_team_comment"]
 
 
 # Meal Price Serializers

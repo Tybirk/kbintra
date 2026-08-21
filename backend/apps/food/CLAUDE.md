@@ -101,6 +101,8 @@ Users declare which dates they're available to cook. If a user submits no wish, 
 
 1. **Bytte (1:1 swap)** — `TeamSwapRequest`: accepting atomically swaps both memberships and cancels other pending requests involving either membership.
 2. **Overtag (takeover/favour)** — `POST teams/takeover/` reassigns a membership to the requester and records a `TeamFavour(creditor, debtor)` honour-system ledger ("you owe me one"). See `favours/` + `favours/<id>/settle/`.
+   Pass `settle_favour_id` to go the *other* way and work off a favour you already owe: the shift still moves, but that debt is marked settled instead of a new one being minted in the taker's name (validated: only the debtor, and only against the creditor's own shift). `favours/<id>/repay-options/` lists the creditor's upcoming shifts for that picker, minus days the debtor already cooks.
+   Taking a shift is **unilateral** — the other person only finds out afterwards — so the UI deliberately does *not* offer it beside every name on every team. It appears where someone has asked to be relieved (an incoming bytteanmodning) and in "Jeg skylder", where it settles up.
 3. **Broadcast bytteanmodning** — `SwapBroadcast`: the requester offers to take any of several dates; candidates (who indicated availability for the offered date via wish or `default_cooking_days`, and currently cook one of the requester's dates) are notified. First to accept performs an atomic swap. NOTE: JSONField `__contains`/`__overlap` lookups are unsupported on SQLite, so candidate matching filters in Python.
 
 ### Self-service & test tooling

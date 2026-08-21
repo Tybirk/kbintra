@@ -1982,8 +1982,6 @@ function AllTeamCard({ team }: AllTeamCardProps) {
 
   const isPast = dayjs(team.date).isBefore(dayjs(), "day")
 
-  const isFuture = dayjs(team.date).isAfter(dayjs(), "day")
-
   // Load full team details (with membership ids) only when expanded
 
   const { data: teamDetails, isLoading: teamDetailsLoading } = useQuery({
@@ -2069,9 +2067,6 @@ function AllTeamCard({ team }: AllTeamCardProps) {
                     )}
                   </div>
                 </Group>
-                {!member.is_own && isFuture && (
-                  <TakeoverButton member={member} teamDate={teamDetails.date} />
-                )}
               </Group>
             ))}
           </Stack>
@@ -2083,31 +2078,146 @@ function AllTeamCard({ team }: AllTeamCardProps) {
 
 // Takeover button + confirm modal ("they owe you one")
 
-interface TakeoverButtonProps {
-  member: FoodTeamMember
-
-  teamDate: string
+interface RepayFavourButtonProps {
+  favour: TeamFavour
 }
 
-function TakeoverButton({ member, teamDate }: TakeoverButtonProps) {
+/**
+ * Work off a favour by cooking one of the creditor's upcoming days.
+ *
+ * Without this the ledger only grows: every takeover created a new debt in the
+ * taker's favour, so "Jeg skylder" could be cleared only by the other person
+ * marking it settled by hand.
+ */
+function RepayFavourButton({ favour }: RepayFavourButtonProps) {
+  const [opened, { open, close }] = useDisclosure(false)
+
+  const creditorName = favour.creditor.first_name
+
+  const { data: options, isLoading } = useQuery({
+    queryKey: ["food", "favours", favour.id, "repay-options"],
+
+    queryFn: () => foodApi.getFavourRepayOptions(favour.id),
+
+    // Only worth asking once the picker is actually open.
+    enabled: opened,
+  })
+
+  return (
+    <>
+      <Button size="xs" variant="light" onClick={open}>
+        Indfri med en maddag
+      </Button>
+
+      <Modal
+        opened={opened}
+        onClose={close}
+        title={`Tag en af ${creditorName}s maddage`}
+        centered
+        size="md"
+      >
+        {isLoading ? (
+          <Center h={80}>
+            <Loader size="sm" />
+          </Center>
+        ) : !options || options.length === 0 ? (
+          <Text c="dimmed" size="sm">
+            {creditorName} har ingen kommende maddage, du kan tage lige nu. Prøv
+            igen når næste periode er lagt.
+          </Text>
+        ) : (
+          <Stack gap="sm">
+            <Text size="sm" c="dimmed">
+              Vælg den dag du vil lave mad i stedet for {creditorName}. Så er I
+              kvit.
+            </Text>
+            {options.map((option) => (
+              <Group key={option.membership_id} justify="space-between">
+                <Text size="sm">
+                  {option.day_name}, {dayjs(option.date).format("D. MMMM YYYY")}
+                </Text>
+                <TakeoverShiftButton
+                  membershipId={option.membership_id}
+                  ownerName={creditorName}
+                  date={option.date}
+                  settleFavourId={favour.id}
+                  label="Tag denne dag"
+                  color="green"
+                />
+              </Group>
+            ))}
+          </Stack>
+        )}
+      </Modal>
+    </>
+  )
+}
+
+interface TakeoverShiftButtonProps {
+  /** The shift being taken over. */
+  membershipId: number
+
+  /** Whose shift it is, for the confirmation copy. */
+  ownerName: string
+
+  date: string
+
+  /**
+   * Pass a favour you owe this person to work it off: the shift still moves,
+   * but that debt is cleared instead of a new one being created in your name.
+   */
+  settleFavourId?: number
+
+  label: string
+
+  variant?: string
+
+  color?: string
+}
+
+/**
+ * Take over someone else's cooking day.
+ *
+ * Deliberately not offered next to every name on every team: taking a shift is
+ * unilateral -- the other person finds out afterwards -- so it belongs where
+ * someone has actually asked to be relieved (a bytteanmodning), or where it
+ * settles a debt you already owe.
+ */
+function TakeoverShiftButton({
+  membershipId,
+  ownerName,
+  date,
+  settleFavourId,
+  label,
+  variant = "light",
+  color,
+}: TakeoverShiftButtonProps) {
   const queryClient = useQueryClient()
 
   const [opened, { open, close }] = useDisclosure(false)
 
-  const name = member.user.first_name
+  const isRepayment = settleFavourId !== undefined
 
   const takeoverMutation = useMutation({
-    mutationFn: () => foodApi.takeover({ target_membership_id: member.id }),
+    mutationFn: () =>
+      foodApi.takeover({
+        target_membership_id: membershipId,
+        ...(isRepayment ? { settle_favour_id: settleFavourId } : {}),
+      }),
 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "teams"] })
 
       queryClient.invalidateQueries({ queryKey: ["food", "favours"] })
 
+      queryClient.invalidateQueries({ queryKey: ["food", "swap-broadcasts"] })
+
       notifications.show({
         title: "Maddag overtaget",
 
-        message: `Du har overtaget ${name}s maddag. ${name} skylder dig nu en tjeneste.`,
+        message: isRepayment
+          ? `Du har taget ${ownerName}s maddag. Tjenesten er nu udlignet.`
+          : `Du har overtaget ${ownerName}s maddag. ${ownerName} skylder dig nu en tjeneste.`,
 
         color: "green",
       })
@@ -2123,12 +2233,13 @@ function TakeoverButton({ member, teamDate }: TakeoverButtonProps) {
   return (
     <>
       <Button
-        variant="light"
+        variant={variant}
+        color={color}
         size="xs"
         leftSection={<IconHeartHandshake size={14} />}
         onClick={open}
       >
-        Overtag (de skylder dig en)
+        {label}
       </Button>
 
       <Modal
@@ -2140,12 +2251,13 @@ function TakeoverButton({ member, teamDate }: TakeoverButtonProps) {
       >
         <Stack gap="md">
           <Text>
-            Du overtager {name}s maddag d.{" "}
-            {dayjs(teamDate).format("D. MMMM YYYY")}.
+            Du overtager {ownerName}s maddag d.{" "}
+            {dayjs(date).format("D. MMMM YYYY")}.
           </Text>
           <Text>
-            {name} skylder dig så en tjeneste næste periode. Det noteres i jeres
-            tjeneste-regnskab.
+            {isRepayment
+              ? `Så er I kvit — tjenesten, du skylder ${ownerName}, bliver markeret som indfriet.`
+              : `${ownerName} skylder dig så en tjeneste næste periode. Det noteres i jeres tjeneste-regnskab.`}
           </Text>
           <Group justify="flex-end">
             <Button variant="light" onClick={close}>
@@ -2543,10 +2655,12 @@ function FavoursSection({ favours }: FavoursSectionProps) {
                         {favour.note ? ` · ${favour.note}` : ""}
                       </Text>
                     </div>
-                    {favour.settled && (
+                    {favour.settled ? (
                       <Badge color="green" variant="light">
                         Indfriet
                       </Badge>
+                    ) : (
+                      <RepayFavourButton favour={favour} />
                     )}
                   </Group>
                 </Paper>
@@ -2746,10 +2860,20 @@ function IncomingBroadcastCard({
             Anmodningen er trukket tilbage.
           </Alert>
         ) : returnOptions.length === 0 ? (
-          <Alert color="yellow" variant="light" p="xs">
-            Du har ingen af dine egne maddage på de datoer, så du kan ikke bytte
-            her.
-          </Alert>
+          <>
+            <Alert color="yellow" variant="light" p="xs">
+              Du har ingen af dine egne maddage på de datoer, så du kan ikke
+              bytte her. Du kan stadig tage dagen, hvis du vil.
+            </Alert>
+            <Group justify="flex-end">
+              <TakeoverShiftButton
+                membershipId={broadcast.requester_membership.id}
+                ownerName={broadcast.requester.first_name}
+                date={broadcast.requester_membership.date}
+                label="Jeg tager den (de skylder dig en)"
+              />
+            </Group>
+          </>
         ) : (
           <>
             <Select
@@ -2776,6 +2900,15 @@ function IncomingBroadcastCard({
               >
                 Accepter byt
               </Button>
+            </Group>
+            <Group justify="flex-end">
+              <TakeoverShiftButton
+                membershipId={broadcast.requester_membership.id}
+                ownerName={broadcast.requester.first_name}
+                date={broadcast.requester_membership.date}
+                label="Eller tag den uden at bytte (de skylder dig en)"
+                variant="subtle"
+              />
             </Group>
           </>
         )}

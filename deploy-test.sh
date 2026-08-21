@@ -61,4 +61,23 @@ rsync -avz --delete \
     ./data/media/
 
 echo ">>> Running standard deploy.sh..."
-exec ./deploy.sh
+./deploy.sh
+
+# The rsync above replaced the database with prod's, so anything staged only for
+# testing is gone. Put the food-team plan back: it is the thing being tested
+# right now, and retyping ninety names by hand is not a test step.
+#
+# ./data survives the rsync (only db.sqlite3 and media/ are overwritten), so the
+# roster we imported from stays put and can simply be replayed. Best-effort:
+# a stale or half-written roster must not fail a deploy that already succeeded.
+# --skip-if-past stops once the period is over, so an old plan is not
+# resurrected on every deploy forever; the year comes from a '# år: 2026'
+# header in the file, so this keeps working without editing the script.
+# Drop in a newer list to test a newer period.
+ROSTER=./data/madhold-import.txt
+if [ -f "$ROSTER" ]; then
+    echo ">>> Re-importing the food-team plan from $ROSTER (test-only data)..."
+    docker compose exec -T backend uv run python manage.py import_food_teams \
+        "/app/data/$(basename "$ROSTER")" --replace --skip-if-past \
+        || echo "WARNING: could not re-import $ROSTER; the test server has prod's teams only."
+fi

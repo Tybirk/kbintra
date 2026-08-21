@@ -67,6 +67,8 @@ MONTHS_DA = [
     "december",
 ]
 
+YEAR_LINE = re.compile(r"^#\s*(?:år|aar|year)\s*:\s*(\d{4})\s*$", re.IGNORECASE)
+
 DAY_LINE = re.compile(
     r"^(mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)\s+(\d{1,2})\s*/\s*(\d{1,2})\s+(.*)$",
     re.IGNORECASE,
@@ -86,8 +88,12 @@ class Command(BaseCommand):
         parser.add_argument(
             "--year",
             type=int,
-            required=True,
-            help="Calendar year the day/month dates belong to (the list omits it).",
+            default=None,
+            help=(
+                "Calendar year the day/month dates belong to (the list omits it). "
+                "May instead be written in the file as a '# år: 2026' header line, "
+                "which is what lets an unattended re-import stay correct."
+            ),
         )
         parser.add_argument(
             "--name",
@@ -99,6 +105,15 @@ class Command(BaseCommand):
             "--dry-run",
             action="store_true",
             help="Resolve and report every name, but write nothing.",
+        )
+        parser.add_argument(
+            "--skip-if-past",
+            action="store_true",
+            help=(
+                "Exit quietly instead of importing when the last cooking date has "
+                "already passed. For unattended re-imports, so an old plan is not "
+                "resurrected forever."
+            ),
         )
         parser.add_argument(
             "--replace",
@@ -245,6 +260,7 @@ class Command(BaseCommand):
         year: int = options["year"]
         dry_run: bool = options["dry_run"]
         replace: bool = options["replace"]
+        skip_if_past: bool = options["skip_if_past"]
 
         if source == "-":
             text = sys.stdin.read()
@@ -255,12 +271,36 @@ class Command(BaseCommand):
             except OSError as exc:
                 raise CommandError(f"Kunne ikke læse {source}: {exc}") from exc
 
+        if year is None:
+            header = next(
+                (m.group(1) for line in text.splitlines() if (m := YEAR_LINE.match(line.strip()))),
+                None,
+            )
+            if header is None:
+                raise CommandError(
+                    "Årstallet mangler. Angiv --year, eller skriv en linje "
+                    "'# år: 2026' øverst i listen."
+                )
+            year = int(header)
+
         days = self._parse(text, year)
         dates = [d for d, _ in days]
         self.stdout.write(
             f"Læste {len(days)} maddage fra {dates[0]} til {dates[-1]} "
             f"({sum(len(c) for _, c in days)} pladser)."
         )
+
+        # An unattended re-import (deploy-test.sh) must not keep resurrecting a
+        # period that is over. Checked after parsing so a broken list is still
+        # reported rather than silently skipped.
+        if skip_if_past and dates[-1] < timezone.localdate():
+            self.stdout.write(
+                self.style.WARNING(
+                    f"Sidste maddag ({dates[-1]}) er passeret; importerer ikke. "
+                    f"Læg en ny liste hvis perioden skal opdateres."
+                )
+            )
+            return
 
         # Everyone we could possibly mean, grouped by the number on their house.
         by_house: dict[str, list[User]] = {}
