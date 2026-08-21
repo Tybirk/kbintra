@@ -1,6 +1,25 @@
 """Utility functions for the food app."""
 
+import re
 from datetime import date
+
+
+def house_number_for(house) -> str:  # type: ignore[no-untyped-def]
+    """The bare house number to show beside a cook's name (e.g. "45").
+
+    Houses are named after the street ("Kløverbakkevej 45") and slugged by their
+    number, so the slug is the answer whenever it is set. Fall back to the last
+    number in the name, and to the name itself if there is no number at all —
+    the food-team UI prints this straight after the word "Hus", so it must never
+    come out as the whole address.
+    """
+    if house is None:
+        return ""
+    slug = (house.slug or "").strip()
+    if slug:
+        return slug[:20]
+    numbers = re.findall(r"\d+", house.name or "")
+    return (numbers[-1] if numbers else (house.name or "").strip())[:20]
 
 
 def get_closed_food_dates(dates: list[date]) -> set[date]:

@@ -37,6 +37,7 @@ from apps.food.models import (
     FoodTeamMember,
     FoodTeamWish,
 )
+from apps.food.utils import house_number_for
 from apps.users.models import User
 
 
@@ -159,10 +160,7 @@ class TeamGenerator:
             if wish is not None and wish.is_unavailable:
                 continue
 
-            house_number = ""
-            if user.house:
-                # Extract number from house name like "House 5".
-                house_number = user.house.name.replace("House ", "")
+            house_number = house_number_for(user.house)
 
             # Available dates come from the wish (filtered to cooking dates); if
             # the user submitted no wish, they default to ALL cooking dates.
