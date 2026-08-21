@@ -69,6 +69,7 @@ from .serializers import (
     is_after_deadline,
 )
 from .services.team_generator import TeamGenerator
+from .utils import house_number_for
 
 logger = logging.getLogger(__name__)
 
@@ -1950,10 +1951,8 @@ def _danish_date_label(d: date) -> str:
 
 
 def _house_number_for(user) -> str:  # type: ignore[no-untyped-def]
-    """Cached display house number for a user (e.g. '5' from 'House 5')."""
-    if not user.house:
-        return ""
-    return str(user.house.name).replace("House ", "")
+    """Cached display house number for a user (e.g. '45')."""
+    return house_number_for(user.house)
 
 
 class TodayTeamActionBoxView(APIView):

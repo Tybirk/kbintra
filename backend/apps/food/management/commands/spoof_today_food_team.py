@@ -12,13 +12,12 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from apps.food.models import FoodTeam, FoodTeamMember
+from apps.food.utils import house_number_for
 from apps.users.models import User
 
 
 def _house_number(user: User) -> str:
-    if not user.house:
-        return ""
-    return str(user.house.name).replace("House ", "")
+    return house_number_for(user.house)
 
 
 class Command(BaseCommand):
