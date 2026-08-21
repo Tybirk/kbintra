@@ -17,6 +17,12 @@ Algorithm constraints:
 
 Couples are modelled as two-member "units" scheduled on the intersection of both
 partners' available dates; everyone else is a one-member unit.
+
+The generator would rather stop than hand over a schedule that is quietly wrong:
+a couple whose flags or wishes can't be honoured, and short teams that could have
+been filled from the surplus, both raise SchedulingError instead of being saved.
+Teams that are short simply because too few people signed up still go through —
+that is an input problem, and it only warns.
 """
 
 from dataclasses import dataclass, field
@@ -32,6 +38,17 @@ from apps.food.models import (
     FoodTeamWish,
 )
 from apps.users.models import User
+
+
+class SchedulingError(RuntimeError):
+    """
+    The schedule that came out is not one we're willing to hand to the house.
+
+    Raised for the two cases where staying quiet would be worse than stopping:
+    a couple whose flags or wishes can't be honoured, and a final plan whose
+    short teams could demonstrably have been filled from the surplus. The
+    message is Danish and actionable — it goes straight to the food admin.
+    """
 
 
 @dataclass
@@ -85,14 +102,22 @@ class TeamGenerator:
     MAX_OLD_PER_DAY_START = 2
     MAX_OLD_PER_DAY_CEILING = 4
     REBALANCE_ITERATIONS = 100
+    # How many hops a size-balancing chain may take (see balance_team_sizes).
+    MAX_MOVE_CHAIN = 4
 
     # Backwards-compatible aliases (older code / tests may reference these).
     MIN_TEAM_SIZE = TEAM_SIZE
     MAX_OVER_50_PER_TEAM = MAX_OLD_PER_DAY_START
     MIN_HEAD_CHEFS_PER_TEAM = 1
 
-    def __init__(self, cycle: FoodTeamCycle):
+    def __init__(
+        self, cycle: FoodTeamCycle, allow_couples_without_common_dates: bool = False
+    ) -> None:
         self.cycle = cycle
+        # Off by default: a couple we can't honour stops the run so the admin can
+        # fix the flags or the wishes. Turn it on to schedule such people singly
+        # instead, when the deadline matters more than the pairing.
+        self.allow_couples_without_common_dates = allow_couples_without_common_dates
         # Convert ISO strings to date objects. ``requested_dates`` is what the
         # admin asked for; ``cooking_dates`` is what we actually staff, which
         # _trim_dates_to_capacity may shorten from the end.
@@ -359,9 +384,11 @@ class TeamGenerator:
 
         A single is a one-member unit with that person's wishes; a couple is a
         two-member unit (two housemates who both want to cook together) scheduled
-        on the *intersection* of both partners' wishes. Couples without a partner
-        or without common dates are degraded to singles with a warning (web action,
-        so we never hard-fail).
+        on the *intersection* of both partners' wishes. A couple we can't honour —
+        no partner with the same flag, or no date they can both cook — raises
+        SchedulingError, so the admin fixes the flags rather than finding out later
+        that the pair was quietly split; ``allow_couples_without_common_dates``
+        degrades them to singles instead.
         """
         units: list[Unit] = []
         placed: set[int] = set()
@@ -384,11 +411,15 @@ class TeamGenerator:
             )
 
             if partner_id is None:
-                # No matching housemate — treat as a single.
-                self.warnings.append(
-                    f"{person.first_name} ønskede at lave mad med en medbeboer, men "
-                    f"ingen anden i huset har samme ønske. Planlægges alene."
+                msg = (
+                    f"{person.first_name} (hus {person.house_number}) har sat "
+                    f"'vil lave mad med medbeboer', men ingen anden i huset har sat "
+                    f"samme ønske. Sæt ønsket på begge, eller fjern det fra "
+                    f"{person.first_name}."
                 )
+                if not self.allow_couples_without_common_dates:
+                    raise SchedulingError(msg)
+                self.warnings.append(f"{msg} Planlægges alene.")
                 units.append(((user_id,), list(person.available_dates)))
                 person.can_be_switched = True
                 placed.add(user_id)
@@ -399,11 +430,15 @@ class TeamGenerator:
             common = [d for d in person.available_dates if d in partner_dates]
 
             if not common:
-                # No overlapping dates — degrade both to singles with a warning.
-                self.warnings.append(
-                    f"{person.first_name} og {partner.first_name} ønskede at lave mad "
-                    f"sammen, men har ingen fælles ledige datoer. Planlægges hver for sig."
+                msg = (
+                    f"{person.first_name} og {partner.first_name} (hus "
+                    f"{person.house_number}) vil lave mad sammen, men har ingen fælles "
+                    f"ledige datoer. Lad den ene skrive sig på en af den andens datoer, "
+                    f"eller fjern ønsket om at lave mad sammen i denne periode."
                 )
+                if not self.allow_couples_without_common_dates:
+                    raise SchedulingError(msg)
+                self.warnings.append(f"{msg} Planlægges hver for sig.")
                 for pid in (user_id, partner_id):
                     p = self.persons[pid]
                     units.append(((pid,), list(p.available_dates)))
@@ -551,6 +586,89 @@ class TeamGenerator:
                     break
         return self.get_unassigned()
 
+    def balance_team_sizes(self) -> None:
+        """
+        Even out team sizes once everybody has a date.
+
+        The placement passes can leave one date over target and another under: a
+        couple is placed atomically, so if their only remaining option has a single
+        free seat they go in as a pair and that date ends up at TEAM_SIZE + 1 — and
+        with a fixed number of people, that surplus is someone else's deficit.
+
+        A 1-for-1 switch can never repair this (it keeps both sizes the same), so we
+        look for a *chain* instead: someone leaves the over-full date for another
+        date they wished for, whoever that date can spare moves on in turn, and so on
+        until the chain ends on an under-full date. Every date in the middle keeps its
+        size; only the two ends change.
+        """
+        target = self.TEAM_SIZE
+
+        while True:
+            over = [d for d in self.cooking_dates if len(self.date_to_persons[d]) > target]
+            under = [d for d in self.cooking_dates if len(self.date_to_persons[d]) < target]
+            if not over or not under:
+                break
+
+            over.sort(key=lambda d: -len(self.date_to_persons[d]))
+
+            # Iterative deepening, so the shortest working chain wins and we
+            # disturb as few already-placed people as possible.
+            moved = False
+            for depth in range(max(self.MAX_MOVE_CHAIN, 1)):
+                for d in over:
+                    if self._push_out(d, depth, {d}):
+                        moved = True
+                        break
+                if moved:
+                    break
+
+            if not moved:
+                self.warnings.append(
+                    "Kunne ikke udjævne holdstørrelserne: ingen kæde af ønskede datoer "
+                    "forbinder de for store hold med de for små."
+                )
+                break
+
+    def _push_out(self, from_date: date, depth: int, visited: set[date]) -> bool:
+        """
+        Try to shrink ``from_date`` by one without shrinking any other date.
+
+        Succeeds by moving someone off ``from_date`` onto a date they wished for:
+        either straight onto an under-full date, or onto a full one whose own surplus
+        is then pushed onward (recursively, up to ``depth`` more hops). Every move is
+        applied for real and undone again on failure, so the validity checks always
+        see the true state and the schedule is left exactly as it was on False.
+        """
+        target = self.TEAM_SIZE
+
+        for user_id in list(self.date_to_persons[from_date]):
+            # Couples were placed as a pair and are not moved individually.
+            if not self.persons[user_id].can_be_switched:
+                continue
+            for to_date in self.persons[user_id].available_dates:
+                if to_date == from_date or to_date in visited:
+                    continue
+                if not self.is_valid_assignment(user_id, to_date):
+                    continue
+
+                if len(self.date_to_persons[to_date]) < target:
+                    self.remove_person(user_id, from_date)
+                    self.assign_person(user_id, to_date)
+                    return True
+
+                if depth <= 0:
+                    continue
+
+                # Park them on the full date and push its surplus onward.
+                self.remove_person(user_id, from_date)
+                self.assign_person(user_id, to_date)
+                if self._push_out(to_date, depth - 1, visited | {to_date}):
+                    return True
+                self.remove_person(user_id, to_date)
+                self.assign_person(user_id, from_date)
+
+        return False
+
     def rebalance(self) -> None:
         """Rebalance over-50 people and head chefs across dates."""
         for _ in range(self.REBALANCE_ITERATIONS):
@@ -635,6 +753,7 @@ class TeamGenerator:
                 unassigned = self.resolve_via_swaps(unassigned)
             if unassigned:
                 unassigned = self.overflow_remaining(unassigned)
+            self.balance_team_sizes()
             self.rebalance()
 
             self.unassigned = self.get_unassigned()
@@ -650,8 +769,65 @@ class TeamGenerator:
 
             max_old += 1
 
+    def _find_missed_move(self, under: dict[date, int]) -> tuple[str, date] | None:
+        """
+        Name one person in the surplus who could still legally fill a short team.
+
+        The surplus is everyone left unplaced plus everyone standing on an over-full
+        date who is free to move (couples are placed as a pair and stay put). Returns
+        (name, date) for the first legal move found, or None if the short teams
+        genuinely can't be filled.
+        """
+        target = self.TEAM_SIZE
+        movable: list[int] = list(self.unassigned)
+        for members in self.date_to_persons.values():
+            if len(members) > target:
+                movable.extend(uid for uid in members if self.persons[uid].can_be_switched)
+
+        for user_id in movable:
+            person = self.persons[user_id]
+            for d in under:
+                if d in person.available_dates and self.is_valid_assignment(user_id, d):
+                    return person.first_name, d
+        return None
+
     def validate_result(self) -> None:
-        """Collect warnings about the final schedule (Danish, user-facing)."""
+        """
+        Check the final schedule, and refuse to hand over a fixable one.
+
+        A short team sitting next to a surplus is only our failure if someone in that
+        surplus could *legally* have taken the empty seat — same-house, over-50 and
+        head-chef caps can make a short team genuinely unfillable, and refusing to
+        generate then would just block a schedule that is as good as the sign-ups
+        allow. So we look for a concrete missed move and raise only on that; a team
+        that is short because too few people signed up merely warns.
+
+        (The standalone madhold.py raises on any short-team-next-to-surplus. That
+        over-fires on constrained input — e.g. a house supplying most of the cooks —
+        so the check is narrowed here to a move we can actually name.)
+        """
+        target = self.TEAM_SIZE
+        sizes = {d: len(m) for d, m in self.date_to_persons.items() if m}
+        under = {d: n for d, n in sizes.items() if n < target}
+        over = {d: n for d, n in sizes.items() if n > target}
+
+        if under:
+            missed = self._find_missed_move(under)
+            if missed is not None:
+                name, to_date = missed
+                detail = ", ".join(f"{d}: {n}" for d, n in sorted(under.items()))
+                parts = [f"Hold under {target} personer — {detail}."]
+                if over:
+                    parts.append(
+                        "For store hold: " + ", ".join(f"{d}: {n}" for d, n in sorted(over.items()))
+                    )
+                parts.append(
+                    f"Holdene kunne have været udjævnet: {name} kan lave mad {to_date}. "
+                    f"Det er en fejl i holdgenereringen — prøv igen, og sig til hvis den "
+                    f"bliver ved."
+                )
+                raise SchedulingError(" ".join(parts))
+
         for d, members in self.date_to_persons.items():
             if 0 < len(members) < self.TEAM_SIZE:
                 self.warnings.append(
@@ -756,6 +932,16 @@ class TeamGenerator:
                 dropped_dates=[d.isoformat() for d in self.dropped_dates],
             )
 
+        except SchedulingError as e:
+            # A refusal, not a crash: nothing was saved (save_teams runs after
+            # validate_result), so the existing teams are untouched and the admin
+            # gets a message that says what to fix.
+            return TeamGenerationResult(
+                success=False,
+                message=str(e),
+                warnings=self.warnings,
+            )
+
         except Exception as e:  # noqa: BLE001 - web action, never let it 500
             return TeamGenerationResult(
                 success=False,
@@ -763,16 +949,24 @@ class TeamGenerator:
             )
 
 
-def generate_teams_for_cycle(cycle: FoodTeamCycle, save: bool = True) -> TeamGenerationResult:
+def generate_teams_for_cycle(
+    cycle: FoodTeamCycle,
+    save: bool = True,
+    allow_couples_without_common_dates: bool = False,
+) -> TeamGenerationResult:
     """
     Convenience function to generate teams for a cycle.
 
     Args:
         cycle: The FoodTeamCycle to generate teams for.
         save: Whether to save the teams to the database.
+        allow_couples_without_common_dates: Schedule un-pairable couples singly
+            instead of refusing to generate.
 
     Returns:
         TeamGenerationResult with details about the generation.
     """
-    generator = TeamGenerator(cycle)
+    generator = TeamGenerator(
+        cycle, allow_couples_without_common_dates=allow_couples_without_common_dates
+    )
     return generator.generate(save=save)

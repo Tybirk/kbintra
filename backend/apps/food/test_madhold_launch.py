@@ -930,3 +930,173 @@ class TestLeftoversImageIsSignedForReaders:
 
         assert response.status_code == 200
         assert response.data["image_url"] == ""
+
+
+# =============================================================================
+# Generator: hard failure instead of a quietly wrong schedule
+# =============================================================================
+
+
+@pytest.fixture
+def two_cooking_dates(db, admin_user, future_monday):
+    """A cycle over two cooking days, still collecting wishes."""
+    from django.utils import timezone
+
+    from apps.food.models import CycleStatus, FoodTeamCycle
+
+    d1 = future_monday
+    d2 = future_monday + timedelta(days=1)
+    cycle = FoodTeamCycle.objects.create(
+        name="Generator Test Cycle",
+        cooking_dates=[d1.isoformat(), d2.isoformat()],
+        wish_deadline=timezone.now() + timedelta(days=7),
+        status=CycleStatus.COLLECTING_WISHES,
+        created_by=admin_user,
+    )
+    return cycle, d1, d2
+
+
+def _cooks_in_own_houses(count: int, start: int = 0):
+    """Create ``count`` cooks, each alone in their own house (no collisions)."""
+    from apps.houses.models import House
+
+    users = []
+    for i in range(start, start + count):
+        house = House.objects.create(name=f"Gen House {i}", address=f"{i} Test Vej")
+        users.append(
+            User.objects.create_user(
+                email=f"gencook{i}@example.com",
+                password="x",
+                first_name=f"Kok{i}",
+                house=house,
+                can_be_head_chef=(i % 3 == 0),
+            )
+        )
+    return users
+
+
+@pytest.mark.django_db
+class TestGeneratorRefusesBadSchedules:
+    def test_housemate_wish_without_a_partner_stops_generation(self, two_cooking_dates):
+        """A lone 'cook with my housemate' flag is a data error, not a schedule."""
+        from apps.food.models import CycleStatus, FoodTeam
+        from apps.food.services.team_generator import TeamGenerator
+
+        cycle, _d1, _d2 = two_cooking_dates
+        cooks = _cooks_in_own_houses(12)
+        lonely = cooks[0]
+        lonely.prefers_cooking_with_housemate = True
+        lonely.save()
+
+        result = TeamGenerator(cycle).generate(save=True)
+
+        assert result.success is False
+        assert lonely.first_name in result.message
+        # Nothing was written, and the cycle is still open for wishes.
+        assert FoodTeam.objects.filter(cycle=cycle).count() == 0
+        cycle.refresh_from_db()
+        assert cycle.status == CycleStatus.COLLECTING_WISHES
+
+    def test_couple_without_a_shared_date_stops_generation(self, two_cooking_dates):
+        from apps.food.models import FoodTeam
+        from apps.food.services.team_generator import TeamGenerator
+        from apps.houses.models import House
+
+        cycle, d1, d2 = two_cooking_dates
+        _cooks_in_own_houses(12)
+
+        shared = House.objects.create(name="Delt hus", address="1 Delt Vej")
+        partners = []
+        for i, d in enumerate((d1, d2)):
+            user = User.objects.create_user(
+                email=f"partner{i}@example.com",
+                password="x",
+                first_name=f"Partner{i}",
+                house=shared,
+                prefers_cooking_with_housemate=True,
+            )
+            # Each partner is free only on the day the other one cannot cook.
+            FoodTeamWish.objects.create(cycle=cycle, user=user, available_dates=[d.isoformat()])
+            partners.append(user)
+
+        result = TeamGenerator(cycle).generate(save=True)
+
+        assert result.success is False
+        assert partners[0].first_name in result.message
+        assert partners[1].first_name in result.message
+        assert FoodTeam.objects.filter(cycle=cycle).count() == 0
+
+    def test_the_relaxation_flag_schedules_such_a_couple_singly(self, two_cooking_dates):
+        """The admin can still force a schedule through, and is told what gave."""
+        from apps.food.models import FoodTeam
+        from apps.food.services.team_generator import TeamGenerator
+        from apps.houses.models import House
+
+        cycle, d1, d2 = two_cooking_dates
+        _cooks_in_own_houses(12)
+
+        shared = House.objects.create(name="Delt hus", address="1 Delt Vej")
+        for i, d in enumerate((d1, d2)):
+            user = User.objects.create_user(
+                email=f"relaxed{i}@example.com",
+                password="x",
+                first_name=f"Fri{i}",
+                house=shared,
+                prefers_cooking_with_housemate=True,
+            )
+            FoodTeamWish.objects.create(cycle=cycle, user=user, available_dates=[d.isoformat()])
+
+        result = TeamGenerator(cycle, allow_couples_without_common_dates=True).generate(save=True)
+
+        assert FoodTeam.objects.filter(cycle=cycle).count() > 0
+        assert any("hver for sig" in w for w in result.warnings)
+
+
+@pytest.mark.django_db
+class TestBalanceTeamSizes:
+    def test_a_surplus_day_hands_one_cook_to_a_short_day(self, two_cooking_dates):
+        """A 7/5 split is evened to 6/6 by moving someone who wished for both."""
+        from apps.food.services.team_generator import TeamGenerator
+
+        cycle, d1, d2 = two_cooking_dates
+        cooks = _cooks_in_own_houses(12)
+
+        generator = TeamGenerator(cycle)
+        generator.load_data()
+
+        # Hand-build the lopsided state the placement passes can leave behind.
+        for user in cooks[:7]:
+            generator.assign_person(user.id, d1)
+        for user in cooks[7:]:
+            generator.assign_person(user.id, d2)
+        assert len(generator.date_to_persons[d1]) == 7
+        assert len(generator.date_to_persons[d2]) == 5
+
+        generator.balance_team_sizes()
+
+        assert len(generator.date_to_persons[d1]) == 6
+        assert len(generator.date_to_persons[d2]) == 6
+
+    def test_it_leaves_a_schedule_alone_when_no_one_can_move(self, two_cooking_dates):
+        """Nobody on the full day wished for the short day, so nothing is forced."""
+        from apps.food.services.team_generator import TeamGenerator
+
+        cycle, d1, d2 = two_cooking_dates
+        cooks = _cooks_in_own_houses(12)
+
+        # The seven on d1 can only cook d1, so the surplus has nowhere to go.
+        for user in cooks[:7]:
+            FoodTeamWish.objects.create(cycle=cycle, user=user, available_dates=[d1.isoformat()])
+
+        generator = TeamGenerator(cycle)
+        generator.load_data()
+        for user in cooks[:7]:
+            generator.assign_person(user.id, d1)
+        for user in cooks[7:]:
+            generator.assign_person(user.id, d2)
+
+        generator.balance_team_sizes()
+
+        assert len(generator.date_to_persons[d1]) == 7
+        assert len(generator.date_to_persons[d2]) == 5
+        assert any("udjævne" in w for w in generator.warnings)

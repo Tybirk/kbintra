@@ -78,7 +78,17 @@ Users declare which dates they're available to cook. If a user submits no wish, 
 - **Unit-based**: couples (two housemates both flagged `prefers_cooking_with_housemate`, scheduled on the *intersection* of their wishes) and singles go through one ordering — fewest options, then head-chefs first, then over-50 first — placing each on the least-filled valid date. This beats "couples first".
 - Repair pipeline: swap-repair for unplaced people, overflow (team_size+1), then rebalance passes for over-50 and head-chefs.
 - **Auto-escalation**: if anyone is unplaced, the whole assignment restarts with `max_old_per_day += 1` up to a ceiling (4). Tunable via class constants (`TEAM_SIZE`, `OVERFLOW`, `MAX_OLD_PER_DAY_START/CEILING`, `MAX_HEADCHEFS_PER_DAY`, `REBALANCE_ITERATIONS`).
-- Couples with no common dates degrade to singles with a warning (web action never hard-fails).
+- **Refuses rather than quietly compromises.** A couple we can't honour (only one
+  housemate flagged, or no date they can both cook) raises `SchedulingError`, and so
+  does a final plan whose short teams could still be filled from the surplus — the
+  message names the person and date, nothing is saved, and the cycle stays in
+  `COLLECTING_WISHES`. Teams that are short because too few people signed up are an
+  input problem and only warn. Pass `allow_couples_without_common_dates=True` to
+  schedule an un-pairable couple singly instead.
+- **`balance_team_sizes()`** evens a 7/5 split into 6/6 after placement. A 1-for-1
+  switch can't fix that (it preserves both sizes), so it searches for a *chain* of
+  wished-for moves (up to `MAX_MOVE_CHAIN`) ending on an under-full date; only the
+  two ends change size. Couples are placed as a pair and are never moved singly.
 
 ### Team constraints
 
