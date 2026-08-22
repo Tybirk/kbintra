@@ -2698,6 +2698,23 @@ class MyFoodProfileView(generics.RetrieveUpdateAPIView):
         return self.request.user
 
 
+def _roster_cycle() -> "FoodTeamCycle | None":
+    """The period the roster is about: the one taking wishes, else the newest."""
+    from .models import CycleStatus
+
+    return (
+        FoodTeamCycle.objects.filter(status=CycleStatus.COLLECTING_WISHES)
+        .order_by("-created_at")
+        .first()
+        or FoodTeamCycle.objects.order_by("-created_at").first()
+    )
+
+
+def _roster_wishes(cycle: "FoodTeamCycle | None") -> dict:
+    """This period's wishes keyed by user, so the serializer runs no query per row."""
+    return {w.user_id: w for w in FoodTeamWish.objects.filter(cycle=cycle)} if cycle else {}
+
+
 class FoodRosterListView(generics.ListAPIView):
     """Admin roster: every resident's food-team flags and why they are sitting out.
 
@@ -2709,25 +2726,9 @@ class FoodRosterListView(generics.ListAPIView):
     serializer_class = FoodRosterSerializer
     pagination_class = None
 
-    def _cycle(self) -> FoodTeamCycle | None:
-        """The period the roster is about: the one taking wishes, else the newest."""
-        from .models import CycleStatus
-
-        return (
-            FoodTeamCycle.objects.filter(status=CycleStatus.COLLECTING_WISHES)
-            .order_by("-created_at")
-            .first()
-            or FoodTeamCycle.objects.order_by("-created_at").first()
-        )
-
     def get_serializer_context(self) -> dict:
         context = super().get_serializer_context()
-        cycle = self._cycle()
-        # One query for every wish in the period, so the serializer doesn't run
-        # one per resident.
-        context["wishes_by_user"] = (
-            {w.user_id: w for w in FoodTeamWish.objects.filter(cycle=cycle)} if cycle else {}
-        )
+        context["wishes_by_user"] = _roster_wishes(_roster_cycle())
         return context
 
     def get_queryset(self) -> QuerySet:
@@ -2740,7 +2741,7 @@ class FoodRosterListView(generics.ListAPIView):
         )
 
     def list(self, request: Request, *args: object, **kwargs: object) -> Response:
-        cycle = self._cycle()
+        cycle = _roster_cycle()
         serializer = self.get_serializer(self.get_queryset(), many=True)
         return Response(
             {
@@ -2755,6 +2756,17 @@ class FoodRosterDetailView(generics.UpdateAPIView):
 
     permission_classes = [permissions.IsAuthenticated, IsFoodAdmin]
     serializer_class = FoodRosterSerializer
+
+    def get_serializer_context(self) -> dict:
+        """Give the shared serializer this period's wishes.
+
+        Without it ``is_unavailable_this_cycle`` falls back to its empty default
+        and the response would report every resident as available, whatever the
+        truth — the list view is not the only caller of these fields.
+        """
+        context = super().get_serializer_context()
+        context["wishes_by_user"] = _roster_wishes(_roster_cycle())
+        return context
 
     def get_queryset(self) -> QuerySet:
         from apps.users.models import User

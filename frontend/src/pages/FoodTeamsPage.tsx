@@ -506,9 +506,9 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
     }
   }, [existingWish])
 
-  const saveReasonMutation = useMutation({
-    mutationFn: (reason: string) =>
-      foodApi.updateMyFoodProfile({ food_team_pause_reason: reason }),
+  const saveProfileMutation = useMutation({
+    mutationFn: (data: Partial<MyFoodProfile>) =>
+      foodApi.updateMyFoodProfile(data),
 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["food", "my-food-profile"] })
@@ -556,13 +556,32 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
   }
 
   const handleSubmit = () => {
-    // Save the reason on the profile first, so the organiser sees it even if
-    // it is the only thing that changed. Clearing it when the user is not away
-    // keeps a stale reason from outliving the absence it explained.
-    const reason = isUnavailable ? comment : ""
+    // The reason lives on the profile, so the organiser still sees it when it is
+    // the only thing that changed.
+    if (myProfile) {
+      if (isUnavailable) {
+        if (comment !== myProfile.food_team_pause_reason) {
+          saveProfileMutation.mutate({ food_team_pause_reason: comment })
+        }
+      } else {
+        // Naming the days you can cook is how you say you are back, so a pause
+        // cannot survive it — leaving the switch on would have the generator
+        // skip someone who just signed up. Lift it, and drop the explanation
+        // for an absence that is over.
+        const updates: Partial<MyFoodProfile> = {}
 
-    if (myProfile && reason !== myProfile.food_team_pause_reason) {
-      saveReasonMutation.mutate(reason)
+        if (myProfile.is_exempt_from_food_teams) {
+          updates.is_exempt_from_food_teams = false
+        }
+
+        if (myProfile.food_team_pause_reason) {
+          updates.food_team_pause_reason = ""
+        }
+
+        if (Object.keys(updates).length > 0) {
+          saveProfileMutation.mutate(updates)
+        }
+      }
     }
 
     submitWishMutation.mutate({
@@ -653,6 +672,13 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
                   description="Markér dette hvis du slet ikke kan lave mad i denne periode. Så behøver du ikke vælge datoer."
                   color="red"
                 />
+
+                {myProfile?.is_exempt_from_food_teams && !isUnavailable && (
+                  <Alert color="blue" variant="light" mt="sm" p="xs">
+                    Du holder pause fra madhold lige nu. Indsender du ønsker,
+                    ophæver du pausen, og du kan komme på et hold igen.
+                  </Alert>
+                )}
               </Paper>
 
               {/* Default cooking days section */}

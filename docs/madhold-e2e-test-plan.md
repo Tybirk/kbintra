@@ -212,7 +212,10 @@ Switch to **User A** (regular). Go to **Madhold → Indsend ønsker**.
    **"Standarder anvendt"**.
 4. **Manually toggle dates**: click a few date cards on/off; the counter
    **"X af Y datoer valgt"** updates. Try **"Vælg alle"** then **"Ryd alle"**.
-5. Add a **Kommentar**, e.g. `Jeg kan helst tirsdage`.
+5. Verify there is **no free-text Kommentar** here while you are available — the
+   date cards already say when you can cook. Tick **"Jeg kan ikke i denne
+   periode"** and a **"Hvorfor kan du ikke? (valgfri)"** box appears; untick it
+   and the box goes away again.
 6. Re-select a handful of dates, click **"Indsend ønsker"** → green toast
    **"Ønsker indsendt"**. Reload the tab: a blue alert **"Du har allerede
    indsendt dine ønsker (N datoer valgt)…"** appears, the button reads
@@ -239,13 +242,15 @@ As **User A**, go to **Madhold → Min profil**.
 2. Toggle **"Jeg vil lave mad sammen med min medbeboer"**. If User A has a
    housemate, the description shows **"(med <navn>)"**.
 3. Toggle **"Jeg er over 50"** → persisted.
-4. Toggle **"Jeg deltager ikke i madhold for tiden"** (red) → persisted. **Turn it
-   back off** so A stays eligible for later phases.
+4. Toggle **"Jeg holder pause fra madhold"** (red) → persisted, and a
+   **"Hvorfor holder du pause?"** box appears below it with a **"Gem
+   begrundelse"** button (disabled until the text differs). Save a reason, then
+   **turn the switch back off** so A stays eligible for later phases.
 5. **Ugedage jeg typisk kan lave mad**: click weekday **Chips** (Mandag…Torsdag)
    → each change saves (toast). Verify selection persists on reload.
-6. **Kommentar til madhold-ansvarlig**: type text; the **"Gem kommentar"** button
-   is disabled until the text differs, becomes enabled, click → toast. Reload →
-   persisted.
+6. Verify there is **no standalone "Kommentar til madhold-ansvarlig"** field —
+   the only free text here is the pause reason from step 4, which appears only
+   while the pause switch is on.
 
 ---
 
@@ -260,8 +265,9 @@ As **User A**, go to **Madhold → Min profil**.
 2. **Alle hold**: a compact list of all upcoming teams. Your own team rows are
    highlighted (blue) with a **"Mit hold"** badge. Each shows
    `members_display` + "N medlemmer". **Expand** a row → full member list with
-   avatars; rows you're not on (future dates) show an **"Overtag (de skylder dig
-   en)"** button next to other members. Past teams show **"Overstået"** styling.
+   avatars. Verify there is **no "Overtag" button next to other members** —
+   taking someone's shift is offered only where they have asked to be relieved
+   (§8.2), not beside every name. Past teams show **"Overstået"** styling.
 
 ---
 
@@ -333,17 +339,49 @@ team dates, both non-past.
 
 ### 8.2 Overtag (takeover / favour) — `TeamTakeover` + `TeamFavour`
 
-1. **User A** → **Alle hold** → expand a **future** team that A is **not** on and
-   that contains **User C** → click **"Overtag (de skylder dig en)"** next to C.
-2. Confirm modal **"Overtag maddag"** explains C will owe A a favour → click
-   **"Overtag maddagen"** → green toast "Maddag overtaget. <C> skylder dig nu en
-   tjeneste."
-3. Verify membership: that team now lists **A** instead of **C** (A may now have
+Takeover is offered only where someone has asked to be relieved, or where it
+settles a debt — never beside every name on every team.
+
+1. As **User C**, send a **broadcast bytteanmodning** for one of C's shifts
+   (§8.3 covers the form). As **User A**, open **Bytte** → the incoming card.
+2. If A holds none of C's offered dates, the card says A cannot swap, and offers
+   **"Jeg tager den (de skylder dig en)"**. If A does hold one, the takeover is
+   the secondary action under the swap: **"Eller tag den uden at bytte"**.
+3. Click it → confirm modal **"Overtag maddag"** explains C will owe A a favour
+   → **"Overtag maddagen"** → green toast "Maddag overtaget. <C> skylder dig nu
+   en tjeneste."
+4. Verify membership: that team now lists **A** instead of **C** (A may now have
    two shifts that cycle — allowed).
-4. **Favour ledger** — **User A** → **Bytte** tab → **"Tjeneste-regnskab"** →
+5. **Favour ledger** — **User A** → **Bytte** tab → **"Tjeneste-regnskab"** →
    under **"Nogen skylder mig"**: "<C> skylder dig en tjeneste · Fra maddag d. …".
-5. Switch to **User C** → **Bytte** → **"Tjeneste-regnskab"** → under **"Jeg
+6. Switch to **User C** → **Bytte** → **"Tjeneste-regnskab"** → under **"Jeg
    skylder"**: "Du skylder <A> en tjeneste".
+
+### 8.2b Indfri en tjeneste ved at lave mad
+
+1. Still as **User C** (who owes A), open **"Tjeneste-regnskab"** → **"Jeg
+   skylder"** → click **"Indfri med en maddag"**.
+2. The modal lists **A's upcoming shifts**, minus any day C already cooks (those
+   would double-book C). If A has none, expect the empty-state text.
+3. Pick one → **"Tag denne dag"** → confirm → toast "Du har taget <A>s maddag.
+   Tjenesten er nu udlignet."
+4. Verify: that shift now belongs to **C**; the favour moves to **Indfriet** for
+   both parties; and **no new favour** was created in C's name.
+
+### 8.2c Beboeroverblik (food admin)
+
+1. As a **food admin**, open the **Admin** tab. The top section is
+   **Beboeroverblik**, headed by the period the answers belong to.
+2. Verify four groups: **Holder pause** (with reasons), **Ikke med i denne
+   periode** (with reasons), **Kan være chefkok**, **Vil lave mad med
+   medbeboer** — each with a count.
+3. Set a pause + reason on some user (§5) and confirm they move into **Holder
+   pause** with that reason showing. Mark another user unavailable for the
+   period (§4) with a reason → they appear under **Ikke med i denne periode**.
+4. As that second user, submit a normal wish for a later period → their reason
+   clears. Do the same for the paused user → their reason **stays**, because
+   the pause outlives the period.
+5. Confirm a non-admin gets no Admin tab (the endpoint returns 403).
 6. **Settle**: as **User A** click **"Markér som indfriet"** on the favour →
    green toast **"Tjeneste indfriet"**, badge becomes **"Indfriet"**. Verify it
    shows as Indfriet for C too.
