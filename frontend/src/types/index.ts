@@ -2218,7 +2218,7 @@ export interface MyFoodProfile {
   is_over_50: boolean
   is_exempt_from_food_teams: boolean
   default_cooking_days: number[]
-  food_team_comment: string
+  food_team_pause_reason: string
   housemate_name: string
 }
 
@@ -2227,11 +2227,29 @@ export interface FoodRosterEntry {
   first_name: string
   last_name: string
   house_name: string
+  house_number: string
   can_be_head_chef: boolean
   prefers_cooking_with_housemate: boolean
   is_over_50: boolean
-  is_exempt_from_food_teams: boolean
   is_food_admin: boolean
+  // Standing pause: set on the person, lasts until they turn it off.
+  is_exempt_from_food_teams: boolean
+  food_team_pause_reason: string
+  // This period only: comes from their wish for the cycle below.
+  is_unavailable_this_cycle: boolean
+  wish_comment: string
+  has_submitted_wish: boolean
+}
+
+export interface FoodRosterCycle {
+  id: number
+  name: string
+}
+
+export interface FoodRoster {
+  // Which period the per-period answers belong to; null before any cycle exists.
+  cycle: FoodRosterCycle | null
+  residents: FoodRosterEntry[]
 }
 
 // Booking Types

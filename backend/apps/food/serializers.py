@@ -1171,7 +1171,7 @@ class MyFoodProfileSerializer(serializers.ModelSerializer):
             "is_over_50",
             "is_exempt_from_food_teams",
             "default_cooking_days",
-            "food_team_comment",
+            "food_team_pause_reason",
             "housemate_name",
         ]
 
@@ -1192,9 +1192,40 @@ class MyFoodProfileSerializer(serializers.ModelSerializer):
 
 
 class FoodRosterSerializer(serializers.ModelSerializer):
-    """Admin roster row for configuring food-team flags across users."""
+    """Admin roster row: a resident's food-team flags, plus why they are sitting out.
+
+    The two "not cooking" states are deliberately separate. ``is_exempt_from_food_teams``
+    is the standing one — away for a season, or stepping back indefinitely — and carries
+    ``food_team_pause_reason``. ``is_unavailable_this_cycle`` comes from this period's
+    wish and carries that wish's comment. A food admin planning a period needs both, and
+    needs to tell them apart.
+    """
 
     house_name = serializers.CharField(source="house.name", read_only=True, default="")
+    house_number = serializers.SerializerMethodField()
+    is_unavailable_this_cycle = serializers.SerializerMethodField()
+    wish_comment = serializers.SerializerMethodField()
+    has_submitted_wish = serializers.SerializerMethodField()
+
+    def get_house_number(self, obj: User) -> str:
+        from .utils import house_number_for
+
+        return house_number_for(obj.house)
+
+    def _wish(self, obj: User):  # type: ignore[no-untyped-def]
+        """This period's wish, from the map the view prefetched (no query per row)."""
+        return self.context.get("wishes_by_user", {}).get(obj.id)
+
+    def get_is_unavailable_this_cycle(self, obj: User) -> bool:
+        wish = self._wish(obj)
+        return bool(wish and wish.is_unavailable)
+
+    def get_wish_comment(self, obj: User) -> str:
+        wish = self._wish(obj)
+        return wish.comment if wish else ""
+
+    def get_has_submitted_wish(self, obj: User) -> bool:
+        return self._wish(obj) is not None
 
     class Meta:
         model = User
@@ -1208,9 +1239,22 @@ class FoodRosterSerializer(serializers.ModelSerializer):
             "is_over_50",
             "is_exempt_from_food_teams",
             "is_food_admin",
-            "food_team_comment",
+            "food_team_pause_reason",
+            "house_number",
+            "is_unavailable_this_cycle",
+            "wish_comment",
+            "has_submitted_wish",
         ]
-        read_only_fields = ["id", "first_name", "last_name", "house_name", "food_team_comment"]
+        read_only_fields = [
+            "id",
+            "first_name",
+            "last_name",
+            "house_name",
+            "house_number",
+            "is_unavailable_this_cycle",
+            "wish_comment",
+            "has_submitted_wish",
+        ]
 
 
 # Meal Price Serializers

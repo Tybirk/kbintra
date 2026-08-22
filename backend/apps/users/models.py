@@ -135,9 +135,13 @@ class User(AbstractUser):
         blank=True,
         help_text="Default days of the week user is available to cook (0=Mon, 1=Tue, 2=Wed, 3=Thu)",
     )
-    food_team_comment = models.TextField(
+    food_team_pause_reason = models.TextField(
         blank=True,
-        help_text="Special notes about food team participation",
+        help_text=(
+            "Why this user is stepping back from food teams, shown to food admins "
+            "next to is_exempt_from_food_teams. Free text: 'away until spring', "
+            "'health', or nothing at all."
+        ),
     )
     is_food_admin = models.BooleanField(
         default=False,

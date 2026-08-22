@@ -1263,3 +1263,93 @@ class TestFavourRepayOptions:
         response = api_client.get(reverse("food:favour-repay-options", kwargs={"pk": favour.id}))
 
         assert response.status_code == 403
+
+
+# =============================================================================
+# Food-admin roster: who is sitting out, and why
+# =============================================================================
+
+
+@pytest.mark.django_db
+class TestFoodRoster:
+    def _admin(self, house):
+        return User.objects.create_user(
+            email="foodadmin@example.com",
+            password="x",
+            first_name="Madadmin",
+            house=house,
+            is_food_admin=True,
+        )
+
+    def test_it_reports_both_kinds_of_sitting_out_with_their_reasons(
+        self, api_client, house, house2, two_cooking_dates
+    ):
+        cycle, d1, _d2 = two_cooking_dates
+        admin = self._admin(house)
+
+        paused = User.objects.create_user(
+            email="paused@example.com",
+            password="x",
+            first_name="Pauset",
+            house=house2,
+            is_exempt_from_food_teams=True,
+            food_team_pause_reason="Væk til foråret",
+        )
+        this_period = User.objects.create_user(
+            email="thisperiod@example.com", password="x", first_name="Denne", house=house2
+        )
+        FoodTeamWish.objects.create(
+            cycle=cycle,
+            user=this_period,
+            available_dates=[],
+            is_unavailable=True,
+            comment="Rejser i september",
+        )
+
+        api_client.force_authenticate(user=admin)
+        response = api_client.get(reverse("food:food-roster"))
+
+        assert response.status_code == 200
+        assert response.data["cycle"]["name"] == cycle.name
+        rows = {r["id"]: r for r in response.data["residents"]}
+
+        # Standing pause: flagged on the person, with its own reason.
+        assert rows[paused.id]["is_exempt_from_food_teams"] is True
+        assert rows[paused.id]["food_team_pause_reason"] == "Væk til foråret"
+        assert rows[paused.id]["is_unavailable_this_cycle"] is False
+
+        # Sitting out this period only: comes from the wish, and is kept distinct.
+        assert rows[this_period.id]["is_exempt_from_food_teams"] is False
+        assert rows[this_period.id]["is_unavailable_this_cycle"] is True
+        assert rows[this_period.id]["wish_comment"] == "Rejser i september"
+
+        # Someone who simply hasn't answered yet is neither.
+        assert rows[admin.id]["has_submitted_wish"] is False
+        assert rows[admin.id]["is_unavailable_this_cycle"] is False
+
+    def test_it_shows_the_bare_house_number(self, api_client, house, two_cooking_dates):
+        from apps.houses.models import House
+
+        admin = self._admin(house)
+        resident = User.objects.create_user(
+            email="numbered@example.com",
+            password="x",
+            first_name="Nummer",
+            house=House.objects.create(name="Kløverbakkevej 45"),
+        )
+
+        api_client.force_authenticate(user=admin)
+        response = api_client.get(reverse("food:food-roster"))
+
+        row = next(r for r in response.data["residents"] if r["id"] == resident.id)
+        assert row["house_number"] == "45"
+
+    def test_it_is_closed_to_everyone_else(self, api_client, house, two_cooking_dates):
+        ordinary = User.objects.create_user(
+            email="ordinary@example.com", password="x", first_name="Almindelig", house=house
+        )
+
+        api_client.force_authenticate(user=ordinary)
+        response = api_client.get(reverse("food:food-roster"))
+
+        assert response.status_code == 403

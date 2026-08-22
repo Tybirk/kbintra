@@ -2699,10 +2699,36 @@ class MyFoodProfileView(generics.RetrieveUpdateAPIView):
 
 
 class FoodRosterListView(generics.ListAPIView):
-    """Admin roster of all users with their food-team flags."""
+    """Admin roster: every resident's food-team flags and why they are sitting out.
+
+    Also reports the cycle the per-period answers belong to, so the page can say
+    *which* period someone is unavailable for rather than just "this one".
+    """
 
     permission_classes = [permissions.IsAuthenticated, IsFoodAdmin]
     serializer_class = FoodRosterSerializer
+    pagination_class = None
+
+    def _cycle(self) -> FoodTeamCycle | None:
+        """The period the roster is about: the one taking wishes, else the newest."""
+        from .models import CycleStatus
+
+        return (
+            FoodTeamCycle.objects.filter(status=CycleStatus.COLLECTING_WISHES)
+            .order_by("-created_at")
+            .first()
+            or FoodTeamCycle.objects.order_by("-created_at").first()
+        )
+
+    def get_serializer_context(self) -> dict:
+        context = super().get_serializer_context()
+        cycle = self._cycle()
+        # One query for every wish in the period, so the serializer doesn't run
+        # one per resident.
+        context["wishes_by_user"] = (
+            {w.user_id: w for w in FoodTeamWish.objects.filter(cycle=cycle)} if cycle else {}
+        )
+        return context
 
     def get_queryset(self) -> QuerySet:
         from apps.users.models import User
@@ -2711,6 +2737,16 @@ class FoodRosterListView(generics.ListAPIView):
             User.objects.filter(is_active=True)
             .select_related("house")
             .order_by("house__name", "first_name")
+        )
+
+    def list(self, request: Request, *args: object, **kwargs: object) -> Response:
+        cycle = self._cycle()
+        serializer = self.get_serializer(self.get_queryset(), many=True)
+        return Response(
+            {
+                "cycle": {"id": cycle.id, "name": cycle.name} if cycle else None,
+                "residents": serializer.data,
+            }
         )
 
 

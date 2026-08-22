@@ -41,6 +41,7 @@ import type {
   TodayLeftoversPost,
   MyFoodProfile,
   FoodRosterEntry,
+  FoodRoster,
   MealPrice,
   CreateMealPriceData,
 } from "../types"
@@ -742,10 +743,10 @@ export const foodApi = {
 
   // Admin roster
 
-  getFoodRoster: async (): Promise<FoodRosterEntry[]> => {
+  getFoodRoster: async (): Promise<FoodRoster> => {
     const response = await apiClient.get("/food/admin/roster/")
 
-    return asArray(response.data)
+    return response.data
   },
 
   updateFoodRosterEntry: async (

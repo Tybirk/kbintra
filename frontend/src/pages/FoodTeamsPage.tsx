@@ -80,6 +80,7 @@ import type {
   FoodTeamMember,
   FoodTeamCycle,
   TeamGenerationResult,
+  FoodRosterEntry,
   TeamFavour,
   SwapBroadcast,
   MyFoodProfile,
@@ -739,9 +740,17 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
               </div>
 
               <Textarea
-                label="Kommentar (valgfri)"
-                description="Eventuelle særlige omstændigheder eller præferencer"
-                placeholder="F.eks. jeg foretrækker at lave mad med min husfælle, jeg kan kun mandage i uge 2..."
+                label={
+                  isUnavailable
+                    ? "Hvorfor kan du ikke i denne periode? (valgfri)"
+                    : "Kommentar til madhold-ansvarlig (valgfri)"
+                }
+                description="Læses af madhold-ansvarlig, når holdene lægges."
+                placeholder={
+                  isUnavailable
+                    ? "F.eks. jeg er på ferie hele september..."
+                    : "F.eks. jeg kan kun mandage i uge 2, jeg kan ikke løfte tunge gryder..."
+                }
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 minRows={2}
@@ -771,6 +780,168 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
 }
 
 // Admin Panel for managing cycles and generating teams
+
+// Resident overview for food admins: who can cook, and who is sitting out.
+
+interface OverblikGroupProps {
+  title: string
+
+  description: string
+
+  rows: FoodRosterEntry[]
+
+  /** Pulls the reason out of whichever field this group's state stores it in. */
+  reasonOf?: (row: FoodRosterEntry) => string
+
+  color?: string
+}
+
+function OverblikGroup({
+  title,
+  description,
+  rows,
+  reasonOf,
+  color,
+}: OverblikGroupProps) {
+  return (
+    <div>
+      <Group gap="xs" mb={4}>
+        <Text fw={500}>{title}</Text>
+        <Badge variant="light" color={color}>
+          {rows.length}
+        </Badge>
+      </Group>
+      <Text size="xs" c="dimmed" mb="xs">
+        {description}
+      </Text>
+      {rows.length === 0 ? (
+        <Text size="sm" c="dimmed">
+          Ingen.
+        </Text>
+      ) : (
+        <Stack gap={6}>
+          {rows.map((row) => {
+            const reason = reasonOf?.(row) ?? ""
+
+            return (
+              <Paper key={row.id} withBorder p="xs" radius="sm">
+                <Text size="sm">
+                  {row.first_name} {row.last_name}
+                  {row.house_number && (
+                    <Text span c="dimmed">
+                      {" "}
+                      (hus {row.house_number})
+                    </Text>
+                  )}
+                </Text>
+                {reason && (
+                  <Text size="xs" c="dimmed" mt={2}>
+                    "{reason}"
+                  </Text>
+                )}
+              </Paper>
+            )
+          })}
+        </Stack>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Who is available to cook, and who is not.
+ *
+ * The two ways of sitting out are kept apart on purpose: a pause is set on the
+ * person and lasts until they lift it, while "ikke med i denne periode" comes
+ * from this period's wish and resets with it. Each carries its own reason,
+ * which is the part a food admin actually needs when planning.
+ */
+function BeboerOverblik() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["food", "roster"],
+
+    queryFn: foodApi.getFoodRoster,
+  })
+
+  if (isLoading) {
+    return (
+      <Center h={120}>
+        <Loader size="sm" />
+      </Center>
+    )
+  }
+
+  const residents = data?.residents ?? []
+
+  const paused = residents.filter((r) => r.is_exempt_from_food_teams)
+
+  const outThisCycle = residents.filter(
+    (r) => !r.is_exempt_from_food_teams && r.is_unavailable_this_cycle,
+  )
+
+  const cooking = residents.filter(
+    (r) => !r.is_exempt_from_food_teams && !r.is_unavailable_this_cycle,
+  )
+
+  const headChefs = cooking.filter((r) => r.can_be_head_chef)
+
+  const withHousemate = cooking.filter((r) => r.prefers_cooking_with_housemate)
+
+  // A note from someone who IS cooking is easy to miss otherwise — it never
+  // shows up in either "sitting out" group.
+  const notesFromCooks = cooking.filter((r) => r.wish_comment)
+
+  return (
+    <Stack gap="md">
+      <div>
+        <Title order={3}>Beboeroverblik</Title>
+        <Text size="sm" c="dimmed">
+          {data?.cycle
+            ? `Svar for perioden "${data.cycle.name}". ${cooking.length} af ${residents.length} beboere er med.`
+            : `${cooking.length} af ${residents.length} beboere er med i madhold.`}
+        </Text>
+      </div>
+
+      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
+        <OverblikGroup
+          title="Holder pause"
+          description="Sat på deres egen profil. Gælder indtil de selv slår den fra."
+          rows={paused}
+          reasonOf={(r) => r.food_team_pause_reason}
+          color="red"
+        />
+        <OverblikGroup
+          title="Ikke med i denne periode"
+          description="Fra deres ønske til netop denne periode."
+          rows={outThisCycle}
+          reasonOf={(r) => r.wish_comment}
+          color="orange"
+        />
+        <OverblikGroup
+          title="Kan være chefkok"
+          description="Mindst én pr. hold, højst tre."
+          rows={headChefs}
+          color="green"
+        />
+        <OverblikGroup
+          title="Vil lave mad med medbeboer"
+          description="Sættes på begge i husstanden, ellers kan holdene ikke dannes."
+          rows={withHousemate}
+          color="blue"
+        />
+      </SimpleGrid>
+
+      {notesFromCooks.length > 0 && (
+        <OverblikGroup
+          title="Kommentarer fra dem der er med"
+          description="Skrevet sammen med deres ønsker til denne periode."
+          rows={notesFromCooks}
+          reasonOf={(r) => r.wish_comment}
+        />
+      )}
+    </Stack>
+  )
+}
 
 interface AdminPanelProps {
   canFoodAdmin: boolean
@@ -864,6 +1035,10 @@ function AdminPanel({ canFoodAdmin }: AdminPanelProps) {
 
   return (
     <Stack gap="lg">
+      <BeboerOverblik />
+
+      <Divider />
+
       <Group justify="space-between">
         <Title order={3}>Administrer perioder</Title>
         <Button leftSection={<IconPlus size={16} />} onClick={openCreateModal}>
@@ -3034,7 +3209,7 @@ function FoodProfilePanel() {
 
   useEffect(() => {
     if (profile && !commentLoaded) {
-      setComment(profile.food_team_comment)
+      setComment(profile.food_team_pause_reason)
 
       setCommentLoaded(true)
     }
@@ -3129,10 +3304,35 @@ function FoodProfilePanel() {
                 is_exempt_from_food_teams: e.currentTarget.checked,
               })
             }
-            label="Jeg deltager ikke i madhold for tiden"
-            description="Du bliver ikke sat på madhold, så længe dette er slået til."
+            label="Jeg holder pause fra madhold"
+            description="Du bliver ikke sat på madhold, så længe dette er slået til. Slå det fra igen, når du er klar."
             color="red"
           />
+
+          {profile.is_exempt_from_food_teams && (
+            <>
+              <Textarea
+                label="Hvorfor holder du pause?"
+                description="Vises for madhold-ansvarlig, så de ved hvad de kan regne med. Kort er fint — og du kan lade den stå tom."
+                placeholder="F.eks. væk til foråret, sygdom, nyfødt i huset..."
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                minRows={2}
+                autosize
+              />
+              <Group justify="flex-end">
+                <Button
+                  onClick={() =>
+                    updateMutation.mutate({ food_team_pause_reason: comment })
+                  }
+                  loading={updateMutation.isPending}
+                  disabled={comment === profile.food_team_pause_reason}
+                >
+                  Gem begrundelse
+                </Button>
+              </Group>
+            </>
+          )}
 
           <Divider />
 
@@ -3163,27 +3363,6 @@ function FoodProfilePanel() {
               </Group>
             </Chip.Group>
           </div>
-
-          <Textarea
-            label="Kommentar til madhold-ansvarlig"
-            description="Eventuelle særlige hensyn, præferencer eller begrænsninger."
-            placeholder="F.eks. jeg kan ikke løfte tunge gryder, jeg foretrækker bestemte uger..."
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            minRows={3}
-            autosize
-          />
-          <Group justify="flex-end">
-            <Button
-              onClick={() =>
-                updateMutation.mutate({ food_team_comment: comment })
-              }
-              loading={updateMutation.isPending}
-              disabled={comment === profile.food_team_comment}
-            >
-              Gem kommentar
-            </Button>
-          </Group>
         </Stack>
       </Card>
     </Stack>
