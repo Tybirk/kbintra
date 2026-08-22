@@ -534,7 +534,9 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
     submitWishMutation.mutate({
       available_dates: isUnavailable ? [] : selectedDates,
 
-      comment,
+      // The comment only exists as a reason for being away; unticking the
+      // switch must not leave the old reason attached to a normal wish.
+      comment: isUnavailable ? comment : "",
 
       is_unavailable: isUnavailable,
     })
@@ -739,22 +741,16 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
                 </SimpleGrid>
               </div>
 
-              <Textarea
-                label={
-                  isUnavailable
-                    ? "Hvorfor kan du ikke i denne periode? (valgfri)"
-                    : "Kommentar til madhold-ansvarlig (valgfri)"
-                }
-                description="Læses af madhold-ansvarlig, når holdene lægges."
-                placeholder={
-                  isUnavailable
-                    ? "F.eks. jeg er på ferie hele september..."
-                    : "F.eks. jeg kan kun mandage i uge 2, jeg kan ikke løfte tunge gryder..."
-                }
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                minRows={2}
-              />
+              {isUnavailable && (
+                <Textarea
+                  label="Hvorfor kan du ikke i denne periode? (valgfri)"
+                  description="Læses af madhold-ansvarlig, når holdene lægges."
+                  placeholder="F.eks. jeg er på ferie hele september..."
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  minRows={2}
+                />
+              )}
 
               <Group justify="space-between">
                 <Text size="sm" c="dimmed">
@@ -887,10 +883,6 @@ function BeboerOverblik() {
 
   const withHousemate = cooking.filter((r) => r.prefers_cooking_with_housemate)
 
-  // A note from someone who IS cooking is easy to miss otherwise — it never
-  // shows up in either "sitting out" group.
-  const notesFromCooks = cooking.filter((r) => r.wish_comment)
-
   return (
     <Stack gap="md">
       <div>
@@ -930,15 +922,6 @@ function BeboerOverblik() {
           color="blue"
         />
       </SimpleGrid>
-
-      {notesFromCooks.length > 0 && (
-        <OverblikGroup
-          title="Kommentarer fra dem der er med"
-          description="Skrevet sammen med deres ønsker til denne periode."
-          rows={notesFromCooks}
-          reasonOf={(r) => r.wish_comment}
-        />
-      )}
     </Stack>
   )
 }
