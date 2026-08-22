@@ -104,7 +104,7 @@ class FoodTeamCycleAdmin(admin.ModelAdmin):
 class FoodTeamWishAdmin(admin.ModelAdmin):
     list_display = ["user", "cycle", "available_date_count", "created_at"]
     list_filter = ["cycle"]
-    search_fields = ["user__email", "user__first_name", "comment"]
+    search_fields = ["user__email", "user__first_name"]
     raw_id_fields = ["cycle", "user"]
 
 

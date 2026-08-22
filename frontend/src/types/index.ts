@@ -2047,8 +2047,6 @@ export interface FoodTeamWish {
 
   is_unavailable: boolean
 
-  comment: string
-
   created_at: string
 
   updated_at: string
@@ -2058,8 +2056,6 @@ export interface CreateWishData {
   available_dates: string[]
 
   is_unavailable?: boolean
-
-  comment?: string
 }
 
 export interface TeamGenerationResult {
@@ -2237,7 +2233,6 @@ export interface FoodRosterEntry {
   food_team_pause_reason: string
   // This period only: comes from their wish for the cycle below.
   is_unavailable_this_cycle: boolean
-  wish_comment: string
   has_submitted_wish: boolean
 }
 

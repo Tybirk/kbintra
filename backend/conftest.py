@@ -233,7 +233,6 @@ def food_team_wish(db, food_team_cycle, user, monday_date):
         cycle=food_team_cycle,
         user=user,
         available_dates=available_dates,
-        comment="Flexible on dates",
     )
 
 

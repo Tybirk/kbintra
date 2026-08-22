@@ -495,10 +495,6 @@ class FoodTeamWish(models.Model):
             "is_exempt_from_food_teams). The generator skips them for this cycle."
         ),
     )
-    comment = models.TextField(
-        blank=True,
-        help_text="Optional comment or special requests",
-    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

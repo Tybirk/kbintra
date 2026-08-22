@@ -90,8 +90,6 @@ import type {
 interface WishSubmitData {
   available_dates: string[]
 
-  comment: string
-
   is_unavailable: boolean
 }
 
@@ -404,9 +402,27 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
 
   const [comment, setComment] = useState("")
 
+  const [commentLoaded, setCommentLoaded] = useState(false)
+
   const [isUnavailable, setIsUnavailable] = useState(false)
 
   const [defaultsApplied, setDefaultsApplied] = useState(false)
+
+  // The reason for being away is kept on the profile, not on this cycle's wish,
+  // so it survives the period and the organiser can follow it up later.
+  const { data: myProfile } = useQuery({
+    queryKey: ["food", "my-food-profile"],
+
+    queryFn: foodApi.getMyFoodProfile,
+  })
+
+  useEffect(() => {
+    if (myProfile && !commentLoaded) {
+      setComment(myProfile.food_team_pause_reason)
+
+      setCommentLoaded(true)
+    }
+  }, [myProfile, commentLoaded])
 
   // Fetch existing wish
 
@@ -486,11 +502,20 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
     if (existingWish) {
       setSelectedDates(existingWish.available_dates)
 
-      setComment(existingWish.comment)
-
       setIsUnavailable(existingWish.is_unavailable)
     }
   }, [existingWish])
+
+  const saveReasonMutation = useMutation({
+    mutationFn: (reason: string) =>
+      foodApi.updateMyFoodProfile({ food_team_pause_reason: reason }),
+
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["food", "my-food-profile"] })
+
+      queryClient.invalidateQueries({ queryKey: ["food", "roster"] })
+    },
+  })
 
   const submitWishMutation = useMutation({
     mutationFn: (data: WishSubmitData) => foodApi.submitWish(cycle.id, data),
@@ -531,12 +556,17 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
   }
 
   const handleSubmit = () => {
+    // Save the reason on the profile first, so the organiser sees it even if
+    // it is the only thing that changed. Clearing it when the user is not away
+    // keeps a stale reason from outliving the absence it explained.
+    const reason = isUnavailable ? comment : ""
+
+    if (myProfile && reason !== myProfile.food_team_pause_reason) {
+      saveReasonMutation.mutate(reason)
+    }
+
     submitWishMutation.mutate({
       available_dates: isUnavailable ? [] : selectedDates,
-
-      // The comment only exists as a reason for being away; unticking the
-      // switch must not leave the old reason attached to a normal wish.
-      comment: isUnavailable ? comment : "",
 
       is_unavailable: isUnavailable,
     })
@@ -743,8 +773,8 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
 
               {isUnavailable && (
                 <Textarea
-                  label="Hvorfor kan du ikke i denne periode? (valgfri)"
-                  description="Læses af madhold-ansvarlig, når holdene lægges."
+                  label="Hvorfor kan du ikke? (valgfri)"
+                  description="Læses af madhold-ansvarlig. Gemmes på din profil, så den også gælder, hvis pausen varer længere end denne periode."
                   placeholder="F.eks. jeg er på ferie hele september..."
                   value={comment}
                   onChange={(e) => setComment(e.target.value)}
@@ -906,7 +936,7 @@ function BeboerOverblik() {
           title="Ikke med i denne periode"
           description="Fra deres ønske til netop denne periode."
           rows={outThisCycle}
-          reasonOf={(r) => r.wish_comment}
+          reasonOf={(r) => r.food_team_pause_reason}
           color="orange"
         />
         <OverblikGroup

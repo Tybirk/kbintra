@@ -112,8 +112,10 @@ Users declare which dates they're available to cook. If a user submits no wish, 
 ### Two ways of sitting out, and the reason for each
 
 Deliberately separate, and the overview keeps them apart:
-- **`User.is_exempt_from_food_teams`** — set on the person, lasts until they turn it off ("Jeg holder pause fra madhold"). Not framed as permanent: a season away uses the same switch. Carries `food_team_pause_reason`.
-- **`FoodTeamWish.is_unavailable`** — this period only, from the wish; resets with the cycle. Carries that wish's `comment`.
+- **`User.is_exempt_from_food_teams`** — set on the person, lasts until they turn it off ("Jeg holder pause fra madhold"). Not framed as permanent: a season away uses the same switch.
+- **`FoodTeamWish.is_unavailable`** — this period only, from the wish; resets with the cycle.
+
+**One reason for both**, and it lives on the person: `User.food_team_pause_reason`. A reason stored on the wish would die with the cycle, so the organiser could never come back and ask whether the break is still needed — which is the whole point of recording it. Both the profile switch and the wish form write to this one field; the wish form clears it when the user is no longer away, so a stale reason can't outlive the absence it explained. `FoodTeamWish.comment` was removed (it was never non-empty).
 
 `GET admin/roster/` (food-admin) returns `{cycle, residents}` where each resident carries both states with their reasons, plus `house_number` and `has_submitted_wish`. Wishes for the period are prefetched into serializer context, so the roster is two queries, not one per resident. The **Beboeroverblik** section at the top of the Admin tab renders it: holder pause / ikke med i denne periode / chefkokke / vil lave mad med medbeboer, The wish comment is only asked for when someone marks themselves out of the period — the date picker already says precisely when they can cook, so a free-text note about availability only repeats it.
 

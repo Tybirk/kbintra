@@ -1298,12 +1298,10 @@ class TestFoodRoster:
         this_period = User.objects.create_user(
             email="thisperiod@example.com", password="x", first_name="Denne", house=house2
         )
+        this_period.food_team_pause_reason = "Rejser i september"
+        this_period.save(update_fields=["food_team_pause_reason"])
         FoodTeamWish.objects.create(
-            cycle=cycle,
-            user=this_period,
-            available_dates=[],
-            is_unavailable=True,
-            comment="Rejser i september",
+            cycle=cycle, user=this_period, available_dates=[], is_unavailable=True
         )
 
         api_client.force_authenticate(user=admin)
@@ -1321,7 +1319,7 @@ class TestFoodRoster:
         # Sitting out this period only: comes from the wish, and is kept distinct.
         assert rows[this_period.id]["is_exempt_from_food_teams"] is False
         assert rows[this_period.id]["is_unavailable_this_cycle"] is True
-        assert rows[this_period.id]["wish_comment"] == "Rejser i september"
+        assert rows[this_period.id]["food_team_pause_reason"] == "Rejser i september"
 
         # Someone who simply hasn't answered yet is neither.
         assert rows[admin.id]["has_submitted_wish"] is False

@@ -753,7 +753,6 @@ class FoodTeamWishSerializer(serializers.ModelSerializer):
             "available_dates",
             "available_date_count",
             "is_unavailable",
-            "comment",
             "created_at",
             "updated_at",
         ]
@@ -768,7 +767,7 @@ class FoodTeamWishCreateUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = FoodTeamWish
-        fields = ["cycle", "available_dates", "is_unavailable", "comment"]
+        fields = ["cycle", "available_dates", "is_unavailable"]
 
     def validate_cycle(self, value: FoodTeamCycle) -> FoodTeamCycle:
         if not value.is_accepting_wishes:
@@ -1197,14 +1196,14 @@ class FoodRosterSerializer(serializers.ModelSerializer):
     The two "not cooking" states are deliberately separate. ``is_exempt_from_food_teams``
     is the standing one — away for a season, or stepping back indefinitely — and carries
     ``food_team_pause_reason``. ``is_unavailable_this_cycle`` comes from this period's
-    wish and carries that wish's comment. A food admin planning a period needs both, and
-    needs to tell them apart.
+    wish. Either way the explanation is the same field on the person,
+    ``food_team_pause_reason``: kept off the cycle so it outlives the period and the
+    organiser can ask later whether the break is still needed.
     """
 
     house_name = serializers.CharField(source="house.name", read_only=True, default="")
     house_number = serializers.SerializerMethodField()
     is_unavailable_this_cycle = serializers.SerializerMethodField()
-    wish_comment = serializers.SerializerMethodField()
     has_submitted_wish = serializers.SerializerMethodField()
 
     def get_house_number(self, obj: User) -> str:
@@ -1219,10 +1218,6 @@ class FoodRosterSerializer(serializers.ModelSerializer):
     def get_is_unavailable_this_cycle(self, obj: User) -> bool:
         wish = self._wish(obj)
         return bool(wish and wish.is_unavailable)
-
-    def get_wish_comment(self, obj: User) -> str:
-        wish = self._wish(obj)
-        return wish.comment if wish else ""
 
     def get_has_submitted_wish(self, obj: User) -> bool:
         return self._wish(obj) is not None
@@ -1242,7 +1237,6 @@ class FoodRosterSerializer(serializers.ModelSerializer):
             "food_team_pause_reason",
             "house_number",
             "is_unavailable_this_cycle",
-            "wish_comment",
             "has_submitted_wish",
         ]
         read_only_fields = [
@@ -1252,7 +1246,6 @@ class FoodRosterSerializer(serializers.ModelSerializer):
             "house_name",
             "house_number",
             "is_unavailable_this_cycle",
-            "wish_comment",
             "has_submitted_wish",
         ]
 

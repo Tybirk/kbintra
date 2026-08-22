@@ -404,7 +404,6 @@ class TestFoodTeamWishSerializer:
             data={
                 "cycle": food_team_cycle.id,
                 "available_dates": available_dates,
-                "comment": "Test",
             },
             context={"request": MockRequest(user)},
         )
@@ -706,7 +705,6 @@ class TestFoodTeamWishViews:
                 monday_date.isoformat(),
                 (monday_date + timedelta(days=1)).isoformat(),
             ],
-            "comment": "I prefer Mondays",
         }
         response = authenticated_client.post(url, data, format="json")
         assert response.status_code == 201
