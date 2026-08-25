@@ -16,6 +16,7 @@ from apps.forum.models import File, Folder, Post, Subgroup, Thread
 from apps.forum.services import member_subgroup_ids
 from apps.houses.models import Car, House
 from apps.houses.utils import format_license_plate, normalize_license_plate
+from apps.reports.models import Report
 from apps.users.models import User
 
 from .services import (
@@ -38,6 +39,7 @@ TYPE_TO_KEY = {
     "car": "cars",
     "file": "files",
     "folder": "folders",
+    "report": "reports",
 }
 
 # Display priority for result groups (most useful types first).
@@ -52,6 +54,7 @@ GROUP_DISPLAY_ORDER = [
     "posts",
     "announcements",
     "events",
+    "reports",
     "houses",
     "cars",
     "files",
@@ -552,6 +555,20 @@ def restore_original_titles(results: dict[str, list[dict]]) -> None:
         }
         _replace_titles(users, by_id)
 
+    # A report's indexed title is an excerpt of its description, so rebuild the
+    # excerpt from the unfolded source rather than reading a single field.
+    reports = results.get("reports") or []
+    if reports:
+        _replace_titles(
+            reports,
+            {
+                report_id: create_excerpt(description, 80)
+                for report_id, description in Report.objects.filter(
+                    id__in=[i["id"] for i in reports]
+                ).values_list("id", "description")
+            },
+        )
+
 
 # Types that can be searched via the advanced endpoint. Order matters — used
 # for the default `types` filter and to ensure all keys appear in the response.
@@ -560,6 +577,7 @@ ADVANCED_SEARCHABLE_TYPES = [
     "post",
     "announcement",
     "event",
+    "report",
     "file",
     "folder",
     "subgroup",

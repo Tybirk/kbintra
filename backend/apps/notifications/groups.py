@@ -130,4 +130,17 @@ NOTIFICATION_GROUPS: list[dict] = [
             },
         ],
     },
+    {
+        "key": "reports",
+        "label": "Indrapportering",
+        "fields": [
+            {
+                "key": "reports",
+                "label": "Indrapportering",
+                "description": (
+                    "Få besked om nye sager til dit udvalg, og om opdateringer på sager du følger"
+                ),
+            },
+        ],
+    },
 ]

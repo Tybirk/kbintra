@@ -81,3 +81,18 @@ if [ -f "$ROSTER" ]; then
         "/app/data/$(basename "$ROSTER")" --replace --skip-if-past \
         || echo "WARNING: could not re-import $ROSTER; the test server has prod's teams only."
 fi
+
+# Same reasoning as the roster: Driftsudvalgets 13 real cases live only in the
+# export from their previous reporting app, so the database rsync above wipes
+# them from the test site on every deploy. The export sits in ./data (which
+# survives the rsync), so it can simply be replayed. The import is idempotent on
+# (udvalg, sagsnummer) and re-creates the photos too, so it is safe to run every
+# time. reporting_enabled is set by a data migration, not by hand, for the same
+# reason — a flag set in admin would not survive either.
+REPORTS_EXPORT=$(ls ./data/Sager*.xlsx 2>/dev/null | head -1)
+if [ -n "$REPORTS_EXPORT" ]; then
+    echo ">>> Re-importing Driftsudvalgets cases from $REPORTS_EXPORT (test-only data)..."
+    docker compose exec -T backend uv run python manage.py import_du_reports \
+        "/app/data/$(basename "$REPORTS_EXPORT")" \
+        || echo "WARNING: could not re-import $REPORTS_EXPORT; the test server has no cases."
+fi

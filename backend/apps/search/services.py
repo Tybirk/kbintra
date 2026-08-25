@@ -215,7 +215,7 @@ def remove_object(obj_type: str, object_id: int) -> None:
 
 # Content types where a dynamic snippet from body is more useful than the
 # stored subtitle (e.g. post content, announcement text).
-_SNIPPET_TYPES = {"post", "announcement", "event", "thread"}
+_SNIPPET_TYPES = {"post", "announcement", "event", "thread", "report"}
 
 
 def _parse_fts_row(row: tuple) -> dict:
@@ -272,7 +272,7 @@ def fts_search(query: str, limit: int = 10) -> list[dict]:
             "FROM search_index WHERE search_index MATCH %s "
             "ORDER BY bm25(search_index, 10.0, 1.0) "
             "  + CASE WHEN created_at = '' THEN 0 "
-            "    WHEN type IN ('thread','post','announcement','event','file') "
+            "    WHEN type IN ('thread','post','announcement','event','file','report') "
             "    THEN 0.01 * (julianday('now') - julianday(created_at)) "
             "    ELSE 0.001 * (julianday('now') - julianday(created_at)) "
             "    END "
@@ -314,7 +314,7 @@ def fts_search_advanced(
         score_expr = (
             "bm25(search_index, 10.0, 1.0) "
             "+ CASE WHEN created_at = '' THEN 0 "
-            "  WHEN type IN ('thread','post','announcement','event','file') "
+            "  WHEN type IN ('thread','post','announcement','event','file','report') "
             "  THEN 0.01 * (julianday('now') - julianday(created_at)) "
             "  ELSE 0.001 * (julianday('now') - julianday(created_at)) "
             "  END"
@@ -370,7 +370,7 @@ def fts_search_per_type(query: str, per_type_limit: int = 10) -> list[dict]:
             "    snippet(search_index, 1, '', '', '…', 15) AS snip, "
             "    bm25(search_index, 10.0, 1.0) "
             "      + CASE WHEN created_at = '' THEN 0 "
-            "        WHEN type IN ('thread','post','announcement','event','file') "
+            "        WHEN type IN ('thread','post','announcement','event','file','report') "
             "        THEN 0.01 * (julianday('now') - julianday(created_at)) "
             "        ELSE 0.001 * (julianday('now') - julianday(created_at)) "
             "        END AS score "

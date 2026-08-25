@@ -31,14 +31,14 @@ Results are ordered by:
 ```sql
 bm25(search_index, 10.0, 1.0)
   + CASE
-    WHEN type IN ('thread','post','announcement','event','file')
+    WHEN type IN ('thread','post','announcement','event','file','report')
       THEN 0.01 * age_in_days    -- ~3.65/year (strong decay)
     ELSE  0.001 * age_in_days    -- ~0.365/year (mild tiebreaker)
     END
 ```
 
 - **BM25**: Title matches weighted 10x over body. Returns negative values (more negative = better).
-- **Content types** (threads, posts, announcements, events, files): Strong recency decay. A 6-month-old post is penalized ~1.8 points; a 2-year-old post ~7.3. Older content is significantly downranked.
+- **Content types** (threads, posts, announcements, events, files, reports): Strong recency decay. A 6-month-old post is penalized ~1.8 points; a 2-year-old post ~7.3. Older content is significantly downranked.
 - **Static types** (users, houses, subgroups): Mild tiebreaker only. These rarely go stale.
 
 ### Query Building
@@ -105,6 +105,7 @@ and leave threads/posts/announcements with zero hits.
 | Event | `event` | `created_at` | Title | Description + location |
 | File | `file` | `uploaded_at` | Filename | (empty) |
 | Folder | `folder` | `created_at` | Name | (empty) |
+| Report | `report` | `created_at` | Description excerpt (80 chars) | Description + location |
 
 ## API Heuristics
 
@@ -140,3 +141,6 @@ The `--if-empty` variant is used in `docker-entrypoint.sh` on container startup.
 2. Add indexing logic to `rebuild_search_index.py`
 3. Add the type to `TYPE_TO_KEY` in `views.py`
 4. Add the type to the `ensure_all_keys` list in `views.py`
+5. Add a branch to `restore_original_titles` in `views.py` — otherwise results
+   display the Danish-folded title (`Stoevsuger` instead of `Støvsuger`). Easy to
+   miss: the index and the search both work, only the displayed text is wrong.

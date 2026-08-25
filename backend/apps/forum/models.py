@@ -44,6 +44,13 @@ class Subgroup(models.Model):
         default=False,
         help_text="If true, the 'Privat tråd' checkbox is checked by default when creating threads/files.",
     )
+    reporting_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "If true, residents can file reports (indrapporteringer) to this group and its "
+            "members handle them. Members are the caseworkers, so pair this with allows_members."
+        ),
+    )
     is_main = models.BooleanField(
         default=False,
         help_text="If true, this subgroup appears at the very top (e.g., Fælles).",
