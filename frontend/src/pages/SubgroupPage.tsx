@@ -49,6 +49,7 @@ import {
   IconPin,
   IconLock,
   IconMessage,
+  IconTool,
   IconFolder,
   IconUpload,
   IconFolderPlus,
@@ -87,6 +88,8 @@ import { filterFilesBySize } from "../config"
 import { CompactEventCard } from "../components/CompactEventCard"
 
 import GalleryTab from "../components/GalleryTab"
+
+import { ReportQueue } from "./reports/ReportQueue"
 
 import type { RichTextEditorProps } from "../components/RichTextEditor"
 import { RichTextContent } from "../components/RichTextContent"
@@ -167,9 +170,11 @@ export default function SubgroupPage() {
     ? "documents"
     : location.pathname.includes("/galleri")
       ? "gallery"
-      : location.pathname.includes("/info")
-        ? "info"
-        : "threads"
+      : location.pathname.includes("/indrapportering")
+        ? "reports"
+        : location.pathname.includes("/info")
+          ? "info"
+          : "threads"
 
   const [
     createThreadModalOpened,
@@ -822,6 +827,7 @@ When done, print a short summary:
         onChange={(tab) => {
           if (tab === "documents") navigate(`/forum/${slug}/dokumenter`)
           else if (tab === "gallery") navigate(`/forum/${slug}/galleri`)
+          else if (tab === "reports") navigate(`/forum/${slug}/indrapportering`)
           else if (tab === "info") navigate(`/forum/${slug}/info`)
           else navigate(`/forum/${slug}`)
         }}
@@ -855,6 +861,11 @@ When done, print a short summary:
           <Tabs.Tab value="gallery" leftSection={<IconPhoto size={16} />}>
             Galleri
           </Tabs.Tab>
+          {subgroup.reporting_enabled && (
+            <Tabs.Tab value="reports" leftSection={<IconTool size={16} />}>
+              Indrapportering
+            </Tabs.Tab>
+          )}
           <Tabs.Tab value="info" leftSection={<IconLink size={16} />}>
             Links og info
           </Tabs.Tab>
@@ -954,6 +965,13 @@ When done, print a short summary:
 
         <Tabs.Panel value="gallery" pt="md">
           <GalleryTab subgroupSlug={slug!} />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="reports" pt="md">
+          <ReportQueue
+            subgroupSlug={slug!}
+            canExport={!!user && (user.is_staff || subgroup.is_member)}
+          />
         </Tabs.Panel>
 
         <Tabs.Panel value="info" pt="md">

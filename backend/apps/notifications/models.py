@@ -42,6 +42,8 @@ class NotificationType(models.TextChoices):
     EXPENSE_PROCESSED = "expense_processed", "Udlæg behandlet"
     CAR_LOAN_REQUEST = "car_loan_request", "Forespørgsel om at låne din bil"
     CAR_LOAN_UPDATE = "car_loan_update", "Opdatering om bildeling"
+    REPORT_NEW = "report_new", "Ny indrapportering"
+    REPORT_UPDATE = "report_update", "Opdatering på indrapportering"
 
 
 class Notification(models.Model):
@@ -121,6 +123,7 @@ class NotificationPreference(models.Model):
     notify_food_swap_request = models.BooleanField(default=True)
     notify_mentions = models.BooleanField(default=True)
     notify_car_sharing = models.BooleanField(default=True)
+    notify_reports = models.BooleanField(default=True)
 
     # Email notification preferences (per notification type)
     email_messages = models.BooleanField(default=False)
@@ -143,6 +146,10 @@ class NotificationPreference(models.Model):
     # answer it, and until they do a neighbour is standing there without a car.
     # Push is not configured, so without email the only signal is the in-app bell.
     email_car_sharing = models.BooleanField(default=True)
+    # Off by default like the other email toggles: an indrapportering is worked
+    # from the in-app queue, and any resident may comment on any case, so this
+    # is the one notification type that could genuinely become chatty.
+    email_reports = models.BooleanField(default=False)
 
     # Push notification preferences (per notification type)
     push_messages = models.BooleanField(default=True)
@@ -161,6 +168,7 @@ class NotificationPreference(models.Model):
     push_food_swap_request = models.BooleanField(default=True)
     push_mentions = models.BooleanField(default=True)
     push_car_sharing = models.BooleanField(default=True)
+    push_reports = models.BooleanField(default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

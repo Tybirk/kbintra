@@ -28,6 +28,7 @@ import {
   IconHome,
   IconMessages,
   IconCar,
+  IconTool,
   IconX,
   IconAdjustmentsHorizontal,
 } from "@tabler/icons-react"
@@ -65,6 +66,8 @@ const TYPE_ICONS: Record<Exclude<SearchResultType, "file">, typeof IconSearch> =
     car: IconCar,
 
     folder: IconFolder,
+
+    report: IconTool,
   }
 
 const TYPE_LABELS: Record<SearchResultType, string> = {
@@ -87,6 +90,8 @@ const TYPE_LABELS: Record<SearchResultType, string> = {
   file: "Fil",
 
   folder: "Mappe",
+
+  report: "Indrapportering",
 }
 
 // Convert a flat list of actions (each with a `group` field) into Mantine's
@@ -149,6 +154,8 @@ const RESULT_KEY_TO_TYPE: Record<string, SearchResultType> = {
   files: "file",
 
   folders: "folder",
+
+  reports: "report",
 }
 
 // Module-level ref so AppHeader can focus the input after opening the spotlight

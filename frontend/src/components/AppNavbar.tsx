@@ -17,6 +17,7 @@ import {
   IconDoor,
   IconLink,
   IconReceipt2,
+  IconTool,
   IconSettings,
   IconUsersGroup,
 } from "@tabler/icons-react"
@@ -84,13 +85,15 @@ const navItems: NavItem[] = [
 
   { icon: IconReceipt2, label: "Udlæg", path: "/udlaeg" },
 
+  { icon: IconTool, label: "Indrapportering", path: "/indrapportering" },
+
   { icon: IconLink, label: "Nyttige links", path: "/links" },
 ]
 
 // Features still being trialled: shown on local dev and the test site, kept off
 // the real site until we are happy with them. Only the nav entry is hidden — the
 // route and the API stay open, so this is discovery-hiding, not access control.
-const TRIAL_ONLY_PATHS = ["/udlaeg"]
+const TRIAL_ONLY_PATHS = ["/udlaeg", "/indrapportering"]
 
 interface AppNavbarProps {
   onNavigate?: () => void

@@ -38,6 +38,7 @@ TYPE_TO_KEY = {
     "car": "cars",
     "file": "files",
     "folder": "folders",
+    "report": "reports",
 }
 
 # Display priority for result groups (most useful types first).
@@ -52,6 +53,7 @@ GROUP_DISPLAY_ORDER = [
     "posts",
     "announcements",
     "events",
+    "reports",
     "houses",
     "cars",
     "files",
@@ -560,6 +562,7 @@ ADVANCED_SEARCHABLE_TYPES = [
     "post",
     "announcement",
     "event",
+    "report",
     "file",
     "folder",
     "subgroup",

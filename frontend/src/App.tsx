@@ -85,6 +85,10 @@ const EventFormPage = lazy(() => import("./pages/EventFormPage"))
 const BookingsPage = lazy(() => import("./pages/BookingsPage"))
 
 const ExpensesPage = lazy(() => import("./pages/ExpensesPage"))
+
+const ReportsPage = lazy(() => import("./pages/ReportsPage"))
+
+const ReportDetailPage = lazy(() => import("./pages/ReportDetailPage"))
 const CarSharingPage = lazy(() => import("./pages/CarSharingPage"))
 
 const NotificationPreferencesPage = lazy(
@@ -437,6 +441,16 @@ const AuthenticatedRoutes = memo(function AuthenticatedRoutes() {
           }
         />
         <Route
+          path="/forum/:slug/indrapportering"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <SubgroupPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/forum/:slug"
           element={
             <ProtectedRoute>
@@ -614,6 +628,28 @@ const AuthenticatedRoutes = memo(function AuthenticatedRoutes() {
             <ProtectedRoute>
               <ErrorBoundary>
                 <ExpensesPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Indrapportering */}
+        <Route
+          path="/indrapportering"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <ReportsPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/indrapportering/:subgroupSlug/:number"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <ReportDetailPage />
               </ErrorBoundary>
             </ProtectedRoute>
           }

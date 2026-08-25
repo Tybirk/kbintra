@@ -36,6 +36,9 @@ AGGREGATABLE_TYPES = frozenset(
         NotificationType.MESSAGE_REACTION,
         NotificationType.NEW_THREAD,
         NotificationType.SUBGROUP_ACTIVITY,
+        # A case can collect a status change and several comments in one sitting;
+        # the udvalg wants one row per case, not one per event.
+        NotificationType.REPORT_UPDATE,
     }
 )
 
@@ -79,6 +82,10 @@ def _make_aggregate_title(notification_type: str, count: int, existing_title: st
     if notification_type == NotificationType.SUBGROUP_ACTIVITY:
         # Title is the thread name; keep it and add count
         return f"{existing_title} ({count} nye svar)"
+    if notification_type == NotificationType.REPORT_UPDATE:
+        # Report titles are "Sag #14 · <what happened>"; keep the case, replace
+        # the event with a count, so the row still says which case it is about.
+        return f"{existing_title.split(' · ')[0]} · {count} opdateringer"
     return existing_title
 
 
@@ -169,6 +176,8 @@ def get_user_preference(user: User, notification_type: NotificationType) -> bool
         NotificationType.EXPENSE_PROCESSED: True,
         NotificationType.CAR_LOAN_REQUEST: prefs.notify_car_sharing,
         NotificationType.CAR_LOAN_UPDATE: prefs.notify_car_sharing,
+        NotificationType.REPORT_NEW: prefs.notify_reports,
+        NotificationType.REPORT_UPDATE: prefs.notify_reports,
     }
 
     return preference_map.get(notification_type, True)
@@ -204,6 +213,8 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
         NotificationType.MENTION: prefs.push_mentions,
         NotificationType.CAR_LOAN_REQUEST: prefs.push_car_sharing,
         NotificationType.CAR_LOAN_UPDATE: prefs.push_car_sharing,
+        NotificationType.REPORT_NEW: prefs.push_reports,
+        NotificationType.REPORT_UPDATE: prefs.push_reports,
     }
 
     # These types have no dedicated push toggle — they piggyback on whatever
@@ -909,6 +920,99 @@ def notify_expense_processed(expense: Any) -> Notification | None:
         message=message,
         link="/udlaeg",
     )
+
+
+# --- Indrapportering ---------------------------------------------------------
+
+# How much of a case description to carry into a notification body.
+_REPORT_EXCERPT_CHARS = 140
+
+
+def _report_excerpt(text: str) -> str:
+    """First line of a report description, trimmed for a notification body."""
+    flat = " ".join((text or "").split())
+    if len(flat) <= _REPORT_EXCERPT_CHARS:
+        return flat
+    return flat[: _REPORT_EXCERPT_CHARS - 1].rstrip() + "…"
+
+
+def _report_link(report: Any) -> str:
+    return f"/indrapportering/{report.subgroup.slug}/{report.number}"
+
+
+def notify_new_report(report: Any) -> None:
+    """Tell an udvalg's members that a new case landed in their queue.
+
+    The reporter is skipped even when they are themselves a member — they just
+    filed it. Nothing is sent to the rest of the community: everyone *can* see
+    the queue, but only the udvalg is on the hook for it.
+    """
+    from apps.reports.services import committee_member_ids
+
+    recipient_ids = {
+        uid for uid in committee_member_ids(report.subgroup_id) if uid != report.submitted_by_id
+    }
+    if not recipient_ids:
+        return
+
+    title = f"Ny indrapportering #{report.number} til {report.subgroup.name}"
+    message = f"{report.reporter_name}: {_report_excerpt(report.description)}"
+    link = _report_link(report)
+
+    for user in User.objects.filter(id__in=recipient_ids, is_active=True):
+        create_notification(
+            user=user,
+            notification_type=NotificationType.REPORT_NEW,
+            title=title,
+            message=message,
+            link=link,
+            related_user=report.submitted_by,
+        )
+
+
+def notify_report_event(event: Any) -> None:
+    """Tell the people on the hook for a case that something happened on it.
+
+    Recipients are the reporter plus the udvalg's members, minus whoever did it.
+    Grouped on the case URL so a burst of comments on one case collapses into a
+    single unread row rather than filling the bell.
+    """
+    from apps.reports.models import ReportEvent
+    from apps.reports.services import committee_member_ids
+
+    report = event.report
+    recipient_ids = set(committee_member_ids(report.subgroup_id))
+    if report.submitted_by_id:
+        recipient_ids.add(report.submitted_by_id)
+    recipient_ids.discard(event.author_id)
+    if not recipient_ids:
+        return
+
+    who = event.author.get_full_name() if event.author else "Systemet"
+    status_label = dict(report.Status.choices).get(event.new_status, event.new_status)
+
+    # Both titles share the "Sag #n · " prefix so aggregation can keep the case
+    # number when it replaces the event part with a count.
+    if event.kind == ReportEvent.Kind.STATUS:
+        title = f"Sag #{report.number} · {status_label}"
+        message = f"{who} ændrede status."
+        if event.message:
+            message += f" {_report_excerpt(event.message)}"
+    else:
+        title = f"Sag #{report.number} · ny kommentar"
+        message = f"{who}: {_report_excerpt(event.message)}"
+
+    link = _report_link(report)
+    for user in User.objects.filter(id__in=recipient_ids, is_active=True):
+        create_notification(
+            user=user,
+            notification_type=NotificationType.REPORT_UPDATE,
+            title=title,
+            message=message,
+            link=link,
+            related_user=event.author,
+            group_key=link,
+        )
 
 
 def _get_event_recipients(

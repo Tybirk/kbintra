@@ -403,3 +403,43 @@ def deindex_folder(sender, instance, **kwargs):
         remove_object("folder", instance.id)
     except OperationalError:
         logger.exception("Failed to deindex folder %s", instance.id)
+
+
+# -- Report (indrapportering) signals --
+
+
+def _report_search_fields(instance) -> dict:
+    """Index fields for one report.
+
+    The description goes in the *title* rather than the case number: BM25 weights
+    title 10x, and "#12" is not what anyone searches for — "støvsugerslange" is.
+    The number lives in the subtitle where it stays readable.
+    """
+    body = instance.description
+    if instance.location:
+        body = f"{body}\n{instance.location}"
+    return {
+        "obj_type": "report",
+        "object_id": instance.id,
+        "title": create_excerpt(instance.description, 80),
+        "body": body,
+        "url": f"/indrapportering/{instance.subgroup.slug}/{instance.number}",
+        "subtitle": f"Indrapportering #{instance.number} · {instance.subgroup.name}",
+        "created_at": _isoformat(instance.created_at),
+    }
+
+
+@receiver(post_save, sender="reports.Report")
+def index_report(sender, instance, **kwargs):
+    try:
+        index_object(**_report_search_fields(instance))
+    except OperationalError:
+        logger.exception("Failed to index report %s", instance.id)
+
+
+@receiver(post_delete, sender="reports.Report")
+def deindex_report(sender, instance, **kwargs):
+    try:
+        remove_object("report", instance.id)
+    except OperationalError:
+        logger.exception("Failed to deindex report %s", instance.id)

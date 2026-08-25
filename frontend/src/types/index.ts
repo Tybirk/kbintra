@@ -535,6 +535,8 @@ export interface Subgroup {
 
   default_members_only: boolean
 
+  reporting_enabled: boolean
+
   is_member: boolean
 
   members: SubgroupMember[]
@@ -1671,6 +1673,8 @@ export interface NotificationPreference {
 
   notify_car_sharing: boolean
 
+  notify_reports: boolean
+
   // Email preferences
 
   email_messages: boolean
@@ -1696,6 +1700,8 @@ export interface NotificationPreference {
   email_mentions: boolean
 
   email_car_sharing: boolean
+
+  email_reports: boolean
 
   // Push preferences
 
@@ -1739,6 +1745,8 @@ export interface NotificationPreference {
   push_food_takeaway_ready: boolean
   push_food_leftovers_ready: boolean
   push_food_swap_request: boolean
+
+  push_reports: boolean
 
   created_at: string
 
@@ -1794,6 +1802,8 @@ export interface UpdateNotificationPreferenceData {
 
   notify_car_sharing?: boolean
 
+  notify_reports?: boolean
+
   email_messages?: boolean
 
   email_announcements?: boolean
@@ -1818,6 +1828,8 @@ export interface UpdateNotificationPreferenceData {
 
   email_car_sharing?: boolean
 
+  email_reports?: boolean
+
   push_messages?: boolean
 
   push_announcements?: boolean
@@ -1841,6 +1853,8 @@ export interface UpdateNotificationPreferenceData {
   push_mentions?: boolean
 
   push_car_sharing?: boolean
+
+  push_reports?: boolean
 }
 
 // Food Team Types
@@ -2443,4 +2457,119 @@ export interface AdminExpenseList {
   page: number
 
   num_pages: number
+}
+
+// Indrapportering (reports to an udvalg)
+
+export type ReportKind = "defect" | "faulty" | "suggestion"
+
+export type ReportStatus = "new" | "in_progress" | "awaiting_meeting" | "awaiting_other" | "done" | "rejected"
+
+export type ReportEventKind = "created" | "status" | "comment"
+
+export interface ReportReporter {
+  id: number
+
+  first_name: string
+
+  last_name: string
+
+  profile_picture: string | null
+}
+
+export interface ReportSubgroup {
+  id: number
+
+  name: string
+
+  slug: string
+}
+
+export interface ReportPhoto {
+  id: number
+
+  name: string
+
+  image_url: string
+
+  thumbnail_url: string
+
+  uploaded_at: string
+}
+
+export interface ReportEvent {
+  id: number
+
+  kind: ReportEventKind
+
+  author: ReportReporter | null
+
+  old_status: string
+
+  new_status: string
+
+  old_status_display: string
+
+  new_status_display: string
+
+  message: string
+
+  created_at: string
+}
+
+export interface Report {
+  id: number
+
+  number: number
+
+  subgroup: ReportSubgroup
+
+  kind: ReportKind
+
+  kind_display: string
+
+  status: ReportStatus
+
+  status_display: string
+
+  description: string
+
+  location: string
+
+  submitted_by: ReportReporter | null
+
+  reporter_name: string
+
+  legacy_url: string
+
+  photos: ReportPhoto[]
+
+  comment_count: number
+
+  can_manage: boolean
+
+  can_edit: boolean
+
+  url: string
+
+  created_at: string
+
+  updated_at: string
+
+  closed_at: string | null
+
+  // Only present on the detail endpoint.
+  events?: ReportEvent[]
+}
+
+export interface ReportList {
+  results: Report[]
+
+  count: number
+
+  page: number
+
+  num_pages: number
+
+  open_count: number
 }
