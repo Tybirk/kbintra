@@ -133,6 +133,69 @@ describe("ReportsPage", () => {
     })
   })
 
+  it("tapping the active kind chip clears the filter again", async () => {
+    const user = userEvent.setup()
+    render(<ReportsPage />)
+
+    await waitFor(() => expect(mockList).toHaveBeenCalled())
+    await user.click(screen.getByText("Forslag"))
+    await waitFor(() =>
+      expect(mockList.mock.calls.some((c) => c[0].kind === "suggestion")).toBe(
+        true,
+      ),
+    )
+
+    await user.click(screen.getByText("Forslag"))
+
+    await waitFor(() => {
+      const last = mockList.mock.calls[mockList.mock.calls.length - 1][0]
+      expect(last.kind).toBeUndefined()
+    })
+  })
+
+  it("says '1 åben' rather than '1 åbne'", async () => {
+    mockList.mockResolvedValue(makeList([makeReport()]))
+    render(<ReportsPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText("1 åben")).toBeInTheDocument()
+    })
+  })
+
+  it("the description prompt follows the chosen type", async () => {
+    const user = userEvent.setup()
+    render(<ReportsPage />)
+
+    await user.click(
+      await screen.findByRole("button", { name: /ny indrapportering/i }),
+    )
+    expect(
+      await screen.findByPlaceholderText(/Hvad er ødelagt\?/),
+    ).toBeInTheDocument()
+
+    // Scoped to the dialog: "Forslag" is also a kind filter chip on the page behind.
+    const form = within(await screen.findByRole("dialog"))
+    await user.click(form.getByText("Forslag"))
+
+    expect(
+      await screen.findByPlaceholderText(/Hvad kunne vi ønske os/),
+    ).toBeInTheDocument()
+  })
+
+  it("only offers images in the photo picker", async () => {
+    const user = userEvent.setup()
+    const { container } = render(<ReportsPage />)
+
+    await user.click(
+      await screen.findByRole("button", { name: /ny indrapportering/i }),
+    )
+    await screen.findByPlaceholderText(/Hvad er ødelagt\?/)
+
+    const input = document.querySelector('input[type="file"]')
+    expect(input).toHaveAttribute("accept", "image/*")
+    expect(container).toBeTruthy()
+  })
+
   it("says so when nothing matches", async () => {
     mockList.mockResolvedValue(makeList([]))
     render(<ReportsPage />)

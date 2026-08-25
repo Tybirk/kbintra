@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 
 import {
+  ActionIcon,
   Alert,
   Box,
   Button,
@@ -15,6 +16,8 @@ import {
   TextInput,
   UnstyledButton,
 } from "@mantine/core"
+
+import { useMediaQuery } from "@mantine/hooks"
 
 import { notifications } from "@mantine/notifications"
 
@@ -52,6 +55,11 @@ export function ReportForm({
   onCreated,
 }: ReportFormProps) {
   const queryClient = useQueryClient()
+
+  // Every other modal in the app goes full-screen on a phone; a `size="lg"` box
+  // inside 390px is a cramped column with the send button pushed under the fold.
+  // Reporting a broken thing happens standing in front of it, on a phone.
+  const isMobile = useMediaQuery("(max-width: 48em)")
 
   const [kind, setKind] = useState<ReportKind>("defect")
   const [description, setDescription] = useState("")
@@ -125,7 +133,7 @@ export function ReportForm({
       onClose={onClose}
       title="Ny indrapportering"
       size="lg"
-      fullScreen={false}
+      fullScreen={isMobile}
     >
       <Stack gap="md">
         {subgroups.length > 1 && !subgroupSlug ? (
@@ -185,7 +193,7 @@ export function ReportForm({
 
         <Textarea
           label="Beskrivelse"
-          placeholder="Hvad er ødelagt? Så mange detaljer som muligt."
+          placeholder={KIND_META[kind].placeholder}
           value={description}
           onChange={(event) => setDescription(event.currentTarget.value)}
           autosize
@@ -204,6 +212,7 @@ export function ReportForm({
 
         <Box>
           <AttachmentArea
+            accept="image/*"
             onAddFiles={(files) =>
               setPhotos((current) => [...current, ...files].slice(0, 10))
             }
@@ -237,26 +246,27 @@ export function ReportForm({
                   fit="cover"
                   radius="sm"
                 />
-                <UnstyledButton
+                {/* 32px, not the 18px this started as — a thumb target rather
+                    than a mouse one. Kept inside the tile: a negative offset
+                    would look better but the rightmost column would then poke
+                    past the grid and reintroduce horizontal page overflow. */}
+                <ActionIcon
                   onClick={() =>
                     setPhotos((current) =>
                       current.filter((_, i) => i !== index),
                     )
                   }
                   aria-label={`Fjern ${photo.name}`}
+                  variant="filled"
+                  color="dark"
+                  radius="xl"
+                  size={32}
                   pos="absolute"
                   top={4}
                   right={4}
-                  p={2}
-                  style={{
-                    borderRadius: 4,
-                    background: "var(--mantine-color-dark-9)",
-                    opacity: 0.75,
-                    lineHeight: 0,
-                  }}
                 >
-                  <IconX size={14} color="white" />
-                </UnstyledButton>
+                  <IconX size={16} />
+                </ActionIcon>
               </Box>
             ))}
           </SimpleGrid>

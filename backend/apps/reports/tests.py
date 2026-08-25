@@ -11,8 +11,8 @@ from rest_framework.test import APIClient
 
 from apps.forum.models import Subgroup, SubgroupMembership
 from apps.notifications.models import Notification, NotificationType
-from apps.reports.models import Report, ReportEvent
-from apps.reports.services import add_event, create_report
+from apps.reports.models import Report, ReportCounter, ReportEvent
+from apps.reports.services import add_event, create_report, next_number
 from apps.users.models import User
 
 
@@ -417,7 +417,8 @@ def test_status_change_notifies_the_reporter(du, user, member):
 
     notes = Notification.objects.filter(notification_type=NotificationType.REPORT_UPDATE)
     assert [note.user_id for note in notes] == [user.id]
-    assert "I gang" in notes[0].title
+    # Status first, case reference last, so a clipped title still delivers it.
+    assert notes[0].title == f"I gang · sag #{report.number}"
 
 
 @pytest.mark.django_db
@@ -505,7 +506,7 @@ def test_repeated_updates_collapse_into_one_row(du, user, member):
     note = notes.first()
     assert note.aggregate_count == 3
     # The case number survives aggregation; the event part becomes a count.
-    assert note.title == f"Sag #{report.number} · 3 opdateringer"
+    assert note.title == f"3 opdateringer · sag #{report.number}"
     # And the row shows the most recent thing that happened.
     assert "bestilt" in note.message
 
@@ -524,3 +525,123 @@ def test_updates_on_different_cases_stay_separate(du, user, member):
         ).count()
         == 2
     )
+
+
+# --- Photo type validation ----------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_non_image_upload_is_rejected(du, user):
+    """A .txt used to be stored and left a broken tile on the case forever."""
+    resp = _client(user).post(
+        "/api/reports/",
+        {
+            "subgroup": "driftsudvalget",
+            "kind": "defect",
+            "description": "Prøver at vedhæfte et dokument",
+            "photos": [
+                SimpleUploadedFile("noter.txt", b"ikke et billede", content_type="text/plain")
+            ],
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 400
+    assert "photos" in resp.data
+    assert not Report.objects.exists()
+
+
+@pytest.mark.django_db
+def test_image_extension_lying_about_its_contents_is_rejected(du, user):
+    """A PDF renamed to .jpg passes the extension check, so Pillow has to catch it."""
+    resp = _client(user).post(
+        "/api/reports/",
+        {
+            "subgroup": "driftsudvalget",
+            "kind": "defect",
+            "description": "Snydefil",
+            "photos": [
+                SimpleUploadedFile("snyd.jpg", b"%PDF-1.4 not an image", content_type="image/jpeg")
+            ],
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 400
+    assert not Report.objects.exists()
+
+
+@pytest.mark.django_db
+def test_real_photo_is_still_accepted(du, user):
+    resp = _client(user).post(
+        "/api/reports/",
+        {
+            "subgroup": "driftsudvalget",
+            "kind": "defect",
+            "description": "Rigtigt foto",
+            "photos": [_photo()],
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 201
+    assert len(resp.data["photos"]) == 1
+
+
+@pytest.mark.django_db
+def test_non_image_rejected_when_added_to_an_existing_case(du, user):
+    report = _report(du, user)
+    resp = _client(user).post(
+        f"/api/reports/driftsudvalget/{report.number}/photos/",
+        {
+            "photos": [
+                SimpleUploadedFile("regnskab.pdf", b"%PDF-1.4", content_type="application/pdf")
+            ]
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 400
+    assert report.photos.count() == 0
+
+
+# --- Case numbers are never reused --------------------------------------------
+
+
+@pytest.mark.django_db
+def test_number_is_not_reused_after_the_newest_case_is_deleted(du, user):
+    """Old notification links must never resolve to a different case."""
+    first = _report(du, user)
+    second = _report(du, user)
+    assert (first.number, second.number) == (1, 2)
+
+    second.delete()
+    third = _report(du, user)
+
+    assert third.number == 3
+    assert next_number(du.id) == 4
+
+
+@pytest.mark.django_db
+def test_number_is_not_reused_after_deleting_every_case(du, user):
+    for _ in range(3):
+        _report(du, user)
+    Report.objects.filter(subgroup=du).delete()
+
+    assert _report(du, user).number == 4
+
+
+@pytest.mark.django_db
+def test_counter_seeds_itself_from_cases_that_predate_it(du, user):
+    """Imported history was written before the counter existed."""
+    Report.objects.create(subgroup=du, number=13, kind=Report.Kind.DEFECT, description="Importeret")
+    assert not ReportCounter.objects.filter(subgroup=du).exists()
+
+    assert _report(du, user).number == 14
+    assert ReportCounter.objects.get(subgroup=du).last_number == 14
+
+
+@pytest.mark.django_db
+def test_counters_are_independent_per_udvalg(du, other_udvalg, user):
+    _report(du, user)
+    _report(du, user).delete()
+
+    # The other udvalg is untouched by DU's deletion.
+    assert _report(other_udvalg, user).number == 1
+    assert _report(du, user).number == 3

@@ -14,16 +14,40 @@ from django.db import IntegrityError, transaction
 from django.db.models import Max, QuerySet
 from django.utils import timezone
 
-from .models import Report, ReportEvent, ReportPhoto
+from .models import Report, ReportCounter, ReportEvent, ReportPhoto
 
 # How many times to retry when two submissions race for the same case number.
 _NUMBER_RETRIES = 5
 
 
+def _high_water_mark(subgroup_id: int) -> int:
+    """Highest number ever used by an udvalg, as far as we can tell.
+
+    The counter is authoritative, but it seeds itself from the existing rows the
+    first time it is read — so udvalg whose cases were imported before the
+    counter existed carry on from the right place with no data migration.
+    """
+    counter = ReportCounter.objects.filter(subgroup_id=subgroup_id).first()
+    from_rows = Report.objects.filter(subgroup_id=subgroup_id).aggregate(n=Max("number"))["n"] or 0
+    return max(counter.last_number if counter else 0, from_rows)
+
+
 def next_number(subgroup_id: int) -> int:
-    """The next free case number within an udvalg."""
-    highest = Report.objects.filter(subgroup_id=subgroup_id).aggregate(n=Max("number"))["n"]
-    return (highest or 0) + 1
+    """What the next case in this udvalg will be numbered. Does not allocate."""
+    return _high_water_mark(subgroup_id) + 1
+
+
+def allocate_number(subgroup_id: int) -> int:
+    """Take the next case number for an udvalg, and never give it out again.
+
+    Deliberately not ``max(number) + 1``: deleting the newest case would then
+    hand its number to the next one, silently repointing any notification link
+    that still refers to it.
+    """
+    counter, _ = ReportCounter.objects.get_or_create(subgroup_id=subgroup_id)
+    counter.last_number = _high_water_mark(subgroup_id) + 1
+    counter.save(update_fields=["last_number"])
+    return counter.last_number
 
 
 def reporting_subgroups() -> QuerySet:
@@ -80,11 +104,10 @@ def _create_with_number(
 ) -> Report:
     """Insert the row, allocating the per-udvalg number.
 
-    The number is ``max+1`` computed inside the transaction. SQLite gives us no
-    useful row lock to hold across that, so the unique constraint is the real
-    guard: on the rare collision from two simultaneous submissions we just try
-    the next number. With ~90 residents this is a belt-and-braces loop, not a
-    hot path.
+    SQLite gives us no useful row lock to hold across read-then-insert, so the
+    unique constraint is the real guard: on the rare collision from two
+    simultaneous submissions we simply take the next number. With ~90 residents
+    this loop is belt-and-braces, not a hot path.
     """
     last_error: Exception | None = None
     for _ in range(_NUMBER_RETRIES):
@@ -92,7 +115,7 @@ def _create_with_number(
             with transaction.atomic():
                 return Report.objects.create(
                     subgroup=subgroup,
-                    number=next_number(subgroup.id),
+                    number=allocate_number(subgroup.id),
                     kind=kind,
                     description=description,
                     location=location,

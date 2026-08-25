@@ -8,6 +8,7 @@ import {
   Group,
   Loader,
   Pagination,
+  Select,
   Stack,
   Text,
   TextInput,
@@ -39,6 +40,20 @@ interface ReportQueueProps {
 }
 
 type StatusFilter = ReportStatus | "open" | "all"
+
+interface StatusFilterOption {
+  value: string
+  label: string
+}
+
+const STATUS_FILTER_OPTIONS: StatusFilterOption[] = [
+  { value: "open", label: "Åbne sager" },
+  { value: "all", label: "Alle sager" },
+  ...STATUS_ORDER.map((status) => ({
+    value: status,
+    label: STATUS_META[status].label,
+  })),
+]
 
 export function ReportQueue({ subgroupSlug, canExport }: ReportQueueProps) {
   // Default to "open": the reason to look at this list is nearly always the
@@ -106,49 +121,38 @@ export function ReportQueue({ subgroupSlug, canExport }: ReportQueueProps) {
         }}
       />
 
-      <Chip.Group
-        multiple={false}
-        value={statusFilter}
-        onChange={(value) => changeStatus(value as StatusFilter || "open")}
-      >
-        <Group gap={6}>
-          <Chip value="open" size="sm">
-            Åbne
+      {/* One filter row, not two blocks of chips.
+          Status was eleven 28px chips over two rows: 174px — a quarter of a
+          375px phone — spent before the first case, and each target under-sized
+          for a thumb. It is now a Select (as Udlæg filters), unlabelled because
+          its own value reads as the label ("Åbne sager"), sharing a row with the
+          three kind chips. Kind stays as chips: only three, and the fastest way
+          to narrow a queue.
+          Explicit toggles rather than a Chip.Group, so tapping the active chip
+          clears it — as a single-select group it could not be cleared at all
+          without reloading the page. */}
+      <Group gap="xs" wrap="wrap">
+        <Select
+          data={STATUS_FILTER_OPTIONS}
+          value={statusFilter}
+          onChange={(value) => changeStatus(value as StatusFilter || "open")}
+          allowDeselect={false}
+          size="sm"
+          w={150}
+          aria-label="Filtrér efter status"
+        />
+        {KIND_ORDER.map((kind) => (
+          <Chip
+            key={kind}
+            size="md"
+            color={KIND_META[kind].color}
+            checked={kindFilter === kind}
+            onClick={() => changeKind(kindFilter === kind ? null : kind)}
+          >
+            {KIND_META[kind].short}
           </Chip>
-          {STATUS_ORDER.map((status) => (
-            <Chip
-              key={status}
-              value={status}
-              size="sm"
-              color={STATUS_META[status].color}
-            >
-              {STATUS_META[status].label}
-            </Chip>
-          ))}
-          <Chip value="all" size="sm">
-            Alle
-          </Chip>
-        </Group>
-      </Chip.Group>
-
-      <Chip.Group
-        multiple={false}
-        value={kindFilter ?? ""}
-        onChange={(value) => changeKind(value as ReportKind || null)}
-      >
-        <Group gap={6}>
-          {KIND_ORDER.map((kind) => (
-            <Chip
-              key={kind}
-              value={kind}
-              size="sm"
-              color={KIND_META[kind].color}
-            >
-              {KIND_META[kind].short}
-            </Chip>
-          ))}
-        </Group>
-      </Chip.Group>
+        ))}
+      </Group>
 
       {data && (
         <Group gap="xs">
@@ -157,7 +161,7 @@ export function ReportQueue({ subgroupSlug, canExport }: ReportQueueProps) {
           </Text>
           {data.open_count > 0 && (
             <Badge size="sm" variant="light" color="blue">
-              {data.open_count} åbne
+              {data.open_count === 1 ? "1 åben" : `${data.open_count} åbne`}
             </Badge>
           )}
         </Group>

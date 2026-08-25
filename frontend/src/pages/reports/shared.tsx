@@ -1,8 +1,13 @@
 import { useState } from "react"
 
-import { Badge, Box, Image, SimpleGrid } from "@mantine/core"
+import { Badge, Box, Image, SimpleGrid, Text } from "@mantine/core"
 
-import { IconAlertTriangle, IconBulb, IconTool } from "@tabler/icons-react"
+import {
+  IconAlertTriangle,
+  IconBulb,
+  IconMapPin,
+  IconTool,
+} from "@tabler/icons-react"
 
 import { ImageZoomViewer } from "../../components/ImageZoomViewer"
 
@@ -37,6 +42,8 @@ interface KindMeta {
   short: string
   color: string
   icon: typeof IconTool
+  /** The description prompt follows the type — a wish is not a breakage. */
+  placeholder: string
 }
 
 export const KIND_META: Record<ReportKind, KindMeta> = {
@@ -45,18 +52,21 @@ export const KIND_META: Record<ReportKind, KindMeta> = {
     short: "Defekt",
     color: "red",
     icon: IconTool,
+    placeholder: "Hvad er ødelagt? Så mange detaljer som muligt.",
   },
   faulty: {
     label: "Fejlbehæftet inventar",
     short: "Fejlbehæftet",
     color: "orange",
     icon: IconAlertTriangle,
+    placeholder: "Hvad virker ikke som det skal? Så mange detaljer som muligt.",
   },
   suggestion: {
     label: "Forslag til nyt inventar",
     short: "Forslag",
     color: "teal",
     icon: IconBulb,
+    placeholder: "Hvad kunne vi ønske os — og hvad skal det bruges til?",
   },
 }
 
@@ -83,6 +93,33 @@ export function KindBadge({ kind }: { kind: ReportKind }) {
     >
       {meta.label}
     </Badge>
+  )
+}
+
+interface LocationLineProps {
+  location: string
+  size?: "xs" | "sm"
+}
+
+/**
+ * "Hvor?" with its pin.
+ *
+ * The icon is inline inside the Text rather than a sibling flex child. As a
+ * sibling, the address is one unbreakable flex item: the moment it no longer
+ * fits beside the pin the whole string drops to the next line, leaving the pin
+ * stranded on a line of its own — which reads as a broken image. Inline, the pin
+ * is just the first glyph of the sentence and the text wraps under itself.
+ */
+export function LocationLine({ location, size = "xs" }: LocationLineProps) {
+  if (!location) return null
+  return (
+    <Text size={size} c="dimmed">
+      <IconMapPin
+        size={14}
+        style={{ verticalAlign: "-2px", marginRight: 4, flexShrink: 0 }}
+      />
+      {location}
+    </Text>
   )
 }
 

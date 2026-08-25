@@ -113,6 +113,30 @@ class Report(models.Model):
         return self.status not in self.CLOSED_STATUSES
 
 
+class ReportCounter(models.Model):
+    """High-water mark for one udvalg's case numbers.
+
+    Numbers must never be reused. People say "sag #31" out loud, and a
+    notification link is addressed by number — so if #31 were handed to a new
+    case after the original was deleted, an old link would silently open a
+    different case. ``max(number) + 1`` does exactly that, which is why
+    allocation reads a counter that only ever goes up.
+    """
+
+    subgroup = models.OneToOneField(
+        "forum.Subgroup",
+        on_delete=models.CASCADE,
+        related_name="report_counter",
+    )
+    last_number = models.PositiveIntegerField(
+        default=0,
+        help_text="Højeste sagsnummer der har været brugt — også hvis sagen siden er slettet.",
+    )
+
+    def __str__(self) -> str:
+        return f"{self.subgroup} @ #{self.last_number}"
+
+
 class ReportPhoto(models.Model):
     """A photo attached to a report.
 

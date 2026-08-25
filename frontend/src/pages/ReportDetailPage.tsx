@@ -19,7 +19,7 @@ import {
 
 import { notifications } from "@mantine/notifications"
 
-import { IconMapPin, IconTrash } from "@tabler/icons-react"
+import { IconTrash } from "@tabler/icons-react"
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
@@ -34,8 +34,7 @@ import { BackButton } from "../components/BackButton"
 import UserLink from "../components/UserLink"
 
 import {
-  CaseNumber,
-  KindBadge,
+  LocationLine,
   PhotoStrip,
   STATUS_META,
   STATUS_ORDER,
@@ -88,26 +87,25 @@ export default function ReportDetailPage() {
     <Container size="md" py="md">
       <BackButton to="/indrapportering" label="Indrapportering" />
 
-      <Group gap="xs" mt="md" mb="xs" wrap="wrap">
-        <CaseNumber number={report.number} />
-        <KindBadge kind={report.kind} />
-        <StatusBadge status={report.status} />
-      </Group>
-
-      <Title order={3} mb="xs">
-        {report.subgroup.name}
+      {/* The heading identifies the CASE. It used to be the committee name,
+          which was identical on every case and the largest text on the page,
+          while the case number was the smallest grey badge on it. */}
+      <Title order={3} mt="md" mb={6}>
+        #{report.number} · {report.kind_display}
       </Title>
+
+      <Group gap="xs" mb="xs" wrap="wrap">
+        <StatusBadge status={report.status} />
+        <Text size="sm" c="dimmed">
+          {report.subgroup.name}
+        </Text>
+      </Group>
 
       <Card withBorder radius="md" padding="md" mb="md">
         <Stack gap="sm">
           <Text style={{ whiteSpace: "pre-wrap" }}>{report.description}</Text>
 
-          {report.location && (
-            <Group gap={4} c="dimmed">
-              <IconMapPin size={16} />
-              <Text size="sm">{report.location}</Text>
-            </Group>
-          )}
+          <LocationLine location={report.location} size="sm" />
 
           {report.photos.length > 0 && <PhotoStrip photos={report.photos} />}
 
@@ -234,7 +232,13 @@ function UpdateForm({ report }: { report: Report }) {
 
   function submit() {
     if (!message.trim() && !statusChanged) {
-      setError("Skriv en besked eller vælg en ny status.")
+      // A resident has no status control, so telling them to pick one points at
+      // nothing they can reach. Same role branch the labels above already make.
+      setError(
+        report.can_manage
+          ? "Skriv en besked eller vælg en ny status."
+          : "Skriv en kommentar først.",
+      )
       return
     }
     setError("")

@@ -1,12 +1,18 @@
 import { Card, Group, Stack, Text } from "@mantine/core"
 
-import { IconMessageCircle2, IconMapPin } from "@tabler/icons-react"
+import { IconMessageCircle2 } from "@tabler/icons-react"
 
 import dayjs from "dayjs"
 
 import { Link } from "react-router-dom"
 
-import { CaseNumber, KindBadge, PhotoStrip, StatusBadge } from "./shared"
+import {
+  CaseNumber,
+  KindBadge,
+  LocationLine,
+  PhotoStrip,
+  StatusBadge,
+} from "./shared"
 
 import type { Report } from "../../types"
 
@@ -37,12 +43,7 @@ export function ReportCard({ report, showSubgroup = false }: ReportCardProps) {
           {report.description}
         </Text>
 
-        {report.location && (
-          <Group gap={4} c="dimmed">
-            <IconMapPin size={14} />
-            <Text size="xs">{report.location}</Text>
-          </Group>
-        )}
+        <LocationLine location={report.location} />
 
         {report.photos.length > 0 && <PhotoStrip photos={report.photos} />}
 

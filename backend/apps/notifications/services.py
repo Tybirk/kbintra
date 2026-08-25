@@ -83,9 +83,10 @@ def _make_aggregate_title(notification_type: str, count: int, existing_title: st
         # Title is the thread name; keep it and add count
         return f"{existing_title} ({count} nye svar)"
     if notification_type == NotificationType.REPORT_UPDATE:
-        # Report titles are "Sag #14 · <what happened>"; keep the case, replace
-        # the event with a count, so the row still says which case it is about.
-        return f"{existing_title.split(' · ')[0]} · {count} opdateringer"
+        # Report titles are "<what happened> · sag #14"; keep the trailing case
+        # reference and replace the event with a count, so the row still says
+        # which case it is about even when the title is clipped.
+        return f"{count} opdateringer · {existing_title.rsplit(' · ', 1)[-1]}"
     return existing_title
 
 
@@ -955,7 +956,10 @@ def notify_new_report(report: Any) -> None:
     if not recipient_ids:
         return
 
-    title = f"Ny indrapportering #{report.number} til {report.subgroup.name}"
+    # Front-loaded on purpose: the Forside widget clamps a title to ~131px and
+    # the notifications page truncates hard at 320px, so whatever matters has to
+    # come first. The udvalg's name is the part that can afford to be cut.
+    title = f"Ny sag #{report.number} · {report.subgroup.name}"
     message = f"{report.reporter_name}: {_report_excerpt(report.description)}"
     link = _report_link(report)
 
@@ -991,15 +995,17 @@ def notify_report_event(event: Any) -> None:
     who = event.author.get_full_name() if event.author else "Systemet"
     status_label = dict(report.Status.choices).get(event.new_status, event.new_status)
 
-    # Both titles share the "Sag #n · " prefix so aggregation can keep the case
-    # number when it replaces the event part with a count.
+    # What happened comes FIRST, the case reference last. The Forside widget
+    # clamps a title to ~131px, so "Sag #37 · Afventer udvalgsmøde" lost exactly
+    # the word the notification exists to deliver. Both forms end in "sag #n" so
+    # aggregation can keep the reference while replacing the event with a count.
     if event.kind == ReportEvent.Kind.STATUS:
-        title = f"Sag #{report.number} · {status_label}"
+        title = f"{status_label} · sag #{report.number}"
         message = f"{who} ændrede status."
         if event.message:
             message += f" {_report_excerpt(event.message)}"
     else:
-        title = f"Sag #{report.number} · ny kommentar"
+        title = f"Ny kommentar · sag #{report.number}"
         message = f"{who}: {_report_excerpt(event.message)}"
 
     link = _report_link(report)

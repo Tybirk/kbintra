@@ -157,9 +157,20 @@ interface AttachmentAreaProps {
   onAddFiles: (files: File[]) => void
 
   children?: ReactNode
+
+  /**
+   * Value for the file input's `accept`. Omitted by default, so existing callers
+   * keep taking any file. Pass "image/*" for a photo-only picker — on a phone it
+   * is also what makes the OS offer Camera/Photos instead of the file browser.
+   */
+  accept?: string
 }
 
-export function AttachmentArea({ onAddFiles, children }: AttachmentAreaProps) {
+export function AttachmentArea({
+  onAddFiles,
+  children,
+  accept,
+}: AttachmentAreaProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const hasChildren = !!children
@@ -213,6 +224,7 @@ export function AttachmentArea({ onAddFiles, children }: AttachmentAreaProps) {
       <input
         type="file"
         multiple
+        accept={accept}
         ref={fileInputRef}
         style={{ display: "none" }}
         onChange={handleChange}

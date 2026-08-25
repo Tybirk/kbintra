@@ -15,12 +15,14 @@ from django.core.paginator import Paginator
 from django.db.models import Q, QuerySet
 from django.http import Http404, HttpResponse
 from django.utils import timezone
+from PIL import Image
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.forum.image_processing import is_image_attachment
 from apps.forum.models import Subgroup
 from apps.forum.utils import validate_file_size
 
@@ -64,17 +66,47 @@ def _get_report(subgroup_slug: str, number: int) -> Report:
     return report
 
 
-def _validate_photos(report: Report, uploads: list) -> None:
-    """Check size and count before anything is written to storage."""
+def _validate_photo_is_image(upload: object) -> None:
+    """Reject anything that is not an image we can actually display.
+
+    Two checks, because either alone lets something through. The extension
+    allowlist is the app's own notion of an image (``is_image_attachment``
+    includes HEIC/HEIF, which is what an iPhone hands over) and gives a Danish
+    error naming the file; Pillow's ``verify()`` then catches a PDF renamed to
+    .jpg.
+
+    This has to live here because ``add_photo`` writes the row with
+    ``objects.create()``, which never calls ``full_clean()`` — so ImageField's
+    own validation does not run. Without it a .txt was stored happily and left a
+    broken tile on the case forever.
+    """
+    name = getattr(upload, "name", "") or "filen"
+    if not is_image_attachment(name):
+        raise ValidationError(
+            {"photos": f"'{name}' er ikke et billede. Vedhæft et foto — fx JPG, PNG eller HEIC."}
+        )
+    try:
+        Image.open(upload).verify()
+    except Exception as exc:  # Pillow raises a wide range for malformed input
+        raise ValidationError(
+            {"photos": f"'{name}' kunne ikke læses som et billede. Prøv et andet foto."}
+        ) from exc
+    finally:
+        # verify() consumes the stream; storage needs to read it from the top.
+        upload.seek(0)
+
+
+def _validate_photos(uploads: list, existing: int = 0) -> None:
+    """Check count, size and type before anything is written to storage."""
     if not uploads:
         return
-    existing = report.photos.count()
     if existing + len(uploads) > MAX_PHOTOS_PER_REPORT:
         raise ValidationError(
             {"photos": f"Der kan højst være {MAX_PHOTOS_PER_REPORT} billeder på en sag."}
         )
     for upload in uploads:
         validate_file_size(upload)
+        _validate_photo_is_image(upload)
 
 
 class ReportingSubgroupsView(APIView):
@@ -113,12 +145,7 @@ class ReportListCreateView(APIView):
         serializer = ReportCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         uploads = request.FILES.getlist("photos")
-        if len(uploads) > MAX_PHOTOS_PER_REPORT:
-            raise ValidationError(
-                {"photos": f"Der kan højst være {MAX_PHOTOS_PER_REPORT} billeder på en sag."}
-            )
-        for upload in uploads:
-            validate_file_size(upload)
+        _validate_photos(uploads)
 
         report = create_report(
             subgroup=serializer.validated_data["subgroup"],
@@ -240,7 +267,7 @@ class ReportPhotoView(APIView):
         uploads = request.FILES.getlist("photos")
         if not uploads:
             raise ValidationError({"photos": "Ingen fil modtaget."})
-        _validate_photos(report, uploads)
+        _validate_photos(uploads, existing=report.photos.count())
         for upload in uploads:
             add_photo(report, upload)
         report = _get_report(subgroup_slug, number)

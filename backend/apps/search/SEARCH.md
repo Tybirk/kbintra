@@ -141,3 +141,6 @@ The `--if-empty` variant is used in `docker-entrypoint.sh` on container startup.
 2. Add indexing logic to `rebuild_search_index.py`
 3. Add the type to `TYPE_TO_KEY` in `views.py`
 4. Add the type to the `ensure_all_keys` list in `views.py`
+5. Add a branch to `restore_original_titles` in `views.py` — otherwise results
+   display the Danish-folded title (`Stoevsuger` instead of `Støvsuger`). Easy to
+   miss: the index and the search both work, only the displayed text is wrong.

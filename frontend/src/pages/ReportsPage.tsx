@@ -8,9 +8,12 @@ export default function ReportsPage() {
       <Title order={2} mb="xs">
         Indrapportering
       </Title>
+      {/* Kept to one line: on a 375px phone the two-sentence version wrapped to
+          four lines, and at 320px to five, spending the top of the screen on
+          prose a resident reads once. */}
       <Text size="sm" c="dimmed" mb="md">
-        Er noget i fællesarealerne gået i stykker, virker det ikke som det skal,
-        eller mangler vi noget? Meld det ind her, så kan alle følge sagen.
+        Meld noget i stykker, noget der ikke virker, eller noget vi mangler — så
+        kan alle følge sagen.
       </Text>
       <ReportQueue />
     </Container>
