@@ -1,0 +1,42 @@
+/* OverviewPage.tsx — the tree/panel split.
+ *
+ * Deliberately a real media query rather than a JS breakpoint: the layout must
+ * be right on the very first paint, and `useMediaQuery` only settles after an
+ * effect. JS decides what the panel *is* (drawer or column); CSS decides where
+ * the columns go. */
+
+.overview-layout {
+  display: grid;
+  gap: var(--mantine-spacing-md);
+}
+
+@media (min-width: 62em) {
+  .overview-layout {
+    /* minmax(0, 1fr), not 1fr: without the zero minimum a long group name
+       refuses to ellipsis and pushes the panel off the grid. */
+    grid-template-columns: minmax(0, 1fr) 360px;
+    align-items: start;
+  }
+}
+
+/* The page keeps exactly one scroll container — the document — so the tree
+   never gets its own overflow. The panel instead sticks in normal flow and
+   lets the tree scroll past it.
+
+   `--test-banner-height` is not optional: TestDomainBanner sets it on the
+   staging domain, and without it the panel sticks underneath the banner.
+   Same calculation as the AppShell offset in App.tsx. */
+.overview-panel {
+  position: sticky;
+  top: calc(
+    var(--app-shell-header-height, 60px) + var(--test-banner-height, 0px) +
+      var(--mantine-spacing-md)
+  );
+  /* Only engages for groups with long member lists. A scrollbar is acceptable
+     in a bounded sidebar, where it would not be in the tree itself. */
+  max-height: calc(
+    100dvh - var(--app-shell-header-height, 60px) -
+      var(--test-banner-height, 0px) - var(--mantine-spacing-md) * 2
+  );
+  overflow-y: auto;
+}
