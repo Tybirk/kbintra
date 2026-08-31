@@ -38,6 +38,7 @@ import {
   IconChevronDown,
   IconDownload,
   IconFileText,
+  IconFileTypePdf,
   IconInfoCircle,
   IconPaperclip,
   IconPencil,
@@ -541,6 +542,15 @@ function MyExpensesTab() {
                     </Group>
                   )}
 
+                  {expense.combined_pdf_url && (
+                    <Anchor href={expense.combined_pdf_url} size="sm">
+                      <Group gap={4}>
+                        <IconFileTypePdf size={14} />
+                        Alle bilag samlet i én PDF
+                      </Group>
+                    </Anchor>
+                  )}
+
                   {expense.status === "rejected" && expense.admin_note && (
                     <Text size="sm" c="red">
                       Begrundelse: {expense.admin_note}
@@ -858,6 +868,18 @@ function AdminExpensesTab({ canManage }: { canManage: boolean }) {
                             <IconFileText size={16} />
                           </ActionIcon>
                         ))}
+                        {expense.combined_pdf_url && (
+                          <ActionIcon
+                            component="a"
+                            href={expense.combined_pdf_url}
+                            variant="subtle"
+                            color="red"
+                            aria-label="Alle bilag samlet i én PDF"
+                            title="Alle bilag samlet i én PDF"
+                          >
+                            <IconFileTypePdf size={16} />
+                          </ActionIcon>
+                        )}
                       </Group>
                     </Table.Td>
                     <Table.Td>

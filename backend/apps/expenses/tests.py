@@ -40,6 +40,36 @@ def _receipt(name: str = "kvittering.pdf") -> SimpleUploadedFile:
     return SimpleUploadedFile(name, b"%PDF-1.4 fake receipt", content_type="application/pdf")
 
 
+def _real_pdf_receipt(name: str = "kvittering.pdf") -> SimpleUploadedFile:
+    """A genuinely parseable one-page PDF (the merge needs real bytes)."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    buf = BytesIO()
+    Image.new("RGB", (600, 800), "white").save(buf, format="PDF")
+    return SimpleUploadedFile(name, buf.getvalue(), content_type="application/pdf")
+
+
+def _photo_receipt(name: str = "foto.jpg") -> SimpleUploadedFile:
+    """A photo of a kassebon, as residents upload from their phones."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    buf = BytesIO()
+    Image.new("RGB", (800, 1200), "red").save(buf, format="JPEG")
+    return SimpleUploadedFile(name, buf.getvalue(), content_type="image/jpeg")
+
+
+def _pdf_page_count(content: bytes) -> int:
+    from io import BytesIO
+
+    from pypdf import PdfReader
+
+    return len(PdfReader(BytesIO(content)).pages)
+
+
 def _make_expense(user, **overrides) -> Expense:
     data = {
         "submitted_by": user,
@@ -249,6 +279,107 @@ def test_attachment_download_forces_attachment_disposition(settings, tmp_path, u
     assert resp.status_code == 200
     assert resp["Content-Disposition"].startswith("attachment")
     assert resp["X-Content-Type-Options"] == "nosniff"
+
+
+# --- Combined bilag PDF (one attachment for the accounting program) ----------
+
+
+@pytest.mark.django_db
+def test_combined_pdf_merges_every_bilag(settings, tmp_path, user):
+    """All bilag on one udlæg come back as a single PDF, one page each."""
+    settings.MEDIA_ROOT = tmp_path
+    expense = _make_expense(user)
+    ExpenseAttachment.objects.create(expense=expense, file=_photo_receipt(), name="foto.jpg")
+    ExpenseAttachment.objects.create(
+        expense=expense, file=_real_pdf_receipt(), name="kvittering.pdf"
+    )
+
+    client = APIClient()
+    client.force_login(user)
+    resp = client.get(f"/api/expenses/{expense.id}/bilag.pdf")
+
+    assert resp.status_code == 200
+    assert resp["Content-Type"] == "application/pdf"
+    assert resp["Content-Disposition"].startswith("attachment")
+    assert f"udlaeg-{expense.id}-bilag.pdf" in resp["Content-Disposition"]
+    assert _pdf_page_count(resp.content) == 2
+
+
+@pytest.mark.django_db
+def test_combined_pdf_keeps_a_page_for_bilag_it_cannot_render(settings, tmp_path, user):
+    """An unconvertible or missing bilag becomes a notice page, never a silent drop."""
+    settings.MEDIA_ROOT = tmp_path
+    expense = _make_expense(user)
+    ExpenseAttachment.objects.create(expense=expense, file=_photo_receipt(), name="foto.jpg")
+    ExpenseAttachment.objects.create(
+        expense=expense,
+        file=SimpleUploadedFile("regneark.xlsx", b"PK\x03\x04 not a receipt"),
+        name="regneark.xlsx",
+    )
+    gone = ExpenseAttachment.objects.create(
+        expense=expense, file=_real_pdf_receipt("væk.pdf"), name="væk.pdf"
+    )
+    (tmp_path / gone.file.name).unlink()
+
+    client = APIClient()
+    client.force_login(user)
+    resp = client.get(f"/api/expenses/{expense.id}/bilag.pdf")
+
+    assert resp.status_code == 200
+    assert _pdf_page_count(resp.content) == 3
+
+
+@pytest.mark.django_db
+def test_combined_pdf_permissions(settings, tmp_path, user, second_user, economy_admin):
+    settings.MEDIA_ROOT = tmp_path
+    expense = _make_expense(user)
+    ExpenseAttachment.objects.create(expense=expense, file=_photo_receipt(), name="foto.jpg")
+    ExpenseAttachment.objects.create(
+        expense=expense, file=_real_pdf_receipt(), name="kvittering.pdf"
+    )
+    url = f"/api/expenses/{expense.id}/bilag.pdf"
+
+    assert APIClient().get(url).status_code == 401
+
+    other = APIClient()
+    other.force_login(second_user)
+    assert other.get(url).status_code == 404
+
+    treasurer = APIClient()
+    treasurer.force_login(economy_admin)
+    assert treasurer.get(url).status_code == 200
+
+
+@pytest.mark.django_db
+def test_combined_pdf_404_without_attachments(user):
+    expense = _make_expense(user)
+    client = APIClient()
+    client.force_login(user)
+    assert client.get(f"/api/expenses/{expense.id}/bilag.pdf").status_code == 404
+
+
+@pytest.mark.django_db
+def test_combined_pdf_url_only_offered_when_there_is_something_to_merge(
+    settings, tmp_path, authenticated_client, user
+):
+    settings.MEDIA_ROOT = tmp_path
+    expense = _make_expense(user)
+    first = ExpenseAttachment.objects.create(
+        expense=expense, file=_receipt(), name="kvittering.pdf"
+    )
+
+    resp = authenticated_client.get("/api/expenses/")
+    assert resp.data[0]["combined_pdf_url"] is None
+
+    ExpenseAttachment.objects.create(
+        expense=expense, file=_receipt("ekstra.pdf"), name="ekstra.pdf"
+    )
+    resp = authenticated_client.get("/api/expenses/")
+    assert resp.data[0]["combined_pdf_url"] == f"/api/expenses/{expense.id}/bilag.pdf"
+
+    first.delete()
+    resp = authenticated_client.get("/api/expenses/")
+    assert resp.data[0]["combined_pdf_url"] is None
 
 
 # --- Admin views -------------------------------------------------------------
@@ -770,3 +901,97 @@ def test_no_economy_email_when_unconfigured(settings, mailoutbox, authenticated_
     )
     assert resp.status_code == 201, resp.data
     assert len(mailoutbox) == 0
+
+
+@pytest.mark.django_db
+def test_economy_email_carries_both_the_merged_pdf_and_the_originals(
+    settings, mailoutbox, authenticated_client
+):
+    """The merged PDF (for the accounting program) comes first, originals after."""
+    settings.ECONOMY_EMAIL = "oekonomi@example.com"
+    resp = authenticated_client.post(
+        "/api/expenses/",
+        {
+            "reg_nr": "1234",
+            "account_number": "9876543",
+            "amount": "120.00",
+            "description": "Kaffe og filtre",
+            "files": [_photo_receipt(), _real_pdf_receipt()],
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 201, resp.data
+    expense_id = resp.data["id"]
+
+    msg = mailoutbox[0]
+    assert [a[0] for a in msg.attachments] == [
+        f"udlaeg-{expense_id}-bilag.pdf",
+        "foto.jpg",
+        "kvittering.pdf",
+    ]
+    name, content, mimetype = msg.attachments[0]
+    assert mimetype == "application/pdf"
+    assert _pdf_page_count(content) == 2
+    assert "samlet PDF" in msg.body
+
+
+@pytest.mark.django_db
+def test_economy_email_falls_back_to_single_files_if_merge_fails(
+    settings, mailoutbox, monkeypatch, authenticated_client
+):
+    """A broken merge must never cost the treasurer the bilag themselves."""
+    settings.ECONOMY_EMAIL = "oekonomi@example.com"
+
+    from apps.expenses import pdf as pdf_module
+
+    def _boom(parts):
+        raise RuntimeError("merge failed")
+
+    monkeypatch.setattr(pdf_module, "build_combined_pdf", _boom)
+
+    resp = authenticated_client.post(
+        "/api/expenses/",
+        {
+            "reg_nr": "1234",
+            "account_number": "9876543",
+            "amount": "120.00",
+            "description": "Kaffe og filtre",
+            "files": [_receipt("bon1.pdf"), _receipt("bon2.pdf")],
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 201, resp.data
+
+    msg = mailoutbox[0]
+    assert [a[0] for a in msg.attachments] == ["bon1.pdf", "bon2.pdf"]
+    assert "samlet PDF" not in msg.body
+
+
+@pytest.mark.django_db
+def test_economy_email_skips_the_merge_when_it_would_blow_the_size_budget(
+    settings, mailoutbox, monkeypatch, authenticated_client
+):
+    """Too big to mail → the originals still go out, just without the merged PDF."""
+    settings.ECONOMY_EMAIL = "oekonomi@example.com"
+
+    from apps.expenses import pdf as pdf_module
+
+    monkeypatch.setattr(pdf_module, "build_combined_pdf", lambda parts: b"%PDF-" + b"x" * 10_000)
+    settings.EXPENSE_EMAIL_MAX_ATTACHMENT_BYTES = 9_000
+
+    resp = authenticated_client.post(
+        "/api/expenses/",
+        {
+            "reg_nr": "1234",
+            "account_number": "9876543",
+            "amount": "120.00",
+            "description": "Kaffe og filtre",
+            "files": [_receipt("bon1.pdf"), _receipt("bon2.pdf")],
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 201, resp.data
+
+    msg = mailoutbox[0]
+    assert [a[0] for a in msg.attachments] == ["bon1.pdf", "bon2.pdf"]
+    assert "samlet PDF" not in msg.body
