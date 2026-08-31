@@ -1,6 +1,11 @@
 # Implementation plan: Grafisk overblik → Mandatlinjer + Detaljepanel
 
-**Status:** ready to build · **Branch:** `feature/grafisk-overblik`
+**Status:** built · **Branch:** `docs/overblik-detaljepanel-plan` (off `feature/grafisk-overblik`)
+
+> Implemented as specified, with three deviations, all noted inline below:
+> §7 drops the `Rediger` action, §10 splits the "not in tree" message in two, and the file list gained
+> `utils/groupType.ts` plus three test files. Kept as the record of *why*, not as a to-do list.
+
 **Supersedes** the "Grafisk overblik" UI section of `docs/grafisk-overblik-plan.md`. The data model,
 migrations, backend endpoints and the create/edit flows described there are already built and stay as they are —
 this plan only replaces the *presentation* of `/overblik`.
@@ -263,8 +268,12 @@ Contents, in order:
 5. Facts row — `Oprettet`, `Udløber`, `Medlemmer`, `Tråde`
 6. Member chips — avatar + full name, from `node.members`, then `+N flere` when `member_count` exceeds them
 7. Latest activity — `Seneste tråd` + relative time, **only when `detail` has loaded and is non-null**
-8. Actions — `Åbn forumgruppen` (primary, `<Link to={`/forum/${slug}`}>`), and `Rediger` for
-   arbejdsgrupper the user may edit (reuse the existing permission check from `SubgroupPage`)
+8. Actions — `Åbn forumgruppen` (primary, `<Link to={`/forum/${slug}`}>`)
+
+> **Deviation, as built:** the planned `Rediger` action was dropped. Editing a group lives on
+> `SubgroupPage`, and there is no deep link to its edit affordance — so the button would have gone to the
+> same place as `Åbn forumgruppen`, one row above it. Two buttons to one destination is noise. Add it back
+> only alongside a real `?rediger` deep link.
 
 ### `utils/orgTree.ts` (extend the existing file)
 
@@ -365,7 +374,13 @@ Put this in a plain `OrgTree.css` scoped under a single root class — the same 
 1. **Selected slug not in the visible tree.** Happens when the URL names an archived group and
    "Vis afsluttede" is off. The panel still renders — it fetches by slug and the detail endpoint does not
    filter on `is_active`. Do not auto-flip the switch. Show, above the panel body:
-   `Denne gruppe er afsluttet. Slå "Vis afsluttede arbejdsgrupper" til for at se den i træet.`
+   `Denne gruppe er afsluttet. Slå »Vis afsluttede arbejdsgrupper« til for at se den i træet.`
+
+   > **Deviation, as built:** archived is not the only way to be missing from the tree. The organisation
+   > endpoint only returns organs and arbejdsgrupper, so an *almindelig* group reached by URL is absent
+   > while being perfectly active — and the message above would have called it archived. The panel now
+   > picks by `is_active`, and an active group missing from the tree gets
+   > `Denne gruppe er ikke en del af foreningens organisation.` instead.
 2. **Unknown slug** (deleted or typo). `getSubgroup` 404s → render
    `Gruppen findes ikke længere.` with a link back to `/overblik`. Do not throw to `ErrorBoundary`.
 3. **Empty organisation** (`data.length === 0`). Keep today's copy:
@@ -409,14 +424,24 @@ ordering, pruning of archived subtrees and the parent/children hierarchy.
 ```
 frontend/src/pages/OverviewPage.tsx          rewrite
 frontend/src/pages/OverviewPage.test.tsx     rewrite
+frontend/src/pages/OverviewPage.css          new    — grid + sticky panel
 frontend/src/components/OrgTree.tsx          new
 frontend/src/components/OrgTree.css          new
+frontend/src/components/OrgTree.test.tsx     new    — rail geometry
 frontend/src/components/OrgDetailPanel.tsx   new
 frontend/src/components/OrgChart.tsx         delete
 frontend/src/components/OrgChart.css         delete
 frontend/src/utils/orgTree.ts                extend
+frontend/src/utils/orgTree.test.ts           new    — flatten/mandate helpers
+frontend/src/utils/groupType.ts              new    — shared labels + palette
 frontend/src/App.tsx                         add /overblik/:slug route
 ```
+
+Two files beyond the plan's list, both to avoid duplication: `groupType.ts` holds the Danish labels and
+palette that the tree and the panel both need (they were inlined in the deleted `OrgChart.tsx`, and having
+one component import them from the other would have been the wrong dependency), and `OverviewPage.css`
+keeps the grid in a real media query so the layout is correct on the first paint rather than after
+`useMediaQuery` settles.
 
 Backend: **no changes.** No migration, no serializer change, no new endpoint.
 

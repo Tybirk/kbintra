@@ -466,9 +466,21 @@ const AuthenticatedRoutes = memo(function AuthenticatedRoutes() {
           }
         />
 
-        {/* Grafisk overblik */}
+        {/* Grafisk overblik. The `:slug` variant selects a group in the detail
+            panel, so a group is linkable and the back button closes the
+            drawer on mobile. */}
         <Route
           path="/overblik"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <OverviewPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/overblik/:slug"
           element={
             <ProtectedRoute>
               <ErrorBoundary>

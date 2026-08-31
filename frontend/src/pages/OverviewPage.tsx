@@ -1,181 +1,57 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useState } from "react"
 
-import { Link } from "react-router-dom"
+import { Link, useNavigate, useParams } from "react-router-dom"
 
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 
 import {
-  Title,
-  Text,
-  Paper,
-  Group,
-  Badge,
-  Box,
-  Center,
-  Loader,
-  Stack,
-  Avatar,
   Anchor,
-  Switch,
-  Tree,
-  useTree,
-  getTreeExpandedState,
-  Tooltip,
   Button,
-  SegmentedControl,
+  Center,
+  Drawer,
+  Group,
+  Loader,
+  Paper,
+  Stack,
+  Switch,
+  Text,
+  Title,
 } from "@mantine/core"
-import type { RenderTreeNodePayload, TreeNodeData } from "@mantine/core"
 
-import { useDisclosure } from "@mantine/hooks"
+import { useDisclosure, useMediaQuery } from "@mantine/hooks"
 
-import {
-  IconChevronRight,
-  IconPlus,
-  IconSitemap,
-  IconUsers,
-} from "@tabler/icons-react"
-
-import dayjs from "dayjs"
+import { IconPlus, IconSitemap } from "@tabler/icons-react"
 
 import { forumApi } from "../api/forum"
 
 import CreateSubgroupModal from "../components/CreateSubgroupModal"
 
-import OrgChart from "../components/OrgChart"
+import OrgTree from "../components/OrgTree"
 
-import type { OrgNode } from "../types"
+import OrgDetailPanel, { toDetailView } from "../components/OrgDetailPanel"
 
-type ViewMode = "chart" | "tree"
+import { findNodeBySlug, mandatePath } from "../utils/orgTree"
 
-const MAX_VISIBLE_AVATARS = 4
-
-const DESCRIPTION_MAX_CHARS = 140
-
-function stripHtml(html: string): string {
-  if (!html) return ""
-  const doc = new DOMParser().parseFromString(html, "text/html")
-  return (doc.body.textContent ?? "").trim()
-}
-
-function truncate(text: string, maxChars: number): string {
-  if (text.length <= maxChars) return text
-  return text.slice(0, maxChars).trimEnd() + "…"
-}
-
-interface OrgTreeNodeData extends TreeNodeData {
-  orgNode: OrgNode
-}
-
-function buildTreeData(nodes: OrgNode[]): OrgTreeNodeData[] {
-  return nodes.map((node) => ({
-    value: String(node.id),
-    label: node.name,
-    orgNode: node,
-    children:
-      node.children.length > 0 ? buildTreeData(node.children) : undefined,
-  }))
-}
-
-function OrgNodeCard({ payload }: { payload: RenderTreeNodePayload }) {
-  const node = (payload.node as OrgTreeNodeData).orgNode
-  const plainDescription = stripHtml(node.description)
-
-  return (
-    <Paper withBorder radius="md" p="sm" mb="xs" style={{ width: "100%" }}>
-      <Group justify="space-between" wrap="nowrap" align="flex-start">
-        <Box style={{ minWidth: 0, flex: 1 }}>
-          <Group gap="xs" wrap="wrap">
-            <Anchor
-              component={Link}
-              to={`/forum/${node.slug}`}
-              fw={600}
-              size="sm"
-            >
-              {node.name}
-            </Anchor>
-            {node.is_active === false && (
-              <Badge color="gray" variant="light" size="sm">
-                Afsluttet
-              </Badge>
-            )}
-          </Group>
-
-          {plainDescription && (
-            <Text size="sm" c="dimmed" mt={2}>
-              {truncate(plainDescription, DESCRIPTION_MAX_CHARS)}
-            </Text>
-          )}
-
-          {(node.established_on || node.expires_on) && (
-            <Group gap="md" mt={4}>
-              {node.established_on && (
-                <Text size="xs" c="dimmed">
-                  Oprettet: {dayjs(node.established_on).format("D. MMM YYYY")}
-                </Text>
-              )}
-              {node.expires_on && (
-                <Text size="xs" c="dimmed">
-                  Udløber: {dayjs(node.expires_on).format("D. MMM YYYY")}
-                </Text>
-              )}
-            </Group>
-          )}
-
-          {node.member_count > 0 && (
-            <Group gap="xs" mt={6}>
-              <Avatar.Group>
-                {node.members.slice(0, MAX_VISIBLE_AVATARS).map((m) => (
-                  <Tooltip
-                    key={m.id}
-                    label={`${m.first_name} ${m.last_name}`}
-                    withArrow
-                    position="top"
-                  >
-                    <Avatar src={m.profile_picture} size="sm" radius="xl">
-                      {m.first_name[0]}
-                    </Avatar>
-                  </Tooltip>
-                ))}
-                {node.member_count > MAX_VISIBLE_AVATARS && (
-                  <Avatar size="sm" radius="xl">
-                    +{node.member_count - MAX_VISIBLE_AVATARS}
-                  </Avatar>
-                )}
-              </Avatar.Group>
-              <Text size="xs" c="dimmed">
-                <IconUsers
-                  size={12}
-                  style={{ verticalAlign: "middle", marginRight: 2 }}
-                />
-                {node.member_count} medlem
-                {node.member_count !== 1 ? "mer" : ""}
-              </Text>
-            </Group>
-          )}
-        </Box>
-
-        {payload.hasChildren && (
-          <IconChevronRight
-            size={18}
-            style={{
-              flexShrink: 0,
-              marginTop: 4,
-              transform: payload.expanded ? "rotate(90deg)" : "none",
-              transition: "transform 150ms ease",
-            }}
-          />
-        )}
-      </Group>
-    </Paper>
-  )
-}
+import "./OverviewPage.css"
 
 export default function OverviewPage() {
   const queryClient = useQueryClient()
 
+  const navigate = useNavigate()
+
+  const { slug } = useParams<{ slug: string }>()
+
+  // Read on the first render rather than in an effect, so deep-linking straight
+  // to /overblik/<slug> on a desktop doesn't flash the mobile drawer.
+  const isDesktop = useMediaQuery("(min-width: 62em)", false, {
+    getInitialValueInEffect: false,
+  })
+
   const [includeInactive, setIncludeInactive] = useState(false)
 
-  const [viewMode, setViewMode] = useState<ViewMode>("chart")
+  // Every group is visible on load. The fold control is for tidying up, not for
+  // hiding groups behind a branch someone forgot to open.
+  const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
 
   const [createOpened, { open: openCreate, close: closeCreate }] =
     useDisclosure(false)
@@ -185,22 +61,40 @@ export default function OverviewPage() {
     queryFn: () => forumApi.getOrganisation(includeInactive),
   })
 
-  const treeData = useMemo(() => buildTreeData(data ?? []), [data])
+  const nodes = data ?? []
 
-  const tree = useTree()
+  // On desktop the panel is a permanent column, and an empty one reads as a
+  // broken page — so fall back to the first organ. Derived, never navigated:
+  // redirecting on mount would push a history entry on every visit and leave
+  // the back button pointing at the page you're already on.
+  const selectedSlug = slug ?? (isDesktop ? (nodes[0]?.slug ?? null) : null)
 
-  // Expand all nodes by default whenever new tree data arrives (e.g. on
-  // initial load or when toggling "Vis afsluttede arbejdsgrupper"). Tree's
-  // own effect calls `tree.initialize(data)` on the same data change, which
-  // would otherwise reset the expanded state — so we set it explicitly via
-  // `setExpandedState` right after, using Mantine's `getTreeExpandedState`
-  // helper with `"*"` to mean "all nodes expanded".
-  useEffect(() => {
-    if (treeData.length > 0) {
-      tree.setExpandedState(getTreeExpandedState(treeData, "*"))
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [treeData])
+  const selectedNode = selectedSlug ? findNodeBySlug(nodes, selectedSlug) : null
+
+  const mandate = selectedSlug ? mandatePath(nodes, selectedSlug) : []
+
+  // Thread counts and latest activity come from the subgroup detail endpoint
+  // rather than being added to /organisation/. Its serializer already hides
+  // members-only threads from people who can't see them; duplicating that on
+  // the organisation endpoint would risk leaking a private thread title.
+  const detailQuery = useQuery({
+    queryKey: ["forum", "subgroup", selectedSlug],
+    queryFn: () => forumApi.getSubgroup(selectedSlug as string),
+    enabled: !!selectedSlug,
+  })
+
+  const view = toDetailView(selectedNode, detailQuery.data)
+
+  const toggleCollapse = useCallback((id: number) => {
+    setCollapsed((current) => {
+      const next = new Set(current)
+
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+
+      return next
+    })
+  }, [])
 
   if (isLoading) {
     return (
@@ -218,6 +112,23 @@ export default function OverviewPage() {
     )
   }
 
+  const panelBody = view ? (
+    <OrgDetailPanel
+      view={view}
+      detail={detailQuery.data}
+      mandate={mandate}
+      notInTree={!selectedNode}
+    />
+  ) : detailQuery.isError ? (
+    <Stack gap="xs">
+      <Text size="sm">Gruppen findes ikke længere.</Text>
+
+      <Anchor component={Link} to="/overblik" size="sm">
+        Tilbage til overblikket
+      </Anchor>
+    </Stack>
+  ) : null
+
   return (
     <Stack gap="md" p="md">
       <CreateSubgroupModal
@@ -234,45 +145,55 @@ export default function OverviewPage() {
       <Group justify="space-between" wrap="wrap">
         <Group gap="xs">
           <IconSitemap size={28} />
+
           <Title order={2}>Grafisk overblik</Title>
         </Group>
+
         <Group gap="md" wrap="wrap">
-          <SegmentedControl
-            value={viewMode}
-            onChange={(value) => setViewMode(value as ViewMode)}
-            data={[
-              { label: "Diagram", value: "chart" },
-              { label: "Træ", value: "tree" },
-            ]}
-          />
           <Switch
             label="Vis afsluttede arbejdsgrupper"
             checked={includeInactive}
             onChange={(e) => setIncludeInactive(e.currentTarget.checked)}
           />
+
           <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>
             Opret arbejdsgruppe
           </Button>
         </Group>
       </Group>
 
-      {(data ?? []).length === 0 ? (
+      {nodes.length === 0 ? (
         <Text c="dimmed">Der er endnu ikke nogen organisationsstruktur.</Text>
-      ) : viewMode === "chart" ? (
-        <OrgChart data={data ?? []} />
       ) : (
-        <Tree
-          data={treeData}
-          tree={tree}
-          levelOffset="lg"
-          expandOnClick
-          renderNode={(payload) => (
-            <div {...payload.elementProps}>
-              <OrgNodeCard payload={payload} />
-            </div>
+        <div className="overview-layout">
+          <OrgTree
+            nodes={nodes}
+            selectedSlug={selectedSlug}
+            collapsed={collapsed}
+            onToggleCollapse={toggleCollapse}
+          />
+
+          {isDesktop && (
+            <Paper className="overview-panel" withBorder radius="md" p="md">
+              {panelBody}
+            </Paper>
           )}
-        />
+        </div>
       )}
+
+      {/* Below the breakpoint the panel is a drawer instead. Closing it is a
+          navigation, so the browser's back button closes it too. */}
+      <Drawer
+        opened={!isDesktop && !!slug}
+        onClose={() => navigate("/overblik", { replace: true })}
+        position="bottom"
+        size="80%"
+        radius="lg"
+        withCloseButton
+        closeButtonProps={{ "aria-label": "Luk" }}
+      >
+        {panelBody}
+      </Drawer>
     </Stack>
   )
 }
