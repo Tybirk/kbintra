@@ -10,7 +10,6 @@ import {
   Card,
   Center,
   Checkbox,
-  Collapse,
   Container,
   Divider,
   Group,
@@ -99,7 +98,6 @@ function fullName(submitter: Expense["submitted_by"]): string {
 // --- Guideline info box ------------------------------------------------------
 
 function GuidelinesAlert() {
-  const [open, setOpen] = useState(false)
   return (
     <Alert
       icon={<IconInfoCircle size={20} />}
@@ -109,38 +107,28 @@ function GuidelinesAlert() {
     >
       <Stack gap="xs">
         <Text size="sm">
-          Inden du køber noget på Kløverbakkens vegne, skal købet være godkendt
-          skriftligt – ellers kan udlægget ikke refunderes.
+          Spørgsmål til udlæg kan altid rettes til kassereren på
+          oekonomi@kloeverbakken-odder.dk
         </Text>
-        <Anchor
-          size="sm"
-          component="button"
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-        >
-          {open ? "Skjul detaljer" : "Vis detaljer"}
-        </Anchor>
-        <Collapse expanded={open}>
-          <Stack gap="xs">
-            <Text size="sm">
-              <strong>1. Købsbilag:</strong> Vedhæft faktura, kassebon eller
-              billede af MobilePay-transaktion. Det skal tydeligt fremgå, hvad
-              der er købt, og hvad beløbet er. Vi betaler ikke sorte penge –
-              fakturaer fra professionelle leverandører skal opfylde lovkrav,
-              herunder moms.
-            </Text>
-            <Text size="sm">
-              <strong>2. Skriftlig godkendelse:</strong> Vedhæft eller henvis
-              til en godkendelse fra et udvalg eller bestyrelsen (referat, mail
-              eller opslag på intranettet).
-            </Text>
-            <Text size="sm">
-              Vil du hellere undgå at lægge ud, kan kassereren betale fakturaen
-              direkte, eller du kan bruge Kløverbakkens kreditkort (fælleskonto
-              eller madkonto). Skriv til oekonomi@kloeverbakken-odder.dk.
-            </Text>
-          </Stack>
-        </Collapse>
+
+        <Stack gap="xs">
+          <Text size="sm">
+            <strong>1. Købsbilag:</strong> Vedhæft faktura, kassebon eller
+            billede af MobilePay-transaktion. Det skal tydeligt fremgå, hvad der
+            er købt, og hvad beløbet er. Vi betaler ikke sorte penge – fakturaer
+            fra professionelle leverandører skal opfylde lovkrav, herunder moms.
+          </Text>
+          <Text size="sm">
+            <strong>2. Skriftlig godkendelse:</strong> Vedhæft eller henvis til
+            en godkendelse f.eks. fra et udvalg, bestyrelsen eller et fællesmøde
+            (referat, mail eller opslag på intranettet).
+          </Text>
+          <Text size="sm">
+            Vil du hellere undgå at lægge ud, kan kassereren betale fakturaen
+            direkte, eller du kan bruge Kløverbakkens kreditkort (fælleskonto
+            eller madkonto). Skriv til oekonomi@kloeverbakken-odder.dk.
+          </Text>
+        </Stack>
       </Stack>
     </Alert>
   )
@@ -373,12 +361,13 @@ function ExpenseFormModal({ opened, onClose, expense }: ExpenseFormModalProps) {
           required
         />
         <Textarea
-          label="Skriftlig godkendelse (valgfri)"
+          label="Skriftlig godkendelse / mandat"
           description="Henvisning til referat, mail eller opslag der godkender købet"
           value={approvalReference}
           onChange={(e) => setApprovalReference(e.currentTarget.value)}
-          minRows={1}
+          minRows={2}
           autosize
+          required
         />
 
         <Checkbox
