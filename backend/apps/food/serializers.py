@@ -4,6 +4,7 @@ Serializers for Food models.
 
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+from typing import Any
 
 from django.db.models import Sum
 from django.db.models.functions import Coalesce
@@ -16,7 +17,6 @@ from apps.users.serializer_mixins import AvatarUrlMixin
 from .constants import (
     DAY_NAMES,
     TICKET_SALE_CUTOFF_TIME,
-    calculate_meal_price,
 )
 from .models import (
     ClosedFoodDay,
@@ -28,6 +28,7 @@ from .models import (
     FoodTeamWish,
     FoodTicket,
     MealPreference,
+    MealPrice,
     MealRegistration,
     SwapRequestStatus,
     TeamSwapRequest,
@@ -205,7 +206,7 @@ class MealRegistrationCreateUpdateSerializer(serializers.ModelSerializer):
     def validate_date(self, value: date) -> date:
         # Only allow Mon-Thu
         if value.weekday() > 3:
-            raise serializers.ValidationError("Meals are only served Monday through Thursday.")
+            raise serializers.ValidationError("Der serveres kun mad mandag til torsdag.")
         from .utils import is_closed_food_day
 
         if is_closed_food_day(value):
@@ -325,14 +326,14 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
     def validate_date(self, value: date) -> date:
         # Only allow Mon-Thu
         if value.weekday() > 3:
-            raise serializers.ValidationError("Meals are only served Monday through Thursday.")
+            raise serializers.ValidationError("Der serveres kun mad mandag til torsdag.")
         from .utils import is_closed_food_day
 
         if is_closed_food_day(value):
             raise serializers.ValidationError("Denne dag er lukket for fællesspisning.")
         # Don't allow past dates
         if value < timezone.now().date():
-            raise serializers.ValidationError("Cannot create ticket for past dates.")
+            raise serializers.ValidationError("Der kan ikke oprettes billet til datoer i fortiden.")
 
         # Don't allow selling tickets after the cutoff time on the meal day
         now = timezone.now()
@@ -352,10 +353,12 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
         return value
 
     def calculate_default_price(
-        self, adults_meat: int, adults_veg: int, children_count: int
+        self, adults_meat: int, adults_veg: int, children_count: int, meal_date: date
     ) -> Decimal:
-        """Calculate default price based on portion counts."""
-        return calculate_meal_price(adults_meat, adults_veg, children_count)
+        """Calculate default price from portion counts, at the meal date's prices."""
+        from .pricing import calculate_meal_price
+
+        return calculate_meal_price(adults_meat, adults_veg, children_count, meal_date)
 
     def validate(self, attrs: dict) -> dict:
         reg_date = attrs.get("date")
@@ -426,7 +429,10 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
         # Set default price if not provided
         if validated_data.get("price") is None:
             validated_data["price"] = self.calculate_default_price(
-                ticket_adults_meat, ticket_adults_veg, ticket_children
+                ticket_adults_meat,
+                ticket_adults_veg,
+                ticket_children,
+                validated_data["date"],
             )
 
         return super().create(validated_data)
@@ -593,10 +599,10 @@ class CreateSwapRequestSerializer(serializers.Serializer):
         try:
             membership = FoodTeamMember.objects.get(id=value)
         except FoodTeamMember.DoesNotExist as e:
-            raise serializers.ValidationError("Membership does not exist.") from e
+            raise serializers.ValidationError("Medlemskabet findes ikke.") from e
 
         if membership.user_id != request.user.id:
-            raise serializers.ValidationError("You can only swap your own team memberships.")
+            raise serializers.ValidationError("Du kan kun bytte dine egne holdmedlemskaber.")
 
         return value
 
@@ -604,11 +610,11 @@ class CreateSwapRequestSerializer(serializers.Serializer):
         try:
             membership = FoodTeamMember.objects.get(id=value)
         except FoodTeamMember.DoesNotExist as e:
-            raise serializers.ValidationError("Target membership does not exist.") from e
+            raise serializers.ValidationError("Det valgte medlemskab findes ikke.") from e
 
         request = self.context.get("request")
         if membership.user_id == request.user.id:
-            raise serializers.ValidationError("You cannot swap with yourself.")
+            raise serializers.ValidationError("Du kan ikke bytte med dig selv.")
 
         return value
 
@@ -747,7 +753,7 @@ class FoodTeamWishCreateUpdateSerializer(serializers.ModelSerializer):
 
     def validate_cycle(self, value: FoodTeamCycle) -> FoodTeamCycle:
         if not value.is_accepting_wishes:
-            raise serializers.ValidationError("This cycle is no longer accepting wishes.")
+            raise serializers.ValidationError("Perioden tager ikke længere imod ønsker.")
         return value
 
     def validate_available_dates(self, value: list) -> list:
@@ -759,7 +765,7 @@ class FoodTeamWishCreateUpdateSerializer(serializers.ModelSerializer):
                     date.fromisoformat(d)
                     validated.append(d)
                 except ValueError as e:
-                    raise serializers.ValidationError(f"Invalid date format: {d}") from e
+                    raise serializers.ValidationError(f"Ugyldigt datoformat: {d}") from e
             elif isinstance(d, date):
                 validated.append(d.isoformat())
 
@@ -803,7 +809,7 @@ class GenerateTeamsSerializer(serializers.Serializer):
         try:
             cycle = FoodTeamCycle.objects.get(id=value)
         except FoodTeamCycle.DoesNotExist as e:
-            raise serializers.ValidationError("Cycle not found.") from e
+            raise serializers.ValidationError("Perioden blev ikke fundet.") from e
 
         if cycle.status == CycleStatus.FINALIZED:
             raise serializers.ValidationError(
@@ -946,3 +952,81 @@ class ClosedFoodDayCreateSerializer(serializers.Serializer):
             )
             results.append(obj)
         return results
+
+
+# Meal Price Serializers
+
+
+def _price_field(**kwargs: Any) -> serializers.DecimalField:
+    """A price in whole-krone range, serialized as a number so the UI can do math."""
+    return serializers.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        min_value=Decimal("0.00"),
+        max_value=Decimal("9999.99"),
+        coerce_to_string=False,
+        **kwargs,
+    )
+
+
+class MealPriceSerializer(serializers.ModelSerializer):
+    """A price set. Read-only for everyone but food admins (enforced in the view)."""
+
+    # Declared explicitly to drop the auto-generated UniqueValidator and its
+    # English message — `validate_effective_from` reports the clash in Danish.
+    effective_from = serializers.DateField()
+    price_adult_meat = _price_field()
+    price_adult_veg = _price_field()
+    price_child = _price_field()
+    created_by_name = serializers.SerializerMethodField()
+    is_locked = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MealPrice
+        fields = [
+            "id",
+            "effective_from",
+            "price_adult_meat",
+            "price_adult_veg",
+            "price_child",
+            "note",
+            "created_by_name",
+            "created_at",
+            "is_locked",
+        ]
+        read_only_fields = ["id", "created_by_name", "created_at", "is_locked"]
+
+    def get_created_by_name(self, obj: MealPrice) -> str:
+        return obj.created_by.get_full_name() if obj.created_by else ""
+
+    def get_is_locked(self, obj: MealPrice) -> bool:
+        """True once the price set has taken effect — it can no longer be changed."""
+        return obj.effective_from < timezone.localdate()
+
+    def validate_effective_from(self, value: date) -> date:
+        # Prices are resolved by meal date, so backdating a price set would
+        # silently rewrite past cost reports and economy pages.
+        if value < timezone.localdate():
+            raise serializers.ValidationError(
+                "Startdatoen kan ikke være i fortiden — det ville ændre allerede "
+                "afregnede madomkostninger."
+            )
+        existing = MealPrice.objects.filter(effective_from=value)
+        if self.instance is not None:
+            existing = existing.exclude(pk=self.instance.pk)
+        if existing.exists():
+            raise serializers.ValidationError("Der findes allerede et prissæt med denne startdato.")
+        return value
+
+    def validate(self, attrs: dict) -> dict:
+        # Editing a price set that is already in effect would change history too.
+        if self.instance is not None and self.instance.effective_from < timezone.localdate():
+            raise serializers.ValidationError(
+                "Prissættet er allerede trådt i kraft og kan ikke ændres. "
+                "Opret i stedet et nyt prissæt med en fremtidig startdato."
+            )
+        return attrs
+
+    def create(self, validated_data: dict) -> MealPrice:
+        validated_data["created_by"] = self.context["request"].user
+        return super().create(validated_data)

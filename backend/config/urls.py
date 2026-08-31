@@ -12,6 +12,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import AccessToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
@@ -20,7 +21,24 @@ from apps.backup.views import serve_media
 _AUTH_BACKEND = "django.contrib.auth.backends.ModelBackend"
 
 
+class EmailLoginSerializer(TokenObtainPairSerializer):
+    """`TokenObtainPairSerializer` that matches the address the way people type it.
+
+    Addresses are stored lowercased (see `User.save()`), but a phone keyboard
+    capitalises the first letter and a paste can carry whitespace. Without this,
+    such a login failed with "Forkert e-mail eller adgangskode" while the
+    forgot-password flow -- which looks up `email__iexact` -- kept working: the
+    reset mail arrived, the new password was set, and login still refused, with
+    nothing to tell the member which of the two was supposedly wrong.
+    """
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, str]:
+        attrs[self.username_field] = attrs[self.username_field].strip().lower()
+        return super().validate(attrs)
+
+
 class ThrottledTokenObtainPairView(TokenObtainPairView):
+    serializer_class = EmailLoginSerializer
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "login"
 
@@ -102,6 +120,7 @@ urlpatterns = [
     path("api/bookings/", include("apps.bookings.urls")),
     path("api/links/", include("apps.links.urls")),
     path("api/expenses/", include("apps.expenses.urls")),
+    path("api/carsharing/", include("apps.carsharing.urls")),
 ]
 
 # Serve media files with S3 fallback (restores missing files from backup)

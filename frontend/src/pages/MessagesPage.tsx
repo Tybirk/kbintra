@@ -95,7 +95,13 @@ import ChatRichTextEditor from "../components/ChatRichTextEditor"
 
 import { clearDraft } from "../utils/draftStorage"
 
-import { getFileIcon, getFileTypeColor } from "../components/FilePreview"
+import { htmlToPlainText } from "../utils/htmlText"
+
+import {
+  getFileIcon,
+  getFileTypeColor,
+  getRenderableFileType,
+} from "../components/FilePreview"
 
 import { AttachmentCarousel } from "../components/AttachmentCarousel"
 
@@ -982,15 +988,7 @@ function ConversationItem({
                 : isGroupChat
                   ? `${otherParticipants.find((p) => p.id === conversation.last_message?.sender_id)?.first_name || ""}: `
                   : ""}
-              {conversation.last_message.content
-
-                .replace(/<\/[^>]+>/g, " ")
-
-                .replace(/<[^>]*>/g, "")
-
-                .replace(/\s+/g, " ")
-
-                .trim()}
+              {htmlToPlainText(conversation.last_message.content)}
             </Text>
           )}
         </div>
@@ -1485,18 +1483,20 @@ function ChatArea({
                 </UnstyledButton>
               </Popover.Target>
               <Popover.Dropdown>
-                <Stack gap="xs">
-                  {allParticipants.map((p) => (
-                    <Group key={p.id} gap="sm" wrap="nowrap">
-                      <Avatar src={p.profile_picture} radius="xl" size="sm">
-                        {p.first_name?.[0]}
-                      </Avatar>
-                      <Text size="sm">
-                        {p.first_name} {p.last_name}
-                      </Text>
-                    </Group>
-                  ))}
-                </Stack>
+                <ScrollArea.Autosize mah={320}>
+                  <Stack gap="xs">
+                    {allParticipants.map((p) => (
+                      <Group key={p.id} gap="sm" wrap="nowrap">
+                        <Avatar src={p.profile_picture} radius="xl" size="sm">
+                          {p.first_name?.[0]}
+                        </Avatar>
+                        <Text size="sm">
+                          {p.first_name} {p.last_name}
+                        </Text>
+                      </Group>
+                    ))}
+                  </Stack>
+                </ScrollArea.Autosize>
               </Popover.Dropdown>
             </Popover>
           </Group>
@@ -1771,8 +1771,11 @@ interface MessageBubbleProps {
   onMarkMessageUnread?: (messageId: number) => void
 }
 
-function isImageFile(filename: string): boolean {
-  return /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(filename)
+function isImageFile(attachment: MessageAttachment): boolean {
+  // Goes through getRenderableFileType rather than the filename alone: a HEIC is
+  // only displayable when the backend actually produced a JPEG for it, and when
+  // conversion failed the preview URL is just the undecodable original again.
+  return getRenderableFileType(attachment) === "image"
 }
 
 const MessageBubble = memo(function MessageBubble({
@@ -1845,17 +1848,9 @@ const MessageBubble = memo(function MessageBubble({
   }
 
   const handleCopy = () => {
-    const plainText = message.content
-
-      .replace(/<\/[^>]+>/g, " ")
-
-      .replace(/<[^>]*>/g, "")
-
-      .replace(/\s+/g, " ")
-
-      .trim()
-
-    navigator.clipboard.writeText(plainText).catch(() => {})
+    navigator.clipboard
+      .writeText(htmlToPlainText(message.content))
+      .catch(() => {})
   }
 
   const handleStartEdit = () => {
@@ -1961,10 +1956,10 @@ const MessageBubble = memo(function MessageBubble({
   // Sort attachments: images first, then other files
 
   const imageAttachments =
-    message.attachments?.filter((att) => isImageFile(att.name)) || []
+    message.attachments?.filter((att) => isImageFile(att)) || []
 
   const otherAttachments =
-    message.attachments?.filter((att) => !isImageFile(att.name)) || []
+    message.attachments?.filter((att) => !isImageFile(att)) || []
 
   const allAttachments = [...imageAttachments, ...otherAttachments]
 
@@ -2402,7 +2397,7 @@ const MessageBubble = memo(function MessageBubble({
                   onClick={() => handleAttachmentClick(attachment)}
                 >
                   <Image
-                    src={attachment.file_url}
+                    src={attachment.preview_url ?? attachment.file_url}
                     alt={attachment.name}
                     radius="md"
                     maw={200}

@@ -278,7 +278,7 @@ export default function NotificationPreferencesPage() {
       const error = err as { response?: { data?: { error?: string } } }
 
       setTestPushError(
-        error.response?.data?.error || "Failed to send test notification",
+        error.response?.data?.error || "Testnotifikationen kunne ikke sendes.",
       )
     } finally {
       setTestPushLoading(false)
@@ -310,7 +310,8 @@ export default function NotificationPreferencesPage() {
       const error = err as { response?: { data?: { error?: string } } }
 
       setTestPushError(
-        error.response?.data?.error || "Failed to schedule test notification",
+        error.response?.data?.error ||
+          "Testnotifikationen kunne ikke planlægges.",
       )
     } finally {
       setTestPushDelayedLoading(false)
@@ -433,8 +434,8 @@ export default function NotificationPreferencesPage() {
                 }
               />
               <Switch
-                label="Arrangementer"
-                description="Når nye arrangementer oprettes eller opdateres"
+                label="Begivenheder"
+                description="Når nye begivenheder oprettes eller opdateres"
                 checked={preferences.notify_events}
                 onChange={(e) =>
                   handleToggle("notify_events", e.currentTarget.checked)
@@ -446,6 +447,14 @@ export default function NotificationPreferencesPage() {
                 checked={preferences.notify_mentions}
                 onChange={(e) =>
                   handleToggle("notify_mentions", e.currentTarget.checked)
+                }
+              />
+              <Switch
+                label="Bildeling"
+                description="Når nogen vil låne din bil, eller der er nyt om et lån"
+                checked={preferences.notify_car_sharing}
+                onChange={(e) =>
+                  handleToggle("notify_car_sharing", e.currentTarget.checked)
                 }
               />
             </Stack>
@@ -534,8 +543,8 @@ export default function NotificationPreferencesPage() {
                 }
               />
               <Switch
-                label="Arrangementer"
-                description="E-mail når nye arrangementer oprettes eller opdateres"
+                label="Begivenheder"
+                description="E-mail når nye begivenheder oprettes eller opdateres"
                 checked={preferences.email_events}
                 onChange={(e) =>
                   handleToggle("email_events", e.currentTarget.checked)
@@ -547,6 +556,14 @@ export default function NotificationPreferencesPage() {
                 checked={preferences.email_mentions}
                 onChange={(e) =>
                   handleToggle("email_mentions", e.currentTarget.checked)
+                }
+              />
+              <Switch
+                label="Bildeling"
+                description="E-mail om forespørgsler og lån af biler"
+                checked={preferences.email_car_sharing}
+                onChange={(e) =>
+                  handleToggle("email_car_sharing", e.currentTarget.checked)
                 }
               />
             </Stack>
@@ -682,8 +699,8 @@ export default function NotificationPreferencesPage() {
                         }
                       />
                       <Switch
-                        label="Arrangementer"
-                        description="Push-notifikation når nye arrangementer oprettes eller opdateres"
+                        label="Begivenheder"
+                        description="Push-notifikation når nye begivenheder oprettes eller opdateres"
                         checked={preferences.push_events}
                         onChange={(e) =>
                           handleToggle("push_events", e.currentTarget.checked)
@@ -695,6 +712,17 @@ export default function NotificationPreferencesPage() {
                         checked={preferences.push_mentions}
                         onChange={(e) =>
                           handleToggle("push_mentions", e.currentTarget.checked)
+                        }
+                      />
+                      <Switch
+                        label="Bildeling"
+                        description="Push-notifikation om forespørgsler og lån af biler"
+                        checked={preferences.push_car_sharing}
+                        onChange={(e) =>
+                          handleToggle(
+                            "push_car_sharing",
+                            e.currentTarget.checked,
+                          )
                         }
                       />
 

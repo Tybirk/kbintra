@@ -103,6 +103,14 @@ export default function AppHeader({
     const unsubMessage = chatWs.onMessage((data) => {
       const wsData = data as WsMessage
 
+      // Car sharing pushes a bare "something changed" signal; refetch rather
+      // than trusting a pushed payload (see apps/carsharing/realtime.py).
+      if (wsData.type === "car_sharing_update") {
+        queryClient.invalidateQueries({ queryKey: ["carsharing"] })
+
+        return
+      }
+
       if (wsData.type === "new_notification") {
         queryClient.invalidateQueries({
           queryKey: ["notifications", "unread-count"],

@@ -94,11 +94,14 @@ class User(AbstractUser):
     @property
     def avatar_url(self) -> str | None:
         """Best URL for displaying this user's avatar. Falls back to the
-        original if the thumbnail hasn't been generated yet."""
+        original if the thumbnail hasn't been generated yet. Signed so <img>
+        tags authenticate without the session cookie (see apps.backup.signing)."""
+        from apps.backup.signing import signed_media_url
+
         if self.profile_picture_thumbnail:
-            return self.profile_picture_thumbnail.url
+            return signed_media_url(self.profile_picture_thumbnail.url)
         if self.profile_picture:
-            return self.profile_picture.url
+            return signed_media_url(self.profile_picture.url)
         return None
 
     # House relationship (nullable - user might not be assigned to a house yet)
@@ -170,6 +173,19 @@ class User(AbstractUser):
         help_text="Hide closed threads from subgroup thread lists",
     )
 
+    # Which version of the bildeling loan terms this resident accepted as a
+    # borrower. The owner's side of the same agreement lives on houses.Car; this
+    # is the borrower's, and it is asked for once rather than at every request.
+    # Stored as the version, not a boolean, so new terms ask again instead of
+    # silently carrying an agreement to text nobody saw.
+    carsharing_terms_accepted_version = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        help_text="Version of the car sharing loan terms accepted as a borrower",
+    )
+    carsharing_terms_accepted_at = models.DateTimeField(null=True, blank=True)
+
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS: list[str] = []
 
@@ -180,6 +196,21 @@ class User(AbstractUser):
 
     def __str__(self) -> str:
         return self.get_full_name() or self.email
+
+    def save(self, *args: object, **kwargs: object) -> None:
+        """Store the email address in canonical (stripped, lowercased) form.
+
+        Email addresses are case-insensitive in practice, and phone keyboards
+        routinely capitalise the first letter of one. Normalising here rather
+        than in each serializer covers the admin and the management commands
+        too, and it makes the `unique=True` on the column mean what it looks
+        like it means: SQLite compares text with a binary collation, so without
+        this it would happily store both `anna@example.com` and
+        `Anna@example.com` as separate members.
+        """
+        if self.email:
+            self.email = self.email.strip().lower()
+        super().save(*args, **kwargs)
 
     def get_full_name(self) -> str:
         """Return the first_name plus the last_name, with a space in between."""

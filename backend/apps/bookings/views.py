@@ -119,7 +119,7 @@ class RecurringBookingExceptionView(APIView):
             recurring_booking = RecurringBooking.objects.get(pk=pk)
         except RecurringBooking.DoesNotExist:
             return Response(
-                {"error": "Recurring booking not found"},
+                {"error": "Den tilbagevendende booking blev ikke fundet."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 

@@ -18,9 +18,9 @@ class NotificationType(models.TextChoices):
     POST_REPLY = "post_reply", "Nyt svar på dit opslag"
     SUBGROUP_ACTIVITY = "subgroup_activity", "Ny aktivitet i gruppen"
     POST_REACTION = "post_reaction", "Reaktion på dit opslag"
-    EVENT_CREATED = "event_created", "Nyt arrangement"
-    EVENT_UPDATED = "event_updated", "Arrangement opdateret"
-    EVENT_CANCELLED = "event_cancelled", "Arrangement aflyst"
+    EVENT_CREATED = "event_created", "Ny begivenhed"
+    EVENT_UPDATED = "event_updated", "Begivenhed opdateret"
+    EVENT_CANCELLED = "event_cancelled", "Begivenhed aflyst"
     EVENT_REMINDER = "event_reminder", "Begivenhedsreminder"
     FOOD_TICKET = "food_ticket", "Madbillet tilgængelig"
     MENTION = "mention", "Omtale"
@@ -36,6 +36,8 @@ class NotificationType(models.TextChoices):
         "Dit opslag blev redigeret af en administrator",
     )
     EXPENSE_PROCESSED = "expense_processed", "Udlæg behandlet"
+    CAR_LOAN_REQUEST = "car_loan_request", "Forespørgsel om at låne din bil"
+    CAR_LOAN_UPDATE = "car_loan_update", "Opdatering om bildeling"
 
 
 class Notification(models.Model):
@@ -110,6 +112,7 @@ class NotificationPreference(models.Model):
     notify_event_reminders = models.BooleanField(default=True)
     notify_food_tickets = models.BooleanField(default=True)
     notify_mentions = models.BooleanField(default=True)
+    notify_car_sharing = models.BooleanField(default=True)
 
     # Email notification preferences (per notification type)
     email_messages = models.BooleanField(default=False)
@@ -123,6 +126,11 @@ class NotificationPreference(models.Model):
     email_event_reminders = models.BooleanField(default=False)
     email_food_tickets = models.BooleanField(default=False)
     email_mentions = models.BooleanField(default=False)
+    # On by default, unlike the other email toggles. A borrow request is the one
+    # notification in the app that is waiting on the recipient: nobody else can
+    # answer it, and until they do a neighbour is standing there without a car.
+    # Push is not configured, so without email the only signal is the in-app bell.
+    email_car_sharing = models.BooleanField(default=True)
 
     # Push notification preferences (per notification type)
     push_messages = models.BooleanField(default=True)
@@ -136,6 +144,7 @@ class NotificationPreference(models.Model):
     push_event_reminders = models.BooleanField(default=True)
     push_food_tickets = models.BooleanField(default=True)
     push_mentions = models.BooleanField(default=True)
+    push_car_sharing = models.BooleanField(default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

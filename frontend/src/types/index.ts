@@ -67,7 +67,286 @@ export interface Car {
 
   is_electric: boolean
 
+  display_name: string
+
+  // Bildeling
+  is_shared: boolean
+
+  rate_per_km: string | null
+
+  make: string
+
+  model_name: string
+
+  color: string
+
+  year: number | null
+
+  seats: number | null
+
+  has_tow_hitch: boolean
+
+  has_isofix: boolean
+
+  dogs_allowed: boolean
+
+  has_charge_fob: boolean
+
+  equipment_note: string
+
+  practical_note: string
+
+  /** Which terms version this household accepted as a lender; "" if never. */
+  terms_accepted_version: string
+
+  /** Whether that acceptance covers the terms currently in force. */
+  has_accepted_current_terms: boolean
+
   created_at: string
+}
+
+export interface CarBlock {
+  id: number
+
+  car: number
+
+  days_of_week: number[]
+
+  days_of_week_display: string
+
+  start_time: string
+
+  end_time: string
+}
+
+/** Why a shared car may look busy. Only "loan" actually blocks selection. */
+export type CarConflict = "requested" | "schedule" | "loan" | null
+
+export interface SharedCar {
+  id: number
+
+  display_name: string
+
+  license_plate: string
+
+  house_name: string
+
+  house_slug: string
+
+  is_electric: boolean
+
+  make: string
+
+  model_name: string
+
+  color: string
+
+  year: number | null
+
+  seats: number | null
+
+  has_tow_hitch: boolean
+
+  has_isofix: boolean
+
+  dogs_allowed: boolean
+
+  has_charge_fob: boolean
+
+  equipment_note: string
+
+  /** No practical_note here on purpose: the borrow list is browsable by every
+   * resident, and that field says where the key and the charge fob are kept. It
+   * arrives as CarLoan.car_practical_note once an owner has said yes. */
+  effective_rate_per_km: string
+
+  blocks: CarBlock[]
+
+  conflict: CarConflict
+
+  conflict_note: string
+
+  meets_requirements: boolean
+
+  selectable: boolean
+}
+
+export interface SharedCarsResponse {
+  start: string
+
+  end: string
+
+  default_rate_per_km: string
+
+  max_candidates: number
+
+  /** Published so the client can warn before sending a window the server refuses. */
+  max_loan_days: number
+
+  cars: SharedCar[]
+}
+
+/** "declined" is terminal: every asked household said no, so nobody is coming. */
+export type CarLoanStatus = "requested" | "active" | "completed" | "cancelled" | "declined"
+
+/**
+ * What the signed-in viewer is to a loan, decided by the server.
+ *
+ * One loan is visible to the borrower and to every asked household, so the UI
+ * must not infer this from `is_borrower` + `status`: that inference is what once
+ * showed nine uninvolved households a cancel button and another household's key.
+ */
+export type LoanViewerRole = "borrower" | "lender" | "asked" | "declined" | "closed_out" | "none"
+
+export type CarLoanCandidateStatus = "asked" | "accepted" | "declined" | "closed"
+
+export interface CarLoanCandidate {
+  id: number
+
+  car: number
+
+  car_display_name: string
+
+  car_house_name: string
+
+  status: CarLoanCandidateStatus
+
+  responded_by_name: string
+
+  responded_at: string | null
+
+  /** Whether the signed-in user's household owns this car and may answer for it. */
+  is_own_household: boolean
+}
+
+export interface CarLoan {
+  id: number
+
+  borrower: number
+
+  borrower_name: string
+
+  is_borrower: boolean
+
+  viewer_role: LoanViewerRole
+
+  /** Whether the server would allow this viewer to cancel right now. */
+  can_cancel: boolean
+
+  /** Whether the borrowed window has begun, per the server's clock. */
+  has_started: boolean
+
+  status: CarLoanStatus
+
+  start_at: string
+
+  end_at: string
+
+  expected_km: number
+
+  needs_isofix: boolean
+
+  needs_tow_hitch: boolean
+
+  min_seats: number | null
+
+  note: string
+
+  terms_version: string
+
+  /** The lending household's accepted version, snapshotted when the loan began. */
+  owner_terms_version: string
+
+  car: number | null
+
+  car_display_name: string
+
+  car_house_name: string
+
+  /** Decides whether the settlement form may say the energy is already covered. */
+  car_has_charge_fob: boolean
+
+  /** Adults in the lending household. Above one, the money is addressed to "I". */
+  car_household_size: number
+
+  /** The person who said yes, and their number — the two parties only. */
+  approved_by_name: string
+
+  approved_by_phone: string
+
+  /** For a negative amount, when the lending household is the one paying. */
+  borrower_phone: string
+
+  /** Empty unless you are the borrower or the lending household. */
+  car_practical_note: string
+
+  rate_per_km: string | null
+
+  activated_at: string | null
+
+  /** The settlement is withheld from households not party to the loan. */
+  actual_km: number | null
+
+  expense_amount: string | null
+
+  expense_note: string
+
+  damage_note: string
+
+  amount_due: string | null
+
+  completed_at: string | null
+
+  candidates: CarLoanCandidate[]
+
+  created_at: string
+}
+
+/** One point. `lead` is the bold label a point may open with, else empty. */
+export interface LoanTermsBullet {
+  lead: string
+
+  text: string
+}
+
+/**
+ * A paragraph or a run of points, in the order the terms file has them. The
+ * server does the splitting so the client never parses Markdown.
+ */
+export interface LoanTermsBlock {
+  kind: "paragraph" | "bullets"
+
+  text?: string
+
+  items?: LoanTermsBullet[]
+}
+
+export interface LoanTermsSection {
+  heading: string
+
+  blocks: LoanTermsBlock[]
+}
+
+export interface CarSharingTerms {
+  version: string
+
+  title: string
+
+  /** The numbered sections of the agreement, already split by the server. */
+  sections: LoanTermsSection[]
+
+  text: string
+
+  default_rate_per_km: string
+
+  /** Whether this resident has already accepted the version in force as a
+   *  borrower. Consent is asked for once per version, not once per loan. */
+  accepted: boolean
+
+  /** The version they did accept; "" if never. */
+  accepted_version: string
+
+  accepted_at: string | null
 }
 
 export interface House {
@@ -273,7 +552,8 @@ export interface Subgroup {
 
   created_at: string
 
-  last_activity_at: string | null
+  // No `last_activity_at`: the API deliberately doesn't expose it, because it is
+  // bumped by private threads too. Sort on latest_thread_activity_at instead.
 
   allows_members: boolean
 
@@ -351,6 +631,8 @@ export interface PostAttachment {
 
   thumbnail_url: string
 
+  preview_url?: string
+
   preview_html?: string
 
   uploaded_by: Author | null
@@ -366,6 +648,8 @@ export interface GalleryItem {
   file_url: string
 
   thumbnail_url: string
+
+  preview_url?: string
 
   preview_html?: string
 
@@ -605,6 +889,10 @@ export interface ForumFile {
 
   file_url: string
 
+  /** JPEG rendition for formats browsers can't decode (HEIC/HEIF), when the
+   *  source model has one. Forum documents don't, so it may be absent. */
+  preview_url?: string
+
   preview_html?: string
 
   uploaded_by: Author | null
@@ -628,6 +916,8 @@ export interface AnnouncementAttachment {
   file: string
 
   file_url: string
+
+  preview_url?: string
 
   preview_html?: string
 
@@ -927,6 +1217,49 @@ export interface ClosedFoodDay {
   created_at: string
 }
 
+/** A set of portion prices that applies from `effective_from` (inclusive). */
+export interface MealPrice {
+  id: number
+
+  effective_from: string
+
+  price_adult_meat: number
+
+  price_adult_veg: number
+
+  price_child: number
+
+  note: string
+
+  created_by_name: string
+
+  created_at: string
+
+  /** True once the set has taken effect — it can no longer be edited or deleted. */
+  is_locked: boolean
+}
+
+/** The three portion prices in effect for a given meal date. */
+export interface MealPrices {
+  adultMeat: number
+
+  adultVeg: number
+
+  child: number
+}
+
+export interface CreateMealPriceData {
+  effective_from: string
+
+  price_adult_meat: number
+
+  price_adult_veg: number
+
+  price_child: number
+
+  note?: string
+}
+
 export interface ClosedDayPlaceholder {
   id: null
 
@@ -1132,6 +1465,8 @@ export interface MessageAttachment {
 
   file_url: string
 
+  preview_url?: string
+
   preview_html?: string
 
   uploaded_at: string
@@ -1273,6 +1608,10 @@ export interface WsNewNotification {
   notification: Notification
 }
 
+export interface WsCarSharingUpdate {
+  type: "car_sharing_update"
+}
+
 export interface WsMessageEdited {
   type: "message_edited"
 
@@ -1311,11 +1650,11 @@ export interface WsConversationRenamed {
   name: string
 }
 
-export type WsMessage = WsNewMessage | WsMessagesRead | WsTyping | WsNewConversation | WsNewNotification | WsMessageEdited | WsMessageDeleted | WsMessageReacted | WsConversationRenamed
+export type WsMessage = WsNewMessage | WsMessagesRead | WsTyping | WsNewConversation | WsNewNotification | WsCarSharingUpdate | WsMessageEdited | WsMessageDeleted | WsMessageReacted | WsConversationRenamed
 
 // Notification Types
 
-export type NotificationType = "new_message" | "new_announcement" | "new_thread" | "thread_reply" | "post_reply" | "post_reaction" | "event_created" | "event_updated" | "event_cancelled" | "event_reminder" | "food_ticket" | "mention" | "post_edited_by_admin" | "event_edited_by_admin" | "announcement_edited_by_admin" | "expense_processed"
+export type NotificationType = "new_message" | "new_announcement" | "new_thread" | "thread_reply" | "post_reply" | "post_reaction" | "event_created" | "event_updated" | "event_cancelled" | "event_reminder" | "food_ticket" | "mention" | "post_edited_by_admin" | "event_edited_by_admin" | "announcement_edited_by_admin" | "expense_processed" | "car_loan_request" | "car_loan_update"
 
 export interface MentionUser {
   id: number
@@ -1388,6 +1727,8 @@ export interface NotificationPreference {
 
   notify_mentions: boolean
 
+  notify_car_sharing: boolean
+
   // Email preferences
 
   email_messages: boolean
@@ -1412,6 +1753,8 @@ export interface NotificationPreference {
 
   email_mentions: boolean
 
+  email_car_sharing: boolean
+
   // Push preferences
 
   push_messages: boolean
@@ -1435,6 +1778,8 @@ export interface NotificationPreference {
   push_food_tickets: boolean
 
   push_mentions: boolean
+
+  push_car_sharing: boolean
 
   created_at: string
 
@@ -1464,6 +1809,8 @@ export interface UpdateNotificationPreferenceData {
 
   notify_mentions?: boolean
 
+  notify_car_sharing?: boolean
+
   email_messages?: boolean
 
   email_announcements?: boolean
@@ -1486,6 +1833,8 @@ export interface UpdateNotificationPreferenceData {
 
   email_mentions?: boolean
 
+  email_car_sharing?: boolean
+
   push_messages?: boolean
 
   push_announcements?: boolean
@@ -1507,6 +1856,8 @@ export interface UpdateNotificationPreferenceData {
   push_food_tickets?: boolean
 
   push_mentions?: boolean
+
+  push_car_sharing?: boolean
 }
 
 // Food Team Types

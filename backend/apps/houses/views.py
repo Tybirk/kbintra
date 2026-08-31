@@ -2,8 +2,11 @@
 Views for House models.
 """
 
+from django.db import transaction
+from django.db.models import ProtectedError
+from django.http import Http404
 from rest_framework import generics, permissions, status
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -168,6 +171,26 @@ class ChildDetailView(generics.RetrieveUpdateDestroyAPIView):
         return Response(output_serializer.data)
 
 
+def _announce_withdrawn_requests(candidates, car) -> None:
+    """Tell the borrowers that a departing car has answered them.
+
+    Both ways a car can leave the delebilpark — removed outright, or un-shared —
+    end here, so the borrower is told the same thing either way and the two paths
+    cannot drift apart. Called only after the change is committed: announcing a
+    dead request and then rolling the change back would be worse than silence.
+    """
+    from apps.carsharing.realtime import broadcast_car_sharing_update, loan_audience
+    from apps.notifications.services import (
+        close_car_request_notifications,
+        notify_car_loan_declined,
+    )
+
+    for candidate in candidates:
+        close_car_request_notifications(candidate.loan, car)
+        notify_car_loan_declined(candidate)
+        broadcast_car_sharing_update(loan_audience(candidate.loan))
+
+
 class CarListCreateView(generics.ListCreateAPIView):
     """
     List cars in the current user's house or create a new car.
@@ -215,6 +238,21 @@ class CarDetailView(generics.RetrieveUpdateDestroyAPIView):
             return CarCreateUpdateSerializer
         return CarSerializer
 
+    def get_object(self):
+        """Answer a vanished car in Danish.
+
+        Django's get_object_or_404 raises "No Car matches the given query.", and
+        that reached the resident verbatim. Two adults share a household and a car
+        list, so one of them saving a card the other just removed is an ordinary
+        Tuesday, not an exotic race.
+        """
+        try:
+            return super().get_object()
+        except Http404 as exc:
+            raise NotFound(
+                "Bilen findes ikke længere — den er måske fjernet fra husstanden."
+            ) from exc
+
     def get_queryset(self):
         user = self.request.user
         if not user.house:
@@ -222,11 +260,64 @@ class CarDetailView(generics.RetrieveUpdateDestroyAPIView):
         return Car.objects.filter(house=user.house)
 
     def update(self, request, *args, **kwargs):
+        """Save the car, and answer any request it leaves behind.
+
+        Taking a car out of the delebilpark is the same thing to a borrower as
+        removing it: the car they are waiting on is gone from the list and no
+        longer answerable. So it says no on the household's behalf, exactly as
+        perform_destroy does — otherwise the request sits open forever against a
+        car nobody can see, and the owner keeps a "Ja, den må lånes" button that
+        would lend out a car that is no longer shared.
+        """
+        from apps.carsharing.services import withdraw_car_from_open_requests
+
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
+        was_shared = instance.is_shared
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
+
+        with transaction.atomic():
+            self.perform_update(serializer)
+            withdrawn = (
+                withdraw_car_from_open_requests(instance, by_user=request.user)
+                if was_shared and not instance.is_shared
+                else []
+            )
+
+        _announce_withdrawn_requests(withdrawn, instance)
 
         output_serializer = CarSerializer(instance)
         return Response(output_serializer.data)
+
+    def perform_destroy(self, instance):
+        """Remove a car, leaving no neighbour waiting on it and no 500 behind.
+
+        Two things can go wrong here and both used to reach the resident raw.
+        A car that has ever been lent out is referenced by CarLoan.car, which is
+        PROTECTed so the settled history stays answerable — that has to be a
+        sentence, not an unhandled ProtectedError. And a car with an unanswered
+        request would take its candidacy down with it (CarLoanCandidate.car is
+        CASCADE), leaving the borrower waiting for a household that no longer has
+        anything to answer with.
+
+        ProtectedError is caught rather than pre-checked so that any protected
+        relation added later is covered too, with no check-then-delete window.
+        """
+        from apps.carsharing.services import withdraw_car_from_open_requests
+
+        with transaction.atomic():
+            withdrawn = withdraw_car_from_open_requests(instance, by_user=self.request.user)
+            try:
+                instance.delete()
+            except ProtectedError as exc:
+                # Rolls back the withdrawals above, so a refused delete changes
+                # nothing at all.
+                raise ValidationError(
+                    "Bilen kan ikke fjernes, fordi den har været lånt ud. "
+                    'Slå "Med i delebilparken" fra i stedet, hvis den ikke skal kunne lånes.'
+                ) from exc
+
+        # Only once the removal is real: telling someone their request is dead and
+        # then rolling the delete back would be worse than saying nothing.
+        _announce_withdrawn_requests(withdrawn, instance)

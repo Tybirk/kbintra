@@ -143,26 +143,28 @@ class UserRegistrationSerializer(serializers.Serializer):
         try:
             invitation = Invitation.objects.get(token=value)
         except Invitation.DoesNotExist as err:
-            raise serializers.ValidationError("Invalid invitation token.") from err
+            raise serializers.ValidationError("Ugyldigt invitationslink.") from err
 
         if not invitation.is_valid:
-            raise serializers.ValidationError("This invitation has expired or already been used.")
+            raise serializers.ValidationError("Denne invitation er udløbet eller allerede brugt.")
 
         return value
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         """Validate that passwords match and email matches invitation."""
         if attrs["password"] != attrs["password_confirm"]:
-            raise serializers.ValidationError({"password_confirm": "Passwords do not match."})
+            raise serializers.ValidationError({"password_confirm": "Adgangskoderne er ikke ens."})
 
         # Verify email matches the invitation
         invitation = Invitation.objects.get(token=attrs["token"])
         if invitation.email.lower() != attrs["email"].lower():
-            raise serializers.ValidationError({"email": "Email does not match the invitation."})
+            raise serializers.ValidationError({"email": "Emailadressen matcher ikke invitationen."})
 
         # Check email is not already registered
         if User.objects.filter(email__iexact=attrs["email"]).exists():
-            raise serializers.ValidationError({"email": "A user with this email already exists."})
+            raise serializers.ValidationError(
+                {"email": "Der findes allerede en bruger med denne emailadresse."}
+            )
 
         return attrs
 
@@ -236,12 +238,16 @@ class InvitationCreateSerializer(serializers.ModelSerializer):
     def validate_email(self, value: str) -> str:
         """Check if email is already registered or has pending invitation."""
         if User.objects.filter(email__iexact=value).exists():
-            raise serializers.ValidationError("A user with this email already exists.")
+            raise serializers.ValidationError(
+                "Der findes allerede en bruger med denne emailadresse."
+            )
 
         # Check for pending valid invitation
         pending = Invitation.objects.filter(email__iexact=value, used_at__isnull=True).first()
         if pending and pending.is_valid:
-            raise serializers.ValidationError("A valid invitation already exists for this email.")
+            raise serializers.ValidationError(
+                "Der er allerede sendt en gyldig invitation til denne emailadresse."
+            )
 
         return value
 
@@ -261,10 +267,10 @@ class InvitationValidateSerializer(serializers.Serializer):
         try:
             invitation = Invitation.objects.get(token=value)
         except Invitation.DoesNotExist as err:
-            raise serializers.ValidationError("Invalid invitation token.") from err
+            raise serializers.ValidationError("Ugyldigt invitationslink.") from err
 
         if not invitation.is_valid:
-            raise serializers.ValidationError("This invitation has expired or already been used.")
+            raise serializers.ValidationError("Denne invitation er udløbet eller allerede brugt.")
 
         return value
 
@@ -280,14 +286,14 @@ class ChangePasswordSerializer(serializers.Serializer):
         """Validate that the current password is correct."""
         user = self.context["request"].user
         if not user.check_password(value):
-            raise serializers.ValidationError("Current password is incorrect.")
+            raise serializers.ValidationError("Den nuværende adgangskode er forkert.")
         return value
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         """Validate that new passwords match."""
         if attrs["new_password"] != attrs["new_password_confirm"]:
             raise serializers.ValidationError(
-                {"new_password_confirm": "New passwords do not match."}
+                {"new_password_confirm": "De nye adgangskoder er ikke ens."}
             )
         return attrs
 
@@ -410,17 +416,23 @@ class ResetPasswordSerializer(serializers.Serializer):
         try:
             reset_token = PasswordResetToken.objects.get(token=value)
         except PasswordResetToken.DoesNotExist as err:
-            raise serializers.ValidationError("Invalid or expired reset token.") from err
+            raise serializers.ValidationError(
+                "Linket til nulstilling er ugyldigt eller udløbet."
+            ) from err
 
         if not reset_token.is_valid:
-            raise serializers.ValidationError("This reset token has expired or already been used.")
+            raise serializers.ValidationError(
+                "Linket til nulstilling er udløbet eller allerede brugt."
+            )
 
         return value
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         """Validate that passwords match."""
         if attrs["new_password"] != attrs["new_password_confirm"]:
-            raise serializers.ValidationError({"new_password_confirm": "Passwords do not match."})
+            raise serializers.ValidationError(
+                {"new_password_confirm": "Adgangskoderne er ikke ens."}
+            )
         return attrs
 
     def save(self) -> User:

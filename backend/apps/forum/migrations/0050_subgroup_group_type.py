@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("forum", "0044_remove_subgroupsubscription_notify_replies"),
+        ("forum", "0049_alter_subgroup_options"),
     ]
 
     operations = [

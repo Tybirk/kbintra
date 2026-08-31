@@ -386,11 +386,11 @@ class SubscribeView(APIView):
         )
         if not created:
             return Response(
-                {"detail": "Already subscribed to this subgroup."},
+                {"detail": "Du følger allerede denne gruppe."},
                 status=status.HTTP_200_OK,
             )
         return Response(
-            {"detail": "Successfully subscribed."},
+            {"detail": "Du følger nu denne gruppe."},
             status=status.HTTP_201_CREATED,
         )
 
@@ -408,11 +408,11 @@ class UnsubscribeView(APIView):
         ).delete()
         if not deleted:
             return Response(
-                {"detail": "Not subscribed to this subgroup."},
+                {"detail": "Du følger ikke denne gruppe."},
                 status=status.HTTP_200_OK,
             )
         return Response(
-            {"detail": "Successfully unsubscribed."},
+            {"detail": "Du følger ikke længere denne gruppe."},
             status=status.HTTP_200_OK,
         )
 
@@ -1466,13 +1466,13 @@ class FileMoveView(APIView):
             # Ensure the folder belongs to the same subgroup
             if folder.subgroup_id != file.subgroup_id:
                 return Response(
-                    {"detail": "Cannot move file to a folder in a different subgroup."},
+                    {"detail": "Filen kan ikke flyttes til en mappe i en anden gruppe."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             file.folder = folder
 
         file.save(update_fields=["folder"])
-        return Response({"detail": "File moved successfully."}, status=status.HTTP_200_OK)
+        return Response({"detail": "Filen blev flyttet."}, status=status.HTTP_200_OK)
 
 
 class FolderDownloadView(APIView):
@@ -1590,7 +1590,7 @@ class ReactionToggleView(APIView):
 
         if not reaction_type or len(reaction_type) > 50:
             return Response(
-                {"detail": "Invalid reaction type."},
+                {"detail": "Ugyldig reaktionstype."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -1602,7 +1602,7 @@ class ReactionToggleView(APIView):
         if existing:
             existing.delete()
             return Response(
-                {"detail": "Reaction removed.", "action": "removed"},
+                {"detail": "Reaktion fjernet.", "action": "removed"},
                 status=status.HTTP_200_OK,
             )
         else:
@@ -1620,7 +1620,7 @@ class ReactionToggleView(APIView):
                     post_id=post.id,
                 )
             return Response(
-                {"detail": "Reaction added.", "action": "added"},
+                {"detail": "Reaktion tilføjet.", "action": "added"},
                 status=status.HTTP_201_CREATED,
             )
 
@@ -1678,7 +1678,7 @@ class PollVoteView(APIView):
             # Toggle off - remove the vote
             existing_vote.delete()
             return Response(
-                {"detail": "Vote removed.", "action": "removed"},
+                {"detail": "Din stemme er fjernet.", "action": "removed"},
                 status=status.HTTP_200_OK,
             )
 
@@ -1688,7 +1688,7 @@ class PollVoteView(APIView):
 
         PollVote.objects.create(option=option, user=request.user)
         return Response(
-            {"detail": "Vote recorded.", "action": "added"},
+            {"detail": "Din stemme er registreret.", "action": "added"},
             status=status.HTTP_201_CREATED,
         )
 
@@ -1703,7 +1703,7 @@ class PollDeleteView(APIView):
 
         if poll.created_by != request.user:
             return Response(
-                {"detail": "You do not have permission to edit this poll."},
+                {"detail": "Du har ikke rettigheder til at redigere denne afstemning."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -1764,7 +1764,7 @@ class PollDeleteView(APIView):
 
         if poll.created_by != request.user:
             return Response(
-                {"detail": "You do not have permission to delete this poll."},
+                {"detail": "Du har ikke rettigheder til at slette denne afstemning."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 

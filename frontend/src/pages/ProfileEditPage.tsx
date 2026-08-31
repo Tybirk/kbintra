@@ -476,6 +476,10 @@ export default function ProfileEditPage() {
               <TextInput
                 label="Ny emailadresse"
                 type="email"
+                autoComplete="email"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 placeholder="ny@email.dk"
                 value={emailChangeData.new_email}
                 onChange={(e) =>

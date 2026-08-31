@@ -17,6 +17,24 @@ describe("invalidateCacheForLink", () => {
     queryClient = makeQueryClient()
   })
 
+  describe("bildeling links", () => {
+    it("invalidates car sharing queries for a loan link", () => {
+      invalidateCacheForLink(queryClient, "/bildeling/laan/42")
+
+      expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+        queryKey: ["carsharing"],
+      })
+    })
+
+    it("does not touch food queries for a bildeling link", () => {
+      invalidateCacheForLink(queryClient, "/bildeling")
+
+      expect(queryClient.invalidateQueries).not.toHaveBeenCalledWith({
+        queryKey: ["food"],
+      })
+    })
+  })
+
   describe("forum thread links", () => {
     it("invalidates thread and threads queries for a thread link", () => {
       invalidateCacheForLink(queryClient, "/forum/madgruppen/traad/ugens-menu")

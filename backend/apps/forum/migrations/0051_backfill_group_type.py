@@ -72,7 +72,7 @@ def revert_group_type(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("forum", "0045_subgroup_group_type"),
+        ("forum", "0050_subgroup_group_type"),
     ]
 
     operations = [

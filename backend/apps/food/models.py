@@ -574,3 +574,58 @@ class ClosedFoodDay(models.Model):
         if self.reason:
             label += f" ({self.reason})"
         return label
+
+
+class MealPrice(models.Model):
+    """Portion prices that apply from `effective_from` (inclusive) onwards.
+
+    Prices are always resolved by *meal date*, never by "current price", so
+    billing for past meals stays exactly as it was when those meals were served.
+    That also means a row that has already taken effect must never be edited or
+    deleted — doing so silently rewrites past cost reports. The API enforces
+    this; see `apps/food/pricing.py` for lookup.
+    """
+
+    effective_from = models.DateField(
+        unique=True,
+        help_text="Priserne gælder fra og med denne dato",
+    )
+    price_adult_meat = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.00"))],
+        help_text="Pris pr. kødportion (voksen) i kr.",
+    )
+    price_adult_veg = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.00"))],
+        help_text="Pris pr. vegetarportion (voksen) i kr.",
+    )
+    price_child = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.00"))],
+        help_text="Pris pr. børneportion (1-12 år) i kr.",
+    )
+    note = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Valgfri begrundelse (f.eks. 'Prisstigning på råvarer')",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="created_meal_prices",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-effective_from"]
+
+    def __str__(self) -> str:
+        return (
+            f"Priser fra {self.effective_from}: "
+            f"{self.price_adult_meat}/{self.price_adult_veg}/{self.price_child}"
+        )

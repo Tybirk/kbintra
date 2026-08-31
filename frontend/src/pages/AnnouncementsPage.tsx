@@ -66,7 +66,7 @@ import {
   getFileTypeColor,
   FilePreviewModal,
   ImageThumbnail,
-  getFileType,
+  getRenderableFileType,
 } from "../components/FilePreview"
 
 import type {
@@ -348,6 +348,10 @@ function AnnouncementCard({
 
     file_url: attachment.file_url,
 
+    // Without this a HEIC announcement image renders as a broken <img>
+    // everywhere except Safari.
+    preview_url: attachment.preview_url,
+
     uploaded_by: attachment.uploaded_by,
 
     is_own: false,
@@ -454,7 +458,7 @@ function AnnouncementCard({
           </Text>
           <Group gap="xs">
             {announcement.attachments.map((attachment) => {
-              const fileType = getFileType(attachment.name)
+              const fileType = getRenderableFileType(attachment)
 
               const FileIcon = getFileIcon(attachment.name)
 

@@ -109,7 +109,7 @@ import PollCreator from "../components/PollCreator"
 
 import {
   getFileIcon,
-  getFileType,
+  getRenderableFileType,
   getFileTypeColor,
 } from "../components/FilePreview"
 
@@ -1079,7 +1079,7 @@ export default function ThreadPage() {
           <Group justify="center" gap="xs">
             <IconInfoCircle size={16} color="var(--mantine-color-gray-6)" />
             <Text size="sm" c="dimmed">
-              Brug denne tråd til at diskutere arrangementet.
+              Brug denne tråd til at diskutere begivenheden.
             </Text>
           </Group>
         </Paper>
@@ -1328,10 +1328,12 @@ function PostCard({
   // Sort attachments: images first, then other files
 
   const imageAttachments =
-    post.attachments?.filter((att) => getFileType(att.name) === "image") || []
+    post.attachments?.filter((att) => getRenderableFileType(att) === "image") ||
+    []
 
   const otherAttachments =
-    post.attachments?.filter((att) => getFileType(att.name) !== "image") || []
+    post.attachments?.filter((att) => getRenderableFileType(att) !== "image") ||
+    []
 
   const allAttachments = [...imageAttachments, ...otherAttachments]
 

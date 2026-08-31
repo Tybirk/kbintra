@@ -555,11 +555,11 @@ describe("SubgroupPage", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("textbox", { name: /^Forælder/ }),
+        screen.getByRole("combobox", { name: /^Forælder/ }),
       ).toBeInTheDocument()
     })
 
-    await user.click(screen.getByRole("textbox", { name: /^Forælder/ }))
+    await user.click(screen.getByRole("combobox", { name: /^Forælder/ }))
     await user.click(await screen.findByText("Bestyrelsen"))
 
     await user.click(screen.getByRole("button", { name: "Gem" }))

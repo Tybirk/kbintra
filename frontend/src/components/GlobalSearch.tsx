@@ -480,7 +480,13 @@ export function GlobalSearch({ onAction }: GlobalSearchProps) {
             <ActionIcon
               variant="subtle"
               color="gray"
-              onClick={() => spotlight.close()}
+              // Explicit dismiss via the X clears the query (unlike Back /
+              // reopen, which keeps it — see clearQueryOnClose below).
+              onClick={() => {
+                setQuery("")
+
+                spotlight.close()
+              }}
               aria-label="Luk søgning"
             >
               <IconX size={16} />

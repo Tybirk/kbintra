@@ -58,6 +58,12 @@ class AnnouncementAttachment(models.Model):
         related_name="announcement_attachments",
     )
     file = models.FileField(upload_to="announcement_attachments/")
+    preview = models.ImageField(
+        upload_to="announcement_attachments/previews/",
+        blank=True,
+        null=True,
+        help_text="Full-size web-viewable JPEG for formats browsers can't render (e.g. HEIC).",
+    )
     name = models.CharField(max_length=255)
     preview_html = models.TextField(blank=True, default="")
     legacy_url = models.CharField(max_length=500, blank=True, null=True)
@@ -72,4 +78,6 @@ class AnnouncementAttachment(models.Model):
     def delete(self, *args: object, **kwargs: object) -> tuple:
         """Delete the file from storage when the attachment is deleted."""
         self.file.delete(save=False)
+        if self.preview:
+            self.preview.delete(save=False)
         return super().delete(*args, **kwargs)

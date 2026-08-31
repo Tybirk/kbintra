@@ -5,13 +5,13 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("forum", "0046_backfill_group_type"),
+        ("forum", "0051_backfill_group_type"),
     ]
 
     operations = [
         migrations.AlterModelOptions(
             name="subgroup",
-            options={"ordering": ["-is_main", "-last_activity_at"]},
+            options={"ordering": ["-is_main", "name"]},
         ),
         migrations.RemoveField(
             model_name="subgroup",

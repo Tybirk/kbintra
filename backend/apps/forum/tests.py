@@ -240,6 +240,20 @@ class TestSubgroupSerializer:
         assert response.status_code == 200
         assert response.data["is_subscribed"] is True
 
+    def test_subgroup_serializer_hides_privacy_blind_last_activity(
+        self, authenticated_client, subgroup
+    ):
+        """last_activity_at must never reach a client: it counts private threads.
+
+        Clients sort on latest_thread_activity_at, which is filtered per viewer.
+        """
+        detail = authenticated_client.get(f"/api/forum/subgroups/{subgroup.slug}/")
+        assert "last_activity_at" not in detail.data
+        assert "latest_thread_activity_at" in detail.data
+
+        listing = authenticated_client.get("/api/forum/subgroups/")
+        assert all("last_activity_at" not in row for row in listing.data)
+
 
 class TestThreadSerializer:
     """Tests for the ThreadSerializer."""
@@ -294,7 +308,7 @@ class TestSubscriptionViews:
         """Test subscribing to a subgroup."""
         response = authenticated_client.post(f"/api/forum/subgroups/{subgroup.slug}/subscribe/")
         assert response.status_code == 201
-        assert "subscribed" in response.data["detail"].lower()
+        assert "følger nu" in response.data["detail"].lower()
 
     def test_subscribe_already_subscribed(
         self, authenticated_client, subgroup, subgroup_subscription
@@ -302,19 +316,19 @@ class TestSubscriptionViews:
         """Test subscribing when already subscribed."""
         response = authenticated_client.post(f"/api/forum/subgroups/{subgroup.slug}/subscribe/")
         assert response.status_code == 200
-        assert "already" in response.data["detail"].lower()
+        assert "allerede" in response.data["detail"].lower()
 
     def test_unsubscribe_from_subgroup(self, authenticated_client, subgroup, subgroup_subscription):
         """Test unsubscribing from a subgroup."""
         response = authenticated_client.post(f"/api/forum/subgroups/{subgroup.slug}/unsubscribe/")
         assert response.status_code == 200
-        assert "unsubscribed" in response.data["detail"].lower()
+        assert "ikke længere" in response.data["detail"].lower()
 
     def test_unsubscribe_not_subscribed(self, authenticated_client, subgroup):
         """Test unsubscribing when not subscribed."""
         response = authenticated_client.post(f"/api/forum/subgroups/{subgroup.slug}/unsubscribe/")
         assert response.status_code == 200
-        assert "not subscribed" in response.data["detail"].lower()
+        assert "følger ikke" in response.data["detail"].lower()
 
     def test_get_my_subscriptions(self, authenticated_client, subgroup_subscription):
         """Test getting user's subscriptions."""
@@ -998,7 +1012,7 @@ class TestFileMoveViews:
             {"folder_id": other_folder.id},
         )
         assert response.status_code == 400
-        assert "different subgroup" in response.data["detail"].lower()
+        assert "anden gruppe" in response.data["detail"].lower()
 
 
 # =============================================================================
@@ -2618,6 +2632,103 @@ class TestPostAttachmentThumbnail:
             assert thumb_img.size == (400, 400)
             # We always emit JPEG regardless of source format.
             assert thumb_img.format == "JPEG"
+
+    def test_heic_upload_generates_web_preview(self, db, user, subgroup, thread):
+        """HEIC uploads also get a full-size web-viewable JPEG `preview` so the
+        carousel/zoom can show them in browsers that can't decode HEIC."""
+        from PIL import Image as PILImage
+
+        from apps.forum.serializers import PostAttachmentSerializer, _create_post_attachment
+
+        post = Post.objects.create(thread=thread, author=user, content="see file")
+        upload = SimpleUploadedFile(
+            "iphone.heic",
+            self._real_heic_bytes(2000, 1500),
+            content_type="image/heic",
+        )
+        att = _create_post_attachment(post, user, upload)
+        att.refresh_from_db()
+
+        assert att.preview
+        with att.preview.open("rb") as fh, PILImage.open(fh) as prev_img:
+            # Full-size (not square-cropped), longest edge capped at 2000, JPEG.
+            assert max(prev_img.size) <= 2000
+            assert prev_img.size == (2000, 1500)
+            assert prev_img.format == "JPEG"
+
+        data = PostAttachmentSerializer(att).data
+        # preview_url points at the converted JPEG (not the original .heic), while
+        # file_url stays the original for download.
+        assert "previews/" in data["preview_url"]
+        assert data["preview_url"] != data["file_url"]
+
+    def test_thumbnail_and_preview_survive_concurrent_tasks(self, db, user, subgroup, thread):
+        """A HEIC upload queues both image tasks, and production runs two huey
+        workers, so each holds its own instance of the row loaded before either
+        writes. Saving the whole row wrote back the other worker's stale, empty
+        column — leaving the attachment with a thumbnail or a preview, whichever
+        committed last, but never both. Each task must persist only its own field.
+        """
+        from apps.forum.image_processing import generate_attachment_preview, generate_thumbnail
+        from apps.forum.models import PostAttachment
+
+        post = Post.objects.create(thread=thread, author=user, content="see file")
+        att = PostAttachment.objects.create(
+            post=post,
+            uploaded_by=user,
+            name="iphone.heic",
+            file=SimpleUploadedFile(
+                "iphone.heic", self._real_heic_bytes(800, 600), content_type="image/heic"
+            ),
+        )
+
+        # Both workers read the row before either commits.
+        worker_thumbnail = PostAttachment.objects.get(pk=att.pk)
+        worker_preview = PostAttachment.objects.get(pk=att.pk)
+
+        with worker_thumbnail.file.open("rb") as src:
+            thumb = generate_thumbnail(src)
+        worker_thumbnail.thumbnail.save(f"{worker_thumbnail.pk}.jpg", thumb, save=False)
+        worker_thumbnail.save(update_fields=["thumbnail"])
+
+        # Commits second, holding thumbnail="" from before the write above.
+        assert generate_attachment_preview(worker_preview) is True
+
+        att.refresh_from_db()
+        assert att.thumbnail, "the preview task clobbered the thumbnail"
+        assert att.preview, "the preview was not persisted"
+
+    def test_non_heic_image_has_no_preview(self, db, user, subgroup, thread):
+        """Browser-renderable formats don't need a converted preview; preview_url
+        falls back to the original file URL."""
+        from apps.forum.serializers import PostAttachmentSerializer, _create_post_attachment
+
+        post = Post.objects.create(thread=thread, author=user, content="see file")
+        upload = SimpleUploadedFile("photo.jpg", self._real_jpeg_bytes(), content_type="image/jpeg")
+        att = _create_post_attachment(post, user, upload)
+        att.refresh_from_db()
+
+        assert not att.preview
+        data = PostAttachmentSerializer(att).data
+        assert data["preview_url"] == data["file_url"]
+
+    def test_delete_removes_preview_file(self, db, user, subgroup, thread):
+        import os
+
+        from apps.forum.serializers import _create_post_attachment
+
+        post = Post.objects.create(thread=thread, author=user, content="see file")
+        upload = SimpleUploadedFile(
+            "iphone.heic", self._real_heic_bytes(), content_type="image/heic"
+        )
+        att = _create_post_attachment(post, user, upload)
+        att.refresh_from_db()
+        assert att.preview
+        preview_path = att.preview.path
+
+        att.delete()
+
+        assert not os.path.exists(preview_path)
 
 
 # =============================================================================

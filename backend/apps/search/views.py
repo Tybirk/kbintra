@@ -82,7 +82,7 @@ class GlobalSearchView(APIView):
         is_house_number = query.isdigit() and 1 <= int(query) <= 62
         if not query or (len(query) < 2 and not is_house_number):
             return Response(
-                {"detail": "Query must be at least 2 characters."},
+                {"detail": "Søgningen skal være på mindst 2 tegn."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -614,7 +614,7 @@ class AdvancedSearchView(APIView):
 
         if not query or len(query) < 2:
             return Response(
-                {"detail": "Query must be at least 2 characters."},
+                {"detail": "Søgningen skal være på mindst 2 tegn."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

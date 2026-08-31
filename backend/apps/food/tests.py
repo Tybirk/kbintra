@@ -1457,23 +1457,38 @@ class TestFoodTicketDefaultPricing:
     def test_default_price_meat(self, db, user):
         """Test default price calculation for meat meal."""
         serializer = FoodTicketCreateSerializer(context={"request": MockRequest(user)})
-        price = serializer.calculate_default_price(adults_meat=2, adults_veg=0, children_count=1)
+        price = serializer.calculate_default_price(
+            adults_meat=2, adults_veg=0, children_count=1, meal_date=date(2025, 12, 22)
+        )
         # 2 adults @ 37 + 1 child @ 18 = 92
         assert price == Decimal("92.00")
 
     def test_default_price_vegetarian(self, db, user):
         """Test default price calculation for vegetarian meal."""
         serializer = FoodTicketCreateSerializer(context={"request": MockRequest(user)})
-        price = serializer.calculate_default_price(adults_meat=0, adults_veg=2, children_count=1)
+        price = serializer.calculate_default_price(
+            adults_meat=0, adults_veg=2, children_count=1, meal_date=date(2025, 12, 22)
+        )
         # 2 adults @ 26 + 1 child @ 18 = 70
         assert price == Decimal("70.00")
 
     def test_default_price_mixed(self, db, user):
         """Test default price calculation for mixed meat+veg meal."""
         serializer = FoodTicketCreateSerializer(context={"request": MockRequest(user)})
-        price = serializer.calculate_default_price(adults_meat=1, adults_veg=1, children_count=1)
+        price = serializer.calculate_default_price(
+            adults_meat=1, adults_veg=1, children_count=1, meal_date=date(2025, 12, 22)
+        )
         # 1 adult @ 37 + 1 adult @ 26 + 1 child @ 18 = 81
         assert price == Decimal("81.00")
+
+    def test_default_price_uses_meal_date_not_today(self, db, user):
+        """A meal on/after the 2026-08-02 increase is priced at the new rates."""
+        serializer = FoodTicketCreateSerializer(context={"request": MockRequest(user)})
+        price = serializer.calculate_default_price(
+            adults_meat=1, adults_veg=1, children_count=1, meal_date=date(2026, 8, 3)
+        )
+        # 1 adult @ 40 + 1 adult @ 30 + 1 child @ 18 = 88
+        assert price == Decimal("88.00")
 
     def test_ticket_created_with_default_price(self, api_client, user_with_house, monday_date):
         """Test that ticket is created with default price if not specified."""
@@ -2671,3 +2686,284 @@ class TestImportMadtilmeldingerOptOut:
         # Monday active, Wednesday opt-out tombstoned.
         assert MealRegistration.objects.get(date=date(2026, 6, 1)).is_active is True
         assert MealRegistration.objects.get(date=date(2026, 6, 3)).is_active is False
+
+
+# =============================================================================
+# Meal Price Tests
+# =============================================================================
+
+
+@pytest.mark.django_db
+class TestMealPriceSchedule:
+    """Prices are resolved by meal date, so past billing never changes."""
+
+    def test_seeded_schedule_covers_history_and_increase(self):
+        from apps.food.pricing import get_prices
+
+        # Anything before 2026-08-02 keeps the original prices.
+        old = get_prices(date(2026, 8, 1))
+        assert (old.adult_meat, old.adult_veg, old.child) == (
+            Decimal("37.00"),
+            Decimal("26.00"),
+            Decimal("18.00"),
+        )
+
+        # From the cutover date (inclusive) the new prices apply.
+        new = get_prices(date(2026, 8, 2))
+        assert (new.adult_meat, new.adult_veg, new.child) == (
+            Decimal("40.00"),
+            Decimal("30.00"),
+            Decimal("18.00"),
+        )
+
+    def test_dates_before_the_baseline_fall_back(self):
+        from apps.food.pricing import FALLBACK_PRICES, get_prices
+
+        assert get_prices(date(1999, 1, 1)) == FALLBACK_PRICES
+
+    def test_total_uses_all_three_prices(self):
+        from apps.food.pricing import get_prices
+
+        # 1 * 40 + 2 * 30 + 3 * 18 = 154
+        assert get_prices(date(2026, 8, 5)).total(1, 2, 3) == Decimal("154.00")
+
+    def test_schedule_resolves_latest_matching_set(self, admin_user):
+        from apps.food.models import MealPrice
+        from apps.food.pricing import get_price_schedule
+
+        MealPrice.objects.create(
+            effective_from=date(2027, 1, 1),
+            price_adult_meat=Decimal("50.00"),
+            price_adult_veg=Decimal("40.00"),
+            price_child=Decimal("25.00"),
+            created_by=admin_user,
+        )
+        schedule = get_price_schedule()
+
+        assert schedule.for_date(date(2026, 12, 31)).adult_meat == Decimal("40.00")
+        assert schedule.for_date(date(2027, 1, 1)).adult_meat == Decimal("50.00")
+        assert schedule.for_date(date(2030, 6, 1)).adult_meat == Decimal("50.00")
+
+
+@pytest.mark.django_db
+class TestMealPriceBilling:
+    """Cost reports must price each meal at the rates of the day it was served."""
+
+    @staticmethod
+    def _zero_preferences(user):
+        for day in range(4):
+            MealPreference.objects.get_or_create(
+                house=user.house,
+                day_of_week=day,
+                defaults={
+                    "adults_meat": 0,
+                    "adults_veg": 0,
+                    "children_count": 0,
+                    "dining_option": "eat_in",
+                    "seating_time": "17:30",
+                    "last_modified_by": user,
+                },
+            )
+
+    def test_report_spanning_the_cutover_mixes_prices(
+        self, api_client, admin_user, user_with_house, house
+    ):
+        self._zero_preferences(user_with_house)
+
+        # Mon 2026-07-27 (old prices) and Mon 2026-08-03 (new prices).
+        for reg_date in (date(2026, 7, 27), date(2026, 8, 3)):
+            MealRegistration.objects.create(
+                house=house,
+                last_modified_by=user_with_house,
+                date=reg_date,
+                adults_meat=0,
+                adults_veg=2,
+                children_count=1,
+                is_active=True,
+            )
+
+        api_client.force_authenticate(user=admin_user)
+        response = api_client.get(
+            reverse("food:monthly-food-cost"),
+            {"start_date": "2026-07-27", "end_date": "2026-08-06"},
+        )
+
+        assert response.status_code == 200
+        house_cost = next(h for h in response.json()["houses"] if h["house_id"] == house.id)
+        # Old week: 2 * 26 + 18 = 70. New week: 2 * 30 + 18 = 78. Total 148.
+        assert Decimal(house_cost["total_cost"]) == Decimal("148.00")
+
+    def test_my_expenses_uses_meal_date_prices(self, api_client, user_with_house, house):
+        self._zero_preferences(user_with_house)
+
+        MealRegistration.objects.create(
+            house=house,
+            last_modified_by=user_with_house,
+            date=date(2026, 7, 27),
+            adults_meat=0,
+            adults_veg=2,
+            children_count=0,
+            is_active=True,
+        )
+
+        api_client.force_authenticate(user=user_with_house)
+        response = api_client.get(
+            reverse("food:my-expenses"),
+            {"start_date": "2026-07-27", "end_date": "2026-07-30"},
+        )
+
+        assert response.status_code == 200
+        # 2 veg @ the old 26 DKK — unaffected by the August increase.
+        assert Decimal(response.json()["total_cost"]) == Decimal("52.00")
+
+
+@pytest.mark.django_db
+class TestMealPriceAPI:
+    """The price schedule is readable by all, writable only by food admins."""
+
+    def test_list_requires_auth_only(self, api_client, user_with_house):
+        api_client.force_authenticate(user=user_with_house)
+        response = api_client.get(reverse("food:price-list"))
+
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body) == 2
+        # Newest first, and prices are numbers so the UI can do arithmetic.
+        assert body[0]["effective_from"] == "2026-08-02"
+        assert body[0]["price_adult_meat"] == 40.0
+
+    def test_non_admin_cannot_create(self, api_client, user_with_house):
+        api_client.force_authenticate(user=user_with_house)
+        response = api_client.post(
+            reverse("food:price-list"),
+            {
+                "effective_from": (timezone.localdate() + timedelta(days=30)).isoformat(),
+                "price_adult_meat": "45.00",
+                "price_adult_veg": "35.00",
+                "price_child": "20.00",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 403
+
+    def test_food_admin_can_create_future_price_set(self, api_client, admin_user):
+        api_client.force_authenticate(user=admin_user)
+        effective = timezone.localdate() + timedelta(days=30)
+        response = api_client.post(
+            reverse("food:price-list"),
+            {
+                "effective_from": effective.isoformat(),
+                "price_adult_meat": "45.00",
+                "price_adult_veg": "35.00",
+                "price_child": "20.00",
+                "note": "Nye råvarepriser",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 201, response.json()
+        assert response.json()["created_by_name"] == admin_user.get_full_name()
+
+        from apps.food.pricing import get_prices
+
+        assert get_prices(effective).adult_meat == Decimal("45.00")
+
+    def test_cannot_backdate_a_price_set(self, api_client, admin_user):
+        api_client.force_authenticate(user=admin_user)
+        response = api_client.post(
+            reverse("food:price-list"),
+            {
+                "effective_from": (timezone.localdate() - timedelta(days=1)).isoformat(),
+                "price_adult_meat": "45.00",
+                "price_adult_veg": "35.00",
+                "price_child": "20.00",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert "fortiden" in str(response.json())
+
+    def test_duplicate_start_date_is_rejected(self, api_client, admin_user):
+        api_client.force_authenticate(user=admin_user)
+        effective = (timezone.localdate() + timedelta(days=10)).isoformat()
+        payload = {
+            "effective_from": effective,
+            "price_adult_meat": "45.00",
+            "price_adult_veg": "35.00",
+            "price_child": "20.00",
+        }
+
+        assert (
+            api_client.post(reverse("food:price-list"), payload, format="json").status_code == 201
+        )
+
+        response = api_client.post(reverse("food:price-list"), payload, format="json")
+        assert response.status_code == 400
+        assert "allerede et prissæt" in str(response.json())
+
+    def test_negative_price_is_rejected(self, api_client, admin_user):
+        api_client.force_authenticate(user=admin_user)
+        response = api_client.post(
+            reverse("food:price-list"),
+            {
+                "effective_from": (timezone.localdate() + timedelta(days=10)).isoformat(),
+                "price_adult_meat": "-5.00",
+                "price_adult_veg": "35.00",
+                "price_child": "20.00",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+
+    def test_future_price_set_can_be_edited_and_deleted(self, api_client, admin_user):
+        from apps.food.models import MealPrice
+
+        api_client.force_authenticate(user=admin_user)
+        obj = MealPrice.objects.create(
+            effective_from=timezone.localdate() + timedelta(days=20),
+            price_adult_meat=Decimal("45.00"),
+            price_adult_veg=Decimal("35.00"),
+            price_child=Decimal("20.00"),
+            created_by=admin_user,
+        )
+        url = reverse("food:price-detail", args=[obj.pk])
+
+        response = api_client.patch(url, {"price_adult_meat": "46.00"}, format="json")
+        assert response.status_code == 200
+        assert response.json()["price_adult_meat"] == 46.0
+
+        assert api_client.delete(url).status_code == 204
+        assert not MealPrice.objects.filter(pk=obj.pk).exists()
+
+    def test_price_set_in_effect_cannot_be_edited_or_deleted(self, api_client, admin_user):
+        from apps.food.models import MealPrice
+
+        api_client.force_authenticate(user=admin_user)
+        obj = MealPrice.objects.get(effective_from=date(2026, 8, 2))
+        url = reverse("food:price-detail", args=[obj.pk])
+
+        with patch("apps.food.serializers.timezone") as mock_tz:
+            mock_tz.localdate.return_value = date(2026, 9, 1)
+            response = api_client.patch(url, {"price_adult_meat": "99.00"}, format="json")
+        assert response.status_code == 400
+        assert "trådt i kraft" in str(response.json())
+
+        with patch("apps.food.views.timezone") as mock_tz:
+            mock_tz.localdate.return_value = date(2026, 9, 1)
+            response = api_client.delete(url)
+        assert response.status_code == 400
+        assert MealPrice.objects.filter(pk=obj.pk).exists()
+
+    def test_last_price_set_cannot_be_deleted(self, api_client, admin_user):
+        from apps.food.models import MealPrice
+
+        api_client.force_authenticate(user=admin_user)
+        MealPrice.objects.exclude(effective_from=date(2026, 8, 2)).delete()
+        obj = MealPrice.objects.get()
+
+        response = api_client.delete(reverse("food:price-detail", args=[obj.pk]))
+        assert response.status_code == 400
+        assert MealPrice.objects.filter(pk=obj.pk).exists()

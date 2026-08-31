@@ -76,10 +76,20 @@ def serve_media(request: HttpRequest, path: str) -> HttpResponse:
         response["Cache-Control"] = "private, no-store"
         return response
 
-    # /media is gated by the same Django session that the JWT login flow
-    # creates. Same-origin <img src="/media/..."> tags carry the sessionid
-    # cookie automatically, so no client-side change is needed.
-    if not request.user.is_authenticated:
+    # Authorize the request in one of two ways:
+    #  1. A short-lived signed token in the URL (cookie-independent). An <img>
+    #     tag can carry this in the query string but not the JWT header, so this
+    #     is what keeps images working when the session cookie is dropped
+    #     (common on iOS). Signed URLs are only ever handed to authenticated API
+    #     callers, so a valid signature stands in for an authenticated request.
+    #  2. The Django session cookie from the JWT login flow (legacy fallback,
+    #     kept so existing clients and any cached HTML keep working).
+    from apps.backup.signing import verify_media_signature
+
+    has_valid_signature = verify_media_signature(
+        cleaned, request.GET.get("exp"), request.GET.get("sig")
+    )
+    if not has_valid_signature and not request.user.is_authenticated:
         # `no-store` so Cloudflare (or any shared cache) doesn't memoize the
         # 401 for a URL — otherwise a later authenticated user would still see
         # 401 from cache.

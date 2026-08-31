@@ -91,7 +91,7 @@ describe("CreateSubgroupModal", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("textbox", { name: /^Forælder/ }),
+        screen.getByRole("combobox", { name: /^Forælder/ }),
       ).toBeInTheDocument()
     })
     expect(screen.getByLabelText(/^Oprettelsesdato/)).toBeInTheDocument()
@@ -109,7 +109,7 @@ describe("CreateSubgroupModal", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("textbox", { name: /^Forælder/ }),
+        screen.getByRole("combobox", { name: /^Forælder/ }),
       ).toBeInTheDocument()
     })
   })
@@ -176,7 +176,7 @@ describe("CreateSubgroupModal", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("textbox", { name: /^Forælder/ }),
+        screen.getByRole("combobox", { name: /^Forælder/ }),
       ).toBeInTheDocument()
     })
 

@@ -28,6 +28,11 @@ register_heif_opener()
 THUMBNAIL_MAX_EDGE = 400
 THUMBNAIL_QUALITY = 85
 
+# Full-size web preview: large enough for the carousel/zoom viewer, where the
+# 400px thumbnail would look washed out. Used to make HEIC/HEIF viewable.
+WEB_PREVIEW_MAX_EDGE = 2000
+WEB_PREVIEW_QUALITY = 85
+
 _IMAGE_EXTENSIONS = {
     ".jpg",
     ".jpeg",
@@ -38,11 +43,118 @@ _IMAGE_EXTENSIONS = {
     ".heif",
 }
 
+# Formats that browsers (Chrome/Firefox/Android) can't render in an <img> tag,
+# so they need a converted JPEG to be viewable.
+_HEIC_EXTENSIONS = {".heic", ".heif"}
+
 
 def is_image_attachment(name: str) -> bool:
     """Return True if `name`'s extension is in our image set."""
     _, ext = os.path.splitext(name.lower())
     return ext in _IMAGE_EXTENSIONS
+
+
+def is_heic(name: str) -> bool:
+    """Return True if `name` is an Apple HEIC/HEIF image (not browser-renderable)."""
+    _, ext = os.path.splitext(name.lower())
+    return ext in _HEIC_EXTENSIONS
+
+
+def _flatten_to_rgb(img: Image.Image) -> Image.Image:
+    """Apply EXIF orientation and composite any alpha onto white, returning RGB."""
+    img = ImageOps.exif_transpose(img)
+    if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+        background = Image.new("RGB", img.size, (255, 255, 255))
+        background.paste(img.convert("RGBA"), mask=img.convert("RGBA").split()[-1])
+        return background
+    if img.mode != "RGB":
+        return img.convert("RGB")
+    return img
+
+
+def generate_web_preview(source: BinaryIO) -> ContentFile | None:
+    """Open `source`, return a full-resolution web-viewable JPEG (longest edge
+    clamped to WEB_PREVIEW_MAX_EDGE, no crop, never upscaled).
+
+    Used to make HEIC/HEIF uploads viewable in browsers that can't decode them
+    natively, at a size suitable for the full-screen carousel/zoom viewer.
+    Source is opened lazily; the caller closes the underlying file.
+    """
+    try:
+        img = Image.open(source)
+        img.load()
+    except Exception as exc:  # noqa: BLE001 — Pillow raises many exception types
+        logger.warning("Pillow could not open attachment for web preview: %s", exc)
+        return None
+
+    img = _flatten_to_rgb(img)
+    # Downscale only (thumbnail never upscales) so the longest edge is bounded.
+    img.thumbnail((WEB_PREVIEW_MAX_EDGE, WEB_PREVIEW_MAX_EDGE), Image.LANCZOS)
+
+    buf = BytesIO()
+    img.save(
+        buf,
+        format="JPEG",
+        quality=WEB_PREVIEW_QUALITY,
+        optimize=True,
+        progressive=True,
+    )
+    buf.seek(0)
+    return ContentFile(buf.getvalue())
+
+
+def generate_attachment_preview(attachment: object) -> bool:
+    """Generate and save a web-viewable JPEG `preview` for a HEIC/HEIF attachment.
+
+    Works on any attachment model with `file`, `name`, and `preview` fields
+    (forum / messaging / announcements). Returns True if a preview was created;
+    no-ops (False) for non-HEIC files or if a preview already exists.
+    """
+    if not is_heic(attachment.name):
+        return False
+    if getattr(attachment, "preview", None):
+        return False
+    try:
+        with attachment.file.open("rb") as src:
+            preview = generate_web_preview(src)
+    except FileNotFoundError:
+        logger.warning("Skipping preview for attachment %s: source file missing", attachment.pk)
+        return False
+    if preview is None:
+        return False
+    # Write the file, then persist only this column. `save=True` would issue a
+    # full-row UPDATE from this instance, and the thumbnail task runs against its
+    # own instance concurrently (huey runs 2 workers) — whichever committed last
+    # wrote back the other's stale, empty column.
+    attachment.preview.save(f"{attachment.pk}.jpg", preview, save=False)
+    attachment.save(update_fields=["preview"])
+    return True
+
+
+def ensure_attachment_preview(app_label: str, model_name: str, attachment: object) -> None:
+    """Generate a HEIC/HEIF `preview` *now*, falling back to the background task.
+
+    Upload paths hand the attachment straight into the response body and the
+    WebSocket broadcast, both of which read `preview` to build `preview_url`. A
+    queued task hasn't run at that point in production, so the payload carried
+    the undecodable original and every recipient saw a broken image until they
+    reloaded. Generating inline keeps those payloads correct by construction.
+
+    Cheap in practice: this no-ops for every format browsers can render, so only
+    genuine HEIC uploads (a handful in the whole archive) pay for the conversion.
+    """
+    from apps.forum.tasks import generate_attachment_preview_task
+
+    try:
+        generate_attachment_preview(attachment)
+    except Exception:  # noqa: BLE001 — an upload must not fail over a preview
+        logger.exception(
+            "Inline preview failed for %s.%s %s; falling back to the task queue",
+            app_label,
+            model_name,
+            getattr(attachment, "pk", None),
+        )
+        generate_attachment_preview_task(app_label, model_name, attachment.pk)
 
 
 def generate_thumbnail(source: BinaryIO) -> ContentFile | None:
@@ -68,16 +180,9 @@ def generate_thumbnail(source: BinaryIO) -> ContentFile | None:
         logger.warning("Pillow could not open attachment for thumbnailing: %s", exc)
         return None
 
-    img = ImageOps.exif_transpose(img)
-
-    # JPEG can't carry alpha — composite onto white so PNGs with transparency
-    # don't end up with a black background.
-    if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
-        background = Image.new("RGB", img.size, (255, 255, 255))
-        background.paste(img.convert("RGBA"), mask=img.convert("RGBA").split()[-1])
-        img = background
-    elif img.mode != "RGB":
-        img = img.convert("RGB")
+    # Applies EXIF orientation and composites alpha onto white: JPEG can't carry
+    # transparency, so a PNG would otherwise get a black background.
+    img = _flatten_to_rgb(img)
 
     # Clamp target side to the source's shortest edge to avoid upscaling small
     # images. ImageOps.fit crops to the target aspect ratio (square here),

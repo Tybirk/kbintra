@@ -54,6 +54,28 @@ Object.defineProperty(window, "matchMedia", {
   })),
 })
 
+// Mock document.fonts (FontFaceSet)
+//
+// jsdom does not implement it, and Mantine's autosize Textarea subscribes to
+// "loadingdone" on mount to re-measure once webfonts land — so without this
+// every page containing a Textarea throws on render.
+
+if (!document.fonts) {
+  Object.defineProperty(document, "fonts", {
+    writable: true,
+
+    value: {
+      addEventListener: vi.fn(),
+
+      removeEventListener: vi.fn(),
+
+      ready: Promise.resolve(),
+
+      status: "loaded",
+    },
+  })
+}
+
 // Mock ResizeObserver
 
 class ResizeObserverMock {

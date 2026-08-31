@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("forum", "0049_subgroup_parent"),
+        ("forum", "0054_subgroup_parent"),
     ]
 
     operations = [

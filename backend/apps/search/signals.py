@@ -85,14 +85,21 @@ def index_car(sender, instance, **kwargs):
         subtitle_parts = [instance.house.name]
         if instance.is_electric:
             subtitle_parts.append("Elbil")
+        if instance.is_shared:
+            subtitle_parts.append("Delebil")
         # Include both display ("AB 12 345") and canonical ("AB12345") forms in
         # the body so FTS finds plates whether the user types spaces or not.
         plate_compact = normalize_license_plate(instance.license_plate)
+        # Make/model in the body so searching "Skoda" finds the car, and the
+        # sharing words so "delebil" lists everything shared.
+        body_parts = [instance.house.name, plate_compact, instance.make, instance.model_name]
+        if instance.is_shared:
+            body_parts.append("delebil delebilpark bildeling")
         index_object(
             obj_type="car",
             object_id=instance.id,
             title=format_license_plate(instance.license_plate),
-            body=f"{instance.house.name} {plate_compact}",
+            body=" ".join(part for part in body_parts if part),
             url=f"/beboere/hus/{instance.house.slug}",
             subtitle=" · ".join(subtitle_parts),
             created_at=_isoformat(instance.created_at),
@@ -212,6 +219,25 @@ def index_subgroup(sender, instance, **kwargs):
             subtitle=create_excerpt(instance.description, 80) if instance.description else "",
             created_at=_isoformat(instance.created_at),
         )
+
+        # Cascade: the group's threads, files and folders all carry its name as
+        # their subtitle, and index rows are only rewritten when their own object
+        # is saved — so without this a rename leaves every one of them showing
+        # the old name until something else happens to touch it.
+        #
+        # Skipped for the `last_activity_at` bumps that run on every new thread
+        # and post, since those pass update_fields and can't have changed a name.
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None and "name" not in update_fields:
+            return
+        if kwargs.get("created", False):
+            return
+        for thread in instance.threads.all():
+            index_thread(None, thread)
+        for folder in instance.folders.all():
+            index_folder(None, folder)
+        for file in instance.files.all():
+            index_file(None, file)
     except OperationalError:
         logger.exception("Failed to index subgroup %s", instance.id)
 

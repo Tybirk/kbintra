@@ -80,7 +80,11 @@ import { ErrorBoundary } from "../components/ErrorBoundary"
 
 import { calculateDefaultTicketPrice } from "../utils/priceCalculation"
 
+import { useMealPrices } from "../hooks/useMealPrices"
+
 import { isDateLocked, isAfterTicketSaleCutoff } from "../utils/foodDeadline"
+
+import { htmlToPreview } from "../utils/htmlText"
 
 import type {
   Announcement,
@@ -215,12 +219,15 @@ export default function DashboardPage() {
     return subgroups
       .filter((s) => s.is_member || s.is_subscribed)
       .sort((a, b) => {
-        const aTime = a.last_activity_at
-          ? new Date(a.last_activity_at).getTime()
+        // Sort by the privacy-aware latest *visible* thread activity. The raw
+        // last_activity_at is bumped by private threads too and would float a
+        // group up for people who can't see why, so the API no longer sends it.
+        const aTime = a.latest_thread_activity_at
+          ? new Date(a.latest_thread_activity_at).getTime()
           : 0
 
-        const bTime = b.last_activity_at
-          ? new Date(b.last_activity_at).getTime()
+        const bTime = b.latest_thread_activity_at
+          ? new Date(b.latest_thread_activity_at).getTime()
           : 0
 
         return bTime - aTime
@@ -859,10 +866,10 @@ export default function DashboardPage() {
           </Paper>
         </ErrorBoundary>
 
-        <ErrorBoundary compact title="Kunne ikke vise arrangementer">
+        <ErrorBoundary compact title="Kunne ikke vise begivenheder">
           <Paper withBorder p="lg" radius="md">
             <Group justify="space-between" mb="md">
-              <Title order={3}>Kommende arrangementer</Title>
+              <Title order={3}>Kommende begivenheder</Title>
               <Button
                 component={Link}
                 to="/kalender"
@@ -883,7 +890,7 @@ export default function DashboardPage() {
                 ))}
               </Stack>
             ) : (
-              <Text c="dimmed">Ingen kommende arrangementer.</Text>
+              <Text c="dimmed">Ingen kommende begivenheder.</Text>
             )}
           </Paper>
         </ErrorBoundary>
@@ -897,20 +904,7 @@ interface AnnouncementPreviewProps {
 }
 
 function AnnouncementPreview({ announcement }: AnnouncementPreviewProps) {
-  // Strip HTML tags for preview
-
-  const plainText = announcement.content
-
-    .replace(/<\/[^>]+>/g, " ")
-
-    .replace(/<[^>]*>/g, "")
-
-    .replace(/\s+/g, " ")
-
-    .trim()
-
-  const preview =
-    plainText.length > 150 ? `${plainText.slice(0, 150)}...` : plainText
+  const preview = htmlToPreview(announcement.content, 150)
 
   return (
     <Paper
@@ -1109,7 +1103,7 @@ function BirthdayPreview({ birthday }: BirthdayPreviewProps) {
   let dateLabel: string
 
   if (daysUntil === 0) {
-    dateLabel = "🇩🇰 I dag!"
+    dateLabel = "I dag!"
   } else if (daysUntil === 1) {
     dateLabel = "I morgen"
   } else {
@@ -1142,6 +1136,16 @@ function BirthdayPreview({ birthday }: BirthdayPreviewProps) {
             Fylder {age} år
           </Text>
         </div>
+        {daysUntil === 0 && (
+          <Text
+            size="xl"
+            lh={1}
+            style={{ flexShrink: 0 }}
+            aria-label="Dansk flag"
+          >
+            🇩🇰
+          </Text>
+        )}
         <Badge color={daysUntil === 0 ? "pink" : "gray"} size="sm">
           {dateLabel}
         </Badge>
@@ -1203,20 +1207,7 @@ interface ActivityPreviewProps {
 }
 
 function ActivityPreview({ activity }: ActivityPreviewProps) {
-  // Strip HTML tags for preview
-
-  const plainText = activity.content
-
-    .replace(/<\/[^>]+>/g, " ")
-
-    .replace(/<[^>]*>/g, "")
-
-    .replace(/\s+/g, " ")
-
-    .trim()
-
-  const preview =
-    plainText.length > 100 ? `${plainText.slice(0, 100)}...` : plainText
+  const preview = htmlToPreview(activity.content, 100)
 
   return (
     <Paper
@@ -1436,7 +1427,15 @@ export function FoodDayWidget({
     availablePortions.adults_veg > 0 ||
     availablePortions.children_count > 0
 
-  const sellPrice = calculateDefaultTicketPrice(sellMeat, sellVeg, sellChildren)
+  const { data: mealPrices } = useMealPrices()
+
+  const sellPrice = calculateDefaultTicketPrice(
+    mealPrices,
+    date,
+    sellMeat,
+    sellVeg,
+    sellChildren,
+  )
 
   // Sync local state when registration data arrives or changes (initial load,
 
@@ -1622,6 +1621,9 @@ export function FoodDayWidget({
   }
 
   const handleSellTicket = () => {
+    // No `price`: the backend derives it from the price set in effect on the
+    // meal date. `sellPrice` is only a preview — sending it would let a stale
+    // or not-yet-loaded price schedule store the wrong amount.
     const ticketData: CreateFoodTicketData = {
       date,
 
@@ -1630,8 +1632,6 @@ export function FoodDayWidget({
       adults_veg: sellVeg,
 
       children_count: sellChildren,
-
-      price: sellPrice,
 
       description: sellDescription,
     }

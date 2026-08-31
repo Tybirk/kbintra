@@ -97,7 +97,7 @@ def create_organer_and_subscribe_all(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("forum", "0047_remove_subgroup_is_committee"),
+        ("forum", "0052_remove_subgroup_is_committee"),
     ]
 
     operations = [

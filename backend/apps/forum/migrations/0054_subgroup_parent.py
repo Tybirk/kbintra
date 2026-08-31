@@ -6,7 +6,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("forum", "0048_create_organer_and_subscribe_all"),
+        ("forum", "0053_create_organer_and_subscribe_all"),
     ]
 
     operations = [

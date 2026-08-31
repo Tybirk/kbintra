@@ -7,6 +7,10 @@ import { writeFileSync } from 'fs';
 // Generate version based on build timestamp
 const appVersion = new Date().toISOString();
 
+// Dev ports are overridable so a second checkout (e.g. a git worktree) can run alongside the default one
+const devPort = Number(process.env.VITE_DEV_PORT) || 5173;
+const backendTarget = `http://localhost:${process.env.VITE_BACKEND_PORT || 7000}`;
+
 // https://vite.dev/config/
 export default defineConfig(({ command }) => ({
   define: {
@@ -134,14 +138,14 @@ export default defineConfig(({ command }) => ({
     }),
   ],
   server: {
-    port: 5173,
+    port: devPort,
     proxy: {
       '/api': {
-        target: 'http://localhost:7000',
+        target: backendTarget,
         changeOrigin: true,
       },
       '/media': {
-        target: 'http://localhost:7000',
+        target: backendTarget,
         changeOrigin: true,
       },
     },
