@@ -9,6 +9,7 @@ owner-or-economy-admin check.
 
 import csv
 import io
+import logging
 import re
 from datetime import datetime
 from decimal import Decimal
@@ -37,6 +38,8 @@ from .serializers import (
     ExpenseSerializer,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def _attachment_disposition(name: str) -> str:
     """Build a safe ``Content-Disposition: attachment`` header value.
@@ -50,6 +53,28 @@ def _attachment_disposition(name: str) -> str:
     ascii_name = re.sub(r"[^A-Za-z0-9._ -]", "_", raw.encode("ascii", "ignore").decode()).strip()
     ascii_name = ascii_name or "bilag"
     return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(raw)}"
+
+
+def _read_attachment_bytes(attachment: ExpenseAttachment) -> bytes | None:
+    """Read one receipt's bytes, restoring from the S3 backup if needed.
+
+    Returns ``None`` when the file is gone for good — callers render a notice in
+    its place rather than failing the whole download.
+    """
+    from pathlib import Path
+
+    file_path = attachment.file.name
+    local_path = Path(settings.MEDIA_ROOT) / file_path
+    if not local_path.is_file():
+        from apps.backup.s3 import download_file, is_enabled
+
+        if not (is_enabled() and download_file(file_path)):
+            return None
+    try:
+        return local_path.read_bytes()
+    except OSError:
+        logger.warning("Could not read expense attachment %s", file_path)
+        return None
 
 
 def _csv_safe(value: object) -> str:
@@ -288,6 +313,47 @@ def expense_attachment_download(request: HttpRequest, pk: int) -> HttpResponse:
     # Belt-and-braces: also stop the browser MIME-sniffing the bytes.
     response["X-Content-Type-Options"] = "nosniff"
     patch_cache_control(response, private=True, max_age=3600)
+    return response
+
+
+def expense_combined_pdf(request: HttpRequest, pk: int) -> HttpResponse:
+    """Serve every bilag on one expense merged into a single PDF.
+
+    The accounting program takes only one attachment per udlæg, so the
+    treasurer needs the receipts and the approval as one file. Built on the fly
+    (never stored) so it always matches the current attachments, and — like the
+    single-file download — a plain Django view authenticated by the session
+    cookie, so the frontend can link straight to it.
+    """
+    if not request.user.is_authenticated:
+        response = HttpResponse(status=401)
+        response["Cache-Control"] = "private, no-store"
+        return response
+
+    try:
+        expense = Expense.objects.prefetch_related("attachments").get(pk=pk)
+    except Expense.DoesNotExist as exc:
+        raise Http404 from exc
+
+    user = request.user
+    if not (expense.submitted_by_id == user.id or _can_view_expense(user, expense)):
+        # 404 (not 403) so a non-owner can't even confirm the expense exists.
+        raise Http404
+
+    attachments = list(expense.attachments.all())
+    if not attachments:
+        raise Http404
+
+    from .pdf import build_combined_pdf, combined_pdf_name
+
+    pdf_bytes = build_combined_pdf([(a.name, _read_attachment_bytes(a)) for a in attachments])
+
+    response = HttpResponse(pdf_bytes, content_type="application/pdf")
+    response["Content-Disposition"] = _attachment_disposition(combined_pdf_name(expense.id))
+    response["X-Content-Type-Options"] = "nosniff"
+    # Regenerated on every request: the attachments can change while the udlæg
+    # is pending, and a stale cached merge would mislead the treasurer.
+    patch_cache_control(response, private=True, no_store=True)
     return response
 
 

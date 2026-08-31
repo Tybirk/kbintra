@@ -83,13 +83,20 @@ Beskrivelse:
     # Attach the receipts for created/edited so the treasurer can act straight
     # from the mail. Skipped for deleted (the files are gone). Anything over the
     # size budget is left out — the in-app link still has it.
-    attached, omitted = (
-        ([], False)
-        if action == "deleted"
-        else _load_attachments(expense_id, fields.get("attachments") or [])
-    )
+    specs = [] if action == "deleted" else (fields.get("attachments") or [])
+    attached, omitted, combined = _build_email_attachments(expense_id, specs)
+    if combined:
+        body += (
+            "\nBilagene er vedhæftet både som én samlet PDF, som regnskabsprogrammet "
+            "kan tage (det tager kun ét bilag pr. udlæg), og som de oprindelige filer.\n"
+        )
     if omitted:
-        body += "\nBemærk: et eller flere bilag var for store til at vedhæfte — se dem i appen.\n"
+        body += (
+            "\nBemærk: en eller flere af de oprindelige filer var for store til at "
+            "vedhæfte enkeltvis — brug den samlede PDF eller se dem i appen.\n"
+            if combined
+            else "\nBemærk: et eller flere bilag var for store til at vedhæfte — se dem i appen.\n"
+        )
     if action == "deleted":
         body += "\nUdlægget er slettet og kan ikke længere ses i systemet.\n"
     else:
@@ -122,35 +129,89 @@ Beskrivelse:
     )
 
 
-def _load_attachments(expense_id, specs: list) -> tuple[list, bool]:
-    """Read receipt files from storage, honouring the per-message size budget.
+def _build_email_attachments(expense_id, specs: list) -> tuple[list, bool, bool]:
+    """Read the bilag and decide what to hang on the mail.
+
+    With several bilag the mail carries both: one merged PDF first — the
+    treasurer's accounting program accepts a single attachment per udlæg, so
+    that is the one they file — followed by the original files, which stay
+    useful for anything else. The merge is best-effort: if it raises or does not
+    fit the mail's size budget, the mail simply goes out with the original files
+    (never without bilag).
+
+    Returns ``(attached, omitted, combined)``.
+    """
+    from django.conf import settings
+
+    budget = getattr(settings, "EXPENSE_EMAIL_MAX_ATTACHMENT_BYTES", _DEFAULT_MAX_ATTACH_BYTES)
+    # Read every bilag once; both the merge and the individual attachments use it.
+    parts = [
+        (spec.get("name") or "bilag", _read_receipt(expense_id, spec.get("path")))
+        for spec in specs
+        if spec.get("path")
+    ]
+
+    combined = None
+    if len(parts) > 1:
+        merged = _merge_parts(expense_id, parts)
+        # The merged PDF is served first and takes its share of the budget: it
+        # is the one the treasurer needs, the originals are the extra.
+        if merged is not None and len(merged) <= budget:
+            from .pdf import combined_pdf_name
+
+            combined = (combined_pdf_name(expense_id), merged, "application/pdf")
+            budget -= len(merged)
+
+    attached, omitted = _fit_within_budget(parts, budget)
+    if combined:
+        return [combined, *attached], omitted, True
+    return attached, omitted, False
+
+
+def _merge_parts(expense_id, parts: list) -> bytes | None:
+    """Merge the bilag into one PDF, or None if that fails for any reason.
+
+    Deliberately catch-all: a single odd receipt must never cost the treasurer
+    the whole notification, so a failed merge just falls back to the originals.
+    """
+    try:
+        from .pdf import build_combined_pdf
+
+        merged = build_combined_pdf(parts)
+    except Exception:
+        logger.warning("Could not merge bilag for expense %s", expense_id, exc_info=True)
+        return None
+    return merged or None
+
+
+def _fit_within_budget(parts: list, budget: int) -> tuple[list, bool]:
+    """Turn read bilag into mail attachments, dropping what exceeds *budget*.
 
     Returns ``(attached, omitted)`` where *attached* is a list of
     ``(filename, bytes, mimetype)`` tuples and *omitted* flags that at least one
-    receipt was dropped (too large or missing).
+    bilag was left out (too large or missing from storage).
     """
-    from django.conf import settings
-    from django.core.files.storage import default_storage
-
     attached: list = []
     omitted = False
-    budget = getattr(settings, "EXPENSE_EMAIL_MAX_ATTACHMENT_BYTES", _DEFAULT_MAX_ATTACH_BYTES)
-    for spec in specs:
-        path = spec.get("path")
-        name = spec.get("name") or "bilag"
-        if not path:
-            continue
-        try:
-            with default_storage.open(path, "rb") as fh:
-                content = fh.read()
-        except (FileNotFoundError, OSError):
-            logger.warning("Receipt missing for expense %s: %s", expense_id, path)
-            omitted = True
-            continue
-        if len(content) > budget:
+    for name, content in parts:
+        if content is None or len(content) > budget:
             omitted = True
             continue
         budget -= len(content)
         mimetype = mimetypes.guess_type(name)[0] or "application/octet-stream"
         attached.append((name, content, mimetype))
     return attached, omitted
+
+
+def _read_receipt(expense_id, path: str | None) -> bytes | None:
+    """Read one receipt from storage, or None if it is missing."""
+    from django.core.files.storage import default_storage
+
+    if not path:
+        return None
+    try:
+        with default_storage.open(path, "rb") as fh:
+            return fh.read()
+    except (FileNotFoundError, OSError):
+        logger.warning("Receipt missing for expense %s: %s", expense_id, path)
+        return None

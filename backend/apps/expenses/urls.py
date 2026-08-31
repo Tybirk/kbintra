@@ -12,6 +12,7 @@ from .views import (
     ExpenseDetailView,
     ExpenseListCreateView,
     expense_attachment_download,
+    expense_combined_pdf,
 )
 
 urlpatterns = [
@@ -19,6 +20,7 @@ urlpatterns = [
     path("", ExpenseListCreateView.as_view(), name="expense-list-create"),
     path("<int:pk>/", ExpenseDetailView.as_view(), name="expense-detail"),
     path("<int:pk>/attachments/", ExpenseAttachmentView.as_view(), name="expense-attachment-add"),
+    path("<int:pk>/bilag.pdf", expense_combined_pdf, name="expense-combined-pdf"),
     path(
         "attachments/<int:pk>/",
         ExpenseAttachmentView.as_view(),

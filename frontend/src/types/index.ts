@@ -2445,6 +2445,9 @@ export interface Expense {
   updated_at: string
 
   attachments: ExpenseAttachment[]
+
+  /** All bilag merged into one PDF — null when there is only one bilag. */
+  combined_pdf_url: string | null
 }
 
 export interface AdminExpenseList {
