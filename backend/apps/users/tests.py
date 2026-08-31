@@ -711,6 +711,112 @@ class TestAdminDownloadAPI:
         assert response.status_code == 200
         assert response["Content-Type"] == "application/x-sqlite3"
 
+    def _scrubbable_db(self, path) -> None:
+        """A database shaped like the real one: two conversations, each with a
+        message, and a reaction on each message."""
+        import sqlite3
+
+        conn = sqlite3.connect(str(path))
+        conn.executescript(
+            """
+            CREATE TABLE messaging_conversation (id INTEGER PRIMARY KEY);
+            CREATE TABLE messaging_conversation_participants (
+                id INTEGER PRIMARY KEY, conversation_id INTEGER, user_id INTEGER);
+            CREATE TABLE messaging_message (
+                id INTEGER PRIMARY KEY,
+                conversation_id INTEGER REFERENCES messaging_conversation(id));
+            CREATE TABLE messaging_messageattachment (
+                id INTEGER PRIMARY KEY,
+                message_id INTEGER REFERENCES messaging_message(id));
+            CREATE TABLE messaging_messagereadstatus (
+                id INTEGER PRIMARY KEY,
+                message_id INTEGER REFERENCES messaging_message(id));
+            CREATE TABLE messaging_messagereaction (
+                id INTEGER PRIMARY KEY,
+                message_id INTEGER REFERENCES messaging_message(id));
+
+            INSERT INTO messaging_conversation (id) VALUES (1), (2);
+            INSERT INTO messaging_message (id, conversation_id) VALUES (10, 1), (20, 2);
+            INSERT INTO messaging_messagereaction (id, message_id) VALUES (100, 10), (200, 20);
+            INSERT INTO messaging_messagereadstatus (id, message_id) VALUES (300, 20);
+            """
+        )
+        conn.commit()
+        conn.close()
+
+    def test_download_db_copy_has_no_dangling_rows(
+        self, admin_client, admin_user, settings, tmp_path
+    ):
+        """The served copy must be referentially clean.
+
+        Any orphan makes the first schema migration run against the downloaded
+        file blow up: Django's SQLite backend re-checks every foreign key in the
+        database after a table rebuild, so an orphaned reaction surfaces as an
+        IntegrityError during an unrelated app's migration. Reactions were the
+        table the hand-written scrub forgot.
+        """
+        import sqlite3
+
+        db_file = tmp_path / "db.sqlite3"
+        self._scrubbable_db(db_file)
+        # The admin is in conversation 1, so conversation 2 gets scrubbed.
+        conn = sqlite3.connect(str(db_file))
+        conn.execute(
+            "INSERT INTO messaging_conversation_participants (id, conversation_id, user_id)"
+            " VALUES (1, 1, ?)",
+            (admin_user.id,),
+        )
+        conn.commit()
+        conn.close()
+
+        settings.DATABASES = {"default": {**settings.DATABASES["default"], "NAME": str(db_file)}}
+        response = admin_client.get("/api/auth/admin/download-db/")
+        assert response.status_code == 200
+
+        served = tmp_path / "served.sqlite3"
+        served.write_bytes(b"".join(response.streaming_content))
+
+        check = sqlite3.connect(str(served))
+        try:
+            assert check.execute("PRAGMA foreign_key_check").fetchall() == []
+            # The scrubbed conversation is gone, including its reaction...
+            assert check.execute("SELECT id FROM messaging_message").fetchall() == [(10,)]
+            assert check.execute("SELECT id FROM messaging_messagereaction").fetchall() == [(100,)]
+            # ...and the admin's own conversation survives untouched.
+            assert check.execute("SELECT id FROM messaging_conversation").fetchall() == [(1,)]
+        finally:
+            check.close()
+
+    def test_download_db_sweeps_orphans_it_did_not_create(self, admin_client, settings, tmp_path):
+        """Orphans already in the source are removed too, so a copy taken from a
+        database that a previous buggy download corrupted is still usable."""
+        import sqlite3
+
+        db_file = tmp_path / "db.sqlite3"
+        self._scrubbable_db(db_file)
+        conn = sqlite3.connect(str(db_file))
+        # A reaction pointing at a message that does not exist.
+        conn.execute("INSERT INTO messaging_messagereaction (id, message_id) VALUES (999, 4242)")
+        conn.commit()
+        conn.close()
+
+        settings.DATABASES = {"default": {**settings.DATABASES["default"], "NAME": str(db_file)}}
+        response = admin_client.get("/api/auth/admin/download-db/")
+        assert response.status_code == 200
+
+        served = tmp_path / "served.sqlite3"
+        served.write_bytes(b"".join(response.streaming_content))
+
+        check = sqlite3.connect(str(served))
+        try:
+            assert check.execute("PRAGMA foreign_key_check").fetchall() == []
+            assert (
+                check.execute("SELECT id FROM messaging_messagereaction WHERE id = 999").fetchall()
+                == []
+            )
+        finally:
+            check.close()
+
     def test_download_media_requires_auth(self, api_client, db):
         """Test that unauthenticated requests are rejected."""
         response = api_client.get("/api/auth/admin/download-media/")

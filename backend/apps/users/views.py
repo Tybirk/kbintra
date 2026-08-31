@@ -439,6 +439,46 @@ class IsStaff(permissions.BasePermission):
         return bool(request.user and request.user.is_staff)
 
 
+def _delete_orphan_rows(conn: sqlite3.Connection) -> int:
+    """Delete rows left pointing at parents that no longer exist.
+
+    The scrub below deletes by hand, table by table, in raw SQL — and a raw
+    `sqlite3` connection has `PRAGMA foreign_keys` OFF, so a child table nobody
+    remembered to list is orphaned silently rather than raising. That is not a
+    cosmetic flaw in the copy: Django's SQLite backend re-checks the *whole*
+    database's foreign keys after any table rebuild, so a single orphan makes the
+    first schema migration anyone runs on the downloaded file fail with an
+    IntegrityError that names a table having nothing to do with their work.
+
+    So this is the backstop for whatever the explicit deletes miss, including
+    child models added long after this function was written. It loops because
+    removing one orphan can orphan a grandchild in turn.
+    """
+    total = 0
+    while True:
+        # Reports (child table, child rowid, parent table, fk index) per bad row,
+        # and works regardless of whether foreign key enforcement is on.
+        violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+
+        by_table: dict[str, list[int]] = {}
+        for table, rowid, _parent, _fkid in violations:
+            # WITHOUT ROWID tables report a NULL rowid and cannot be addressed
+            # this way. None exist today; skipping them keeps the loop finite.
+            if rowid is not None:
+                by_table.setdefault(table, []).append(rowid)
+
+        if not by_table:
+            return total
+
+        for table, rowids in by_table.items():
+            placeholders = ",".join("?" * len(rowids))
+            cur = conn.execute(
+                f'DELETE FROM "{table}" WHERE rowid IN ({placeholders})',  # noqa: S608
+                rowids,
+            )
+            total += cur.rowcount
+
+
 def _scrub_private_messages(db_copy_path: str, user_id: int) -> None:
     """Remove private messages from conversations the user is not part of."""
     conn = sqlite3.connect(db_copy_path)
@@ -454,49 +494,62 @@ def _scrub_private_messages(db_copy_path: str, user_id: int) -> None:
         cur = conn.execute(other_convos_sql, (user_id,))
         other_ids = [row[0] for row in cur.fetchall()]
 
-        if not other_ids:
-            return
+        if other_ids:
+            placeholders = ",".join("?" * len(other_ids))
 
-        placeholders = ",".join("?" * len(other_ids))
+            # Delete attachments for messages in those conversations
+            conn.execute(
+                f"""
+                DELETE FROM messaging_messageattachment
+                WHERE message_id IN (
+                    SELECT id FROM messaging_message WHERE conversation_id IN ({placeholders})
+                )
+                """,
+                other_ids,
+            )
+            # Delete read statuses
+            conn.execute(
+                f"""
+                DELETE FROM messaging_messagereadstatus
+                WHERE message_id IN (
+                    SELECT id FROM messaging_message WHERE conversation_id IN ({placeholders})
+                )
+                """,
+                other_ids,
+            )
+            # Delete reactions
+            conn.execute(
+                f"""
+                DELETE FROM messaging_messagereaction
+                WHERE message_id IN (
+                    SELECT id FROM messaging_message WHERE conversation_id IN ({placeholders})
+                )
+                """,
+                other_ids,
+            )
+            # Delete messages
+            conn.execute(
+                f"DELETE FROM messaging_message WHERE conversation_id IN ({placeholders})",
+                other_ids,
+            )
+            # Delete conversation participants
+            conn.execute(
+                f"""
+                DELETE FROM messaging_conversation_participants
+                WHERE conversation_id IN ({placeholders})
+                """,
+                other_ids,
+            )
+            # Delete conversations themselves
+            conn.execute(
+                f"DELETE FROM messaging_conversation WHERE id IN ({placeholders})",
+                other_ids,
+            )
 
-        # Delete attachments for messages in those conversations
-        conn.execute(
-            f"""
-            DELETE FROM messaging_messageattachment
-            WHERE message_id IN (
-                SELECT id FROM messaging_message WHERE conversation_id IN ({placeholders})
-            )
-            """,
-            other_ids,
-        )
-        # Delete read statuses
-        conn.execute(
-            f"""
-            DELETE FROM messaging_messagereadstatus
-            WHERE message_id IN (
-                SELECT id FROM messaging_message WHERE conversation_id IN ({placeholders})
-            )
-            """,
-            other_ids,
-        )
-        # Delete messages
-        conn.execute(
-            f"DELETE FROM messaging_message WHERE conversation_id IN ({placeholders})",
-            other_ids,
-        )
-        # Delete conversation participants
-        conn.execute(
-            f"""
-            DELETE FROM messaging_conversation_participants
-            WHERE conversation_id IN ({placeholders})
-            """,
-            other_ids,
-        )
-        # Delete conversations themselves
-        conn.execute(
-            f"DELETE FROM messaging_conversation WHERE id IN ({placeholders})",
-            other_ids,
-        )
+        # Always sweep, even when nothing was scrubbed: the copy must leave here
+        # referentially clean, or migrations fail on it later.
+        _delete_orphan_rows(conn)
+
         conn.commit()
         conn.execute("VACUUM")
     finally:
