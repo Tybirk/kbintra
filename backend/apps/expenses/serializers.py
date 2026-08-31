@@ -42,6 +42,19 @@ class ExpenseSerializer(serializers.ModelSerializer):
     submitted_by = SubmitterSerializer(read_only=True)
     attachments = ExpenseAttachmentSerializer(many=True, read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
+    combined_pdf_url = serializers.SerializerMethodField()
+
+    def get_combined_pdf_url(self, obj: Expense) -> str | None:
+        """URL to all bilag merged into one PDF — only when there are several.
+
+        The accounting program accepts a single attachment per udlæg, so the
+        merge is what the treasurer actually files. With one bilag there is
+        nothing to merge and the frontend hides the link.
+        """
+        # obj.attachments is prefetched everywhere this serializer is used.
+        if len(obj.attachments.all()) < 2:
+            return None
+        return f"/api/expenses/{obj.id}/bilag.pdf"
 
     class Meta:
         model = Expense
@@ -61,6 +74,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "attachments",
+            "combined_pdf_url",
         ]
 
 
