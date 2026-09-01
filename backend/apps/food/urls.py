@@ -5,15 +5,21 @@ URL configuration for food endpoints.
 from django.urls import path
 
 from .views import (
+    AcceptSwapBroadcastView,
     ActiveCycleView,
     ClaimTicketView,
     ClosedFoodDayDeleteView,
     ClosedFoodDayListCreateView,
+    CycleResetTeamsView,
     CycleWishesListView,
     DailyRegistrationStatsView,
     DefaultCookingDaysView,
     DriveMenuRefreshAllView,
     DriveMenuView,
+    FavourListView,
+    FavourSettleView,
+    FoodRosterDetailView,
+    FoodRosterListView,
     FoodTeamCycleDetailView,
     FoodTeamCycleListCreateView,
     FoodTeamDetailView,
@@ -28,14 +34,25 @@ from .views import (
     MealRegistrationDetailView,
     MealRegistrationListCreateView,
     MonthlyFoodCostView,
+    MyFoodProfileView,
     MyMonthlyExpensesView,
     MyTeamsView,
     MyTicketsView,
     MyWishView,
+    NotifyLeftoversReadyView,
+    NotifyTakeawayReadyView,
     ReleaseTicketView,
     RespondSwapRequestView,
+    SuggestedCyclePlanView,
+    SwapBroadcastDetailView,
+    SwapBroadcastListCreateView,
     SwapRequestDetailView,
     SwapRequestListCreateView,
+    TakeoverView,
+    TodayLeftoversView,
+    TodayTeamActionBoxView,
+    TodayTeamRecipesView,
+    WeekRecipesView,
 )
 
 app_name = "food"
@@ -59,8 +76,23 @@ urlpatterns = [
     # Teams
     path("teams/", FoodTeamListView.as_view(), name="team-list"),
     path("teams/my/", MyTeamsView.as_view(), name="my-teams"),
+    path("teams/today/", TodayTeamActionBoxView.as_view(), name="team-today"),
+    path("teams/today/recipes/", TodayTeamRecipesView.as_view(), name="team-today-recipes"),
+    path("recipes/week/", WeekRecipesView.as_view(), name="recipes-week"),
+    path("leftovers/today/", TodayLeftoversView.as_view(), name="leftovers-today"),
+    path("teams/takeover/", TakeoverView.as_view(), name="team-takeover"),
     path("teams/<int:pk>/", FoodTeamDetailView.as_view(), name="team-detail"),
-    # Swap Requests
+    path(
+        "teams/<int:pk>/notify-takeaway/",
+        NotifyTakeawayReadyView.as_view(),
+        name="team-notify-takeaway",
+    ),
+    path(
+        "teams/<int:pk>/notify-leftovers/",
+        NotifyLeftoversReadyView.as_view(),
+        name="team-notify-leftovers",
+    ),
+    # Swap Requests (1:1)
     path("swap-requests/", SwapRequestListCreateView.as_view(), name="swap-request-list"),
     path("swap-requests/<int:pk>/", SwapRequestDetailView.as_view(), name="swap-request-detail"),
     path(
@@ -68,10 +100,36 @@ urlpatterns = [
         RespondSwapRequestView.as_view(),
         name="swap-request-respond",
     ),
+    # Broadcast swaps ("bytteanmodning")
+    path("swap-broadcasts/", SwapBroadcastListCreateView.as_view(), name="swap-broadcast-list"),
+    path(
+        "swap-broadcasts/<int:pk>/",
+        SwapBroadcastDetailView.as_view(),
+        name="swap-broadcast-detail",
+    ),
+    path(
+        "swap-broadcasts/<int:pk>/accept/",
+        AcceptSwapBroadcastView.as_view(),
+        name="swap-broadcast-accept",
+    ),
+    # Favours ("you owe me one")
+    path("favours/", FavourListView.as_view(), name="favour-list"),
+    path("favours/<int:pk>/settle/", FavourSettleView.as_view(), name="favour-settle"),
+    # Personal food-team profile (self-service)
+    path("my-food-profile/", MyFoodProfileView.as_view(), name="my-food-profile"),
+    # Admin roster
+    path("admin/roster/", FoodRosterListView.as_view(), name="food-roster"),
+    path("admin/roster/<int:pk>/", FoodRosterDetailView.as_view(), name="food-roster-detail"),
     # Cycles
     path("cycles/", FoodTeamCycleListCreateView.as_view(), name="cycle-list"),
     path("cycles/active/", ActiveCycleView.as_view(), name="cycle-active"),
+    path("cycles/suggested/", SuggestedCyclePlanView.as_view(), name="cycle-suggested"),
     path("cycles/<int:pk>/", FoodTeamCycleDetailView.as_view(), name="cycle-detail"),
+    path(
+        "cycles/<int:pk>/reset-teams/",
+        CycleResetTeamsView.as_view(),
+        name="cycle-reset-teams",
+    ),
     path("cycles/<int:cycle_id>/wishes/", CycleWishesListView.as_view(), name="cycle-wishes"),
     path("cycles/<int:cycle_id>/my-wish/", MyWishView.as_view(), name="my-wish"),
     # Team Generation

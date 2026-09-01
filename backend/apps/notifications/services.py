@@ -152,6 +152,10 @@ def get_user_preference(user: User, notification_type: NotificationType) -> bool
         NotificationType.EVENT_CANCELLED: prefs.notify_events,
         NotificationType.EVENT_REMINDER: prefs.notify_event_reminders,
         NotificationType.FOOD_TICKET: prefs.notify_food_tickets,
+        NotificationType.FOOD_TEAM_REMINDER: prefs.notify_food_team_reminder,
+        NotificationType.FOOD_TEAM_TAKEAWAY_READY: prefs.notify_food_takeaway_ready,
+        NotificationType.FOOD_TEAM_LEFTOVERS_READY: prefs.notify_food_leftovers_ready,
+        NotificationType.FOOD_TEAM_SWAP_REQUEST: prefs.notify_food_swap_request,
         NotificationType.MENTION: prefs.notify_mentions,
         # Subgroup membership notifications are not user-configurable: always
         # delivered in-app so users know when their access changes.
@@ -193,6 +197,10 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
         NotificationType.EVENT_CANCELLED: prefs.push_events,
         NotificationType.EVENT_REMINDER: prefs.push_event_reminders,
         NotificationType.FOOD_TICKET: prefs.push_food_tickets,
+        NotificationType.FOOD_TEAM_REMINDER: prefs.push_food_team_reminder,
+        NotificationType.FOOD_TEAM_TAKEAWAY_READY: prefs.push_food_takeaway_ready,
+        NotificationType.FOOD_TEAM_LEFTOVERS_READY: prefs.push_food_leftovers_ready,
+        NotificationType.FOOD_TEAM_SWAP_REQUEST: prefs.push_food_swap_request,
         NotificationType.MENTION: prefs.push_mentions,
         NotificationType.CAR_LOAN_REQUEST: prefs.push_car_sharing,
         NotificationType.CAR_LOAN_UPDATE: prefs.push_car_sharing,
@@ -218,6 +226,10 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
                 prefs.push_events,
                 prefs.push_event_reminders,
                 prefs.push_food_tickets,
+                prefs.push_food_team_reminder,
+                prefs.push_food_takeaway_ready,
+                prefs.push_food_leftovers_ready,
+                prefs.push_food_swap_request,
                 prefs.push_mentions,
                 prefs.push_car_sharing,
             )
@@ -823,6 +835,45 @@ def notify_ticket_claimed(
         link="/mad/billetter",
         related_user=claimer,
         check_preferences=False,  # Always notify owner
+    )
+
+
+def notify_food_team_reminder(user: User, date_iso: str) -> Notification | None:
+    """Remind a user that they have a cooking shift the next day.
+
+    date_iso is an ISO date string (YYYY-MM-DD) for the cooking day.
+    """
+    import datetime as _dt
+
+    from apps.food.constants import DAY_NAMES
+
+    cooking_date = _dt.date.fromisoformat(date_iso)
+    date_label = f"{DAY_NAMES[cooking_date.weekday()]} {cooking_date.day}/{cooking_date.month}"
+
+    return create_notification(
+        user=user,
+        notification_type=NotificationType.FOOD_TEAM_REMINDER,
+        title="Du har madhold i morgen",
+        message=f"Du skal lave mad {date_label}",
+        link="/madhold/mine-hold",
+    )
+
+
+def notify_food_swap_request(
+    user: User,
+    requester_name: str,
+    date_label: str,
+    link: str,
+    related_user: User | None = None,
+) -> Notification | None:
+    """Notify a candidate that someone wants to swap their cooking day."""
+    return create_notification(
+        user=user,
+        notification_type=NotificationType.FOOD_TEAM_SWAP_REQUEST,
+        title="Bytteanmodning til madhold",
+        message=f"{requester_name} vil gerne bytte sin maddag {date_label}",
+        link=link,
+        related_user=related_user,
     )
 
 

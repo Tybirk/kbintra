@@ -10,6 +10,7 @@ Huey background tasks for the food app.
 - refresh_drive_menu_week_task: refreshes a single week's menu in the
   background. Triggered by /api/food/drive-menu/ when the cache is stale, so
   the user gets the stale menu immediately and the next request gets fresh.
+- send_food_team_reminders: daily at 20:00, reminds tomorrow's cooking team.
 """
 
 import logging
@@ -106,6 +107,32 @@ def materialize_week_registrations() -> None:
     logger.info("Materializing registrations for %s to %s", dates[0], dates[-1])
     created = _materialize_for_houses(dates)
     logger.info("Materialized %d registrations", created)
+
+
+@db_periodic_task(crontab(hour=20, minute=0))
+def send_food_team_reminders() -> None:
+    """Run daily at 20:00 to remind tomorrow's cooking team.
+
+    Finds the FoodTeam cooking tomorrow (date == today + 1 day) and notifies
+    each of its members.
+    """
+    from apps.notifications.services import notify_food_team_reminder
+
+    from .models import FoodTeam
+
+    tomorrow = date.today() + timedelta(days=1)
+    team = FoodTeam.objects.filter(date=tomorrow).prefetch_related("members__user").first()
+    if team is None:
+        logger.info("No food team cooking on %s; no reminders sent", tomorrow)
+        return
+
+    date_iso = team.date.isoformat()
+    notified = 0
+    for member in team.members.all():
+        notify_food_team_reminder(member.user, date_iso)
+        notified += 1
+
+    logger.info("Sent %d food team reminders for %s", notified, date_iso)
 
 
 @db_task(retries=1, retry_delay=60)

@@ -23,6 +23,10 @@ class NotificationType(models.TextChoices):
     EVENT_CANCELLED = "event_cancelled", "Begivenhed aflyst"
     EVENT_REMINDER = "event_reminder", "Begivenhedsreminder"
     FOOD_TICKET = "food_ticket", "Madbillet tilgængelig"
+    FOOD_TEAM_REMINDER = "food_team_reminder", "Madlavning i morgen"
+    FOOD_TEAM_TAKEAWAY_READY = "food_takeaway_ready", "Takeaway er klar"
+    FOOD_TEAM_LEFTOVERS_READY = "food_leftovers_ready", "Rester er klar"
+    FOOD_TEAM_SWAP_REQUEST = "food_swap_request", "Bytteanmodning til madhold"
     MENTION = "mention", "Omtale"
     SUBGROUP_MEMBER_ADDED = "subgroup_member_added", "Tilføjet som medlem"
     SUBGROUP_MEMBER_REMOVED = "subgroup_member_removed", "Fjernet som medlem"
@@ -111,6 +115,10 @@ class NotificationPreference(models.Model):
     notify_events = models.BooleanField(default=True)
     notify_event_reminders = models.BooleanField(default=True)
     notify_food_tickets = models.BooleanField(default=True)
+    notify_food_team_reminder = models.BooleanField(default=True)
+    notify_food_takeaway_ready = models.BooleanField(default=True)
+    notify_food_leftovers_ready = models.BooleanField(default=True)
+    notify_food_swap_request = models.BooleanField(default=True)
     notify_mentions = models.BooleanField(default=True)
     notify_car_sharing = models.BooleanField(default=True)
 
@@ -125,6 +133,10 @@ class NotificationPreference(models.Model):
     email_events = models.BooleanField(default=False)
     email_event_reminders = models.BooleanField(default=False)
     email_food_tickets = models.BooleanField(default=False)
+    email_food_team_reminder = models.BooleanField(default=False)
+    email_food_takeaway_ready = models.BooleanField(default=False)
+    email_food_leftovers_ready = models.BooleanField(default=False)
+    email_food_swap_request = models.BooleanField(default=False)
     email_mentions = models.BooleanField(default=False)
     # On by default, unlike the other email toggles. A borrow request is the one
     # notification in the app that is waiting on the recipient: nobody else can
@@ -143,6 +155,10 @@ class NotificationPreference(models.Model):
     push_events = models.BooleanField(default=True)
     push_event_reminders = models.BooleanField(default=True)
     push_food_tickets = models.BooleanField(default=True)
+    push_food_team_reminder = models.BooleanField(default=True)
+    push_food_takeaway_ready = models.BooleanField(default=True)
+    push_food_leftovers_ready = models.BooleanField(default=True)
+    push_food_swap_request = models.BooleanField(default=True)
     push_mentions = models.BooleanField(default=True)
     push_car_sharing = models.BooleanField(default=True)
 

@@ -14,8 +14,6 @@ import type {
   CreateFoodTicketData,
   ClaimFoodTicketData,
   ClosedFoodDay,
-  MealPrice,
-  CreateMealPriceData,
   DailyRegistrationStats,
   WeeklyRegistrationStats,
   FoodTeam,
@@ -24,11 +22,26 @@ import type {
   CreateSwapRequestData,
   RespondSwapRequestData,
   FoodTeamCycle,
+  SuggestedCyclePlan,
   CreateCycleData,
+  CycleResetPreview,
+  CycleResetResult,
   FoodTeamWish,
   CreateWishData,
   TeamGenerationResult,
   DriveMenu,
+  TeamFavour,
+  TakeoverData,
+  SwapBroadcast,
+  CreateSwapBroadcastData,
+  TodayTeamActionBox,
+  TodayTeamRecipes,
+  WeekRecipes,
+  TodayLeftoversPost,
+  MyFoodProfile,
+  FoodRosterEntry,
+  MealPrice,
+  CreateMealPriceData,
 } from "../types"
 
 export interface ExpenseDay {
@@ -328,6 +341,12 @@ export const foodApi = {
     return response.data
   },
 
+  getSuggestedCyclePlan: async (): Promise<SuggestedCyclePlan> => {
+    const response = await apiClient.get("/food/cycles/suggested/")
+
+    return response.data
+  },
+
   getCycle: async (id: number): Promise<FoodTeamCycle> => {
     const response = await apiClient.get(`/food/cycles/${id}/`)
 
@@ -346,6 +365,26 @@ export const foodApi = {
     data: Partial<CreateCycleData>,
   ): Promise<FoodTeamCycle> => {
     const response = await apiClient.patch(`/food/cycles/${id}/`, data)
+
+    return response.data
+  },
+
+  /**
+   * Preview what deleting a finalized cycle's teams would destroy, without
+   * touching anything. Feeds the confirmation modal.
+   */
+  getCycleResetPreview: async (id: number): Promise<CycleResetPreview> => {
+    const response = await apiClient.get(`/food/cycles/${id}/reset-teams/`)
+
+    return response.data
+  },
+
+  /**
+   * Delete a finalized cycle's teams and reopen it for wishes so it can be
+   * regenerated. Refused by the backend once a cooking date has passed.
+   */
+  resetCycleTeams: async (id: number): Promise<CycleResetResult> => {
+    const response = await apiClient.post(`/food/cycles/${id}/reset-teams/`)
 
     return response.data
   },
@@ -555,6 +594,159 @@ export const foodApi = {
 
   deleteClosedDay: async (id: number): Promise<void> => {
     await apiClient.delete(`/food/closed-days/${id}/`)
+  },
+
+  // Madhold launch: today action box, take-away/leftovers, takeover, broadcasts
+
+  getTodayActionBox: async (): Promise<TodayTeamActionBox> => {
+    const response = await apiClient.get("/food/teams/today/")
+
+    return response.data
+  },
+
+  getTodayRecipes: async (): Promise<TodayTeamRecipes> => {
+    const response = await apiClient.get("/food/teams/today/recipes/")
+
+    return response.data
+  },
+
+  getWeekRecipes: async (
+    week?: number,
+    year?: number,
+  ): Promise<WeekRecipes> => {
+    const params: Record<string, number> = {}
+    if (week != null) params.week = week
+    if (year != null) params.year = year
+    const response = await apiClient.get("/food/recipes/week/", { params })
+
+    return response.data
+  },
+
+  getTodayLeftovers: async (): Promise<TodayLeftoversPost> => {
+    const response = await apiClient.get("/food/leftovers/today/")
+
+    return response.data
+  },
+
+  notifyTakeaway: async (teamId: number): Promise<{
+    detail: string
+    sent: boolean
+  }> => {
+    const response = await apiClient.post(
+      `/food/teams/${teamId}/notify-takeaway/`,
+    )
+
+    return response.data
+  },
+
+  notifyLeftovers: async (
+    teamId: number,
+    message?: string,
+    image?: File | null,
+  ): Promise<{
+    detail: string
+    sent: boolean
+  }> => {
+    // Always send multipart with at least the `message` field. An empty
+    // FormData breaks Axios's content-type detection, which is why the
+    // no-image path used to fail.
+    const formData = new FormData()
+
+    formData.append("message", message ?? "")
+
+    if (image) formData.append("image", image)
+
+    const response = await apiClient.post(
+      `/food/teams/${teamId}/notify-leftovers/`,
+      formData,
+    )
+
+    return response.data
+  },
+
+  takeover: async (data: TakeoverData): Promise<TeamFavour> => {
+    const response = await apiClient.post("/food/teams/takeover/", data)
+
+    return response.data
+  },
+
+  getSwapBroadcasts: async (): Promise<SwapBroadcast[]> => {
+    const response = await apiClient.get("/food/swap-broadcasts/")
+
+    return asArray(response.data)
+  },
+
+  createSwapBroadcast: async (
+    data: CreateSwapBroadcastData,
+  ): Promise<SwapBroadcast & { candidate_count: number }> => {
+    const response = await apiClient.post("/food/swap-broadcasts/", data)
+
+    return response.data
+  },
+
+  acceptSwapBroadcast: async (
+    id: number,
+    membershipId: number,
+  ): Promise<SwapBroadcast> => {
+    const response = await apiClient.post(
+      `/food/swap-broadcasts/${id}/accept/`,
+      {
+        membership_id: membershipId,
+      },
+    )
+
+    return response.data
+  },
+
+  cancelSwapBroadcast: async (id: number): Promise<void> => {
+    await apiClient.delete(`/food/swap-broadcasts/${id}/`)
+  },
+
+  // Favours ("you owe me one")
+
+  getFavours: async (): Promise<TeamFavour[]> => {
+    const response = await apiClient.get("/food/favours/")
+
+    return asArray(response.data)
+  },
+
+  settleFavour: async (id: number): Promise<TeamFavour> => {
+    const response = await apiClient.post(`/food/favours/${id}/settle/`)
+
+    return response.data
+  },
+
+  // Personal food-team profile (self-service)
+
+  getMyFoodProfile: async (): Promise<MyFoodProfile> => {
+    const response = await apiClient.get("/food/my-food-profile/")
+
+    return response.data
+  },
+
+  updateMyFoodProfile: async (
+    data: Partial<MyFoodProfile>,
+  ): Promise<MyFoodProfile> => {
+    const response = await apiClient.patch("/food/my-food-profile/", data)
+
+    return response.data
+  },
+
+  // Admin roster
+
+  getFoodRoster: async (): Promise<FoodRosterEntry[]> => {
+    const response = await apiClient.get("/food/admin/roster/")
+
+    return asArray(response.data)
+  },
+
+  updateFoodRosterEntry: async (
+    id: number,
+    data: Partial<FoodRosterEntry>,
+  ): Promise<FoodRosterEntry> => {
+    const response = await apiClient.patch(`/food/admin/roster/${id}/`, data)
+
+    return response.data
   },
 
   // Meal Prices

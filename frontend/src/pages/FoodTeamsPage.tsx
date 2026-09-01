@@ -26,6 +26,11 @@ import {
   Checkbox,
   SimpleGrid,
   TextInput,
+  Switch,
+  Chip,
+  MultiSelect,
+  Select,
+  List,
 } from "@mantine/core"
 
 import { useDisclosure } from "@mantine/hooks"
@@ -41,6 +46,7 @@ import {
   IconCalendar,
   IconArrowsExchange,
   IconAlertCircle,
+  IconInfoCircle,
   IconChevronDown,
   IconChevronUp,
   IconCheck,
@@ -50,6 +56,11 @@ import {
   IconSettings,
   IconPlayerPlay,
   IconPlus,
+  IconUser,
+  IconHeartHandshake,
+  IconBroadcast,
+  IconExternalLink,
+  IconTrash,
 } from "@tabler/icons-react"
 
 import dayjs from "dayjs"
@@ -58,6 +69,10 @@ import { foodApi } from "../api/food"
 
 import { useAuthStore } from "../store/authStore"
 
+import { forumApi } from "../api/forum"
+
+import { saveDraft } from "../utils/draftStorage"
+
 import type {
   FoodTeam,
   FoodTeamListItem,
@@ -65,12 +80,18 @@ import type {
   FoodTeamMember,
   FoodTeamCycle,
   TeamGenerationResult,
+  TeamFavour,
+  SwapBroadcast,
+  MyFoodProfile,
+  CycleResetPreview,
 } from "../types"
 
 interface WishSubmitData {
   available_dates: string[]
 
   comment: string
+
+  is_unavailable: boolean
 }
 
 interface GenerateTeamsParams {
@@ -86,9 +107,20 @@ export default function FoodTeamsPage() {
 
   const { user } = useAuthStore()
 
+  // Matches the backend IsFoodAdmin permission (is_staff OR is_food_admin) —
+  // the food admin who runs the rotation is usually not a Django superuser.
+  const canFoodAdmin = !!(user?.is_staff || user?.is_food_admin)
+
   // Path-based tab state
 
-  const validTabs = ["mine-hold", "alle-hold", "bytte", "oensker", "admin"]
+  const validTabs = [
+    "mine-hold",
+    "alle-hold",
+    "bytte",
+    "oensker",
+    "profil",
+    "admin",
+  ]
 
   const activeTab = tab && validTabs.includes(tab) ? tab : "mine-hold"
 
@@ -134,6 +166,22 @@ export default function FoodTeamsPage() {
     retry: false,
   })
 
+  // Fetch favours ledger
+
+  const { data: favours, isLoading: favoursLoading } = useQuery({
+    queryKey: ["food", "favours"],
+
+    queryFn: foodApi.getFavours,
+  })
+
+  // Fetch swap broadcasts
+
+  const { data: broadcasts, isLoading: broadcastsLoading } = useQuery({
+    queryKey: ["food", "swap-broadcasts"],
+
+    queryFn: foodApi.getSwapBroadcasts,
+  })
+
   const pendingRequests =
     swapRequests?.filter((r) => r.status === "pending") ?? []
 
@@ -141,7 +189,19 @@ export default function FoodTeamsPage() {
 
   const outgoingRequests = pendingRequests.filter((r) => r.is_outgoing)
 
-  const isLoading = myTeamsLoading || allTeamsLoading || swapRequestsLoading
+  const incomingBroadcasts =
+    broadcasts?.filter(
+      (b) => b.can_accept && b.status === "open" && !b.is_mine,
+    ) ?? []
+
+  const byttenBadgeCount = pendingRequests.length + incomingBroadcasts.length
+
+  const isLoading =
+    myTeamsLoading ||
+    allTeamsLoading ||
+    swapRequestsLoading ||
+    favoursLoading ||
+    broadcastsLoading
 
   return (
     <>
@@ -165,14 +225,14 @@ export default function FoodTeamsPage() {
             value="bytte"
             leftSection={<IconArrowsExchange size={16} />}
             rightSection={
-              pendingRequests.length > 0 ? (
+              byttenBadgeCount > 0 ? (
                 <Badge size="xs" color="red" variant="filled">
-                  {pendingRequests.length}
+                  {byttenBadgeCount}
                 </Badge>
               ) : null
             }
           >
-            Bytteanmodninger
+            Bytte
           </Tabs.Tab>
           <Tabs.Tab
             value="oensker"
@@ -188,7 +248,10 @@ export default function FoodTeamsPage() {
           >
             Indsend ønsker
           </Tabs.Tab>
-          {user?.is_staff && (
+          <Tabs.Tab value="profil" leftSection={<IconUser size={16} />}>
+            Min profil
+          </Tabs.Tab>
+          {canFoodAdmin && (
             <Tabs.Tab value="admin" leftSection={<IconSettings size={16} />}>
               Admin
             </Tabs.Tab>
@@ -281,8 +344,25 @@ export default function FoodTeamsPage() {
                   </Stack>
                 )}
               </div>
+
+              <Divider />
+
+              {/* Swap broadcasts */}
+              <BroadcastsSection
+                broadcasts={broadcasts ?? []}
+                myTeams={myTeams ?? []}
+              />
+
+              <Divider />
+
+              {/* Favours ledger */}
+              <FavoursSection favours={favours ?? []} />
             </Stack>
           )}
+        </Tabs.Panel>
+
+        <Tabs.Panel value="profil">
+          <FoodProfilePanel />
         </Tabs.Panel>
 
         <Tabs.Panel value="oensker">
@@ -300,9 +380,9 @@ export default function FoodTeamsPage() {
           )}
         </Tabs.Panel>
 
-        {user?.is_staff && (
+        {canFoodAdmin && (
           <Tabs.Panel value="admin">
-            <AdminPanel />
+            <AdminPanel canFoodAdmin={canFoodAdmin} />
           </Tabs.Panel>
         )}
       </Tabs>
@@ -322,6 +402,8 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
   const [selectedDates, setSelectedDates] = useState<string[]>([])
 
   const [comment, setComment] = useState("")
+
+  const [isUnavailable, setIsUnavailable] = useState(false)
 
   const [defaultsApplied, setDefaultsApplied] = useState(false)
 
@@ -404,6 +486,8 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
       setSelectedDates(existingWish.available_dates)
 
       setComment(existingWish.comment)
+
+      setIsUnavailable(existingWish.is_unavailable)
     }
   }, [existingWish])
 
@@ -447,22 +531,12 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
 
   const handleSubmit = () => {
     submitWishMutation.mutate({
-      available_dates: selectedDates,
+      available_dates: isUnavailable ? [] : selectedDates,
 
       comment,
+
+      is_unavailable: isUnavailable,
     })
-  }
-
-  // Update selected dates when existing wish loads
-
-  if (
-    existingWish &&
-    selectedDates.length === 0 &&
-    existingWish.available_dates.length > 0
-  ) {
-    setSelectedDates(existingWish.available_dates)
-
-    setComment(existingWish.comment)
   }
 
   if (wishLoading) {
@@ -528,12 +602,37 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
             </Alert>
           ) : (
             <>
+              {/* Unavailable for the whole period */}
+              <Paper
+                withBorder
+                p="md"
+                radius="md"
+                bg={
+                  isUnavailable
+                    ? "var(--mantine-color-red-light)"
+                    : "var(--mantine-color-default-hover)"
+                }
+              >
+                <Switch
+                  checked={isUnavailable}
+                  onChange={(e) => setIsUnavailable(e.currentTarget.checked)}
+                  label="Jeg kan ikke i denne periode"
+                  description="Markér dette hvis du slet ikke kan lave mad i denne periode. Så behøver du ikke vælge datoer."
+                  color="red"
+                />
+              </Paper>
+
               {/* Default cooking days section */}
               <Paper
                 withBorder
                 p="md"
                 radius="md"
                 bg="var(--mantine-color-default-hover)"
+                style={
+                  isUnavailable
+                    ? { opacity: 0.5, pointerEvents: "none" }
+                    : undefined
+                }
               >
                 <Text fw={500} mb="sm">
                   Dine standard madlavningsdage
@@ -570,7 +669,13 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
 
               <Divider />
 
-              <div>
+              <div
+                style={
+                  isUnavailable
+                    ? { opacity: 0.5, pointerEvents: "none" }
+                    : undefined
+                }
+              >
                 <Group justify="space-between" mb="sm">
                   <Text fw={500}>Vælg datoer hvor du kan lave mad:</Text>
                   <Group gap="xs">
@@ -644,14 +749,15 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
 
               <Group justify="space-between">
                 <Text size="sm" c="dimmed">
-                  {selectedDates.length} af {cycle.cooking_dates.length} datoer
-                  valgt
+                  {isUnavailable
+                    ? "Du har markeret, at du ikke kan i denne periode"
+                    : `${selectedDates.length} af ${cycle.cooking_dates.length} datoer valgt`}
                 </Text>
                 <Button
                   leftSection={<IconSend size={16} />}
                   onClick={handleSubmit}
                   loading={submitWishMutation.isPending}
-                  disabled={selectedDates.length === 0}
+                  disabled={!isUnavailable && selectedDates.length === 0}
                 >
                   {existingWish ? "Opdater ønsker" : "Indsend ønsker"}
                 </Button>
@@ -666,7 +772,11 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
 
 // Admin Panel for managing cycles and generating teams
 
-function AdminPanel() {
+interface AdminPanelProps {
+  canFoodAdmin: boolean
+}
+
+function AdminPanel({ canFoodAdmin }: AdminPanelProps) {
   const queryClient = useQueryClient()
 
   const [
@@ -719,19 +829,24 @@ function AdminPanel() {
     onSuccess: (result) => {
       setGenerationResult(result)
 
-      if (result.success) {
-        queryClient.invalidateQueries({ queryKey: ["food", "cycles"] })
+      // A real run persists/finalizes even when it completes with problems, so
+      // refresh either way. The detailed outcome (unassigned, warnings) is in
+      // the result modal; the toast is just a quick summary.
+      queryClient.invalidateQueries({ queryKey: ["food", "cycles"] })
 
-        queryClient.invalidateQueries({ queryKey: ["food", "teams"] })
+      queryClient.invalidateQueries({ queryKey: ["food", "teams"] })
 
-        notifications.show({
-          title: "Hold genereret",
+      notifications.show({
+        title: result.success
+          ? "Hold genereret"
+          : "Generering gennemført med problemer",
 
-          message: `Oprettede ${result.teams_created} hold.`,
+        message: result.success
+          ? `Oprettede ${result.teams_created} hold.`
+          : result.message,
 
-          color: "green",
-        })
-      }
+        color: result.success ? "green" : "yellow",
+      })
     },
 
     onError: (error: unknown) => {
@@ -767,6 +882,7 @@ function AdminPanel() {
             <CycleAdminCard
               key={cycle.id}
               cycle={cycle}
+              canFoodAdmin={canFoodAdmin}
               onGenerate={(dryRun) =>
                 generateTeamsMutation.mutate({ cycleId: cycle.id, dryRun })
               }
@@ -798,6 +914,28 @@ function AdminPanel() {
             </Alert>
 
             <Text>Hold oprettet: {generationResult.teams_created}</Text>
+
+            {generationResult.dropped_dates.length > 0 && (
+              <Alert
+                color="blue"
+                variant="light"
+                icon={<IconInfoCircle size={16} />}
+              >
+                <Text size="sm" fw={500} mb={4}>
+                  {generationResult.dropped_dates.length === 1
+                    ? "1 dato rykker til næste periode"
+                    : `${generationResult.dropped_dates.length} datoer rykker til næste periode`}
+                </Text>
+                <Text size="sm">
+                  Der var ikke kokke nok til fulde hold på alle datoer, så
+                  perioden slutter tidligere:{" "}
+                  {generationResult.dropped_dates
+                    .map((d) => dayjs(d).format("ddd D. MMM"))
+                    .join(", ")}
+                  . Næste periode starter automatisk på den første af dem.
+                </Text>
+              </Alert>
+            )}
 
             {generationResult.unassigned_persons.length > 0 && (
               <div>
@@ -848,6 +986,8 @@ function AdminPanel() {
 interface CycleAdminCardProps {
   cycle: FoodTeamCycle
 
+  canFoodAdmin: boolean
+
   onGenerate: (dryRun: boolean) => void
 
   isGenerating: boolean
@@ -856,10 +996,15 @@ interface CycleAdminCardProps {
 function CycleAdminCard({
   cycle,
 
+  canFoodAdmin,
+
   onGenerate,
 
   isGenerating,
 }: CycleAdminCardProps) {
+  const [resetModalOpened, { open: openResetModal, close: closeResetModal }] =
+    useDisclosure(false)
+
   const statusColors: Record<string, string> = {
     draft: "gray",
 
@@ -944,7 +1089,177 @@ function CycleAdminCard({
           </Button>
         </Group>
       )}
+
+      {/* A finalized cycle refuses regeneration, so the only way back to a new
+          plan is to delete the teams and reopen the period for wishes. */}
+      {canFoodAdmin && cycle.status === "finalized" && (
+        <>
+          <Group>
+            <Button
+              variant="light"
+              color="red"
+              leftSection={<IconTrash size={16} />}
+              onClick={openResetModal}
+            >
+              Slet hold og åbn perioden igen
+            </Button>
+          </Group>
+
+          <ResetTeamsModal
+            cycle={cycle}
+            opened={resetModalOpened}
+            onClose={closeResetModal}
+          />
+        </>
+      )}
     </Card>
+  )
+}
+
+// Reset Teams Modal — deletes a finalized cycle's teams after an explicit,
+// itemised confirmation. This throws away a plan ~90 people depend on.
+
+interface ResetTeamsModalProps {
+  cycle: FoodTeamCycle
+
+  opened: boolean
+
+  onClose: () => void
+}
+
+function ResetTeamsModal({ cycle, opened, onClose }: ResetTeamsModalProps) {
+  const queryClient = useQueryClient()
+
+  const {
+    data: preview,
+    isLoading: previewLoading,
+    isError: previewFailed,
+  } = useQuery<CycleResetPreview>({
+    queryKey: ["food", "cycles", cycle.id, "reset-preview"],
+
+    queryFn: () => foodApi.getCycleResetPreview(cycle.id),
+
+    enabled: opened,
+  })
+
+  const resetMutation = useMutation({
+    mutationFn: () => foodApi.resetCycleTeams(cycle.id),
+
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["food", "cycles"] })
+
+      queryClient.invalidateQueries({ queryKey: ["food", "teams"] })
+
+      notifications.show({
+        title: "Holdene er slettet",
+
+        message: `${result.deleted.teams} hold blev slettet. Perioden indsamler ønsker igen, så du kan generere hold på ny.`,
+
+        color: "green",
+      })
+
+      onClose()
+    },
+
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke slette holdene.")
+    },
+  })
+
+  const blocked = preview?.has_past_dates ?? false
+
+  // Also treat "opened, nothing yet, no error" as loading so the error alert
+  // can't flash in the frame before the disabled query starts fetching.
+  const showLoading = previewLoading || (!preview && !previewFailed)
+
+  return (
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title="Slet hold og åbn perioden igen"
+      size="lg"
+    >
+      <Stack gap="md">
+        {showLoading ? (
+          <Center h={120}>
+            <Loader />
+          </Center>
+        ) : previewFailed || !preview ? (
+          <Alert color="red" icon={<IconAlertCircle size={16} />}>
+            Kunne ikke hente overblik over, hvad der bliver slettet. Prøv igen.
+          </Alert>
+        ) : blocked ? (
+          <Alert color="red" icon={<IconAlertCircle size={16} />}>
+            <Text size="sm" fw={600} mb={4}>
+              Holdene kan ikke slettes
+            </Text>
+            <Text size="sm">
+              Perioden har madlavningsdage, der allerede er passeret (
+              {preview.past_dates
+                .slice(0, 3)
+                .map((d) => dayjs(d).format("D. MMM"))
+                .join(", ")}
+              {preview.past_dates.length > 3 ? " m.fl." : ""}). Der er allerede
+              lavet mad på dem, og en sletning ville slette historikken om
+              afholdte vagter, bytninger og tjenester. Opret i stedet en ny
+              periode.
+            </Text>
+          </Alert>
+        ) : (
+          <>
+            <Alert color="red" icon={<IconAlertCircle size={16} />}>
+              <Text size="sm" fw={600}>
+                Dette kan ikke fortrydes.
+              </Text>
+            </Alert>
+
+            <Text size="sm">
+              Hele madholdsplanen for <strong>{cycle.name}</strong> bliver
+              slettet. Følgende forsvinder permanent:
+            </Text>
+
+            <List size="sm" spacing={4}>
+              <List.Item>{preview.teams} madhold</List.Item>
+              <List.Item>
+                {preview.memberships} tildelte madlavningsvagter
+              </List.Item>
+              <List.Item>
+                {preview.pending_swap_requests} afventende bytteanmodninger
+              </List.Item>
+              <List.Item>{preview.open_broadcasts} åbne bytteopslag</List.Item>
+              <List.Item>
+                {preview.favours} tjenester (»du skylder mig en«)
+              </List.Item>
+            </List>
+
+            <Text size="sm">
+              Perioden og beboernes indsendte ønsker bliver bevaret, og perioden
+              går tilbage til at indsamle ønsker, så du kan generere hold på ny.
+            </Text>
+
+            <Text size="sm" c="dimmed">
+              Beboerne får ikke automatisk besked — husk selv at fortælle dem
+              det, hvis planen allerede er meldt ud.
+            </Text>
+          </>
+        )}
+
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>
+            Annuller
+          </Button>
+          <Button
+            color="red"
+            leftSection={<IconTrash size={16} />}
+            disabled={showLoading || previewFailed || !preview || blocked}
+            loading={resetMutation.isPending}
+            onClick={() => resetMutation.mutate()}
+          >
+            Ja, slet holdene
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
   )
 }
 
@@ -981,6 +1296,8 @@ function CreateCycleModal({
 
   const [wishDeadline, setWishDeadline] = useState<Date | null>(null)
 
+  const [prefilled, setPrefilled] = useState(false)
+
   // Fetch closed food days to disable them in the date picker
 
   const { data: closedDays } = useQuery({
@@ -992,6 +1309,30 @@ function CreateCycleModal({
   })
 
   const closedDateSet = new Set(closedDays?.map((d) => d.date) ?? [])
+
+  // Suggested defaults for the next period (live eligible count → number of
+  // cooking days, dates skipping closed days, name, deadline). Prefilled once
+  // per open so we never clobber the admin's manual edits.
+
+  const { data: suggestion } = useQuery({
+    queryKey: ["food", "cycles", "suggested"],
+
+    queryFn: foodApi.getSuggestedCyclePlan,
+
+    enabled: opened,
+  })
+
+  useEffect(() => {
+    if (opened && suggestion && !prefilled) {
+      setName(suggestion.name)
+
+      setCookingDates(suggestion.cooking_dates.map((d) => dayjs(d).toDate()))
+
+      setWishDeadline(dayjs(suggestion.wish_deadline).toDate())
+
+      setPrefilled(true)
+    }
+  }, [opened, suggestion, prefilled])
 
   const handleSubmit = () => {
     onCreate({
@@ -1011,6 +1352,8 @@ function CreateCycleModal({
     setCookingDates([])
 
     setWishDeadline(null)
+
+    setPrefilled(false)
 
     onClose()
   }
@@ -1038,6 +1381,15 @@ function CreateCycleModal({
       size="lg"
     >
       <Stack gap="md">
+        {suggestion && (
+          <Alert color="blue" variant="light" icon={<IconCalendar size={16} />}>
+            Forslag: {suggestion.eligible_count} berettigede kokke →{" "}
+            {suggestion.suggested_day_count} maddage. Datoer, navn og deadline
+            er udfyldt nedenfor (lukkede maddage er udeladt) — ret dem efter
+            behov.
+          </Alert>
+        )}
+
         <TextInput
           label="Periodenavn"
           placeholder="F.eks. Januar 2025 periode"
@@ -1130,6 +1482,11 @@ function MyTeamCard({
   const [swapModalOpened, { open: openSwapModal, close: closeSwapModal }] =
     useDisclosure(false)
 
+  const [
+    broadcastModalOpened,
+    { open: openBroadcastModal, close: closeBroadcastModal },
+  ] = useDisclosure(false)
+
   const [selectedTargetTeamId, setSelectedTargetTeamId] =
     useState<number | null>(null)
 
@@ -1137,6 +1494,12 @@ function MyTeamCard({
     useState<number | null>(null)
 
   const [swapMessage, setSwapMessage] = useState("")
+
+  const [broadcastDates, setBroadcastDates] = useState<string[]>([])
+
+  const [broadcastMessage, setBroadcastMessage] = useState("")
+
+  const navigate = useNavigate()
 
   const queryClient = useQueryClient()
 
@@ -1200,6 +1563,126 @@ function MyTeamCard({
     })
   }
 
+  // Candidate dates to offer instead = all cooking dates except my own dates
+
+  const candidateDateOptions = Array.from(new Set(allTeams.map((t) => t.date)))
+    .filter((d) => !myTeamDates.has(d))
+    .sort((a, b) => dayjs(a).valueOf() - dayjs(b).valueOf())
+    .map((d) => ({
+      value: d,
+
+      label: dayjs(d).format("dddd, D. MMMM"),
+    }))
+
+  const createBroadcastMutation = useMutation({
+    mutationFn: foodApi.createSwapBroadcast,
+
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["food", "swap-broadcasts"] })
+
+      if (result.candidate_count > 0) {
+        notifications.show({
+          title: "Bytteanmodning sendt",
+
+          message: `Sendt til ${result.candidate_count} mulige byttere.`,
+
+          color: "green",
+        })
+
+        closeBroadcastModal()
+
+        setBroadcastDates([])
+
+        setBroadcastMessage("")
+      } else {
+        notifications.show({
+          title: "Ingen mulige byttere fundet",
+
+          message:
+            "Der blev ikke fundet nogen, der kan bytte. Prøv at dele din anmodning i Fælles-forummet i stedet.",
+
+          color: "orange",
+
+          autoClose: 8000,
+        })
+      }
+    },
+
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke sende bytteanmodning.")
+    },
+  })
+
+  const handleCreateBroadcast = () => {
+    if (!myMembership || broadcastDates.length === 0) return
+
+    createBroadcastMutation.mutate({
+      requester_membership_id: myMembership.id,
+
+      available_dates: broadcastDates,
+
+      message: broadcastMessage,
+    })
+  }
+
+  // Best-effort prefill: stash title + body as encrypted drafts the
+  // CreateThreadModal reads, then navigate to the Fælles subgroup.
+
+  const shareToForumMutation = useMutation({
+    mutationFn: async () => {
+      const subgroups = await forumApi.getSubgroups()
+
+      const faelles =
+        subgroups.find((s) => s.is_main) ??
+        subgroups.find((s) => s.slug === "faelles") ??
+        subgroups.find((s) => s.name === "Fælles")
+
+      const slug = faelles?.slug ?? "faelles"
+
+      const dateStr = dayjs(team.date).format("dddd D. MMMM")
+
+      const title = `Bytte af maddag ${dateStr}`
+
+      const altText =
+        broadcastDates.length > 0
+          ? ` Jeg kan i stedet tage en af disse dage: ${broadcastDates
+              .map((d) => dayjs(d).format("dddd D. MMMM"))
+              .join(", ")}.`
+          : ""
+
+      const extra = broadcastMessage ? ` ${broadcastMessage}` : ""
+
+      const body = `<p>Hej alle! Jeg vil gerne bytte min maddag <strong>${dateStr}</strong>.${altText}${extra} Skriv til mig hvis du kan bytte. Tak!</p>`
+
+      await saveDraft("new-thread-title-" + slug, title)
+
+      await saveDraft("new-thread-" + slug, body)
+
+      return slug
+    },
+
+    onSuccess: (slug) => {
+      closeBroadcastModal()
+
+      navigate(`/forum/${slug}`)
+
+      notifications.show({
+        title: "Klar i Fælles-forummet",
+
+        message:
+          "Klik på 'Ny tråd' — titel og tekst er udfyldt for dig. Tjek den igennem og opret tråden.",
+
+        color: "blue",
+
+        autoClose: 8000,
+      })
+    },
+
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke åbne Fælles-forummet.")
+    },
+  })
+
   const isPast = dayjs(team.date).isBefore(dayjs(), "day")
 
   return (
@@ -1221,18 +1704,29 @@ function MyTeamCard({
               </Text>
             </div>
           </Group>
-          <Group>
+          <Group gap="xs">
             {isPast ? (
               <Badge color="gray">Overstået</Badge>
             ) : (
-              <Button
-                variant="light"
-                size="xs"
-                leftSection={<IconArrowsExchange size={14} />}
-                onClick={openSwapModal}
-              >
-                Anmod om bytte
-              </Button>
+              <>
+                <Button
+                  variant="light"
+                  size="xs"
+                  leftSection={<IconArrowsExchange size={14} />}
+                  onClick={openSwapModal}
+                >
+                  Anmod om bytte
+                </Button>
+                <Button
+                  variant="light"
+                  color="grape"
+                  size="xs"
+                  leftSection={<IconBroadcast size={14} />}
+                  onClick={openBroadcastModal}
+                >
+                  Send bytteanmodning
+                </Button>
+              </>
             )}
           </Group>
         </Group>
@@ -1404,6 +1898,75 @@ function MyTeamCard({
           </Group>
         </Stack>
       </Modal>
+
+      {/* Broadcast Swap Modal */}
+      <Modal
+        opened={broadcastModalOpened}
+        onClose={closeBroadcastModal}
+        title="Send bytteanmodning til alle mulige byttere"
+        size="lg"
+        centered
+      >
+        <Stack gap="md">
+          <Text size="sm">
+            Send en bredt udsendt anmodning om at bytte din maddag{" "}
+            <Text span fw={600}>
+              {team.day_name}, {dayjs(team.date).format("D. MMMM YYYY")}
+            </Text>
+            . Alle, der har en maddag på en af de datoer du vælger nedenfor, får
+            besked og kan acceptere byttet.
+          </Text>
+
+          <MultiSelect
+            label="Datoer jeg i stedet kan tage"
+            placeholder="Vælg en eller flere datoer"
+            data={candidateDateOptions}
+            value={broadcastDates}
+            onChange={setBroadcastDates}
+            searchable
+            description="Du tilbyder at tage en af disse maddage i bytte."
+          />
+
+          <Textarea
+            label="Besked (valgfri)"
+            placeholder="Tilføj en besked til din bytteanmodning..."
+            value={broadcastMessage}
+            onChange={(e) => setBroadcastMessage(e.target.value)}
+          />
+
+          <Divider label="eller" labelPosition="center" />
+
+          <Group justify="space-between">
+            <Button
+              variant="light"
+              color="blue"
+              leftSection={<IconExternalLink size={16} />}
+              onClick={() => shareToForumMutation.mutate()}
+              loading={shareToForumMutation.isPending}
+            >
+              Del i Fælles-forum
+            </Button>
+            <Group>
+              <Button
+                variant="light"
+                color="gray"
+                onClick={closeBroadcastModal}
+              >
+                Annuller
+              </Button>
+              <Button
+                color="grape"
+                leftSection={<IconBroadcast size={16} />}
+                onClick={handleCreateBroadcast}
+                disabled={broadcastDates.length === 0}
+                loading={createBroadcastMutation.isPending}
+              >
+                Send bytteanmodning
+              </Button>
+            </Group>
+          </Group>
+        </Stack>
+      </Modal>
     </>
   )
 }
@@ -1415,7 +1978,21 @@ interface AllTeamCardProps {
 }
 
 function AllTeamCard({ team }: AllTeamCardProps) {
+  const [expanded, setExpanded] = useState(false)
+
   const isPast = dayjs(team.date).isBefore(dayjs(), "day")
+
+  const isFuture = dayjs(team.date).isAfter(dayjs(), "day")
+
+  // Load full team details (with membership ids) only when expanded
+
+  const { data: teamDetails, isLoading: teamDetailsLoading } = useQuery({
+    queryKey: ["food", "teams", team.id],
+
+    queryFn: () => foodApi.getTeam(team.id),
+
+    enabled: expanded,
+  })
 
   return (
     <Paper
@@ -1430,7 +2007,11 @@ function AllTeamCard({ team }: AllTeamCardProps) {
             : undefined
       }
     >
-      <Group justify="space-between">
+      <Group
+        justify="space-between"
+        style={{ cursor: "pointer" }}
+        onClick={() => setExpanded(!expanded)}
+      >
         <div>
           <Group gap="xs">
             <Text fw={500}>
@@ -1446,9 +2027,142 @@ function AllTeamCard({ team }: AllTeamCardProps) {
             {team.members_display}
           </Text>
         </div>
-        <Badge variant="light">{team.member_count} medlemmer</Badge>
+        <Group gap="xs">
+          <Badge variant="light">{team.member_count} medlemmer</Badge>
+          <ActionIcon variant="subtle" size="sm">
+            {expanded ? (
+              <IconChevronUp size={16} />
+            ) : (
+              <IconChevronDown size={16} />
+            )}
+          </ActionIcon>
+        </Group>
       </Group>
+
+      <Collapse expanded={expanded}>
+        <Divider my="sm" />
+        {teamDetailsLoading || !teamDetails ? (
+          <Center h={60}>
+            <Loader size="sm" />
+          </Center>
+        ) : (
+          <Stack gap="xs">
+            {teamDetails.members.map((member) => (
+              <Group key={member.id} justify="space-between">
+                <Group gap="sm">
+                  <Avatar
+                    src={member.user.profile_picture}
+                    radius="xl"
+                    size="sm"
+                  >
+                    {member.user.first_name[0]}
+                  </Avatar>
+                  <div>
+                    <Text size="sm" fw={member.is_own ? 600 : 400}>
+                      {member.user.first_name} {member.user.last_name}
+                      {member.is_own && " (Dig)"}
+                    </Text>
+                    {member.house_number && (
+                      <Text size="xs" c="dimmed">
+                        Hus {member.house_number}
+                      </Text>
+                    )}
+                  </div>
+                </Group>
+                {!member.is_own && isFuture && (
+                  <TakeoverButton member={member} teamDate={teamDetails.date} />
+                )}
+              </Group>
+            ))}
+          </Stack>
+        )}
+      </Collapse>
     </Paper>
+  )
+}
+
+// Takeover button + confirm modal ("they owe you one")
+
+interface TakeoverButtonProps {
+  member: FoodTeamMember
+
+  teamDate: string
+}
+
+function TakeoverButton({ member, teamDate }: TakeoverButtonProps) {
+  const queryClient = useQueryClient()
+
+  const [opened, { open, close }] = useDisclosure(false)
+
+  const name = member.user.first_name
+
+  const takeoverMutation = useMutation({
+    mutationFn: () => foodApi.takeover({ target_membership_id: member.id }),
+
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["food", "teams"] })
+
+      queryClient.invalidateQueries({ queryKey: ["food", "favours"] })
+
+      notifications.show({
+        title: "Maddag overtaget",
+
+        message: `Du har overtaget ${name}s maddag. ${name} skylder dig nu en tjeneste.`,
+
+        color: "green",
+      })
+
+      close()
+    },
+
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke overtage maddagen.")
+    },
+  })
+
+  return (
+    <>
+      <Button
+        variant="light"
+        size="xs"
+        leftSection={<IconHeartHandshake size={14} />}
+        onClick={open}
+      >
+        Overtag (de skylder dig en)
+      </Button>
+
+      <Modal
+        opened={opened}
+        onClose={close}
+        title="Overtag maddag"
+        centered
+        size="md"
+      >
+        <Stack gap="md">
+          <Text>
+            Du overtager {name}s maddag d.{" "}
+            {dayjs(teamDate).format("D. MMMM YYYY")}.
+          </Text>
+          <Text>
+            {name} skylder dig så en tjeneste næste periode. Det noteres i jeres
+            tjeneste-regnskab.
+          </Text>
+          <Group justify="flex-end">
+            <Button variant="light" onClick={close}>
+              Annuller
+            </Button>
+            <Button
+              color="green"
+              leftSection={<IconHeartHandshake size={16} />}
+              onClick={() => takeoverMutation.mutate()}
+              loading={takeoverMutation.isPending}
+            >
+              Overtag maddagen
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+    </>
   )
 }
 
@@ -1611,27 +2325,40 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
           </Badge>
         </Group>
 
-        <Group gap="xl">
-          <div>
-            <Text size="xs" c="dimmed">
-              Deres dato
-            </Text>
-            <Text size="sm" fw={500}>
-              {request.requester_membership.team_day_name},{" "}
-              {dayjs(request.requester_membership.team_date).format("D. MMM")}
-            </Text>
-          </div>
-          <IconArrowsExchange size={16} />
-          <div>
-            <Text size="xs" c="dimmed">
-              Din dato
-            </Text>
-            <Text size="sm" fw={500}>
-              {request.target_membership.team_day_name},{" "}
-              {dayjs(request.target_membership.team_date).format("D. MMM")}
-            </Text>
-          </div>
-        </Group>
+        {/* requester_membership/target_membership are fixed roles on the
+            request, but "Din"/"Deres" depend on who is viewing. For an incoming
+            request the viewer is the target; for an outgoing one the viewer is
+            the requester, so the two memberships swap sides. */}
+        {(() => {
+          const mine = request.is_incoming
+            ? request.target_membership
+            : request.requester_membership
+          const theirs = request.is_incoming
+            ? request.requester_membership
+            : request.target_membership
+          return (
+            <Group gap="xl">
+              <div>
+                <Text size="xs" c="dimmed">
+                  Din dato
+                </Text>
+                <Text size="sm" fw={500}>
+                  {mine.team_day_name}, {dayjs(mine.team_date).format("D. MMM")}
+                </Text>
+              </div>
+              <IconArrowsExchange size={16} />
+              <div>
+                <Text size="xs" c="dimmed">
+                  Deres dato
+                </Text>
+                <Text size="sm" fw={500}>
+                  {theirs.team_day_name},{" "}
+                  {dayjs(theirs.team_date).format("D. MMM")}
+                </Text>
+              </div>
+            </Group>
+          )
+        })()}
 
         {request.message && (
           <Paper p="xs" bg="var(--mantine-color-default-hover)" radius="sm">
@@ -1701,5 +2428,631 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
         )}
       </Stack>
     </Card>
+  )
+}
+
+// Favours ledger ("they owe you one" / "you owe them one")
+
+interface FavoursSectionProps {
+  favours: TeamFavour[]
+}
+
+function FavoursSection({ favours }: FavoursSectionProps) {
+  const queryClient = useQueryClient()
+
+  const settleMutation = useMutation({
+    mutationFn: (id: number) => foodApi.settleFavour(id),
+
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["food", "favours"] })
+
+      notifications.show({
+        title: "Tjeneste indfriet",
+
+        message: "Tjenesten er markeret som indfriet.",
+
+        color: "green",
+      })
+    },
+
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke markere tjeneste som indfriet.")
+    },
+  })
+
+  const owedToMe = favours.filter((f) => f.direction === "owed_to_me")
+
+  const iOwe = favours.filter((f) => f.direction === "i_owe")
+
+  return (
+    <div>
+      <Group gap="xs" mb="sm">
+        <IconHeartHandshake size={20} />
+        <Title order={4}>Tjeneste-regnskab</Title>
+      </Group>
+
+      <Stack gap="lg">
+        <div>
+          <Text fw={500} mb="xs">
+            Nogen skylder mig
+          </Text>
+          {owedToMe.length === 0 ? (
+            <Text c="dimmed" size="sm">
+              Ingen skylder dig en tjeneste lige nu.
+            </Text>
+          ) : (
+            <Stack gap="xs">
+              {owedToMe.map((favour) => (
+                <Paper key={favour.id} withBorder p="sm" radius="md">
+                  <Group justify="space-between">
+                    <div>
+                      <Text size="sm" fw={500}>
+                        {favour.debtor.first_name} {favour.debtor.last_name}{" "}
+                        skylder dig en tjeneste
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        Fra maddag d.{" "}
+                        {dayjs(favour.origin_date).format("D. MMMM YYYY")}
+                        {favour.note ? ` · ${favour.note}` : ""}
+                      </Text>
+                    </div>
+                    {favour.settled ? (
+                      <Badge color="green" variant="light">
+                        Indfriet
+                      </Badge>
+                    ) : (
+                      <Button
+                        size="xs"
+                        variant="light"
+                        color="green"
+                        leftSection={<IconCheck size={14} />}
+                        onClick={() => settleMutation.mutate(favour.id)}
+                        loading={settleMutation.isPending}
+                      >
+                        Markér som indfriet
+                      </Button>
+                    )}
+                  </Group>
+                </Paper>
+              ))}
+            </Stack>
+          )}
+        </div>
+
+        <div>
+          <Text fw={500} mb="xs">
+            Jeg skylder
+          </Text>
+          {iOwe.length === 0 ? (
+            <Text c="dimmed" size="sm">
+              Du skylder ikke nogen en tjeneste lige nu.
+            </Text>
+          ) : (
+            <Stack gap="xs">
+              {iOwe.map((favour) => (
+                <Paper key={favour.id} withBorder p="sm" radius="md">
+                  <Group justify="space-between">
+                    <div>
+                      <Text size="sm" fw={500}>
+                        Du skylder {favour.creditor.first_name}{" "}
+                        {favour.creditor.last_name} en tjeneste
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        Fra maddag d.{" "}
+                        {dayjs(favour.origin_date).format("D. MMMM YYYY")}
+                        {favour.note ? ` · ${favour.note}` : ""}
+                      </Text>
+                    </div>
+                    {favour.settled && (
+                      <Badge color="green" variant="light">
+                        Indfriet
+                      </Badge>
+                    )}
+                  </Group>
+                </Paper>
+              ))}
+            </Stack>
+          )}
+        </div>
+      </Stack>
+    </div>
+  )
+}
+
+// Broadcasts section: incoming (others want to swap) + outgoing (mine)
+
+interface BroadcastsSectionProps {
+  broadcasts: SwapBroadcast[]
+
+  myTeams: FoodTeam[]
+}
+
+function BroadcastsSection({ broadcasts, myTeams }: BroadcastsSectionProps) {
+  // Show every non-mine broadcast the backend returned. The backend already
+  // limits to broadcasts where I was a candidate or have a date overlap, so
+  // even closed ones are relevant here — that's how a candidate sees
+  // "already accepted by X" after the fact when they click their notification.
+  const incoming = broadcasts.filter((b) => !b.is_mine)
+
+  const outgoing = broadcasts.filter((b) => b.is_mine)
+
+  return (
+    <div>
+      <Group gap="xs" mb="sm">
+        <IconBroadcast size={20} />
+        <Title order={4}>Bytteanmodninger (bredt udsendt)</Title>
+      </Group>
+
+      <Stack gap="lg">
+        <div>
+          <Text fw={500} mb="xs">
+            Bytteanmodninger til dig
+          </Text>
+          {incoming.length === 0 ? (
+            <Text c="dimmed" size="sm">
+              Ingen aktuelle bytteanmodninger til dig.
+            </Text>
+          ) : (
+            <Stack gap="sm">
+              {incoming.map((broadcast) => (
+                <IncomingBroadcastCard
+                  key={broadcast.id}
+                  broadcast={broadcast}
+                  myTeams={myTeams}
+                />
+              ))}
+            </Stack>
+          )}
+        </div>
+
+        <div>
+          <Text fw={500} mb="xs">
+            Mine udsendte anmodninger
+          </Text>
+          {outgoing.length === 0 ? (
+            <Text c="dimmed" size="sm">
+              Du har ingen udsendte bytteanmodninger.
+            </Text>
+          ) : (
+            <Stack gap="sm">
+              {outgoing.map((broadcast) => (
+                <OutgoingBroadcastCard
+                  key={broadcast.id}
+                  broadcast={broadcast}
+                />
+              ))}
+            </Stack>
+          )}
+        </div>
+      </Stack>
+    </div>
+  )
+}
+
+// Incoming broadcast: pick one of my memberships on the broadcast's available dates
+
+interface IncomingBroadcastCardProps {
+  broadcast: SwapBroadcast
+
+  myTeams: FoodTeam[]
+}
+
+interface BroadcastReturnOption {
+  membershipId: number
+
+  date: string
+
+  dayName: string
+}
+
+function IncomingBroadcastCard({
+  broadcast,
+  myTeams,
+}: IncomingBroadcastCardProps) {
+  const queryClient = useQueryClient()
+
+  const [selectedMembershipId, setSelectedMembershipId] =
+    useState<string | null>(null)
+
+  // My memberships on one of the broadcast's available dates
+
+  const availableSet = new Set(broadcast.available_dates)
+
+  const returnOptions: BroadcastReturnOption[] = myTeams
+    .filter((t) => availableSet.has(t.date))
+    .map((t) => {
+      const ownMembership = t.members.find((m) => m.is_own)
+
+      return ownMembership
+        ? {
+            membershipId: ownMembership.id,
+
+            date: t.date,
+
+            dayName: t.day_name,
+          }
+        : null
+    })
+    .filter((o): o is BroadcastReturnOption => o !== null)
+
+  const acceptMutation = useMutation({
+    mutationFn: (membershipId: number) =>
+      foodApi.acceptSwapBroadcast(broadcast.id, membershipId),
+
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["food", "swap-broadcasts"] })
+
+      queryClient.invalidateQueries({ queryKey: ["food", "teams"] })
+
+      notifications.show({
+        title: "Byt accepteret",
+
+        message: "Holdbyttet er gennemført.",
+
+        color: "green",
+      })
+    },
+
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke acceptere byt.")
+    },
+  })
+
+  return (
+    <Card withBorder p="md" radius="md">
+      <Stack gap="sm">
+        <Group gap="xs">
+          <Avatar
+            src={broadcast.requester.profile_picture}
+            radius="xl"
+            size="sm"
+          >
+            {broadcast.requester.first_name[0]}
+          </Avatar>
+          <Text size="sm">
+            <Text span fw={600}>
+              {broadcast.requester.first_name}
+            </Text>{" "}
+            vil bytte sin maddag {broadcast.requester_membership.day_name}{" "}
+            {dayjs(broadcast.requester_membership.date).format("D. MMM")}
+          </Text>
+        </Group>
+
+        {broadcast.message && (
+          <Paper p="xs" bg="var(--mantine-color-default-hover)" radius="sm">
+            <Text size="sm" c="dimmed">
+              "{broadcast.message}"
+            </Text>
+          </Paper>
+        )}
+
+        <Text size="xs" c="dimmed">
+          {broadcast.requester.first_name} kan i stedet tage:{" "}
+          {broadcast.available_dates
+            .map((d) => dayjs(d).format("ddd D. MMM"))
+            .join(", ")}
+        </Text>
+
+        {broadcast.status === "accepted" ? (
+          <Alert color="gray" variant="light" p="xs">
+            Allerede accepteret
+            {broadcast.accepted_by
+              ? ` af ${broadcast.accepted_by.first_name}`
+              : ""}
+            . Du behøver ikke gøre noget.
+          </Alert>
+        ) : broadcast.status === "cancelled" ? (
+          <Alert color="gray" variant="light" p="xs">
+            Anmodningen er trukket tilbage.
+          </Alert>
+        ) : returnOptions.length === 0 ? (
+          <Alert color="yellow" variant="light" p="xs">
+            Du har ingen af dine egne maddage på de datoer, så du kan ikke bytte
+            her.
+          </Alert>
+        ) : (
+          <>
+            <Select
+              label="Vælg hvilken af dine maddage du giver i bytte"
+              placeholder="Vælg en maddag"
+              data={returnOptions.map((o) => ({
+                value: String(o.membershipId),
+
+                label: `${o.dayName}, ${dayjs(o.date).format("D. MMMM")}`,
+              }))}
+              value={selectedMembershipId}
+              onChange={setSelectedMembershipId}
+            />
+            <Group justify="flex-end">
+              <Button
+                color="green"
+                leftSection={<IconArrowsExchange size={16} />}
+                disabled={!selectedMembershipId}
+                loading={acceptMutation.isPending}
+                onClick={() =>
+                  selectedMembershipId &&
+                  acceptMutation.mutate(Number(selectedMembershipId))
+                }
+              >
+                Accepter byt
+              </Button>
+            </Group>
+          </>
+        )}
+      </Stack>
+    </Card>
+  )
+}
+
+// Outgoing broadcast (mine): show status + cancel if open
+
+interface OutgoingBroadcastCardProps {
+  broadcast: SwapBroadcast
+}
+
+function OutgoingBroadcastCard({ broadcast }: OutgoingBroadcastCardProps) {
+  const queryClient = useQueryClient()
+
+  const cancelMutation = useMutation({
+    mutationFn: () => foodApi.cancelSwapBroadcast(broadcast.id),
+
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["food", "swap-broadcasts"] })
+
+      notifications.show({
+        title: "Anmodning annulleret",
+
+        message: "Din bytteanmodning er blevet annulleret.",
+
+        color: "blue",
+      })
+    },
+
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke annullere bytteanmodning.")
+    },
+  })
+
+  const statusLabel: Record<string, string> = {
+    open: "Åben",
+
+    accepted: "Accepteret",
+
+    cancelled: "Annulleret",
+  }
+
+  const statusColor: Record<string, string> = {
+    open: "yellow",
+
+    accepted: "green",
+
+    cancelled: "gray",
+  }
+
+  return (
+    <Card withBorder p="md" radius="md">
+      <Stack gap="sm">
+        <Group justify="space-between">
+          <Text size="sm">
+            Din maddag {broadcast.requester_membership.day_name}{" "}
+            {dayjs(broadcast.requester_membership.date).format("D. MMM")}
+          </Text>
+          <Badge color={statusColor[broadcast.status] || "gray"}>
+            {statusLabel[broadcast.status] || broadcast.status}
+          </Badge>
+        </Group>
+
+        <Text size="xs" c="dimmed">
+          Du kan i stedet tage:{" "}
+          {broadcast.available_dates
+            .map((d) => dayjs(d).format("ddd D. MMM"))
+            .join(", ")}
+        </Text>
+
+        {broadcast.status === "accepted" && broadcast.accepted_by && (
+          <Text size="sm" c="dimmed">
+            Accepteret af {broadcast.accepted_by.first_name}{" "}
+            {broadcast.accepted_by.last_name}
+          </Text>
+        )}
+
+        {broadcast.status === "open" && (
+          <Group justify="flex-end">
+            <Button
+              variant="light"
+              color="gray"
+              size="sm"
+              onClick={() => cancelMutation.mutate()}
+              loading={cancelMutation.isPending}
+            >
+              Annullér
+            </Button>
+          </Group>
+        )}
+      </Stack>
+    </Card>
+  )
+}
+
+// Min profil (self-service food profile)
+
+const WEEKDAY_OPTIONS = [
+  { value: "0", label: "Mandag" },
+
+  { value: "1", label: "Tirsdag" },
+
+  { value: "2", label: "Onsdag" },
+
+  { value: "3", label: "Torsdag" },
+]
+
+function FoodProfilePanel() {
+  const queryClient = useQueryClient()
+
+  const { data: profile, isLoading } = useQuery({
+    queryKey: ["food", "profile"],
+
+    queryFn: foodApi.getMyFoodProfile,
+  })
+
+  const [comment, setComment] = useState("")
+
+  const [commentLoaded, setCommentLoaded] = useState(false)
+
+  useEffect(() => {
+    if (profile && !commentLoaded) {
+      setComment(profile.food_team_comment)
+
+      setCommentLoaded(true)
+    }
+  }, [profile, commentLoaded])
+
+  const updateMutation = useMutation({
+    mutationFn: (data: Partial<MyFoodProfile>) =>
+      foodApi.updateMyFoodProfile(data),
+
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["food", "profile"], updated)
+
+      queryClient.invalidateQueries({ queryKey: ["food", "profile"] })
+
+      notifications.show({
+        title: "Profil gemt",
+
+        message: "Din madhold-profil er blevet opdateret.",
+
+        color: "green",
+      })
+    },
+
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke gemme profil. Prøv igen.")
+    },
+  })
+
+  if (isLoading || !profile) {
+    return (
+      <Center h={200}>
+        <Loader size="lg" />
+      </Center>
+    )
+  }
+
+  const housemateSuffix = profile.housemate_name
+    ? ` (med ${profile.housemate_name})`
+    : ""
+
+  const selectedDays = profile.default_cooking_days.map((d) => String(d))
+
+  return (
+    <Stack gap="lg">
+      <Card withBorder p="lg" radius="md">
+        <Stack gap="lg">
+          <div>
+            <Title order={3}>Min madhold-profil</Title>
+            <Text c="dimmed" size="sm">
+              Disse oplysninger hjælper den madhold-ansvarlige med at
+              sammensætte holdene.
+            </Text>
+          </div>
+
+          <Switch
+            checked={profile.can_be_head_chef}
+            onChange={(e) =>
+              updateMutation.mutate({
+                can_be_head_chef: e.currentTarget.checked,
+              })
+            }
+            label="Jeg kan være chefkok"
+            description="Markér hvis du er tryg ved at have hovedansvaret for et måltid."
+          />
+
+          <Switch
+            checked={profile.prefers_cooking_with_housemate}
+            onChange={(e) =>
+              updateMutation.mutate({
+                prefers_cooking_with_housemate: e.currentTarget.checked,
+              })
+            }
+            label="Jeg vil lave mad sammen med min medbeboer"
+            description={`Sættes du på hold sammen med din medbeboer, hvis muligt.${housemateSuffix}`}
+          />
+
+          <Switch
+            checked={profile.is_over_50}
+            onChange={(e) =>
+              updateMutation.mutate({ is_over_50: e.currentTarget.checked })
+            }
+            label="Jeg er over 50"
+            description="Bruges kun til holdbalancering."
+          />
+
+          <Divider />
+
+          <Switch
+            checked={profile.is_exempt_from_food_teams}
+            onChange={(e) =>
+              updateMutation.mutate({
+                is_exempt_from_food_teams: e.currentTarget.checked,
+              })
+            }
+            label="Jeg deltager ikke i madhold for tiden"
+            description="Du bliver ikke sat på madhold, så længe dette er slået til."
+            color="red"
+          />
+
+          <Divider />
+
+          <div>
+            <Text fw={500} mb={4}>
+              Ugedage jeg typisk kan lave mad
+            </Text>
+            <Text size="sm" c="dimmed" mb="sm">
+              Bruges som standard, når du indsender ønsker.
+            </Text>
+            <Chip.Group
+              multiple
+              value={selectedDays}
+              onChange={(value) =>
+                updateMutation.mutate({
+                  default_cooking_days: (value as string[]).map((v) =>
+                    Number(v),
+                  ),
+                })
+              }
+            >
+              <Group gap="xs">
+                {WEEKDAY_OPTIONS.map((opt) => (
+                  <Chip key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </Chip>
+                ))}
+              </Group>
+            </Chip.Group>
+          </div>
+
+          <Textarea
+            label="Kommentar til madhold-ansvarlig"
+            description="Eventuelle særlige hensyn, præferencer eller begrænsninger."
+            placeholder="F.eks. jeg kan ikke løfte tunge gryder, jeg foretrækker bestemte uger..."
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            minRows={3}
+            autosize
+          />
+          <Group justify="flex-end">
+            <Button
+              onClick={() =>
+                updateMutation.mutate({ food_team_comment: comment })
+              }
+              loading={updateMutation.isPending}
+              disabled={comment === profile.food_team_comment}
+            >
+              Gem kommentar
+            </Button>
+          </Group>
+        </Stack>
+      </Card>
+    </Stack>
   )
 }

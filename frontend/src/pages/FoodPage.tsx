@@ -68,6 +68,7 @@ import {
   IconExternalLink,
   IconRefresh,
   IconDownload,
+  IconBook2,
   IconCoins,
   IconInfoCircle,
   IconAlertTriangle,
@@ -449,6 +450,14 @@ export default function FoodPage() {
           <Text c="dimmed">Ugemenu og måltidstilmelding</Text>
         </div>
         <Group>
+          <Button
+            variant="light"
+            color="green"
+            leftSection={<IconBook2 size={16} />}
+            onClick={() => navigate("/mad/opskrifter")}
+          >
+            Ugens opskrifter
+          </Button>
           <Button
             variant="light"
             leftSection={<IconSettings size={16} />}

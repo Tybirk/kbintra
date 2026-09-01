@@ -2573,6 +2573,245 @@ class TestBillingOnlyUsesRealRegistrations:
         assert house_data["total_cost"] == "0.00"
 
 
+class TestRecipeSheetParser:
+    """Unit tests for the recipe-sheet content parser (services/recipe_sheets).
+
+    ``_build_entry_from_grid`` is pure (no Drive/network), so we feed it grids
+    that mirror the real .xlsx layout: C1 dish name, F1 weekday, an ingredient
+    table in C–F under an "Ingrediens" header, and Fremgangsmåde steps merged
+    into column C.
+    """
+
+    def _service(self):
+        from apps.food.services.recipe_sheets import RecipeSheetService
+
+        return RecipeSheetService()
+
+    def _pasta_grid(self):
+        # Columns A..F (1-indexed). None marks an empty cell.
+        return [
+            ("Basis Alle", None, "Pasta", None, None, "Tirsdag"),  # 1
+            ("Til (voksne)", None, "K/F", "Veg", "Vegansk", "Børn"),  # 2
+            (120, 120, 0, 86, 0, 52),  # 3
+            (None, None, "Mål", None, "Ingrediens", "Kommentar"),  # 4
+            (9.0, 7.714, 7.2, "kg", "pasta", None),  # 5
+            (None, None, None, None, "vand", None),  # 6
+            (None, None, None, "spsk", "salt", "10 g salt pr L vand"),  # 7
+            (None, None, None, None, None, None),  # 8 (blank)
+            (None, None, "Fremgangsmåde", None, None, None),  # 9
+            (None, None, "1. Kog pasta i ovnen", None, None, None),  # 10
+            (None, None, "2. Hæld vandet fra", None, None, None),  # 11
+            (None, None, None, None, None, None),  # 12 (merged continuation)
+        ]
+
+    def test_parses_name_weekday_ingredients_steps(self):
+        entry = self._service()._build_entry_from_grid("Ti1", self._pasta_grid(), url="")
+        assert entry is not None
+        assert entry["code"] == "Ti1"
+        assert entry["day"] == 1  # Tirsdag
+        assert entry["index"] == 1
+        assert entry["name"] == "Pasta"
+        assert entry["weekday"] == "Tirsdag"
+        assert entry["ingredients"] == [
+            {"amount": "7.2", "unit": "kg", "name": "pasta", "comment": ""},
+            {"amount": "", "unit": "", "name": "vand", "comment": ""},
+            {"amount": "", "unit": "spsk", "name": "salt", "comment": "10 g salt pr L vand"},
+        ]
+        assert entry["steps"] == ["1. Kog pasta i ovnen", "2. Hæld vandet fra"]
+
+    def test_non_recipe_title_returns_none(self):
+        entry = self._service()._build_entry_from_grid("Indkøbsliste", self._pasta_grid(), url="")
+        assert entry is None
+
+    def test_weekday_derived_from_code_not_f1(self):
+        # F1 says "Onsdag" (a stale copy-paste) but the To3 code means Torsdag.
+        grid = list(self._pasta_grid())
+        grid[0] = ("Basis Alle", None, "Koldhævet brød", None, None, "Onsdag")
+        entry = self._service()._build_entry_from_grid("To3", grid, url="")
+        assert entry is not None
+        assert entry["day"] == 3
+        assert entry["weekday"] == "Torsdag"
+
+    def test_amount_column_falls_back_to_b_when_c_empty(self):
+        # The "Ris" case: quantities only in column B, C is empty.
+        grid = [
+            ("Basis Alle", None, "Ris", None, None, "Mandag"),
+            ("Til (voksne)", None, "K/F", "Veg", "Vegansk", "Børn"),
+            (120, 120, 0, 86, 0, 52),
+            (None, None, "Mål", None, "Ingrediens", "Kommentar"),
+            (9.6, 9.6, None, "kg", "parboiled ris", None),
+            (14.5, 14.5, None, "L", "vand", None),
+            (None, None, "Fremgangsmåde", None, None, None),
+            (None, None, "1. Skyl risene", None, None, None),
+        ]
+        entry = self._service()._build_entry_from_grid("Ma2", grid, url="")
+        assert entry is not None
+        assert [i["amount"] for i in entry["ingredients"]] == ["9.6", "14.5"]
+
+    def test_carries_current_schema_version(self):
+        from apps.food.services.recipe_sheets import CACHE_SCHEMA_VERSION
+
+        entry = self._service()._build_entry_from_grid("Ma1", self._pasta_grid(), url="")
+        assert entry is not None
+        assert entry["_v"] == CACHE_SCHEMA_VERSION
+
+
+class TestWeekRecipesView:
+    """Tests for the standalone "Ugens opskrifter" endpoint."""
+
+    def test_returns_cached_week_recipes_grouped_payload(self, authenticated_client, db):
+        from apps.food.services.recipe_sheets import CACHE_SCHEMA_VERSION
+
+        today = timezone.now().date()
+        week_number = today.isocalendar()[1]
+        year = today.isocalendar()[0]
+
+        # Pre-populate the cache so the view serves it without any Drive call.
+        DriveMenuCache.objects.create(
+            week_number=week_number,
+            year=year,
+            drive_folder_id="folder123",
+            recipe_file_id="file456",
+            recipe_sheets=[
+                {
+                    "code": "Ti1",
+                    "day": 1,
+                    "index": 1,
+                    "name": "Pasta",
+                    "weekday": "Tirsdag",
+                    "url": "",
+                    "ingredients": [{"amount": "9", "unit": "kg", "name": "pasta", "comment": ""}],
+                    "steps": ["1. Kog pasta"],
+                    "_v": CACHE_SCHEMA_VERSION,
+                },
+                {
+                    "code": "Ma1",
+                    "day": 0,
+                    "index": 1,
+                    "name": "Nudler",
+                    "weekday": "Mandag",
+                    "url": "",
+                    "ingredients": [],
+                    "steps": ["1. Kog nudler"],
+                    "_v": CACHE_SCHEMA_VERSION,
+                },
+            ],
+        )
+
+        url = reverse("food:recipes-week")
+        response = authenticated_client.get(url)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["week_number"] == week_number
+        assert data["year"] == year
+        assert "drive.google.com/drive/folders/folder123" in data["recipe_folder_url"]
+        assert "file456" in data["recipe_file_url"]
+        # Sorted by (day, index): Monday before Tuesday.
+        assert [r["name"] for r in data["recipes"]] == ["Nudler", "Pasta"]
+        assert data["recipes"][1]["ingredients"][0]["name"] == "pasta"
+
+    def test_no_cache_returns_empty_recipes(self, authenticated_client, db):
+        url = reverse("food:recipes-week")
+        response = authenticated_client.get(url, {"week": 2, "year": 2099})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["week_number"] == 2
+        assert data["year"] == 2099
+        assert data["recipes"] == []
+
+    def test_requires_authentication(self, api_client, db):
+        url = reverse("food:recipes-week")
+        response = api_client.get(url)
+        assert response.status_code in (401, 403)
+
+
+class TestFrontPageParser:
+    """Unit tests for the per-day 'Dagens forside' .docx parser."""
+
+    def _build_doc(self):
+        from docx import Document
+        from docx.enum.text import WD_BREAK
+
+        doc = Document()
+        # Overview page: lists multiple weekdays -> must be skipped.
+        doc.add_paragraph("Uge test")
+        doc.add_paragraph("Mandag")
+        doc.add_paragraph("Tirsdag")
+        doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
+        # Mandag detail page.
+        doc.add_paragraph("Mandag")
+        doc.add_paragraph("Ret M")  # first content line -> title
+        doc.add_paragraph("Tilbehør")  # known section label -> heading
+        doc.add_paragraph("Ris og brød")
+        doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
+        # Tirsdag detail page.
+        doc.add_paragraph("Tirsdag")
+        doc.add_paragraph("Ret T")
+        doc.add_paragraph("Ved servering")  # known section label -> heading
+        doc.add_paragraph("På fad")
+        return doc
+
+    def test_extracts_per_day_sections(self):
+        from apps.food.services.drive_menu import FRONT_PAGE_SCHEMA_VERSION, DriveMenuService
+
+        pages = DriveMenuService()._parse_front_pages(self._build_doc())
+        assert [p["day"] for p in pages] == [0, 1]
+
+        mon = pages[0]
+        assert mon["weekday"] == "Mandag"
+        assert mon["title"] == "Ret M"
+        assert mon["blocks"] == [
+            {"text": "Tilbehør", "heading": True},
+            {"text": "Ris og brød", "heading": False},
+        ]
+        assert mon["_v"] == FRONT_PAGE_SCHEMA_VERSION
+
+        tue = pages[1]
+        assert tue["title"] == "Ret T"
+        assert tue["blocks"][0] == {"text": "Ved servering", "heading": True}
+
+    def test_overview_only_doc_yields_nothing(self):
+        from docx import Document
+
+        from apps.food.services.drive_menu import DriveMenuService
+
+        doc = Document()
+        doc.add_paragraph("Uge test")
+        doc.add_paragraph("Mandag")
+        doc.add_paragraph("Tirsdag")
+        doc.add_paragraph("Onsdag")
+        doc.add_paragraph("Torsdag")
+        assert DriveMenuService()._parse_front_pages(doc) == []
+
+
+class TestWeekRecipesFrontPages:
+    """The week endpoint surfaces cached per-day front pages."""
+
+    def test_week_endpoint_returns_cached_front_pages(self, authenticated_client, db):
+        from apps.food.services.drive_menu import FRONT_PAGE_SCHEMA_VERSION
+
+        DriveMenuCache.objects.create(
+            week_number=11,
+            year=2099,
+            daily_front_pages=[
+                {
+                    "day": 1,
+                    "weekday": "Tirsdag",
+                    "title": "Green curry",
+                    "blocks": [{"text": "Tilbehør", "heading": True}],
+                    "_v": FRONT_PAGE_SCHEMA_VERSION,
+                }
+            ],
+        )
+        url = reverse("food:recipes-week")
+        response = authenticated_client.get(url, {"week": 11, "year": 2099})
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["front_pages"]) == 1
+        assert data["front_pages"][0]["title"] == "Green curry"
+        assert data["front_pages"][0]["blocks"][0]["heading"] is True
+
+
 # =============================================================================
 # import_madtilmeldinger: opt-out handling
 # =============================================================================

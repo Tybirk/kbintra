@@ -16,6 +16,8 @@ from .models import (
     MealPreference,
     MealPrice,
     MealRegistration,
+    SwapBroadcast,
+    TeamFavour,
     TeamSwapRequest,
 )
 
@@ -112,6 +114,23 @@ class TeamSwapRequestAdmin(admin.ModelAdmin):
     list_filter = ["status"]
     search_fields = ["requester__email", "message"]
     raw_id_fields = ["requester", "requester_membership", "target_membership"]
+
+
+@admin.register(TeamFavour)
+class TeamFavourAdmin(admin.ModelAdmin):
+    list_display = ["creditor", "debtor", "origin_date", "settled", "created_at"]
+    list_filter = ["settled", "cycle"]
+    search_fields = ["creditor__first_name", "debtor__first_name"]
+    raw_id_fields = ["creditor", "debtor", "cycle"]
+    date_hierarchy = "origin_date"
+
+
+@admin.register(SwapBroadcast)
+class SwapBroadcastAdmin(admin.ModelAdmin):
+    list_display = ["requester", "status", "created_at"]
+    list_filter = ["status"]
+    search_fields = ["requester__first_name", "message"]
+    raw_id_fields = ["requester", "requester_membership", "accepted_by", "accepted_membership"]
 
 
 @admin.register(ClosedFoodDay)

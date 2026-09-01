@@ -54,21 +54,64 @@ The admin cost endpoint materializes any missing registrations first, then calcu
 
 Teams are planned in explicit `FoodTeamCycle` periods with status flow: `COLLECTING_WISHES` -> `GENERATING` -> `FINALIZED` -> `ARCHIVED`. Cannot regenerate once finalized without deleting teams first.
 
+### Undoing a finalized cycle
+
+`GET/POST cycles/<id>/reset-teams/` (food-admin) is the in-app escape from a plan the admin dislikes: POST deletes the cycle's teams in one transaction and sets it back to `COLLECTING_WISHES` so generation runs again; GET previews the same counts without touching anything (the confirmation modal needs them). **Refused once any cooking date has passed** — people have cooked by then, and deleting the teams would erase that history. Deleting `FoodTeam` cascades to `FoodTeamMember` -> `TeamSwapRequest` + `SwapBroadcast`; `TeamFavour` does *not* cascade (it only holds `cycle` SET_NULL + a bare `origin_date`), so this cycle's favours are deleted explicitly. Wishes and the cycle row itself survive.
+
+### Next-cycle planning (create form defaults)
+
+`services/cycle_planning.py` centralises "what should the next period look like": **eligible cooks** = active users with `is_exempt_from_food_teams=False` (children aren't users); **suggested cooking days** = `eligible // 6` (teams target 6 and never go below it — leftovers overflow to 7 rather than opening a half-staffed day, so 89 cooks means 14 days, not 15); **dates** = the next Mon–Thu days skipping `ClosedFoodDay`s, continuing after the latest existing cycle so periods don't overlap. `GET cycles/suggested/` (food-admin) returns `{eligible_count, suggested_day_count, name, cooking_dates, wish_deadline}` and the "Opret periode" modal auto-prefills (editable) from it. The seeder reuses the same helpers. Initial resident flags were seeded from the cooking team's roster in `users/migrations/0012_seed_food_team_flags.py`.
+
+### Too few cooks shortens the period, it never thins the teams
+
+The pool moves between cycle creation and generation — people set `is_unavailable` on their wish, or get exempted, after the admin picked the dates. So `TeamGenerator._trim_dates_to_capacity()` re-applies the `eligible // 6` rule at generation time and **drops dates from the end** until every remaining team can be full (overflowing to 7). Dropped dates are *not* closed food days and need no admin action: `cycle_planning.suggested_start_date()` starts the next period the day after this cycle's last cooking date, so the leftovers are simply the first dates of the next cycle. `save_teams()` therefore writes the trimmed list back to `cycle.cooking_dates` — without that the next cycle would skip past them.
+
+Anyone whose wish covered *only* dropped dates is stood down for this cycle rather than forced onto a day they said they couldn't do; they're named in a warning and are first in line next period. The dropped dates come back in `TeamGenerationResult.dropped_dates` and the admin sees them in the result modal.
+
 ### Wish-based allocation
 
-Users declare which dates they're available to cook. If a user submits no wish, they default to available for ALL dates (fairness). The generator in `services/team_generator.py` assigns people to teams respecting constraints.
+Users declare which dates they're available to cook. If a user submits no wish, they default to available for ALL dates (fairness). A wish with `is_unavailable=True` opts the user out of *that cycle* entirely (distinct from the permanent `is_exempt_from_food_teams`). The generator in `services/team_generator.py` assigns people to teams respecting constraints.
+
+### Generator algorithm (ported from the `~/Desktop/madhold` CLI)
+
+`services/team_generator.py` is a faithful port of the standalone scheduler. Key points:
+- **Unit-based**: couples (two housemates both flagged `prefers_cooking_with_housemate`, scheduled on the *intersection* of their wishes) and singles go through one ordering — fewest options, then head-chefs first, then over-50 first — placing each on the least-filled valid date. This beats "couples first".
+- Repair pipeline: swap-repair for unplaced people, overflow (team_size+1), then rebalance passes for over-50 and head-chefs.
+- **Auto-escalation**: if anyone is unplaced, the whole assignment restarts with `max_old_per_day += 1` up to a ceiling (4). Tunable via class constants (`TEAM_SIZE`, `OVERFLOW`, `MAX_OLD_PER_DAY_START/CEILING`, `MAX_HEADCHEFS_PER_DAY`, `REBALANCE_ITERATIONS`).
+- **Refuses rather than quietly compromises.** A couple we can't honour (only one
+  housemate flagged, or no date they can both cook) raises `SchedulingError`, and so
+  does a final plan whose short teams could still be filled from the surplus — the
+  message names the person and date, nothing is saved, and the cycle stays in
+  `COLLECTING_WISHES`. Teams that are short because too few people signed up are an
+  input problem and only warn. Pass `allow_couples_without_common_dates=True` to
+  schedule an un-pairable couple singly instead.
+- **`balance_team_sizes()`** evens a 7/5 split into 6/6 after placement. A 1-for-1
+  switch can't fix that (it preserves both sizes), so it searches for a *chain* of
+  wished-for moves (up to `MAX_MOVE_CHAIN`) ending on an under-full date; only the
+  two ends change size. Couples are placed as a pair and are never moved singly.
 
 ### Team constraints
 
-- Target 6 members per team
-- Max 2 over-50 members per team
+- Target 6 members per team (overflow to 7)
+- Max 2 over-50 members per team (auto-escalates if needed)
 - At least 1 head chef per team (max 3)
 - No same-house members unless `prefers_cooking_with_housemate`
-- People with fewest available dates assigned first
 
-### Atomic swaps
+### Switching shifts (three mechanisms)
 
-`TeamSwapRequest`: accepting a swap atomically swaps both users' memberships and cancels all other pending requests involving either membership.
+1. **Bytte (1:1 swap)** — `TeamSwapRequest`: accepting atomically swaps both memberships and cancels other pending requests involving either membership.
+2. **Overtag (takeover/favour)** — `POST teams/takeover/` reassigns a membership to the requester and records a `TeamFavour(creditor, debtor)` honour-system ledger ("you owe me one"). See `favours/` + `favours/<id>/settle/`.
+3. **Broadcast bytteanmodning** — `SwapBroadcast`: the requester offers to take any of several dates; candidates (who indicated availability for the offered date via wish or `default_cooking_days`, and currently cook one of the requester's dates) are notified. First to accept performs an atomic swap. NOTE: JSONField `__contains`/`__overlap` lookups are unsupported on SQLite, so candidate matching filters in Python.
+
+### Self-service & test tooling
+
+- `my-food-profile/` (GET/PATCH) lets users set their own `can_be_head_chef`, `prefers_cooking_with_housemate`, `is_over_50`, `is_exempt_from_food_teams`, `default_cooking_days`, `food_team_comment`. Admins use `admin/roster/` to configure others.
+- `python manage.py seed_food_teams_test` builds a 16-day cycle, optionally configures flags (`--headchef-pct`, `--couples`, etc.), simulates wishes (`--wish-pct 70`), and `--generate`s. Dev only.
+
+### Today action box & team notifications
+
+- `teams/today/` returns whether you're on today's team, the members, the recipe-folder URL, and per-dish recipe links (parsed from the week folder's spreadsheet — sheets `Ma1/Ti2/…`, dish name from cell C1 since cols A/B are hidden ingredient columns; see `services/recipe_sheets.py`).
+- `teams/<id>/notify-takeaway/` and `teams/<id>/notify-leftovers/` (image upload supported) broadcast to the community, gated by the new notification preferences. A day-before reminder fires via a 20:00 periodic Huey task.
 
 ## Menus come from Google Drive
 
