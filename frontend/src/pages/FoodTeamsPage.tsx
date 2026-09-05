@@ -77,14 +77,13 @@ import type {
   FoodTeam,
   FoodTeamListItem,
   TeamSwapRequest,
-  FoodTeamMember,
   FoodTeamCycle,
   TeamGenerationResult,
   FoodRosterEntry,
   TeamFavour,
   SwapBroadcast,
   MyFoodProfile,
-  TeamMemberPreview,
+  HousemateTeamListItem,
   CycleResetPreview,
 } from "../types"
 
@@ -301,10 +300,9 @@ export default function FoodTeamsPage() {
                     currentUserId={user?.id}
                   />
                 ) : (
-                  <AllTeamCard
+                  <HouseholdTeamCard
                     key={`husstand-${day.team.id}`}
                     team={day.team}
-                    membersPreview={day.team.members_preview}
                   />
                 ),
               )}
@@ -422,45 +420,53 @@ export default function FoodTeamsPage() {
 
 // Wish Submission Panel
 
-/** One name on a team card's always-visible member line. */
-interface TeamNameEntry {
+/** One cook on a team card's always-visible member row. */
+interface TeamCookEntry {
   key: string
 
   name: string
 
   houseNumber: string
 
-  /** Someone from your own house (you included) — printed in bold. */
+  avatarUrl: string | null
+
+  /** Someone from your own house (you included) — set in bold. */
   isHousehold: boolean
+
+  isOwn: boolean
 }
 
-interface TeamNamesLineProps {
-  members: TeamNameEntry[]
+interface TeamCooksProps {
+  cooks: TeamCookEntry[]
 }
 
 /**
- * The whole team on one line, so a card never has to be expanded to see who is
- * cooking. Your own house is set in bold: on your own day that is you (and your
- * partner if you cook together), and on a day only your household cooks it is
- * the name that explains why the day is on your list at all.
+ * The whole team as faces with names, wrapped onto as many lines as it takes.
+ * A card never has to be opened to see who is cooking — that is the only thing
+ * anyone wanted from the old fold-out. Your own house is set in bold: on your
+ * own day that is you (and your partner if you cook together), and on a day
+ * only your household cooks it is the name that explains why the day is listed.
  */
-function TeamNamesLine({ members }: TeamNamesLineProps) {
+function TeamCooks({ cooks }: TeamCooksProps) {
   return (
-    <Text size="sm" c="dimmed">
-      {members.map((member, index) => (
-        <Text
-          key={member.key}
-          span
-          inherit
-          fw={member.isHousehold ? 700 : undefined}
-          c={member.isHousehold ? "var(--mantine-color-text)" : undefined}
-        >
-          {index > 0 && ", "}
-          {member.name}
-          {member.houseNumber && ` (${member.houseNumber})`}
-        </Text>
+    <Group gap="sm" wrap="wrap">
+      {cooks.map((cook) => (
+        <Group key={cook.key} gap={6} wrap="nowrap">
+          <Avatar src={cook.avatarUrl} radius="xl" size="sm">
+            {cook.name[0]}
+          </Avatar>
+          <Text size="sm" fw={cook.isHousehold ? 600 : 400}>
+            {cook.isOwn ? "Dig" : cook.name}
+            {cook.houseNumber && (
+              <Text span size="xs" c="dimmed">
+                {" "}
+                ({cook.houseNumber})
+              </Text>
+            )}
+          </Text>
+        </Group>
       ))}
-    </Text>
+    </Group>
   )
 }
 
@@ -1764,8 +1770,6 @@ function MyTeamCard({
 
   currentUserId,
 }: MyTeamCardProps) {
-  const [expanded, setExpanded] = useState(false)
-
   const [swapModalOpened, { open: openSwapModal, close: closeSwapModal }] =
     useDisclosure(false)
 
@@ -1976,14 +1980,18 @@ function MyTeamCard({
   // carries my house number, and a housemate's is the same one.
   const myHouseNumber = team.members.find((m) => m.is_own)?.house_number ?? ""
 
-  const teamNames = team.members.map((member) => ({
+  const cooks = team.members.map((member) => ({
     key: String(member.id),
 
     name: member.user.first_name,
 
     houseNumber: member.house_number,
 
+    avatarUrl: member.user.profile_picture,
+
     isHousehold: !!myHouseNumber && member.house_number === myHouseNumber,
+
+    isOwn: member.is_own,
   }))
 
   return (
@@ -1994,16 +2002,12 @@ function MyTeamCard({
         radius="md"
         bg={isPast ? "var(--mantine-color-default-hover)" : undefined}
       >
-        <Group justify="space-between" mb="xs">
-          <Group>
-            <div>
-              <Text fw={600} size="lg">
-                {team.day_name}, {dayjs(team.date).format("D. MMMM YYYY")}
-              </Text>
-              <TeamNamesLine members={teamNames} />
-            </div>
-          </Group>
-          <Group gap="xs">
+        {/* wrap, not nowrap: on a phone the two bytte-buttons drop under the date */}
+        <Group justify="space-between" mb="sm" align="flex-start">
+          <Text fw={600} size="lg">
+            {team.day_name}, {dayjs(team.date).format("D. MMMM YYYY")}
+          </Text>
+          <Group gap="xs" justify="flex-end">
             {isPast ? (
               <Badge color="gray">Overstået</Badge>
             ) : (
@@ -2030,37 +2034,7 @@ function MyTeamCard({
           </Group>
         </Group>
 
-        <Group
-          gap="xs"
-          style={{ cursor: "pointer" }}
-          onClick={() => setExpanded(!expanded)}
-          mb={expanded ? "sm" : 0}
-        >
-          <Text size="sm" fw={500}>
-            Holdmedlemmer
-          </Text>
-          <ActionIcon variant="subtle" size="xs">
-            {expanded ? (
-              <IconChevronUp size={14} />
-            ) : (
-              <IconChevronDown size={14} />
-            )}
-          </ActionIcon>
-        </Group>
-
-        <Collapse expanded={expanded}>
-          <Stack gap="xs">
-            {team.members.map((member) => (
-              <TeamMemberRow
-                key={member.id}
-                member={member}
-                isHousehold={
-                  !!myHouseNumber && member.house_number === myHouseNumber
-                }
-              />
-            ))}
-          </Stack>
-        </Collapse>
+        <TeamCooks cooks={cooks} />
       </Card>
 
       {/* Swap Request Modal */}
@@ -2276,28 +2250,55 @@ function MyTeamCard({
   )
 }
 
+interface HouseholdTeamCardProps {
+  team: HousemateTeamListItem
+}
+
+/**
+ * A day the rest of your house cooks and you don't. The same card as your own
+ * days, minus the bytte-buttons that are not yours to press — the name in bold
+ * is what says whose day it is.
+ */
+function HouseholdTeamCard({ team }: HouseholdTeamCardProps) {
+  const isPast = dayjs(team.date).isBefore(dayjs(), "day")
+
+  const cooks = team.members_preview.map((member) => ({
+    key: String(member.user_id),
+
+    name: member.first_name,
+
+    houseNumber: member.house_number,
+
+    avatarUrl: member.profile_picture,
+
+    isHousehold: member.is_housemate,
+
+    isOwn: false,
+  }))
+
+  return (
+    <Card
+      withBorder
+      p="md"
+      radius="md"
+      bg={isPast ? "var(--mantine-color-default-hover)" : undefined}
+    >
+      <Text fw={600} size="lg" mb="sm">
+        {team.day_name}, {dayjs(team.date).format("D. MMMM YYYY")}
+      </Text>
+      <TeamCooks cooks={cooks} />
+    </Card>
+  )
+}
+
 // All Teams Card (compact view)
 
 interface AllTeamCardProps {
   team: FoodTeamListItem
-
-  /**
-   * The members one by one, instead of the flat `members_display` line. Set for
-   * a household day under Mine hold, where the resident from your own house is
-   * printed in bold — folded and open alike, since that name is the whole
-   * reason the day is on your list.
-   */
-  membersPreview?: TeamMemberPreview[]
 }
 
-function AllTeamCard({ team, membersPreview }: AllTeamCardProps) {
+function AllTeamCard({ team }: AllTeamCardProps) {
   const [expanded, setExpanded] = useState(false)
-
-  const housemateIds = new Set(
-    (membersPreview ?? [])
-      .filter((member) => member.is_housemate)
-      .map((member) => member.user_id),
-  )
 
   const isPast = dayjs(team.date).isBefore(dayjs(), "day")
 
@@ -2340,23 +2341,9 @@ function AllTeamCard({ team, membersPreview }: AllTeamCardProps) {
               </Badge>
             )}
           </Group>
-          {membersPreview ? (
-            <TeamNamesLine
-              members={membersPreview.map((member) => ({
-                key: String(member.user_id),
-
-                name: member.first_name,
-
-                houseNumber: member.house_number,
-
-                isHousehold: member.is_housemate,
-              }))}
-            />
-          ) : (
-            <Text size="sm" c="dimmed">
-              {team.members_display}
-            </Text>
-          )}
+          <Text size="sm" c="dimmed">
+            {team.members_display}
+          </Text>
         </div>
         <Group gap="xs">
           <Badge variant="light">{team.member_count} medlemmer</Badge>
@@ -2389,14 +2376,7 @@ function AllTeamCard({ team, membersPreview }: AllTeamCardProps) {
                     {member.user.first_name[0]}
                   </Avatar>
                   <div>
-                    <Text
-                      size="sm"
-                      fw={
-                        member.is_own || housemateIds.has(member.user.id)
-                          ? 600
-                          : 400
-                      }
-                    >
+                    <Text size="sm" fw={member.is_own ? 600 : 400}>
                       {member.user.first_name} {member.user.last_name}
                       {member.is_own && " (Dig)"}
                     </Text>
@@ -2619,34 +2599,6 @@ function TakeoverShiftButton({
 }
 
 // Team Member Row
-
-interface TeamMemberRowProps {
-  member: FoodTeamMember
-
-  /** From your own house — bold here as well as on the folded card. */
-  isHousehold?: boolean
-}
-
-function TeamMemberRow({ member, isHousehold }: TeamMemberRowProps) {
-  return (
-    <Group gap="sm">
-      <Avatar src={member.user.profile_picture} radius="xl" size="sm">
-        {member.user.first_name[0]}
-      </Avatar>
-      <div>
-        <Text size="sm" fw={member.is_own || isHousehold ? 600 : 400}>
-          {member.user.first_name} {member.user.last_name}
-          {member.is_own && " (Dig)"}
-        </Text>
-        {member.house_number && (
-          <Text size="xs" c="dimmed">
-            Hus {member.house_number}
-          </Text>
-        )}
-      </div>
-    </Group>
-  )
-}
 
 // Swap Request Card
 

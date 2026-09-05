@@ -71,6 +71,7 @@ class TestHouseholdTeams:
                 "user_id": bo.id,
                 "first_name": "Bo",
                 "house_number": "1",
+                "profile_picture": None,
                 "is_housemate": True,
             }
         ]

@@ -554,6 +554,7 @@ class HousemateTeamSerializer(FoodTeamListSerializer):
                 "user_id": m.user_id,
                 "first_name": m.user.first_name,
                 "house_number": m.house_number,
+                "profile_picture": m.user.avatar_url,
                 "is_housemate": m.user_id in housemate_ids,
             }
             for m in obj.members.all()

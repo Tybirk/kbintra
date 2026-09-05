@@ -136,7 +136,7 @@ The old `User.food_team_comment` was removed: it was labelled "til madhold-ansva
 ### The household, not just the cook
 
 A shift is a household's evening, so both halves of it are told about it:
-- `teams/housemates/` lists the *upcoming* teams the other residents of your house cook on, with `members_preview` (every member, the household ones flagged). Days you cook together are left out — "Mine hold" already shows those, with both names on the card. The page merges these into the Mine hold list by date rather than heading a second list: the card prints every name unexpanded, and the resident from your own house in bold, which is what says why the day is there.
+- `teams/housemates/` lists the *upcoming* teams the other residents of your house cook on, with `members_preview` (every member — name, house number, avatar — the household ones flagged). Days you cook together are left out — "Mine hold" already shows those, with both names on the card. The page merges these into the Mine hold list by date rather than heading a second list. Every card there prints the whole team as faces with names, no fold-out (it only ever held the same names), and the residents of your own house in bold — that is what says whose day it is.
 - The 20:00 reminder task notifies each cook and then the rest of each cook's house (`notify_food_team_housemate_reminder`, "Anna har madhold i morgen"). It reuses `FOOD_TEAM_REMINDER`, so one preference governs both, and it skips housemates who are on the team themselves — nobody gets two reminders for one evening.
 
 "Household" is the house (`utils.housemates_of`); that is the only grouping the app has, and what "min medbeboer" already meant here.

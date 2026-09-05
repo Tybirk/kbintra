@@ -1923,6 +1923,8 @@ export interface TeamMemberPreview {
 
   house_number: string
 
+  profile_picture: string | null
+
   /** Someone from your own house — the reason this day is on your list. */
   is_housemate: boolean
 }
