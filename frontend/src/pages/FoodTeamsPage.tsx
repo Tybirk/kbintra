@@ -422,6 +422,48 @@ export default function FoodTeamsPage() {
 
 // Wish Submission Panel
 
+/** One name on a team card's always-visible member line. */
+interface TeamNameEntry {
+  key: string
+
+  name: string
+
+  houseNumber: string
+
+  /** Someone from your own house (you included) — printed in bold. */
+  isHousehold: boolean
+}
+
+interface TeamNamesLineProps {
+  members: TeamNameEntry[]
+}
+
+/**
+ * The whole team on one line, so a card never has to be expanded to see who is
+ * cooking. Your own house is set in bold: on your own day that is you (and your
+ * partner if you cook together), and on a day only your household cooks it is
+ * the name that explains why the day is on your list at all.
+ */
+function TeamNamesLine({ members }: TeamNamesLineProps) {
+  return (
+    <Text size="sm" c="dimmed">
+      {members.map((member, index) => (
+        <Text
+          key={member.key}
+          span
+          inherit
+          fw={member.isHousehold ? 700 : undefined}
+          c={member.isHousehold ? "var(--mantine-color-text)" : undefined}
+        >
+          {index > 0 && ", "}
+          {member.name}
+          {member.houseNumber && ` (${member.houseNumber})`}
+        </Text>
+      ))}
+    </Text>
+  )
+}
+
 interface WishSubmissionPanelProps {
   cycle: FoodTeamCycle
 }
@@ -1930,6 +1972,20 @@ function MyTeamCard({
 
   const isPast = dayjs(team.date).isBefore(dayjs(), "day")
 
+  // Bold = my own house. Nobody has to tell us who that is: my own membership
+  // carries my house number, and a housemate's is the same one.
+  const myHouseNumber = team.members.find((m) => m.is_own)?.house_number ?? ""
+
+  const teamNames = team.members.map((member) => ({
+    key: String(member.id),
+
+    name: member.user.first_name,
+
+    houseNumber: member.house_number,
+
+    isHousehold: !!myHouseNumber && member.house_number === myHouseNumber,
+  }))
+
   return (
     <>
       <Card
@@ -1944,9 +2000,7 @@ function MyTeamCard({
               <Text fw={600} size="lg">
                 {team.day_name}, {dayjs(team.date).format("D. MMMM YYYY")}
               </Text>
-              <Text size="sm" c="dimmed">
-                {team.member_count} holdmedlemmer
-              </Text>
+              <TeamNamesLine members={teamNames} />
             </div>
           </Group>
           <Group gap="xs">
@@ -1997,7 +2051,13 @@ function MyTeamCard({
         <Collapse expanded={expanded}>
           <Stack gap="xs">
             {team.members.map((member) => (
-              <TeamMemberRow key={member.id} member={member} />
+              <TeamMemberRow
+                key={member.id}
+                member={member}
+                isHousehold={
+                  !!myHouseNumber && member.house_number === myHouseNumber
+                }
+              />
             ))}
           </Stack>
         </Collapse>
@@ -2280,27 +2340,23 @@ function AllTeamCard({ team, membersPreview }: AllTeamCardProps) {
               </Badge>
             )}
           </Group>
-          <Text size="sm" c="dimmed">
-            {membersPreview
-              ? membersPreview.map((member, index) => (
-                  <Text
-                    key={member.user_id}
-                    span
-                    inherit
-                    fw={member.is_housemate ? 700 : undefined}
-                    c={
-                      member.is_housemate
-                        ? "var(--mantine-color-text)"
-                        : undefined
-                    }
-                  >
-                    {index > 0 && ", "}
-                    {member.first_name}
-                    {member.house_number && ` (${member.house_number})`}
-                  </Text>
-                ))
-              : team.members_display}
-          </Text>
+          {membersPreview ? (
+            <TeamNamesLine
+              members={membersPreview.map((member) => ({
+                key: String(member.user_id),
+
+                name: member.first_name,
+
+                houseNumber: member.house_number,
+
+                isHousehold: member.is_housemate,
+              }))}
+            />
+          ) : (
+            <Text size="sm" c="dimmed">
+              {team.members_display}
+            </Text>
+          )}
         </div>
         <Group gap="xs">
           <Badge variant="light">{team.member_count} medlemmer</Badge>
@@ -2566,16 +2622,19 @@ function TakeoverShiftButton({
 
 interface TeamMemberRowProps {
   member: FoodTeamMember
+
+  /** From your own house — bold here as well as on the folded card. */
+  isHousehold?: boolean
 }
 
-function TeamMemberRow({ member }: TeamMemberRowProps) {
+function TeamMemberRow({ member, isHousehold }: TeamMemberRowProps) {
   return (
     <Group gap="sm">
       <Avatar src={member.user.profile_picture} radius="xl" size="sm">
         {member.user.first_name[0]}
       </Avatar>
       <div>
-        <Text size="sm" fw={member.is_own ? 600 : 400}>
+        <Text size="sm" fw={member.is_own || isHousehold ? 600 : 400}>
           {member.user.first_name} {member.user.last_name}
           {member.is_own && " (Dig)"}
         </Text>
