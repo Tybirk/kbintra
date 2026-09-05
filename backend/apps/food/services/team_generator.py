@@ -14,6 +14,9 @@ Algorithm constraints:
 - At most ``MAX_HEADCHEFS_PER_DAY`` head chefs per team; rebalancing tries to give
   every team at least one head chef.
 - People with the fewest available dates are assigned first.
+- Without a usable wish, someone is available on the weekdays they set as
+  ``default_cooking_days`` on their profile — and only on every date if they
+  have set none.
 
 Couples are modelled as two-member "units" scheduled on the intersection of both
 partners' available dates; everyone else is a one-member unit.
@@ -162,8 +165,12 @@ class TeamGenerator:
 
             house_number = house_number_for(user.house)
 
-            # Available dates come from the wish (filtered to cooking dates); if
-            # the user submitted no wish, they default to ALL cooking dates.
+            # Available dates come from the wish (filtered to cooking dates).
+            # Without a usable wish we fall back to the weekdays the person set
+            # as "ugedage jeg typisk kan lave mad" on their profile — a standing
+            # answer to the same question, and the one they would have ticked
+            # anyway. Only someone who has said nothing at all counts as
+            # available on every date.
             available_dates: list[date] = []
             if wish is not None:
                 available_dates = [
@@ -171,6 +178,9 @@ class TeamGenerator:
                     for d in wish.available_dates
                     if (parsed := date.fromisoformat(d)) in self.cooking_dates_set
                 ]
+            if not available_dates:
+                default_days = {int(d) for d in user.default_cooking_days or []}
+                available_dates = [d for d in self.cooking_dates if d.weekday() in default_days]
             if not available_dates:
                 available_dates = list(self.cooking_dates)
 

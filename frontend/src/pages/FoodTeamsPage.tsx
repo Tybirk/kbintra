@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 
-import { useNavigate, useParams } from "react-router-dom"
+import { Link, useNavigate, useParams } from "react-router-dom"
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 
@@ -9,6 +9,7 @@ import {
   Text,
   Paper,
   Group,
+  Anchor,
   Button,
   Loader,
   Center,
@@ -20,8 +21,6 @@ import {
   Textarea,
   Avatar,
   Card,
-  Collapse,
-  ActionIcon,
   Divider,
   Checkbox,
   SimpleGrid,
@@ -47,8 +46,6 @@ import {
   IconArrowsExchange,
   IconAlertCircle,
   IconInfoCircle,
-  IconChevronDown,
-  IconChevronUp,
   IconCheck,
   IconX,
   IconClipboardList,
@@ -83,7 +80,6 @@ import type {
   TeamFavour,
   SwapBroadcast,
   MyFoodProfile,
-  HousemateTeamListItem,
   CycleResetPreview,
 } from "../types"
 
@@ -203,6 +199,12 @@ export default function FoodTeamsPage() {
 
   const byttenBadgeCount = pendingRequests.length + incomingBroadcasts.length
 
+  // The days you could still hand to someone else — what the Bytte tab offers
+  // the two anmodnings-buttons for, one row per day.
+  const upcomingMyTeams = (myTeams ?? []).filter(
+    (team) => !dayjs(team.date).isBefore(dayjs(), "day"),
+  )
+
   // My shifts and my household's, in one list by date: a day in the kitchen is
   // the household's evening either way, and the bold name on the card says
   // whose it is without a heading over a second list.
@@ -300,10 +302,7 @@ export default function FoodTeamsPage() {
                     currentUserId={user?.id}
                   />
                 ) : (
-                  <HouseholdTeamCard
-                    key={`husstand-${day.team.id}`}
-                    team={day.team}
-                  />
+                  <TeamCard key={`husstand-${day.team.id}`} team={day.team} />
                 ),
               )}
             </Stack>
@@ -322,7 +321,7 @@ export default function FoodTeamsPage() {
           ) : (
             <Stack gap="sm">
               {allTeams.map((team) => (
-                <AllTeamCard key={team.id} team={team} />
+                <TeamCard key={team.id} team={team} />
               ))}
             </Stack>
           )}
@@ -335,6 +334,47 @@ export default function FoodTeamsPage() {
             </Center>
           ) : (
             <Stack gap="lg">
+              {/* Start a swap — the same two buttons as on Mine hold, one row
+                  per shift, since you can hold several in a period. */}
+              <div>
+                <Title order={4} mb="sm">
+                  Byt en af dine maddage
+                </Title>
+                {upcomingMyTeams.length === 0 ? (
+                  <Text c="dimmed" size="sm">
+                    Du har ingen kommende maddage at bytte væk.
+                  </Text>
+                ) : (
+                  <Stack gap="sm">
+                    {upcomingMyTeams.map((team) => (
+                      <Paper key={team.id} withBorder p="sm" radius="md">
+                        <Group justify="space-between" align="flex-start">
+                          <div>
+                            <Text fw={500}>
+                              {team.day_name},{" "}
+                              {dayjs(team.date).format("D. MMMM YYYY")}
+                            </Text>
+                            <Text size="xs" c="dimmed">
+                              {team.members
+                                .map((m) => m.user.first_name)
+                                .join(", ")}
+                            </Text>
+                          </div>
+                          <SwapShiftActions
+                            team={team}
+                            allTeams={allTeams ?? []}
+                            myTeams={myTeams ?? []}
+                            currentUserId={user?.id}
+                          />
+                        </Group>
+                      </Paper>
+                    ))}
+                  </Stack>
+                )}
+              </div>
+
+              <Divider />
+
               {/* Incoming requests */}
               <div>
                 <Title order={4} mb="sm">
@@ -424,6 +464,8 @@ export default function FoodTeamsPage() {
 interface TeamCookEntry {
   key: string
 
+  userId: number
+
   name: string
 
   houseNumber: string
@@ -451,20 +493,30 @@ function TeamCooks({ cooks }: TeamCooksProps) {
   return (
     <Group gap="sm" wrap="wrap">
       {cooks.map((cook) => (
-        <Group key={cook.key} gap={6} wrap="nowrap">
-          <Avatar src={cook.avatarUrl} radius="xl" size="sm">
-            {cook.name[0]}
-          </Avatar>
-          <Text size="sm" fw={cook.isHousehold ? 600 : 400}>
-            {cook.isOwn ? "Dig" : cook.name}
-            {cook.houseNumber && (
-              <Text span size="xs" c="dimmed">
-                {" "}
-                ({cook.houseNumber})
-              </Text>
-            )}
-          </Text>
-        </Group>
+        // Face and name together, so the tap target is the whole chip and not
+        // just a 26px circle — same /profil/<id> link the rest of the app uses.
+        <Anchor
+          key={cook.key}
+          component={Link}
+          to={`/profil/${cook.userId}`}
+          c="inherit"
+          underline="hover"
+        >
+          <Group gap={6} wrap="nowrap">
+            <Avatar src={cook.avatarUrl} radius="xl" size="sm">
+              {cook.name[0]}
+            </Avatar>
+            <Text size="sm" fw={cook.isHousehold ? 600 : 400}>
+              {cook.isOwn ? "Dig" : cook.name}
+              {cook.houseNumber && (
+                <Text span size="xs" c="dimmed">
+                  {" "}
+                  ({cook.houseNumber})
+                </Text>
+              )}
+            </Text>
+          </Group>
+        </Anchor>
       ))}
     </Group>
   )
@@ -1751,7 +1803,7 @@ function CreateCycleModal({
 
 // My Team Card with swap request capability
 
-interface MyTeamCardProps {
+interface SwapShiftActionsProps {
   team: FoodTeam
 
   allTeams: FoodTeamListItem[]
@@ -1761,7 +1813,12 @@ interface MyTeamCardProps {
   currentUserId?: number
 }
 
-function MyTeamCard({
+/**
+ * The two ways out of a shift — ask one named person, or ask the community —
+ * with the modals behind them. Lives on its own so both the card under Mine
+ * hold and the Bytte tab offer them, from one implementation.
+ */
+function SwapShiftActions({
   team,
 
   allTeams,
@@ -1769,7 +1826,7 @@ function MyTeamCard({
   myTeams,
 
   currentUserId,
-}: MyTeamCardProps) {
+}: SwapShiftActionsProps) {
   const [swapModalOpened, { open: openSwapModal, close: closeSwapModal }] =
     useDisclosure(false)
 
@@ -1974,68 +2031,27 @@ function MyTeamCard({
     },
   })
 
-  const isPast = dayjs(team.date).isBefore(dayjs(), "day")
-
-  // Bold = my own house. Nobody has to tell us who that is: my own membership
-  // carries my house number, and a housemate's is the same one.
-  const myHouseNumber = team.members.find((m) => m.is_own)?.house_number ?? ""
-
-  const cooks = team.members.map((member) => ({
-    key: String(member.id),
-
-    name: member.user.first_name,
-
-    houseNumber: member.house_number,
-
-    avatarUrl: member.user.profile_picture,
-
-    isHousehold: !!myHouseNumber && member.house_number === myHouseNumber,
-
-    isOwn: member.is_own,
-  }))
-
   return (
     <>
-      <Card
-        withBorder
-        p="md"
-        radius="md"
-        bg={isPast ? "var(--mantine-color-default-hover)" : undefined}
-      >
-        {/* wrap, not nowrap: on a phone the two bytte-buttons drop under the date */}
-        <Group justify="space-between" mb="sm" align="flex-start">
-          <Text fw={600} size="lg">
-            {team.day_name}, {dayjs(team.date).format("D. MMMM YYYY")}
-          </Text>
-          <Group gap="xs" justify="flex-end">
-            {isPast ? (
-              <Badge color="gray">Overstået</Badge>
-            ) : (
-              <>
-                <Button
-                  variant="light"
-                  size="xs"
-                  leftSection={<IconArrowsExchange size={14} />}
-                  onClick={openSwapModal}
-                >
-                  Anmod specifik person om bytte
-                </Button>
-                <Button
-                  variant="light"
-                  color="grape"
-                  size="xs"
-                  leftSection={<IconBroadcast size={14} />}
-                  onClick={openBroadcastModal}
-                >
-                  Anmod fællesskabet om bytte
-                </Button>
-              </>
-            )}
-          </Group>
-        </Group>
-
-        <TeamCooks cooks={cooks} />
-      </Card>
+      <Group gap="xs" justify="flex-end">
+        <Button
+          variant="light"
+          size="xs"
+          leftSection={<IconArrowsExchange size={14} />}
+          onClick={openSwapModal}
+        >
+          Anmod specifik person om bytte
+        </Button>
+        <Button
+          variant="light"
+          color="grape"
+          size="xs"
+          leftSection={<IconBroadcast size={14} />}
+          onClick={openBroadcastModal}
+        >
+          Anmod fællesskabet om bytte
+        </Button>
+      </Group>
 
       {/* Swap Request Modal */}
       <Modal
@@ -2250,30 +2266,46 @@ function MyTeamCard({
   )
 }
 
-interface HouseholdTeamCardProps {
-  team: HousemateTeamListItem
+interface MyTeamCardProps {
+  team: FoodTeam
+
+  allTeams: FoodTeamListItem[]
+
+  myTeams: FoodTeam[]
+
+  currentUserId?: number
 }
 
-/**
- * A day the rest of your house cooks and you don't. The same card as your own
- * days, minus the bytte-buttons that are not yours to press — the name in bold
- * is what says whose day it is.
- */
-function HouseholdTeamCard({ team }: HouseholdTeamCardProps) {
+/** One of your own cooking days: the team, and the two ways out of the shift. */
+function MyTeamCard({
+  team,
+
+  allTeams,
+
+  myTeams,
+
+  currentUserId,
+}: MyTeamCardProps) {
   const isPast = dayjs(team.date).isBefore(dayjs(), "day")
 
-  const cooks = team.members_preview.map((member) => ({
-    key: String(member.user_id),
+  // Bold = my own house. Nobody has to tell us who that is: my own membership
+  // carries my house number, and a housemate's is the same one.
+  const myHouseNumber = team.members.find((m) => m.is_own)?.house_number ?? ""
 
-    name: member.first_name,
+  const cooks = team.members.map((member) => ({
+    key: String(member.id),
+
+    userId: member.user.id,
+
+    name: member.user.first_name,
 
     houseNumber: member.house_number,
 
-    avatarUrl: member.profile_picture,
+    avatarUrl: member.user.profile_picture,
 
-    isHousehold: member.is_housemate,
+    isHousehold: !!myHouseNumber && member.house_number === myHouseNumber,
 
-    isOwn: false,
+    isOwn: member.is_own,
   }))
 
   return (
@@ -2283,39 +2315,61 @@ function HouseholdTeamCard({ team }: HouseholdTeamCardProps) {
       radius="md"
       bg={isPast ? "var(--mantine-color-default-hover)" : undefined}
     >
-      <Text fw={600} size="lg" mb="sm">
-        {team.day_name}, {dayjs(team.date).format("D. MMMM YYYY")}
-      </Text>
+      {/* wrap, not nowrap: on a phone the two bytte-buttons drop under the date */}
+      <Group justify="space-between" mb="sm" align="flex-start">
+        <Text fw={600} size="lg">
+          {team.day_name}, {dayjs(team.date).format("D. MMMM YYYY")}
+        </Text>
+        {isPast ? (
+          <Badge color="gray">Overstået</Badge>
+        ) : (
+          <SwapShiftActions
+            team={team}
+            allTeams={allTeams}
+            myTeams={myTeams}
+            currentUserId={currentUserId}
+          />
+        )}
+      </Group>
+
       <TeamCooks cooks={cooks} />
     </Card>
   )
 }
 
-// All Teams Card (compact view)
-
-interface AllTeamCardProps {
+interface TeamCardProps {
   team: FoodTeamListItem
 }
 
-function AllTeamCard({ team }: AllTeamCardProps) {
-  const [expanded, setExpanded] = useState(false)
-
+/**
+ * A cooking day someone else runs: everyone else's days under "Alle hold", and
+ * under "Mine hold" the days only the rest of your household cooks. Same card
+ * as your own day minus the bytte-buttons that are not yours to press — the
+ * whole team as faces with names, and your own house in bold.
+ */
+function TeamCard({ team }: TeamCardProps) {
   const isPast = dayjs(team.date).isBefore(dayjs(), "day")
 
-  // Load full team details (with membership ids) only when expanded
+  const cooks = team.members_preview.map((member) => ({
+    key: String(member.user_id),
 
-  const { data: teamDetails, isLoading: teamDetailsLoading } = useQuery({
-    queryKey: ["food", "teams", team.id],
+    userId: member.user_id,
 
-    queryFn: () => foodApi.getTeam(team.id),
+    name: member.first_name,
 
-    enabled: expanded,
-  })
+    houseNumber: member.house_number,
+
+    avatarUrl: member.profile_picture,
+
+    isHousehold: member.is_housemate || member.is_own,
+
+    isOwn: member.is_own,
+  }))
 
   return (
-    <Paper
+    <Card
       withBorder
-      p="sm"
+      p="md"
       radius="md"
       bg={
         team.is_my_team
@@ -2325,74 +2379,19 @@ function AllTeamCard({ team }: AllTeamCardProps) {
             : undefined
       }
     >
-      <Group
-        justify="space-between"
-        style={{ cursor: "pointer" }}
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div>
-          <Group gap="xs">
-            <Text fw={500}>
-              {team.day_name}, {dayjs(team.date).format("D. MMM")}
-            </Text>
-            {team.is_my_team && (
-              <Badge size="sm" color="blue" variant="filled">
-                Mit hold
-              </Badge>
-            )}
-          </Group>
-          <Text size="sm" c="dimmed">
-            {team.members_display}
-          </Text>
-        </div>
-        <Group gap="xs">
-          <Badge variant="light">{team.member_count} medlemmer</Badge>
-          <ActionIcon variant="subtle" size="sm">
-            {expanded ? (
-              <IconChevronUp size={16} />
-            ) : (
-              <IconChevronDown size={16} />
-            )}
-          </ActionIcon>
-        </Group>
+      <Group justify="space-between" mb="sm" align="flex-start">
+        <Text fw={600} size="lg">
+          {team.day_name}, {dayjs(team.date).format("D. MMMM YYYY")}
+        </Text>
+        {team.is_my_team && (
+          <Badge size="sm" color="blue" variant="filled">
+            Mit hold
+          </Badge>
+        )}
       </Group>
 
-      <Collapse expanded={expanded}>
-        <Divider my="sm" />
-        {teamDetailsLoading || !teamDetails ? (
-          <Center h={60}>
-            <Loader size="sm" />
-          </Center>
-        ) : (
-          <Stack gap="xs">
-            {teamDetails.members.map((member) => (
-              <Group key={member.id} justify="space-between">
-                <Group gap="sm">
-                  <Avatar
-                    src={member.user.profile_picture}
-                    radius="xl"
-                    size="sm"
-                  >
-                    {member.user.first_name[0]}
-                  </Avatar>
-                  <div>
-                    <Text size="sm" fw={member.is_own ? 600 : 400}>
-                      {member.user.first_name} {member.user.last_name}
-                      {member.is_own && " (Dig)"}
-                    </Text>
-                    {member.house_number && (
-                      <Text size="xs" c="dimmed">
-                        Hus {member.house_number}
-                      </Text>
-                    )}
-                  </div>
-                </Group>
-              </Group>
-            ))}
-          </Stack>
-        )}
-      </Collapse>
-    </Paper>
+      <TeamCooks cooks={cooks} />
+    </Card>
   )
 }
 
@@ -3465,7 +3464,8 @@ function FoodProfilePanel() {
               Ugedage jeg typisk kan lave mad
             </Text>
             <Text size="sm" c="dimmed" mb="sm">
-              Bruges som standard, når du indsender ønsker.
+              Bruges som standard, når du indsender ønsker — og hvis du slet
+              ikke når at indsende, er det de dage, vi regner med at du kan.
             </Text>
             <Chip.Group
               multiple

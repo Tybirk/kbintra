@@ -18,7 +18,6 @@ import type {
   WeeklyRegistrationStats,
   FoodTeam,
   FoodTeamListItem,
-  HousemateTeamListItem,
   TeamSwapRequest,
   CreateSwapRequestData,
   RespondSwapRequestData,
@@ -290,7 +289,7 @@ export const foodApi = {
     return asArray(response.data)
   },
 
-  getHousemateTeams: async (): Promise<HousemateTeamListItem[]> => {
+  getHousemateTeams: async (): Promise<FoodTeamListItem[]> => {
     const response = await apiClient.get("/food/teams/housemates/")
 
     return asArray(response.data)

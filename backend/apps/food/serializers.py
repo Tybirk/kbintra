@@ -4,6 +4,7 @@ Serializers for Food models.
 
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+from functools import cached_property
 from typing import Any
 
 from django.db.models import Sum
@@ -500,12 +501,20 @@ class FoodTeamSerializer(serializers.ModelSerializer):
 
 
 class FoodTeamListSerializer(serializers.ModelSerializer):
-    """Lightweight serializer for listing teams."""
+    """Lightweight serializer for listing teams.
+
+    ``members_preview`` carries the whole team — name, house number, avatar —
+    with your own house flagged, so a card can print every face and name
+    without being expanded and set the ones from your own household in bold.
+    ``members_display`` is the same names as one flat string, still used where
+    a single dimmed line is all there is room for (the bytte date picker).
+    """
 
     day_name = serializers.CharField(read_only=True)
     member_count = serializers.IntegerField(read_only=True)
     is_my_team = serializers.SerializerMethodField()
     members_display = serializers.SerializerMethodField()
+    members_preview = serializers.SerializerMethodField()
 
     class Meta:
         model = FoodTeam
@@ -516,46 +525,44 @@ class FoodTeamListSerializer(serializers.ModelSerializer):
             "member_count",
             "is_my_team",
             "members_display",
+            "members_preview",
         ]
 
-    def get_is_my_team(self, obj: FoodTeam) -> bool:
+    @cached_property
+    def _housemate_ids(self) -> set[int]:
+        """The rest of the reader's house — one query per request, not per team."""
         request = self.context.get("request")
-        if request and request.user.is_authenticated:
-            return obj.members.filter(user_id=request.user.id).exists()
-        return False
+        if not request or not request.user.is_authenticated:
+            return set()
+        return set(housemates_of(request.user).values_list("id", flat=True))
+
+    def _my_id(self) -> int | None:
+        request = self.context.get("request")
+        return request.user.id if request and request.user.is_authenticated else None
+
+    def get_is_my_team(self, obj: FoodTeam) -> bool:
+        # Read the members the view already prefetched: a .filter().exists()
+        # here is one extra query per team on a list of a whole period.
+        return any(m.user_id == self._my_id() for m in obj.members.all())
 
     def get_members_display(self, obj: FoodTeam) -> str:
         """Get a comma-separated list of members for display."""
-        members = obj.members.select_related("user")[:6]
+        members = list(obj.members.all())[:6]
         return ", ".join(
             f"{m.user.first_name} ({m.house_number})" if m.house_number else m.user.first_name
             for m in members
         )
 
-
-class HousemateTeamSerializer(FoodTeamListSerializer):
-    """A team someone else in your house cooks on, shown among your own shifts.
-
-    Same compact shape as the team list, plus the members one by one with the
-    household flagged: the card prints every name without being expanded, and
-    the one from your own house in bold — that bold name is the only thing
-    saying why the day is on your list at all.
-    """
-
-    members_preview = serializers.SerializerMethodField()
-
-    class Meta(FoodTeamListSerializer.Meta):
-        fields = [*FoodTeamListSerializer.Meta.fields, "members_preview"]
-
     def get_members_preview(self, obj: FoodTeam) -> list[dict]:
-        housemate_ids = self.context.get("housemate_ids", set())
+        my_id = self._my_id()
         return [
             {
                 "user_id": m.user_id,
                 "first_name": m.user.first_name,
                 "house_number": m.house_number,
                 "profile_picture": m.user.avatar_url,
-                "is_housemate": m.user_id in housemate_ids,
+                "is_own": m.user_id == my_id,
+                "is_housemate": m.user_id in self._housemate_ids,
             }
             for m in obj.members.all()
         ]

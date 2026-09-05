@@ -12,7 +12,13 @@ import pytest
 from django.urls import reverse
 from django.utils import timezone
 
-from apps.food.models import CycleStatus, FoodTeam, FoodTeamCycle, FoodTeamMember
+from apps.food.models import (
+    CycleStatus,
+    FoodTeam,
+    FoodTeamCycle,
+    FoodTeamMember,
+    FoodTeamWish,
+)
 from apps.notifications.models import Notification, NotificationType
 from apps.users.models import User
 
@@ -72,6 +78,7 @@ class TestHouseholdTeams:
                 "first_name": "Bo",
                 "house_number": "1",
                 "profile_picture": None,
+                "is_own": False,
                 "is_housemate": True,
             }
         ]
@@ -281,6 +288,91 @@ class TestOverFiftyFromBirthdate:
         generator.load_data()
 
         assert generator.persons[elder.id].is_over_50 is True
+
+
+@pytest.mark.django_db
+class TestDefaultCookingDaysAsWishFallback:
+    """No wish submitted? Then the profile's weekdays are the answer."""
+
+    def _cycle(self, admin_user, days: int = 4):
+        """A cycle covering the next Mon–Thu."""
+        monday = timezone.localdate() + timedelta(weeks=120)
+        monday += timedelta(days=(7 - monday.weekday()) % 7)
+        dates = [(monday + timedelta(days=d)) for d in range(days)]
+        return (
+            FoodTeamCycle.objects.create(
+                name="P",
+                cooking_dates=[d.isoformat() for d in dates],
+                wish_deadline=timezone.now() + timedelta(days=1),
+                created_by=admin_user,
+            ),
+            dates,
+        )
+
+    def _load(self, cycle):
+        from apps.food.services.team_generator import TeamGenerator
+
+        generator = TeamGenerator(cycle)
+        generator.load_data()
+        return generator
+
+    def test_the_profile_weekdays_stand_in_for_a_missing_wish(self, house, admin_user):
+        cycle, dates = self._cycle(admin_user)
+        tuesday_person = User.objects.create_user(
+            email="tirsdag@example.com",
+            password="x",
+            first_name="Tirsdag",
+            house=house,
+            default_cooking_days=[1],
+        )
+
+        generator = self._load(cycle)
+
+        assert generator.persons[tuesday_person.id].available_dates == [dates[1]]
+
+    def test_saying_nothing_at_all_still_means_every_date(self, house, admin_user):
+        cycle, dates = self._cycle(admin_user)
+        quiet = User.objects.create_user(
+            email="tavs@example.com", password="x", first_name="Tavs", house=house
+        )
+
+        generator = self._load(cycle)
+
+        assert generator.persons[quiet.id].available_dates == dates
+
+    def test_a_submitted_wish_still_wins(self, house, admin_user):
+        cycle, dates = self._cycle(admin_user)
+        person = User.objects.create_user(
+            email="ønsker@example.com",
+            password="x",
+            first_name="Ønsker",
+            house=house,
+            default_cooking_days=[1],
+        )
+        FoodTeamWish.objects.create(
+            cycle=cycle, user=person, available_dates=[dates[2].isoformat()]
+        )
+
+        generator = self._load(cycle)
+
+        assert generator.persons[person.id].available_dates == [dates[2]]
+
+    def test_weekdays_outside_the_period_fall_back_to_every_date(self, house, admin_user):
+        """A Monday-only cook in a Tue–Thu period is available, not unplaceable."""
+        cycle, dates = self._cycle(admin_user, days=4)
+        cycle.cooking_dates = [d.isoformat() for d in dates[1:]]
+        cycle.save(update_fields=["cooking_dates"])
+        monday_person = User.objects.create_user(
+            email="mandag@example.com",
+            password="x",
+            first_name="Mandag",
+            house=house,
+            default_cooking_days=[0],
+        )
+
+        generator = self._load(cycle)
+
+        assert generator.persons[monday_person.id].available_dates == dates[1:]
 
 
 @pytest.mark.django_db

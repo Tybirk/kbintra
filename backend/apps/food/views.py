@@ -53,7 +53,6 @@ from .serializers import (
     FoodTicketCreateSerializer,
     FoodTicketSerializer,
     GenerateTeamsSerializer,
-    HousemateTeamSerializer,
     MealPreferenceCreateUpdateSerializer,
     MealPreferenceSerializer,
     MealPriceSerializer,
@@ -938,17 +937,13 @@ class HousemateTeamsView(generics.ListAPIView):
     is in the kitchen without reading every team in "Alle hold". Past days are
     left out — unlike your own shifts, someone else's finished day is only noise
     — and so are days you cook together, which "Mine hold" already shows above.
+
+    The rows are ordinary team-list rows: ``members_preview`` already flags the
+    reader's own house on every list, which is what the card sets in bold.
     """
 
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = HousemateTeamSerializer
-
-    def get_serializer_context(self) -> dict:
-        context = super().get_serializer_context()
-        context["housemate_ids"] = set(
-            housemates_of(self.request.user).values_list("id", flat=True)
-        )
-        return context
+    serializer_class = FoodTeamListSerializer
 
     def get_queryset(self) -> QuerySet[FoodTeam]:
         housemate_ids = housemates_of(self.request.user).values_list("id", flat=True)

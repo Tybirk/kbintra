@@ -70,7 +70,7 @@ Anyone whose wish covered *only* dropped dates is stood down for this cycle rath
 
 ### Wish-based allocation
 
-Users declare which dates they're available to cook. If a user submits no wish, they default to available for ALL dates (fairness). A wish with `is_unavailable=True` opts the user out of *that cycle* entirely (distinct from the permanent `is_exempt_from_food_teams`). The generator in `services/team_generator.py` assigns people to teams respecting constraints.
+Users declare which dates they're available to cook. Without a usable wish we fall back to the weekdays they set as `default_cooking_days` on their profile ("ugedage jeg typisk kan lave mad") — a standing answer to the same question. Only someone who has said nothing at all counts as available on every date. It does shrink the pool the generator has to work with, which is the deliberate trade: a Tuesday person who forgot the deadline is better served by their own standing answer than by being treated as free every day. A wish with `is_unavailable=True` opts the user out of *that cycle* entirely (distinct from the permanent `is_exempt_from_food_teams`). The generator in `services/team_generator.py` assigns people to teams respecting constraints.
 
 ### Generator algorithm (ported from the `~/Desktop/madhold` CLI)
 
@@ -136,7 +136,8 @@ The old `User.food_team_comment` was removed: it was labelled "til madhold-ansva
 ### The household, not just the cook
 
 A shift is a household's evening, so both halves of it are told about it:
-- `teams/housemates/` lists the *upcoming* teams the other residents of your house cook on, with `members_preview` (every member — name, house number, avatar — the household ones flagged). Days you cook together are left out — "Mine hold" already shows those, with both names on the card. The page merges these into the Mine hold list by date rather than heading a second list. Every card there prints the whole team as faces with names, no fold-out (it only ever held the same names), and the residents of your own house in bold — that is what says whose day it is.
+- `teams/housemates/` lists the *upcoming* teams the other residents of your house cook on. Days you cook together are left out — "Mine hold" already shows those, with both names on the card. The page merges these into the Mine hold list by date rather than heading a second list.
+- Every team list (`teams/`, `teams/housemates/`) carries `members_preview`: the team member by member with name, house number, avatar, `is_own` and `is_housemate`. Mine hold and Alle hold both print the whole team as faces with names and no fold-out (it only ever held the same names), with your own house in bold — on a household day that bold name is what says why the day is listed at all. Each face links to `/profil/<id>`. `members_display` stays for the one place a single dimmed line is all that fits: the bytte date picker.
 - The 20:00 reminder task notifies each cook and then the rest of each cook's house (`notify_food_team_housemate_reminder`, "Anna har madhold i morgen"). It reuses `FOOD_TEAM_REMINDER`, so one preference governs both, and it skips housemates who are on the team themselves — nobody gets two reminders for one evening.
 
 "Household" is the house (`utils.housemates_of`); that is the only grouping the app has, and what "min medbeboer" already meant here.

@@ -1912,7 +1912,11 @@ export interface FoodTeamListItem {
 
   is_my_team: boolean
 
+  /** All the names as one flat line, where only a single line fits. */
   members_display: string
+
+  /** The team member by member, for cards that show faces and names. */
+  members_preview: TeamMemberPreview[]
 }
 
 /** One name on a team card, printed without expanding the card. */
@@ -1925,13 +1929,10 @@ export interface TeamMemberPreview {
 
   profile_picture: string | null
 
-  /** Someone from your own house — the reason this day is on your list. */
-  is_housemate: boolean
-}
+  is_own: boolean
 
-/** A team someone else in your household cooks on, listed among your own. */
-export interface HousemateTeamListItem extends FoodTeamListItem {
-  members_preview: TeamMemberPreview[]
+  /** Someone else from your own house — printed in bold on the team card. */
+  is_housemate: boolean
 }
 
 export interface SwapRequestMembership {
