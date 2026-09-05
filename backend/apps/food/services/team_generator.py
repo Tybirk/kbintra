@@ -179,7 +179,7 @@ class TeamGenerator:
                 house_id=user.house_id,
                 house_number=house_number,
                 first_name=user.first_name,
-                is_over_50=user.is_over_50,
+                is_over_50=user.is_over_50_effective,
                 can_be_head_chef=user.can_be_head_chef,
                 prefers_housemate=user.prefers_cooking_with_housemate,
                 # Couples are not freely swapped; singles are.

@@ -27,6 +27,7 @@ class NotificationType(models.TextChoices):
     FOOD_TEAM_TAKEAWAY_READY = "food_takeaway_ready", "Takeaway er klar"
     FOOD_TEAM_LEFTOVERS_READY = "food_leftovers_ready", "Rester er klar"
     FOOD_TEAM_SWAP_REQUEST = "food_swap_request", "Bytteanmodning til madhold"
+    FOOD_TEAM_PAUSE_CHECK = "food_team_pause_check", "Holder du stadig pause fra madhold?"
     MENTION = "mention", "Omtale"
     SUBGROUP_MEMBER_ADDED = "subgroup_member_added", "Tilføjet som medlem"
     SUBGROUP_MEMBER_REMOVED = "subgroup_member_removed", "Fjernet som medlem"

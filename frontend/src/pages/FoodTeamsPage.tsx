@@ -84,6 +84,7 @@ import type {
   TeamFavour,
   SwapBroadcast,
   MyFoodProfile,
+  TeamMemberPreview,
   CycleResetPreview,
 } from "../types"
 
@@ -147,6 +148,14 @@ export default function FoodTeamsPage() {
     queryFn: () => foodApi.getTeams(),
   })
 
+  // Fetch the upcoming maddage of everyone else in my house
+
+  const { data: housemateTeams, isLoading: housemateTeamsLoading } = useQuery({
+    queryKey: ["food", "teams", "housemates"],
+
+    queryFn: foodApi.getHousemateTeams,
+  })
+
   // Fetch swap requests
 
   const { data: swapRequests, isLoading: swapRequestsLoading } = useQuery({
@@ -195,9 +204,21 @@ export default function FoodTeamsPage() {
 
   const byttenBadgeCount = pendingRequests.length + incomingBroadcasts.length
 
+  // My shifts and my household's, in one list by date: a day in the kitchen is
+  // the household's evening either way, and the bold name on the card says
+  // whose it is without a heading over a second list.
+  const mineOgHusstandensDage = [
+    ...(myTeams ?? []).map((team) => ({ kind: "min" as const, team })),
+    ...(housemateTeams ?? []).map((team) => ({
+      kind: "husstand" as const,
+      team,
+    })),
+  ].sort((a, b) => a.team.date.localeCompare(b.team.date))
+
   const isLoading =
     myTeamsLoading ||
     allTeamsLoading ||
+    housemateTeamsLoading ||
     swapRequestsLoading ||
     favoursLoading ||
     broadcastsLoading
@@ -262,21 +283,31 @@ export default function FoodTeamsPage() {
             <Center h={200}>
               <Loader size="lg" />
             </Center>
-          ) : !myTeams || myTeams.length === 0 ? (
-            <Alert icon={<IconAlertCircle size={16} />} color="blue">
-              Du er ikke tildelt nogle kommende madhold.
-            </Alert>
           ) : (
             <Stack gap="md">
-              {myTeams.map((team) => (
-                <MyTeamCard
-                  key={team.id}
-                  team={team}
-                  allTeams={allTeams ?? []}
-                  myTeams={myTeams}
-                  currentUserId={user?.id}
-                />
-              ))}
+              {(!myTeams || myTeams.length === 0) && (
+                <Alert icon={<IconAlertCircle size={16} />} color="blue">
+                  Du er ikke tildelt nogle kommende madhold.
+                </Alert>
+              )}
+
+              {mineOgHusstandensDage.map((day) =>
+                day.kind === "min" ? (
+                  <MyTeamCard
+                    key={`min-${day.team.id}`}
+                    team={day.team}
+                    allTeams={allTeams ?? []}
+                    myTeams={myTeams ?? []}
+                    currentUserId={user?.id}
+                  />
+                ) : (
+                  <AllTeamCard
+                    key={`husstand-${day.team.id}`}
+                    team={day.team}
+                    membersPreview={day.team.members_preview}
+                  />
+                ),
+              )}
             </Stack>
           )}
         </Tabs.Panel>
@@ -1929,7 +1960,7 @@ function MyTeamCard({
                   leftSection={<IconArrowsExchange size={14} />}
                   onClick={openSwapModal}
                 >
-                  Anmod om bytte
+                  Anmod specifik person om bytte
                 </Button>
                 <Button
                   variant="light"
@@ -1938,7 +1969,7 @@ function MyTeamCard({
                   leftSection={<IconBroadcast size={14} />}
                   onClick={openBroadcastModal}
                 >
-                  Send bytteanmodning
+                  Anmod fællesskabet om bytte
                 </Button>
               </>
             )}
@@ -2189,10 +2220,24 @@ function MyTeamCard({
 
 interface AllTeamCardProps {
   team: FoodTeamListItem
+
+  /**
+   * The members one by one, instead of the flat `members_display` line. Set for
+   * a household day under Mine hold, where the resident from your own house is
+   * printed in bold — folded and open alike, since that name is the whole
+   * reason the day is on your list.
+   */
+  membersPreview?: TeamMemberPreview[]
 }
 
-function AllTeamCard({ team }: AllTeamCardProps) {
+function AllTeamCard({ team, membersPreview }: AllTeamCardProps) {
   const [expanded, setExpanded] = useState(false)
+
+  const housemateIds = new Set(
+    (membersPreview ?? [])
+      .filter((member) => member.is_housemate)
+      .map((member) => member.user_id),
+  )
 
   const isPast = dayjs(team.date).isBefore(dayjs(), "day")
 
@@ -2236,7 +2281,25 @@ function AllTeamCard({ team }: AllTeamCardProps) {
             )}
           </Group>
           <Text size="sm" c="dimmed">
-            {team.members_display}
+            {membersPreview
+              ? membersPreview.map((member, index) => (
+                  <Text
+                    key={member.user_id}
+                    span
+                    inherit
+                    fw={member.is_housemate ? 700 : undefined}
+                    c={
+                      member.is_housemate
+                        ? "var(--mantine-color-text)"
+                        : undefined
+                    }
+                  >
+                    {index > 0 && ", "}
+                    {member.first_name}
+                    {member.house_number && ` (${member.house_number})`}
+                  </Text>
+                ))
+              : team.members_display}
           </Text>
         </div>
         <Group gap="xs">
@@ -2270,7 +2333,14 @@ function AllTeamCard({ team }: AllTeamCardProps) {
                     {member.user.first_name[0]}
                   </Avatar>
                   <div>
-                    <Text size="sm" fw={member.is_own ? 600 : 400}>
+                    <Text
+                      size="sm"
+                      fw={
+                        member.is_own || housemateIds.has(member.user.id)
+                          ? 600
+                          : 400
+                      }
+                    >
                       {member.user.first_name} {member.user.last_name}
                       {member.is_own && " (Dig)"}
                     </Text>
@@ -3325,14 +3395,18 @@ function FoodProfilePanel() {
             description={`Sættes du på hold sammen med din medbeboer, hvis muligt.${housemateSuffix}`}
           />
 
-          <Switch
-            checked={profile.is_over_50}
-            onChange={(e) =>
-              updateMutation.mutate({ is_over_50: e.currentTarget.checked })
-            }
-            label="Jeg er over 50"
-            description="Bruges kun til holdbalancering."
-          />
+          {/* Over 50 only feeds the holdbalancering, and a birthdate answers it
+              on its own — so we only ask the residents we can't work it out for. */}
+          {!profile.has_birthdate && (
+            <Switch
+              checked={profile.is_over_50}
+              onChange={(e) =>
+                updateMutation.mutate({ is_over_50: e.currentTarget.checked })
+              }
+              label="Jeg er over 50"
+              description="Bruges kun til holdbalancering. Udfylder du din fødselsdato under Min profil, regner vi det selv ud."
+            />
+          )}
 
           <Divider />
 

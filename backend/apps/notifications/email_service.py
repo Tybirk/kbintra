@@ -81,9 +81,14 @@ def should_send_email(user: User, notification_type: NotificationType) -> bool:
         NotificationType.REPORT_UPDATE: prefs.email_reports,
     }
 
-    # Expense outcomes have no dedicated email toggle — they piggyback on
-    # whatever email channels the user already has enabled (email if any email).
-    if notification_type == NotificationType.EXPENSE_PROCESSED:
+    # These have no dedicated email toggle — they piggyback on whatever email
+    # channels the user already has enabled (email if any email). The madhold
+    # pause check especially: someone on a long break may not open the app at
+    # all, and email is then the only way the question reaches them.
+    if notification_type in (
+        NotificationType.EXPENSE_PROCESSED,
+        NotificationType.FOOD_TEAM_PAUSE_CHECK,
+    ):
         return any(
             (
                 prefs.email_messages,

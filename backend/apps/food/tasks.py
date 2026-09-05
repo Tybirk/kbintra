@@ -10,12 +10,16 @@ Huey background tasks for the food app.
 - refresh_drive_menu_week_task: refreshes a single week's menu in the
   background. Triggered by /api/food/drive-menu/ when the cache is stale, so
   the user gets the stale menu immediately and the next request gets fresh.
-- send_food_team_reminders: daily at 20:00, reminds tomorrow's cooking team.
+- send_food_team_reminders: daily at 20:00, reminds tomorrow's cooking team and
+  the rest of each cook's household.
+- notify_paused_residents_of_new_cycle: asks everyone on a standing madhold
+  pause whether it still holds, when a new period opens for wishes.
 """
 
 import logging
 from datetime import date, timedelta
 
+from django.utils import timezone
 from huey import crontab
 from huey.contrib.djhuey import db_periodic_task, db_task
 
@@ -111,12 +115,19 @@ def materialize_week_registrations() -> None:
 
 @db_periodic_task(crontab(hour=20, minute=0))
 def send_food_team_reminders() -> None:
-    """Run daily at 20:00 to remind tomorrow's cooking team.
+    """Run daily at 20:00 to remind tomorrow's cooking team — and their households.
 
     Finds the FoodTeam cooking tomorrow (date == today + 1 day) and notifies
-    each of its members.
+    each of its members, plus the rest of each cook's house: a partner plans the
+    evening around that shift too, and until now had to remember it themselves.
+    Household members who cook tomorrow as well are skipped — they already got
+    their own reminder.
     """
-    from apps.notifications.services import notify_food_team_reminder
+    from apps.notifications.services import (
+        notify_food_team_housemate_reminder,
+        notify_food_team_reminder,
+    )
+    from apps.users.models import User
 
     from .models import FoodTeam
 
@@ -128,11 +139,54 @@ def send_food_team_reminders() -> None:
 
     date_iso = team.date.isoformat()
     notified = 0
+    cooks_by_house: dict[int, list[str]] = {}
     for member in team.members.all():
         notify_food_team_reminder(member.user, date_iso)
         notified += 1
+        if member.user.house_id:
+            cooks_by_house.setdefault(member.user.house_id, []).append(member.user.first_name)
 
-    logger.info("Sent %d food team reminders for %s", notified, date_iso)
+    cook_ids = {member.user_id for member in team.members.all()}
+    housemates = 0
+    if cooks_by_house:
+        for mate in User.objects.filter(house_id__in=cooks_by_house.keys(), is_active=True).exclude(
+            pk__in=cook_ids
+        ):
+            notify_food_team_housemate_reminder(mate, cooks_by_house[mate.house_id], date_iso)
+            housemates += 1
+
+    logger.info(
+        "Sent %d food team reminders (+%d household) for %s", notified, housemates, date_iso
+    )
+
+
+@db_task()
+def notify_paused_residents_of_new_cycle(cycle_id: int) -> None:
+    """Ask everyone on a standing madhold pause whether the break still holds.
+
+    Fires when an admin opens a new period for wishes: that is the only moment
+    where the answer can still change the plan, and a pause set months ago is
+    otherwise never revisited. Nobody has to act — doing nothing keeps the pause.
+    """
+    from apps.notifications.services import notify_food_team_pause_check
+    from apps.users.models import User
+
+    from .models import FoodTeamCycle
+
+    cycle = FoodTeamCycle.objects.filter(pk=cycle_id).first()
+    if cycle is None:
+        logger.warning("Cycle %s is gone; no pause checks sent", cycle_id)
+        return
+
+    deadline = timezone.localtime(cycle.wish_deadline)
+    deadline_label = f"{deadline.day}/{deadline.month}"
+
+    asked = 0
+    for user in User.objects.filter(is_active=True, is_exempt_from_food_teams=True):
+        notify_food_team_pause_check(user, cycle.name, deadline_label)
+        asked += 1
+
+    logger.info("Asked %d paused residents about cycle %s", asked, cycle_id)
 
 
 @db_task(retries=1, retry_delay=60)

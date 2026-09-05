@@ -22,6 +22,24 @@ def house_number_for(house) -> str:  # type: ignore[no-untyped-def]
     return (numbers[-1] if numbers else (house.name or "").strip())[:20]
 
 
+def housemates_of(user):  # type: ignore[no-untyped-def]
+    """The other active residents of this user's house, by first name.
+
+    "Household" is simply the house here — that is the only grouping the app
+    has, and it is what "min medbeboer" has always meant in the food team UI.
+    Returns an empty queryset for someone without a house, or living alone.
+    """
+    from apps.users.models import User
+
+    if not user.house_id:
+        return User.objects.none()
+    return (
+        User.objects.filter(house_id=user.house_id, is_active=True)
+        .exclude(pk=user.pk)
+        .order_by("first_name")
+    )
+
+
 def get_closed_food_dates(dates: list[date]) -> set[date]:
     """Return the subset of ``dates`` that are closed food days."""
     from .models import ClosedFoodDay

@@ -107,7 +107,11 @@ Users declare which dates they're available to cook. If a user submits no wish, 
 
 ### Self-service & test tooling
 
-- `my-food-profile/` (GET/PATCH) lets users set their own `can_be_head_chef`, `prefers_cooking_with_housemate`, `is_over_50`, `is_exempt_from_food_teams`, `default_cooking_days`, `food_team_pause_reason`.
+- `my-food-profile/` (GET/PATCH) lets users set their own `can_be_head_chef`, `prefers_cooking_with_housemate`, `is_exempt_from_food_teams`, `default_cooking_days`, `food_team_pause_reason`.
+
+### Over 50 comes from the birthdate, not from a second question
+
+`User.is_over_50_effective` is what the generator and the admin roster read: the age from `User.birthdate` when we have one (107 of 109 residents do), and only otherwise the stored `is_over_50` flag. Nobody has to keep a second copy of their own age current, and nobody quietly ages out of the balancing rule. The profile page therefore only shows the "Jeg er over 50" switch to residents without a birthdate (`has_birthdate` on `my-food-profile/` says which), and PATCHing `is_over_50` for someone whose birthdate we know is rejected rather than silently ignored.
 
 ### Two ways of sitting out, and the reason for each
 
@@ -116,6 +120,8 @@ Deliberately separate, and the overview keeps them apart:
 - **`FoodTeamWish.is_unavailable`** — this period only, from the wish; resets with the cycle.
 
 **One reason for both**, and it lives on the person: `User.food_team_pause_reason`. A reason stored on the wish would die with the cycle, so the organiser could never come back and ask whether the break is still needed — which is the whole point of recording it. Both the profile switch and the wish form write to this one field. Submitting a wish with real dates is how someone says they are back, so it lifts `is_exempt_from_food_teams` and clears the reason in the same call — leaving the pause on would have the generator skip a person who just signed up. The wish form says so before you submit. `FoodTeamWish.comment` was removed (it was never non-empty).
+
+When an admin opens a new period (`POST cycles/`), `tasks.notify_paused_residents_of_new_cycle` asks everyone with a standing pause whether it still holds (`FOOD_TEAM_PAUSE_CHECK`, linking to `/madhold/profil`). Wishes opening is the last moment where the answer can still change the plan, and a pause set months ago is otherwise never revisited. Doing nothing keeps the pause on. The type has no preference toggle — it is asked a handful of times a year — and piggybacks on any email/push channel the user has enabled.
 
 `GET admin/roster/` (food-admin) returns `{cycle, residents}` where each resident carries both states with their reasons, plus `house_number` and `has_submitted_wish`. Wishes for the period are prefetched into serializer context, so the roster is two queries, not one per resident. The **Beboeroverblik** section at the top of the Admin tab renders it: holder pause / ikke med i denne periode / chefkokke / vil lave mad med medbeboer, The wish comment is only asked for when someone marks themselves out of the period — the date picker already says precisely when they can cook, so a free-text note about availability only repeats it.
 
@@ -126,6 +132,14 @@ The old `User.food_team_comment` was removed: it was labelled "til madhold-ansva
 
 - `teams/today/` returns whether you're on today's team, the members, the recipe-folder URL, and per-dish recipe links (parsed from the week folder's spreadsheet — sheets `Ma1/Ti2/…`, dish name from cell C1 since cols A/B are hidden ingredient columns; see `services/recipe_sheets.py`).
 - `teams/<id>/notify-takeaway/` and `teams/<id>/notify-leftovers/` (image upload supported) broadcast to the community, gated by the new notification preferences. A day-before reminder fires via a 20:00 periodic Huey task.
+
+### The household, not just the cook
+
+A shift is a household's evening, so both halves of it are told about it:
+- `teams/housemates/` lists the *upcoming* teams the other residents of your house cook on, with `members_preview` (every member, the household ones flagged). Days you cook together are left out — "Mine hold" already shows those, with both names on the card. The page merges these into the Mine hold list by date rather than heading a second list: the card prints every name unexpanded, and the resident from your own house in bold, which is what says why the day is there.
+- The 20:00 reminder task notifies each cook and then the rest of each cook's house (`notify_food_team_housemate_reminder`, "Anna har madhold i morgen"). It reuses `FOOD_TEAM_REMINDER`, so one preference governs both, and it skips housemates who are on the team themselves — nobody gets two reminders for one evening.
+
+"Household" is the house (`utils.housemates_of`); that is the only grouping the app has, and what "min medbeboer" already meant here.
 
 ## Menus come from Google Drive
 

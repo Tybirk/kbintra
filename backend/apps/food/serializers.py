@@ -36,6 +36,7 @@ from .models import (
     TeamFavour,
     TeamSwapRequest,
 )
+from .utils import housemates_of
 
 
 def get_registration_deadline(meal_date: date) -> datetime:
@@ -530,6 +531,33 @@ class FoodTeamListSerializer(serializers.ModelSerializer):
             f"{m.user.first_name} ({m.house_number})" if m.house_number else m.user.first_name
             for m in members
         )
+
+
+class HousemateTeamSerializer(FoodTeamListSerializer):
+    """A team someone else in your house cooks on, shown among your own shifts.
+
+    Same compact shape as the team list, plus the members one by one with the
+    household flagged: the card prints every name without being expanded, and
+    the one from your own house in bold — that bold name is the only thing
+    saying why the day is on your list at all.
+    """
+
+    members_preview = serializers.SerializerMethodField()
+
+    class Meta(FoodTeamListSerializer.Meta):
+        fields = [*FoodTeamListSerializer.Meta.fields, "members_preview"]
+
+    def get_members_preview(self, obj: FoodTeam) -> list[dict]:
+        housemate_ids = self.context.get("housemate_ids", set())
+        return [
+            {
+                "user_id": m.user_id,
+                "first_name": m.user.first_name,
+                "house_number": m.house_number,
+                "is_housemate": m.user_id in housemate_ids,
+            }
+            for m in obj.members.all()
+        ]
 
 
 class SwapRequestUserSerializer(AvatarUrlMixin, serializers.ModelSerializer):
@@ -1158,9 +1186,17 @@ class AcceptSwapBroadcastSerializer(serializers.Serializer):
 
 
 class MyFoodProfileSerializer(serializers.ModelSerializer):
-    """Self-service food-team profile settings for the current user."""
+    """Self-service food-team profile settings for the current user.
+
+    ``is_over_50`` reads as the *effective* value (``is_over_50_effective``):
+    for anyone with a birthdate on file it is deduced from that, and the profile
+    page shows it rather than asking. ``has_birthdate`` tells the page which of
+    the two it is looking at, and writing the flag is refused for residents
+    whose age we can work out ourselves.
+    """
 
     housemate_name = serializers.SerializerMethodField()
+    has_birthdate = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -1168,6 +1204,7 @@ class MyFoodProfileSerializer(serializers.ModelSerializer):
             "can_be_head_chef",
             "prefers_cooking_with_housemate",
             "is_over_50",
+            "has_birthdate",
             "is_exempt_from_food_teams",
             "default_cooking_days",
             "food_team_pause_reason",
@@ -1176,15 +1213,23 @@ class MyFoodProfileSerializer(serializers.ModelSerializer):
 
     def get_housemate_name(self, obj: User) -> str:
         """First housemate (same house, other user) — for the cook-together toggle."""
-        if not obj.house_id:
-            return ""
-        mate = (
-            User.objects.filter(house_id=obj.house_id)
-            .exclude(pk=obj.pk)
-            .order_by("first_name")
-            .first()
-        )
+        mate = housemates_of(obj).first()
         return mate.first_name if mate else ""
+
+    def get_has_birthdate(self, obj: User) -> bool:
+        return obj.birthdate is not None
+
+    def to_representation(self, instance: User) -> dict:
+        data = super().to_representation(instance)
+        data["is_over_50"] = instance.is_over_50_effective
+        return data
+
+    def validate_is_over_50(self, value: bool) -> bool:
+        if self.instance is not None and self.instance.birthdate:
+            raise serializers.ValidationError(
+                "Din alder udledes af din fødselsdato og kan ikke sættes her."
+            )
+        return value
 
     def validate_default_cooking_days(self, value: list) -> list:
         return sorted({v for v in value if 0 <= v <= 3})
@@ -1205,6 +1250,9 @@ class FoodRosterSerializer(serializers.ModelSerializer):
     house_number = serializers.SerializerMethodField()
     is_unavailable_this_cycle = serializers.SerializerMethodField()
     has_submitted_wish = serializers.SerializerMethodField()
+    # What the generator actually balances on: the birthdate when we have one,
+    # the stored flag otherwise. Read-only for the same reason.
+    is_over_50 = serializers.BooleanField(source="is_over_50_effective", read_only=True)
 
     def get_house_number(self, obj: User) -> str:
         from .utils import house_number_for
@@ -1245,6 +1293,7 @@ class FoodRosterSerializer(serializers.ModelSerializer):
             "last_name",
             "house_name",
             "house_number",
+            "is_over_50",
             "is_unavailable_this_cycle",
             "has_submitted_wish",
         ]

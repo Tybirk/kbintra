@@ -28,6 +28,7 @@ from .views import (
     FoodTicketDetailView,
     FoodTicketListCreateView,
     GenerateTeamsView,
+    HousemateTeamsView,
     MealPreferenceDetailView,
     MealPreferenceListCreateView,
     MealPriceDetailView,
@@ -77,6 +78,7 @@ urlpatterns = [
     # Teams
     path("teams/", FoodTeamListView.as_view(), name="team-list"),
     path("teams/my/", MyTeamsView.as_view(), name="my-teams"),
+    path("teams/housemates/", HousemateTeamsView.as_view(), name="housemate-teams"),
     path("teams/today/", TodayTeamActionBoxView.as_view(), name="team-today"),
     path("teams/today/recipes/", TodayTeamRecipesView.as_view(), name="team-today-recipes"),
     path("recipes/week/", WeekRecipesView.as_view(), name="recipes-week"),

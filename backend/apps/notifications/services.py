@@ -175,6 +175,9 @@ def get_user_preference(user: User, notification_type: NotificationType) -> bool
         NotificationType.ANNOUNCEMENT_EDITED_BY_ADMIN: True,
         # Expense (udlæg) outcomes are always shown in-app — no opt-out toggle.
         NotificationType.EXPENSE_PROCESSED: True,
+        # Asked at most once per madhold period, and only of people on a pause;
+        # nobody needs a toggle to turn down a question that rare.
+        NotificationType.FOOD_TEAM_PAUSE_CHECK: True,
         NotificationType.CAR_LOAN_REQUEST: prefs.notify_car_sharing,
         NotificationType.CAR_LOAN_UPDATE: prefs.notify_car_sharing,
         NotificationType.REPORT_NEW: prefs.notify_reports,
@@ -225,6 +228,7 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
         NotificationType.SUBGROUP_MEMBER_ADDED,
         NotificationType.SUBGROUP_MEMBER_REMOVED,
         NotificationType.EXPENSE_PROCESSED,
+        NotificationType.FOOD_TEAM_PAUSE_CHECK,
     ):
         return any(
             (
@@ -868,6 +872,61 @@ def notify_food_team_reminder(user: User, date_iso: str) -> Notification | None:
         title="Du har madhold i morgen",
         message=f"Du skal lave mad {date_label}",
         link="/madhold/mine-hold",
+    )
+
+
+def _join_names(names: list[str]) -> str:
+    """Danish list of names: "Anna", "Anna og Bo", "Anna, Bo og Cecilie"."""
+    if len(names) <= 1:
+        return names[0] if names else ""
+    return f"{', '.join(names[:-1])} og {names[-1]}"
+
+
+def notify_food_team_housemate_reminder(
+    user: User, cook_names: list[str], date_iso: str
+) -> Notification | None:
+    """Tell the rest of a household that one of them cooks the next day.
+
+    Same type — and so the same preference — as the cook's own reminder: it is
+    the same shift, and someone who turned madhold-påmindelser off does not want
+    their partner's either. Only sent to household members who are not on the
+    team themselves, so nobody gets both for one evening.
+    """
+    import datetime as _dt
+
+    from apps.food.constants import DAY_NAMES
+
+    cooking_date = _dt.date.fromisoformat(date_iso)
+    date_label = f"{DAY_NAMES[cooking_date.weekday()]} {cooking_date.day}/{cooking_date.month}"
+    names = _join_names(cook_names)
+
+    return create_notification(
+        user=user,
+        notification_type=NotificationType.FOOD_TEAM_REMINDER,
+        title=f"{names} har madhold i morgen",
+        message=f"{names} skal lave mad {date_label}",
+        link="/madhold/mine-hold",
+    )
+
+
+def notify_food_team_pause_check(
+    user: User, cycle_name: str, wish_deadline_label: str
+) -> Notification | None:
+    """Ask someone on a standing madhold pause whether the break still holds.
+
+    Sent when a new period opens for wishes — the one moment where the answer
+    can still change the plan. Doing nothing keeps the pause on.
+    """
+    return create_notification(
+        user=user,
+        notification_type=NotificationType.FOOD_TEAM_PAUSE_CHECK,
+        title="Holder du stadig pause fra madhold?",
+        message=(
+            f"Der er åbnet for ønsker til {cycle_name} (frist {wish_deadline_label}). "
+            "Er du klar igen, kan du slå pausen fra på din madhold-profil og indsende ønsker. "
+            "Ellers behøver du ikke gøre noget."
+        ),
+        link="/madhold/profil",
     )
 
 

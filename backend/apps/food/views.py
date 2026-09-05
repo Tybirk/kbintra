@@ -53,6 +53,7 @@ from .serializers import (
     FoodTicketCreateSerializer,
     FoodTicketSerializer,
     GenerateTeamsSerializer,
+    HousemateTeamSerializer,
     MealPreferenceCreateUpdateSerializer,
     MealPreferenceSerializer,
     MealPriceSerializer,
@@ -69,7 +70,7 @@ from .serializers import (
     is_after_deadline,
 )
 from .services.team_generator import TeamGenerator
-from .utils import house_number_for
+from .utils import house_number_for, housemates_of
 
 logger = logging.getLogger(__name__)
 
@@ -930,6 +931,39 @@ class MyTeamsView(generics.ListAPIView):
         )
 
 
+class HousemateTeamsView(generics.ListAPIView):
+    """Upcoming teams where someone else in your household is cooking.
+
+    The companion to ``teams/my/``: a partner wants to know when the other one
+    is in the kitchen without reading every team in "Alle hold". Past days are
+    left out — unlike your own shifts, someone else's finished day is only noise
+    — and so are days you cook together, which "Mine hold" already shows above.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = HousemateTeamSerializer
+
+    def get_serializer_context(self) -> dict:
+        context = super().get_serializer_context()
+        context["housemate_ids"] = set(
+            housemates_of(self.request.user).values_list("id", flat=True)
+        )
+        return context
+
+    def get_queryset(self) -> QuerySet[FoodTeam]:
+        housemate_ids = housemates_of(self.request.user).values_list("id", flat=True)
+        return (
+            FoodTeam.objects.filter(
+                members__user_id__in=housemate_ids,
+                date__gte=timezone.localdate(),
+            )
+            .exclude(members__user=self.request.user)
+            .prefetch_related("members__user")
+            .distinct()
+            .order_by("date")
+        )
+
+
 class SwapRequestListCreateView(generics.ListCreateAPIView):
     """List swap requests or create a new one."""
 
@@ -1100,6 +1134,17 @@ class FoodTeamCycleListCreateView(generics.ListCreateAPIView):
         if self.request.method == "POST":
             return FoodTeamCycleCreateSerializer
         return FoodTeamCycleSerializer
+
+    def perform_create(self, serializer: serializers.BaseSerializer) -> None:
+        """Open the period, then ask the paused residents if they still are.
+
+        A pause set months ago is otherwise never revisited, and the moment
+        wishes open is the last one where the answer can still change the plan.
+        """
+        from .tasks import notify_paused_residents_of_new_cycle
+
+        cycle = serializer.save()
+        notify_paused_residents_of_new_cycle(cycle.id)
 
 
 class FoodTeamCycleDetailView(generics.RetrieveUpdateAPIView):

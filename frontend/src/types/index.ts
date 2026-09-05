@@ -1915,6 +1915,23 @@ export interface FoodTeamListItem {
   members_display: string
 }
 
+/** One name on a team card, printed without expanding the card. */
+export interface TeamMemberPreview {
+  user_id: number
+
+  first_name: string
+
+  house_number: string
+
+  /** Someone from your own house — the reason this day is on your list. */
+  is_housemate: boolean
+}
+
+/** A team someone else in your household cooks on, listed among your own. */
+export interface HousemateTeamListItem extends FoodTeamListItem {
+  members_preview: TeamMemberPreview[]
+}
+
 export interface SwapRequestMembership {
   id: number
 
@@ -2225,7 +2242,9 @@ export interface WeekRecipes {
 export interface MyFoodProfile {
   can_be_head_chef: boolean
   prefers_cooking_with_housemate: boolean
+  /** Deduced from the birthdate when we have one; only settable when we don't. */
   is_over_50: boolean
+  has_birthdate: boolean
   is_exempt_from_food_teams: boolean
   default_cooking_days: number[]
   food_team_pause_reason: string
