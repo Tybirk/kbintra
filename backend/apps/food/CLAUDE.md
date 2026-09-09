@@ -54,6 +54,17 @@ The admin cost endpoint materializes any missing registrations first, then calcu
 
 Teams are planned in explicit `FoodTeamCycle` periods with status flow: `COLLECTING_WISHES` -> `GENERATING` -> `FINALIZED` -> `ARCHIVED`. Cannot regenerate once finalized without deleting teams first.
 
+### The period announces itself at both ends
+
+The two moments that matter to ~90 people used to pass in silence. Both now fan out through Huey, because each one touches every resident with an email and a push behind it and the admin should not wait for that inside their request:
+
+- **Opening** — `POST cycles/` fires `notify_residents_of_new_cycle` (invitation or pause check, see below). `send_wish_deadline_reminders` then runs daily at 17:30 and nudges anyone who still owes a wish once the deadline is inside `WISH_REMINDER_LEAD_HOURS` (48h, wider than the task's own daily period so a deadline at any hour is caught). `FoodTeamCycle.wish_reminder_sent_at` guards it to one nudge per period, and is stamped even when nobody needed nudging — "has this period had its reminder?" must have exactly one answer.
+- **Planning** — a real (non-dry-run) generation that saved teams fires `notify_food_team_plan_ready`, which tells each cook their own days in one message (`FOOD_TEAM_PLAN_READY`, "Dine maddage: …") rather than one per shift. It fires again on a regeneration after a reset, because the plan really did change. A dry run and a run that saved nothing announce nothing.
+
+Both hooks hang off the **views** (`POST cycles/`, `POST generate-teams/`), not off `TeamGenerator` or the model, so `seed_food_teams_test` and the Django shell stay silent — publishing a plan is a deliberate admin action, not a side effect of writing rows.
+
+All three of these types plus `FOOD_TEAM_SHIFT_TAKEN` follow the `FOOD_TEAM_PAUSE_CHECK` precedent: **no preference toggle**, always in-app, email and push piggybacking on any channel the user already has on. Each fires a handful of times a year, and each carries something the resident cannot find out any other way in time to act on it. Adding four more toggle triplets to the settings page would have bought noise, not control.
+
 ### Undoing a finalized cycle
 
 `GET/POST cycles/<id>/reset-teams/` (food-admin) is the in-app escape from a plan the admin dislikes: POST deletes the cycle's teams in one transaction and sets it back to `COLLECTING_WISHES` so generation runs again; GET previews the same counts without touching anything (the confirmation modal needs them). **Refused once any cooking date has passed** — people have cooked by then, and deleting the teams would erase that history. Deleting `FoodTeam` cascades to `FoodTeamMember` -> `TeamSwapRequest` + `SwapBroadcast`; `TeamFavour` does *not* cascade (it only holds `cycle` SET_NULL + a bare `origin_date`), so this cycle's favours are deleted explicitly. Wishes and the cycle row itself survive.
@@ -99,10 +110,11 @@ Users declare which dates they're available to cook. Without a usable wish we fa
 
 ### Switching shifts (three mechanisms)
 
-1. **Bytte (1:1 swap)** — `TeamSwapRequest`: accepting atomically swaps both memberships and cancels other pending requests involving either membership.
+1. **Bytte (1:1 swap)** — `TeamSwapRequest`: accepting atomically swaps both memberships and cancels other pending requests involving either membership. The target is notified when the request is created, and the requester when it is answered — a 1:1 bytte goes nowhere without the other person's answer, so a silent row in the Bytte tab was the same as no request. The answer notification takes the responder as an argument rather than reading `target_membership.user`: an accepted swap moves the users *between* the membership rows, so afterwards that field holds the requester.
 2. **Overtag (takeover/favour)** — `POST teams/takeover/` reassigns a membership to the requester and records a `TeamFavour(creditor, debtor)` honour-system ledger ("you owe me one"). See `favours/` + `favours/<id>/settle/`.
    Pass `settle_favour_id` to go the *other* way and work off a favour you already owe: the shift still moves, but that debt is marked settled instead of a new one being minted in the taker's name (validated: only the debtor, and only against the creditor's own shift). `favours/<id>/repay-options/` lists the creditor's upcoming shifts for that picker, minus days the debtor already cooks.
    Taking a shift is **unilateral** — the other person only finds out afterwards — so the UI deliberately does *not* offer it beside every name on every team. It appears where someone has asked to be relieved (an incoming bytteanmodning) and in "Jeg skylder", where it settles up.
+   Because it is unilateral it gets its own notification type, `FOOD_TEAM_SHIFT_TAKEN` ("Din maddag er overtaget"), which names the ledger consequence both ways round. It is deliberately **not** routed through `notify_food_swap_request`: that toggle is labelled for *requests* you may ignore, and this is a change to your own calendar that has already happened, so it has no opt-out.
 3. **Broadcast bytteanmodning** — `SwapBroadcast`: the requester offers to take any of several dates; candidates (who indicated availability for the offered date via wish or `default_cooking_days`, and currently cook one of the requester's dates) are notified. First to accept performs an atomic swap. NOTE: JSONField `__contains`/`__overlap` lookups are unsupported on SQLite, so candidate matching filters in Python.
 
 ### Self-service & test tooling
@@ -121,7 +133,7 @@ Deliberately separate, and the overview keeps them apart:
 
 **One reason for both**, and it lives on the person: `User.food_team_pause_reason`. A reason stored on the wish would die with the cycle, so the organiser could never come back and ask whether the break is still needed — which is the whole point of recording it. Both the profile switch and the wish form write to this one field. Submitting a wish with real dates is how someone says they are back, so it lifts `is_exempt_from_food_teams` and clears the reason in the same call — leaving the pause on would have the generator skip a person who just signed up. The wish form says so before you submit. `FoodTeamWish.comment` was removed (it was never non-empty).
 
-When an admin opens a new period (`POST cycles/`), `tasks.notify_paused_residents_of_new_cycle` asks everyone with a standing pause whether it still holds (`FOOD_TEAM_PAUSE_CHECK`, linking to `/madhold/profil`). Wishes opening is the last moment where the answer can still change the plan, and a pause set months ago is otherwise never revisited. Doing nothing keeps the pause on. The type has no preference toggle — it is asked a handful of times a year — and piggybacks on any email/push channel the user has enabled.
+When an admin opens a new period (`POST cycles/`), `tasks.notify_residents_of_new_cycle` splits the house in two. Everyone who is in gets `FOOD_TEAM_WISHES_OPEN` ("der er åbnet for madholdsønsker", linking to `/madhold/oensker`); everyone with a standing pause is asked whether it still holds instead (`FOOD_TEAM_PAUSE_CHECK` → `/madhold/profil`). Nobody gets both — the question depends on whether you are participating. Wishes opening is the last moment where either answer can still change the plan, and a pause set months ago is otherwise never revisited; doing nothing keeps the pause on.
 
 `GET admin/roster/` (food-admin) returns `{cycle, residents}` where each resident carries both states with their reasons, plus `house_number` and `has_submitted_wish`. Wishes for the period are prefetched into serializer context, so the roster is two queries, not one per resident. The **Beboeroverblik** section at the top of the Admin tab renders it: holder pause / ikke med i denne periode / chefkokke / vil lave mad med medbeboer, The wish comment is only asked for when someone marks themselves out of the period — the date picker already says precisely when they can cook, so a free-text note about availability only repeats it.
 
@@ -132,6 +144,7 @@ The old `User.food_team_comment` was removed: it was labelled "til madhold-ansva
 
 - `teams/today/` returns whether you're on today's team, the members, the recipe-folder URL, and per-dish recipe links (parsed from the week folder's spreadsheet — sheets `Ma1/Ti2/…`, dish name from cell C1 since cols A/B are hidden ingredient columns; see `services/recipe_sheets.py`).
 - `teams/<id>/notify-takeaway/` and `teams/<id>/notify-leftovers/` (image upload supported) broadcast to the community, gated by the new notification preferences. A day-before reminder fires via a 20:00 periodic Huey task.
+- The madhold notification types in full: `FOOD_TEAM_REMINDER` (20:00 day before, cook + household) · `FOOD_TEAM_TAKEAWAY_READY` · `FOOD_TEAM_LEFTOVERS_READY` · `FOOD_TEAM_SWAP_REQUEST` (broadcast sent, 1:1 request sent, either answered) · `FOOD_TEAM_SHIFT_TAKEN` · `FOOD_TEAM_PLAN_READY` · `FOOD_TEAM_WISHES_OPEN` (period opened, and the pre-deadline nudge) · `FOOD_TEAM_PAUSE_CHECK`. Only the first four have preference toggles; see `apps/food/test_madhold_notifications.py` for what each one promises.
 
 ### The household, not just the cook
 

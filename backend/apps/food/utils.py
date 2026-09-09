@@ -4,6 +4,18 @@ import re
 from datetime import date
 
 
+def danish_date_label(d: date) -> str:
+    """A cooking date the way the app says it everywhere: ``Mandag 8/6``.
+
+    Lives here rather than in views because the notification services need the
+    same label — a reminder, a swap and a takeover must all name the same day
+    the same way.
+    """
+    from .constants import DAY_NAMES
+
+    return f"{DAY_NAMES[d.weekday()]} {d.day}/{d.month}"
+
+
 def house_number_for(house) -> str:  # type: ignore[no-untyped-def]
     """The bare house number to show beside a cook's name (e.g. "45").
 

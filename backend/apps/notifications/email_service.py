@@ -32,6 +32,10 @@ EMAIL_SUBJECT_PREFIX: dict[str, str] = {
     NotificationType.FOOD_TEAM_TAKEAWAY_READY: "[Madhold]",
     NotificationType.FOOD_TEAM_LEFTOVERS_READY: "[Madhold]",
     NotificationType.FOOD_TEAM_SWAP_REQUEST: "[Madhold]",
+    NotificationType.FOOD_TEAM_SHIFT_TAKEN: "[Madhold]",
+    NotificationType.FOOD_TEAM_PLAN_READY: "[Madhold]",
+    NotificationType.FOOD_TEAM_WISHES_OPEN: "[Madhold]",
+    NotificationType.FOOD_TEAM_PAUSE_CHECK: "[Madhold]",
     NotificationType.EVENT_CREATED: "[Kalender]",
     NotificationType.EVENT_UPDATED: "[Kalender]",
     NotificationType.EVENT_CANCELLED: "[Kalender]",
@@ -88,6 +92,9 @@ def should_send_email(user: User, notification_type: NotificationType) -> bool:
     if notification_type in (
         NotificationType.EXPENSE_PROCESSED,
         NotificationType.FOOD_TEAM_PAUSE_CHECK,
+        NotificationType.FOOD_TEAM_SHIFT_TAKEN,
+        NotificationType.FOOD_TEAM_PLAN_READY,
+        NotificationType.FOOD_TEAM_WISHES_OPEN,
     ):
         return any(
             (

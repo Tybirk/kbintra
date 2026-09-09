@@ -91,6 +91,12 @@ const notificationIcons: Record<NotificationType, React.ReactNode> = {
 
   food_swap_request: <IconToolsKitchen2 size={20} />,
 
+  food_team_shift_taken: <IconToolsKitchen2 size={20} />,
+
+  food_team_plan_ready: <IconToolsKitchen2 size={20} />,
+
+  food_team_wishes_open: <IconToolsKitchen2 size={20} />,
+
   mention: <IconAt size={20} />,
 
   subgroup_member_added: <IconMessageCircle size={20} />,
@@ -146,6 +152,12 @@ const notificationColors: Record<NotificationType, string> = {
   food_leftovers_ready: "teal",
 
   food_swap_request: "teal",
+
+  food_team_shift_taken: "teal",
+
+  food_team_plan_ready: "teal",
+
+  food_team_wishes_open: "teal",
 
   mention: "blue",
 

@@ -377,7 +377,11 @@ class TestDefaultCookingDaysAsWishFallback:
 
 @pytest.mark.django_db
 class TestPauseCheckOnNewCycle:
-    """Opening a period asks the paused residents whether the break still holds."""
+    """Opening a period asks the paused residents whether the break still holds.
+
+    Participating residents get an invitation to submit wishes instead — see
+    ``test_madhold_notifications.TestNewCycleAnnouncement`` for that side.
+    """
 
     def _create_cycle(self, api_client, admin_user):
         monday = timezone.localdate() + timedelta(weeks=120)
@@ -410,14 +414,19 @@ class TestPauseCheckOnNewCycle:
         assert "Forår 2027" in notification.message
         assert notification.link == "/madhold/profil"
 
-    def test_everyone_else_is_left_alone(self, api_client, admin_user, house):
+    def test_a_participating_resident_is_invited_not_asked_about_a_pause(
+        self, api_client, admin_user, house
+    ):
+        """Everyone gets exactly one of the two questions, never both."""
         cooking = User.objects.create_user(
             email="kok@example.com", password="x", first_name="Kok", house=house
         )
 
         self._create_cycle(api_client, admin_user)
 
-        assert not Notification.objects.filter(user=cooking).exists()
+        notification = Notification.objects.get(user=cooking)
+        assert notification.notification_type == NotificationType.FOOD_TEAM_WISHES_OPEN
+        assert notification.link == "/madhold/oensker"
 
     def test_an_inactive_resident_is_left_alone(self, api_client, admin_user, house):
         gone = User.objects.create_user(

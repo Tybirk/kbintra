@@ -430,6 +430,13 @@ class FoodTeamCycle(models.Model):
         choices=CycleStatus.choices,
         default=CycleStatus.COLLECTING_WISHES,
     )
+    # Guard for the "husk dine ønsker" nudge, so the daily task can only ever
+    # send it once per period no matter how many days its window stays open.
+    wish_reminder_sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the pre-deadline wish reminder was sent for this period.",
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

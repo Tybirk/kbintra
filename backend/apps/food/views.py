@@ -69,7 +69,7 @@ from .serializers import (
     is_after_deadline,
 )
 from .services.team_generator import TeamGenerator
-from .utils import house_number_for, housemates_of
+from .utils import danish_date_label, house_number_for, housemates_of
 
 logger = logging.getLogger(__name__)
 
@@ -969,6 +969,19 @@ class SwapRequestListCreateView(generics.ListCreateAPIView):
             return CreateSwapRequestSerializer
         return TeamSwapRequestSerializer
 
+    def perform_create(self, serializer: serializers.BaseSerializer) -> None:
+        """Create the request, then actually tell the person it is addressed to.
+
+        A 1:1 bytte goes nowhere without the target's answer, so a silent row in
+        the Bytte tab is the same as no request at all.
+        """
+        swap_request = serializer.save()
+
+        from apps.notifications.services import notify_food_swap_request_created
+
+        with contextlib.suppress(Exception):
+            notify_food_swap_request_created(swap_request)
+
     def get_queryset(self) -> QuerySet[TeamSwapRequest]:
         # Show requests where user is either requester or target
         return (
@@ -1063,10 +1076,17 @@ class RespondSwapRequestView(APIView):
         action = serializer.validated_data["action"]
         response_message = serializer.validated_data.get("response_message", "")
 
+        from apps.notifications.services import notify_food_swap_answered
+
         if action == "decline":
             swap_request.status = SwapRequestStatus.DECLINED
             swap_request.response_message = response_message
             swap_request.save()
+
+            # A decline matters as much as an accept: the day is still theirs and
+            # they have to try something else before it arrives.
+            with contextlib.suppress(Exception):
+                notify_food_swap_answered(swap_request, request.user, accepted=False)
 
             return Response(
                 TeamSwapRequestSerializer(swap_request, context={"request": request}).data
@@ -1109,6 +1129,11 @@ class RespondSwapRequestView(APIView):
                 | Q(target_membership__in=[requester_membership, target_membership])
             ).exclude(pk=swap_request.pk).update(status=SwapRequestStatus.CANCELLED)
 
+        # Their cooking day just moved to another date without them doing
+        # anything else — tell them which date it is now.
+        with contextlib.suppress(Exception):
+            notify_food_swap_answered(swap_request, request.user, accepted=True)
+
         return Response(TeamSwapRequestSerializer(swap_request, context={"request": request}).data)
 
 
@@ -1131,15 +1156,16 @@ class FoodTeamCycleListCreateView(generics.ListCreateAPIView):
         return FoodTeamCycleSerializer
 
     def perform_create(self, serializer: serializers.BaseSerializer) -> None:
-        """Open the period, then ask the paused residents if they still are.
+        """Open the period, then tell the house it is open.
 
-        A pause set months ago is otherwise never revisited, and the moment
-        wishes open is the last one where the answer can still change the plan.
+        Everyone who is in gets an invitation to submit wishes; everyone on a
+        standing pause is asked whether it still holds instead. The moment wishes
+        open is the last one where either answer can still change the plan.
         """
-        from .tasks import notify_paused_residents_of_new_cycle
+        from .tasks import notify_residents_of_new_cycle
 
         cycle = serializer.save()
-        notify_paused_residents_of_new_cycle(cycle.id)
+        notify_residents_of_new_cycle(cycle.id)
 
 
 class FoodTeamCycleDetailView(generics.RetrieveUpdateAPIView):
@@ -1456,6 +1482,17 @@ class GenerateTeamsView(APIView):
         # Run team generation
         generator = TeamGenerator(cycle)
         result = generator.generate(save=not dry_run)
+
+        # A saved plan is the one thing in madhold that every cook needs to hear
+        # about, so announce it here rather than leaving the 20:00 reminder the
+        # night before the first shift as the first anyone hears of their days.
+        # Also fires on a regeneration after a reset — the plan really did change.
+        # A dry run announces nothing, and neither does a run that saved no teams
+        # (a refusal, or an empty pool).
+        if not dry_run and result.teams_created:
+            from .tasks import notify_food_team_plan_ready
+
+            notify_food_team_plan_ready(cycle.id)
 
         # Always return 200 with the structured result. A run that "completes
         # with problems" (unplaced people / undersized teams -> success=False)
@@ -1986,8 +2023,8 @@ class ClosedFoodDayDeleteView(APIView):
 
 
 def _danish_date_label(d: date) -> str:
-    """e.g. 'Mandag 8/6'."""
-    return f"{DAY_NAMES[d.weekday()]} {d.day}/{d.month}"
+    """e.g. 'Mandag 8/6'. Thin alias so the notification services share the format."""
+    return danish_date_label(d)
 
 
 def _house_number_for(user) -> str:  # type: ignore[no-untyped-def]
@@ -2382,16 +2419,18 @@ class TakeoverView(APIView):
                     note=serializer.validated_data.get("note", ""),
                 )
 
-        # Notify the freed user.
-        from apps.notifications.services import notify_food_swap_request
+        # Tell the freed user — in its own words and on its own type. A takeover
+        # is unilateral, so this notification is the only thing that tells them
+        # their evening changed hands, and it must not be opt-out-able on the
+        # toggle labelled for bytteanmodninger they can choose to ignore.
+        from apps.notifications.services import notify_food_shift_taken_over
 
         with contextlib.suppress(Exception):
-            notify_food_swap_request(
+            notify_food_shift_taken_over(
                 debtor,
-                request.user.first_name,
-                _danish_date_label(team.date),
-                "/madhold/mine-hold",
-                related_user=request.user,
+                request.user,
+                team.date.isoformat(),
+                settled_favour=settling is not None,
             )
 
         return Response(
@@ -2632,15 +2671,16 @@ class AcceptSwapBroadcastView(APIView):
                 | Q(target_membership__in=[requester_membership, my_membership])
             ).update(status=SwapRequestStatus.CANCELLED)
 
-        from apps.notifications.services import notify_food_swap_request
+        # The sender's own day just changed — name both dates rather than
+        # re-using the "someone wants to swap" wording they themselves sent out.
+        from apps.notifications.services import notify_food_broadcast_accepted
 
         with contextlib.suppress(Exception):
-            notify_food_swap_request(
+            notify_food_broadcast_accepted(
                 broadcast.requester,
-                request.user.first_name,
+                request.user,
                 _danish_date_label(requester_membership.team.date),
-                "/madhold/bytte",
-                related_user=request.user,
+                _danish_date_label(my_membership.team.date),
             )
         return Response(SwapBroadcastSerializer(broadcast, context={"request": request}).data)
 

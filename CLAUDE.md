@@ -115,9 +115,12 @@ For detailed architecture docs (Huey tasks, production infrastructure, message e
 The `search` app keeps its FTS5 index in sync via `post_save`/`post_delete` signals registered in `SearchConfig.ready()`. When adding or modifying searchable models, check `backend/apps/search/signals.py`. See `backend/apps/search/SEARCH.md` for full docs.
 
 ### Periodic background tasks
-Two Huey periodic tasks exist beyond one-off tasks:
+Beyond one-off tasks:
 - **Event reminders** (`apps/events/tasks.py`) — hourly, sends 24h and 1h reminders
-- **Food team defaults** (`apps/food/tasks.py`) — Thursday 1 AM, cycles cooking teams
+- **Madhold reminders** (`apps/food/tasks.py`) — daily 20:00, reminds tomorrow's cooking team and their households
+- **Wish deadline reminders** (`apps/food/tasks.py`) — daily 17:30, nudges anyone who still owes madhold wishes (once per period)
+- **Registration materialization** (`apps/food/tasks.py`) — Thursday 00:30, freezes next week's meal registrations
+- **Drive menu refresh** (`apps/food/tasks.py`) — every 4 hours
 
 Use `@db_periodic_task(crontab(...))` for new periodic tasks. Import the task module in the app's `AppConfig.ready()` to register it.
 
