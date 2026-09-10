@@ -852,3 +852,98 @@ class TestEmailPreferenceFallback:
         )
 
         assert should_send_email(user, NotificationType.NEW_MESSAGE) is False
+
+
+@pytest.mark.django_db
+class TestToggleLessTypesPiggybackOnEveryChannel:
+    """The types with no toggle of their own reach anyone who uses that channel.
+
+    The two hand-written lists this replaced had drifted: the e-mail one never
+    covered the four food toggles, ``email_car_sharing`` or ``email_reports``,
+    so a resident whose only e-mail was "påmindelse om madhold" got no
+    madholdsplan, no ønsker-åbnet — and no pause check, the one the code
+    comment says e-mail exists to deliver. Reading the toggles off the model
+    means a channel added later is covered without anyone remembering to.
+    """
+
+    TOGGLE_LESS = (
+        NotificationType.FOOD_TEAM_PAUSE_CHECK,
+        NotificationType.FOOD_TEAM_PLAN_READY,
+        NotificationType.FOOD_TEAM_WISHES_OPEN,
+        NotificationType.FOOD_TEAM_SHIFT_TAKEN,
+        NotificationType.EXPENSE_PROCESSED,
+    )
+
+    def _prefs(self, user, **on):
+        """Preferences with every channel off except the named ones."""
+        prefs, _ = NotificationPreference.objects.update_or_create(user=user)
+        for field in prefs._meta.fields:
+            if field.name.startswith(("email_", "push_")):
+                setattr(prefs, field.name, field.name in on)
+        prefs.save()
+        return prefs
+
+    @pytest.mark.parametrize(
+        "channel", ["email_food_team_reminder", "email_car_sharing", "email_reports"]
+    )
+    def test_a_single_food_or_late_added_email_toggle_is_enough(self, user, channel):
+        from apps.notifications.email_service import should_send_email
+
+        self._prefs(user, **{channel: True})
+
+        for notification_type in self.TOGGLE_LESS:
+            assert should_send_email(user, notification_type) is True, notification_type
+
+    def test_no_email_channel_at_all_still_means_no_email(self, user):
+        from apps.notifications.email_service import should_send_email
+
+        self._prefs(user)
+
+        for notification_type in self.TOGGLE_LESS:
+            assert should_send_email(user, notification_type) is False, notification_type
+
+    def test_push_covers_every_toggle_too(self, user):
+        from apps.notifications.services import get_user_push_preference
+
+        self._prefs(user, push_reports=True)
+
+        for notification_type in self.TOGGLE_LESS:
+            assert get_user_push_preference(user, notification_type) is True, notification_type
+
+    def test_the_channel_lists_cover_every_toggle_on_the_model(self, user):
+        """No toggle may be invisible to the piggyback rule."""
+        from apps.notifications.models import _channel_fields
+
+        booleans = {
+            f.name
+            for f in NotificationPreference._meta.fields
+            if f.name.startswith(("email_", "push_"))
+        }
+        covered = set(_channel_fields("email_")) | set(_channel_fields("push_"))
+        assert booleans == covered
+
+    def test_every_email_toggle_is_opt_in(self):
+        """E-mail is only ever on because a resident asked for it.
+
+        ``has_any_email_channel`` is the app's test for "does this person use
+        e-mail", and the toggle-less notifications ride on it. A toggle that
+        ships on — or that a data migration switches on, as 0019 did to
+        ``email_car_sharing`` — makes that test answer yes for people who never
+        opted in to e-mail at all.
+        """
+        on_by_default = [
+            f.name
+            for f in NotificationPreference._meta.fields
+            if f.name.startswith("email_") and f.default is True
+        ]
+        assert on_by_default == []
+
+    def test_a_fresh_resident_gets_no_email(self, user):
+        """The default row is silent on e-mail, including the toggle-less types."""
+        from apps.notifications.email_service import should_send_email
+
+        prefs = NotificationPreference.objects.create(user=user)
+        assert prefs.has_any_email_channel() is False
+
+        for notification_type in self.TOGGLE_LESS:
+            assert should_send_email(user, notification_type) is False, notification_type

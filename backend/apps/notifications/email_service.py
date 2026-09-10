@@ -89,6 +89,13 @@ def should_send_email(user: User, notification_type: NotificationType) -> bool:
     # channels the user already has enabled (email if any email). The madhold
     # pause check especially: someone on a long break may not open the app at
     # all, and email is then the only way the question reaches them.
+    #
+    # ``has_any_email_channel`` reads the toggles off the model instead of
+    # listing them here: the hand-written list this replaced had drifted and no
+    # longer covered the four food toggles, ``email_car_sharing`` or
+    # ``email_reports``, so a resident whose only e-mail was "påmindelse om
+    # madhold" got none of these — including the pause check the comment above
+    # says e-mail exists to deliver.
     if notification_type in (
         NotificationType.EXPENSE_PROCESSED,
         NotificationType.FOOD_TEAM_PAUSE_CHECK,
@@ -96,21 +103,7 @@ def should_send_email(user: User, notification_type: NotificationType) -> bool:
         NotificationType.FOOD_TEAM_PLAN_READY,
         NotificationType.FOOD_TEAM_WISHES_OPEN,
     ):
-        return any(
-            (
-                prefs.email_messages,
-                prefs.email_announcements,
-                prefs.email_announcement_updates,
-                prefs.email_forum_subscriptions,
-                prefs.email_thread_replies,
-                prefs.email_subgroup_activity,
-                prefs.email_post_reactions,
-                prefs.email_events,
-                prefs.email_event_reminders,
-                prefs.email_food_tickets,
-                prefs.email_mentions,
-            )
-        )
+        return prefs.has_any_email_channel()
 
     return preference_map.get(notification_type, False)
 

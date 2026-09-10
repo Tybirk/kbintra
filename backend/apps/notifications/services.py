@@ -238,7 +238,8 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
     # push channels the user already has enabled. If they've opted into any
     # push at all, they get pushed (group membership changes, expense outcomes,
     # the madhold-period announcements — see get_user_preference for why those
-    # have no toggle of their own).
+    # have no toggle of their own). Read off the model rather than listed here,
+    # so a toggle added later is covered without anyone remembering to.
     if notification_type in (
         NotificationType.SUBGROUP_MEMBER_ADDED,
         NotificationType.SUBGROUP_MEMBER_REMOVED,
@@ -248,26 +249,7 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
         NotificationType.FOOD_TEAM_PLAN_READY,
         NotificationType.FOOD_TEAM_WISHES_OPEN,
     ):
-        return any(
-            (
-                prefs.push_messages,
-                prefs.push_announcements,
-                prefs.push_announcement_updates,
-                prefs.push_forum_subscriptions,
-                prefs.push_thread_replies,
-                prefs.push_subgroup_activity,
-                prefs.push_post_reactions,
-                prefs.push_events,
-                prefs.push_event_reminders,
-                prefs.push_food_tickets,
-                prefs.push_food_team_reminder,
-                prefs.push_food_takeaway_ready,
-                prefs.push_food_leftovers_ready,
-                prefs.push_food_swap_request,
-                prefs.push_mentions,
-                prefs.push_car_sharing,
-            )
-        )
+        return prefs.has_any_push_channel()
 
     return preference_map.get(notification_type, True)
 

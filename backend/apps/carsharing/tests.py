@@ -1413,22 +1413,31 @@ def test_car_sharing_notifications_are_on_by_default(owner, owner_house, borrowe
 
 
 @pytest.mark.django_db
-def test_every_car_sharing_channel_is_on_by_default(owner):
-    """Bildeling email is on, unlike the rest of the app. Deliberately.
+def test_bildeling_reaches_a_new_owner_in_app_and_by_push_but_not_by_email(owner):
+    """A borrow request still finds its one recipient — through push, not e-mail.
 
-    A borrow request is the one notification here that is waiting on the person
-    who gets it: nobody else can answer it, and until they do a neighbour is
-    standing there without a car. Push is not configured, so with email off the
-    only signal was the in-app bell — which you have to already be in the app to
-    see. This assertion exists so changing it back is a decision, not a drift.
+    E-mail used to be on here, alone in the app: a borrow request waits on the
+    person who gets it, and with push not yet configured the only other signal
+    was the in-app bell. Push is live now, so that reason is spent — and the
+    exception had grown a second, unintended job. Every other ``email_*`` toggle
+    is off until a resident asks for it, which makes "any e-mail channel on" the
+    app's test for *does this person use e-mail*; the toggle-less notifications
+    ride on it. One toggle switched on for everyone by migration 0019 made that
+    test answer yes for the whole house, so residents who never opted in to
+    e-mail would have started getting madhold announcements by mail. Migration
+    0025 put both the default and the rows back.
+
+    Bildeling is now what every other channel is: in-app and push out of the
+    box, e-mail on request. This assertion exists so changing it back is a
+    decision, not a drift.
     """
     from apps.notifications.models import NotificationPreference
 
     prefs = NotificationPreference.objects.create(user=owner)
 
     assert prefs.notify_car_sharing is True
-    assert prefs.email_car_sharing is True
     assert prefs.push_car_sharing is True
+    assert prefs.email_car_sharing is False
 
 
 # -- Money cannot be negative ----------------------------------------------

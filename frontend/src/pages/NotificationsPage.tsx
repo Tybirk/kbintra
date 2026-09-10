@@ -44,6 +44,7 @@ import {
   IconEdit,
   IconReceipt2,
   IconCar,
+  IconTool,
 } from "@tabler/icons-react"
 
 import dayjs from "dayjs"
@@ -97,6 +98,8 @@ const notificationIcons: Record<NotificationType, React.ReactNode> = {
 
   food_team_wishes_open: <IconToolsKitchen2 size={20} />,
 
+  food_team_pause_check: <IconToolsKitchen2 size={20} />,
+
   mention: <IconAt size={20} />,
 
   subgroup_member_added: <IconMessageCircle size={20} />,
@@ -114,6 +117,10 @@ const notificationIcons: Record<NotificationType, React.ReactNode> = {
   car_loan_request: <IconCar size={20} />,
 
   car_loan_update: <IconCar size={20} />,
+
+  report_new: <IconTool size={20} />,
+
+  report_update: <IconTool size={20} />,
 }
 
 const notificationColors: Record<NotificationType, string> = {
@@ -159,6 +166,8 @@ const notificationColors: Record<NotificationType, string> = {
 
   food_team_wishes_open: "teal",
 
+  food_team_pause_check: "teal",
+
   mention: "blue",
 
   subgroup_member_added: "green",
@@ -176,6 +185,10 @@ const notificationColors: Record<NotificationType, string> = {
   car_loan_request: "grape",
 
   car_loan_update: "grape",
+
+  report_new: "orange",
+
+  report_update: "orange",
 }
 
 export default function NotificationsPage() {
