@@ -2090,6 +2090,13 @@ export interface CreateWishData {
   available_dates: string[]
 
   is_unavailable?: boolean
+
+  /**
+   * Why you are out of this period. Stored on the profile
+   * (`food_team_pause_reason`), not on the wish, so it outlives the cycle.
+   * Only read when `is_unavailable` is true.
+   */
+  pause_reason?: string
 }
 
 export interface TeamGenerationResult {

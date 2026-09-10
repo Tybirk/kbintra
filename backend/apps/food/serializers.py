@@ -7,6 +7,7 @@ from decimal import Decimal
 from functools import cached_property
 from typing import Any
 
+from django.db import transaction
 from django.db.models import Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
@@ -799,11 +800,29 @@ class FoodTeamWishSerializer(serializers.ModelSerializer):
 
 
 class FoodTeamWishCreateUpdateSerializer(serializers.ModelSerializer):
-    """Serializer for creating/updating food team wishes."""
+    """Create or update the caller's wish, and settle their pause in the same call.
+
+    The wish and the pause are one answer to one question — "can you cook in this
+    period?" — so they are written together rather than left to the caller to
+    keep in step:
+
+    - Naming dates you can cook is how you say you are back, so it lifts
+      ``is_exempt_from_food_teams`` and drops the reason for an absence that is
+      over. Leaving the pause on would have the generator skip someone who just
+      signed up, and the wish would look submitted the whole time.
+    - Marking yourself out of the period stores ``pause_reason`` on the *person*
+      (``User.food_team_pause_reason``), not on the wish, so it outlives the
+      cycle and the organiser can come back and ask whether the break still
+      holds. It does not set the standing pause — that is a separate decision,
+      made on the profile.
+    """
+
+    # Write-only: it is stored on the user, not on the wish.
+    pause_reason = serializers.CharField(required=False, allow_blank=True, write_only=True)
 
     class Meta:
         model = FoodTeamWish
-        fields = ["cycle", "available_dates", "is_unavailable"]
+        fields = ["cycle", "available_dates", "is_unavailable", "pause_reason"]
 
     def validate_cycle(self, value: FoodTeamCycle) -> FoodTeamCycle:
         if not value.is_accepting_wishes:
@@ -833,24 +852,49 @@ class FoodTeamWishCreateUpdateSerializer(serializers.ModelSerializer):
 
         return validated
 
+    def _apply_to_user(self, user: User, validated_data: dict) -> None:
+        """Keep the person's pause in step with the wish they just submitted."""
+        updates: dict[str, Any] = {}
+
+        if validated_data.get("is_unavailable"):
+            reason = validated_data.get("pause_reason")
+            if reason is not None and reason != user.food_team_pause_reason:
+                updates["food_team_pause_reason"] = reason
+        elif validated_data.get("available_dates"):
+            if user.is_exempt_from_food_teams:
+                updates["is_exempt_from_food_teams"] = False
+            if user.food_team_pause_reason:
+                updates["food_team_pause_reason"] = ""
+
+        if updates:
+            for field_name, value in updates.items():
+                setattr(user, field_name, value)
+            user.save(update_fields=list(updates))
+
     def create(self, validated_data: dict) -> FoodTeamWish:
-        validated_data["user"] = self.context["request"].user
+        user = self.context["request"].user
+        validated_data["user"] = user
+        # Not a wish field — it belongs on the user (see the class docstring).
+        pause_reason = validated_data.pop("pause_reason", None)
 
-        # Check if user already has a wish for this cycle
-        existing = FoodTeamWish.objects.filter(
-            cycle=validated_data["cycle"],
-            user=validated_data["user"],
-        ).first()
+        with transaction.atomic():
+            self._apply_to_user(user, {**validated_data, "pause_reason": pause_reason})
 
-        if existing:
-            # Update existing wish
-            for key, value in validated_data.items():
-                if key != "user":
-                    setattr(existing, key, value)
-            existing.save()
-            return existing
+            # Check if user already has a wish for this cycle
+            existing = FoodTeamWish.objects.filter(
+                cycle=validated_data["cycle"],
+                user=user,
+            ).first()
 
-        return super().create(validated_data)
+            if existing:
+                # Update existing wish
+                for key, value in validated_data.items():
+                    if key != "user":
+                        setattr(existing, key, value)
+                existing.save()
+                return existing
+
+            return super().create(validated_data)
 
 
 class GenerateTeamsSerializer(serializers.Serializer):

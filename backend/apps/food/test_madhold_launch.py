@@ -976,9 +976,16 @@ def _cooks_in_own_houses(count: int, start: int = 0):
 
 
 @pytest.mark.django_db
-class TestGeneratorRefusesBadSchedules:
-    def test_housemate_wish_without_a_partner_stops_generation(self, two_cooking_dates):
-        """A lone 'cook with my housemate' flag is a data error, not a schedule."""
+class TestGeneratorHandlesUnpairableCouples:
+    """A pair we can't honour is split and reported — it never stops the period.
+
+    Two housemates whose wishes happen to overlap is the lucky case, not the
+    normal one, so refusing to plan would hand ~90 people no schedule over one
+    pair of ticked boxes. The admin reads the warning in the result modal and
+    fixes the flags before the next period.
+    """
+
+    def test_a_lone_housemate_flag_plans_the_person_alone_and_says_so(self, two_cooking_dates):
         from apps.food.models import CycleStatus, FoodTeam
         from apps.food.services.team_generator import TeamGenerator
 
@@ -990,14 +997,14 @@ class TestGeneratorRefusesBadSchedules:
 
         result = TeamGenerator(cycle).generate(save=True)
 
-        assert result.success is False
-        assert lonely.first_name in result.message
-        # Nothing was written, and the cycle is still open for wishes.
-        assert FoodTeam.objects.filter(cycle=cycle).count() == 0
+        assert FoodTeam.objects.filter(cycle=cycle).count() > 0
+        assert any(lonely.first_name in w and "alene" in w for w in result.warnings)
+        # The plan really was published, not left half-saved.
         cycle.refresh_from_db()
-        assert cycle.status == CycleStatus.COLLECTING_WISHES
+        assert cycle.status == CycleStatus.FINALIZED
+        assert FoodTeamMember.objects.filter(team__cycle=cycle, user=lonely).exists()
 
-    def test_couple_without_a_shared_date_stops_generation(self, two_cooking_dates):
+    def test_a_couple_without_a_shared_date_is_split_and_both_still_cook(self, two_cooking_dates):
         from apps.food.models import FoodTeam
         from apps.food.services.team_generator import TeamGenerator
         from apps.houses.models import House
@@ -1021,35 +1028,29 @@ class TestGeneratorRefusesBadSchedules:
 
         result = TeamGenerator(cycle).generate(save=True)
 
-        assert result.success is False
-        assert partners[0].first_name in result.message
-        assert partners[1].first_name in result.message
-        assert FoodTeam.objects.filter(cycle=cycle).count() == 0
-
-    def test_the_relaxation_flag_schedules_such_a_couple_singly(self, two_cooking_dates):
-        """The admin can still force a schedule through, and is told what gave."""
-        from apps.food.models import FoodTeam
-        from apps.food.services.team_generator import TeamGenerator
-        from apps.houses.models import House
-
-        cycle, d1, d2 = two_cooking_dates
-        _cooks_in_own_houses(12)
-
-        shared = House.objects.create(name="Delt hus", address="1 Delt Vej")
-        for i, d in enumerate((d1, d2)):
-            user = User.objects.create_user(
-                email=f"relaxed{i}@example.com",
-                password="x",
-                first_name=f"Fri{i}",
-                house=shared,
-                prefers_cooking_with_housemate=True,
-            )
-            FoodTeamWish.objects.create(cycle=cycle, user=user, available_dates=[d.isoformat()])
-
-        result = TeamGenerator(cycle, allow_couples_without_common_dates=True).generate(save=True)
-
         assert FoodTeam.objects.filter(cycle=cycle).count() > 0
         assert any("hver for sig" in w for w in result.warnings)
+        for partner, day in zip(partners, (d1, d2), strict=True):
+            assert FoodTeamMember.objects.filter(team__date=day, user=partner).exists()
+
+
+@pytest.mark.django_db
+class TestGeneratorSkipsFormerResidents:
+    """A resident who moved out is deactivated, not exempted."""
+
+    def test_an_inactive_resident_is_never_put_on_a_team(self, two_cooking_dates):
+        from apps.food.services.team_generator import TeamGenerator
+
+        cycle, _d1, _d2 = two_cooking_dates
+        cooks = _cooks_in_own_houses(12)
+        moved_out = cooks[0]
+        moved_out.is_active = False
+        moved_out.save(update_fields=["is_active"])
+
+        TeamGenerator(cycle).generate(save=True)
+
+        assert not FoodTeamMember.objects.filter(team__cycle=cycle, user=moved_out).exists()
+        assert FoodTeamMember.objects.filter(team__cycle=cycle).exists()
 
 
 @pytest.mark.django_db

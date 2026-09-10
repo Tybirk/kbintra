@@ -22,10 +22,12 @@ Couples are modelled as two-member "units" scheduled on the intersection of both
 partners' available dates; everyone else is a one-member unit.
 
 The generator would rather stop than hand over a schedule that is quietly wrong:
-a couple whose flags or wishes can't be honoured, and short teams that could have
-been filled from the surplus, both raise SchedulingError instead of being saved.
-Teams that are short simply because too few people signed up still go through —
-that is an input problem, and it only warns.
+short teams that could still have been filled from the surplus raise
+SchedulingError instead of being saved. Teams that are short simply because too
+few people signed up still go through — that is an input problem, and it only
+warns. So does a couple we can't pair up: two housemates sharing a free date is
+the lucky case, not the normal one, so they are scheduled separately and the
+admin is told, rather than one pair of wishes blocking the whole period.
 """
 
 from dataclasses import dataclass, field
@@ -48,9 +50,9 @@ class SchedulingError(RuntimeError):
     """
     The schedule that came out is not one we're willing to hand to the house.
 
-    Raised for the two cases where staying quiet would be worse than stopping:
-    a couple whose flags or wishes can't be honoured, and a final plan whose
-    short teams could demonstrably have been filled from the surplus. The
+    Raised for the one case where staying quiet would be worse than stopping:
+    a final plan whose short teams could demonstrably have been filled from the
+    surplus, which is a bug in the generator rather than in the sign-ups. The
     message is Danish and actionable — it goes straight to the food admin.
     """
 
@@ -114,14 +116,8 @@ class TeamGenerator:
     MAX_OVER_50_PER_TEAM = MAX_OLD_PER_DAY_START
     MIN_HEAD_CHEFS_PER_TEAM = 1
 
-    def __init__(
-        self, cycle: FoodTeamCycle, allow_couples_without_common_dates: bool = False
-    ) -> None:
+    def __init__(self, cycle: FoodTeamCycle) -> None:
         self.cycle = cycle
-        # Off by default: a couple we can't honour stops the run so the admin can
-        # fix the flags or the wishes. Turn it on to schedule such people singly
-        # instead, when the deadline matters more than the pairing.
-        self.allow_couples_without_common_dates = allow_couples_without_common_dates
         # Convert ISO strings to date objects. ``requested_dates`` is what the
         # admin asked for; ``cooking_dates`` is what we actually staff, which
         # _trim_dates_to_capacity may shorten from the end.
@@ -151,7 +147,13 @@ class TeamGenerator:
 
     def load_data(self) -> None:
         """Load persons and their wishes from the database."""
-        users = User.objects.filter(is_exempt_from_food_teams=False).select_related("house")
+        # ``is_active`` as well as the opt-out: a resident who has moved out is
+        # deactivated, not exempted, and every other madhold query already skips
+        # them — the suggested day count, the roster, the reminders. Without it
+        # here the generator plans days around people who no longer live here.
+        users = User.objects.filter(is_active=True, is_exempt_from_food_teams=False).select_related(
+            "house"
+        )
 
         wishes = {w.user_id: w for w in FoodTeamWish.objects.filter(cycle=self.cycle)}
 
@@ -392,11 +394,14 @@ class TeamGenerator:
 
         A single is a one-member unit with that person's wishes; a couple is a
         two-member unit (two housemates who both want to cook together) scheduled
-        on the *intersection* of both partners' wishes. A couple we can't honour —
-        no partner with the same flag, or no date they can both cook — raises
-        SchedulingError, so the admin fixes the flags rather than finding out later
-        that the pair was quietly split; ``allow_couples_without_common_dates``
-        degrades them to singles instead.
+        on the *intersection* of both partners' wishes.
+
+        A couple we can't honour — no partner with the same flag, or no date they
+        can both cook — is scheduled separately and named in a warning. Two people
+        whose wishes happen to overlap is the lucky case rather than the normal
+        one, so refusing to plan the period over it would stop ~90 people's
+        schedule on one pair's ticked boxes. The admin sees the warning in the
+        generation result and can fix the flags before the next period.
         """
         units: list[Unit] = []
         placed: set[int] = set()
@@ -419,15 +424,12 @@ class TeamGenerator:
             )
 
             if partner_id is None:
-                msg = (
+                self.warnings.append(
                     f"{person.first_name} (hus {person.house_number}) har sat "
                     f"'vil lave mad med medbeboer', men ingen anden i huset har sat "
-                    f"samme ønske. Sæt ønsket på begge, eller fjern det fra "
-                    f"{person.first_name}."
+                    f"samme ønske. Planlægges alene. Sæt ønsket på begge, eller "
+                    f"fjern det fra {person.first_name}."
                 )
-                if not self.allow_couples_without_common_dates:
-                    raise SchedulingError(msg)
-                self.warnings.append(f"{msg} Planlægges alene.")
                 units.append(((user_id,), list(person.available_dates)))
                 person.can_be_switched = True
                 placed.add(user_id)
@@ -438,15 +440,12 @@ class TeamGenerator:
             common = [d for d in person.available_dates if d in partner_dates]
 
             if not common:
-                msg = (
+                self.warnings.append(
                     f"{person.first_name} og {partner.first_name} (hus "
                     f"{person.house_number}) vil lave mad sammen, men har ingen fælles "
-                    f"ledige datoer. Lad den ene skrive sig på en af den andens datoer, "
-                    f"eller fjern ønsket om at lave mad sammen i denne periode."
+                    f"ledige datoer. Planlægges hver for sig. Vil de på hold sammen, "
+                    f"skal den ene skrive sig på en af den andens datoer."
                 )
-                if not self.allow_couples_without_common_dates:
-                    raise SchedulingError(msg)
-                self.warnings.append(f"{msg} Planlægges hver for sig.")
                 for pid in (user_id, partner_id):
                     p = self.persons[pid]
                     units.append(((pid,), list(p.available_dates)))
@@ -957,24 +956,15 @@ class TeamGenerator:
             )
 
 
-def generate_teams_for_cycle(
-    cycle: FoodTeamCycle,
-    save: bool = True,
-    allow_couples_without_common_dates: bool = False,
-) -> TeamGenerationResult:
+def generate_teams_for_cycle(cycle: FoodTeamCycle, save: bool = True) -> TeamGenerationResult:
     """
     Convenience function to generate teams for a cycle.
 
     Args:
         cycle: The FoodTeamCycle to generate teams for.
         save: Whether to save the teams to the database.
-        allow_couples_without_common_dates: Schedule un-pairable couples singly
-            instead of refusing to generate.
 
     Returns:
         TeamGenerationResult with details about the generation.
     """
-    generator = TeamGenerator(
-        cycle, allow_couples_without_common_dates=allow_couples_without_common_dates
-    )
-    return generator.generate(save=save)
+    return TeamGenerator(cycle).generate(save=save)

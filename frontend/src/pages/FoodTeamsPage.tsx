@@ -80,14 +80,9 @@ import type {
   TeamFavour,
   SwapBroadcast,
   MyFoodProfile,
+  CreateWishData,
   CycleResetPreview,
 } from "../types"
-
-interface WishSubmitData {
-  available_dates: string[]
-
-  is_unavailable: boolean
-}
 
 interface GenerateTeamsParams {
   cycleId: number
@@ -198,12 +193,6 @@ export default function FoodTeamsPage() {
     ) ?? []
 
   const byttenBadgeCount = pendingRequests.length + incomingBroadcasts.length
-
-  // The days you could still hand to someone else — what the Bytte tab offers
-  // the two anmodnings-buttons for, one row per day.
-  const upcomingMyTeams = (myTeams ?? []).filter(
-    (team) => !dayjs(team.date).isBefore(dayjs(), "day"),
-  )
 
   // My shifts and my household's, in one list by date: a day in the kitchen is
   // the household's evening either way, and the bold name on the card says
@@ -340,13 +329,13 @@ export default function FoodTeamsPage() {
                 <Title order={4} mb="sm">
                   Byt en af dine maddage
                 </Title>
-                {upcomingMyTeams.length === 0 ? (
+                {(myTeams ?? []).length === 0 ? (
                   <Text c="dimmed" size="sm">
                     Du har ingen kommende maddage at bytte væk.
                   </Text>
                 ) : (
                   <Stack gap="sm">
-                    {upcomingMyTeams.map((team) => (
+                    {(myTeams ?? []).map((team) => (
                       <Paper key={team.id} withBorder p="sm" radius="md">
                         <Group justify="space-between" align="flex-start">
                           <div>
@@ -637,19 +626,8 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
     }
   }, [existingWish])
 
-  const saveProfileMutation = useMutation({
-    mutationFn: (data: Partial<MyFoodProfile>) =>
-      foodApi.updateMyFoodProfile(data),
-
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["food", "my-food-profile"] })
-
-      queryClient.invalidateQueries({ queryKey: ["food", "roster"] })
-    },
-  })
-
   const submitWishMutation = useMutation({
-    mutationFn: (data: WishSubmitData) => foodApi.submitWish(cycle.id, data),
+    mutationFn: (data: CreateWishData) => foodApi.submitWish(cycle.id, data),
 
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -657,6 +635,14 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
       })
 
       queryClient.invalidateQueries({ queryKey: ["food", "cycles", "active"] })
+
+      // The wish also settles the pause on the server (naming dates lifts it,
+      // sitting the period out records why), so re-read what it decided.
+      queryClient.invalidateQueries({ queryKey: ["food", "my-food-profile"] })
+
+      queryClient.invalidateQueries({ queryKey: ["food", "profile"] })
+
+      queryClient.invalidateQueries({ queryKey: ["food", "roster"] })
 
       notifications.show({
         title: "Ønsker indsendt",
@@ -686,39 +672,16 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
     setSelectedDates([])
   }
 
+  // One call: the wish and the pause are one answer to one question, and the
+  // server keeps them in step. Naming days lifts a standing pause; sitting the
+  // period out records why, on the profile so it outlives this cycle.
   const handleSubmit = () => {
-    // The reason lives on the profile, so the organiser still sees it when it is
-    // the only thing that changed.
-    if (myProfile) {
-      if (isUnavailable) {
-        if (comment !== myProfile.food_team_pause_reason) {
-          saveProfileMutation.mutate({ food_team_pause_reason: comment })
-        }
-      } else {
-        // Naming the days you can cook is how you say you are back, so a pause
-        // cannot survive it — leaving the switch on would have the generator
-        // skip someone who just signed up. Lift it, and drop the explanation
-        // for an absence that is over.
-        const updates: Partial<MyFoodProfile> = {}
-
-        if (myProfile.is_exempt_from_food_teams) {
-          updates.is_exempt_from_food_teams = false
-        }
-
-        if (myProfile.food_team_pause_reason) {
-          updates.food_team_pause_reason = ""
-        }
-
-        if (Object.keys(updates).length > 0) {
-          saveProfileMutation.mutate(updates)
-        }
-      }
-    }
-
     submitWishMutation.mutate({
       available_dates: isUnavailable ? [] : selectedDates,
 
       is_unavailable: isUnavailable,
+
+      ...(isUnavailable ? { pause_reason: comment } : {}),
     })
   }
 
@@ -2286,8 +2249,6 @@ function MyTeamCard({
 
   currentUserId,
 }: MyTeamCardProps) {
-  const isPast = dayjs(team.date).isBefore(dayjs(), "day")
-
   // Bold = my own house. Nobody has to tell us who that is: my own membership
   // carries my house number, and a housemate's is the same one.
   const myHouseNumber = team.members.find((m) => m.is_own)?.house_number ?? ""
@@ -2309,27 +2270,18 @@ function MyTeamCard({
   }))
 
   return (
-    <Card
-      withBorder
-      p="md"
-      radius="md"
-      bg={isPast ? "var(--mantine-color-default-hover)" : undefined}
-    >
+    <Card withBorder p="md" radius="md">
       {/* wrap, not nowrap: on a phone the two bytte-buttons drop under the date */}
       <Group justify="space-between" mb="sm" align="flex-start">
         <Text fw={600} size="lg">
           {team.day_name}, {dayjs(team.date).format("D. MMMM YYYY")}
         </Text>
-        {isPast ? (
-          <Badge color="gray">Overstået</Badge>
-        ) : (
-          <SwapShiftActions
-            team={team}
-            allTeams={allTeams}
-            myTeams={myTeams}
-            currentUserId={currentUserId}
-          />
-        )}
+        <SwapShiftActions
+          team={team}
+          allTeams={allTeams}
+          myTeams={myTeams}
+          currentUserId={currentUserId}
+        />
       </Group>
 
       <TeamCooks cooks={cooks} />
@@ -2348,8 +2300,6 @@ interface TeamCardProps {
  * whole team as faces with names, and your own house in bold.
  */
 function TeamCard({ team }: TeamCardProps) {
-  const isPast = dayjs(team.date).isBefore(dayjs(), "day")
-
   const cooks = team.members_preview.map((member) => ({
     key: String(member.user_id),
 
@@ -2371,13 +2321,7 @@ function TeamCard({ team }: TeamCardProps) {
       withBorder
       p="md"
       radius="md"
-      bg={
-        team.is_my_team
-          ? "var(--mantine-color-blue-light)"
-          : isPast
-            ? "var(--mantine-color-default-hover)"
-            : undefined
-      }
+      bg={team.is_my_team ? "var(--mantine-color-blue-light)" : undefined}
     >
       <Group justify="space-between" mb="sm" align="flex-start">
         <Text fw={600} size="lg">

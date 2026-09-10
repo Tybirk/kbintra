@@ -917,16 +917,26 @@ class FoodTeamDetailView(generics.RetrieveAPIView):
 
 
 class MyTeamsView(generics.ListAPIView):
-    """List food teams where the current user is a member."""
+    """The current user's upcoming cooking days, soonest first.
+
+    Upcoming only, like every other team list in the app: a day that has been
+    cooked is done with, and returning the whole history put the oldest maddag
+    at the top of "Mine hold" and pushed the next one further down every period.
+    Today counts as upcoming — it is the one people look up most.
+    """
 
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = FoodTeamSerializer
 
     def get_queryset(self) -> QuerySet[FoodTeam]:
         return (
-            FoodTeam.objects.filter(members__user=self.request.user)
+            FoodTeam.objects.filter(
+                members__user=self.request.user,
+                date__gte=timezone.localdate(),
+            )
             .prefetch_related("members__user")
             .distinct()
+            .order_by("date")
         )
 
 

@@ -441,3 +441,119 @@ class TestPauseCheckOnNewCycle:
         self._create_cycle(api_client, admin_user)
 
         assert not Notification.objects.filter(user=gone).exists()
+
+
+@pytest.mark.django_db
+class TestWishSettlesThePause:
+    """The wish and the pause are one answer, written in one request.
+
+    Keeping them in step used to be the frontend's job across two calls, so a
+    wish could land while the pause stayed on — and the generator then skipped
+    someone whose wish sat there looking submitted.
+    """
+
+    @pytest.fixture
+    def open_cycle(self, db, admin_user):
+        monday = timezone.localdate() + timedelta(weeks=130)
+        monday += timedelta(days=(7 - monday.weekday()) % 7)
+        return FoodTeamCycle.objects.create(
+            name="Ønskeperiode",
+            cooking_dates=[monday.isoformat()],
+            wish_deadline=timezone.now() + timedelta(days=7),
+            created_by=admin_user,
+        )
+
+    def _submit(self, api_client, user, cycle, payload):
+        api_client.force_authenticate(user=user)
+        return api_client.post(
+            reverse("food:my-wish", kwargs={"cycle_id": cycle.id}), payload, format="json"
+        )
+
+    def test_naming_dates_lifts_a_standing_pause_and_clears_its_reason(
+        self, api_client, house, open_cycle
+    ):
+        back = User.objects.create_user(
+            email="tilbage@example.com",
+            password="x",
+            first_name="Tilbage",
+            house=house,
+            is_exempt_from_food_teams=True,
+            food_team_pause_reason="Væk til foråret",
+        )
+
+        resp = self._submit(
+            api_client,
+            back,
+            open_cycle,
+            {"available_dates": open_cycle.cooking_dates, "is_unavailable": False},
+        )
+
+        assert resp.status_code == 201, resp.data
+        back.refresh_from_db()
+        assert back.is_exempt_from_food_teams is False
+        assert back.food_team_pause_reason == ""
+
+    def test_sitting_the_period_out_records_the_reason_on_the_person(
+        self, api_client, house, open_cycle
+    ):
+        away = User.objects.create_user(
+            email="vaek@example.com", password="x", first_name="Væk", house=house
+        )
+
+        resp = self._submit(
+            api_client,
+            away,
+            open_cycle,
+            {"available_dates": [], "is_unavailable": True, "pause_reason": "Ferie i september"},
+        )
+
+        assert resp.status_code == 201, resp.data
+        away.refresh_from_db()
+        assert away.food_team_pause_reason == "Ferie i september"
+        # Out of this period only — the standing pause is a separate decision,
+        # made on the profile.
+        assert away.is_exempt_from_food_teams is False
+        assert FoodTeamWish.objects.get(cycle=open_cycle, user=away).is_unavailable is True
+
+    def test_a_wish_with_no_dates_leaves_a_pause_alone(self, api_client, house, open_cycle):
+        """Only naming days you can cook says you are back."""
+        paused = User.objects.create_user(
+            email="stadigpause@example.com",
+            password="x",
+            first_name="Stadig",
+            house=house,
+            is_exempt_from_food_teams=True,
+            food_team_pause_reason="Sygdom",
+        )
+
+        self._submit(
+            api_client, paused, open_cycle, {"available_dates": [], "is_unavailable": False}
+        )
+
+        paused.refresh_from_db()
+        assert paused.is_exempt_from_food_teams is True
+        assert paused.food_team_pause_reason == "Sygdom"
+
+
+@pytest.mark.django_db
+class TestMyTeamsIsUpcomingOnly:
+    """ "Mine hold" is a plan, not a logbook."""
+
+    def test_a_past_shift_is_left_out_and_today_is_kept(self, api_client, user_with_house):
+        today = timezone.localdate()
+        cycle = FoodTeamCycle.objects.create(
+            name="Blandet",
+            cooking_dates=[today.isoformat()],
+            wish_deadline=timezone.now(),
+            status=CycleStatus.FINALIZED,
+        )
+        for day in (today - timedelta(days=7), today, today + timedelta(days=3)):
+            team = FoodTeam.objects.create(cycle=cycle, date=day)
+            FoodTeamMember.objects.create(team=team, user=user_with_house, house_number="1")
+
+        api_client.force_authenticate(user=user_with_house)
+        resp = api_client.get(reverse("food:my-teams"))
+
+        assert resp.status_code == 200
+        returned = [row["date"] for row in resp.data]
+        assert returned == [today.isoformat(), (today + timedelta(days=3)).isoformat()]
