@@ -108,7 +108,7 @@ def du(db):
         slug="driftsudvalget",
         is_committee=True,
         allows_members=True,
-        reporting_enabled=True,
+        reporting=Subgroup.Reporting.OPEN,
     )
 
 

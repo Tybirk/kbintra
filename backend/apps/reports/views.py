@@ -1,11 +1,16 @@
 """
 Views for the Indrapportering app.
 
-Every resident may read the whole queue and comment on any case — the point of
-moving this in from Driftsudvalgets standalone app was that people can follow
-the cases. Only the target udvalg's own members (and staff) move a case through
-its statuses; only the reporter may correct their own case, and only while
-nobody has started working on it.
+Every resident may read an open udvalg's queue and comment on any case in it —
+the point of moving this in from Driftsudvalgets standalone app was that people
+can follow the cases. A closed udvalg's queue is its own members', plus each
+reporter's view of their own case; the rule lives in
+``services.readable_reports_q`` and reaches every endpoint through
+``report_queryset``.
+
+Only the target udvalg's own members (and staff) move a case through its
+statuses; only the reporter may correct their own case, and only while nobody
+has started working on it.
 """
 
 import csv
@@ -58,9 +63,14 @@ def _csv_safe(value: object) -> str:
     return text
 
 
-def _get_report(subgroup_slug: str, number: int) -> Report:
-    """Fetch one case by udvalg slug and case number, or 404."""
-    report = report_queryset().filter(subgroup__slug=subgroup_slug, number=number).first()
+def _get_report(user: object, subgroup_slug: str, number: int) -> Report:
+    """Fetch one case by udvalg slug and case number, or 404.
+
+    A case the viewer may not read 404s rather than 403s: a 403 would confirm
+    that case #7 in Bestyrelsen exists, which is most of what a closed queue is
+    hiding.
+    """
+    report = report_queryset(user).filter(subgroup__slug=subgroup_slug, number=number).first()
     if report is None:
         raise Http404
     return report
@@ -156,12 +166,13 @@ class ReportListCreateView(APIView):
             photos=uploads,
         )
         out = ReportDetailSerializer(
-            _get_report(report.subgroup.slug, report.number), context={"request": request}
+            _get_report(request.user, report.subgroup.slug, report.number),
+            context={"request": request},
         )
         return Response(out.data, status=status.HTTP_201_CREATED)
 
     def _filtered(self, request: Request) -> QuerySet[Report]:
-        qs = report_queryset()
+        qs = report_queryset(request.user)
 
         subgroup_slug = request.query_params.get("subgroup")
         if subgroup_slug:
@@ -198,20 +209,20 @@ class ReportDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request: Request, subgroup_slug: str, number: int) -> Response:
-        report = _get_report(subgroup_slug, number)
+        report = _get_report(request.user, subgroup_slug, number)
         return Response(ReportDetailSerializer(report, context={"request": request}).data)
 
     def patch(self, request: Request, subgroup_slug: str, number: int) -> Response:
-        report = _get_report(subgroup_slug, number)
+        report = _get_report(request.user, subgroup_slug, number)
         self._check_can_edit(request, report)
         serializer = ReportUpdateSerializer(report, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        report = _get_report(subgroup_slug, number)
+        report = _get_report(request.user, subgroup_slug, number)
         return Response(ReportDetailSerializer(report, context={"request": request}).data)
 
     def delete(self, request: Request, subgroup_slug: str, number: int) -> Response:
-        report = _get_report(subgroup_slug, number)
+        report = _get_report(request.user, subgroup_slug, number)
         self._check_can_edit(request, report)
         report.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -235,7 +246,7 @@ class ReportEventView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request: Request, subgroup_slug: str, number: int) -> Response:
-        report = _get_report(subgroup_slug, number)
+        report = _get_report(request.user, subgroup_slug, number)
         serializer = ReportEventCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         new_status = serializer.validated_data.get("status")
@@ -249,7 +260,7 @@ class ReportEventView(APIView):
             new_status=new_status,
             message=serializer.validated_data.get("message", ""),
         )
-        report = _get_report(subgroup_slug, number)
+        report = _get_report(request.user, subgroup_slug, number)
         return Response(
             ReportDetailSerializer(report, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
@@ -262,7 +273,7 @@ class ReportPhotoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request: Request, subgroup_slug: str, number: int) -> Response:
-        report = _get_report(subgroup_slug, number)
+        report = _get_report(request.user, subgroup_slug, number)
         ReportDetailView._check_can_edit(request, report)
         uploads = request.FILES.getlist("photos")
         if not uploads:
@@ -270,7 +281,7 @@ class ReportPhotoView(APIView):
         _validate_photos(uploads, existing=report.photos.count())
         for upload in uploads:
             add_photo(report, upload)
-        report = _get_report(subgroup_slug, number)
+        report = _get_report(request.user, subgroup_slug, number)
         return Response(
             ReportDetailSerializer(report, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
@@ -296,13 +307,15 @@ class ReportExportView(APIView):
         slug = request.query_params.get("subgroup")
         if not slug:
             raise ValidationError({"subgroup": "Angiv hvilket udvalg der skal eksporteres."})
-        subgroup = generics.get_object_or_404(Subgroup, slug=slug, reporting_enabled=True)
+        subgroup = generics.get_object_or_404(
+            Subgroup.objects.exclude(reporting=Subgroup.Reporting.OFF), slug=slug
+        )
 
         probe = Report(subgroup=subgroup)
         if not is_caseworker(request.user, probe):
             raise PermissionDenied("Kun udvalgets medlemmer kan eksportere sagerne.")
 
-        qs = report_queryset().filter(subgroup=subgroup).order_by("number")
+        qs = report_queryset(request.user).filter(subgroup=subgroup).order_by("number")
 
         buf = io.StringIO()
         # UTF-8 BOM so Excel renders æøå correctly.

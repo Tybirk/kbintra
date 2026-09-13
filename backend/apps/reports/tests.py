@@ -5,6 +5,7 @@ Tests for the Indrapportering app.
 import io
 
 import pytest
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from PIL import Image
 from rest_framework.test import APIClient
@@ -31,7 +32,8 @@ def du(db):
         slug="driftsudvalget",
         is_committee=True,
         allows_members=True,
-        reporting_enabled=True,
+        reporting=Subgroup.Reporting.OPEN,
+        reporting_intro="Fejlmelding af inventar",
     )
 
 
@@ -42,8 +44,32 @@ def other_udvalg(db):
         slug="groent-udvalg",
         is_committee=True,
         allows_members=True,
-        reporting_enabled=True,
+        reporting=Subgroup.Reporting.OPEN,
     )
+
+
+@pytest.fixture
+def bestyrelsen(db):
+    """An udvalg whose queue only it (and each reporter) may read."""
+    return Subgroup.objects.create(
+        name="Bestyrelsen",
+        slug="bestyrelsen",
+        is_committee=True,
+        allows_members=True,
+        reporting=Subgroup.Reporting.CLOSED,
+    )
+
+
+@pytest.fixture
+def bestyrelsesmedlem(db, bestyrelsen):
+    person = User.objects.create_user(
+        email="bestyrelse@example.com",
+        password="pass12345",
+        first_name="Bodil",
+        last_name="Bestyrelse",
+    )
+    SubgroupMembership.objects.create(user=person, subgroup=bestyrelsen, role="Medlem")
+    return person
 
 
 @pytest.fixture
@@ -182,6 +208,103 @@ def test_every_resident_sees_every_case(du, user, neighbour):
     assert resp.status_code == 200
     assert resp.data["count"] == 1
     assert resp.data["open_count"] == 1
+
+
+# --- Closed udvalg ------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_a_neighbour_sees_nothing_from_a_closed_udvalg(bestyrelsen, user, neighbour):
+    report = _report(bestyrelsen, user)
+
+    client = _client(neighbour)
+    listing = client.get("/api/reports/")
+    assert listing.data["count"] == 0
+
+    # 404, not 403: a 403 would confirm the case exists, which is most of what a
+    # closed queue is hiding.
+    detail = client.get(f"/api/reports/bestyrelsen/{report.number}/")
+    assert detail.status_code == 404
+
+
+@pytest.mark.django_db
+def test_the_udvalg_and_the_reporter_both_see_a_closed_case(
+    bestyrelsen, bestyrelsesmedlem, user, admin_user
+):
+    report = _report(bestyrelsen, user)
+    path = f"/api/reports/bestyrelsen/{report.number}/"
+
+    # The udvalg works the queue; the reporter has to be able to follow the case
+    # they filed and open the link in their own notification; staff can step in.
+    for person in (bestyrelsesmedlem, user, admin_user):
+        assert _client(person).get(path).status_code == 200, person
+
+
+@pytest.mark.django_db
+def test_a_neighbour_cannot_comment_on_a_closed_case(bestyrelsen, user, neighbour):
+    report = _report(bestyrelsen, user)
+
+    resp = _client(neighbour).post(
+        f"/api/reports/bestyrelsen/{report.number}/events/",
+        {"message": "Hvad handler den om?"},
+        format="json",
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+def test_a_closed_case_is_not_searchable_by_a_neighbour(
+    bestyrelsen, bestyrelsesmedlem, user, neighbour
+):
+    _report(bestyrelsen, user, description="Nabostrid om parkeringsplads ved Hus 12")
+
+    def hits(person) -> int:
+        resp = _client(person).get("/api/search/?q=parkeringsplads")
+        assert resp.status_code == 200
+        return len(resp.data["results"].get("reports", []))
+
+    assert hits(neighbour) == 0
+    assert hits(bestyrelsesmedlem) == 1
+    assert hits(user) == 1
+
+
+@pytest.mark.django_db
+def test_anyone_may_file_to_a_closed_udvalg(bestyrelsen, neighbour):
+    """Closed is about reading the queue, not about who may report."""
+    resp = _client(neighbour).post(
+        "/api/reports/",
+        {
+            "subgroup": "bestyrelsen",
+            "kind": Report.Kind.SUGGESTION,
+            "description": "Kan vi tage cykelskuret op på næste møde?",
+        },
+    )
+    assert resp.status_code == 201
+    assert Report.objects.filter(subgroup=bestyrelsen).count() == 1
+
+
+@pytest.mark.django_db
+def test_subgroups_endpoint_carries_the_intro_line_and_closed_state(du, bestyrelsen, user):
+    resp = _client(user).get("/api/reports/subgroups/")
+
+    by_slug = {item["slug"]: item for item in resp.data}
+    assert by_slug["driftsudvalget"]["reporting_intro"] == "Fejlmelding af inventar"
+    assert by_slug["driftsudvalget"]["is_closed"] is False
+    assert by_slug["bestyrelsen"]["is_closed"] is True
+
+
+@pytest.mark.django_db
+def test_reporting_needs_a_group_that_has_members(db):
+    """Members are the caseworkers, so a group without them cannot take cases."""
+    group = Subgroup(
+        name="Badmintongruppe",
+        slug="badmintongruppe",
+        allows_members=False,
+        reporting=Subgroup.Reporting.OPEN,
+    )
+    with pytest.raises(DjangoValidationError) as excinfo:
+        group.full_clean()
+    assert "reporting" in excinfo.value.error_dict
 
 
 @pytest.mark.django_db

@@ -8,7 +8,6 @@ import {
   Group,
   Image,
   Modal,
-  Select,
   SimpleGrid,
   Stack,
   Text,
@@ -21,7 +20,12 @@ import { useMediaQuery } from "@mantine/hooks"
 
 import { notifications } from "@mantine/notifications"
 
-import { IconCamera, IconInfoCircle, IconX } from "@tabler/icons-react"
+import {
+  IconInfoCircle,
+  IconLock,
+  IconPaperclip,
+  IconX,
+} from "@tabler/icons-react"
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
@@ -124,8 +128,9 @@ export function ReportForm({
     createMutation.mutate()
   }
 
-  const targetName =
-    subgroups.find((option) => option.slug === target)?.name ?? ""
+  const targetGroup = subgroups.find((option) => option.slug === target)
+  const targetName = targetGroup?.name ?? ""
+  const targetIsClosed = targetGroup?.is_closed ?? false
 
   return (
     <Modal
@@ -136,23 +141,77 @@ export function ReportForm({
       fullScreen={isMobile}
     >
       <Stack gap="md">
+        {/* Cards rather than a dropdown, matching the category picker below.
+            A Select can only show the udvalg's name, and the name alone does
+            not tell anyone whether a wobbly bench belongs to Driftsudvalget or
+            Grønt udvalg — the intro line does, and it needs somewhere to live.
+            It also gives the lock a place: whether the udvalg's queue is public
+            has to be readable before the description is written, not after. */}
         {subgroups.length > 1 && !subgroupSlug ? (
-          <Select
-            label="Til"
-            data={subgroups.map((option) => ({
-              value: option.slug,
-              label: option.name,
-            }))}
-            value={subgroup}
-            onChange={(value) => setSubgroup(value ?? "")}
-            allowDeselect={false}
-          />
+          <Box>
+            <Text size="sm" fw={500} mb={6}>
+              Til hvilket udvalg?
+            </Text>
+            <SimpleGrid cols={{ base: 1, xs: 2 }} spacing="xs">
+              {subgroups.map((option) => {
+                const selected = target === option.slug
+                return (
+                  <UnstyledButton
+                    key={option.slug}
+                    onClick={() => setSubgroup(option.slug)}
+                    p="sm"
+                    style={{
+                      borderRadius: 8,
+                      border: `1px solid var(--mantine-color-${
+                        selected ? "blue-6" : "gray-4"
+                      })`,
+                      background: selected
+                        ? "var(--mantine-color-blue-light)"
+                        : undefined,
+                    }}
+                  >
+                    <Group gap={6} wrap="nowrap" align="center">
+                      <Text size="sm" fw={selected ? 600 : 500}>
+                        {option.name}
+                      </Text>
+                      {option.is_closed && (
+                        <IconLock
+                          size={14}
+                          style={{ flexShrink: 0 }}
+                          aria-label="Lukket"
+                        />
+                      )}
+                    </Group>
+                    {option.reporting_intro && (
+                      <Text size="xs" c="dimmed">
+                        {option.reporting_intro}
+                      </Text>
+                    )}
+                  </UnstyledButton>
+                )
+              })}
+            </SimpleGrid>
+          </Box>
         ) : (
           targetName && (
             <Text size="sm" c="dimmed">
               Til: <strong>{targetName}</strong>
             </Text>
           )
+        )}
+
+        {targetIsClosed && (
+          <Alert
+            icon={<IconLock size={16} />}
+            color="gray"
+            variant="light"
+            p="xs"
+          >
+            <Text size="xs">
+              Kun {targetName} kan læse sagerne her. Du kan selv følge din egen
+              sag.
+            </Text>
+          </Alert>
         )}
 
         <Box>
@@ -182,7 +241,7 @@ export function ReportForm({
                   <Group gap={8} wrap="nowrap">
                     <Icon size={18} />
                     <Text size="sm" fw={selected ? 600 : 400}>
-                      {meta.short}
+                      {meta.label}
                     </Text>
                   </Group>
                 </UnstyledButton>
@@ -205,23 +264,27 @@ export function ReportForm({
         <TextInput
           label="Hvor?"
           description="Valgfri"
-          placeholder="fx. køkkenet i Hus 39"
+          placeholder="fx. køkkenet i fælleshuset"
           value={location}
           onChange={(event) => setLocation(event.currentTarget.value)}
         />
 
         <Box>
+          {/* `prompt`, not children: children are the badge area, where clicks
+              are swallowed so removing one doesn't reopen the picker. As a
+              child this label was the one part of the box that did nothing. */}
           <AttachmentArea
             accept="image/*"
             onAddFiles={(files) =>
               setPhotos((current) => [...current, ...files].slice(0, 10))
             }
-          >
-            <Group gap={8} justify="center">
-              <IconCamera size={18} />
-              <Text size="sm">Tilføj billede</Text>
-            </Group>
-          </AttachmentArea>
+            prompt={
+              <Group gap={8} justify="center">
+                <IconPaperclip size={18} />
+                <Text size="sm">Tilføj vedhæftning</Text>
+              </Group>
+            }
+          />
           <Alert
             icon={<IconInfoCircle size={16} />}
             color="blue"

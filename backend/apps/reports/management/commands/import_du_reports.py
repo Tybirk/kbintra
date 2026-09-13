@@ -202,10 +202,10 @@ class Command(BaseCommand):
             subgroup = Subgroup.objects.get(slug=options["subgroup"])
         except Subgroup.DoesNotExist as exc:
             raise CommandError(f"Ingen gruppe med slug '{options['subgroup']}'.") from exc
-        if not subgroup.reporting_enabled:
+        if subgroup.reporting == Subgroup.Reporting.OFF:
             self.stdout.write(
                 self.style.WARNING(
-                    f"Bemærk: {subgroup.name} har ikke reporting_enabled slået til endnu."
+                    f"Bemærk: {subgroup.name} modtager ikke indrapporteringer endnu."
                 )
             )
 

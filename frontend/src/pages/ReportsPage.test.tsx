@@ -38,9 +38,15 @@ function makeReport(overrides: Partial<Report> = {}): Report {
   return {
     id: 1,
     number: 12,
-    subgroup: { id: 10, name: "Driftsudvalget", slug: "driftsudvalget" },
+    subgroup: {
+      id: 10,
+      name: "Driftsudvalget",
+      slug: "driftsudvalget",
+      reporting_intro: "Fejlmelding af inventar",
+      is_closed: false,
+    },
     kind: "defect",
-    kind_display: "Defekt inventar",
+    kind_display: "Defekt",
     status: "in_progress",
     status_display: "I gang",
     description: "Defekt støvsugerslange. Falder ud når man bruger den.",
@@ -77,7 +83,13 @@ describe("ReportsPage", () => {
     vi.clearAllMocks()
     mockList.mockResolvedValue(makeList([makeReport()]))
     mockSubgroups.mockResolvedValue([
-      { id: 10, name: "Driftsudvalget", slug: "driftsudvalget" },
+      {
+        id: 10,
+        name: "Driftsudvalget",
+        slug: "driftsudvalget",
+        reporting_intro: "Fejlmelding af inventar",
+        is_closed: false,
+      },
     ])
   })
 
@@ -97,7 +109,7 @@ describe("ReportsPage", () => {
     })
     // Scoped to the card: the status filter chips carry the same labels.
     const card = within(screen.getByRole("link"))
-    expect(card.getByText("Defekt inventar")).toBeInTheDocument()
+    expect(card.getByText("Defekt")).toBeInTheDocument()
     expect(card.getByText("I gang")).toBeInTheDocument()
     expect(card.getByText(/Defekt støvsugerslange/)).toBeInTheDocument()
     expect(card.getByText("Depotrummet")).toBeInTheDocument()
@@ -180,6 +192,88 @@ describe("ReportsPage", () => {
     expect(
       await screen.findByPlaceholderText(/Hvad kunne vi ønske os/),
     ).toBeInTheDocument()
+  })
+
+  it("picks an udvalg by its name and the line saying what belongs there", async () => {
+    mockSubgroups.mockResolvedValue([
+      {
+        id: 10,
+        name: "Driftsudvalget",
+        slug: "driftsudvalget",
+        reporting_intro: "Fejlmelding af inventar",
+        is_closed: false,
+      },
+      {
+        id: 5,
+        name: "Grønt udvalg",
+        slug: "groent-udvalg",
+        reporting_intro: "Grønne forslag og udearealer",
+        is_closed: false,
+      },
+    ])
+    mockCreate.mockResolvedValue(makeReport({ number: 3 }))
+    const user = userEvent.setup()
+    render(<ReportsPage />)
+
+    await user.click(
+      await screen.findByRole("button", { name: /ny indrapportering/i }),
+    )
+    const form = within(await screen.findByRole("dialog"))
+    expect(
+      await form.findByText("Grønne forslag og udearealer"),
+    ).toBeInTheDocument()
+
+    await user.click(form.getByText("Grønt udvalg"))
+    await user.type(form.getByLabelText(/beskrivelse/i), "Hækken er død")
+    await user.click(form.getByRole("button", { name: /send ind/i }))
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalled())
+    expect(mockCreate.mock.calls[0][0].subgroup).toBe("groent-udvalg")
+  })
+
+  it("warns that a closed udvalg's queue is not public", async () => {
+    mockSubgroups.mockResolvedValue([
+      {
+        id: 43,
+        name: "Bestyrelsen",
+        slug: "bestyrelsen",
+        reporting_intro: "Sager til bestyrelsen",
+        is_closed: true,
+      },
+    ])
+    const user = userEvent.setup()
+    render(<ReportsPage />)
+
+    await user.click(
+      await screen.findByRole("button", { name: /ny indrapportering/i }),
+    )
+    const form = within(await screen.findByRole("dialog"))
+
+    expect(
+      await form.findByText(/Kun Bestyrelsen kan læse sagerne her/),
+    ).toBeInTheDocument()
+  })
+
+  it("opens the picker from the label, not just the space around it", async () => {
+    // Regression: the label sat in `children`, where AttachmentArea swallows
+    // clicks so removing a file badge can't reopen the picker — which made the
+    // one thing people aim at the one part of the box that did nothing.
+    const user = userEvent.setup()
+    render(<ReportsPage />)
+
+    await user.click(
+      await screen.findByRole("button", { name: /ny indrapportering/i }),
+    )
+    await screen.findByPlaceholderText(/Hvad er ødelagt\?/)
+
+    const input = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement
+    const opened = vi.spyOn(input, "click").mockImplementation(() => {})
+
+    await user.click(screen.getByText("Tilføj vedhæftning"))
+
+    expect(opened).toHaveBeenCalled()
   })
 
   it("only offers images in the photo picker", async () => {

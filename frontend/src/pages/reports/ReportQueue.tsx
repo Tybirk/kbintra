@@ -60,13 +60,21 @@ export function ReportQueue({ subgroupSlug, canExport }: ReportQueueProps) {
   // things nobody has dealt with yet. Closed cases stay one tap away.
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("open")
   const [kindFilter, setKindFilter] = useState<ReportKind | null>(null)
+  // "" = every udvalg. Only used on the main page; the tab passes subgroupSlug.
+  const [udvalgFilter, setUdvalgFilter] = useState("")
   const [search, setSearch] = useState("")
   const [debouncedSearch] = useDebouncedValue(search, 300)
   const [page, setPage] = useState(1)
   const [formOpen, setFormOpen] = useState(false)
 
+  const { data: subgroups = [] } = useQuery({
+    queryKey: ["reports", "subgroups"],
+    queryFn: reportsApi.subgroups,
+    enabled: !subgroupSlug,
+  })
+
   const filters: ReportFilters = {
-    subgroup: subgroupSlug,
+    subgroup: subgroupSlug || udvalgFilter || undefined,
     status: statusFilter === "all" ? undefined : statusFilter,
     kind: kindFilter ?? undefined,
     q: debouncedSearch || undefined,
@@ -85,6 +93,11 @@ export function ReportQueue({ subgroupSlug, canExport }: ReportQueueProps) {
 
   function changeKind(value: ReportKind | null) {
     setKindFilter(value)
+    setPage(1)
+  }
+
+  function changeUdvalg(value: string) {
+    setUdvalgFilter(value)
     setPage(1)
   }
 
@@ -132,6 +145,25 @@ export function ReportQueue({ subgroupSlug, canExport }: ReportQueueProps) {
           clears it — as a single-select group it could not be cleared at all
           without reloading the page. */}
       <Group gap="xs" wrap="wrap">
+        {/* Only on the main page: on an udvalg's own tab the queue is already
+            one udvalg's, and a picker there would just be a way to leave it. */}
+        {!subgroupSlug && subgroups.length > 1 && (
+          <Select
+            data={[
+              { value: "", label: "Alle udvalg" },
+              ...subgroups.map((option) => ({
+                value: option.slug,
+                label: option.name,
+              })),
+            ]}
+            value={udvalgFilter}
+            onChange={(value) => changeUdvalg(value ?? "")}
+            allowDeselect={false}
+            size="sm"
+            w={170}
+            aria-label="Filtrér efter udvalg"
+          />
+        )}
         <Select
           data={STATUS_FILTER_OPTIONS}
           value={statusFilter}
@@ -149,7 +181,7 @@ export function ReportQueue({ subgroupSlug, canExport }: ReportQueueProps) {
             checked={kindFilter === kind}
             onClick={() => changeKind(kindFilter === kind ? null : kind)}
           >
-            {KIND_META[kind].short}
+            {KIND_META[kind].label}
           </Chip>
         ))}
       </Group>
@@ -181,7 +213,7 @@ export function ReportQueue({ subgroupSlug, canExport }: ReportQueueProps) {
             <ReportCard
               key={report.id}
               report={report}
-              showSubgroup={!subgroupSlug}
+              showSubgroup={!subgroupSlug && !udvalgFilter}
             />
           ))}
         </Stack>

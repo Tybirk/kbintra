@@ -1,11 +1,12 @@
 """
 Models for the Indrapportering app — resident reports to an udvalg.
 
-A resident reports something broken, faulty or wished-for to an udvalg that has
-reporting switched on (``forum.Subgroup.reporting_enabled``). Every resident can
-read the queue and comment; the udvalg's own members move a case through its
-statuses. Each case carries a per-udvalg number so people can say "sag #14" and
-mean one thing.
+A resident reports something broken, faulty or wished-for to an udvalg that
+takes reports (``forum.Subgroup.reporting``). On an open udvalg every resident
+can read the queue and comment; on a closed one that is the udvalg's members
+and each reporter's own case. Either way the udvalg's own members move a case
+through its statuses. Each case carries a per-udvalg number so people can say
+"sag #14" and mean one thing.
 
 Replaces Driftsudvalgets standalone reporting PWA; the ``legacy_*`` fields carry
 what that export could tell us about the cases imported from it.
@@ -24,9 +25,14 @@ class Report(models.Model):
     """A single case reported to an udvalg."""
 
     class Kind(models.TextChoices):
-        DEFECT = "defect", "Defekt inventar"
-        FAULTY = "faulty", "Fejlbehæftet inventar"
-        SUGGESTION = "suggestion", "Forslag til nyt inventar"
+        # Labels are deliberately domain-free: the same three cover a broken
+        # chair in Driftsudvalget, a dead hedge in Grønt udvalg and a wish for a
+        # new saw in Værkstedsudvalget. What belongs in a given udvalg is said
+        # once, in that udvalg's `reporting_intro`, rather than by giving each
+        # one its own configurable category list for four groups to maintain.
+        DEFECT = "defect", "Defekt"
+        FAULTY = "faulty", "Virker dårligt"
+        SUGGESTION = "suggestion", "Forslag"
 
     class Status(models.TextChoices):
         NEW = "new", "Ny"

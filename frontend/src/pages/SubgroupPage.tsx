@@ -861,8 +861,17 @@ When done, print a short summary:
           <Tabs.Tab value="gallery" leftSection={<IconPhoto size={16} />}>
             Galleri
           </Tabs.Tab>
-          {subgroup.reporting_enabled && (
-            <Tabs.Tab value="reports" leftSection={<IconTool size={16} />}>
+          {subgroup.reporting !== "off" && (
+            <Tabs.Tab
+              value="reports"
+              leftSection={
+                subgroup.reporting === "closed" ? (
+                  <IconLock size={16} />
+                ) : (
+                  <IconTool size={16} />
+                )
+              }
+            >
               Indrapportering
             </Tabs.Tab>
           )}
@@ -968,6 +977,22 @@ When done, print a short summary:
         </Tabs.Panel>
 
         <Tabs.Panel value="reports" pt="md">
+          {/* What belongs here, and who reads it — the same two facts the
+              picker on /indrapportering shows, for people who arrived the
+              other way. */}
+          {subgroup.reporting_intro && (
+            <Text size="sm" c="dimmed" mb="xs">
+              {subgroup.reporting_intro}
+            </Text>
+          )}
+          {subgroup.reporting === "closed" && (
+            <Group gap={6} mb="md" wrap="nowrap">
+              <IconLock size={14} style={{ flexShrink: 0 }} />
+              <Text size="xs" c="dimmed">
+                Kun {subgroup.name} kan læse sagerne her — bortset fra din egen.
+              </Text>
+            </Group>
+          )}
           <ReportQueue
             subgroupSlug={slug!}
             canExport={!!user && (user.is_staff || subgroup.is_member)}

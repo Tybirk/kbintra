@@ -39,31 +39,40 @@ export const STATUS_ORDER: ReportStatus[] = [
 
 interface KindMeta {
   label: string
-  short: string
   color: string
   icon: typeof IconTool
   /** The description prompt follows the type — a wish is not a breakage. */
   placeholder: string
 }
 
+/**
+ * Labels say nothing about inventar any more.
+ *
+ * The three came from Driftsudvalgets old app and read as its vocabulary
+ * ("Fejlbehæftet inventar"), which is wrong for a dead hedge in Grønt udvalg.
+ * Domain-free, they cover every udvalg — and what belongs in a given queue is
+ * said once, in that udvalg's `reporting_intro`, instead of each one carrying
+ * its own list of categories.
+ *
+ * One label per kind, not a long form and a short one: the two were "Defekt"
+ * and "Defekt inventar", and with the word gone they would be the same string
+ * written twice.
+ */
 export const KIND_META: Record<ReportKind, KindMeta> = {
   defect: {
-    label: "Defekt inventar",
-    short: "Defekt",
+    label: "Defekt",
     color: "red",
     icon: IconTool,
     placeholder: "Hvad er ødelagt? Så mange detaljer som muligt.",
   },
   faulty: {
-    label: "Fejlbehæftet inventar",
-    short: "Fejlbehæftet",
+    label: "Virker dårligt",
     color: "orange",
     icon: IconAlertTriangle,
     placeholder: "Hvad virker ikke som det skal? Så mange detaljer som muligt.",
   },
   suggestion: {
-    label: "Forslag til nyt inventar",
-    short: "Forslag",
+    label: "Forslag",
     color: "teal",
     icon: IconBulb,
     placeholder: "Hvad kunne vi ønske os — og hvad skal det bruges til?",

@@ -17,6 +17,7 @@ from apps.forum.services import member_subgroup_ids
 from apps.houses.models import Car, House
 from apps.houses.utils import format_license_plate, normalize_license_plate
 from apps.reports.models import Report
+from apps.reports.services import readable_reports_q
 from apps.users.models import User
 
 from .services import (
@@ -455,6 +456,17 @@ def apply_visibility_filters(results: dict[str, list[dict]], user: User) -> None
             or private[item["id"]] in member_ids
             or item["id"] in uploaded_by
         ]
+
+    # Reports (a closed udvalg's queue belongs to its members, plus whoever
+    # reported the individual case). Asking the database which of these ids are
+    # readable, rather than restating the rule here, keeps one definition of it.
+    report_items = results.get("reports") or []
+    if report_items:
+        ids = [item["id"] for item in report_items]
+        visible = set(
+            Report.objects.filter(readable_reports_q(user), id__in=ids).values_list("id", flat=True)
+        )
+        results["reports"] = [item for item in report_items if item["id"] in visible]
 
 
 def _replace_titles(items: list[dict], by_id: dict[int, str]) -> None:

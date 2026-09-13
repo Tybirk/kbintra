@@ -12,7 +12,7 @@ from apps.users.models import User
 from apps.users.serializer_mixins import AvatarUrlMixin
 
 from .models import Report, ReportEvent, ReportPhoto
-from .services import is_caseworker
+from .services import is_caseworker, readable_reports_q
 
 
 class ReporterSerializer(AvatarUrlMixin, serializers.ModelSerializer):
@@ -24,11 +24,18 @@ class ReporterSerializer(AvatarUrlMixin, serializers.ModelSerializer):
 
 
 class ReportSubgroupSerializer(serializers.ModelSerializer):
-    """Just enough of the udvalg to label and link a case."""
+    """Just enough of the udvalg to label and link a case, and to pick it.
+
+    ``reporting_intro`` and ``is_closed`` are what the "Til:" picker needs to
+    say what belongs where, and to warn — before anything is written — that a
+    closed udvalg's queue is not public.
+    """
+
+    is_closed = serializers.BooleanField(source="reporting_is_closed", read_only=True)
 
     class Meta:
         model = Subgroup
-        fields = ["id", "name", "slug"]
+        fields = ["id", "name", "slug", "reporting_intro", "is_closed"]
 
 
 class ReportPhotoSerializer(serializers.ModelSerializer):
@@ -167,7 +174,7 @@ class ReportCreateSerializer(serializers.Serializer):
 
     subgroup = serializers.SlugRelatedField(
         slug_field="slug",
-        queryset=Subgroup.objects.filter(reporting_enabled=True),
+        queryset=Subgroup.objects.exclude(reporting=Subgroup.Reporting.OFF),
         error_messages={
             "does_not_exist": "Denne gruppe modtager ikke indrapporteringer.",
         },
@@ -212,8 +219,15 @@ class ReportEventCreateSerializer(serializers.Serializer):
         return attrs
 
 
-def report_queryset() -> Any:
-    """Base queryset with everything the serializers touch prefetched."""
-    return Report.objects.select_related("subgroup", "submitted_by").prefetch_related(
-        "photos", "events__author"
+def report_queryset(user: Any) -> Any:
+    """Cases *user* may read, with everything the serializers touch prefetched.
+
+    Every view starts here, so visibility is applied once rather than being
+    remembered per endpoint. ``user`` is required for that reason: an optional
+    argument that skips the filter is the one mistake worth designing out.
+    """
+    return (
+        Report.objects.select_related("subgroup", "submitted_by")
+        .prefetch_related("photos", "events__author")
+        .filter(readable_reports_q(user))
     )

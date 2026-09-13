@@ -495,6 +495,8 @@ export interface SubgroupMember {
   created_at: string
 }
 
+export type SubgroupReporting = "off" | "open" | "closed"
+
 export interface Subgroup {
   id: number
 
@@ -535,7 +537,11 @@ export interface Subgroup {
 
   default_members_only: boolean
 
-  reporting_enabled: boolean
+  /** "off" = no indrapportering; "closed" = only the udvalg reads the queue. */
+  reporting: SubgroupReporting
+
+  /** One line saying what belongs in this udvalg's queue. May be empty. */
+  reporting_intro: string
 
   is_member: boolean
 
@@ -2515,6 +2521,12 @@ export interface ReportSubgroup {
   name: string
 
   slug: string
+
+  /** One line saying what belongs here, shown under the name in the picker. */
+  reporting_intro: string
+
+  /** True when only the udvalg — and each reporter — can read the queue. */
+  is_closed: boolean
 }
 
 export interface ReportPhoto {

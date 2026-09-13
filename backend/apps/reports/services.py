@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from django.db import IntegrityError, transaction
-from django.db.models import Max, QuerySet
+from django.db.models import Max, Q, QuerySet
 from django.utils import timezone
 
 from .models import Report, ReportCounter, ReportEvent, ReportPhoto
@@ -51,10 +51,43 @@ def allocate_number(subgroup_id: int) -> int:
 
 
 def reporting_subgroups() -> QuerySet:
-    """Udvalg that accept reports, in display order."""
+    """Udvalg that accept reports, in display order.
+
+    Closed udvalg are included: anyone may *file* a case to Bestyrelsen, it is
+    only the queue that is theirs to read.
+    """
     from apps.forum.models import Subgroup
 
-    return Subgroup.objects.filter(reporting_enabled=True).order_by("name")
+    return Subgroup.objects.exclude(reporting=Subgroup.Reporting.OFF).order_by("name")
+
+
+def readable_reports_q(user: Any) -> Q:
+    """Which cases *user* may read, as a filter to apply to Report.
+
+    An open udvalg's queue is everybody's — that was the point of moving this in
+    from Driftsudvalgets standalone app. Otherwise (closed, or reporting since
+    switched off) it is the udvalg's own members, staff, and the reporter of the
+    individual case: someone who reports something to a closed udvalg must still
+    be able to follow their own case and open the link in their notification.
+
+    Deliberately the same shape as the forum's members-only rule — "member of
+    the subgroup, or you wrote it" (``apps.search.views.apply_visibility_filters``)
+    — so this is not a second access-control concept to keep in your head.
+    """
+    from apps.forum.models import Subgroup, SubgroupMembership
+
+    if user and user.is_authenticated and user.is_staff:
+        return Q()
+
+    everyones = Q(subgroup__reporting=Subgroup.Reporting.OPEN)
+    if not (user and user.is_authenticated):
+        return everyones
+
+    return (
+        everyones
+        | Q(subgroup_id__in=SubgroupMembership.objects.filter(user=user).values("subgroup_id"))
+        | Q(submitted_by=user)
+    )
 
 
 def committee_member_ids(subgroup_id: int) -> list[int]:
