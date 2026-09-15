@@ -161,18 +161,18 @@ describe("AppNavbar", () => {
     expect(screen.queryByText("0")).not.toBeInTheDocument()
   })
 
-  // --- Trial features are kept off the real site ------------------------------
+  // --- Nothing is being trialled, so every site gets the same menu ------------
   //
   // jsdom serves these tests from localhost, which counts as a test environment,
-  // so the visible case needs no setup and the hidden case overrides the host.
+  // so the local case needs no setup and the real-site case overrides the host.
 
-  it("shows the trial features on the test site and local dev", async () => {
+  it("shows Udlæg on the test site and local dev", async () => {
     render(<AppNavbar />)
 
     expect(screen.getByText("Udlæg")).toBeInTheDocument()
   })
 
-  it("hides the trial features on the real site", async () => {
+  it("shows the same menu on the real site", async () => {
     vi.spyOn(window, "location", "get").mockReturnValue({
       ...window.location,
       hostname: "kb-intra.dk",
@@ -180,8 +180,8 @@ describe("AppNavbar", () => {
 
     render(<AppNavbar />)
 
-    // Still being trialled, so residents on kb-intra.dk must not see them yet.
-    expect(screen.queryByText("Udlæg")).not.toBeInTheDocument()
+    // Udlæg has left the trial: it is in the menu for everyone.
+    expect(screen.getByText("Udlæg")).toBeInTheDocument()
     // Bildeling has left the trial: it is in the menu for everyone.
     expect(screen.getByText("Bildeling")).toBeInTheDocument()
     // Everything else is unaffected.
