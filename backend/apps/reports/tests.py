@@ -7,6 +7,7 @@ import io
 import pytest
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
+from openpyxl import load_workbook
 from PIL import Image
 from rest_framework.test import APIClient
 
@@ -14,6 +15,7 @@ from apps.forum.models import Subgroup, SubgroupMembership
 from apps.notifications.models import Notification, NotificationType
 from apps.reports.models import Report, ReportCounter, ReportEvent
 from apps.reports.services import add_event, create_report, next_number
+from apps.reports.views import DESCRIPTION_COLUMN, EXPORT_COLUMNS, XLSX_CONTENT_TYPE
 from apps.users.models import User
 
 
@@ -562,14 +564,32 @@ def test_comment_notifies_reporter_and_udvalg_but_not_author(du, user, member, n
 
 
 @pytest.mark.django_db
-def test_member_exports_csv(du, user, member):
-    _report(du, user, description="Revne mellem bordplade og væg")
+def test_member_exports_spreadsheet(du, user, member):
+    """æøå survives the round trip — the whole reason this is xlsx and not CSV."""
+    _report(du, user, description="Revne mellem bordplade og væg, virker dårligt")
 
     resp = _client(member).get("/api/reports/export/?subgroup=driftsudvalget")
     assert resp.status_code == 200
-    assert resp["Content-Type"].startswith("text/csv")
-    body = resp.content.decode("utf-8")
-    assert "Revne mellem bordplade" in body
+    assert resp["Content-Type"] == XLSX_CONTENT_TYPE
+    assert resp["Content-Disposition"].endswith('.xlsx"')
+
+    sheet = load_workbook(io.BytesIO(resp.content)).active
+    assert [cell.value for cell in sheet[1]] == [header for header, _ in EXPORT_COLUMNS]
+    assert sheet.cell(row=2, column=DESCRIPTION_COLUMN).value == (
+        "Revne mellem bordplade og væg, virker dårligt"
+    )
+
+
+@pytest.mark.django_db
+def test_export_neutralizes_formula_and_illegal_characters(du, user, member):
+    """A pasted =SUM(...) is text, and a stray control character doesn't 500."""
+    _report(du, user, description="=SUM(A1:A9) i bruse\x0bkabinen")
+
+    resp = _client(member).get("/api/reports/export/?subgroup=driftsudvalget")
+    assert resp.status_code == 200
+
+    sheet = load_workbook(io.BytesIO(resp.content)).active
+    assert sheet.cell(row=2, column=DESCRIPTION_COLUMN).value == "'=SUM(A1:A9) i brusekabinen"
 
 
 @pytest.mark.django_db

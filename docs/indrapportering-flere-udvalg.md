@@ -33,7 +33,7 @@ The app was built multi-udvalg from the start, so most of this is switch-flippin
   `Select` when more than one udvalg is enabled and hides it when there is one.
 - `ReportQueue` takes an optional `subgroupSlug`, so one component serves both entry
   points; cards show the udvalg name only in the unfiltered view.
-- Caseworkers = the udvalg's `SubgroupMembership`; CSV export restricted to them.
+- Caseworkers = the udvalg's `SubgroupMembership`; xlsx export restricted to them.
 - Notifications (`REPORT_NEW`, `REPORT_UPDATE`) with per-user preferences.
 - 39 tests in `apps/reports/tests.py`, plus search indexing.
 
@@ -135,7 +135,7 @@ Relabel the three kinds without touching stored values (labels are display-only)
 
 **Rejected: per-udvalg configurable categories.** A `ReportCategory` model would be
 the flexible answer and the wrong one — four udvalg and ~90 residents do not need a
-config table that someone has to maintain, and every queue filter, CSV column and
+config table that someone has to maintain, and every queue filter, sheet column and
 notification string would have to stop assuming three kinds. The per-udvalg intro
 line does the same job in one field.
 

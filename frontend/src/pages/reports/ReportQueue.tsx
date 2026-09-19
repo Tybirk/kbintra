@@ -117,7 +117,7 @@ export function ReportQueue({ subgroupSlug, canExport }: ReportQueueProps) {
             variant="subtle"
             size="sm"
             leftSection={<IconDownload size={16} />}
-            onClick={() => reportsApi.exportCsv(subgroupSlug)}
+            onClick={() => reportsApi.exportSpreadsheet(subgroupSlug)}
           >
             Hent som regneark
           </Button>

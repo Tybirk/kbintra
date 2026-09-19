@@ -13,13 +13,16 @@ statuses; only the reporter may correct their own case, and only while nobody
 has started working on it.
 """
 
-import csv
 import io
 
 from django.core.paginator import Paginator
 from django.db.models import Q, QuerySet
 from django.http import Http404, HttpResponse
 from django.utils import timezone
+from openpyxl import Workbook
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
+from openpyxl.styles import Alignment, Font
+from openpyxl.utils import get_column_letter
 from PIL import Image
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -50,14 +53,19 @@ PAGE_SIZE = 20
 MAX_PHOTOS_PER_REPORT = 10
 
 
-def _csv_safe(value: object) -> str:
-    """Neutralize CSV/formula injection before writing a cell.
+def _cell_safe(value: object) -> str:
+    """Make resident-supplied text safe to write into a spreadsheet cell.
 
-    Same reasoning as ``apps.expenses.views._csv_safe``: a field beginning with
-    =, +, -, @ (or a leading tab/CR) is read as a formula by Excel/Sheets, and
-    these cells carry resident-supplied text.
+    Two things, both of which the sheet gets wrong on its own:
+
+    - A field beginning with =, +, -, @ (or a leading tab/CR) is taken for a
+      formula — by Excel, and by openpyxl when it types the cell. Same guard as
+      ``apps.expenses.views._csv_safe``.
+    - Control characters are illegal in xlsx; openpyxl raises rather than write
+      them, which would turn one pasted character into a failed export.
     """
     text = "" if value is None else str(value)
+    text = ILLEGAL_CHARACTERS_RE.sub("", text)
     if text and text[0] in ("=", "+", "-", "@", "\t", "\r"):
         return "'" + text
     return text
@@ -294,11 +302,33 @@ class ReportPhotoView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+# Header text and column width, in that order.
+EXPORT_COLUMNS = (
+    ("Nr.", 6),
+    ("Dato", 12),
+    ("Kategori", 16),
+    ("Beskrivelse", 60),
+    ("Hvor", 22),
+    ("Navn", 22),
+    ("Hus", 22),
+    ("Status", 20),
+    ("Afsluttet", 12),
+)
+DESCRIPTION_COLUMN = 4  # 1-indexed: the one column worth wrapping.
+
+
 class ReportExportView(APIView):
-    """Export one udvalg's queue as CSV, for its own members.
+    """Export one udvalg's queue as a spreadsheet, for its own members.
 
     Driftsudvalget worked from spreadsheet exports before this app existed;
     keeping that possible is cheaper than arguing about it.
+
+    xlsx rather than CSV: the CSV was correct UTF-8 with a BOM, and Excel for
+    Android still read it as Latin-1 — "dårligt" arrived as "dÃ¥rligt" and the
+    BOM itself showed up in the first cell. A CSV cannot state its own encoding;
+    an xlsx does, so there is nothing left for the reader to guess at.
     """
 
     permission_classes = [permissions.IsAuthenticated]
@@ -317,35 +347,46 @@ class ReportExportView(APIView):
 
         qs = report_queryset(request.user).filter(subgroup=subgroup).order_by("number")
 
-        buf = io.StringIO()
-        # UTF-8 BOM so Excel renders æøå correctly.
-        buf.write("﻿")
-        writer = csv.writer(buf, delimiter=";")
-        writer.writerow(
-            ["Nr.", "Dato", "Kategori", "Beskrivelse", "Hvor", "Navn", "Hus", "Status", "Afsluttet"]
-        )
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Indrapporteringer"
+
+        sheet.append([header for header, _ in EXPORT_COLUMNS])
+        for cell in sheet[1]:
+            cell.font = Font(bold=True)
+        sheet.freeze_panes = "A2"
+        for index, (_, width) in enumerate(EXPORT_COLUMNS, start=1):
+            sheet.column_dimensions[get_column_letter(index)].width = width
+
         for report in qs:
             house = ""
             if report.submitted_by and report.submitted_by.house:
                 house = report.submitted_by.house.name
-            writer.writerow(
-                _csv_safe(cell)
-                for cell in (
+            # Dates go in as dates, not text, so the sheet can sort and filter
+            # on them; openpyxl formats them yyyy-mm-dd by itself.
+            sheet.append(
+                [
                     report.number,
-                    timezone.localtime(report.created_at).strftime("%Y-%m-%d"),
-                    report.get_kind_display(),
-                    report.description,
-                    report.location,
-                    report.reporter_name,
-                    house,
-                    report.get_status_display(),
-                    timezone.localtime(report.closed_at).strftime("%Y-%m-%d")
-                    if report.closed_at
-                    else "",
-                )
+                    timezone.localtime(report.created_at).date(),
+                    _cell_safe(report.get_kind_display()),
+                    _cell_safe(report.description),
+                    _cell_safe(report.location),
+                    _cell_safe(report.reporter_name),
+                    _cell_safe(house),
+                    _cell_safe(report.get_status_display()),
+                    timezone.localtime(report.closed_at).date() if report.closed_at else None,
+                ]
+            )
+            sheet.cell(row=sheet.max_row, column=DESCRIPTION_COLUMN).alignment = Alignment(
+                wrap_text=True, vertical="top"
             )
 
+        buf = io.BytesIO()
+        workbook.save(buf)
+
         today = timezone.localdate().isoformat()
-        resp = HttpResponse(buf.getvalue(), content_type="text/csv; charset=utf-8")
-        resp["Content-Disposition"] = f'attachment; filename="indrapporteringer_{slug}_{today}.csv"'
+        resp = HttpResponse(buf.getvalue(), content_type=XLSX_CONTENT_TYPE)
+        resp["Content-Disposition"] = (
+            f'attachment; filename="indrapporteringer_{slug}_{today}.xlsx"'
+        )
         return resp
