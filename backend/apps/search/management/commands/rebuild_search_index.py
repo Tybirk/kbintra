@@ -226,7 +226,9 @@ class Command(BaseCommand):
 
             from ...signals import _report_search_fields
 
-            reports = Report.objects.select_related("subgroup")
+            # submitted_by too: the index row carries the reporter's name, so
+            # without it this is a query per case.
+            reports = Report.objects.select_related("subgroup", "submitted_by")
             for report in reports:
                 index_object(**_report_search_fields(report))
             counts["reports"] = reports.count()

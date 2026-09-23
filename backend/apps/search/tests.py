@@ -18,6 +18,7 @@ from apps.search.services import (
     fuzzy_name_matches,
     index_object,
     levenshtein,
+    matching_ids,
     normalize_for_match,
     remove_object,
     strip_html,
@@ -219,6 +220,50 @@ class TestBuildFtsQuery:
         """Query tokens with æøå become ae/oe/aa before being quoted."""
         assert build_fts_query("Kløverbakkebogen") == '"Kloeverbakkebogen"*'
         assert build_fts_query("møde forslag") == '"moede"* "forslag"*'
+
+
+class TestMatchingIds:
+    """The id lookup list views filter on."""
+
+    def test_returns_only_the_requested_type(self):
+        """The type filter is load-bearing, not tidiness.
+
+        A caller does ``Report.objects.filter(id__in=...)``, so a user id that
+        leaked through would silently select whichever report happened to carry
+        that number.
+        """
+        index_object(obj_type="report", object_id=7, title="Ødelagt gynge", body="", url="/r/7")
+        index_object(obj_type="user", object_id=7, title="Ødelagt Efternavn", body="", url="/u/7")
+
+        assert matching_ids("report", "ødelagt") == [7]
+        assert matching_ids("user", "ødelagt") == [7]
+        assert matching_ids("event", "ødelagt") == []
+
+    def test_folds_danish_letters_both_ways(self):
+        index_object(obj_type="report", object_id=1, title="Ødelagt gynge", body="", url="/r/1")
+
+        for query in ("ødelagt", "Ødelagt", "ØDELAGT", "oedelagt"):
+            assert matching_ids("report", query) == [1], query
+
+    def test_empty_or_punctuation_only_query_matches_nothing(self):
+        """FTS5 rejects an empty MATCH, so this has to be answered before the query."""
+        index_object(obj_type="report", object_id=1, title="Noget", body="", url="/r/1")
+
+        assert matching_ids("report", "") == []
+        assert matching_ids("report", "   ") == []
+        assert matching_ids("report", "***") == []
+
+    def test_prefix_can_be_turned_off(self):
+        index_object(
+            obj_type="report",
+            object_id=1,
+            title="sandkassen er gået i stykker",
+            body="",
+            url="/r/1",
+        )
+
+        assert matching_ids("report", "sand") == [1]
+        assert matching_ids("report", "sand", prefix=False) == []
 
 
 class TestIndexAndSearch:

@@ -797,3 +797,53 @@ class TestUserProfileThumbnail:
         # compare the base path before the ?exp=&sig= query).
         assert u.avatar_url.startswith(u.profile_picture_thumbnail.url)
         assert not u.avatar_url.startswith(u.profile_picture.url)
+
+
+@pytest.mark.django_db
+class TestMentionAutocomplete:
+    """@mention lookup goes through the search index, like the other name searches.
+
+    It had no coverage at all before, which is how the Danish-letter bug lived
+    here as long as it did.
+    """
+
+    def _people(self):
+        from apps.users.models import User
+
+        return (
+            User.objects.create_user(
+                email="oejvind@test.com", password="x", first_name="Øjvind", last_name="Ørsted"
+            ),
+            User.objects.create_user(
+                email="hansen@test.com", password="x", first_name="Hanne", last_name="Hansen"
+            ),
+        )
+
+    def test_finds_a_name_typed_in_either_case(self, authenticated_client):
+        self._people()
+
+        for query in ("øjvind", "Øjvind", "ØJVIND", "oejvind"):
+            names = [
+                person["first_name"]
+                for person in authenticated_client.get(f"/api/users/mentions/?q={query}").data
+            ]
+            assert names == ["Øjvind"], query
+
+    def test_matches_either_part_of_the_name(self, authenticated_client):
+        self._people()
+
+        assert len(authenticated_client.get("/api/users/mentions/?q=ørsted").data) == 1
+        assert len(authenticated_client.get("/api/users/mentions/?q=hanne").data) == 1
+
+    def test_matches_from_the_start_of_a_name_not_the_middle(self, authenticated_client):
+        """Prefix, not substring — "ans" no longer offers "Hansen"."""
+        self._people()
+
+        assert len(authenticated_client.get("/api/users/mentions/?q=Han").data) == 1
+        assert len(authenticated_client.get("/api/users/mentions/?q=ans").data) == 0
+
+    def test_no_query_returns_everyone_active(self, authenticated_client):
+        self._people()
+
+        # The two above plus the fixture's own user.
+        assert len(authenticated_client.get("/api/users/mentions/").data) == 3

@@ -340,6 +340,80 @@ def test_search_matches_description(du, user):
     assert resp.data["count"] == 1
 
 
+@pytest.mark.django_db
+def test_search_folds_danish_letters_in_both_directions(du, user):
+    """The bug that sent this through the index: LIKE folds ASCII case only.
+
+    SQLite's LIKE matched "Ødelagt" for a query of "Ødelagt" and nothing for
+    "ødelagt" — and iOS capitalises the first letter of what you type, so the
+    failing form was the one residents actually sent.
+    """
+    _report(du, user, description="Ødelagt gynge ved legepladsen")
+
+    client = _client(user)
+    assert client.get("/api/reports/?q=ødelagt").data["count"] == 1
+    assert client.get("/api/reports/?q=Ødelagt").data["count"] == 1
+    assert client.get("/api/reports/?q=ØDELAGT").data["count"] == 1
+    # The index stores æ/ø/å folded to ae/oe/aa, so either spelling finds it.
+    assert client.get("/api/reports/?q=oedelagt").data["count"] == 1
+
+
+@pytest.mark.django_db
+def test_search_matches_the_reporters_full_name(du, neighbour):
+    """ "Nanna Nabo" is what the card prints, so it has to be what search takes."""
+    _report(du, neighbour)
+
+    client = _client(neighbour)
+    assert client.get("/api/reports/?q=Nanna").data["count"] == 1
+    assert client.get("/api/reports/?q=Nabo").data["count"] == 1
+    assert client.get("/api/reports/?q=Nanna Nabo").data["count"] == 1
+
+
+@pytest.mark.django_db
+def test_search_matches_a_legacy_reporter_name(du, user):
+    """An imported case has no user row — its name is carried as plain text."""
+    _report(du, None, legacy_reporter_name="Tidligere Beboer")
+
+    assert _client(user).get("/api/reports/?q=Tidligere Beboer").data["count"] == 1
+
+
+@pytest.mark.django_db
+def test_search_matches_token_prefixes_not_substrings(du, user):
+    """The deliberate trade-off of searching through the index.
+
+    LIKE matched anywhere in the word; the index matches from the start of a
+    token. That is what the global search has always done, so the queue box now
+    agrees with it rather than quietly behaving differently.
+    """
+    _report(du, user, description="Låget på sandkassen er gået i stykker")
+
+    client = _client(user)
+    assert client.get("/api/reports/?q=sand").data["count"] == 1
+    assert client.get("/api/reports/?q=kassen").data["count"] == 0
+
+
+@pytest.mark.django_db
+def test_search_cannot_widen_what_a_neighbour_may_read(bestyrelsen, user, neighbour):
+    """The index knows nothing about visibility — the queryset it feeds does."""
+    _report(bestyrelsen, user, description="Fortrolig sag om en nabostrid")
+
+    assert _client(neighbour).get("/api/reports/?q=fortrolig").data["count"] == 0
+    assert _client(user).get("/api/reports/?q=fortrolig").data["count"] == 1
+
+
+@pytest.mark.django_db
+def test_renaming_a_resident_updates_their_cases_in_search(du, neighbour):
+    """The reporter's name is denormalised into the case's index row."""
+    _report(du, neighbour)
+
+    neighbour.last_name = "Nyefternavn"
+    neighbour.save()
+
+    client = _client(neighbour)
+    assert client.get("/api/reports/?q=Nyefternavn").data["count"] == 1
+    assert client.get("/api/reports/?q=Nabo").data["count"] == 0
+
+
 # --- Status changes -----------------------------------------------------------
 
 

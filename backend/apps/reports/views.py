@@ -16,7 +16,7 @@ has started working on it.
 import io
 
 from django.core.paginator import Paginator
-from django.db.models import Q, QuerySet
+from django.db.models import QuerySet
 from django.http import Http404, HttpResponse
 from django.utils import timezone
 from openpyxl import Workbook
@@ -33,6 +33,7 @@ from rest_framework.views import APIView
 from apps.forum.image_processing import is_image_attachment
 from apps.forum.models import Subgroup
 from apps.forum.utils import validate_file_size
+from apps.search.services import matching_ids
 
 from .models import Report, ReportPhoto
 from .serializers import (
@@ -201,13 +202,13 @@ class ReportListCreateView(APIView):
 
         query = (request.query_params.get("q") or "").strip()
         if query:
-            qs = qs.filter(
-                Q(description__icontains=query)
-                | Q(location__icontains=query)
-                | Q(submitted_by__first_name__icontains=query)
-                | Q(submitted_by__last_name__icontains=query)
-                | Q(legacy_reporter_name__icontains=query)
-            )
+            # Through the search index rather than five icontains clauses.
+            # SQLite's LIKE folds case for ASCII only, so "ødelagt" matched
+            # nothing written "Ødelagt" — and iOS capitalises the first letter
+            # for you. The index folds æ/ø/å at both ends, and it is also where
+            # a case's searchable fields are declared, so this box and the
+            # global search can no longer disagree about the same case.
+            qs = qs.filter(id__in=matching_ids("report", query))
         return qs
 
 

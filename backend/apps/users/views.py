@@ -12,7 +12,7 @@ from typing import Any
 
 from django.conf import settings
 from django.contrib import auth
-from django.db import connection, models
+from django.db import connection
 from django.db.models import Count, QuerySet
 from django.http import FileResponse, HttpResponse
 from django.utils import timezone
@@ -20,6 +20,8 @@ from rest_framework import generics, permissions, status
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from apps.search.services import matching_ids
 
 from .models import Invitation, User
 from .serializers import (
@@ -114,7 +116,8 @@ class UserListView(generics.ListAPIView):
 class UserMentionListView(generics.ListAPIView):
     """
     Return active users for @mention autocomplete.
-    Optionally filter by ?q= (matches first or last name, case-insensitive).
+    Optionally filter by ?q= — a prefix match on any part of the name, folded
+    so "øj" finds "Øjvind" and "oe" finds "Øe".
     No pagination – community has at most ~90 users.
     """
 
@@ -126,9 +129,12 @@ class UserMentionListView(generics.ListAPIView):
         q = self.request.query_params.get("q", "").strip()
         queryset = User.objects.filter(is_active=True)
         if q:
-            queryset = queryset.filter(
-                models.Q(first_name__icontains=q) | models.Q(last_name__icontains=q)
-            )
+            # Through the search index for the same reason the indrapportering
+            # queue does: LIKE folds case for ASCII only, so "øjvind" missed
+            # "Øjvind". Matching becomes per-token prefix rather than substring,
+            # which is what @-typing wants anyway — "ans" no longer offers
+            # "Hansen", and a user row is indexed under their full name.
+            queryset = queryset.filter(id__in=matching_ids("user", q))
         return queryset.order_by("first_name", "last_name")
 
 
