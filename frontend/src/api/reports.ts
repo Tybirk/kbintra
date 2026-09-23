@@ -127,8 +127,8 @@ export const reportsApi = {
     await apiClient.delete(`/reports/photos/${photoId}/`)
   },
 
-  // Spreadsheet export: token fetch -> blob download (mirrors the udlæg pattern).
-  async exportSpreadsheet(subgroupSlug: string): Promise<void> {
+  // CSV export: token fetch -> blob download (mirrors the udlæg pattern).
+  async exportCsv(subgroupSlug: string): Promise<void> {
     const token = getAccessToken()
     const response = await fetch(
       `/api/reports/export/?subgroup=${subgroupSlug}`,
@@ -143,7 +143,7 @@ export const reportsApi = {
     link.href = url
     link.download = `indrapporteringer_${subgroupSlug}_${new Date()
       .toISOString()
-      .slice(0, 10)}.xlsx`
+      .slice(0, 10)}.csv`
     link.click()
     URL.revokeObjectURL(url)
   },

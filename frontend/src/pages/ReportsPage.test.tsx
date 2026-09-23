@@ -30,7 +30,7 @@ vi.mock("../api/reports", () => ({
 
     subgroups: () => mockSubgroups(),
 
-    exportSpreadsheet: vi.fn(),
+    exportCsv: vi.fn(),
   },
 }))
 
