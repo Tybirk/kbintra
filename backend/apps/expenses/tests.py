@@ -753,6 +753,13 @@ def test_economy_email_sent_on_creation(settings, mailoutbox, authenticated_clie
     assert "Maling til fælleshus" in msg.body
     assert "Vedrører fællesmad: Nej" in msg.body
     expense_id = resp.data["id"]
+    assert f"Udlæg nr.: {expense_id}" in msg.body
+    # The HTML alternative bolds the labels so the treasurer can skim the mail.
+    html, mimetype = msg.alternatives[0]
+    assert mimetype == "text/html"
+    assert f"<strong>Udlæg nr.:</strong> {expense_id}" in html
+    assert "<strong>Beløb:</strong> 250,50 kr." in html
+    assert "<strong>Beskrivelse:</strong><br>Maling til fælleshus" in html
     # Prod SITE_URL → no TEST: prefix; stable per-expense subject.
     assert msg.subject == f"[Udlæg #{expense_id}] Udlæg fra Test User"
     # The root notice carries the thread id but no In-Reply-To.
@@ -995,3 +1002,24 @@ def test_economy_email_skips_the_merge_when_it_would_blow_the_size_budget(
     msg = mailoutbox[0]
     assert [a[0] for a in msg.attachments] == ["bon1.pdf", "bon2.pdf"]
     assert "samlet PDF" not in msg.body
+
+
+@pytest.mark.django_db
+def test_economy_email_html_escapes_user_input(settings, mailoutbox, authenticated_client):
+    settings.ECONOMY_EMAIL = "oekonomi@example.com"
+    resp = authenticated_client.post(
+        "/api/expenses/",
+        {
+            "reg_nr": "1234",
+            "account_number": "9876543",
+            "amount": "10",
+            "description": "<script>x</script>\nlinje to",
+            "food_related": "false",
+            "files": [_receipt()],
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 201, resp.data
+    html, _ = mailoutbox[0].alternatives[0]
+    assert "<script>" not in html
+    assert "&lt;script&gt;x&lt;/script&gt;<br>linje to" in html
