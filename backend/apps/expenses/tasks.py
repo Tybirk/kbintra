@@ -26,15 +26,17 @@ _ACTION_INTRO = {
 
 @db_task(retries=3, retry_delay=60)
 def send_expense_notification_task(action: str, fields: dict) -> None:
-    """Notify the economy inbox about an udlæg event (created/edited/deleted).
+    """Notify whoever settles an udlæg about an event (created/edited/deleted).
 
     ``fields`` is a snapshot of serializable primitives (built by
     ``apps.expenses.views._expense_email_fields``) rather than a model instance,
     so the ``deleted`` notice still has its data after the row is gone.
 
-    Sent to ``settings.ECONOMY_EMAIL``; if that is unset the notice is skipped
-    (e.g. in dev). Udlæg flagged ``food_related`` (i forbindelse med fællesmad)
-    are handled by the food admins in-app, so no economy notice is sent.
+    Ordinary udlæg go to ``settings.ECONOMY_EMAIL`` (the treasurer). Udlæg
+    flagged ``food_related`` (i forbindelse med fællesmad) go to the
+    madøkonomiansvarlig instead: ``settings.FOOD_ECONOMY_EMAIL`` if set, else
+    every active user with ``is_food_economy_admin``. With no recipient the
+    notice is skipped (e.g. in dev).
 
     All mails about one udlæg are threaded together: we can neither set nor read
     the real Message-ID (Cloudflare generates it), so we (a) keep the subject
@@ -43,14 +45,17 @@ def send_expense_notification_task(action: str, fields: dict) -> None:
     """
     from django.conf import settings
 
-    economy_email = getattr(settings, "ECONOMY_EMAIL", "")
-    if not economy_email:
-        logger.info("ECONOMY_EMAIL not configured — skipping udlæg notice")
-        return
-
     expense_id = fields.get("id")
-    if fields.get("food_related"):
-        logger.info("Expense %s is food_related — skipping economy notice", expense_id)
+    # ``route_food_related`` lets a caller address the other inbox than the
+    # expense's current flag would (used when the flag is flipped on edit).
+    food_related = bool(fields.get("route_food_related", fields.get("food_related")))
+    recipients = _food_economy_recipients() if food_related else _economy_recipients()
+    if not recipients:
+        logger.info(
+            "No recipient for udlæg notice (expense=%s food_related=%s) — skipping",
+            expense_id,
+            food_related,
+        )
         return
 
     from django.core.mail import EmailMultiAlternatives
@@ -91,7 +96,14 @@ def send_expense_notification_task(action: str, fields: dict) -> None:
     # from the mail. Skipped for deleted (the files are gone). Anything over the
     # size budget is left out — the in-app link still has it.
     specs = [] if action == "deleted" else (fields.get("attachments") or [])
-    attached, omitted, combined = _build_email_attachments(expense_id, specs)
+    # Only the configured inboxes are verified Cloudflare destinations (25 MiB
+    # tier); a madøkonomiansvarlig's own address gets the 5 MiB default budget.
+    budget = (
+        getattr(settings, "EXPENSE_EMAIL_MAX_ATTACHMENT_BYTES", _DEFAULT_MAX_ATTACH_BYTES)
+        if not food_related or getattr(settings, "FOOD_ECONOMY_EMAIL", "")
+        else _DEFAULT_MAX_ATTACH_BYTES
+    )
+    attached, omitted, combined = _build_email_attachments(expense_id, specs, budget)
     if combined:
         blocks.append(
             (
@@ -127,7 +139,7 @@ def send_expense_notification_task(action: str, fields: dict) -> None:
     msg = EmailMultiAlternatives(
         subject=f"{test_prefix}[Udlæg #{expense_id}] Udlæg fra {who}",
         body=_render_text(blocks),
-        to=[economy_email],
+        to=recipients,
         from_email=settings.DEFAULT_FROM_EMAIL,
         headers=headers,
     )
@@ -184,7 +196,33 @@ def _render_html(blocks: list[tuple]) -> str:
     return f'<html><body style="font-family: sans-serif; font-size: 14px;">\n{body}\n</body></html>'
 
 
-def _build_email_attachments(expense_id, specs: list) -> tuple[list, bool, bool]:
+def _economy_recipients() -> list[str]:
+    """The treasurer's inbox, if configured."""
+    from django.conf import settings
+
+    economy_email = getattr(settings, "ECONOMY_EMAIL", "")
+    return [economy_email] if economy_email else []
+
+
+def _food_economy_recipients() -> list[str]:
+    """The fixed madøkonomi inbox if configured, else the role holders' addresses."""
+    from django.conf import settings
+
+    override = getattr(settings, "FOOD_ECONOMY_EMAIL", "")
+    if override:
+        return [override]
+
+    from apps.users.models import User
+
+    return list(
+        User.objects.filter(is_food_economy_admin=True, is_active=True)
+        .exclude(email="")
+        .order_by("email")
+        .values_list("email", flat=True)
+    )
+
+
+def _build_email_attachments(expense_id, specs: list, budget: int) -> tuple[list, bool, bool]:
     """Read the bilag and decide what to hang on the mail.
 
     With several bilag the mail carries both: one merged PDF first — the
@@ -196,9 +234,6 @@ def _build_email_attachments(expense_id, specs: list) -> tuple[list, bool, bool]
 
     Returns ``(attached, omitted, combined)``.
     """
-    from django.conf import settings
-
-    budget = getattr(settings, "EXPENSE_EMAIL_MAX_ATTACHMENT_BYTES", _DEFAULT_MAX_ATTACH_BYTES)
     # Read every bilag once; both the merge and the individual attachments use it.
     parts = [
         (spec.get("name") or "bilag", _read_receipt(expense_id, spec.get("path")))
