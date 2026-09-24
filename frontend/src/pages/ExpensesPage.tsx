@@ -803,10 +803,11 @@ function AdminExpensesTab({ canManage }: { canManage: boolean }) {
       ) : rows.length === 0 ? (
         <Text c="dimmed">Ingen udlæg matcher filteret.</Text>
       ) : (
-        <Table.ScrollContainer minWidth={760}>
+        <Table.ScrollContainer minWidth={800}>
           <Table striped highlightOnHover verticalSpacing="sm">
             <Table.Thead>
               <Table.Tr>
+                <Table.Th>Nr.</Table.Th>
                 <Table.Th>Dato</Table.Th>
                 <Table.Th>Navn</Table.Th>
                 <Table.Th>Beløb</Table.Th>
@@ -823,6 +824,10 @@ function AdminExpensesTab({ canManage }: { canManage: boolean }) {
                 const meta = STATUS_META[expense.status]
                 return (
                   <Table.Tr key={expense.id}>
+                    {/* Same number as "[Udlæg #N]" in the economy mail. */}
+                    <Table.Td style={{ whiteSpace: "nowrap" }}>
+                      #{expense.id}
+                    </Table.Td>
                     <Table.Td style={{ whiteSpace: "nowrap" }}>
                       {dayjs(expense.created_at).format("D/M YYYY")}
                     </Table.Td>
