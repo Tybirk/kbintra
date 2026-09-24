@@ -41,6 +41,7 @@ class UserSerializer(AvatarUrlMixin, serializers.ModelSerializer):
             "is_staff",
             "is_food_admin",
             "is_economy_admin",
+            "is_food_economy_admin",
             "date_joined",
             "default_cooking_days",
             "accessibility_mode",
@@ -52,6 +53,7 @@ class UserSerializer(AvatarUrlMixin, serializers.ModelSerializer):
             "is_staff",
             "is_food_admin",
             "is_economy_admin",
+            "is_food_economy_admin",
             "date_joined",
         ]
 

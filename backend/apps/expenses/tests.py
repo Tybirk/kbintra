@@ -787,7 +787,7 @@ def test_receipt_over_size_cap_rejected(settings, authenticated_client):
 
 @pytest.mark.django_db
 def test_no_economy_email_when_food_related(settings, mailoutbox, authenticated_client):
-    # Fællesmad-udlæg are handled by food admins in-app, so no economy notice.
+    # Fællesmad-udlæg go to the madøkonomiansvarlig, not the treasurer.
     settings.ECONOMY_EMAIL = "oekonomi@example.com"
     resp = authenticated_client.post(
         "/api/expenses/",
@@ -995,3 +995,109 @@ def test_economy_email_skips_the_merge_when_it_would_blow_the_size_budget(
     msg = mailoutbox[0]
     assert [a[0] for a in msg.attachments] == ["bon1.pdf", "bon2.pdf"]
     assert "samlet PDF" not in msg.body
+
+
+# --- Madøkonomiansvarlig (food economy admin) --------------------------------
+
+
+@pytest.fixture
+def food_economy_admin(db):
+    """A non-staff user who settles the fællesmad udlæg (and nothing else)."""
+    return User.objects.create_user(
+        email="madokonomi@example.com",
+        password="pass12345",
+        first_name="Mad",
+        last_name="Økonomi",
+        is_food_economy_admin=True,
+    )
+
+
+def _post_expense(client, **overrides):
+    data = {
+        "reg_nr": "1234",
+        "account_number": "9876543",
+        "amount": "99.00",
+        "description": "Krydderier til fællesmad",
+        "files": [_receipt()],
+    }
+    data.update(overrides)
+    return client.post("/api/expenses/", data, format="multipart")
+
+
+@pytest.mark.django_db
+def test_food_expense_email_goes_to_food_economy_admin(
+    settings, mailoutbox, authenticated_client, food_economy_admin, food_admin
+):
+    settings.ECONOMY_EMAIL = "oekonomi@example.com"
+    settings.FOOD_ECONOMY_EMAIL = ""
+    resp = _post_expense(authenticated_client, food_related="true")
+    assert resp.status_code == 201, resp.data
+    # Only the madøkonomiansvarlig — not the treasurer, not other food admins.
+    assert len(mailoutbox) == 1
+    assert mailoutbox[0].to == ["madokonomi@example.com"]
+    assert "Vedrører fællesmad: Ja" in mailoutbox[0].body
+    assert [a[0] for a in mailoutbox[0].attachments] == ["kvittering.pdf"]
+
+
+@pytest.mark.django_db
+def test_food_economy_email_setting_overrides_role_holders(
+    settings, mailoutbox, authenticated_client, food_economy_admin
+):
+    settings.FOOD_ECONOMY_EMAIL = "madkasse@example.com"
+    resp = _post_expense(authenticated_client, food_related="true")
+    assert resp.status_code == 201, resp.data
+    assert len(mailoutbox) == 1
+    assert mailoutbox[0].to == ["madkasse@example.com"]
+
+
+@pytest.mark.django_db
+def test_non_food_expense_email_not_sent_to_food_economy_admin(
+    settings, mailoutbox, authenticated_client, food_economy_admin
+):
+    settings.ECONOMY_EMAIL = "oekonomi@example.com"
+    resp = _post_expense(authenticated_client, description="Kaffe til fællesmøde")
+    assert resp.status_code == 201, resp.data
+    assert [m.to for m in mailoutbox] == [["oekonomi@example.com"]]
+
+
+@pytest.mark.django_db
+def test_flipping_food_flag_on_edit_tells_both_inboxes(
+    settings, mailoutbox, authenticated_client, user, food_economy_admin
+):
+    settings.ECONOMY_EMAIL = "oekonomi@example.com"
+    settings.FOOD_ECONOMY_EMAIL = ""
+    expense = _make_expense(user)  # not food_related: the treasurer had it
+    resp = authenticated_client.patch(
+        f"/api/expenses/{expense.id}/", {"food_related": True}, format="json"
+    )
+    assert resp.status_code == 200, resp.data
+    assert sorted(m.to[0] for m in mailoutbox) == ["madokonomi@example.com", "oekonomi@example.com"]
+    # Both mails show the udlæg as it is now.
+    assert all("Vedrører fællesmad: Ja" in m.body for m in mailoutbox)
+
+
+@pytest.mark.django_db
+def test_food_economy_admin_can_settle_only_food_expenses(api_client, food_economy_admin, user):
+    from apps.notifications.models import Notification, NotificationType
+
+    food = _make_expense(user, food_related=True)
+    other = _make_expense(user)
+    api_client.force_authenticate(user=food_economy_admin)
+
+    resp = api_client.get("/api/expenses/admin/")
+    assert resp.status_code == 200
+    assert [e["id"] for e in resp.data["results"]] == [food.id]
+
+    resp = api_client.patch(f"/api/expenses/{food.id}/status/", {"status": "paid"}, format="json")
+    assert resp.status_code == 200, resp.data
+    food.refresh_from_db()
+    assert food.status == Expense.Status.PAID
+    assert food.processed_by == food_economy_admin
+    assert Notification.objects.filter(
+        user=user, notification_type=NotificationType.EXPENSE_PROCESSED
+    ).exists()
+
+    resp = api_client.patch(f"/api/expenses/{other.id}/status/", {"status": "paid"}, format="json")
+    assert resp.status_code == 403
+    other.refresh_from_db()
+    assert other.status == Expense.Status.PENDING
