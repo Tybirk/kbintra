@@ -101,6 +101,8 @@ export default function AnnouncementsPage() {
 
     isLoading,
 
+    isFetching,
+
     error,
   } = useQuery({
     queryKey: ["announcements"],
@@ -124,7 +126,7 @@ export default function AnnouncementsPage() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Open at the announcement a notification or search result links to.
-  useHoldHashTarget(!!announcements)
+  useHoldHashTarget(!!announcements, !isFetching)
 
   const deleteMutation = useMutation({
     mutationFn: announcementsApi.deleteAnnouncement,

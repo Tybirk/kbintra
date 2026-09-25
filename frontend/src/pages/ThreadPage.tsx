@@ -366,6 +366,8 @@ export default function ThreadPage() {
 
     isLoading,
 
+    isFetching,
+
     error,
   } = useQuery({
     queryKey: isSlugRoute
@@ -429,7 +431,7 @@ export default function ThreadPage() {
   }, [thread?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Open at the post a notification or search result links to.
-  useHoldHashTarget(!!thread)
+  useHoldHashTarget(!!thread, !isFetching)
 
   const createPostMutation = useMutation({
     mutationFn: ({ data, files, pollData: pd }: CreatePostParams) =>
