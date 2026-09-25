@@ -24,12 +24,15 @@ import {
   parseDecimalInput,
 } from "../../utils/decimalInput"
 
+import { formatLicensePlate } from "../../utils/licensePlate"
+
 import {
   describeSettlement,
   formatDateTime,
   formatKr,
   formatWindow,
   kmInputError,
+  LicensePlateBadge,
   moneyInputError,
   settlementBreakdown,
   useCarSharingMutation,
@@ -501,9 +504,18 @@ export function LoanCard({ loan, highlight }: LoanCardProps) {
             )}
 
             {loan.car !== null && (
-              <Text size="sm">
-                <strong>{loan.car_display_name}</strong> · {loan.car_house_name}
-              </Text>
+              <Group gap="xs" wrap="wrap">
+                <Text size="sm">
+                  <strong>{loan.car_display_name}</strong> ·{" "}
+                  {loan.car_house_name}
+                </Text>
+                {/* Make and model do not pick a car out of a car park. */}
+                {loan.car_license_plate &&
+                  loan.car_display_name !==
+                    formatLicensePlate(loan.car_license_plate) && (
+                    <LicensePlateBadge plate={loan.car_license_plate} />
+                  )}
+              </Group>
             )}
 
             {loan.status === "active" && loan.car_practical_note && (

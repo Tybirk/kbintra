@@ -271,6 +271,8 @@ export interface CarLoan {
 
   car_display_name: string
 
+  car_license_plate: string
+
   car_house_name: string
 
   /** Decides whether the settlement form may say the energy is already covered. */

@@ -91,6 +91,16 @@ class TestCarModel:
         assert cars[0] == car_a
         assert cars[1] == car_b
 
+    def test_name_with_plate(self, db, house):
+        """The plate is added to the label, but never twice and never as "()"."""
+        described = Car(house=house, license_plate="EA78950", make="Tesla", model_name="S")
+        plate_only = Car(house=house, license_plate="EA78950")
+        no_plate = Car(house=house, license_plate="", make="Tesla", model_name="S")
+
+        assert described.name_with_plate == "Tesla S (EA 78 950)"
+        assert plate_only.name_with_plate == "EA 78 950"
+        assert no_plate.name_with_plate == "Tesla S"
+
 
 # =============================================================================
 # API Tests

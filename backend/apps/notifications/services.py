@@ -1939,7 +1939,8 @@ def notify_car_loan_accepted(candidate: Any) -> Notification | None:
         notification_type=NotificationType.CAR_LOAN_UPDATE,
         title="Du har fået en bil",
         message=(
-            f"{candidate.car.house.name} siger ja — du låner {candidate.car.display_name} {window}."
+            f"{candidate.car.house.name} siger ja — du låner "
+            f"{candidate.car.name_with_plate} {window}."
         ),
         link=_car_loan_link(loan),
         related_user=candidate.responded_by,
