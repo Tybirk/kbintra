@@ -43,6 +43,8 @@ import { notifications } from "@mantine/notifications"
 
 import { showErrorNotification } from "../utils/errorNotification"
 
+import { holdInView } from "../utils/holdInView"
+
 import {
   IconDotsVertical,
   IconEdit,
@@ -367,6 +369,8 @@ export default function ThreadPage() {
 
   const highlightedHashRef = useRef("")
 
+  const releaseHoldRef = useRef<(() => void) | null>(null)
+
   const {
     data: thread,
 
@@ -448,32 +452,26 @@ export default function ThreadPage() {
 
     if (!el) return
 
-    const hash = location.hash
+    highlightedHashRef.current = location.hash
 
     window.history.replaceState(null, "", location.pathname)
 
-    // Small delay to ensure layout is settled. The ref is set inside the timer
+    el.style.transition = "box-shadow 0.3s ease"
 
-    // so strict mode's cleanup+re-run cycle doesn't prevent the highlight from firing.
+    el.style.boxShadow = "0 0 0 3px var(--mantine-color-blue-4)"
 
-    const timer = setTimeout(() => {
-      if (highlightedHashRef.current === hash) return
+    setTimeout(() => {
+      el.style.boxShadow = ""
+    }, 2000)
 
-      highlightedHashRef.current = hash
+    // Held until the reader scrolls or leaves, not until the next refetch of
+    // `thread` — which would let go while images above are still loading.
+    releaseHoldRef.current?.()
 
-      el.scrollIntoView({ behavior: "smooth", block: "center" })
-
-      el.style.transition = "box-shadow 0.3s ease"
-
-      el.style.boxShadow = "0 0 0 3px var(--mantine-color-blue-4)"
-
-      setTimeout(() => {
-        el.style.boxShadow = ""
-      }, 2000)
-    }, 100)
-
-    return () => clearTimeout(timer)
+    releaseHoldRef.current = holdInView(el)
   }, [thread, location.hash]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => () => releaseHoldRef.current?.(), [thread?.id])
 
   const createPostMutation = useMutation({
     mutationFn: ({ data, files, pollData: pd }: CreatePostParams) =>

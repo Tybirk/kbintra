@@ -22,6 +22,8 @@ import { ErrorBoundary } from "./components/ErrorBoundary"
 
 import { useVersionCheck } from "./hooks/useVersionCheck"
 
+import { useScrollToTopOnNavigate } from "./hooks/useScrollToTopOnNavigate"
+
 import { usePushSubscriptionSync } from "./hooks/usePushSubscriptionSync"
 
 import { useAccessibilityModeSync } from "./hooks/useAccessibilityMode"
@@ -147,6 +149,8 @@ function App() {
 
     setNavbarOpened(false)
   }, [location.pathname])
+
+  useScrollToTopOnNavigate()
 
   // Check for app updates when user returns to the app
 
