@@ -97,6 +97,7 @@ PUSH_TTL: dict[str, int] = {
     NotificationType.NEW_MESSAGE: 24 * 3600,  # 24 hours
     NotificationType.MESSAGE_REACTION: 24 * 3600,  # 24 hours
     NotificationType.MENTION: 24 * 3600,  # 24 hours
+    NotificationType.BIRTHDAY: 12 * 3600,  # 12 hours — stale by tomorrow
 }
 PUSH_TTL_DEFAULT = 48 * 3600  # 48 hours
 
@@ -195,6 +196,7 @@ def get_user_preference(user: User, notification_type: NotificationType) -> bool
         NotificationType.CAR_LOAN_UPDATE: prefs.notify_car_sharing,
         NotificationType.REPORT_NEW: prefs.notify_reports,
         NotificationType.REPORT_UPDATE: prefs.notify_reports,
+        NotificationType.BIRTHDAY: prefs.notify_birthdays,
     }
 
     return preference_map.get(notification_type, True)
@@ -232,6 +234,7 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
         NotificationType.CAR_LOAN_UPDATE: prefs.push_car_sharing,
         NotificationType.REPORT_NEW: prefs.push_reports,
         NotificationType.REPORT_UPDATE: prefs.push_reports,
+        NotificationType.BIRTHDAY: prefs.push_birthdays,
     }
 
     # These types have no dedicated push toggle — they piggyback on whatever
@@ -2164,3 +2167,21 @@ def notify_car_loan_completed(loan: Any) -> list[Notification]:
         if notification is not None:
             created.append(notification)
     return created
+
+
+def notify_birthday(
+    user: User,
+    name: str,
+    turning: int,
+    link: str,
+    related_user: User | None = None,
+) -> Notification | None:
+    """Tell a resident that someone — a resident or a child — has a birthday today."""
+    return create_notification(
+        user=user,
+        notification_type=NotificationType.BIRTHDAY,
+        title=f"{name} har fødselsdag i dag",
+        message=f"{name} fylder {turning} år i dag.",
+        link=link,
+        related_user=related_user,
+    )

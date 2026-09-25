@@ -914,3 +914,94 @@ class TestMentionAutocomplete:
 
         # The two above plus the fixture's own user.
         assert len(authenticated_client.get("/api/users/mentions/").data) == 3
+
+
+@pytest.mark.django_db
+class TestBirthdayNotifications:
+    """The 08:00 task tells every other active resident about today's birthdays."""
+
+    TODAY = date(2026, 9, 25)
+
+    def _run(self):
+        from unittest.mock import patch
+
+        from apps.users.tasks import send_birthday_notifications
+
+        with patch("django.utils.timezone.localdate", return_value=self.TODAY):
+            send_birthday_notifications.call_local()
+
+    def _residents(self, house):
+        birthday = User.objects.create_user(
+            email="bday@example.com",
+            password="pass",
+            first_name="Anna",
+            last_name="Hansen",
+            house=house,
+            birthdate=date(1990, 9, 25),
+        )
+        other = User.objects.create_user(
+            email="other@example.com", password="pass", first_name="Bo", house=house
+        )
+        return birthday, other
+
+    def test_others_are_told_and_the_birthday_person_is_not(self, house):
+        from apps.notifications.models import Notification, NotificationType
+
+        birthday, other = self._residents(house)
+        User.objects.create_user(
+            email="gone@example.com", password="pass", first_name="Gone", is_active=False
+        )
+
+        self._run()
+
+        rows = Notification.objects.filter(notification_type=NotificationType.BIRTHDAY)
+        assert list(rows.values_list("user__email", flat=True)) == ["other@example.com"]
+        row = rows.get()
+        assert row.title == "Anna Hansen har fødselsdag i dag"
+        assert "fylder 36 år" in row.message
+        assert row.link == f"/profil/{birthday.pk}"
+
+    def test_children_are_included_and_link_to_their_house(self, house):
+        from apps.houses.models import Child
+        from apps.notifications.models import Notification
+
+        _, other = self._residents(house)
+        Child.objects.create(house=house, name="Emma", birthdate=date(2020, 9, 25))
+
+        self._run()
+
+        row = Notification.objects.get(user=other, title__startswith="Emma")
+        assert row.title == f"Emma ({house.name}) har fødselsdag i dag"
+        assert "fylder 6 år" in row.message
+        assert row.link == f"/beboere/hus/{house.slug}"
+
+    def test_no_notification_on_other_days(self, house):
+        from apps.notifications.models import Notification
+
+        birthday, _ = self._residents(house)
+        birthday.birthdate = date(1990, 9, 26)
+        birthday.save()
+
+        self._run()
+
+        assert not Notification.objects.exists()
+
+    def test_opting_out_stops_it(self, house):
+        from apps.notifications.models import Notification, NotificationPreference
+
+        _, other = self._residents(house)
+        NotificationPreference.objects.update_or_create(
+            user=other, defaults={"notify_birthdays": False}
+        )
+
+        self._run()
+
+        assert not Notification.objects.filter(user=other).exists()
+
+    def test_only_in_app_is_on_by_default(self, user):
+        from apps.notifications.models import NotificationPreference
+
+        prefs = NotificationPreference(user=user)
+        assert prefs.notify_birthdays is True
+        assert prefs.push_birthdays is False
+        assert prefs.email_birthdays is False

@@ -1630,7 +1630,7 @@ export type WsMessage = WsNewMessage | WsMessagesRead | WsTyping | WsNewConversa
 
 // Notification Types
 
-export type NotificationType = "new_message" | "message_reaction" | "new_announcement" | "announcement_updated" | "new_thread" | "thread_reply" | "post_reply" | "subgroup_activity" | "post_reaction" | "event_created" | "event_updated" | "event_cancelled" | "event_reminder" | "food_ticket" | "food_team_reminder" | "food_takeaway_ready" | "food_leftovers_ready" | "food_swap_request" | "food_team_shift_taken" | "food_team_plan_ready" | "food_team_wishes_open" | "food_team_pause_check" | "mention" | "subgroup_member_added" | "subgroup_member_removed" | "post_edited_by_admin" | "event_edited_by_admin" | "announcement_edited_by_admin" | "expense_processed" | "car_loan_request" | "car_loan_update" | "report_new" | "report_update"
+export type NotificationType = "new_message" | "message_reaction" | "new_announcement" | "announcement_updated" | "new_thread" | "thread_reply" | "post_reply" | "subgroup_activity" | "post_reaction" | "event_created" | "event_updated" | "event_cancelled" | "event_reminder" | "food_ticket" | "food_team_reminder" | "food_takeaway_ready" | "food_leftovers_ready" | "food_swap_request" | "food_team_shift_taken" | "food_team_plan_ready" | "food_team_wishes_open" | "food_team_pause_check" | "mention" | "subgroup_member_added" | "subgroup_member_removed" | "post_edited_by_admin" | "event_edited_by_admin" | "announcement_edited_by_admin" | "expense_processed" | "car_loan_request" | "car_loan_update" | "report_new" | "report_update" | "birthday"
 
 export interface MentionUser {
   id: number
@@ -1707,6 +1707,8 @@ export interface NotificationPreference {
 
   notify_reports: boolean
 
+  notify_birthdays: boolean
+
   // Email preferences
 
   email_messages: boolean
@@ -1734,6 +1736,8 @@ export interface NotificationPreference {
   email_car_sharing: boolean
 
   email_reports: boolean
+
+  email_birthdays: boolean
 
   // Push preferences
 
@@ -1779,6 +1783,8 @@ export interface NotificationPreference {
   push_food_swap_request: boolean
 
   push_reports: boolean
+
+  push_birthdays: boolean
 
   created_at: string
 
@@ -1836,6 +1842,8 @@ export interface UpdateNotificationPreferenceData {
 
   notify_reports?: boolean
 
+  notify_birthdays?: boolean
+
   email_messages?: boolean
 
   email_announcements?: boolean
@@ -1862,6 +1870,8 @@ export interface UpdateNotificationPreferenceData {
 
   email_reports?: boolean
 
+  email_birthdays?: boolean
+
   push_messages?: boolean
 
   push_announcements?: boolean
@@ -1887,6 +1897,8 @@ export interface UpdateNotificationPreferenceData {
   push_car_sharing?: boolean
 
   push_reports?: boolean
+
+  push_birthdays?: boolean
 }
 
 // Food Team Types

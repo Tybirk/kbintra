@@ -198,6 +198,12 @@ export default function NotificationPreferencesPage() {
             push_food_swap_request: false,
 
             push_mentions: false,
+
+            push_car_sharing: false,
+
+            push_reports: false,
+
+            push_birthdays: false,
           })
 
           notifications.show({
@@ -250,6 +256,12 @@ export default function NotificationPreferencesPage() {
             push_food_swap_request: true,
 
             push_mentions: true,
+
+            push_car_sharing: true,
+
+            push_reports: true,
+
+            push_birthdays: false,
           })
 
           notifications.show({

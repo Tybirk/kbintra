@@ -143,4 +143,15 @@ NOTIFICATION_GROUPS: list[dict] = [
             },
         ],
     },
+    {
+        "key": "birthdays",
+        "label": "Fødselsdage",
+        "fields": [
+            {
+                "key": "birthdays",
+                "label": "Fødselsdage",
+                "description": "Få besked om morgenen, når en beboer eller et barn har fødselsdag",
+            },
+        ],
+    },
 ]

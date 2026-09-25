@@ -83,6 +83,7 @@ def should_send_email(user: User, notification_type: NotificationType) -> bool:
         NotificationType.CAR_LOAN_UPDATE: prefs.email_car_sharing,
         NotificationType.REPORT_NEW: prefs.email_reports,
         NotificationType.REPORT_UPDATE: prefs.email_reports,
+        NotificationType.BIRTHDAY: prefs.email_birthdays,
     }
 
     # These have no dedicated email toggle — they piggyback on whatever email
