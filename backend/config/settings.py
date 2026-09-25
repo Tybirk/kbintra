@@ -217,7 +217,7 @@ CORS_ALLOWED_ORIGINS: list[str] = os.getenv(
 CORS_ALLOW_CREDENTIALS = True
 
 # Internationalization
-LANGUAGE_CODE = "en-us"
+LANGUAGE_CODE = "da"
 TIME_ZONE = "Europe/Copenhagen"
 USE_I18N = True
 USE_TZ = True
