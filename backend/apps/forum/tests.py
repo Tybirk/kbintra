@@ -250,6 +250,34 @@ class TestSubgroupViews:
         assert response.status_code == 200
         assert response.data["name"] == "General Discussion"
 
+    def _queries_to_save_description(self, client, user, name, threads):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        group = Subgroup.objects.create(name=name)
+        for i in range(threads):
+            thread = Thread.objects.create(subgroup=group, title=f"Tråd {i}", author=user)
+            for _ in range(2):
+                Post.objects.create(thread=thread, author=user, content="<p>Indlæg</p>")
+
+        with CaptureQueriesContext(connection) as queries:
+            # The payload "Rediger gruppe" sends: all three fields, name unchanged.
+            response = client.patch(
+                f"/api/forum/subgroups/{group.slug}/update/",
+                {"name": name, "description": "<p>Ny beskrivelse</p>", "allows_members": False},
+                format="json",
+            )
+        assert response.status_code == 200
+        return len(queries)
+
+    def test_saving_a_description_costs_the_same_in_a_big_group(self, admin_client, user):
+        """Every save used to re-index each thread, post, file and folder in the group
+        one row at a time: 7.3 s for Driftsudvalget and 68.7 s for Fælles, well past
+        the client's 30 s timeout, so "Gem" spun while the save had in fact landed."""
+        small = self._queries_to_save_description(admin_client, user, "Lille", threads=1)
+        big = self._queries_to_save_description(admin_client, user, "Stor", threads=5)
+        assert big == small
+
 
 class TestSubscriptionViews:
     """Tests for subscription views."""

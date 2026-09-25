@@ -9,7 +9,14 @@ from django.db.models.signals import m2m_changed, post_delete, post_save
 from django.db.utils import OperationalError
 from django.dispatch import receiver
 
-from .services import _isoformat, create_excerpt, index_object, remove_object, strip_html
+from .services import (
+    _isoformat,
+    create_excerpt,
+    index_object,
+    remove_object,
+    set_subtitle,
+    strip_html,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -225,6 +232,11 @@ def index_subgroup(sender, instance, **kwargs):
         # is saved — so without this a rename leaves every one of them showing
         # the old name until something else happens to touch it.
         #
+        # Only the subtitle, never a full re-index: that took 68.7 s for Fælles
+        # and made every "Gem" on a group time out. Nothing else on those rows
+        # depends on the group — its slug, and so their URLs, never changes on
+        # a rename — and post rows do not mention the group at all.
+        #
         # Skipped for the `last_activity_at` bumps that run on every new thread
         # and post, since those pass update_fields and can't have changed a name.
         update_fields = kwargs.get("update_fields")
@@ -232,12 +244,12 @@ def index_subgroup(sender, instance, **kwargs):
             return
         if kwargs.get("created", False):
             return
-        for thread in instance.threads.all():
-            index_thread(None, thread)
-        for folder in instance.folders.all():
-            index_folder(None, folder)
-        for file in instance.files.all():
-            index_file(None, file)
+        for obj_type, related in (
+            ("thread", instance.threads),
+            ("folder", instance.folders),
+            ("file", instance.files),
+        ):
+            set_subtitle(obj_type, list(related.values_list("id", flat=True)), instance.name)
     except OperationalError:
         logger.exception("Failed to index subgroup %s", instance.id)
 

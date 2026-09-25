@@ -291,17 +291,27 @@ class TestIndexAndSearch:
         a cascade a rename leaves all of them advertising the old name — which is
         what kept search saying "Arrangementer" after the Begivenheder rename.
         """
-        from apps.forum.models import Thread
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from apps.forum.models import File, Folder, Thread
 
         thread = Thread.objects.create(
             subgroup=subgroup, title="Sommerfest paa graespladsen", author=user
+        )
+        Folder.objects.create(subgroup=subgroup, name="Referater")
+        File.objects.create(
+            subgroup=subgroup,
+            uploaded_by=user,
+            file=SimpleUploadedFile("budget.txt", b"content"),
+            name="budget.txt",
         )
         assert fts_search("sommerfest")[0]["subtitle"] == subgroup.name
 
         subgroup.name = "Begivenheder"
         subgroup.save()
 
-        assert fts_search("sommerfest")[0]["subtitle"] == "Begivenheder"
+        for query in ("sommerfest", "referater", "budget"):
+            assert fts_search(query)[0]["subtitle"] == "Begivenheder", query
         assert thread.id == fts_search("sommerfest")[0]["object_id"]
 
     def test_activity_bump_does_not_cascade_a_reindex(self, subgroup, user):
@@ -312,7 +322,7 @@ class TestIndexAndSearch:
         from django.utils import timezone
 
         subgroup.last_activity_at = timezone.now()
-        with patch("apps.search.signals.index_thread") as cascaded:
+        with patch("apps.search.signals.set_subtitle") as cascaded:
             subgroup.save(update_fields=["last_activity_at"])
         cascaded.assert_not_called()
 
