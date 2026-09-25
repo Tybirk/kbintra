@@ -1765,7 +1765,11 @@ const MessageBubble = memo(function MessageBubble({
 
   const [isSavingEdit, setIsSavingEdit] = useState(false)
 
-  const isMobileDevice = useMediaQuery("(max-width: 768px)")
+  // Read synchronously: a bubble that first renders in the desktop layout and
+  // then switches would change height after useChatScroll has measured it.
+  const isMobileDevice = useMediaQuery("(max-width: 768px)", undefined, {
+    getInitialValueInEffect: false,
+  })
 
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
