@@ -28,12 +28,17 @@ echo ">>> Snapshotting prod DB on $PROD_REMOTE:$PROD_DATA_DIR (read-only)..."
 mkdir -p ./data
 trap 'ssh "$PROD_REMOTE" "rm -f $SNAPSHOT"' EXIT
 ssh "$PROD_REMOTE" "sqlite3 -readonly '$PROD_DATA_DIR/db.sqlite3' '.backup $SNAPSHOT'"
-rsync -avz --inplace "$PROD_REMOTE:$SNAPSHOT" ./data/db.sqlite3
+rsync -avz "$PROD_REMOTE:$SNAPSHOT" ./data/db.sqlite3.new
 ssh "$PROD_REMOTE" "rm -f $SNAPSHOT"
 trap - EXIT
 
-# The snapshot is complete on its own; a leftover -wal from the previous copy
-# would be replayed over it.
+# Swap the file in only while nothing here has it open. A running container
+# holds the old database and its -wal; replacing them under it, it checkpointed
+# its stale pages into the new file on shutdown and left it malformed
+# (2026-09-25). deploy.sh starts the containers again.
+echo ">>> Stopping the app containers to swap in the new database..."
+docker compose stop backend backend-ws huey
+mv ./data/db.sqlite3.new ./data/db.sqlite3
 rm -f ./data/db.sqlite3-wal ./data/db.sqlite3-shm
 
 # Media files written by the backend container are root-owned on the host (the
