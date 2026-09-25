@@ -126,6 +126,7 @@ class UserAdmin(BaseUserAdmin):
                     "last_name",
                     "phone_number",
                     "birthdate",
+                    "hide_birth_year",
                     "profile_picture",
                     "bio",
                 )

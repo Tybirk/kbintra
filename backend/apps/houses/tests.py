@@ -131,6 +131,16 @@ class TestHouseAPI:
         assert response.status_code == 200
         assert response.json()["inhabitants"][0]["birthdate"] == "1983-03-14"
 
+    def test_inhabitant_who_hides_their_year_gets_day_and_month(self, api_client, user_with_house):
+        """The year never leaves the server, so the page cannot show an age."""
+        user_with_house.birthdate = date(1983, 3, 14)
+        user_with_house.hide_birth_year = True
+        user_with_house.save()
+        api_client.force_authenticate(user=user_with_house)
+
+        response = api_client.get(f"/api/houses/{user_with_house.house.slug}/")
+        assert response.json()["inhabitants"][0]["birthdate"] == "--03-14"
+
     def test_inhabitant_without_a_birthdate_reports_none(self, api_client, user_with_house):
         """A blank birthdate stays blank rather than becoming a fake date."""
         assert user_with_house.birthdate is None

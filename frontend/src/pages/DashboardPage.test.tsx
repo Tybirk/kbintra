@@ -272,6 +272,26 @@ describe("DashboardPage", () => {
     expect(screen.getByText("Om 10 dage")).toBeInTheDocument()
   })
 
+  it("gives no age for someone who hides their birth year", async () => {
+    mockGetUpcomingBirthdays.mockResolvedValue([
+      {
+        kind: "user",
+        id: 42,
+        name: "Anders And",
+        profile_picture: null,
+        house_slug: "12a",
+        birthdate: "--09-25",
+        days_until: 0,
+        turning: null,
+      },
+    ])
+
+    render(<DashboardPage />)
+
+    expect(await screen.findByText("Har fødselsdag")).toBeInTheDocument()
+    expect(screen.queryByText(/Fylder/)).not.toBeInTheDocument()
+  })
+
   it("asks for a 14-day window", async () => {
     render(<DashboardPage />)
 

@@ -5,18 +5,24 @@
 
 import dayjs from "dayjs"
 
-/** Whole years lived, or null if the date is missing or unparseable. */
+/**
+ * "--09-25": a birthday without the year, as the API sends it for a resident
+ * who hides their birth year.
+ */
+const YEARLESS = /^--(\d{2})-(\d{2})$/
+
+/** Whole years lived, or null if the date is missing, unparseable or yearless. */
 export function ageInYears(
   birthdate: string | null | undefined,
 ): number | null {
-  if (!birthdate) return null
+  if (!birthdate || YEARLESS.test(birthdate)) return null
   const parsed = dayjs(birthdate)
   if (!parsed.isValid()) return null
   return dayjs().diff(parsed, "year")
 }
 
 /**
- * "1992-10-04" → "4. oktober 1992 (33 år)".
+ * "1992-10-04" → "4. oktober 1992 (33 år)", and "--10-04" → "4. oktober".
  *
  * The month name comes from the Danish dayjs locale registered in main.tsx.
  * A future date (a typo, most likely) would give a negative age, so the age is
@@ -26,6 +32,14 @@ export function formatBirthdateWithAge(
   birthdate: string | null | undefined,
 ): string | null {
   if (!birthdate) return null
+
+  const yearless = YEARLESS.exec(birthdate)
+  if (yearless) {
+    // Any leap year will do, so that 29 February survives the round trip.
+    const parsed = dayjs(`2000-${yearless[1]}-${yearless[2]}`)
+    return parsed.isValid() ? parsed.format("D. MMMM") : null
+  }
+
   const parsed = dayjs(birthdate)
   if (!parsed.isValid()) return null
 

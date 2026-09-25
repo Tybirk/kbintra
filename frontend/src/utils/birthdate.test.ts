@@ -40,6 +40,11 @@ describe("formatBirthdateWithAge", () => {
   it("drops the age instead of printing a negative one", () => {
     expect(formatBirthdateWithAge("2030-01-15")).toBe("15. januar 2030")
   })
+
+  it("gives day and month only for a birthday without a year", () => {
+    expect(formatBirthdateWithAge("--10-04")).toBe("4. oktober")
+    expect(formatBirthdateWithAge("--02-29")).toBe("29. februar")
+  })
 })
 
 describe("ageInYears", () => {
@@ -59,5 +64,9 @@ describe("ageInYears", () => {
 
   it("returns null when there is no date", () => {
     expect(ageInYears(null)).toBeNull()
+  })
+
+  it("returns null when the year is hidden", () => {
+    expect(ageInYears("--06-26")).toBeNull()
   })
 })

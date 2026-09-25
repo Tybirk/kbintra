@@ -2172,16 +2172,23 @@ def notify_car_loan_completed(loan: Any) -> list[Notification]:
 def notify_birthday(
     user: User,
     name: str,
-    turning: int,
+    turning: int | None,
     link: str,
     related_user: User | None = None,
 ) -> Notification | None:
-    """Tell a resident that someone — a resident or a child — has a birthday today."""
+    """Tell a resident that someone — a resident or a child — has a birthday today.
+
+    ``turning`` is None for a resident who hides their birth year.
+    """
     return create_notification(
         user=user,
         notification_type=NotificationType.BIRTHDAY,
         title=f"{name} har fødselsdag i dag",
-        message=f"{name} fylder {turning} år i dag.",
+        message=(
+            f"{name} har fødselsdag i dag."
+            if turning is None
+            else f"{name} fylder {turning} år i dag."
+        ),
         link=link,
         related_user=related_user,
     )

@@ -13,7 +13,15 @@ export interface User {
 
   phone_number: string
 
+  /**
+   * "1990-09-25", or "--09-25" (no year) for someone who hides their birth
+   * year. Always the full date for the current user. Format with
+   * utils/birthdate rather than parsing it directly.
+   */
   birthdate: string | null
+
+  // Only returned for the current user (GET /users/me/).
+  hide_birth_year?: boolean
 
   profile_picture: string | null
 
@@ -408,11 +416,13 @@ export interface UpcomingBirthday {
 
   house_slug: string | null
 
+  /** Without the year ("--09-25") for a resident who hides it. */
   birthdate: string
 
   days_until: number
 
-  turning: number
+  /** Null for a resident who hides their birth year. */
+  turning: number | null
 }
 
 export interface Invitation {

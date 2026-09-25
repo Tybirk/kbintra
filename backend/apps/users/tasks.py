@@ -71,7 +71,7 @@ def send_birthday_notifications() -> None:
             notify_birthday(
                 recipient,
                 name,
-                today.year - person.birthdate.year,
+                None if person.hide_birth_year else today.year - person.birthdate.year,
                 f"/profil/{person.pk}",
                 related_user=person,
             )

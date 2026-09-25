@@ -273,6 +273,62 @@ class TestUpcomingBirthdaysAPI:
 
         assert authenticated_client.get("/api/users/birthdays/").json() == []
 
+    def test_birthdays_leave_out_the_year_for_those_who_hide_it(
+        self, authenticated_client, second_user
+    ):
+        """Still listed, on the right day, but with no year and no age."""
+        upcoming = timezone.localdate() + timedelta(days=2)
+        second_user.birthdate = upcoming.replace(year=1980)
+        second_user.hide_birth_year = True
+        second_user.save()
+
+        [entry] = authenticated_client.get("/api/users/birthdays/").json()
+        assert entry["days_until"] == 2
+        assert entry["birthdate"] == upcoming.strftime("--%m-%d")
+        assert entry["turning"] is None
+
+
+@pytest.mark.django_db
+class TestHiddenBirthYear:
+    """A resident may hide their birth year: others see day and month only."""
+
+    @pytest.fixture
+    def hider(self, second_user):
+        second_user.birthdate = date(1980, 3, 14)
+        second_user.hide_birth_year = True
+        second_user.save()
+        return second_user
+
+    def test_others_get_day_and_month_only(self, authenticated_client, hider):
+        detail = authenticated_client.get(f"/api/users/{hider.pk}/").json()
+        assert detail["birthdate"] == "--03-14"
+        assert "hide_birth_year" not in detail
+
+        listed = {u["id"]: u for u in authenticated_client.get("/api/users/").json()}
+        assert listed[hider.pk]["birthdate"] == "--03-14"
+
+    def test_the_year_is_shown_by_default(self, authenticated_client, second_user):
+        second_user.birthdate = date(1980, 3, 14)
+        second_user.save()
+
+        detail = authenticated_client.get(f"/api/users/{second_user.pk}/").json()
+        assert detail["birthdate"] == "1980-03-14"
+
+    def test_the_owner_still_sees_the_full_date(self, api_client, hider):
+        api_client.force_authenticate(user=hider)
+
+        me = api_client.get("/api/users/me/").json()
+        assert me["birthdate"] == "1980-03-14"
+        assert me["hide_birth_year"] is True
+
+    def test_the_setting_is_changed_on_the_own_profile(self, authenticated_client, user):
+        response = authenticated_client.patch(
+            "/api/users/me/", {"hide_birth_year": True}, format="json"
+        )
+        assert response.status_code == 200
+        user.refresh_from_db()
+        assert user.hide_birth_year is True
+
 
 class TestNextBirthday:
     """The date arithmetic behind the birthdays list."""
@@ -974,6 +1030,19 @@ class TestBirthdayNotifications:
         assert row.title == f"Emma ({house.name}) har fødselsdag i dag"
         assert "fylder 6 år" in row.message
         assert row.link == f"/beboere/hus/{house.slug}"
+
+    def test_no_age_for_a_resident_who_hides_their_year(self, house):
+        from apps.notifications.models import Notification
+
+        birthday, other = self._residents(house)
+        birthday.hide_birth_year = True
+        birthday.save()
+
+        self._run()
+
+        row = Notification.objects.get(user=other)
+        assert row.title == "Anna Hansen har fødselsdag i dag"
+        assert row.message == "Anna Hansen har fødselsdag i dag."
 
     def test_no_notification_on_other_days(self, house):
         from apps.notifications.models import Notification

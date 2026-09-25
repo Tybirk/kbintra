@@ -22,6 +22,9 @@ class UserSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     house_name = serializers.CharField(source="house.name", read_only=True)
     house_slug = serializers.CharField(source="house.slug", read_only=True)
     house_inhabitant_count = serializers.SerializerMethodField()
+    # Everyone can read this serializer, so it gives the birthdate as others may
+    # see it: without the year for those who hide it (User.public_birthdate).
+    birthdate = serializers.CharField(source="public_birthdate", read_only=True, allow_null=True)
 
     class Meta:
         model = User
@@ -72,11 +75,19 @@ class CurrentUserSerializer(UserSerializer):
 
     Extends ``UserSerializer`` with the private bank details. These must never
     appear in the shared user list/detail (which everyone can read) — only the
-    user themselves sees their own reg. nr./account number.
+    user themselves sees their own reg. nr./account number. Likewise the full
+    birthdate, year included, and whether the year is hidden from others.
     """
 
+    birthdate = serializers.DateField(read_only=True)
+
     class Meta(UserSerializer.Meta):
-        fields = [*UserSerializer.Meta.fields, "bank_reg_nr", "bank_account_number"]
+        fields = [
+            *UserSerializer.Meta.fields,
+            "hide_birth_year",
+            "bank_reg_nr",
+            "bank_account_number",
+        ]
 
 
 def _validate_optional_reg_nr(value: str) -> str:
@@ -105,6 +116,7 @@ class UserProfileUpdateSerializer(AvatarUrlMixin, serializers.ModelSerializer):
             "last_name",
             "phone_number",
             "birthdate",
+            "hide_birth_year",
             "profile_picture",
             "bio",
             "house",

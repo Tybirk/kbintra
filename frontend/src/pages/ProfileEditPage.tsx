@@ -20,6 +20,7 @@ import {
   Collapse,
   Modal,
   Anchor,
+  Checkbox,
   rem,
 } from "@mantine/core"
 
@@ -71,6 +72,8 @@ export default function ProfileEditPage() {
 
     birthdate: null as Date | null,
 
+    hide_birth_year: false,
+
     house: null as number | null,
 
     bank_reg_nr: "",
@@ -108,6 +111,8 @@ export default function ProfileEditPage() {
         bio: user.bio || "",
 
         birthdate: user.birthdate ? new Date(user.birthdate) : null,
+
+        hide_birth_year: user.hide_birth_year ?? false,
 
         house: user.house,
 
@@ -220,6 +225,8 @@ export default function ProfileEditPage() {
       birthdate: formData.birthdate
         ? dayjs(formData.birthdate).format("YYYY-MM-DD")
         : null,
+
+      hide_birth_year: formData.hide_birth_year,
 
       house: formData.house,
 
@@ -382,6 +389,17 @@ export default function ProfileEditPage() {
               maxDate={new Date()}
               clearable
               inputMode="none"
+            />
+
+            <Checkbox
+              label="Skjul mit fødselsår og min alder"
+              description={"Andre ser kun dag og måned, fx 25.\u00a0september"}
+              checked={formData.hide_birth_year}
+              onChange={(e) => {
+                const hide = e.currentTarget.checked
+
+                setFormData((prev) => ({ ...prev, hide_birth_year: hide }))
+              }}
             />
 
             <Textarea
