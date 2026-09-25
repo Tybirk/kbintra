@@ -34,6 +34,8 @@ import type { ForumFile } from "../types"
 
 import { unsignedMediaUrl } from "../utils/mediaUrl"
 
+import { sanitizeHtml } from "../utils/sanitizeHtml"
+
 import { ErrorBoundary } from "./ErrorBoundary"
 
 // pdf.js is heavy — only load it when a PDF is actually opened.
@@ -689,7 +691,9 @@ export function FilePreviewModal({
 
                     overflowWrap: "break-word",
                   }}
-                  dangerouslySetInnerHTML={{ __html: file.preview_html }}
+                  dangerouslySetInnerHTML={{
+                    __html: sanitizeHtml(file.preview_html),
+                  }}
                 />
               </ScrollArea>
               <FileActionButtons actions={actions} />

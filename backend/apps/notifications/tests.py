@@ -947,3 +947,48 @@ class TestToggleLessTypesPiggybackOnEveryChannel:
 
         for notification_type in self.TOGGLE_LESS:
             assert should_send_email(user, notification_type) is False, notification_type
+
+
+@pytest.mark.django_db
+class TestEmailHtmlIsSanitized:
+    """Posts reach the email template as stored, and any resident can store raw HTML
+    through the API, so the email is cleaned where it is built, not where it is saved."""
+
+    def test_script_and_event_handlers_are_removed(self, user, mailoutbox):
+        from apps.notifications.email_service import send_notification_email
+
+        NotificationPreference.objects.update_or_create(
+            user=user, defaults={"email_announcements": True}
+        )
+
+        send_notification_email(
+            user,
+            NotificationType.NEW_ANNOUNCEMENT,
+            "Opslag",
+            "Et nyt opslag",
+            html_content=(
+                '<p>Hej</p><img src="https://x.dk/a.jpg" onerror="alert(1)">'
+                '<script>alert(2)</script><a href="javascript:alert(3)">klik</a>'
+            ),
+        )
+
+        body = mailoutbox[0].body
+        assert "<p>Hej</p>" in body
+        assert 'src="https://x.dk/a.jpg"' in body
+        assert "onerror" not in body
+        assert "<script" not in body
+        assert "javascript:" not in body
+
+    def test_a_private_message_is_text_not_markup(
+        self, user, admin_user, mailoutbox, django_capture_on_commit_callbacks
+    ):
+        from apps.notifications.services import notify_new_message
+
+        NotificationPreference.objects.update_or_create(
+            user=user, defaults={"email_messages": True}
+        )
+
+        with django_capture_on_commit_callbacks(execute=True):
+            notify_new_message(user, admin_user, "Er a<b? <b>Ja</b>", 1)
+
+        assert "Er a&lt;b? &lt;b&gt;Ja&lt;/b&gt;" in mailoutbox[0].body

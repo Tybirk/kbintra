@@ -44,6 +44,7 @@ import {
 } from "./FilePreview"
 import { ErrorBoundary } from "./ErrorBoundary"
 import { ImageZoomViewer } from "./ImageZoomViewer"
+import { sanitizeHtml } from "../utils/sanitizeHtml"
 
 interface Attachment {
   id: number
@@ -576,7 +577,9 @@ function SlideContent({
 
                 overflowWrap: "break-word",
               }}
-              dangerouslySetInnerHTML={{ __html: attachment.preview_html }}
+              dangerouslySetInnerHTML={{
+                __html: sanitizeHtml(attachment.preview_html),
+              }}
             />
           </ScrollArea>
           <FileActionButtons

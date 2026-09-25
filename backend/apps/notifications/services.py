@@ -17,6 +17,7 @@ from channels.layers import get_channel_layer
 from django.conf import settings
 from django.db import transaction
 from django.db.models import QuerySet
+from django.utils.html import escape
 
 from apps.users.models import User
 
@@ -597,7 +598,7 @@ def notify_new_message(
         message=preview,
         link=link,
         related_user=sender,
-        html_content=f"<p>{message_content}</p>",  # Full message in email
+        html_content=f"<p>{escape(message_content)}</p>",  # Full message in email
     )
 
 
@@ -631,7 +632,7 @@ def notify_new_announcement(
             message=f"{author.first_name} oprettede et nyt opslag",
             link=f"/opslag#announcement-{announcement_id}",
             related_user=author,
-            html_content=f"<h3>{announcement_title}</h3>{announcement_content}"
+            html_content=f"<h3>{escape(announcement_title)}</h3>{announcement_content}"
             if announcement_content
             else None,
         )
@@ -680,7 +681,7 @@ def notify_new_thread(
             message=f"{author.first_name} oprettede en ny tråd",
             link=thread_link,
             related_user=author,
-            html_content=f"<h3>{thread_title}</h3>{initial_post_content}"
+            html_content=f"<h3>{escape(thread_title)}</h3>{initial_post_content}"
             if initial_post_content
             else None,
             superseded_by=superseded_by_map.get(user.id, ()),
@@ -746,7 +747,7 @@ def notify_thread_reply(
         message=f"{replier.first_name}: {preview}",
         link=link,
         related_user=replier,
-        html_content=f"<p><strong>I tråden: {thread_title}</strong></p>{reply_content}",
+        html_content=f"<p><strong>I tråden: {escape(thread_title)}</strong></p>{reply_content}",
         group_key=base_link,  # Aggregate all replies to same thread
         superseded_by=superseded_by,
     )
@@ -808,7 +809,7 @@ def notify_post_reply(
         message=f"{replier.first_name}: {preview}",
         link=link,
         related_user=replier,
-        html_content=f"<p><strong>I tråden: {thread_title}</strong></p>{reply_content}",
+        html_content=f"<p><strong>I tråden: {escape(thread_title)}</strong></p>{reply_content}",
         group_key=base_link,  # Aggregate all replies to same thread
         superseded_by=superseded_by,
     )

@@ -4,6 +4,7 @@ Email service for sending notification emails.
 
 import logging
 
+import nh3
 from django.conf import settings
 from django.core.mail import EmailMessage
 from django.template.loader import render_to_string
@@ -13,6 +14,11 @@ from apps.users.models import User
 from .models import NotificationPreference, NotificationType
 
 logger = logging.getLogger(__name__)
+
+# Email is the second place user-written HTML gets rendered (the browser is the
+# first, through sanitizeHtml). Posts and announcements arrive here as stored,
+# so clean them on the way out; the leftovers photo keeps its inline sizing.
+EMAIL_HTML_ATTRIBUTES = {**nh3.ALLOWED_ATTRIBUTES, "img": nh3.ALLOWED_ATTRIBUTES["img"] | {"style"}}
 
 # Type-specific email subject prefixes (more informative than generic [KB Intra])
 EMAIL_SUBJECT_PREFIX: dict[str, str] = {
@@ -148,7 +154,9 @@ def send_notification_email(
         "user": user,
         "title": title,
         "message": message,
-        "html_content": html_content,
+        "html_content": nh3.clean(html_content, attributes=EMAIL_HTML_ATTRIBUTES)
+        if html_content
+        else None,
         "link": full_link,
         "related_user": related_user,
         "notification_type": notification_type,
