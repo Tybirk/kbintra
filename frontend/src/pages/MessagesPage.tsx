@@ -1036,8 +1036,8 @@ const MessageList = memo(function MessageList({
 
         overscrollBehavior: "contain",
 
-        // useChatScroll keeps the reader's place when older messages are
-        // prepended; the browser's own scroll anchoring would do it twice.
+        // useChatScroll keeps the reader's place through every change (and
+        // Safari has no scroll anchoring); the browser's would do it twice.
         overflowAnchor: "none",
       }}
     >
