@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react"
 
+import type { CSSProperties } from "react"
+
 import { Link, useNavigate } from "react-router-dom"
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
@@ -81,6 +83,15 @@ interface UpdateCarParams {
   id: number
 
   data: UpdateCarData
+}
+
+// The edit/delete column stays pinned to the right edge while a narrow screen
+// scrolls the table sideways; on a phone it otherwise sat off-screen with
+// nothing to say it was there.
+const STICKY_ACTIONS: CSSProperties = {
+  position: "sticky",
+  right: 0,
+  background: "var(--mantine-color-body)",
 }
 
 export default function HouseEditPage() {
@@ -716,7 +727,9 @@ export default function HouseEditPage() {
                 <Table.Tr>
                   <Table.Th>Navn</Table.Th>
                   <Table.Th>Fødselsdag</Table.Th>
-                  <Table.Th style={{ width: 100 }}>Handlinger</Table.Th>
+                  <Table.Th style={{ width: 100, ...STICKY_ACTIONS }}>
+                    Handlinger
+                  </Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -740,7 +753,7 @@ export default function HouseEditPage() {
                         ? dayjs(child.birthdate).format("D. MMMM YYYY")
                         : "-"}
                     </Table.Td>
-                    <Table.Td>
+                    <Table.Td style={STICKY_ACTIONS}>
                       <Group gap="xs">
                         <ActionIcon
                           variant="subtle"
@@ -796,7 +809,9 @@ export default function HouseEditPage() {
                 <Table.Tr>
                   <Table.Th>Nummerplade</Table.Th>
                   <Table.Th>Type</Table.Th>
-                  <Table.Th style={{ width: 100 }}>Handlinger</Table.Th>
+                  <Table.Th style={{ width: 100, ...STICKY_ACTIONS }}>
+                    Handlinger
+                  </Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -820,7 +835,7 @@ export default function HouseEditPage() {
                         </Badge>
                       )}
                     </Table.Td>
-                    <Table.Td>
+                    <Table.Td style={STICKY_ACTIONS}>
                       <Group gap="xs">
                         <ActionIcon
                           variant="subtle"
