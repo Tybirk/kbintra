@@ -239,6 +239,21 @@ class TestSubgroupViews:
         assert response.status_code == 200
         assert len(response.data) >= 1
 
+    def test_list_subgroups_in_model_order(self, authenticated_client):
+        """Fælles first, then the udvalg, then the rest — each by name."""
+        for name, flags in [
+            ("Badminton", {}),
+            ("Madudvalget", {"is_committee": True}),
+            ("Årlig tur", {}),
+            ("Fælles", {"is_main": True}),
+            ("Bestyrelsen", {"is_committee": True}),
+        ]:
+            Subgroup.objects.create(name=name, **flags)
+
+        response = authenticated_client.get("/api/forum/subgroups/")
+        names = [sg["name"] for sg in get_results(response.data)]
+        assert names == ["Fælles", "Bestyrelsen", "Madudvalget", "Badminton", "Årlig tur"]
+
     def test_list_subgroups_unauthenticated(self, api_client, subgroup):
         """Test that unauthenticated users cannot list subgroups."""
         response = api_client.get("/api/forum/subgroups/")

@@ -33,6 +33,8 @@ import dayjs from "dayjs"
 
 import { clearDraft, loadDraft, saveDraft } from "../utils/draftStorage"
 
+import { subgroupOptionLabel } from "../utils/subgroupLabel"
+
 import { useAuthStore } from "../store/authStore"
 
 import { BackButton } from "../components/BackButton"
@@ -803,7 +805,7 @@ export default function EventFormPage() {
   const subgroupOptions = (subgroups || []).map((s) => ({
     value: String(s.id),
 
-    label: s.name,
+    label: subgroupOptionLabel(s),
   }))
 
   return (

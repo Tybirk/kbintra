@@ -45,6 +45,8 @@ import { showErrorNotification } from "../utils/errorNotification"
 
 import { holdInView } from "../utils/holdInView"
 
+import { subgroupOptionLabel } from "../utils/subgroupLabel"
+
 import {
   IconDotsVertical,
   IconEdit,
@@ -1201,10 +1203,11 @@ export default function ThreadPage() {
           placeholder="Vælg gruppe"
           data={
             subgroups
-
               ?.filter((sg) => sg.slug !== thread.subgroup_slug)
-
-              .map((sg) => ({ value: sg.slug, label: sg.name })) ?? []
+              .map((sg) => ({
+                value: sg.slug,
+                label: subgroupOptionLabel(sg),
+              })) ?? []
           }
           value={targetSubgroupSlug}
           onChange={setTargetSubgroupSlug}

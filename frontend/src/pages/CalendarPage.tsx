@@ -51,6 +51,8 @@ import {
 
 import type { TimeSlotClickData } from "../utils/scheduleHelpers"
 
+import { subgroupOptionLabel } from "../utils/subgroupLabel"
+
 import type { Event } from "../types"
 
 type DisplayMode = "calendar" | "list"
@@ -245,7 +247,7 @@ export default function CalendarPage() {
   const subgroupOptions = (subgroups || []).map((s) => ({
     value: String(s.id),
 
-    label: s.name,
+    label: subgroupOptionLabel(s),
   }))
 
   if (error) {
