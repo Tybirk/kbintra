@@ -387,6 +387,30 @@ export interface UserSummary {
   phone_number?: string
 
   email?: string
+
+  birthdate?: string | null
+}
+
+/**
+ * One entry from /users/birthdays/. Children are not users, so `kind` says
+ * which this is: a user links to their profile, a child to their house page.
+ */
+export interface UpcomingBirthday {
+  kind: "user" | "child"
+
+  id: number
+
+  name: string
+
+  profile_picture: string | null
+
+  house_slug: string | null
+
+  birthdate: string
+
+  days_until: number
+
+  turning: number
 }
 
 export interface Invitation {

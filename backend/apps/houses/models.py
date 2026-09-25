@@ -95,7 +95,10 @@ class Child(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["name"]
+        # Oldest first, which is how families introduce their children. A child
+        # with no birthdate goes last rather than first, where a NULL would sort
+        # in SQLite, and name breaks the tie for twins.
+        ordering = [models.F("birthdate").asc(nulls_last=True), "name"]
         verbose_name_plural = "children"
 
     def __str__(self) -> str:

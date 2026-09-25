@@ -94,7 +94,7 @@ import type {
   Notification,
   RecentActivity,
   Subgroup,
-  User,
+  UpcomingBirthday,
   DriveMenu,
   MealRegistration,
   DiningOption,
@@ -126,6 +126,9 @@ function getDailyStats(
 }
 
 dayjs.extend(isoWeek)
+
+// How far ahead the Fødselsdage widget looks. The endpoint caps it at 30.
+const BIRTHDAY_WINDOW_DAYS = 14
 
 export default function DashboardPage() {
   const {
@@ -159,7 +162,7 @@ export default function DashboardPage() {
   })
 
   const {
-    data: birthdayUsers,
+    data: upcomingBirthdays,
 
     isLoading: birthdaysLoading,
 
@@ -167,7 +170,7 @@ export default function DashboardPage() {
   } = useQuery({
     queryKey: ["users", "birthdays"],
 
-    queryFn: () => usersApi.getUpcomingBirthdays(7),
+    queryFn: () => usersApi.getUpcomingBirthdays(BIRTHDAY_WINDOW_DAYS),
   })
 
   const ACTIVITY_PAGE_SIZE = 5
@@ -457,30 +460,6 @@ export default function DashboardPage() {
         (r) => r.date === nextFoodDay.date.format("YYYY-MM-DD"),
       )
     : undefined
-
-  // Calculate birthday info for each user
-
-  const upcomingBirthdays = birthdayUsers?.map((u) => {
-    const birthdate = dayjs(u.birthdate)
-
-    const today = dayjs().startOf("day")
-
-    // Create date for this year's birthday
-
-    let nextBirthday = birthdate.year(today.year()).startOf("day")
-
-    // If birthday has passed this year, use next year
-
-    if (nextBirthday.isBefore(today, "day")) {
-      nextBirthday = nextBirthday.add(1, "year")
-    }
-
-    const daysUntil = nextBirthday.diff(today, "day")
-
-    const age = nextBirthday.year() - birthdate.year()
-
-    return { user: u, nextBirthday, daysUntil, age }
-  })
 
   // Get the 3 most recent announcements
 
@@ -857,7 +836,10 @@ export default function DashboardPage() {
             ) : upcomingBirthdays && upcomingBirthdays.length > 0 ? (
               <Stack gap="sm">
                 {upcomingBirthdays.map((birthday) => (
-                  <BirthdayPreview key={birthday.user.id} birthday={birthday} />
+                  <BirthdayPreview
+                    key={`${birthday.kind}-${birthday.id}`}
+                    birthday={birthday}
+                  />
                 ))}
               </Stack>
             ) : (
@@ -866,7 +848,7 @@ export default function DashboardPage() {
                   <IconCake size={24} />
                 </ThemeIcon>
                 <Text c="dimmed" size="sm" ta="center">
-                  Ingen fødselsdage de næste 7 dage
+                  Ingen fødselsdage de næste {BIRTHDAY_WINDOW_DAYS} dage
                 </Text>
               </Stack>
             )}
@@ -1090,22 +1072,20 @@ function NotificationPreview({ notification }: NotificationPreviewProps) {
   )
 }
 
-interface BirthdayInfo {
-  user: User
-
-  nextBirthday: dayjs.Dayjs
-
-  daysUntil: number
-
-  age: number
-}
-
 interface BirthdayPreviewProps {
-  birthday: BirthdayInfo
+  birthday: UpcomingBirthday
 }
 
 function BirthdayPreview({ birthday }: BirthdayPreviewProps) {
-  const { user, daysUntil, age } = birthday
+  const { kind, name, days_until: daysUntil, turning } = birthday
+
+  // A child has no profile page, so their house is the next best thing.
+  const to =
+    kind === "user"
+      ? `/profil/${birthday.id}`
+      : birthday.house_slug
+        ? `/beboere/hus/${birthday.house_slug}`
+        : "/beboere"
 
   let dateLabel: string
 
@@ -1120,7 +1100,7 @@ function BirthdayPreview({ birthday }: BirthdayPreviewProps) {
   return (
     <Paper
       component={Link}
-      to={`/profil/${user.id}`}
+      to={to}
       p="sm"
       radius="sm"
       style={{
@@ -1131,16 +1111,19 @@ function BirthdayPreview({ birthday }: BirthdayPreviewProps) {
       }}
     >
       <Group gap="sm" wrap="nowrap">
-        <Avatar src={user.profile_picture} radius="xl" size="sm">
-          {user.first_name?.[0]}
-          {user.last_name?.[0]}
-        </Avatar>
+        <Avatar
+          src={birthday.profile_picture}
+          name={name}
+          color={kind === "child" ? "grape" : "initials"}
+          radius="xl"
+          size="sm"
+        />
         <div style={{ flex: 1, minWidth: 0 }}>
           <Text size="sm" fw={500} lineClamp={1}>
-            {user.first_name} {user.last_name}
+            {name}
           </Text>
           <Text size="xs" c="dimmed">
-            Fylder {age} år
+            Fylder {turning} år
           </Text>
         </div>
         {daysUntil === 0 && (

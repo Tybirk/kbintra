@@ -27,9 +27,8 @@ import {
   IconPhone,
   IconMail,
   IconPencil,
+  IconCake,
 } from "@tabler/icons-react"
-
-import dayjs from "dayjs"
 
 import { housesApi } from "../api/houses"
 
@@ -38,6 +37,8 @@ import { BackButton } from "../components/BackButton"
 import { useAuthStore } from "../store/authStore"
 
 import type { Car, Child, UserSummary } from "../types"
+
+import { formatBirthdateWithAge } from "../utils/birthdate"
 
 import { formatLicensePlate } from "../utils/licensePlate"
 
@@ -193,6 +194,8 @@ interface InhabitantCardProps {
 }
 
 function InhabitantCard({ inhabitant, to }: InhabitantCardProps) {
+  const birthday = formatBirthdateWithAge(inhabitant.birthdate)
+
   return (
     <Paper
       component={Link}
@@ -207,7 +210,7 @@ function InhabitantCard({ inhabitant, to }: InhabitantCardProps) {
         display: "block",
       }}
     >
-      <Group>
+      <Group align="flex-start">
         <Avatar src={inhabitant.profile_picture} size="lg" radius="xl">
           {inhabitant.first_name?.[0]}
           {inhabitant.last_name?.[0]}
@@ -238,6 +241,17 @@ function InhabitantCard({ inhabitant, to }: InhabitantCardProps) {
               </Text>
             </Group>
           )}
+          {birthday && (
+            <Group gap={4}>
+              <IconCake
+                size={14}
+                style={{ color: "var(--mantine-color-dimmed)" }}
+              />
+              <Text size="sm" c="dimmed">
+                {birthday}
+              </Text>
+            </Group>
+          )}
         </div>
       </Group>
     </Paper>
@@ -249,19 +263,11 @@ interface ChildCardProps {
 }
 
 function ChildCard({ child }: ChildCardProps) {
-  const getAge = (birthdate: string | null) => {
-    if (!birthdate) return null
-
-    const years = dayjs().diff(dayjs(birthdate), "year")
-
-    return years
-  }
-
-  const age = getAge(child.birthdate)
+  const birthdate = formatBirthdateWithAge(child.birthdate)
 
   return (
     <Paper withBorder p="lg" radius="md">
-      <Group>
+      <Group align="flex-start">
         <Avatar src={child.profile_picture} size="lg" radius="xl" color="grape">
           {child.name?.[0]}
         </Avatar>
@@ -272,10 +278,16 @@ function ChildCard({ child }: ChildCardProps) {
               Barn
             </Badge>
           </Group>
-          {age !== null && (
-            <Text size="sm" c="dimmed">
-              {age} {age === 1 ? "år" : "år"}
-            </Text>
+          {birthdate && (
+            <Group gap={4}>
+              <IconCake
+                size={14}
+                style={{ color: "var(--mantine-color-dimmed)" }}
+              />
+              <Text size="sm" c="dimmed">
+                {birthdate}
+              </Text>
+            </Group>
           )}
         </div>
       </Group>

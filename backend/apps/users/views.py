@@ -8,6 +8,7 @@ import os
 import shutil
 import sqlite3
 import tempfile
+from datetime import date
 from typing import Any
 
 from django.conf import settings
@@ -148,59 +149,72 @@ class UserDetailView(generics.RetrieveAPIView):
     queryset = User.objects.filter(is_active=True).select_related("house")
 
 
-class UpcomingBirthdaysView(generics.ListAPIView):
+def _next_birthday(birthdate: date, today: date) -> date:
+    """The next occurrence of a birthday on or after today. A 29 February
+    birthday is kept on the 28th in years without one."""
+    for year in (today.year, today.year + 1):
+        try:
+            candidate = birthdate.replace(year=year)
+        except ValueError:
+            candidate = birthdate.replace(year=year, day=28)
+        if candidate >= today:
+            return candidate
+    raise AssertionError("unreachable: next year's birthday is always ahead")
+
+
+class UpcomingBirthdaysView(APIView):
     """
-    List users with upcoming birthdays in the next N days.
-    Returns users sorted by how soon their birthday is.
+    List residents and children with a birthday in the next N days (default 7,
+    at most 30), soonest first.
+
+    Children are not users, so each entry says which it is: a user links to
+    their profile, a child to their house page. ``days_until`` and ``turning``
+    are worked out here, in the server's local date, so every client agrees on
+    what "today" is.
     """
 
-    serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_queryset(self) -> QuerySet[User]:
+    def get(self, request: Request) -> Response:
+        from apps.houses.models import Child
+
         try:
-            days = int(self.request.query_params.get("days", 7))
+            days = int(request.query_params.get("days", 7))
         except (ValueError, TypeError):
             days = 7
-        days = min(days, 30)  # Cap at 30 days
+        days = min(days, 30)
 
-        today = timezone.now().date()
-        users_with_birthdays = []
+        today = timezone.localdate()
+        entries: list[dict[str, Any]] = []
 
-        # Get all active users with birthdates.
-        # Annotate inhabitant count so UserSerializer.get_house_inhabitant_count
-        # doesn't run a COUNT(*) per user.
-        users = (
-            User.objects.filter(is_active=True, birthdate__isnull=False)
-            .select_related("house")
-            .annotate(_house_inhabitant_count=Count("house__inhabitants"))
-        )
+        def add(kind: str, obj: Any, name: str, house_slug: str | None) -> None:
+            upcoming = _next_birthday(obj.birthdate, today)
+            days_until = (upcoming - today).days
+            if days_until > days:
+                return
+            entries.append(
+                {
+                    "kind": kind,
+                    "id": obj.id,
+                    "name": name,
+                    "profile_picture": obj.avatar_url,
+                    "house_slug": house_slug,
+                    "birthdate": obj.birthdate.isoformat(),
+                    "days_until": days_until,
+                    "turning": upcoming.year - obj.birthdate.year,
+                }
+            )
 
+        users = User.objects.filter(is_active=True, birthdate__isnull=False).select_related("house")
         for user in users:
-            # Calculate this year's birthday
-            try:
-                birthday_this_year = user.birthdate.replace(year=today.year)
-            except ValueError:
-                # Handle Feb 29 birthdays in non-leap years
-                birthday_this_year = user.birthdate.replace(year=today.year, day=28)
+            name = f"{user.first_name} {user.last_name}".strip() or user.email
+            add("user", user, name, user.house.slug if user.house else None)
 
-            # If birthday has passed this year, check next year
-            if birthday_this_year < today:
-                try:
-                    birthday_this_year = user.birthdate.replace(year=today.year + 1)
-                except ValueError:
-                    birthday_this_year = user.birthdate.replace(year=today.year + 1, day=28)
+        for child in Child.objects.filter(birthdate__isnull=False).select_related("house"):
+            add("child", child, child.name, child.house.slug)
 
-            days_until = (birthday_this_year - today).days
-
-            if 0 <= days_until <= days:
-                users_with_birthdays.append((user, days_until))
-
-        # Sort by days until birthday
-        users_with_birthdays.sort(key=lambda x: x[1])
-
-        # Return just the users (sorted)
-        return [u[0] for u in users_with_birthdays]
+        entries.sort(key=lambda e: (e["days_until"], e["name"]))
+        return Response(entries)
 
 
 class InvitationListCreateView(generics.ListCreateAPIView):

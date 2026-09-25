@@ -204,6 +204,11 @@ class HouseInhabitantSerializer(AvatarUrlMixin, serializers.ModelSerializer):
             "bio",
             "phone_number",
             "email",
+            # Full date, year included, same as ChildSerializer gives for children:
+            # the house page shows both the birthday and the age. UserSerializer
+            # already publishes this to every logged-in resident, so the two
+            # endpoints agree about what a birthdate is.
+            "birthdate",
         ]
 
 
