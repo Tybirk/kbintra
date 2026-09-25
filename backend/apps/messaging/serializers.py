@@ -2,6 +2,7 @@
 Serializers for Messaging models.
 """
 
+import logging
 from collections import defaultdict
 
 from django.db.models import Q
@@ -12,6 +13,8 @@ from apps.users.models import User
 from apps.users.serializer_mixins import AvatarUrlMixin
 
 from .models import Conversation, Message, MessageAttachment, MessageReadStatus
+
+logger = logging.getLogger(__name__)
 
 
 class ParticipantSerializer(AvatarUrlMixin, serializers.ModelSerializer):
@@ -32,15 +35,63 @@ def message_attachment_preview_url(att: MessageAttachment) -> str:
     return ""
 
 
+def message_attachment_thumbnail_url(att: MessageAttachment) -> str:
+    """URL for the chat bubble: the square thumbnail once it exists, until then
+    whatever the bubble can display — the HEIC preview, else the original."""
+    if att.thumbnail:
+        return signed_media_url(att.thumbnail.url)
+    return message_attachment_preview_url(att)
+
+
+def create_message_attachment(
+    message: Message, uploaded_by: User, attachment_file
+) -> MessageAttachment:
+    """Create a MessageAttachment together with its previews and thumbnail.
+
+    All inline, not queued: the response and the WebSocket broadcast read
+    `preview` and `thumbnail` straight away, and a queued task would not have
+    run yet — every open chat would download the full original instead.
+    """
+    from apps.forum.image_processing import (
+        ensure_attachment_preview,
+        generate_attachment_thumbnail,
+    )
+    from apps.forum.utils import generate_docx_preview
+
+    att = MessageAttachment.objects.create(
+        message=message,
+        file=attachment_file,
+        name=attachment_file.name,
+        uploaded_by=uploaded_by,
+        preview_html=generate_docx_preview(attachment_file),
+    )
+    ensure_attachment_preview("messaging", "MessageAttachment", att)
+    try:
+        generate_attachment_thumbnail(att)
+    except Exception:  # noqa: BLE001 — an upload must not fail over its thumbnail
+        logger.exception("Thumbnail failed for message attachment %s", att.pk)
+    return att
+
+
 class MessageAttachmentSerializer(serializers.ModelSerializer):
     """Serializer for MessageAttachment model."""
 
     file_url = serializers.SerializerMethodField()
     preview_url = serializers.SerializerMethodField()
+    thumbnail_url = serializers.SerializerMethodField()
 
     class Meta:
         model = MessageAttachment
-        fields = ["id", "name", "file", "file_url", "preview_url", "preview_html", "uploaded_at"]
+        fields = [
+            "id",
+            "name",
+            "file",
+            "file_url",
+            "preview_url",
+            "thumbnail_url",
+            "preview_html",
+            "uploaded_at",
+        ]
         read_only_fields = ["id", "uploaded_at"]
 
     def get_file_url(self, obj: MessageAttachment) -> str:
@@ -48,6 +99,9 @@ class MessageAttachmentSerializer(serializers.ModelSerializer):
 
     def get_preview_url(self, obj: MessageAttachment) -> str:
         return message_attachment_preview_url(obj)
+
+    def get_thumbnail_url(self, obj: MessageAttachment) -> str:
+        return message_attachment_thumbnail_url(obj)
 
 
 class MessageSerializer(serializers.ModelSerializer):
@@ -376,24 +430,8 @@ class CreateMessageSerializer(serializers.ModelSerializer):
         validated_data["conversation"] = self.context["conversation"]
         message = super().create(validated_data)
 
-        # Create attachments
-        from apps.forum.image_processing import ensure_attachment_preview
-        from apps.forum.utils import generate_docx_preview
-
         user = self.context["request"].user
-        attachment_objects = []
-        for attachment_file in attachments:
-            att = MessageAttachment.objects.create(
-                message=message,
-                file=attachment_file,
-                name=attachment_file.name,
-                uploaded_by=user,
-                preview_html=generate_docx_preview(attachment_file),
-            )
-            attachment_objects.append(att)
-            # Inline, not queued: the WebSocket broadcast below reads `preview` to
-            # build preview_url, and a queued task would not have run yet.
-            ensure_attachment_preview("messaging", "MessageAttachment", att)
+        attachment_objects = [create_message_attachment(message, user, f) for f in attachments]
 
         # Update conversation's updated_at
         message.conversation.save()
@@ -414,16 +452,7 @@ class CreateMessageSerializer(serializers.ModelSerializer):
             "is_read": False,
             "is_system_message": message.is_system_message,
             "created_at": message.created_at.isoformat(),
-            "attachments": [
-                {
-                    "id": att.id,
-                    "name": att.name,
-                    "file_url": signed_media_url(att.file.url) if att.file else "",
-                    "preview_url": message_attachment_preview_url(att),
-                    "preview_html": att.preview_html,
-                }
-                for att in attachment_objects
-            ],
+            "attachments": MessageAttachmentSerializer(attachment_objects, many=True).data,
         }
         async_to_sync(channel_layer.group_send)(
             f"conversation_{message.conversation.id}",

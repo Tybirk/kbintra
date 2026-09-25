@@ -93,7 +93,7 @@ import type {
 
 import ChatRichTextEditor from "../components/ChatRichTextEditor"
 
-import { clearDraft } from "../utils/draftStorage"
+import { clearDraft, loadDraft, saveDraft } from "../utils/draftStorage"
 
 import {
   appendMessage,
@@ -144,6 +144,8 @@ interface EmojiPickerData {
   native: string
 }
 
+const NEW_MESSAGE_PATH = "ny"
+
 export default function MessagesPage() {
   const { user } = useAuthStore()
 
@@ -153,12 +155,15 @@ export default function MessagesPage() {
 
   const queryClient = useQueryClient()
 
-  const [selectedConversation, setSelectedConversation] =
-    useState<number | null>(
-      conversationId ? parseInt(conversationId, 10) : null,
-    )
+  // "Ny besked" has its own URL, so a reload brings the reader back to the
+  // half-written message (its text and recipients are kept as drafts).
+  const isComposingNew = conversationId === NEW_MESSAGE_PATH
 
-  const [isComposingNew, setIsComposingNew] = useState(false)
+  const urlConversationId =
+    conversationId && !isComposingNew ? parseInt(conversationId, 10) : null
+
+  const [selectedConversation, setSelectedConversation] =
+    useState<number | null>(urlConversationId)
 
   const [isWsConnected, setIsWsConnected] = useState(chatWs.isConnected)
 
@@ -202,16 +207,8 @@ export default function MessagesPage() {
   // Sync URL param to state when URL changes (e.g., from notification link)
 
   useEffect(() => {
-    const urlConversationId = conversationId
-      ? parseInt(conversationId, 10)
-      : null
-
     if (urlConversationId !== selectedConversation) {
       setSelectedConversation(urlConversationId)
-
-      if (urlConversationId) {
-        setIsComposingNew(false)
-      }
     }
 
     // Note: selectedConversation is intentionally excluded to prevent sync loops.
@@ -462,22 +459,16 @@ export default function MessagesPage() {
   const handleSelectConversation = (id: number) => {
     setSelectedConversation(id)
 
-    setIsComposingNew(false)
-
     navigate(`/beskeder/${id}`, { replace: true })
   }
 
   const handleStartNewMessage = () => {
     setSelectedConversation(null)
 
-    setIsComposingNew(true)
-
-    navigate("/beskeder", { replace: true })
+    navigate(`/beskeder/${NEW_MESSAGE_PATH}`, { replace: true })
   }
 
   const handleNewConversationCreated = (newConversationId: number) => {
-    setIsComposingNew(false)
-
     chatWs.joinConversation(newConversationId)
 
     setSelectedConversation(newConversationId)
@@ -488,7 +479,7 @@ export default function MessagesPage() {
   }
 
   const handleCancelNewMessage = () => {
-    setIsComposingNew(false)
+    navigate("/beskeder", { replace: true })
   }
 
   const handleLeaveConversation = async () => {
@@ -2353,12 +2344,13 @@ const MessageBubble = memo(function MessageBubble({
                   onClick={() => handleAttachmentClick(attachment)}
                 >
                   <Image
-                    src={attachment.preview_url ?? attachment.file_url}
+                    src={attachment.thumbnail_url}
                     alt={attachment.name}
                     radius="md"
-                    maw={200}
-                    mah={200}
-                    fit="contain"
+                    w={200}
+                    h={200}
+                    fit="cover"
+                    loading="lazy"
                     style={{ display: "block" }}
                   />
                 </Box>
@@ -2584,6 +2576,10 @@ const MessageBubble = memo(function MessageBubble({
   )
 })
 
+const NEW_MESSAGE_DRAFT = "msg-new"
+
+const NEW_MESSAGE_RECIPIENTS_DRAFT = "msg-new-recipients"
+
 interface NewConversationAreaProps {
   onBack?: () => void
 
@@ -2606,6 +2602,8 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
   const [isSearchFocused, setIsSearchFocused] = useState(false)
 
   const searchInputRef = useRef<HTMLInputElement>(null)
+
+  const recipientsRestoredRef = useRef(false)
 
   // Fetch users for search
 
@@ -2634,6 +2632,10 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
 
       queryClient.invalidateQueries({ queryKey: ["conversations"] })
 
+      clearDraft(NEW_MESSAGE_DRAFT)
+
+      clearDraft(NEW_MESSAGE_RECIPIENTS_DRAFT)
+
       onSuccess(data.id)
     },
 
@@ -2641,6 +2643,41 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
       showErrorNotification(error, "Kunne ikke starte samtale")
     },
   })
+
+  // Bring back the recipients of an unsent message once the user list is here.
+  useEffect(() => {
+    if (!users || recipientsRestoredRef.current) return
+
+    recipientsRestoredRef.current = true
+
+    loadDraft(NEW_MESSAGE_RECIPIENTS_DRAFT)
+      .then((saved) => {
+        if (!saved) return
+
+        const ids: unknown = JSON.parse(saved)
+
+        if (!Array.isArray(ids)) return
+
+        const restored = ids.flatMap((id) => users.filter((u) => u.id === id))
+
+        setSelectedUsers((current) => (current.length > 0 ? current : restored))
+      })
+      .catch(() => clearDraft(NEW_MESSAGE_RECIPIENTS_DRAFT))
+  }, [users])
+
+  useEffect(() => {
+    if (!recipientsRestoredRef.current) return
+
+    if (selectedUsers.length > 0) {
+      void saveDraft(
+        NEW_MESSAGE_RECIPIENTS_DRAFT,
+
+        JSON.stringify(selectedUsers.map((u) => u.id)),
+      )
+    } else {
+      clearDraft(NEW_MESSAGE_RECIPIENTS_DRAFT)
+    }
+  }, [selectedUsers])
 
   const searchTerm = search.trim().toLowerCase()
 
@@ -2889,6 +2926,7 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
           disabled={selectedUsers.length === 0 || createMutation.isPending}
           attachments={attachments}
           onAttachmentsChange={setAttachments}
+          draftKey={NEW_MESSAGE_DRAFT}
         />
       </Box>
     </>

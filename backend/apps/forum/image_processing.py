@@ -131,6 +131,31 @@ def generate_attachment_preview(attachment: object) -> bool:
     return True
 
 
+def generate_attachment_thumbnail(attachment: object) -> bool:
+    """Generate and save the square `thumbnail` for an image attachment.
+
+    Works on any attachment model with `file`, `name`, and `thumbnail` fields
+    (forum / messaging). Returns True if a thumbnail was created; no-ops (False)
+    for non-images, a missing source file, or if a thumbnail already exists.
+    """
+    if getattr(attachment, "thumbnail", None):
+        return False
+    if not is_image_attachment(attachment.name):
+        return False
+    try:
+        with attachment.file.open("rb") as src:
+            thumb = generate_thumbnail(src)
+    except FileNotFoundError:
+        logger.warning("Skipping thumbnail for attachment %s: source file missing", attachment.pk)
+        return False
+    if thumb is None:
+        return False
+    # Persist only this column, for the same reason as the preview above.
+    attachment.thumbnail.save(f"{attachment.pk}.jpg", thumb, save=False)
+    attachment.save(update_fields=["thumbnail"])
+    return True
+
+
 def ensure_attachment_preview(app_label: str, model_name: str, attachment: object) -> None:
     """Generate a HEIC/HEIF `preview` *now*, falling back to the background task.
 

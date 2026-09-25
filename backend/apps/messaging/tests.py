@@ -615,9 +615,7 @@ class TestHeicAttachmentBroadcast:
         # relies on the queued task leaves `preview` empty at broadcast time.
         import apps.forum.tasks as forum_tasks
 
-        monkeypatch.setattr(
-            forum_tasks.generate_attachment_preview_task, "__call__", lambda *a, **k: None
-        )
+        monkeypatch.setattr(forum_tasks, "generate_attachment_preview_task", lambda *a: None)
 
         response = authenticated_client.post(
             f"/api/messages/conversations/{conversation.id}/messages/",
@@ -636,3 +634,103 @@ class TestHeicAttachmentBroadcast:
         assert "previews/" in broadcast["preview_url"], (
             "recipients received the undecodable original: " + broadcast["preview_url"]
         )
+
+
+class TestMessageAttachmentThumbnail:
+    """Chat bubbles show a 400px square thumbnail instead of the original upload."""
+
+    def _jpeg_upload(self, width=1600, height=900, name="photo.jpg"):
+        from io import BytesIO
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+
+        buf = BytesIO()
+        Image.new("RGB", (width, height), color=(40, 80, 120)).save(buf, format="JPEG")
+        return SimpleUploadedFile(name, buf.getvalue(), content_type="image/jpeg")
+
+    def _send(self, client, conversation, upload):
+        response = client.post(
+            f"/api/messages/conversations/{conversation.id}/messages/",
+            {"content": "", "attachments": upload},
+            format="multipart",
+        )
+        assert response.status_code == 201, response.data
+        return Message.objects.filter(conversation=conversation).latest("id").attachments.get()
+
+    def test_upload_gets_a_square_thumbnail_served_to_the_bubble(
+        self, authenticated_client, conversation
+    ):
+        from PIL import Image
+
+        att = self._send(authenticated_client, conversation, self._jpeg_upload())
+        att.refresh_from_db()
+
+        assert att.thumbnail
+        with att.thumbnail.open("rb") as fh, Image.open(fh) as thumb:
+            assert thumb.size == (400, 400)
+            assert thumb.format == "JPEG"
+
+        page = authenticated_client.get(
+            f"/api/messages/conversations/{conversation.id}/messages/"
+        ).json()
+        served = page["results"][-1]["attachments"][0]
+        assert "/thumbs/" in served["thumbnail_url"]
+        assert "/thumbs/" not in served["file_url"]
+
+    def test_broadcast_already_carries_the_thumbnail(
+        self, authenticated_client, conversation, monkeypatch
+    ):
+        captured: list[dict] = []
+
+        class FakeChannelLayer:
+            async def group_send(self, group, payload):
+                captured.append(payload)
+
+        monkeypatch.setattr("channels.layers.get_channel_layer", lambda: FakeChannelLayer())
+
+        self._send(authenticated_client, conversation, self._jpeg_upload())
+
+        broadcast = captured[0]["message"]["attachments"][0]
+        assert "/thumbs/" in broadcast["thumbnail_url"], (
+            "every open chat would download the original: " + broadcast["thumbnail_url"]
+        )
+
+    def test_upload_survives_a_failing_thumbnail(
+        self, authenticated_client, conversation, monkeypatch
+    ):
+        import apps.forum.image_processing as image_processing
+
+        def explode(att):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(image_processing, "generate_attachment_thumbnail", explode)
+
+        att = self._send(authenticated_client, conversation, self._jpeg_upload())
+
+        assert not att.thumbnail
+
+    def test_non_image_gets_no_thumbnail(self, authenticated_client, conversation):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        upload = SimpleUploadedFile("notes.pdf", b"%PDF-1.4 x", content_type="application/pdf")
+        att = self._send(authenticated_client, conversation, upload)
+        att.refresh_from_db()
+
+        assert not att.thumbnail
+
+    def test_backfill_command_thumbnails_existing_images(self, conversation, user):
+        from django.core.management import call_command
+
+        from apps.messaging.models import MessageAttachment
+
+        message = Message.objects.create(conversation=conversation, sender=user, content="")
+        att = MessageAttachment.objects.create(
+            message=message, file=self._jpeg_upload(), name="photo.jpg", uploaded_by=user
+        )
+        assert not att.thumbnail
+
+        call_command("rebuild_message_attachment_thumbnails")
+
+        att.refresh_from_db()
+        assert att.thumbnail

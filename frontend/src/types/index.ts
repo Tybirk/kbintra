@@ -1453,6 +1453,9 @@ export interface MessageAttachment {
 
   preview_url?: string
 
+  /** Square thumbnail for the chat bubble; the original until it exists. */
+  thumbnail_url: string
+
   preview_html?: string
 
   uploaded_at: string
