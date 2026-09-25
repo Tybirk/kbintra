@@ -131,6 +131,11 @@ export function usePushSubscriptionSync() {
 
   const lastSyncRef = useRef<number>(0)
 
+  // Target path requested by a tapped notification, held until the page is
+  // actually visible (see the NAVIGATE handler below).
+
+  const pendingNavRef = useRef<string | null>(null)
+
   useEffect(() => {
     // Don't sync push subscriptions when not authenticated — API calls would
 
@@ -158,6 +163,18 @@ export function usePushSubscriptionSync() {
       syncPushSubscription()
     }
 
+    /** Navigate to a path requested by a tapped notification, if any. */
+
+    function flushPendingNavigation() {
+      const target = pendingNavRef.current
+
+      if (!target) return
+
+      pendingNavRef.current = null
+
+      navigate(target, { replace: false })
+    }
+
     // Sync on startup (delayed to avoid slowing down app init)
 
     const timer = setTimeout(() => {
@@ -170,6 +187,12 @@ export function usePushSubscriptionSync() {
 
     const handleVisibility = () => {
       if (document.visibilityState === "visible") {
+        // The page just became visible — if a notification tap is waiting to
+        // navigate, do it now (after iOS has finished restoring the previous
+        // route on a warm resume).
+
+        flushPendingNavigation()
+
         debouncedSync()
       }
     }
@@ -203,7 +226,18 @@ export function usePushSubscriptionSync() {
         try {
           const url = new URL(event.data.url)
 
-          navigate(url.pathname + url.search + url.hash, { replace: false })
+          pendingNavRef.current = url.pathname + url.search + url.hash
+
+          // Navigate immediately if the page is visible. If it's still hidden,
+          // iOS is bringing a warm PWA to the foreground and will restore the
+          // previous route on resume, which would clobber an immediate
+          // navigate(). Defer to the next visibilitychange so our navigation
+          // wins. This is the warm-app case that previously just opened the app
+          // without navigating.
+
+          if (document.visibilityState === "visible") {
+            flushPendingNavigation()
+          }
         } catch {
           // Malformed URL — ignore
         }

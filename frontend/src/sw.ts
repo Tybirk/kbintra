@@ -115,6 +115,27 @@ self.addEventListener("notificationclick", (event: NotificationEvent) => {
           client.url.startsWith(self.location.origin),
         )
 
+        // On Firefox Android, client.focus() brings the Firefox browser window to the
+        // foreground (showing a random tab) instead of the PWA standalone window.
+        // Skip focus() on Firefox and fall through to openWindow() instead, which
+        // will at least navigate Firefox to the correct page.
+
+        const isFirefox =
+          self.navigator?.userAgent?.includes("Firefox") ?? false
+
+        // Focus an existing window BEFORE posting the navigate message. iOS
+        // freezes a backgrounded PWA's JavaScript and can drop messages posted
+        // while it is frozen; focusing first wakes the page so the message is
+        // reliably delivered.
+
+        if (appClients.length > 0 && !isFirefox) {
+          try {
+            await appClients[0].focus()
+          } catch {
+            // focus() may be rejected if the browser doesn't allow it
+          }
+        }
+
         // Post navigate message to ALL existing app clients so the PWA
 
         // receives it regardless of which window gets focused (Firefox
@@ -129,21 +150,7 @@ self.addEventListener("notificationclick", (event: NotificationEvent) => {
           }
         }
 
-        // On Firefox Android, client.focus() brings the Firefox browser window to the
-        // foreground (showing a random tab) instead of the PWA standalone window.
-        // Skip focus() on Firefox and fall through to openWindow() instead, which
-        // will at least navigate Firefox to the correct page.
-
-        const isFirefox =
-          self.navigator?.userAgent?.includes("Firefox") ?? false
-
         if (appClients.length > 0 && !isFirefox) {
-          try {
-            await appClients[0].focus()
-          } catch {
-            // focus() may be rejected if the browser doesn't allow it
-          }
-
           return
         }
 
