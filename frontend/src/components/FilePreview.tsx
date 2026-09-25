@@ -604,7 +604,8 @@ export function FilePreviewModal({
 
         return (
           <Stack gap="md">
-            <ScrollArea h={isMobile ? "78vh" : "70vh"}>
+            {/* PdfViewer scrolls and zooms itself; it only needs a height. */}
+            <Box h={isMobile ? "78vh" : "70vh"}>
               {/* pdf.js (pdfjs-dist 5.x) calls Promise.withResolvers, which
                   iOS/Safari < 17.4 lacks, so inline rendering throws there.
                   Catch it and fall back to the Åbn/Gem buttons below rather
@@ -628,7 +629,7 @@ export function FilePreviewModal({
               >
                 <PdfPreview blobUrl={blobUrl} />
               </ErrorBoundary>
-            </ScrollArea>
+            </Box>
             <FileActionButtons actions={actions} />
           </Stack>
         )

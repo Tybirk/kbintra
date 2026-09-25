@@ -482,7 +482,8 @@ function SlideContent({
 
     return (
       <Stack gap="md" style={{ height: "100%" }} p={isMobile ? "xs" : "md"}>
-        <ScrollArea style={{ flex: 1, minHeight: 0 }}>
+        {/* PdfViewer scrolls and zooms itself; it only needs a height. */}
+        <Box style={{ flex: 1, minHeight: 0 }}>
           {/* pdf.js (pdfjs-dist 5.x) calls Promise.withResolvers, which
               iOS/Safari < 17.4 lacks, so inline rendering throws there.
               Catch it and fall back to the Åbn/Gem buttons below rather
@@ -505,7 +506,7 @@ function SlideContent({
           >
             <PdfPreview blobUrl={blobUrl} />
           </ErrorBoundary>
-        </ScrollArea>
+        </Box>
         <FileActionButtons
           actions={actions}
           size="sm"
