@@ -186,6 +186,11 @@ export default function PdfViewer({ blobUrl }: PdfViewerProps) {
 
     let lastTap = { time: 0, x: 0, y: 0 }
 
+    // Where and when the current one-finger touch began: a touch only counts
+    // as a tap if it stayed put and was short. Without this the end of a flick
+    // and the tap that stops its momentum made a "double-tap".
+    let touchStart = { time: 0, x: 0, y: 0 }
+
     const local = (clientX: number, clientY: number) => {
       const rect = el.getBoundingClientRect()
 
@@ -222,6 +227,12 @@ export default function PdfViewer({ blobUrl }: PdfViewerProps) {
       )
 
     const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        const touch = e.touches[0]
+
+        touchStart = { time: Date.now(), x: touch.clientX, y: touch.clientY }
+      }
+
       if (e.touches.length === 2) {
         pinchStartDistance = distance(e.touches)
 
@@ -259,6 +270,17 @@ export default function PdfViewer({ blobUrl }: PdfViewerProps) {
       const touch = e.changedTouches[0]
 
       const now = Date.now()
+
+      const isTap =
+        now - touchStart.time < 300 &&
+        Math.hypot(touch.clientX - touchStart.x, touch.clientY - touchStart.y) <
+          10
+
+      if (!isTap) {
+        lastTap = { time: 0, x: 0, y: 0 }
+
+        return
+      }
 
       const isDoubleTap =
         now - lastTap.time < 300 &&
@@ -303,6 +325,9 @@ export default function PdfViewer({ blobUrl }: PdfViewerProps) {
     // belongs to the page.
     const onMouseDown = (e: MouseEvent) => {
       if (scaleRef.current > 1) e.stopPropagation()
+
+      // A double-click zooms; without this it also selected the page's text.
+      if (e.detail > 1) e.preventDefault()
     }
 
     el.addEventListener("touchstart", onTouchStart, { passive: true })
