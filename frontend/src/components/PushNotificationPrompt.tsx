@@ -8,6 +8,8 @@ import { IconBell } from "@tabler/icons-react"
 
 import { notificationsApi } from "../api/notifications"
 
+import { anyPushEnabled } from "../utils/pushPreferences"
+
 import {
   isPushSupported,
   isPushConfigured,
@@ -55,25 +57,7 @@ export function PushNotificationPrompt() {
       try {
         const prefs = await notificationsApi.getPreferences()
 
-        const anyPushEnabled =
-          prefs.push_messages ||
-          prefs.push_announcements ||
-          prefs.push_announcement_updates ||
-          prefs.push_forum_subscriptions ||
-          prefs.push_thread_replies ||
-          prefs.push_subgroup_activity ||
-          prefs.push_post_reactions ||
-          prefs.push_events ||
-          prefs.push_event_reminders ||
-          prefs.push_food_tickets ||
-          prefs.push_mentions ||
-          // Must stay in step with get_user_push_preference in the backend —
-          // this list once omitted car sharing, so a resident who muted
-          // everything else was never asked to subscribe while the server was
-          // still willing to push bildeling events at them.
-          prefs.push_car_sharing
-
-        if (!anyPushEnabled) return
+        if (!anyPushEnabled(prefs)) return
       } catch {
         // If we can't fetch preferences, don't block the prompt
       }

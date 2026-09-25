@@ -844,6 +844,19 @@ class TestEmailPreferenceFallback:
         ):
             assert should_send_email(user, notification_type) is default
 
+    def test_in_app_and_push_fall_back_to_the_defaults_too(self, user):
+        """Both used to answer True for everything, so a resident without a row got
+        birthday push, which is off by default for everyone else."""
+        from apps.notifications.services import get_user_preference, get_user_push_preference
+
+        NotificationPreference.objects.filter(user=user).delete()
+        user.refresh_from_db()
+
+        assert get_user_push_preference(user, NotificationType.BIRTHDAY) is False
+        assert get_user_preference(user, NotificationType.BIRTHDAY) is True
+        assert get_user_preference(user, NotificationType.SUBGROUP_ACTIVITY) is False
+        assert get_user_push_preference(user, NotificationType.NEW_MESSAGE) is True
+
     def test_an_explicit_opt_out_still_wins(self, user):
         from apps.notifications.email_service import should_send_email
 
@@ -992,3 +1005,37 @@ class TestEmailHtmlIsSanitized:
             notify_new_message(user, admin_user, "Er a<b? <b>Ja</b>", 1)
 
         assert "Er a&lt;b? &lt;b&gt;Ja&lt;/b&gt;" in mailoutbox[0].body
+
+
+@pytest.mark.django_db
+class TestAggregatedReplyTitle:
+    def test_the_count_is_replaced_not_appended(self, user, django_capture_on_commit_callbacks):
+        """Titles read "Mad (2 nye svar) (3 nye svar) (4 nye svar)" — 599 of them on prod."""
+        from apps.notifications.services import create_notification
+
+        with django_capture_on_commit_callbacks(execute=True):
+            for _ in range(4):
+                create_notification(
+                    user=user,
+                    notification_type=NotificationType.THREAD_REPLY,
+                    title="Mad",
+                    message="Nyt svar",
+                    link="/forum/faelles/traad/mad",
+                    group_key="/forum/faelles/traad/mad",
+                )
+
+        notification = Notification.objects.get(user=user)
+        assert notification.title == "Mad (4 nye svar)"
+
+    def test_the_migration_keeps_only_the_last_count(self):
+        from importlib import import_module
+
+        migration = import_module(
+            "apps.notifications.migrations.0027_collapse_stacked_reply_counts"
+        )
+
+        assert (
+            migration.STACKED.sub(r"\1", "Mad (2 nye svar) (3 nye svar) (4 nye svar)")
+            == "Mad (4 nye svar)"
+        )
+        assert migration.STACKED.sub(r"\1", "Mad (2 nye svar)") == "Mad (2 nye svar)"

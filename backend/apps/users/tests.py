@@ -1014,7 +1014,7 @@ class TestBirthdayNotifications:
         assert list(rows.values_list("user__email", flat=True)) == ["other@example.com"]
         row = rows.get()
         assert row.title == "Anna Hansen har fødselsdag i dag"
-        assert "fylder 36 år" in row.message
+        assert row.message == "Anna fylder 36 år i dag."
         assert row.link == f"/profil/{birthday.pk}"
 
     def test_children_are_included_and_link_to_their_house(self, house):
@@ -1028,7 +1028,7 @@ class TestBirthdayNotifications:
 
         row = Notification.objects.get(user=other, title__startswith="Emma")
         assert row.title == f"Emma ({house.name}) har fødselsdag i dag"
-        assert "fylder 6 år" in row.message
+        assert row.message == "Emma fylder 6 år i dag."  # the house is in the title
         assert row.link == f"/beboere/hus/{house.slug}"
 
     def test_no_age_for_a_resident_who_hides_their_year(self, house):
@@ -1042,7 +1042,7 @@ class TestBirthdayNotifications:
 
         row = Notification.objects.get(user=other)
         assert row.title == "Anna Hansen har fødselsdag i dag"
-        assert row.message == "Anna Hansen har fødselsdag i dag."
+        assert row.message == "Ønsk tillykke!"
 
     def test_no_notification_on_other_days(self, house):
         from apps.notifications.models import Notification

@@ -69,20 +69,24 @@ def _priority_rank(notification_type: str) -> int:
     return len(_FORUM_ACTIVITY_TIERS)
 
 
+# " (2 nye svar)", once or — from before this was stripped — several times over.
+REPLY_COUNT_SUFFIX = re.compile(r"(?: \(\d+ nye svar\))+$")
+
+
 def _make_aggregate_title(notification_type: str, count: int, existing_title: str) -> str:
     """Return an updated notification title reflecting the aggregated count."""
-    if notification_type == NotificationType.THREAD_REPLY:
-        # Title is the thread name; keep it and add count
-        return f"{existing_title} ({count} nye svar)"
-    if notification_type == NotificationType.POST_REPLY:
-        return f"{existing_title} ({count} nye svar)"
+    if notification_type in (
+        NotificationType.THREAD_REPLY,
+        NotificationType.POST_REPLY,
+        NotificationType.SUBGROUP_ACTIVITY,
+    ):
+        # Title is the thread name: replace the previous count rather than
+        # appending another ("(2 nye svar) (3 nye svar) (4 nye svar)").
+        return f"{REPLY_COUNT_SUFFIX.sub('', existing_title)} ({count} nye svar)"
     if notification_type == NotificationType.POST_REACTION:
         return f"{count} reaktioner på dit indlæg"
     if notification_type == NotificationType.MESSAGE_REACTION:
         return f"{count} reaktioner på din besked"
-    if notification_type == NotificationType.SUBGROUP_ACTIVITY:
-        # Title is the thread name; keep it and add count
-        return f"{existing_title} ({count} nye svar)"
     if notification_type == NotificationType.REPORT_UPDATE:
         # Report titles are "<what happened> · sag #14"; keep the trailing case
         # reference and replace the event with a count, so the row still says
@@ -145,8 +149,8 @@ def get_user_preference(user: User, notification_type: NotificationType) -> bool
     try:
         prefs = user.notification_preferences
     except NotificationPreference.DoesNotExist:
-        # Default to True if no preferences set
-        return True
+        # No row yet (it is created lazily): the model's defaults, as for email.
+        prefs = NotificationPreference(user=user)
 
     preference_map = {
         NotificationType.NEW_ANNOUNCEMENT: prefs.notify_announcements,
@@ -208,8 +212,8 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
     try:
         prefs = user.notification_preferences
     except NotificationPreference.DoesNotExist:
-        # Default to True if no preferences set
-        return True
+        # No row yet: the model's defaults — birthday push stays off, as for everyone.
+        prefs = NotificationPreference(user=user)
 
     preference_map = {
         NotificationType.NEW_MESSAGE: prefs.push_messages,
@@ -2173,23 +2177,24 @@ def notify_car_loan_completed(loan: Any) -> list[Notification]:
 
 def notify_birthday(
     user: User,
-    name: str,
+    label: str,
+    first_name: str,
     turning: int | None,
     link: str,
     related_user: User | None = None,
 ) -> Notification | None:
     """Tell a resident that someone — a resident or a child — has a birthday today.
 
+    ``label`` names them in the title ("Anna Hansen", "Emma (Hus 12)"), the
+    message then uses just ``first_name`` so it doesn't repeat the title.
     ``turning`` is None for a resident who hides their birth year.
     """
     return create_notification(
         user=user,
         notification_type=NotificationType.BIRTHDAY,
-        title=f"{name} har fødselsdag i dag",
+        title=f"{label} har fødselsdag i dag",
         message=(
-            f"{name} har fødselsdag i dag."
-            if turning is None
-            else f"{name} fylder {turning} år i dag."
+            "Ønsk tillykke!" if turning is None else f"{first_name} fylder {turning} år i dag."
         ),
         link=link,
         related_user=related_user,
