@@ -4,6 +4,7 @@ import {
   eventToScheduleData,
   bookingToScheduleData,
   expandMultiDayEvents,
+  formatScheduleTimeRange,
   DA_SCHEDULE_LABELS,
 } from "./scheduleHelpers"
 
@@ -248,6 +249,39 @@ describe("expandMultiDayEvents", () => {
       "booking-1__2026-06-23",
     ])
     expect(result[1].end).toBe("2026-06-23 23:59:59")
+  })
+})
+
+describe("formatScheduleTimeRange", () => {
+  it("shows only clock times within one day", () => {
+    expect(
+      formatScheduleTimeRange("2026-08-21 19:00:00", "2026-08-21 22:00:00"),
+    ).toBe("19:00 – 22:00")
+  })
+
+  it("adds the weekday to both ends across days", () => {
+    // The report: a 24-hour stay read "16:00 – 16:00".
+    expect(
+      formatScheduleTimeRange("2026-08-20 16:00:00", "2026-08-21 16:00:00"),
+    ).toBe("to. 16:00 – fr. 16:00")
+  })
+
+  it("keeps a whole-day booking as Hele dagen", () => {
+    expect(
+      formatScheduleTimeRange("2026-08-21 00:00:00", "2026-08-22 00:00:00"),
+    ).toBe("Hele dagen")
+  })
+
+  it("names the first and last day of whole days in a row", () => {
+    expect(
+      formatScheduleTimeRange("2026-06-27 00:00:00", "2026-06-30 00:00:00"),
+    ).toBe("lø. – ma.")
+  })
+
+  it("keeps an evening that ends at midnight on its own day", () => {
+    expect(
+      formatScheduleTimeRange("2026-08-21 19:00:00", "2026-08-22 00:00:00"),
+    ).toBe("19:00 – 00:00")
   })
 })
 

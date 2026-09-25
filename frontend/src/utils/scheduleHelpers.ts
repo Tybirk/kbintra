@@ -173,6 +173,39 @@ export const DA_SCHEDULE_LABELS = {
 }
 
 /**
+ * The time line under a booking in the mobile "oversigt" agenda.
+ *
+ * The agenda lists a multi-day booking on every day it covers, always with its
+ * own start and end, so clock times alone made a 24-hour stay read
+ * "16:00 – 16:00": zero-length, or a second booking of the same room. Across
+ * days each end therefore carries its weekday: "to. 16:00 – fr. 16:00".
+ *
+ * As in expandMultiDayEvents, an end at exactly midnight belongs to the day
+ * before, so a whole-day booking (00:00 to 00:00 the next day) stays
+ * "Hele dagen", and whole days in a row read "lø. – ma.".
+ */
+export function formatScheduleTimeRange(
+  start: Date | string,
+  end: Date | string,
+): string {
+  const from = dayjs(start)
+  const to = dayjs(end)
+  const atMidnight = (time: dayjs.Dayjs) => time.isSame(time.startOf("day"))
+  const lastDay =
+    to.isAfter(from) && atMidnight(to) ? to.subtract(1, "day") : to
+
+  if (atMidnight(from) && atMidnight(to)) {
+    return from.isSame(lastDay, "day")
+      ? DA_SCHEDULE_LABELS.allDay
+      : `${from.format("dd")} – ${lastDay.format("dd")}`
+  }
+
+  return from.isSame(lastDay, "day")
+    ? `${from.format("HH:mm")} – ${to.format("HH:mm")}`
+    : `${from.format("dd HH:mm")} – ${to.format("dd HH:mm")}`
+}
+
+/**
  * What `@mantine/schedule` hands `onTimeSlotClick`.
  *
  * It passes the whole slot (plus the native event); a handler that only needs

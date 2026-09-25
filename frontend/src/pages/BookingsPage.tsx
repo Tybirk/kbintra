@@ -52,6 +52,7 @@ import {
   bookingToScheduleData,
   DA_SCHEDULE_LABELS,
   expandMultiDayEvents,
+  formatScheduleTimeRange,
 } from "../utils/scheduleHelpers"
 
 import type { TimeSlotClickData } from "../utils/scheduleHelpers"
@@ -686,12 +687,6 @@ export default function BookingsPage() {
 
               const booking = payload?.booking
 
-              const startTime = dayjs(event.start).format("HH:mm")
-
-              const endTime = dayjs(event.end).format("HH:mm")
-
-              const isAllDay = startTime === "00:00" && endTime === "00:00"
-
               return (
                 <UnstyledButton {...buttonProps}>
                   <div
@@ -723,7 +718,7 @@ export default function BookingsPage() {
                           marginTop: "calc(0.125rem * var(--mantine-scale))",
                         }}
                       >
-                        {isAllDay ? "Hele dagen" : `${startTime} – ${endTime}`}
+                        {formatScheduleTimeRange(event.start, event.end)}
                       </Text>
                       {booking && (
                         <Text size="xs" c="dimmed">
