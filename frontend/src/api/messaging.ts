@@ -10,6 +10,7 @@ import type {
   ConversationDetail,
   CreateConversationData,
   Message,
+  MessagePage,
 } from "../types"
 
 export const messagingApi = {
@@ -69,16 +70,21 @@ export const messagingApi = {
     return response.data
   },
 
-  // Get messages in a conversation
+  // One page of messages, oldest first: the newest page, or the page just
+  // before the message `before`
 
-  getMessages: async (conversationId: number): Promise<Message[]> => {
+  getMessages: async (
+    conversationId: number,
+
+    before?: number,
+  ): Promise<MessagePage> => {
     const response = await apiClient.get(
       `/messages/conversations/${conversationId}/messages/`,
+
+      { params: before !== undefined ? { before } : undefined },
     )
 
-    // Handle paginated response
-
-    return asArray(response.data)
+    return response.data
   },
 
   // Send a message (REST API fallback)

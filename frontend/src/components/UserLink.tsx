@@ -4,12 +4,16 @@ import { Link } from "react-router-dom"
 
 import type { AnchorProps } from "@mantine/core"
 
-interface UserLinkProps extends Omit<AnchorProps, "href" | "onClick"> {
+interface UserLinkProps
+  extends Omit<AnchorProps, "href" | "onClick"> {
+
+  /** Shown instead of the full name, e.g. just the first name. */
   id: number
 
   firstName: string
 
   lastName: string
+  children?: React.ReactNode
 }
 
 export default function UserLink({
@@ -18,6 +22,8 @@ export default function UserLink({
   firstName,
 
   lastName,
+
+  children,
 
   ...props
 }: UserLinkProps) {
@@ -29,7 +35,7 @@ export default function UserLink({
       onClick={(e: React.MouseEvent) => e.stopPropagation()}
       {...props}
     >
-      {firstName} {lastName}
+      {children ?? `${firstName} ${lastName}`}
     </Anchor>
   )
 }

@@ -1544,8 +1544,14 @@ export interface Conversation {
   updated_at: string
 }
 
-export interface ConversationDetail extends Conversation {
-  messages: Message[]
+// The detail endpoint still sends `messages` for clients on the previous bundle;
+// the chat reads them from the paginated message list instead (MessagePage).
+export type ConversationDetail = Conversation
+
+export interface MessagePage {
+  results: Message[]
+
+  has_more: boolean
 }
 
 export interface CreateConversationData {

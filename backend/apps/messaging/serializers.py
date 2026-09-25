@@ -4,6 +4,7 @@ Serializers for Messaging models.
 
 from collections import defaultdict
 
+from django.db.models import Q
 from rest_framework import serializers
 
 from apps.backup.signing import signed_media_url
@@ -203,8 +204,59 @@ class ConversationSerializer(serializers.ModelSerializer):
         )
 
 
+MESSAGE_PAGE_SIZE = 50
+
+
+def message_page(conversation: Conversation, before: Message | None = None) -> tuple[list, bool]:
+    """The newest MESSAGE_PAGE_SIZE messages, oldest first, and whether older ones exist.
+
+    With `before`, the page ends just before that message, which is how the chat
+    loads history one page at a time as the reader scrolls up.
+    """
+    messages = conversation.messages.select_related("sender").prefetch_related(
+        "reactions__user", "attachments"
+    )
+    if before is not None:
+        messages = messages.filter(
+            Q(created_at__lt=before.created_at) | Q(created_at=before.created_at, id__lt=before.id)
+        )
+    page = list(messages.order_by("-created_at", "-id")[: MESSAGE_PAGE_SIZE + 1])
+    has_more = len(page) > MESSAGE_PAGE_SIZE
+    page = page[:MESSAGE_PAGE_SIZE]
+    page.reverse()
+    return page, has_more
+
+
+def serialize_messages(messages: list, conversation: Conversation, context: dict) -> list:
+    """Serialize a page of messages without per-message queries: read status is
+    precomputed in one query so MessageSerializer.is_read resolves in memory."""
+    request = context.get("request")
+    current_user_id = request.user.id if request and request.user.is_authenticated else None
+    read_status_map: dict[int, set[int]] = defaultdict(set)
+    if messages:
+        for msg_id, user_id in MessageReadStatus.objects.filter(
+            message_id__in=[m.id for m in messages]
+        ).values_list("message_id", "user_id"):
+            read_status_map[msg_id].add(user_id)
+    other_participant_ids = {
+        p.id for p in conversation.participants.all() if p.id != current_user_id
+    }
+
+    context = {
+        **context,
+        "read_status_map": read_status_map,
+        "other_participant_ids": other_participant_ids,
+    }
+    return MessageSerializer(messages, many=True, context=context).data
+
+
 class ConversationDetailSerializer(ConversationSerializer):
-    """Detailed serializer with recent messages."""
+    """Detailed serializer with recent messages.
+
+    The current frontend loads messages from the paginated message list instead;
+    `messages` stays for one release so clients still running the previous bundle
+    keep working until useVersionCheck reloads them. Remove it after that.
+    """
 
     messages = serializers.SerializerMethodField()
 
@@ -212,33 +264,8 @@ class ConversationDetailSerializer(ConversationSerializer):
         fields = ConversationSerializer.Meta.fields + ["messages"]
 
     def get_messages(self, obj: Conversation) -> list:
-        # Get last 50 messages (oldest first). Prefetch attachments + reactions so
-        # the MessageSerializer doesn't issue per-message queries for them.
-        messages = list(
-            obj.messages.select_related("sender")
-            .prefetch_related("reactions__user", "attachments")
-            .order_by("-created_at")[:50]
-        )
-        messages.reverse()
-
-        # Precompute read status for these messages in a single query, so
-        # MessageSerializer.is_read resolves in memory instead of N+1 queries.
-        request = self.context.get("request")
-        current_user_id = request.user.id if request and request.user.is_authenticated else None
-        read_status_map: dict[int, set[int]] = defaultdict(set)
-        if messages:
-            for msg_id, user_id in MessageReadStatus.objects.filter(
-                message_id__in=[m.id for m in messages]
-            ).values_list("message_id", "user_id"):
-                read_status_map[msg_id].add(user_id)
-        other_participant_ids = {p.id for p in obj.participants.all() if p.id != current_user_id}
-
-        context = {
-            **self.context,
-            "read_status_map": read_status_map,
-            "other_participant_ids": other_participant_ids,
-        }
-        return MessageSerializer(messages, many=True, context=context).data
+        messages, _ = message_page(obj)
+        return serialize_messages(messages, obj, self.context)
 
 
 class CreateConversationSerializer(serializers.Serializer):

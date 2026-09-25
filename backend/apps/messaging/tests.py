@@ -199,6 +199,72 @@ class TestMessageAPI:
         assert Message.objects.filter(content="New message!").exists()
 
 
+class TestMessagePagination:
+    """The chat loads the newest page first, then older pages via ?before=<id>."""
+
+    def _seed(self, conversation, sender, count):
+        return [
+            Message.objects.create(conversation=conversation, sender=sender, content=f"msg {i}")
+            for i in range(count)
+        ]
+
+    def _url(self, conversation, before=None):
+        url = f"/api/messages/conversations/{conversation.id}/messages/"
+        return f"{url}?before={before}" if before is not None else url
+
+    def test_newest_page_first_oldest_first_within(
+        self, authenticated_client, conversation, second_user
+    ):
+        from apps.messaging.serializers import MESSAGE_PAGE_SIZE
+
+        messages = self._seed(conversation, second_user, MESSAGE_PAGE_SIZE + 5)
+
+        data = authenticated_client.get(self._url(conversation)).json()
+
+        assert [m["id"] for m in data["results"]] == [m.id for m in messages[5:]]
+        assert data["has_more"] is True
+
+    def test_before_returns_the_page_just_older(
+        self, authenticated_client, conversation, second_user
+    ):
+        from apps.messaging.serializers import MESSAGE_PAGE_SIZE
+
+        messages = self._seed(conversation, second_user, MESSAGE_PAGE_SIZE + 5)
+
+        data = authenticated_client.get(self._url(conversation, messages[5].id)).json()
+
+        assert [m["id"] for m in data["results"]] == [m.id for m in messages[:5]]
+        assert data["has_more"] is False
+
+    def test_before_must_belong_to_the_conversation(
+        self, authenticated_client, conversation, user, second_user
+    ):
+        other = Conversation.objects.create()
+        other.participants.add(user, second_user)
+        foreign = Message.objects.create(conversation=other, sender=second_user, content="x")
+
+        assert authenticated_client.get(self._url(conversation, foreign.id)).status_code == 404
+        assert authenticated_client.get(self._url(conversation, "abc")).status_code == 400
+
+    def test_query_count_does_not_scale_with_messages(
+        self, authenticated_client, conversation, second_user
+    ):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        self._seed(conversation, second_user, 3)
+        assert authenticated_client.get(self._url(conversation)).status_code == 200
+        with CaptureQueriesContext(connection) as small:
+            authenticated_client.get(self._url(conversation))
+
+        self._seed(conversation, second_user, 20)
+        assert authenticated_client.get(self._url(conversation)).status_code == 200
+        with CaptureQueriesContext(connection) as big:
+            authenticated_client.get(self._url(conversation))
+
+        assert len(big) == len(small)
+
+
 class TestMarkMessagesReadAPI:
     """Tests for the Mark Messages Read API endpoint."""
 

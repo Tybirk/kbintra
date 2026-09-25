@@ -22,6 +22,8 @@ from .serializers import (
     CreateMessageSerializer,
     MessageSerializer,
     message_attachment_preview_url,
+    message_page,
+    serialize_messages,
 )
 
 
@@ -271,14 +273,6 @@ class MessageListCreateView(generics.ListCreateAPIView):
             pk=self.kwargs["conversation_id"],
         )
 
-    def get_queryset(self) -> QuerySet[Message]:
-        conversation = self.get_conversation()
-        return (
-            conversation.messages.select_related("sender")
-            .prefetch_related("reactions__user")
-            .order_by("created_at")
-        )
-
     def get_serializer_context(self):
         context = super().get_serializer_context()
         if self.request.method == "POST":
@@ -286,8 +280,20 @@ class MessageListCreateView(generics.ListCreateAPIView):
         return context
 
     def list(self, request: Request, *args, **kwargs) -> Response:
-        # Mark messages as read when listing using bulk_create to avoid N+1 queries
+        """One page of messages, oldest first: the newest page, or with
+        `?before=<message id>` the page just before that message."""
         conversation = self.get_conversation()
+
+        before = None
+        before_id = request.query_params.get("before")
+        if before_id is not None:
+            if not before_id.isdigit():
+                return Response(
+                    {"before": "Ugyldigt besked-id."}, status=status.HTTP_400_BAD_REQUEST
+                )
+            before = get_object_or_404(conversation.messages, pk=int(before_id))
+
+        # Mark messages as read when listing using bulk_create to avoid N+1 queries
         unread_messages = conversation.messages.exclude(sender=request.user).exclude(
             read_statuses__user=request.user
         )
@@ -295,7 +301,16 @@ class MessageListCreateView(generics.ListCreateAPIView):
             MessageReadStatus(message=msg, user=request.user) for msg in unread_messages
         ]
         MessageReadStatus.objects.bulk_create(read_statuses, ignore_conflicts=True)
-        return super().list(request, *args, **kwargs)
+
+        messages, has_more = message_page(conversation, before)
+        return Response(
+            {
+                "results": serialize_messages(
+                    messages, conversation, self.get_serializer_context()
+                ),
+                "has_more": has_more,
+            }
+        )
 
 
 class MarkMessagesReadView(APIView):

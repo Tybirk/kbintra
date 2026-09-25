@@ -14,7 +14,9 @@ import { messagingApi } from "../api/messaging"
 
 import { apiClient } from "../api/client"
 
-import type { Conversation, User } from "../types"
+import { Route, Routes } from "react-router-dom"
+
+import type { Conversation, Message, Participant, User } from "../types"
 
 // Mock the messaging API
 
@@ -594,6 +596,93 @@ describe("MessagesPage", () => {
       await waitFor(() => {
         expect(screen.getByText("Ingen brugere fundet")).toBeInTheDocument()
       })
+    })
+  })
+
+  describe("Sender names", () => {
+    const alice: Participant = mockGroupConversation.other_participants[0]
+
+    const bob: Participant = mockGroupConversation.other_participants[1]
+
+    const makeMessage = (id: number, sender: Participant): Message => ({
+      id,
+
+      conversation: 2,
+
+      sender,
+
+      content: `Besked ${id}`,
+
+      is_own: sender.id === mockUser.id,
+
+      is_read: true,
+
+      is_system_message: false,
+
+      is_deleted: false,
+
+      edited_at: null,
+
+      created_at: `2024-01-15T14:0${id}:00Z`,
+
+      attachments: [],
+    })
+
+    const renderConversation = (conversation: Conversation) => {
+      vi.mocked(messagingApi.getConversations).mockResolvedValue([conversation])
+
+      vi.mocked(messagingApi.getConversation).mockResolvedValue(conversation)
+
+      return render(
+        <Routes>
+          <Route path="/beskeder/:conversationId" element={<MessagesPage />} />
+        </Routes>,
+        { initialEntries: [`/beskeder/${conversation.id}`] },
+      )
+    }
+
+    it("names the sender once per run of incoming messages in a group chat", async () => {
+      vi.mocked(messagingApi.getMessages).mockResolvedValue({
+        results: [
+          makeMessage(1, alice),
+          makeMessage(2, alice),
+          makeMessage(3, bob),
+        ],
+
+        has_more: false,
+      })
+
+      renderConversation(mockGroupConversation)
+
+      await waitFor(() => {
+        expect(screen.getByText("Besked 3")).toBeInTheDocument()
+      })
+
+      const aliceLinks = screen.getAllByRole("link", { name: "Alice" })
+
+      expect(aliceLinks).toHaveLength(1)
+
+      expect(aliceLinks[0]).toHaveAttribute("href", "/profil/2")
+
+      expect(screen.getByRole("link", { name: "Bob" })).toBeInTheDocument()
+    })
+
+    it("does not name the sender in a 1:1 chat", async () => {
+      vi.mocked(messagingApi.getMessages).mockResolvedValue({
+        results: [makeMessage(1, mockConversation.other_participants[0])],
+
+        has_more: false,
+      })
+
+      renderConversation({ ...mockConversation, id: 2 })
+
+      await waitFor(() => {
+        expect(screen.getByText("Besked 1")).toBeInTheDocument()
+      })
+
+      expect(
+        screen.queryByRole("link", { name: "Alice" }),
+      ).not.toBeInTheDocument()
     })
   })
 })

@@ -8,7 +8,7 @@ import {
   type RefObject,
 } from "react"
 
-import { useParams, useNavigate, useLocation } from "react-router-dom"
+import { Link, useParams, useNavigate, useLocation } from "react-router-dom"
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 
@@ -94,6 +94,17 @@ import type {
 import ChatRichTextEditor from "../components/ChatRichTextEditor"
 
 import { clearDraft } from "../utils/draftStorage"
+
+import {
+  appendMessage,
+  conversationMessagesKey,
+  updateMessage,
+  useConversationMessages,
+} from "../hooks/useConversationMessages"
+
+import { useChatScroll } from "../hooks/useChatScroll"
+
+import UserLink from "../components/UserLink"
 
 import { htmlToPlainText } from "../utils/htmlText"
 
@@ -310,134 +321,66 @@ export default function MessagesPage() {
 
       if (wsData.type === "new_message") {
         // Update conversation list
-
         queryClient.invalidateQueries({ queryKey: ["conversations"] })
 
-        // Update active conversation if it matches
+        appendMessage(queryClient, wsData.message.conversation, wsData.message)
 
+        // Mark as read immediately since we're actively viewing this conversation
         const currentConv = selectedConversationRef.current
-
         if (wsData.message.conversation === currentConv) {
-          queryClient.setQueryData<ConversationDetail>(
-            ["conversation", currentConv],
-
-            (old) => {
-              if (!old) return old
-
-              // Check if message already exists to prevent duplicates
-
-              if (old.messages.some((m) => m.id === wsData.message.id)) {
-                return old
-              }
-
-              return {
-                ...old,
-
-                messages: [...old.messages, wsData.message],
-              }
-            },
-          )
-
-          // Mark as read immediately since we're actively viewing this conversation
-
           chatWs.markRead(currentConv)
-
           queryClient.invalidateQueries({
             queryKey: ["messages", "unread-count"],
           })
         }
       } else if (wsData.type === "messages_read") {
         // Update read status in active conversation
-
         queryClient.invalidateQueries({
-          queryKey: ["conversation", wsData.conversation_id],
+          queryKey: conversationMessagesKey(wsData.conversation_id),
         })
       } else if (wsData.type === "new_conversation") {
         queryClient.invalidateQueries({ queryKey: ["conversations"] })
       } else if (wsData.type === "message_edited") {
         const editedData = wsData as WsMessageEdited
 
-        queryClient.setQueryData<ConversationDetail>(
-          ["conversation", editedData.conversation_id],
-
-          (old) => {
-            if (!old) return old
-
-            return {
-              ...old,
-
-              messages: old.messages.map((m) =>
-                m.id === editedData.message_id
-                  ? {
-                      ...m,
-
-                      content: editedData.content,
-
-                      edited_at: editedData.edited_at,
-                    }
-                  : m,
-              ),
-            }
-          },
+        updateMessage(
+          queryClient,
+          editedData.conversation_id,
+          editedData.message_id,
+          { content: editedData.content, edited_at: editedData.edited_at },
         )
       } else if (wsData.type === "message_deleted") {
         const deletedData = wsData as WsMessageDeleted
 
-        queryClient.setQueryData<ConversationDetail>(
-          ["conversation", deletedData.conversation_id],
-
-          (old) => {
-            if (!old) return old
-
-            return {
-              ...old,
-
-              messages: old.messages.map((m) =>
-                m.id === deletedData.message_id
-                  ? { ...m, is_deleted: true, content: "" }
-                  : m,
-              ),
-            }
-          },
+        updateMessage(
+          queryClient,
+          deletedData.conversation_id,
+          deletedData.message_id,
+          { is_deleted: true, content: "" },
         )
       } else if (wsData.type === "message_reacted") {
         const reactedData = wsData as WsMessageReacted
 
         const currentUserId = user?.id ?? -1
 
-        queryClient.setQueryData<ConversationDetail>(
-          ["conversation", reactedData.conversation_id],
+        updateMessage(
+          queryClient,
+          reactedData.conversation_id,
+          reactedData.message_id,
+          {
+            reactions: reactedData.reactions.map(
+              (r: WsMessageReactionEntry): MessageReactionSummary => ({
+                reaction_type: r.reaction_type as ReactionType,
 
-          (old) => {
-            if (!old) return old
+                emoji: r.emoji,
 
-            return {
-              ...old,
+                count: r.count,
 
-              messages: old.messages.map((m) =>
-                m.id === reactedData.message_id
-                  ? {
-                      ...m,
+                has_reacted: r.user_ids.includes(currentUserId),
 
-                      reactions: reactedData.reactions.map(
-                        (
-                          r: WsMessageReactionEntry,
-                        ): MessageReactionSummary => ({
-                          reaction_type: r.reaction_type as ReactionType,
-
-                          emoji: r.emoji,
-
-                          count: r.count,
-
-                          has_reacted: r.user_ids.includes(currentUserId),
-
-                          users: r.users,
-                        }),
-                      ),
-                    }
-                  : m,
-              ),
-            }
+                users: r.users,
+              }),
+            ),
           },
         )
       } else if (wsData.type === "conversation_renamed") {
@@ -507,7 +450,7 @@ export default function MessagesPage() {
 
     const pollInterval = setInterval(() => {
       queryClient.invalidateQueries({
-        queryKey: ["conversation", selectedConversation],
+        queryKey: conversationMessagesKey(selectedConversation),
       })
 
       queryClient.invalidateQueries({ queryKey: ["conversations"] })
@@ -803,7 +746,7 @@ export default function MessagesPage() {
                     // If we used REST fallback or sent attachments/mentions, refresh to get the new message
 
                     queryClient.invalidateQueries({
-                      queryKey: ["conversation", selectedConversation],
+                      queryKey: conversationMessagesKey(selectedConversation),
                     })
 
                     queryClient.invalidateQueries({
@@ -817,6 +760,10 @@ export default function MessagesPage() {
                   })
 
                   queryClient.invalidateQueries({
+                    queryKey: conversationMessagesKey(selectedConversation),
+                  })
+
+                  queryClient.invalidateQueries({
                     queryKey: ["conversations"],
                   })
                 }}
@@ -824,44 +771,18 @@ export default function MessagesPage() {
                 onMarkUnread={handleMarkUnread}
                 onMarkMessageUnread={handleMarkMessageUnread}
                 isMobile={isMobile ?? false}
-                onMessageUpdated={(messageId, content, editedAt) => {
-                  queryClient.setQueryData<ConversationDetail>(
-                    ["conversation", selectedConversation],
-
-                    (old) => {
-                      if (!old) return old
-
-                      return {
-                        ...old,
-
-                        messages: old.messages.map((m) =>
-                          m.id === messageId
-                            ? { ...m, content, edited_at: editedAt }
-                            : m,
-                        ),
-                      }
-                    },
-                  )
-                }}
-                onMessageDeleted={(messageId) => {
-                  queryClient.setQueryData<ConversationDetail>(
-                    ["conversation", selectedConversation],
-
-                    (old) => {
-                      if (!old) return old
-
-                      return {
-                        ...old,
-
-                        messages: old.messages.map((m) =>
-                          m.id === messageId
-                            ? { ...m, is_deleted: true, content: "" }
-                            : m,
-                        ),
-                      }
-                    },
-                  )
-                }}
+                onMessageUpdated={(messageId, content, editedAt) =>
+                  updateMessage(queryClient, selectedConversation, messageId, {
+                    content,
+                    edited_at: editedAt,
+                  })
+                }
+                onMessageDeleted={(messageId) =>
+                  updateMessage(queryClient, selectedConversation, messageId, {
+                    is_deleted: true,
+                    content: "",
+                  })
+                }
               />
             ) : null
           ) : (
@@ -1063,6 +984,15 @@ const TIME_GAP_MINUTES = 20
 interface MessageListProps {
   messages: Message[]
 
+  isLoading: boolean
+
+  hasOlder: boolean
+
+  isLoadingOlder: boolean
+
+  /** Group chats name the sender above each run of incoming messages. */
+  showSenderNames: boolean
+
   isMobile: boolean | undefined
 
   onEdit?: (messageId: number, content: string, editedAt: string) => void
@@ -1072,10 +1002,20 @@ interface MessageListProps {
   onMarkMessageUnread?: (messageId: number) => void
 
   scrollViewportRef: RefObject<HTMLDivElement | null>
+
+  contentRef: RefObject<HTMLDivElement | null>
 }
 
 const MessageList = memo(function MessageList({
   messages,
+
+  isLoading,
+
+  hasOlder,
+
+  isLoadingOlder,
+
+  showSenderNames,
 
   isMobile,
 
@@ -1086,6 +1026,8 @@ const MessageList = memo(function MessageList({
   onMarkMessageUnread,
 
   scrollViewportRef,
+
+  contentRef,
 }: MessageListProps) {
   return (
     <div
@@ -1102,9 +1044,23 @@ const MessageList = memo(function MessageList({
         padding: "var(--mantine-spacing-md)",
 
         overscrollBehavior: "contain",
+
+        // useChatScroll keeps the reader's place when older messages are
+        // prepended; the browser's own scroll anchoring would do it twice.
+        overflowAnchor: "none",
       }}
     >
-      <Stack gap="sm" style={{ width: "100%" }}>
+      <Stack ref={contentRef} gap="sm" style={{ width: "100%" }}>
+        {isLoading && (
+          <Center py="sm">
+            <Loader size="sm" />
+          </Center>
+        )}
+        {/* The slot stays while there is history, so the loader appearing
+            doesn't push the messages down under the reader */}
+        {hasOlder && (
+          <Center h={36}>{isLoadingOlder && <Loader size="sm" />}</Center>
+        )}
         {messages.map((msg, idx) => {
           const prevMsg = idx > 0 ? messages[idx - 1] : null
 
@@ -1159,6 +1115,20 @@ const MessageList = memo(function MessageList({
               {showAvatar &&
                 !showDateSeparator &&
                 timeSincePrev >= TIME_GAP_MINUTES && <Box mt="xs" />}
+              {showSenderNames &&
+                showAvatar &&
+                !msg.is_own &&
+                !msg.is_system_message && ( // Indented past the avatar (sm = 26px) and the gap (xs = 10px)
+                  <Text size="xs" c="dimmed" pl={36} mb={2}>
+                    <UserLink
+                      id={msg.sender.id}
+                      firstName={msg.sender.first_name}
+                      lastName={msg.sender.last_name}
+                    >
+                      {msg.sender.first_name}
+                    </UserLink>
+                  </Text>
+                )}
               <MessageBubble
                 message={msg}
                 showAvatar={showAvatar}
@@ -1238,9 +1208,22 @@ function ChatArea({
 
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  const prevConversationIdRef = useRef<number | null>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
 
-  const highlightedHashRef = useRef<string | null>(null)
+  const { messages, isLoading, hasOlder, isLoadingOlder, loadOlder } =
+    useConversationMessages(conversation.id)
+
+  useChatScroll(scrollRef, contentRef, {
+    messages,
+
+    hasOlder,
+
+    isLoadingOlder,
+
+    loadOlder,
+
+    targetId: location.hash ? location.hash.slice(1) : null,
+  })
 
   const addParticipantsMutation = useMutation({
     mutationFn: (userIds: number[]) =>
@@ -1294,49 +1277,6 @@ function ChatArea({
       setIsRenaming(false)
     }
   }
-
-  // Scroll to bottom when opening a conversation (instant) or when new messages arrive (smooth)
-
-  useEffect(() => {
-    if (scrollRef.current) {
-      const isNewConversation =
-        prevConversationIdRef.current !== conversation.id
-
-      // If navigating with a hash fragment, scroll to that message instead
-
-      if (location.hash && highlightedHashRef.current !== location.hash) {
-        highlightedHashRef.current = location.hash
-
-        const timer = setTimeout(() => {
-          const el = document.getElementById(location.hash.slice(1))
-
-          if (el) {
-            el.scrollIntoView({ behavior: "smooth", block: "center" })
-
-            el.style.transition = "box-shadow 0.3s ease"
-
-            el.style.boxShadow = "0 0 0 3px var(--mantine-color-blue-4)"
-
-            setTimeout(() => {
-              el.style.boxShadow = ""
-            }, 2000)
-          }
-        }, 100)
-
-        prevConversationIdRef.current = conversation.id
-
-        return () => clearTimeout(timer)
-      }
-
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-
-        behavior: isNewConversation ? "auto" : "smooth",
-      })
-
-      prevConversationIdRef.current = conversation.id
-    }
-  }, [conversation.id, conversation.messages, location.hash])
 
   const handleSend = async (contentOverride?: string) => {
     const messageContent =
@@ -1486,14 +1426,21 @@ function ChatArea({
                 <ScrollArea.Autosize mah={320}>
                   <Stack gap="xs">
                     {allParticipants.map((p) => (
-                      <Group key={p.id} gap="sm" wrap="nowrap">
-                        <Avatar src={p.profile_picture} radius="xl" size="sm">
-                          {p.first_name?.[0]}
-                        </Avatar>
-                        <Text size="sm">
-                          {p.first_name} {p.last_name}
-                        </Text>
-                      </Group>
+                      <UnstyledButton
+                        key={p.id}
+                        component={Link}
+                        to={`/profil/${p.id}`}
+                        onClick={closeParticipantsPopover}
+                      >
+                        <Group gap="sm" wrap="nowrap">
+                          <Avatar src={p.profile_picture} radius="xl" size="sm">
+                            {p.first_name?.[0]}
+                          </Avatar>
+                          <Text size="sm">
+                            {p.first_name} {p.last_name}
+                          </Text>
+                        </Group>
+                      </UnstyledButton>
                     ))}
                   </Stack>
                 </ScrollArea.Autosize>
@@ -1624,12 +1571,17 @@ function ChatArea({
 
       {/* Messages */}
       <MessageList
-        messages={conversation.messages}
+        messages={messages}
+        isLoading={isLoading}
+        hasOlder={hasOlder}
+        isLoadingOlder={isLoadingOlder}
+        showSenderNames={isGroupChat}
         isMobile={isMobile}
         onEdit={onMessageUpdated}
         onUnsend={onMessageDeleted}
         onMarkMessageUnread={onMarkMessageUnread}
         scrollViewportRef={scrollRef}
+        contentRef={contentRef}
       />
 
       {/* Input */}
@@ -2667,11 +2619,8 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
     mutationFn: messagingApi.createConversation,
 
     onSuccess: (data) => {
-      // Seed the conversation cache with the full response so messages are
-
-      // visible immediately when navigating to the conversation, without
-
-      // waiting for a separate fetch or WebSocket event.
+      // Seed the conversation cache so the header shows without waiting for a
+      // fetch; the messages load through useConversationMessages.
 
       queryClient.setQueryData<ConversationDetail>(
         ["conversation", data.id],
