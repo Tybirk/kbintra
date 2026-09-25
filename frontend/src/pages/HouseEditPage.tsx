@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 
-import { useNavigate } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 
@@ -23,6 +23,7 @@ import {
   Alert,
   Switch,
   Badge,
+  Anchor,
 } from "@mantine/core"
 
 import { DateInput } from "@mantine/dates"
@@ -1045,6 +1046,14 @@ export default function HouseEditPage() {
               }))
             }}
           />
+
+          <Text size="sm" c="dimmed">
+            Om bilen er med i delebilparken, vælger du under{" "}
+            <Anchor component={Link} to="/bildeling?tab=cars" inherit>
+              Bildeling → Mine biler
+            </Anchor>
+            .
+          </Text>
 
           <Group justify="flex-end" mt="md">
             <Button
