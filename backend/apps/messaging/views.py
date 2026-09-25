@@ -264,7 +264,8 @@ class MessageListCreateView(generics.ListCreateAPIView):
         before = None
         before_id = request.query_params.get("before")
         if before_id is not None:
-            if not before_id.isdigit():
+            # isascii too: "²".isdigit() is True, and int("²") raises.
+            if not (before_id.isascii() and before_id.isdigit()):
                 return Response(
                     {"before": "Ugyldigt besked-id."}, status=status.HTTP_400_BAD_REQUEST
                 )

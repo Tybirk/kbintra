@@ -11,15 +11,21 @@ import type { Message } from "../types"
  * - `"bottom"`: the reader is at the newest message; the view stays there while
  *   content grows (new messages, images finishing loading).
  * - an element id: opened from a link to one message; the view keeps it centred
- *   while the page settles, loading older pages until it exists.
+ *   while the page settles, loading older pages until it exists. A link to the
+ *   newest message (a new-message push) turns into `"bottom"` once the
+ *   conversation carries on.
  * - `null`: the reader has scrolled into the history; nothing moves the view.
  *   A prepended older page keeps the reader's place.
  *
- * Changes to existing messages (reactions, edits, read receipts) never scroll.
- * Every jump is instant — no animation to sit through in a long conversation.
+ * Sending is the reader's act too: the page calls `followBottom()`. Changes to
+ * existing messages (reactions, edits, read receipts) never scroll. Every jump
+ * is instant — no animation to sit through in a long conversation.
  */
 
 type Anchor = "bottom" | string | null
+
+/** The element id a message is rendered with, and a link to it points at. */
+export const messageElementId = (id: number) => `msg-${id}`
 
 const NEAR_BOTTOM_PX = 40
 
@@ -41,7 +47,7 @@ interface ChatScrollOptions {
 
   loadOlder: () => void
 
-  /** Element id of a message to open at, e.g. "msg-123". */
+  /** Element id of a message to open at, as made by `messageElementId`. */
   targetId: string | null
 }
 
@@ -114,17 +120,19 @@ export function useChatScroll(
 
     edgesRef.current = { first, last }
 
-    if (anchorRef.current === null) {
-      if (
-        prev.first !== undefined &&
-        first !== prev.first &&
-        last === prev.last
-      ) {
-        viewport.scrollTop += viewport.scrollHeight - heightRef.current
-      } else if (last !== prev.last && messages.at(-1)?.is_own) {
-        // Your own message just went out: follow it.
-        anchorRef.current = "bottom"
-      }
+    if (
+      prev.last !== undefined &&
+      last !== prev.last &&
+      anchorRef.current === messageElementId(prev.last)
+    ) {
+      anchorRef.current = "bottom"
+    } else if (
+      anchorRef.current === null &&
+      prev.first !== undefined &&
+      first !== prev.first &&
+      last === prev.last
+    ) {
+      viewport.scrollTop += viewport.scrollHeight - heightRef.current
     }
 
     holdAnchor()
@@ -224,4 +232,12 @@ export function useChatScroll(
       viewport.removeEventListener("scroll", onScroll)
     }
   }, [viewportRef])
+
+  const followBottom = useCallback(() => {
+    anchorRef.current = "bottom"
+
+    holdAnchor()
+  }, [holdAnchor])
+
+  return { followBottom }
 }

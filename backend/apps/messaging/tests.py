@@ -245,6 +245,8 @@ class TestMessagePagination:
 
         assert authenticated_client.get(self._url(conversation, foreign.id)).status_code == 404
         assert authenticated_client.get(self._url(conversation, "abc")).status_code == 400
+        # "²".isdigit() is True in Python, and int("²") raises: this used to be a 500.
+        assert authenticated_client.get(self._url(conversation, "²")).status_code == 400
 
     def test_query_count_does_not_scale_with_messages(
         self, authenticated_client, conversation, second_user

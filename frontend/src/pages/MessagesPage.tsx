@@ -102,7 +102,7 @@ import {
   useConversationMessages,
 } from "../hooks/useConversationMessages"
 
-import { useChatScroll } from "../hooks/useChatScroll"
+import { messageElementId, useChatScroll } from "../hooks/useChatScroll"
 
 import UserLink from "../components/UserLink"
 
@@ -1204,7 +1204,7 @@ function ChatArea({
   const { messages, isLoading, hasOlder, isLoadingOlder, loadOlder } =
     useConversationMessages(conversation.id)
 
-  useChatScroll(scrollRef, contentRef, {
+  const { followBottom } = useChatScroll(scrollRef, contentRef, {
     messages,
 
     hasOlder,
@@ -1291,6 +1291,8 @@ function ChatArea({
     setMentionedUserIds([])
 
     clearDraft("msg-" + conversation.id)
+
+    followBottom()
 
     try {
       await onSendMessage(messageContent, messageAttachments, messageMentions)
@@ -1861,7 +1863,7 @@ const MessageBubble = memo(function MessageBubble({
 
     return (
       <Group
-        id={`msg-${message.id}`}
+        id={messageElementId(message.id)}
         justify={isOwn ? "flex-end" : "flex-start"}
         gap="xs"
         align="flex-end"
@@ -2249,7 +2251,7 @@ const MessageBubble = memo(function MessageBubble({
   if (isEditing) {
     return (
       <Stack
-        id={`msg-${message.id}`}
+        id={messageElementId(message.id)}
         gap="xs"
         ref={(el) =>
           el?.scrollIntoView({ behavior: "smooth", block: "nearest" })
@@ -2297,7 +2299,7 @@ const MessageBubble = memo(function MessageBubble({
   return (
     <>
       <Group
-        id={`msg-${message.id}`}
+        id={messageElementId(message.id)}
         justify={isOwn ? "flex-end" : "flex-start"}
         gap="xs"
         align="flex-end"
