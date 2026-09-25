@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import logging
 
-from huey import crontab
 from huey.contrib.djhuey import db_periodic_task, db_task
+
+from config.scheduling import local_crontab
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ def generate_user_profile_thumbnail_task(user_id: int) -> None:
     logger.info("Generated profile thumbnail for user %s", user_id)
 
 
-@db_periodic_task(crontab(hour=8, minute=0))
+@db_periodic_task(local_crontab(hour=8, minute=0))
 def send_birthday_notifications() -> None:
     """Run daily at 08:00 to tell every active resident whose birthday it is today.
 

@@ -121,8 +121,9 @@ Beyond one-off tasks:
 - **Wish deadline reminders** (`apps/food/tasks.py`) — daily 17:30, nudges anyone who still owes madhold wishes (once per period)
 - **Registration materialization** (`apps/food/tasks.py`) — Thursday 00:30, freezes next week's meal registrations
 - **Drive menu refresh** (`apps/food/tasks.py`) — every 4 hours
+- **Birthday notifications** (`apps/users/tasks.py`) — daily 08:00, one per resident or child with a birthday today
 
-Use `@db_periodic_task(crontab(...))` for new periodic tasks. Import the task module in the app's `AppConfig.ready()` to register it.
+Use `@db_periodic_task(local_crontab(...))` (`config/scheduling.py`) for anything tied to a time of day — Huey reads a bare `crontab` in UTC, so `crontab(hour=8)` fires at 10:00 in summer. A bare `crontab` is fine for hourly tasks. Import the task module in the app's `AppConfig.ready()` to register it.
 
 ### Huey task rules
 - Use `@db_task()` for transactional tasks, `@task()` for non-transactional
