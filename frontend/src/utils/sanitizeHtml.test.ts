@@ -20,6 +20,14 @@ describe("sanitizeHtml", () => {
     expect(sanitizeHtml(html)).toBe('<img src="x"><a>klik</a><p>tekst</p>')
   })
 
+  it("drops inline styles and form controls, the makings of a fake login", () => {
+    const html =
+      '<div style="position:fixed;inset:0"><form action="https://x.dk">' +
+      '<input type="password"><button>Log ind</button></form></div>'
+
+    expect(sanitizeHtml(html)).toBe("<div>Log ind</div>")
+  })
+
   it("drops <style>, which would restyle the whole page", () => {
     expect(sanitizeHtml("<style>body{display:none}</style><p>hej</p>")).toBe(
       "<p>hej</p>",
