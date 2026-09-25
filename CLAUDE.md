@@ -163,7 +163,7 @@ Private messages are encrypted at rest using Fernet. Key stored in `MESSAGES_ENC
 
 ### TypeScript: avoid inline object types inside generics
 
-oxlint removes semicolons from inline object types inside generics, producing invalid syntax. Always extract to a named interface instead:
+oxlint removes semicolons from inline object types inside generics (and in union type aliases, e.g. `type A = "x" | { a: string; b: number }`), producing invalid syntax. Always extract to a named interface instead:
 
 ```typescript
 // BAD — oxlint strips the semicolon, breaking the build:
