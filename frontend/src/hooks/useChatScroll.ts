@@ -11,23 +11,31 @@ import type { Message } from "../types"
  * - `"bottom"`: the reader is at the newest message; the view stays there while
  *   content grows (new messages, images finishing loading).
  * - a message and `"centre"`: opened from a link to it; the view keeps it
- *   centred while the page settles, loading older pages until it exists, and
- *   lets go on the reader's first input. A link to the newest message (a
- *   new-message push) turns into `"bottom"` once the conversation carries on.
+ *   centred (a message taller than the view: its top) while the page settles,
+ *   loading older pages until it exists, and lets go on the reader's first
+ *   input. A link to one of the last messages — a push, even one that has had
+ *   replies since — leaves the view at the bottom, and becomes `"bottom"`.
  * - a message and an offset: the reader has scrolled into the history; the
  *   message at the top of the view stays exactly where it is, whatever changes
  *   around it — an older page arriving, an edit, reaction or deletion above,
- *   an image loading, a refetch.
+ *   an image loading, a refetch — plus whatever the reader has scrolled since.
  *
  * Sending is the reader's act too: the page calls `followBottom()`. Every jump
  * is instant — no animation to sit through in a long conversation.
  */
 
-/** A message, and where in the view it is held: centred, or px below the top. */
+/**
+ * A message and where in the view it is held: centred, or px below the top as
+ * it was when the viewport's scrollTop was `at`. Scroll events lag a frame, so
+ * the reader may have moved on by the time content changes; that movement is
+ * scrollTop − at, and it is kept.
+ */
 interface MessageAnchor {
   id: string
 
   offset: number | "centre"
+
+  at: number
 }
 
 type Anchor = "bottom" | MessageAnchor
@@ -68,10 +76,8 @@ export function useChatScroll(
   }: ChatScrollOptions,
 ) {
   const anchorRef = useRef<Anchor>(
-    targetId ? { id: targetId, offset: "centre" } : "bottom",
+    targetId ? { id: targetId, offset: "centre", at: 0 } : "bottom",
   )
-
-  const lastIdRef = useRef<number | undefined>(undefined)
 
   const loadOlderRef = useRef<() => void>(() => {})
 
@@ -96,14 +102,27 @@ export function useChatScroll(
 
     const wanted =
       anchor.offset === "centre"
-        ? (viewport.clientHeight - el.offsetHeight) / 2
-        : anchor.offset
+        ? Math.max((viewport.clientHeight - el.offsetHeight) / 2, 8)
+        : anchor.offset - (viewport.scrollTop - anchor.at)
 
     // Scroll the viewport only; scrollIntoView would also scroll the page around it.
     viewport.scrollTop +=
       el.getBoundingClientRect().top -
       viewport.getBoundingClientRect().top -
       wanted
+
+    if (anchor.offset !== "centre") {
+      anchorRef.current = {
+        id: anchor.id,
+        offset: wanted,
+        at: viewport.scrollTop,
+      }
+    } else if (
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <
+      NEAR_BOTTOM_PX
+    ) {
+      anchorRef.current = "bottom"
+    }
   }, [viewportRef])
 
   /** The message at the top of the view, and how far below the top it sits. */
@@ -140,7 +159,11 @@ export function useChatScroll(
     }
 
     return found
-      ? { id: found.id, offset: found.getBoundingClientRect().top - top }
+      ? {
+          id: found.id,
+          offset: found.getBoundingClientRect().top - top,
+          at: viewport.scrollTop,
+        }
       : null
   }, [viewportRef, contentRef])
 
@@ -148,31 +171,13 @@ export function useChatScroll(
   useEffect(() => {
     if (!targetId) return
 
-    anchorRef.current = { id: targetId, offset: "centre" }
+    anchorRef.current = { id: targetId, offset: "centre", at: 0 }
 
     holdAnchor()
   }, [targetId, holdAnchor])
 
   // Messages changed: put the anchor back where it was, before the paint.
-  useLayoutEffect(() => {
-    const anchor = anchorRef.current
-
-    const previousLast = lastIdRef.current
-
-    lastIdRef.current = messages.at(-1)?.id
-
-    if (
-      previousLast !== undefined &&
-      lastIdRef.current !== previousLast &&
-      anchor !== "bottom" &&
-      anchor.offset === "centre" &&
-      anchor.id === messageElementId(previousLast)
-    ) {
-      anchorRef.current = "bottom"
-    }
-
-    holdAnchor()
-  }, [messages, holdAnchor])
+  useLayoutEffect(holdAnchor, [messages, holdAnchor])
 
   // An anchored message that isn't loaded yet lives further back in the history.
   useEffect(() => {
