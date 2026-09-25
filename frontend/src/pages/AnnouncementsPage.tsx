@@ -50,7 +50,12 @@ import { useHoldHashTarget } from "../hooks/useHoldHashTarget"
 
 import { filterFilesBySize } from "../config"
 
-import { clearDraft, loadDraft, saveDraft } from "../utils/draftStorage"
+import {
+  DRAFT_SAVE_DELAY_MS,
+  clearDraft,
+  loadDraft,
+  saveDraft,
+} from "../utils/draftStorage"
 
 import RichTextEditor from "../components/RichTextEditor"
 import { RichTextContent } from "../components/RichTextContent"
@@ -503,7 +508,10 @@ function CreateAnnouncementModal({
   }, [])
 
   useEffect(() => {
-    const t = setTimeout(() => saveDraft("new-announcement-title", title), 1500)
+    const t = setTimeout(
+      () => saveDraft("new-announcement-title", title),
+      DRAFT_SAVE_DELAY_MS,
+    )
 
     return () => clearTimeout(t)
   }, [title])

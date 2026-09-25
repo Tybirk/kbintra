@@ -81,7 +81,12 @@ import { forumApi } from "../api/forum"
 
 import { BackButton } from "../components/BackButton"
 
-import { clearDraft, loadDraft, saveDraft } from "../utils/draftStorage"
+import {
+  DRAFT_SAVE_DELAY_MS,
+  clearDraft,
+  loadDraft,
+  saveDraft,
+} from "../utils/draftStorage"
 
 import { filterFilesBySize } from "../config"
 
@@ -1387,7 +1392,10 @@ function CreateThreadModal({
   }, [titleDraftKey])
 
   useEffect(() => {
-    const t = setTimeout(() => saveDraft(titleDraftKey, title), 1500)
+    const t = setTimeout(
+      () => saveDraft(titleDraftKey, title),
+      DRAFT_SAVE_DELAY_MS,
+    )
 
     return () => clearTimeout(t)
   }, [title, titleDraftKey])

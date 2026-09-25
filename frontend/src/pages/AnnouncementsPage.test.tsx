@@ -48,6 +48,8 @@ vi.mock("../utils/draftStorage", () => ({
   clearDraft: vi.fn().mockResolvedValue(undefined),
 
   claimDrafts: vi.fn(),
+
+  DRAFT_SAVE_DELAY_MS: 300,
 }))
 
 const mockGetAnnouncements = vi.fn()

@@ -31,7 +31,12 @@ import { IconMapPin, IconAlertCircle } from "@tabler/icons-react"
 
 import dayjs from "dayjs"
 
-import { clearDraft, loadDraft, saveDraft } from "../utils/draftStorage"
+import {
+  DRAFT_SAVE_DELAY_MS,
+  clearDraft,
+  loadDraft,
+  saveDraft,
+} from "../utils/draftStorage"
 
 import { subgroupOptionLabel } from "../utils/subgroupLabel"
 
@@ -238,7 +243,10 @@ export default function EventFormPage() {
   useEffect(() => {
     if (isEditMode) return
 
-    const t = setTimeout(() => saveDraft("new-event-title", title), 1500)
+    const t = setTimeout(
+      () => saveDraft("new-event-title", title),
+      DRAFT_SAVE_DELAY_MS,
+    )
 
     return () => clearTimeout(t)
   }, [title, isEditMode])
