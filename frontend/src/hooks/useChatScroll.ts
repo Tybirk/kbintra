@@ -14,7 +14,8 @@ import type { Message } from "../types"
  *   centred (a message taller than the view: its top) while the page settles,
  *   loading older pages until it exists, and lets go on the reader's first
  *   input. A link to one of the last messages — a push, even one that has had
- *   replies since — leaves the view at the bottom, and becomes `"bottom"`.
+ *   replies since — leaves the view at the bottom, and becomes `"bottom"`; so
+ *   does a link to the newest message once another arrives, however tall.
  * - a message and an offset: the reader has scrolled into the history; the
  *   message at the top of the view stays exactly where it is, whatever changes
  *   around it — an older page arriving, an edit, reaction or deletion above,
@@ -22,6 +23,11 @@ import type { Message } from "../types"
  *
  * Sending is the reader's act too: the page calls `followBottom()`. Every jump
  * is instant — no animation to sit through in a long conversation.
+ *
+ * Layout changes (an image finishing loading) are caught by a ResizeObserver,
+ * but a scroll event can arrive first, and must not read the grown content as
+ * the reader moving: the scroll handler compensates any change it sees before
+ * it records anything.
  */
 
 /**
@@ -79,6 +85,11 @@ export function useChatScroll(
     targetId ? { id: targetId, offset: "centre", at: 0 } : "bottom",
   )
 
+  /** scrollHeight when the anchor was last put back: a difference is a layout change. */
+  const heightRef = useRef(0)
+
+  const lastIdRef = useRef<number | undefined>(undefined)
+
   const loadOlderRef = useRef<() => void>(() => {})
 
   loadOlderRef.current = hasOlder && !isLoadingOlder ? loadOlder : () => {}
@@ -89,6 +100,8 @@ export function useChatScroll(
     const anchor = anchorRef.current
 
     if (!viewport) return
+
+    heightRef.current = viewport.scrollHeight
 
     if (anchor === "bottom") {
       viewport.scrollTop = viewport.scrollHeight
@@ -177,7 +190,25 @@ export function useChatScroll(
   }, [targetId, holdAnchor])
 
   // Messages changed: put the anchor back where it was, before the paint.
-  useLayoutEffect(holdAnchor, [messages, holdAnchor])
+  useLayoutEffect(() => {
+    const anchor = anchorRef.current
+
+    const previousLast = lastIdRef.current
+
+    lastIdRef.current = messages.at(-1)?.id
+
+    if (
+      previousLast !== undefined &&
+      lastIdRef.current !== previousLast &&
+      anchor !== "bottom" &&
+      anchor.offset === "centre" &&
+      anchor.id === messageElementId(previousLast)
+    ) {
+      anchorRef.current = "bottom"
+    }
+
+    holdAnchor()
+  }, [messages, holdAnchor])
 
   // An anchored message that isn't loaded yet lives further back in the history.
   useEffect(() => {
@@ -254,6 +285,8 @@ export function useChatScroll(
     }
 
     const onScroll = () => {
+      if (viewport.scrollHeight !== heightRef.current) holdAnchor()
+
       if (isLinkTarget(anchorRef.current)) return
 
       const fromBottom =
@@ -282,7 +315,7 @@ export function useChatScroll(
 
       viewport.removeEventListener("scroll", onScroll)
     }
-  }, [viewportRef, readerAnchor])
+  }, [viewportRef, readerAnchor, holdAnchor])
 
   const followBottom = useCallback(() => {
     anchorRef.current = "bottom"
