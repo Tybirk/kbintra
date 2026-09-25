@@ -610,7 +610,15 @@ interface StatusMutationVars {
   note: string
 }
 
-function AdminExpensesTab({ canManage }: { canManage: boolean }) {
+interface AdminExpensesTabProps {
+  // May mark the listed udlæg paid/rejected. The server only lists fællesmad
+  // udlæg to non-treasurers, so for the madøkonomiansvarlig that is all of them.
+  canManage: boolean
+  // The treasurer: sees every udlæg, not just the fællesmad ones.
+  isTreasurer: boolean
+}
+
+function AdminExpensesTab({ canManage, isTreasurer }: AdminExpensesTabProps) {
   const queryClient = useQueryClient()
   const isMobile = useMediaQuery("(max-width: 48em)")
   const [status, setStatus] = useState<ExpenseStatus | "">("")
@@ -625,8 +633,8 @@ function AdminExpensesTab({ canManage }: { canManage: boolean }) {
 
   // The summed total and CSV export use the full filtered set, so they take
   // the filters without the page. The page is only added for the list query.
-  // Food-admin-only users always see the food_related subset (server-enforced),
-  // so the food filter is only surfaced to managers.
+  // Non-treasurers always see the food_related subset (server-enforced), so
+  // the food filter is only surfaced to the treasurer.
   const filters: AdminExpenseFilters = useMemo(
     () => ({
       status: status || undefined,
@@ -718,8 +726,8 @@ function AdminExpensesTab({ canManage }: { canManage: boolean }) {
           color="grape"
           variant="light"
         >
-          Du ser udlæg i forbindelse med fællesmad. Kun kassereren kan markere
-          dem som udbetalt eller afvist.
+          Du ser udlæg i forbindelse med fællesmad. Kun kassereren og den
+          madøkonomiansvarlige kan markere dem som udbetalt eller afvist.
         </Alert>
       )}
 
@@ -760,7 +768,7 @@ function AdminExpensesTab({ canManage }: { canManage: boolean }) {
             w={240}
             clearable
           />
-          {canManage && (
+          {isTreasurer && (
             <Select
               label="Fællesmad"
               placeholder="Alle"
@@ -803,10 +811,11 @@ function AdminExpensesTab({ canManage }: { canManage: boolean }) {
       ) : rows.length === 0 ? (
         <Text c="dimmed">Ingen udlæg matcher filteret.</Text>
       ) : (
-        <Table.ScrollContainer minWidth={760}>
+        <Table.ScrollContainer minWidth={800}>
           <Table striped highlightOnHover verticalSpacing="sm">
             <Table.Thead>
               <Table.Tr>
+                <Table.Th>Nr.</Table.Th>
                 <Table.Th>Dato</Table.Th>
                 <Table.Th>Navn</Table.Th>
                 <Table.Th>Beløb</Table.Th>
@@ -823,6 +832,10 @@ function AdminExpensesTab({ canManage }: { canManage: boolean }) {
                 const meta = STATUS_META[expense.status]
                 return (
                   <Table.Tr key={expense.id}>
+                    {/* Same number as "[Udlæg #N]" in the economy mail. */}
+                    <Table.Td style={{ whiteSpace: "nowrap" }}>
+                      #{expense.id}
+                    </Table.Td>
                     <Table.Td style={{ whiteSpace: "nowrap" }}>
                       {dayjs(expense.created_at).format("D/M YYYY")}
                     </Table.Td>
@@ -989,9 +1002,11 @@ function AdminExpensesTab({ canManage }: { canManage: boolean }) {
 
 export default function ExpensesPage() {
   const user = useAuthStore((s) => s.user)
-  // Economy admins (and staff) manage everything; food admins get a read-only
-  // view of the fællesmad-related udlæg.
-  const canManage = !!(user?.is_staff || user?.is_economy_admin)
+  // Economy admins (and staff) manage everything; the madøkonomiansvarlig
+  // manages the fællesmad-related udlæg; food admins get a read-only view of
+  // those.
+  const isTreasurer = !!(user?.is_staff || user?.is_economy_admin)
+  const canManage = isTreasurer || !!user?.is_food_economy_admin
   const canViewAdmin = canManage || !!user?.is_food_admin
   const [tab, setTab] = useState<string | null>("mine")
 
@@ -1006,14 +1021,14 @@ export default function ExpensesPage() {
           <Tabs.List mb="md">
             <Tabs.Tab value="mine">Mine udlæg</Tabs.Tab>
             <Tabs.Tab value="admin">
-              {canManage ? "Administration" : "Fællesmad-udlæg"}
+              {isTreasurer ? "Administration" : "Fællesmad-udlæg"}
             </Tabs.Tab>
           </Tabs.List>
           <Tabs.Panel value="mine">
             <MyExpensesTab />
           </Tabs.Panel>
           <Tabs.Panel value="admin">
-            <AdminExpensesTab canManage={canManage} />
+            <AdminExpensesTab canManage={canManage} isTreasurer={isTreasurer} />
           </Tabs.Panel>
         </Tabs>
       ) : (

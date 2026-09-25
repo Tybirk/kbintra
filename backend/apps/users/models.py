@@ -14,7 +14,7 @@ from django.db import models
 from django.utils import timezone
 
 if TYPE_CHECKING:
-    pass
+    from apps.expenses.models import Expense
 
 
 class UserManager(BaseUserManager["User"]):
@@ -158,6 +158,13 @@ class User(AbstractUser):
             "and view the food cost report)."
         ),
     )
+    is_food_economy_admin = models.BooleanField(
+        default=False,
+        help_text=(
+            "Madøkonomiansvarlig: gets the notice for udlæg to fællesmad and may mark "
+            "those (only those) paid or rejected."
+        ),
+    )
 
     @property
     def age(self) -> int | None:
@@ -193,6 +200,16 @@ class User(AbstractUser):
     def has_economy_admin(self) -> bool:
         """Regular admins (is_staff) implicitly have economy admin privileges."""
         return self.is_staff or self.is_economy_admin
+
+    def can_process_expense(self, expense: Expense) -> bool:
+        """Whether this user may mark *expense* paid/rejected.
+
+        The treasurer (economy admin, or staff) settles every udlæg; the
+        madøkonomiansvarlig settles only the ones flagged ``food_related``.
+        """
+        if self.has_economy_admin:
+            return True
+        return bool(self.is_food_economy_admin and expense.food_related)
 
     # Accessibility preference
     accessibility_mode = models.BooleanField(

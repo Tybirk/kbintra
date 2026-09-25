@@ -33,6 +33,8 @@ export interface User {
 
   is_economy_admin: boolean
 
+  is_food_economy_admin: boolean
+
   date_joined: string
 
   accessibility_mode: boolean

@@ -278,6 +278,11 @@ DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "KB Intra <noreply@kbintra.
 # submitted. Empty disables the notice (e.g. in dev).
 ECONOMY_EMAIL = os.getenv("ECONOMY_EMAIL", "")
 
+# Udlæg to fællesmad skip the treasurer and go to the madøkonomiansvarlig
+# (users with is_food_economy_admin). Set this to send them to one fixed
+# address instead, e.g. a shared madøkonomi inbox.
+FOOD_ECONOMY_EMAIL = os.getenv("FOOD_ECONOMY_EMAIL", "")
+
 # Max raw bytes of receipts attached to the udlæg notice, and the per-file cap
 # enforced on receipt uploads (so a receipt always fits the mail). Cloudflare
 # accepts 25 MiB only for *verified* destination addresses; ECONOMY_EMAIL is
