@@ -45,5 +45,6 @@ export function formatBirthdateWithAge(
 
   const date = parsed.format("D. MMMM YYYY")
   const age = ageInYears(birthdate)
-  return age !== null && age >= 0 ? `${date} (${age} år)` : date
+  // Non-breaking, so a narrow card never splits it into "(33" / "år)".
+  return age !== null && age >= 0 ? `${date} (${age}\u00a0år)` : date
 }

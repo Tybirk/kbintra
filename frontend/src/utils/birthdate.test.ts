@@ -13,18 +13,24 @@ describe("formatBirthdateWithAge", () => {
   })
 
   it("writes the full date with the age in parentheses", () => {
-    expect(formatBirthdateWithAge("1992-10-04")).toBe("4. oktober 1992 (33 år)")
+    expect(formatBirthdateWithAge("1992-10-04")).toBe(
+      "4. oktober 1992 (33\u00a0år)",
+    )
   })
 
   it("has not counted a birthday that is still ahead this year", () => {
     // 4. oktober is a month away from the mocked today, so 1992 is 33, not 34.
-    expect(formatBirthdateWithAge("1992-10-04")).toContain("(33 år)")
+    expect(formatBirthdateWithAge("1992-10-04")).toContain("(33\u00a0år)")
     // 26. juni has passed, so this one has had its birthday.
-    expect(formatBirthdateWithAge("2024-06-26")).toBe("26. juni 2024 (2 år)")
+    expect(formatBirthdateWithAge("2024-06-26")).toBe(
+      "26. juni 2024 (2\u00a0år)",
+    )
   })
 
   it("says '1 år' rather than '1 års'", () => {
-    expect(formatBirthdateWithAge("2025-06-26")).toBe("26. juni 2025 (1 år)")
+    expect(formatBirthdateWithAge("2025-06-26")).toBe(
+      "26. juni 2025 (1\u00a0år)",
+    )
   })
 
   it("returns null for a missing birthdate", () => {
