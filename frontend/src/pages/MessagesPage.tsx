@@ -1352,7 +1352,11 @@ function ChatArea({
             )}
             <Popover
               opened={participantsPopoverOpened}
-              onClose={closeParticipantsPopover}
+              // Controlled, so a tap outside or Escape arrives as onChange(false);
+              // onClose alone never fired and the list stayed open.
+              onChange={(opened) => {
+                if (!opened) closeParticipantsPopover()
+              }}
               position="bottom-start"
               shadow="md"
               withinPortal
@@ -1417,13 +1421,15 @@ function ChatArea({
               </Popover.Target>
               <Popover.Dropdown>
                 <ScrollArea.Autosize mah={320}>
-                  <Stack gap="xs">
+                  {/* Rows touch, 36 px each: no dead gap between tap targets. */}
+                  <Stack gap={0}>
                     {allParticipants.map((p) => (
                       <UnstyledButton
                         key={p.id}
                         component={Link}
                         to={`/profil/${p.id}`}
                         onClick={closeParticipantsPopover}
+                        py={5}
                       >
                         <Group gap="sm" wrap="nowrap">
                           <Avatar src={p.profile_picture} radius="xl" size="sm">
