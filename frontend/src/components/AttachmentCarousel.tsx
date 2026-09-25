@@ -106,6 +106,11 @@ export function AttachmentCarousel({
 
   const [embla, setEmbla] = useState<EmblaCarouselType | null>(null)
 
+  // The slide on screen, once the reader has moved; null means the one opened.
+  const [slide, setSlide] = useState<number | null>(null)
+
+  useEffect(() => setSlide(null), [opened, initialIndex])
+
   // Arrow keys navigate the carousel while the modal is open. Skip when the
   // user is typing in a form field so we don't hijack input cursors.
   useEffect(() => {
@@ -152,6 +157,17 @@ export function AttachmentCarousel({
     : 0
 
   if (orderedAttachments.length === 0) return null
+
+  // Only the slide on screen and its neighbours render. Every slide loads its
+  // file — the original, for a photo — and a PDF holds canvases, so rendering
+  // them all downloaded 22 MB of a 9-photo message to show one of them.
+  const current = slide ?? Math.max(adjustedInitialIndex, 0)
+
+  const isNear = (index: number) => {
+    const distance = Math.abs(index - current)
+
+    return Math.min(distance, orderedAttachments.length - distance) <= 1
+  }
 
   // Single image: skip the carousel preview entirely and open the zoom viewer directly.
   if (
@@ -216,6 +232,7 @@ export function AttachmentCarousel({
           previousControlIcon={<IconChevronLeft size={24} />}
           emblaOptions={{ loop: true }}
           getEmblaApi={setEmbla}
+          onSlideChange={setSlide}
           styles={{
             root: { height: "100%" },
 
@@ -263,14 +280,16 @@ export function AttachmentCarousel({
             },
           }}
         >
-          {orderedAttachments.map((attachment) => (
+          {orderedAttachments.map((attachment, index) => (
             <Carousel.Slide key={attachment.id}>
-              <SlideContent
-                attachment={attachment}
-                isMobile={isMobile}
-                opened={opened}
-                onImageZoom={(src, name) => setZoomImage({ src, name })}
-              />
+              {isNear(index) && (
+                <SlideContent
+                  attachment={attachment}
+                  isMobile={isMobile}
+                  opened={opened}
+                  onImageZoom={(src, name) => setZoomImage({ src, name })}
+                />
+              )}
             </Carousel.Slide>
           ))}
         </Carousel>
