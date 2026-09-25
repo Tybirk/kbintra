@@ -143,7 +143,7 @@ class Command(BaseCommand):
                         user.is_over_50 = is_over_50
                         user.can_be_head_chef = can_be_head_chef
                         user.prefers_cooking_with_housemate = prefers_housemate
-                        user.food_team_comment = comment
+                        user.food_team_pause_reason = comment
                         user.save()
                         self.stdout.write(f"  Updated user: {first_name} ({email})")
                     else:
@@ -157,7 +157,7 @@ class Command(BaseCommand):
                             is_over_50=is_over_50,
                             can_be_head_chef=can_be_head_chef,
                             prefers_cooking_with_housemate=prefers_housemate,
-                            food_team_comment=comment,
+                            food_team_pause_reason=comment,
                         )
                         created_users += 1
                         self.stdout.write(

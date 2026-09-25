@@ -44,7 +44,12 @@ import {
   unsubscribeFromPushNotifications,
 } from "../utils/pushNotifications"
 
-import type { NotificationPreference } from "../types"
+import type { NotificationPreference, NotificationGroup } from "../types"
+
+type ChannelPrefix = "notify" | "email" | "push"
+
+const prefBool = (p: NotificationPreference, k: string): boolean =>
+  Boolean((p as unknown as Record<string, unknown>)[k])
 
 export default function NotificationPreferencesPage() {
   const [searchParams] = useSearchParams()
@@ -91,6 +96,16 @@ export default function NotificationPreferencesPage() {
     queryFn: notificationsApi.getPreferences,
   })
 
+  const {
+    data: schema,
+    isLoading: isSchemaLoading,
+    isError: isSchemaError,
+  } = useQuery({
+    queryKey: ["notification-preference-schema"],
+
+    queryFn: notificationsApi.getPreferenceSchema,
+  })
+
   const updateMutation = useMutation({
     mutationFn: notificationsApi.updatePreferences,
 
@@ -129,8 +144,12 @@ export default function NotificationPreferencesPage() {
     },
   })
 
-  const handleToggle = (key: keyof NotificationPreference, value: boolean) => {
-    updateMutation.mutate({ [key]: value })
+  const handleSchemaToggle = (
+    channel: ChannelPrefix,
+    fieldKey: string,
+    value: boolean,
+  ) => {
+    updateMutation.mutate({ [`${channel}_${fieldKey}`]: value })
   }
 
   const handlePushToggle = async () => {
@@ -169,6 +188,14 @@ export default function NotificationPreferencesPage() {
             push_event_reminders: false,
 
             push_food_tickets: false,
+
+            push_food_team_reminder: false,
+
+            push_food_takeaway_ready: false,
+
+            push_food_leftovers_ready: false,
+
+            push_food_swap_request: false,
 
             push_mentions: false,
           })
@@ -213,6 +240,14 @@ export default function NotificationPreferencesPage() {
             push_event_reminders: true,
 
             push_food_tickets: true,
+
+            push_food_team_reminder: true,
+
+            push_food_takeaway_ready: true,
+
+            push_food_leftovers_ready: true,
+
+            push_food_swap_request: true,
 
             push_mentions: true,
           })
@@ -278,7 +313,7 @@ export default function NotificationPreferencesPage() {
       const error = err as { response?: { data?: { error?: string } } }
 
       setTestPushError(
-        error.response?.data?.error || "Testnotifikationen kunne ikke sendes.",
+        error.response?.data?.error || "Failed to send test notification",
       )
     } finally {
       setTestPushLoading(false)
@@ -310,13 +345,43 @@ export default function NotificationPreferencesPage() {
       const error = err as { response?: { data?: { error?: string } } }
 
       setTestPushError(
-        error.response?.data?.error ||
-          "Testnotifikationen kunne ikke planlægges.",
+        error.response?.data?.error || "Failed to schedule test notification",
       )
     } finally {
       setTestPushDelayedLoading(false)
     }
   }
+
+  const renderGroups = (
+    prefs: NotificationPreference,
+    groups: NotificationGroup[],
+    channel: ChannelPrefix,
+  ) =>
+    groups.map((group) => (
+      <Box key={group.key}>
+        <Divider my="sm" label={group.label} labelPosition="left" />
+        <Stack gap="md">
+          {group.fields.map((field) => {
+            const backendKey = field.channel_keys?.[channel] ?? field.key
+            return (
+              <Switch
+                key={field.key}
+                label={field.label}
+                description={field.description}
+                checked={prefBool(prefs, `${channel}_${backendKey}`)}
+                onChange={(e) =>
+                  handleSchemaToggle(
+                    channel,
+                    backendKey,
+                    e.currentTarget.checked,
+                  )
+                }
+              />
+            )
+          })}
+        </Stack>
+      </Box>
+    ))
 
   return (
     <>
@@ -326,11 +391,11 @@ export default function NotificationPreferencesPage() {
         Notifikationsindstillinger
       </Title>
 
-      {isLoading ? (
+      {isLoading || isSchemaLoading ? (
         <Center h={200}>
           <Loader />
         </Center>
-      ) : preferences ? (
+      ) : preferences && schema && !isSchemaError ? (
         <Tabs defaultValue={searchParams.get("tab") ?? "in-app"}>
           <Tabs.List mb="md">
             <Tabs.Tab value="in-app" leftSection={<IconBell size={16} />}>
@@ -349,114 +414,7 @@ export default function NotificationPreferencesPage() {
               <Text size="sm" c="dimmed" mb="xs">
                 Vælg hvilke notifikationer du vil modtage i appen.
               </Text>
-              <Switch
-                label="Reaktioner på beskeder"
-                description="Når nogen reagerer på din besked"
-                checked={preferences.notify_message_reactions}
-                onChange={(e) =>
-                  handleToggle(
-                    "notify_message_reactions",
-
-                    e.currentTarget.checked,
-                  )
-                }
-              />
-              <Switch
-                label="Vigtig post"
-                description="Når ny vigtig post bliver oprettet"
-                checked={preferences.notify_announcements}
-                onChange={(e) =>
-                  handleToggle("notify_announcements", e.currentTarget.checked)
-                }
-              />
-              <Switch
-                label="Vigtig post redigeret"
-                description="Når en vigtig post bliver redigeret"
-                checked={preferences.notify_announcement_updates}
-                onChange={(e) =>
-                  handleToggle(
-                    "notify_announcement_updates",
-
-                    e.currentTarget.checked,
-                  )
-                }
-              />
-              <Switch
-                label="Forum-abonnementer"
-                description="Nye tråde i grupper du abonnerer på"
-                checked={preferences.notify_forum_subscriptions}
-                onChange={(e) =>
-                  handleToggle(
-                    "notify_forum_subscriptions",
-
-                    e.currentTarget.checked,
-                  )
-                }
-              />
-              <Switch
-                label="Al aktivitet i grupper"
-                description="Nye svar i alle tråde i grupper du abonnerer på (ikke kun tråde du deltager i)"
-                checked={preferences.notify_subgroup_activity}
-                onChange={(e) =>
-                  handleToggle(
-                    "notify_subgroup_activity",
-
-                    e.currentTarget.checked,
-                  )
-                }
-              />
-              <Switch
-                label="Trådsvar"
-                description="Når nogen svarer på din tråd"
-                checked={preferences.notify_thread_replies}
-                onChange={(e) =>
-                  handleToggle("notify_thread_replies", e.currentTarget.checked)
-                }
-              />
-              <Switch
-                label="Reaktioner"
-                description="Når nogen reagerer på dit indlæg"
-                checked={preferences.notify_post_reactions}
-                onChange={(e) =>
-                  handleToggle("notify_post_reactions", e.currentTarget.checked)
-                }
-              />
-              <Switch
-                label="Begivenhedspåmindelser"
-                description="Påmindelser om kommende kalenderbegivenheder"
-                checked={preferences.notify_event_reminders}
-                onChange={(e) =>
-                  handleToggle(
-                    "notify_event_reminders",
-
-                    e.currentTarget.checked,
-                  )
-                }
-              />
-              <Switch
-                label="Begivenheder"
-                description="Når nye begivenheder oprettes eller opdateres"
-                checked={preferences.notify_events}
-                onChange={(e) =>
-                  handleToggle("notify_events", e.currentTarget.checked)
-                }
-              />
-              <Switch
-                label="Omtaler"
-                description="Når nogen nævner dig med @"
-                checked={preferences.notify_mentions}
-                onChange={(e) =>
-                  handleToggle("notify_mentions", e.currentTarget.checked)
-                }
-              />
-              <Switch
-                label="Bildeling"
-                description="Når nogen vil låne din bil, eller der er nyt om et lån"
-                checked={preferences.notify_car_sharing}
-                onChange={(e) =>
-                  handleToggle("notify_car_sharing", e.currentTarget.checked)
-                }
-              />
+              {renderGroups(preferences, schema.groups, "notify")}
             </Stack>
           </Tabs.Panel>
 
@@ -466,106 +424,7 @@ export default function NotificationPreferencesPage() {
                 Få en e-mail når du modtager en notifikation. Aktivér e-mail for
                 de notifikationstyper du ønsker.
               </Text>
-              <Switch
-                label="Nye beskeder"
-                description="E-mail når nogen sender dig en direkte besked"
-                checked={preferences.email_messages}
-                onChange={(e) =>
-                  handleToggle("email_messages", e.currentTarget.checked)
-                }
-              />
-              <Switch
-                label="Opslag"
-                description="E-mail når nye fællesskabsopslag bliver oprettet"
-                checked={preferences.email_announcements}
-                onChange={(e) =>
-                  handleToggle("email_announcements", e.currentTarget.checked)
-                }
-              />
-              <Switch
-                label="Vigtig post redigeret"
-                description="E-mail når en vigtig post bliver redigeret"
-                checked={preferences.email_announcement_updates}
-                onChange={(e) =>
-                  handleToggle(
-                    "email_announcement_updates",
-
-                    e.currentTarget.checked,
-                  )
-                }
-              />
-              <Switch
-                label="Forum-abonnementer"
-                description="E-mail for nye tråde i grupper du abonnerer på"
-                checked={preferences.email_forum_subscriptions}
-                onChange={(e) =>
-                  handleToggle(
-                    "email_forum_subscriptions",
-
-                    e.currentTarget.checked,
-                  )
-                }
-              />
-              <Switch
-                label="Al aktivitet i grupper"
-                description="E-mail for nye svar i alle tråde i grupper du abonnerer på"
-                checked={preferences.email_subgroup_activity}
-                onChange={(e) =>
-                  handleToggle(
-                    "email_subgroup_activity",
-
-                    e.currentTarget.checked,
-                  )
-                }
-              />
-              <Switch
-                label="Trådsvar"
-                description="E-mail når nogen svarer på din tråd"
-                checked={preferences.email_thread_replies}
-                onChange={(e) =>
-                  handleToggle("email_thread_replies", e.currentTarget.checked)
-                }
-              />
-              <Switch
-                label="Reaktioner"
-                description="E-mail når nogen reagerer på dit indlæg"
-                checked={preferences.email_post_reactions}
-                onChange={(e) =>
-                  handleToggle("email_post_reactions", e.currentTarget.checked)
-                }
-              />
-              <Switch
-                label="Begivenhedspåmindelser"
-                description="E-mail-påmindelser om kommende kalenderbegivenheder"
-                checked={preferences.email_event_reminders}
-                onChange={(e) =>
-                  handleToggle("email_event_reminders", e.currentTarget.checked)
-                }
-              />
-              <Switch
-                label="Begivenheder"
-                description="E-mail når nye begivenheder oprettes eller opdateres"
-                checked={preferences.email_events}
-                onChange={(e) =>
-                  handleToggle("email_events", e.currentTarget.checked)
-                }
-              />
-              <Switch
-                label="Omtaler"
-                description="E-mail når nogen nævner dig med @"
-                checked={preferences.email_mentions}
-                onChange={(e) =>
-                  handleToggle("email_mentions", e.currentTarget.checked)
-                }
-              />
-              <Switch
-                label="Bildeling"
-                description="E-mail om forespørgsler og lån af biler"
-                checked={preferences.email_car_sharing}
-                onChange={(e) =>
-                  handleToggle("email_car_sharing", e.currentTarget.checked)
-                }
-              />
+              {renderGroups(preferences, schema.groups, "email")}
             </Stack>
           </Tabs.Panel>
 
@@ -606,125 +465,7 @@ export default function NotificationPreferencesPage() {
                       <Text size="sm" c="dimmed" mt="md" mb="xs">
                         Vælg hvilke push-notifikationer du vil modtage.
                       </Text>
-                      <Switch
-                        label="Nye beskeder"
-                        description="Push-notifikation når nogen sender dig en direkte besked"
-                        checked={preferences.push_messages}
-                        onChange={(e) =>
-                          handleToggle("push_messages", e.currentTarget.checked)
-                        }
-                      />
-                      <Switch
-                        label="Opslag"
-                        description="Push-notifikation når nye fællesskabsopslag bliver oprettet"
-                        checked={preferences.push_announcements}
-                        onChange={(e) =>
-                          handleToggle(
-                            "push_announcements",
-
-                            e.currentTarget.checked,
-                          )
-                        }
-                      />
-                      <Switch
-                        label="Vigtig post redigeret"
-                        description="Push-notifikation når en vigtig post bliver redigeret"
-                        checked={preferences.push_announcement_updates}
-                        onChange={(e) =>
-                          handleToggle(
-                            "push_announcement_updates",
-
-                            e.currentTarget.checked,
-                          )
-                        }
-                      />
-                      <Switch
-                        label="Forum-abonnementer"
-                        description="Push-notifikation for nye tråde i grupper du abonnerer på"
-                        checked={preferences.push_forum_subscriptions}
-                        onChange={(e) =>
-                          handleToggle(
-                            "push_forum_subscriptions",
-
-                            e.currentTarget.checked,
-                          )
-                        }
-                      />
-                      <Switch
-                        label="Al aktivitet i grupper"
-                        description="Push-notifikation for nye svar i alle tråde i grupper du abonnerer på"
-                        checked={preferences.push_subgroup_activity}
-                        onChange={(e) =>
-                          handleToggle(
-                            "push_subgroup_activity",
-
-                            e.currentTarget.checked,
-                          )
-                        }
-                      />
-                      <Switch
-                        label="Trådsvar"
-                        description="Push-notifikation når nogen svarer på din tråd"
-                        checked={preferences.push_thread_replies}
-                        onChange={(e) =>
-                          handleToggle(
-                            "push_thread_replies",
-
-                            e.currentTarget.checked,
-                          )
-                        }
-                      />
-                      <Switch
-                        label="Reaktioner"
-                        description="Push-notifikation når nogen reagerer på dit indlæg"
-                        checked={preferences.push_post_reactions}
-                        onChange={(e) =>
-                          handleToggle(
-                            "push_post_reactions",
-
-                            e.currentTarget.checked,
-                          )
-                        }
-                      />
-                      <Switch
-                        label="Begivenhedspåmindelser"
-                        description="Push-påmindelser om kommende kalenderbegivenheder"
-                        checked={preferences.push_event_reminders}
-                        onChange={(e) =>
-                          handleToggle(
-                            "push_event_reminders",
-
-                            e.currentTarget.checked,
-                          )
-                        }
-                      />
-                      <Switch
-                        label="Begivenheder"
-                        description="Push-notifikation når nye begivenheder oprettes eller opdateres"
-                        checked={preferences.push_events}
-                        onChange={(e) =>
-                          handleToggle("push_events", e.currentTarget.checked)
-                        }
-                      />
-                      <Switch
-                        label="Omtaler"
-                        description="Push-notifikation når nogen nævner dig med @"
-                        checked={preferences.push_mentions}
-                        onChange={(e) =>
-                          handleToggle("push_mentions", e.currentTarget.checked)
-                        }
-                      />
-                      <Switch
-                        label="Bildeling"
-                        description="Push-notifikation om forespørgsler og lån af biler"
-                        checked={preferences.push_car_sharing}
-                        onChange={(e) =>
-                          handleToggle(
-                            "push_car_sharing",
-                            e.currentTarget.checked,
-                          )
-                        }
-                      />
+                      {renderGroups(preferences, schema.groups, "push")}
 
                       <Divider my="md" label="Debug" labelPosition="center" />
 
@@ -769,7 +510,12 @@ export default function NotificationPreferencesPage() {
             </Stack>
           </Tabs.Panel>
         </Tabs>
-      ) : null}
+      ) : (
+        <Alert icon={<IconInfoCircle size={16} />} color="red">
+          Kunne ikke indlæse notifikationsindstillinger. Prøv at genindlæse
+          siden.
+        </Alert>
+      )}
     </>
   )
 }

@@ -80,3 +80,23 @@ h1, h2, h3, h4, h5, h6 {
 [data-mantine-color-scheme="dark"] .advanced-search-result:active {
   background-color: var(--mantine-color-dark-5) !important;
 }
+
+/* Print-to-PDF for a single recipe. While printing, the recipe drawer adds
+   `printing-recipe` to <body>; we hide everything except the recipe content so
+   the browser's "Save as PDF" yields a clean one-recipe sheet. */
+@media print {
+  body.printing-recipe * {
+    visibility: hidden;
+  }
+  body.printing-recipe .recipe-print-area,
+  body.printing-recipe .recipe-print-area * {
+    visibility: visible;
+  }
+  body.printing-recipe .recipe-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 16px;
+  }
+}

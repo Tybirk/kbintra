@@ -2,6 +2,8 @@
 Tests for the Houses app.
 """
 
+from datetime import date
+
 import pytest
 
 from apps.houses.models import Car, Child
@@ -50,14 +52,27 @@ class TestChildModel:
         """Test string representation of child."""
         assert "Test Child" in str(child)
 
-    def test_child_ordering(self, db, house):
-        """Test that children are ordered by name."""
-        child_b = Child.objects.create(house=house, name="Bob")
-        child_a = Child.objects.create(house=house, name="Alice")
+    def test_child_ordering_is_oldest_first(self, db, house):
+        """Children are listed by descending age, the way families name them."""
+        youngest = Child.objects.create(house=house, name="Bob", birthdate=date(2022, 5, 1))
+        oldest = Child.objects.create(house=house, name="Alice", birthdate=date(2015, 11, 30))
+        middle = Child.objects.create(house=house, name="Zenia", birthdate=date(2019, 7, 2))
 
-        children = list(Child.objects.filter(house=house))
-        assert children[0] == child_a
-        assert children[1] == child_b
+        assert list(Child.objects.filter(house=house)) == [oldest, middle, youngest]
+
+    def test_child_without_a_birthdate_sorts_last(self, db, house):
+        """A missing birthdate must not sort as "born in year zero"."""
+        unknown = Child.objects.create(house=house, name="Alice")
+        known = Child.objects.create(house=house, name="Bob", birthdate=date(2022, 5, 1))
+
+        assert list(Child.objects.filter(house=house)) == [known, unknown]
+
+    def test_children_of_the_same_age_fall_back_to_name(self, db, house):
+        """Twins get a stable order rather than an arbitrary one."""
+        bob = Child.objects.create(house=house, name="Bob", birthdate=date(2020, 1, 1))
+        alice = Child.objects.create(house=house, name="Alice", birthdate=date(2020, 1, 1))
+
+        assert list(Child.objects.filter(house=house)) == [alice, bob]
 
 
 class TestCarModel:
@@ -105,6 +120,32 @@ class TestHouseAPI:
         response = authenticated_client.get(f"/api/houses/{house.slug}/")
         assert response.status_code == 200
         assert response.json()["name"] == "House 1"
+
+    def test_inhabitant_birthdate_is_returned_in_full(self, api_client, user_with_house):
+        """Adults' birthdates carry the year, so the page can show an age."""
+        user_with_house.birthdate = date(1983, 3, 14)
+        user_with_house.save()
+        api_client.force_authenticate(user=user_with_house)
+
+        response = api_client.get(f"/api/houses/{user_with_house.house.slug}/")
+        assert response.status_code == 200
+        assert response.json()["inhabitants"][0]["birthdate"] == "1983-03-14"
+
+    def test_inhabitant_without_a_birthdate_reports_none(self, api_client, user_with_house):
+        """A blank birthdate stays blank rather than becoming a fake date."""
+        assert user_with_house.birthdate is None
+        api_client.force_authenticate(user=user_with_house)
+
+        response = api_client.get(f"/api/houses/{user_with_house.house.slug}/")
+        assert response.json()["inhabitants"][0]["birthdate"] is None
+
+    def test_child_birthdate_is_returned_in_full(self, api_client, user_with_house, house):
+        """Children keep the year — their age is the point of showing it."""
+        Child.objects.create(house=house, name="Test Child", birthdate=date(2019, 7, 2))
+        api_client.force_authenticate(user=user_with_house)
+
+        response = api_client.get(f"/api/houses/{house.slug}/")
+        assert response.json()["children"][0]["birthdate"] == "2019-07-02"
 
 
 class TestMyHouseAPI:

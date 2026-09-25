@@ -17,7 +17,9 @@ import {
   IconDoor,
   IconLink,
   IconReceipt2,
+  IconTool,
   IconSettings,
+  IconUsersGroup,
 } from "@tabler/icons-react"
 
 import { forumApi } from "../api/forum"
@@ -65,7 +67,7 @@ const navItems: NavItem[] = [
 
   { icon: IconSoup, label: "Mad", path: "/mad" },
 
-  //{ icon: IconUsersGroup, label: "Madhold", path: "/madhold" },
+  { icon: IconUsersGroup, label: "Madhold", path: "/madhold" },
 
   { icon: IconCalendar, label: "Begivenhedskalender", path: "/kalender" },
 
@@ -83,14 +85,16 @@ const navItems: NavItem[] = [
 
   { icon: IconReceipt2, label: "Udlæg", path: "/udlaeg" },
 
+  { icon: IconTool, label: "Indrapportering", path: "/indrapportering" },
+
   { icon: IconLink, label: "Nyttige links", path: "/links" },
 ]
 
 // Features still being trialled: shown on local dev and the test site, kept off
 // the real site until we are happy with them. Only the nav entry is hidden — the
 // route and the API stay open, so this is discovery-hiding, not access control.
-// Empty: Udlæg was released to everyone, and nothing is being trialled right now.
-const TRIAL_ONLY_PATHS: string[] = []
+// Madhold: shipped to prod with the rest of develop, but not yet announced.
+const TRIAL_ONLY_PATHS: string[] = ["/madhold"]
 
 interface AppNavbarProps {
   onNavigate?: () => void

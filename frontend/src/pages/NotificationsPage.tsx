@@ -44,6 +44,7 @@ import {
   IconEdit,
   IconReceipt2,
   IconCar,
+  IconTool,
 } from "@tabler/icons-react"
 
 import dayjs from "dayjs"
@@ -57,13 +58,19 @@ import type { Notification, NotificationType } from "../types"
 const notificationIcons: Record<NotificationType, React.ReactNode> = {
   new_message: <IconMessage size={20} />,
 
+  message_reaction: <IconHeart size={20} />,
+
   new_announcement: <IconSpeakerphone size={20} />,
+
+  announcement_updated: <IconSpeakerphone size={20} />,
 
   new_thread: <IconMessageCircle size={20} />,
 
   thread_reply: <IconMessageCircle size={20} />,
 
   post_reply: <IconMessageCircle size={20} />,
+
+  subgroup_activity: <IconMessageCircle size={20} />,
 
   post_reaction: <IconHeart size={20} />,
 
@@ -77,7 +84,27 @@ const notificationIcons: Record<NotificationType, React.ReactNode> = {
 
   food_ticket: <IconToolsKitchen2 size={20} />,
 
+  food_team_reminder: <IconToolsKitchen2 size={20} />,
+
+  food_takeaway_ready: <IconToolsKitchen2 size={20} />,
+
+  food_leftovers_ready: <IconToolsKitchen2 size={20} />,
+
+  food_swap_request: <IconToolsKitchen2 size={20} />,
+
+  food_team_shift_taken: <IconToolsKitchen2 size={20} />,
+
+  food_team_plan_ready: <IconToolsKitchen2 size={20} />,
+
+  food_team_wishes_open: <IconToolsKitchen2 size={20} />,
+
+  food_team_pause_check: <IconToolsKitchen2 size={20} />,
+
   mention: <IconAt size={20} />,
+
+  subgroup_member_added: <IconMessageCircle size={20} />,
+
+  subgroup_member_removed: <IconMessageCircle size={20} />,
 
   post_edited_by_admin: <IconEdit size={20} />,
 
@@ -90,18 +117,28 @@ const notificationIcons: Record<NotificationType, React.ReactNode> = {
   car_loan_request: <IconCar size={20} />,
 
   car_loan_update: <IconCar size={20} />,
+
+  report_new: <IconTool size={20} />,
+
+  report_update: <IconTool size={20} />,
 }
 
 const notificationColors: Record<NotificationType, string> = {
   new_message: "blue",
 
+  message_reaction: "pink",
+
   new_announcement: "orange",
+
+  announcement_updated: "orange",
 
   new_thread: "green",
 
   thread_reply: "green",
 
   post_reply: "green",
+
+  subgroup_activity: "green",
 
   post_reaction: "pink",
 
@@ -115,7 +152,27 @@ const notificationColors: Record<NotificationType, string> = {
 
   food_ticket: "teal",
 
+  food_team_reminder: "teal",
+
+  food_takeaway_ready: "teal",
+
+  food_leftovers_ready: "teal",
+
+  food_swap_request: "teal",
+
+  food_team_shift_taken: "teal",
+
+  food_team_plan_ready: "teal",
+
+  food_team_wishes_open: "teal",
+
+  food_team_pause_check: "teal",
+
   mention: "blue",
+
+  subgroup_member_added: "green",
+
+  subgroup_member_removed: "green",
 
   post_edited_by_admin: "orange",
 
@@ -128,6 +185,10 @@ const notificationColors: Record<NotificationType, string> = {
   car_loan_request: "grape",
 
   car_loan_update: "grape",
+
+  report_new: "orange",
+
+  report_update: "orange",
 }
 
 export default function NotificationsPage() {

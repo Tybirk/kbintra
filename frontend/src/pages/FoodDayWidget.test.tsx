@@ -39,6 +39,13 @@ vi.mock("../api/food", () => ({
     getMyTickets: vi.fn().mockResolvedValue([]),
 
     getTickets: vi.fn().mockResolvedValue([]),
+
+    // Today's widget shows a "Dagens madhold" line, so it queries the action
+    // box. Default to "no team today" — the sell-ticket tests only care that
+    // the query resolves rather than leaving the widget in a loading state.
+    getTodayActionBox: vi
+      .fn()
+      .mockResolvedValue({ on_team: false, has_team_today: false }),
   },
 }))
 

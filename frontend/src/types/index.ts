@@ -389,6 +389,30 @@ export interface UserSummary {
   phone_number?: string
 
   email?: string
+
+  birthdate?: string | null
+}
+
+/**
+ * One entry from /users/birthdays/. Children are not users, so `kind` says
+ * which this is: a user links to their profile, a child to their house page.
+ */
+export interface UpcomingBirthday {
+  kind: "user" | "child"
+
+  id: number
+
+  name: string
+
+  profile_picture: string | null
+
+  house_slug: string | null
+
+  birthdate: string
+
+  days_until: number
+
+  turning: number
 }
 
 export interface Invitation {
@@ -497,6 +521,8 @@ export interface SubgroupMember {
   created_at: string
 }
 
+export type SubgroupReporting = "off" | "open" | "closed"
+
 export interface Subgroup {
   id: number
 
@@ -536,6 +562,12 @@ export interface Subgroup {
   allows_members: boolean
 
   default_members_only: boolean
+
+  /** "off" = no indrapportering; "closed" = only the udvalg reads the queue. */
+  reporting: SubgroupReporting
+
+  /** One line saying what belongs in this udvalg's queue. May be empty. */
+  reporting_intro: string
 
   is_member: boolean
 
@@ -1598,7 +1630,7 @@ export type WsMessage = WsNewMessage | WsMessagesRead | WsTyping | WsNewConversa
 
 // Notification Types
 
-export type NotificationType = "new_message" | "new_announcement" | "new_thread" | "thread_reply" | "post_reply" | "post_reaction" | "event_created" | "event_updated" | "event_cancelled" | "event_reminder" | "food_ticket" | "mention" | "post_edited_by_admin" | "event_edited_by_admin" | "announcement_edited_by_admin" | "expense_processed" | "car_loan_request" | "car_loan_update"
+export type NotificationType = "new_message" | "message_reaction" | "new_announcement" | "announcement_updated" | "new_thread" | "thread_reply" | "post_reply" | "subgroup_activity" | "post_reaction" | "event_created" | "event_updated" | "event_cancelled" | "event_reminder" | "food_ticket" | "food_team_reminder" | "food_takeaway_ready" | "food_leftovers_ready" | "food_swap_request" | "food_team_shift_taken" | "food_team_plan_ready" | "food_team_wishes_open" | "food_team_pause_check" | "mention" | "subgroup_member_added" | "subgroup_member_removed" | "post_edited_by_admin" | "event_edited_by_admin" | "announcement_edited_by_admin" | "expense_processed" | "car_loan_request" | "car_loan_update" | "report_new" | "report_update"
 
 export interface MentionUser {
   id: number
@@ -1673,6 +1705,8 @@ export interface NotificationPreference {
 
   notify_car_sharing: boolean
 
+  notify_reports: boolean
+
   // Email preferences
 
   email_messages: boolean
@@ -1698,6 +1732,8 @@ export interface NotificationPreference {
   email_mentions: boolean
 
   email_car_sharing: boolean
+
+  email_reports: boolean
 
   // Push preferences
 
@@ -1725,12 +1761,55 @@ export interface NotificationPreference {
 
   push_car_sharing: boolean
 
+  // Food team preferences (madhold launch)
+
+  notify_food_team_reminder: boolean
+  notify_food_takeaway_ready: boolean
+  notify_food_leftovers_ready: boolean
+  notify_food_swap_request: boolean
+
+  email_food_team_reminder: boolean
+  email_food_takeaway_ready: boolean
+  email_food_leftovers_ready: boolean
+  email_food_swap_request: boolean
+
+  push_food_team_reminder: boolean
+  push_food_takeaway_ready: boolean
+  push_food_leftovers_ready: boolean
+  push_food_swap_request: boolean
+
+  push_reports: boolean
+
   created_at: string
 
   updated_at: string
 }
 
+// Grouped notification-settings schema (from /notifications/preferences/schema/)
+
+export interface NotificationGroupField {
+  key: string
+  label: string
+  description: string
+  // Optional per-channel override for the underlying model field name.
+  // Useful when a single toggle row maps to different backend fields per
+  // channel (e.g. in-app `notify_message_reactions` vs. email/push umbrella
+  // `email_messages`/`push_messages`).
+  channel_keys?: Partial<Record<"notify" | "email" | "push", string>>
+}
+
+export interface NotificationGroup {
+  key: string
+  label: string
+  fields: NotificationGroupField[]
+}
+
+export interface NotificationPreferenceSchema {
+  groups: NotificationGroup[]
+}
+
 export interface UpdateNotificationPreferenceData {
+  [key: string]: boolean | undefined
   notify_message_reactions?: boolean
 
   notify_announcements?: boolean
@@ -1754,6 +1833,8 @@ export interface UpdateNotificationPreferenceData {
   notify_mentions?: boolean
 
   notify_car_sharing?: boolean
+
+  notify_reports?: boolean
 
   email_messages?: boolean
 
@@ -1779,6 +1860,8 @@ export interface UpdateNotificationPreferenceData {
 
   email_car_sharing?: boolean
 
+  email_reports?: boolean
+
   push_messages?: boolean
 
   push_announcements?: boolean
@@ -1802,6 +1885,8 @@ export interface UpdateNotificationPreferenceData {
   push_mentions?: boolean
 
   push_car_sharing?: boolean
+
+  push_reports?: boolean
 }
 
 // Food Team Types
@@ -1859,7 +1944,27 @@ export interface FoodTeamListItem {
 
   is_my_team: boolean
 
+  /** All the names as one flat line, where only a single line fits. */
   members_display: string
+
+  /** The team member by member, for cards that show faces and names. */
+  members_preview: TeamMemberPreview[]
+}
+
+/** One name on a team card, printed without expanding the card. */
+export interface TeamMemberPreview {
+  user_id: number
+
+  first_name: string
+
+  house_number: string
+
+  profile_picture: string | null
+
+  is_own: boolean
+
+  /** Someone else from your own house — printed in bold on the team card. */
+  is_housemate: boolean
 }
 
 export interface SwapRequestMembership {
@@ -1950,6 +2055,49 @@ export interface CreateCycleData {
   wish_deadline: string
 }
 
+/** What deleting a cycle's teams destroys (see cycles/<id>/reset-teams/). */
+export interface CycleResetCounts {
+  teams: number
+
+  memberships: number
+
+  pending_swap_requests: number
+
+  open_broadcasts: number
+
+  favours: number
+}
+
+/** GET cycles/<id>/reset-teams/ — a dry preview for the confirmation modal. */
+export interface CycleResetPreview
+  extends CycleResetCounts {
+  /** True when a cooking date has already passed, which blocks the reset. */
+  has_past_dates: boolean
+
+  past_dates: string[]
+}
+
+/** POST cycles/<id>/reset-teams/ — what was actually deleted. */
+export interface CycleResetResult {
+  detail: string
+
+  status: CycleStatus
+
+  deleted: CycleResetCounts
+}
+
+export interface SuggestedCyclePlan {
+  eligible_count: number
+
+  suggested_day_count: number
+
+  name: string
+
+  cooking_dates: string[]
+
+  wish_deadline: string
+}
+
 export interface FoodTeamWish {
   id: number
 
@@ -1963,7 +2111,7 @@ export interface FoodTeamWish {
 
   available_date_count: number
 
-  comment: string
+  is_unavailable: boolean
 
   created_at: string
 
@@ -1973,7 +2121,14 @@ export interface FoodTeamWish {
 export interface CreateWishData {
   available_dates: string[]
 
-  comment?: string
+  is_unavailable?: boolean
+
+  /**
+   * Why you are out of this period. Stored on the profile
+   * (`food_team_pause_reason`), not on the wish, so it outlives the cycle.
+   * Only read when `is_unavailable` is true.
+   */
+  pause_reason?: string
 }
 
 export interface TeamGenerationResult {
@@ -1986,6 +2141,185 @@ export interface TeamGenerationResult {
   unassigned_persons: string[]
 
   warnings: string[]
+
+  /** Trailing dates that had too few cooks and roll into the next period. */
+  dropped_dates: string[]
+}
+
+// Madhold launch: takeover/favours, broadcast swaps, action box, profile
+
+export type FavourDirection = "owed_to_me" | "i_owe"
+
+export interface TeamFavour {
+  id: number
+  creditor: TeamMemberUser
+  debtor: TeamMemberUser
+  origin_date: string
+  settled: boolean
+  settled_at: string | null
+  note: string
+  direction: FavourDirection
+  created_at: string
+}
+
+export interface TakeoverData {
+  target_membership_id: number
+  note?: string
+  // Set to work off a favour you owe this person, instead of being owed a new
+  // one. The shift still moves; the named favour is marked settled.
+  settle_favour_id?: number
+}
+
+// One of the creditor's upcoming shifts, offered as a way to settle up.
+export interface FavourRepayOption {
+  membership_id: number
+  date: string
+  day_name: string
+}
+
+export interface SwapBroadcastMembership {
+  id: number
+  user: TeamMemberUser
+  house_number: string
+  date: string
+  day_name: string
+}
+
+export type BroadcastStatus = "open" | "accepted" | "cancelled"
+
+export interface SwapBroadcast {
+  id: number
+  requester: TeamMemberUser
+  requester_membership: SwapBroadcastMembership
+  available_dates: string[]
+  message: string
+  status: BroadcastStatus
+  accepted_by: TeamMemberUser | null
+  is_mine: boolean
+  can_accept: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateSwapBroadcastData {
+  requester_membership_id: number
+  available_dates: string[]
+  message?: string
+}
+
+export interface RecipeIngredient {
+  amount: string
+  unit: string
+  name: string
+  comment: string
+}
+
+export interface RecipeSheet {
+  code: string
+  day: number
+  index: number
+  name: string
+  weekday: string
+  url: string
+  ingredients: RecipeIngredient[]
+  steps: string[]
+}
+
+export interface FrontPageBlock {
+  text: string
+  heading: boolean
+}
+
+// One weekday's "forside" — the detailed menu-document page for that day.
+export interface DayFrontPage {
+  day: number
+  weekday: string
+  title: string
+  blocks: FrontPageBlock[]
+}
+
+export interface TodayLeftoversPost {
+  has_leftovers: boolean
+  team_id?: number
+  date?: string
+  day_name?: string
+  members?: string[]
+  message?: string
+  image_url?: string
+  announced_at?: string
+}
+
+export interface TodayTeamActionBox {
+  on_team: boolean
+  has_team_today: boolean
+  team_id?: number
+  date?: string
+  day_name?: string
+  members?: FoodTeamMember[]
+  // Whether today's team has already broadcast each announcement, so the
+  // buttons can render as sent on load instead of only after a rejected press.
+  takeaway_sent?: boolean
+  leftovers_sent?: boolean
+}
+
+// Lazy recipe payload — fetched separately from the action box so the widget
+// can render members + buttons before any Drive call resolves.
+export interface TodayTeamRecipes {
+  recipe_folder_url: string
+  recipe_file_url: string
+  recipes: RecipeSheet[]
+  front_page: DayFrontPage | null
+}
+
+// Whole-week recipes for the standalone "Ugens opskrifter" page.
+export interface WeekRecipes {
+  week_number: number
+  year: number
+  recipe_folder_url: string
+  recipe_file_url: string
+  recipes: RecipeSheet[]
+  front_pages: DayFrontPage[]
+}
+
+export interface MyFoodProfile {
+  can_be_head_chef: boolean
+  prefers_cooking_with_housemate: boolean
+  /** Deduced from the birthdate when we have one; only settable when we don't. */
+  is_over_50: boolean
+  has_birthdate: boolean
+  is_exempt_from_food_teams: boolean
+  default_cooking_days: number[]
+  food_team_pause_reason: string
+  housemate_name: string
+}
+
+export interface FoodRosterEntry {
+  id: number
+  first_name: string
+  last_name: string
+  house_name: string
+  house_number: string
+  can_be_head_chef: boolean
+  prefers_cooking_with_housemate: boolean
+  is_over_50: boolean
+  is_food_admin: boolean
+  // Standing pause: set on the person, lasts until they turn it off.
+  is_exempt_from_food_teams: boolean
+  food_team_pause_reason: string
+  // This period only: comes from their wish for the cycle below.
+  is_unavailable_this_cycle: boolean
+  has_submitted_wish: boolean
+}
+
+export interface FoodRosterCycle {
+  id: number
+  name: string
+}
+
+export interface FoodRoster {
+  // Which period the per-period answers belong to; null before any cycle exists.
+  cycle: FoodRosterCycle | null
+  residents: FoodRosterEntry[]
 }
 
 // Booking Types
@@ -2187,4 +2521,125 @@ export interface AdminExpenseList {
   page: number
 
   num_pages: number
+}
+
+// Indrapportering (reports to an udvalg)
+
+export type ReportKind = "defect" | "faulty" | "suggestion"
+
+export type ReportStatus = "new" | "in_progress" | "awaiting_meeting" | "awaiting_other" | "done" | "rejected"
+
+export type ReportEventKind = "created" | "status" | "comment"
+
+export interface ReportReporter {
+  id: number
+
+  first_name: string
+
+  last_name: string
+
+  profile_picture: string | null
+}
+
+export interface ReportSubgroup {
+  id: number
+
+  name: string
+
+  slug: string
+
+  /** One line saying what belongs here, shown under the name in the picker. */
+  reporting_intro: string
+
+  /** True when only the udvalg — and each reporter — can read the queue. */
+  is_closed: boolean
+}
+
+export interface ReportPhoto {
+  id: number
+
+  name: string
+
+  image_url: string
+
+  thumbnail_url: string
+
+  uploaded_at: string
+}
+
+export interface ReportEvent {
+  id: number
+
+  kind: ReportEventKind
+
+  author: ReportReporter | null
+
+  old_status: string
+
+  new_status: string
+
+  old_status_display: string
+
+  new_status_display: string
+
+  message: string
+
+  created_at: string
+}
+
+export interface Report {
+  id: number
+
+  number: number
+
+  subgroup: ReportSubgroup
+
+  kind: ReportKind
+
+  kind_display: string
+
+  status: ReportStatus
+
+  status_display: string
+
+  description: string
+
+  location: string
+
+  submitted_by: ReportReporter | null
+
+  reporter_name: string
+
+  legacy_url: string
+
+  photos: ReportPhoto[]
+
+  comment_count: number
+
+  can_manage: boolean
+
+  can_edit: boolean
+
+  url: string
+
+  created_at: string
+
+  updated_at: string
+
+  closed_at: string | null
+
+  // Only present on the detail endpoint.
+  events?: ReportEvent[]
+}
+
+export interface ReportList {
+  results: Report[]
+
+  count: number
+
+  page: number
+
+  num_pages: number
+
+  open_count: number
 }

@@ -403,3 +403,77 @@ def deindex_folder(sender, instance, **kwargs):
         remove_object("folder", instance.id)
     except OperationalError:
         logger.exception("Failed to deindex folder %s", instance.id)
+
+
+# -- Report (indrapportering) signals --
+
+
+def _report_search_fields(instance) -> dict:
+    """Index fields for one report.
+
+    The description goes in the *title* rather than the case number: BM25 weights
+    title 10x, and "#12" is not what anyone searches for — "støvsugerslange" is.
+    The number lives in the subtitle where it stays readable.
+
+    This is the single declaration of what is searchable about a case: the
+    queue's own search box filters through this index too, and its placeholder
+    promises "beskrivelse, sted eller navn" — so the name has to be here.
+    """
+    body = instance.description
+    if instance.location:
+        body = f"{body}\n{instance.location}"
+    # Not `reporter_name`: that property falls back to the literal "Ukendt",
+    # which would make every case with no reporter answer a search for it.
+    if instance.submitted_by:
+        body = f"{body}\n{instance.submitted_by.get_full_name() or instance.submitted_by.email}"
+    elif instance.legacy_reporter_name:
+        body = f"{body}\n{instance.legacy_reporter_name}"
+    return {
+        "obj_type": "report",
+        "object_id": instance.id,
+        "title": create_excerpt(instance.description, 80),
+        "body": body,
+        "url": f"/indrapportering/{instance.subgroup.slug}/{instance.number}",
+        "subtitle": f"Indrapportering #{instance.number} · {instance.subgroup.name}",
+        "created_at": _isoformat(instance.created_at),
+    }
+
+
+@receiver(post_save, sender="reports.Report")
+def index_report(sender, instance, **kwargs):
+    try:
+        index_object(**_report_search_fields(instance))
+    except OperationalError:
+        logger.exception("Failed to index report %s", instance.id)
+
+
+@receiver(post_delete, sender="reports.Report")
+def deindex_report(sender, instance, **kwargs):
+    try:
+        remove_object("report", instance.id)
+    except OperationalError:
+        logger.exception("Failed to deindex report %s", instance.id)
+
+
+@receiver(post_save, sender="users.User")
+def reindex_reports_for_user(sender, instance, **kwargs):
+    """Re-index a resident's cases when they change.
+
+    The reporter's name is denormalised into each case's index row — the price
+    of letting the queue search names through the index — so a rename would
+    otherwise leave the old name searchable and the new one missing.
+
+    Unconditional rather than checking whether the name actually changed: a
+    resident has a handful of cases, this is that many FTS row rewrites, and
+    the alternative is keeping a copy of the old name around to compare against.
+    """
+    from apps.reports.models import Report
+
+    try:
+        reports = Report.objects.filter(submitted_by=instance).select_related(
+            "subgroup", "submitted_by"
+        )
+        for report in reports:
+            index_object(**_report_search_fields(report))
+    except OperationalError:
+        logger.exception("Failed to re-index reports for user %s", instance.id)

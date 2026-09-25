@@ -62,7 +62,7 @@ const mockGetUpcomingBirthdays = vi.fn()
 
 vi.mock("../api/users", () => ({
   usersApi: {
-    getUpcomingBirthdays: () => mockGetUpcomingBirthdays(),
+    getUpcomingBirthdays: (days?: number) => mockGetUpcomingBirthdays(days),
   },
 }))
 
@@ -234,6 +234,49 @@ describe("DashboardPage", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Fødselsdage")).toBeInTheDocument()
+    })
+  })
+
+  it("lists children's birthdays next to adults', linking each to the right page", async () => {
+    mockGetUpcomingBirthdays.mockResolvedValue([
+      {
+        kind: "child",
+        id: 3,
+        name: "Lille Bo",
+        profile_picture: null,
+        house_slug: "12a",
+        birthdate: "2019-09-26",
+        days_until: 1,
+        turning: 7,
+      },
+      {
+        kind: "user",
+        id: 42,
+        name: "Anders And",
+        profile_picture: null,
+        house_slug: "12a",
+        birthdate: "1990-10-05",
+        days_until: 10,
+        turning: 36,
+      },
+    ])
+
+    render(<DashboardPage />)
+
+    const child = await screen.findByText("Lille Bo")
+    expect(child.closest("a")).toHaveAttribute("href", "/beboere/hus/12a")
+    expect(screen.getByText("Fylder 7 år")).toBeInTheDocument()
+
+    const adult = screen.getByText("Anders And")
+    expect(adult.closest("a")).toHaveAttribute("href", "/profil/42")
+    expect(screen.getByText("Om 10 dage")).toBeInTheDocument()
+  })
+
+  it("asks for a 14-day window", async () => {
+    render(<DashboardPage />)
+
+    await waitFor(() => {
+      expect(mockGetUpcomingBirthdays).toHaveBeenCalledWith(14)
     })
   })
 })

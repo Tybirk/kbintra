@@ -28,9 +28,17 @@ class SubgroupAdmin(admin.ModelAdmin):
         "is_default",
         "allows_members",
         "default_members_only",
+        "reporting",
+        "reporting_intro",
         "created_at",
     ]
-    list_filter = ["is_default", "allows_members", "default_members_only"]
+    list_editable = ["reporting", "reporting_intro"]
+    list_filter = [
+        "is_default",
+        "allows_members",
+        "default_members_only",
+        "reporting",
+    ]
     search_fields = ["name", "description"]
     prepopulated_fields = {"slug": ("name",)}
 

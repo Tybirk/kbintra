@@ -221,6 +221,18 @@ class Command(BaseCommand):
                 )
             counts["folders"] = folders.count()
 
+            # Reports (indrapporteringer)
+            from apps.reports.models import Report
+
+            from ...signals import _report_search_fields
+
+            # submitted_by too: the index row carries the reporter's name, so
+            # without it this is a query per case.
+            reports = Report.objects.select_related("subgroup", "submitted_by")
+            for report in reports:
+                index_object(**_report_search_fields(report))
+            counts["reports"] = reports.count()
+
         total = sum(counts.values())
         self.stdout.write(f"Indexed {total} objects:")
         for type_name, count in counts.items():

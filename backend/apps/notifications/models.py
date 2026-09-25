@@ -23,6 +23,14 @@ class NotificationType(models.TextChoices):
     EVENT_CANCELLED = "event_cancelled", "Begivenhed aflyst"
     EVENT_REMINDER = "event_reminder", "Begivenhedsreminder"
     FOOD_TICKET = "food_ticket", "Madbillet tilgængelig"
+    FOOD_TEAM_REMINDER = "food_team_reminder", "Madlavning i morgen"
+    FOOD_TEAM_TAKEAWAY_READY = "food_takeaway_ready", "Takeaway er klar"
+    FOOD_TEAM_LEFTOVERS_READY = "food_leftovers_ready", "Rester er klar"
+    FOOD_TEAM_SWAP_REQUEST = "food_swap_request", "Bytteanmodning til madhold"
+    FOOD_TEAM_SHIFT_TAKEN = "food_team_shift_taken", "Din maddag er overtaget"
+    FOOD_TEAM_PLAN_READY = "food_team_plan_ready", "Madholdsplanen er klar"
+    FOOD_TEAM_WISHES_OPEN = "food_team_wishes_open", "Ønsker til madhold"
+    FOOD_TEAM_PAUSE_CHECK = "food_team_pause_check", "Holder du stadig pause fra madhold?"
     MENTION = "mention", "Omtale"
     SUBGROUP_MEMBER_ADDED = "subgroup_member_added", "Tilføjet som medlem"
     SUBGROUP_MEMBER_REMOVED = "subgroup_member_removed", "Fjernet som medlem"
@@ -38,6 +46,8 @@ class NotificationType(models.TextChoices):
     EXPENSE_PROCESSED = "expense_processed", "Udlæg behandlet"
     CAR_LOAN_REQUEST = "car_loan_request", "Forespørgsel om at låne din bil"
     CAR_LOAN_UPDATE = "car_loan_update", "Opdatering om bildeling"
+    REPORT_NEW = "report_new", "Ny indrapportering"
+    REPORT_UPDATE = "report_update", "Opdatering på indrapportering"
 
 
 class Notification(models.Model):
@@ -111,8 +121,13 @@ class NotificationPreference(models.Model):
     notify_events = models.BooleanField(default=True)
     notify_event_reminders = models.BooleanField(default=True)
     notify_food_tickets = models.BooleanField(default=True)
+    notify_food_team_reminder = models.BooleanField(default=True)
+    notify_food_takeaway_ready = models.BooleanField(default=True)
+    notify_food_leftovers_ready = models.BooleanField(default=True)
+    notify_food_swap_request = models.BooleanField(default=True)
     notify_mentions = models.BooleanField(default=True)
     notify_car_sharing = models.BooleanField(default=True)
+    notify_reports = models.BooleanField(default=True)
 
     # Email notification preferences (per notification type)
     email_messages = models.BooleanField(default=False)
@@ -125,12 +140,16 @@ class NotificationPreference(models.Model):
     email_events = models.BooleanField(default=False)
     email_event_reminders = models.BooleanField(default=False)
     email_food_tickets = models.BooleanField(default=False)
+    email_food_team_reminder = models.BooleanField(default=False)
+    email_food_takeaway_ready = models.BooleanField(default=False)
+    email_food_leftovers_ready = models.BooleanField(default=False)
+    email_food_swap_request = models.BooleanField(default=False)
     email_mentions = models.BooleanField(default=False)
-    # On by default, unlike the other email toggles. A borrow request is the one
-    # notification in the app that is waiting on the recipient: nobody else can
-    # answer it, and until they do a neighbour is standing there without a car.
-    # Push is not configured, so without email the only signal is the in-app bell.
-    email_car_sharing = models.BooleanField(default=True)
+    email_car_sharing = models.BooleanField(default=False)
+    # Off by default like the other email toggles: an indrapportering is worked
+    # from the in-app queue, and any resident may comment on any case, so this
+    # is the one notification type that could genuinely become chatty.
+    email_reports = models.BooleanField(default=False)
 
     # Push notification preferences (per notification type)
     push_messages = models.BooleanField(default=True)
@@ -143,14 +162,59 @@ class NotificationPreference(models.Model):
     push_events = models.BooleanField(default=True)
     push_event_reminders = models.BooleanField(default=True)
     push_food_tickets = models.BooleanField(default=True)
+    push_food_team_reminder = models.BooleanField(default=True)
+    push_food_takeaway_ready = models.BooleanField(default=True)
+    push_food_leftovers_ready = models.BooleanField(default=True)
+    push_food_swap_request = models.BooleanField(default=True)
     push_mentions = models.BooleanField(default=True)
     push_car_sharing = models.BooleanField(default=True)
+    push_reports = models.BooleanField(default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self) -> str:
         return f"Notification preferences for {self.user.first_name}"
+
+    def _any_channel_on(self, prefix: str) -> bool:
+        return any(getattr(self, name) for name in _channel_fields(prefix))
+
+    def has_any_email_channel(self) -> bool:
+        """True if the resident has turned on e-mail for anything at all.
+
+        This is the app's test for *does this person use e-mail*: the handful of
+        notification types with no toggle of their own piggyback on it (see
+        ``email_service.should_send_email``). Reading the field list off the
+        model rather than repeating it by hand keeps it complete — a
+        hand-written list silently stops covering a toggle added later, which is
+        how the madhold announcements ended up unreachable by e-mail for anyone
+        whose only e-mail toggle was a food one.
+
+        **Every ``email_*`` toggle must therefore default to False**, and none
+        may be switched on by a data migration. A toggle set by anything other
+        than the resident makes this answer yes for people who never opted in to
+        e-mail at all — which is precisely what migration 0019 did with
+        ``email_car_sharing`` and 0025 undid. ``tests.py`` asserts the defaults.
+        """
+        return self._any_channel_on("email_")
+
+    def has_any_push_channel(self) -> bool:
+        """True if the resident has turned on push for anything at all.
+
+        Push toggles may default to True, unlike e-mail: push reaches nobody
+        until they create a ``PushSubscription`` from their own browser, so the
+        opt-in has already happened by the time these are read.
+        """
+        return self._any_channel_on("push_")
+
+
+def _channel_fields(prefix: str) -> tuple[str, ...]:
+    """Every per-type boolean toggle on NotificationPreference with this prefix."""
+    return tuple(
+        f.name
+        for f in NotificationPreference._meta.fields
+        if f.name.startswith(prefix) and isinstance(f, models.BooleanField)
+    )
 
 
 class PushSubscription(models.Model):

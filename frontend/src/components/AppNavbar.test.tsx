@@ -161,18 +161,19 @@ describe("AppNavbar", () => {
     expect(screen.queryByText("0")).not.toBeInTheDocument()
   })
 
-  // --- Nothing is being trialled, so every site gets the same menu ------------
+  // --- Madhold is being trialled: test site and local dev only --------------
   //
   // jsdom serves these tests from localhost, which counts as a test environment,
   // so the local case needs no setup and the real-site case overrides the host.
 
-  it("shows Udlæg on the test site and local dev", async () => {
+  it("shows Madhold on the test site and local dev", async () => {
     render(<AppNavbar />)
 
+    expect(screen.getByText("Madhold")).toBeInTheDocument()
     expect(screen.getByText("Udlæg")).toBeInTheDocument()
   })
 
-  it("shows the same menu on the real site", async () => {
+  it("hides Madhold on the real site and leaves the rest of the menu alone", async () => {
     vi.spyOn(window, "location", "get").mockReturnValue({
       ...window.location,
       hostname: "kb-intra.dk",
@@ -180,11 +181,11 @@ describe("AppNavbar", () => {
 
     render(<AppNavbar />)
 
-    // Udlæg has left the trial: it is in the menu for everyone.
+    expect(screen.queryByText("Madhold")).not.toBeInTheDocument()
+    // Released features are in the menu for everyone.
     expect(screen.getByText("Udlæg")).toBeInTheDocument()
-    // Bildeling has left the trial: it is in the menu for everyone.
     expect(screen.getByText("Bildeling")).toBeInTheDocument()
-    // Everything else is unaffected.
+    expect(screen.getByText("Indrapportering")).toBeInTheDocument()
     expect(screen.getByText("Forum")).toBeInTheDocument()
     expect(screen.getByText("Bookingkalender")).toBeInTheDocument()
 

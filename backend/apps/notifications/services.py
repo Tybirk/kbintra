@@ -36,6 +36,9 @@ AGGREGATABLE_TYPES = frozenset(
         NotificationType.MESSAGE_REACTION,
         NotificationType.NEW_THREAD,
         NotificationType.SUBGROUP_ACTIVITY,
+        # A case can collect a status change and several comments in one sitting;
+        # the udvalg wants one row per case, not one per event.
+        NotificationType.REPORT_UPDATE,
     }
 )
 
@@ -79,6 +82,11 @@ def _make_aggregate_title(notification_type: str, count: int, existing_title: st
     if notification_type == NotificationType.SUBGROUP_ACTIVITY:
         # Title is the thread name; keep it and add count
         return f"{existing_title} ({count} nye svar)"
+    if notification_type == NotificationType.REPORT_UPDATE:
+        # Report titles are "<what happened> · sag #14"; keep the trailing case
+        # reference and replace the event with a count, so the row still says
+        # which case it is about even when the title is clipped.
+        return f"{count} opdateringer · {existing_title.rsplit(' · ', 1)[-1]}"
     return existing_title
 
 
@@ -152,6 +160,10 @@ def get_user_preference(user: User, notification_type: NotificationType) -> bool
         NotificationType.EVENT_CANCELLED: prefs.notify_events,
         NotificationType.EVENT_REMINDER: prefs.notify_event_reminders,
         NotificationType.FOOD_TICKET: prefs.notify_food_tickets,
+        NotificationType.FOOD_TEAM_REMINDER: prefs.notify_food_team_reminder,
+        NotificationType.FOOD_TEAM_TAKEAWAY_READY: prefs.notify_food_takeaway_ready,
+        NotificationType.FOOD_TEAM_LEFTOVERS_READY: prefs.notify_food_leftovers_ready,
+        NotificationType.FOOD_TEAM_SWAP_REQUEST: prefs.notify_food_swap_request,
         NotificationType.MENTION: prefs.notify_mentions,
         # Subgroup membership notifications are not user-configurable: always
         # delivered in-app so users know when their access changes.
@@ -163,8 +175,26 @@ def get_user_preference(user: User, notification_type: NotificationType) -> bool
         NotificationType.ANNOUNCEMENT_EDITED_BY_ADMIN: True,
         # Expense (udlæg) outcomes are always shown in-app — no opt-out toggle.
         NotificationType.EXPENSE_PROCESSED: True,
+        # Asked at most once per madhold period, and only of people on a pause;
+        # nobody needs a toggle to turn down a question that rare.
+        NotificationType.FOOD_TEAM_PAUSE_CHECK: True,
+        # The three madhold-period announcements, all always delivered in-app.
+        # Each fires a handful of times a year, and each says something the
+        # resident cannot find out any other way in time to act on it:
+        # - SHIFT_TAKEN: someone already took your cooking day, unilaterally.
+        #   Deliberately NOT behind notify_food_swap_request — that toggle is
+        #   labelled for *requests* you may ignore, and this is a change to your
+        #   calendar that already happened.
+        # - PLAN_READY: your cooking days for the next period now exist.
+        # - WISHES_OPEN: the period is open, and the deadline is the last moment
+        #   your own availability can still shape the plan.
+        NotificationType.FOOD_TEAM_SHIFT_TAKEN: True,
+        NotificationType.FOOD_TEAM_PLAN_READY: True,
+        NotificationType.FOOD_TEAM_WISHES_OPEN: True,
         NotificationType.CAR_LOAN_REQUEST: prefs.notify_car_sharing,
         NotificationType.CAR_LOAN_UPDATE: prefs.notify_car_sharing,
+        NotificationType.REPORT_NEW: prefs.notify_reports,
+        NotificationType.REPORT_UPDATE: prefs.notify_reports,
     }
 
     return preference_map.get(notification_type, True)
@@ -193,35 +223,33 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
         NotificationType.EVENT_CANCELLED: prefs.push_events,
         NotificationType.EVENT_REMINDER: prefs.push_event_reminders,
         NotificationType.FOOD_TICKET: prefs.push_food_tickets,
+        NotificationType.FOOD_TEAM_REMINDER: prefs.push_food_team_reminder,
+        NotificationType.FOOD_TEAM_TAKEAWAY_READY: prefs.push_food_takeaway_ready,
+        NotificationType.FOOD_TEAM_LEFTOVERS_READY: prefs.push_food_leftovers_ready,
+        NotificationType.FOOD_TEAM_SWAP_REQUEST: prefs.push_food_swap_request,
         NotificationType.MENTION: prefs.push_mentions,
         NotificationType.CAR_LOAN_REQUEST: prefs.push_car_sharing,
         NotificationType.CAR_LOAN_UPDATE: prefs.push_car_sharing,
+        NotificationType.REPORT_NEW: prefs.push_reports,
+        NotificationType.REPORT_UPDATE: prefs.push_reports,
     }
 
     # These types have no dedicated push toggle — they piggyback on whatever
     # push channels the user already has enabled. If they've opted into any
-    # push at all, they get pushed (group membership changes, expense outcomes).
+    # push at all, they get pushed (group membership changes, expense outcomes,
+    # the madhold-period announcements — see get_user_preference for why those
+    # have no toggle of their own). Read off the model rather than listed here,
+    # so a toggle added later is covered without anyone remembering to.
     if notification_type in (
         NotificationType.SUBGROUP_MEMBER_ADDED,
         NotificationType.SUBGROUP_MEMBER_REMOVED,
         NotificationType.EXPENSE_PROCESSED,
+        NotificationType.FOOD_TEAM_PAUSE_CHECK,
+        NotificationType.FOOD_TEAM_SHIFT_TAKEN,
+        NotificationType.FOOD_TEAM_PLAN_READY,
+        NotificationType.FOOD_TEAM_WISHES_OPEN,
     ):
-        return any(
-            (
-                prefs.push_messages,
-                prefs.push_announcements,
-                prefs.push_announcement_updates,
-                prefs.push_forum_subscriptions,
-                prefs.push_thread_replies,
-                prefs.push_subgroup_activity,
-                prefs.push_post_reactions,
-                prefs.push_events,
-                prefs.push_event_reminders,
-                prefs.push_food_tickets,
-                prefs.push_mentions,
-                prefs.push_car_sharing,
-            )
-        )
+        return prefs.has_any_push_channel()
 
     return preference_map.get(notification_type, True)
 
@@ -826,6 +854,305 @@ def notify_ticket_claimed(
     )
 
 
+def _cooking_date_label(date_iso: str) -> str:
+    """``Mandag 8/6`` for an ISO date string, the app's one cooking-day format."""
+    import datetime as _dt
+
+    from apps.food.utils import danish_date_label
+
+    return danish_date_label(_dt.date.fromisoformat(date_iso))
+
+
+def notify_food_team_reminder(user: User, date_iso: str) -> Notification | None:
+    """Remind a user that they have a cooking shift the next day.
+
+    date_iso is an ISO date string (YYYY-MM-DD) for the cooking day.
+    """
+    date_label = _cooking_date_label(date_iso)
+
+    return create_notification(
+        user=user,
+        notification_type=NotificationType.FOOD_TEAM_REMINDER,
+        title="Du har madhold i morgen",
+        message=f"Du skal lave mad {date_label}",
+        link="/madhold/mine-hold",
+    )
+
+
+def _join_danish(parts: list[str]) -> str:
+    """Danish list: "Anna", "Anna og Bo", "Mandag 8/6, Tirsdag 9/6 og Torsdag 25/6"."""
+    if len(parts) <= 1:
+        return parts[0] if parts else ""
+    return f"{', '.join(parts[:-1])} og {parts[-1]}"
+
+
+def notify_food_team_housemate_reminder(
+    user: User, cook_names: list[str], date_iso: str
+) -> Notification | None:
+    """Tell the rest of a household that one of them cooks the next day.
+
+    Same type — and so the same preference — as the cook's own reminder: it is
+    the same shift, and someone who turned madhold-påmindelser off does not want
+    their partner's either. Only sent to household members who are not on the
+    team themselves, so nobody gets both for one evening.
+    """
+    date_label = _cooking_date_label(date_iso)
+    names = _join_danish(cook_names)
+
+    return create_notification(
+        user=user,
+        notification_type=NotificationType.FOOD_TEAM_REMINDER,
+        title=f"{names} har madhold i morgen",
+        message=f"{names} skal lave mad {date_label}",
+        link="/madhold/mine-hold",
+    )
+
+
+def notify_food_team_pause_check(
+    user: User, cycle_name: str, wish_deadline_label: str
+) -> Notification | None:
+    """Ask someone on a standing madhold pause whether the break still holds.
+
+    Sent when a new period opens for wishes — the one moment where the answer
+    can still change the plan. Doing nothing keeps the pause on.
+    """
+    return create_notification(
+        user=user,
+        notification_type=NotificationType.FOOD_TEAM_PAUSE_CHECK,
+        title="Holder du stadig pause fra madhold?",
+        message=(
+            f"Der er åbnet for ønsker til {cycle_name} (frist {wish_deadline_label}). "
+            "Er du klar igen, kan du slå pausen fra på din madhold-profil og indsende ønsker. "
+            "Ellers behøver du ikke gøre noget."
+        ),
+        link="/madhold/profil",
+    )
+
+
+def notify_food_swap_request(
+    user: User,
+    requester_name: str,
+    date_label: str,
+    link: str,
+    related_user: User | None = None,
+) -> Notification | None:
+    """Notify a candidate that someone wants to swap their cooking day.
+
+    For a broadcast ("bytteanmodning") going out to everyone who could plausibly
+    take the day. A takeover is *not* a request — see
+    :func:`notify_food_shift_taken_over` — and an answer to a specific request is
+    :func:`notify_food_swap_answered`.
+    """
+    return create_notification(
+        user=user,
+        notification_type=NotificationType.FOOD_TEAM_SWAP_REQUEST,
+        title="Bytteanmodning til madhold",
+        message=f"{requester_name} vil gerne bytte sin maddag {date_label}",
+        link=link,
+        related_user=related_user,
+    )
+
+
+# A swap message is free text with no length limit, and it is appended to a
+# notification body that the bell and the Forside widget both truncate hard.
+# Trim it here so the part that matters — who, and which two days — survives.
+_SWAP_NOTE_CHARS = 120
+
+
+def _swap_note(text: str) -> str:
+    """A requester's or responder's own words, trimmed for a notification body."""
+    flat = " ".join((text or "").split())
+    if not flat:
+        return ""
+    if len(flat) > _SWAP_NOTE_CHARS:
+        flat = flat[: _SWAP_NOTE_CHARS - 1].rstrip() + "…"
+    return f' — "{flat}"'
+
+
+def notify_food_swap_request_created(swap_request: Any) -> Notification | None:
+    """Tell someone that a specific person has asked to swap days with them.
+
+    A 1:1 ``TeamSwapRequest`` needs the target's answer to go anywhere at all, so
+    without this the request sat in the Bytte tab waiting to be stumbled upon.
+    """
+    requester = swap_request.requester
+    target = swap_request.target_membership.user
+    requester_date = _cooking_date_label(swap_request.requester_membership.team.date.isoformat())
+    target_date = _cooking_date_label(swap_request.target_membership.team.date.isoformat())
+
+    message = (
+        f"{requester.first_name} vil bytte sin maddag {requester_date} med din {target_date}"
+        f"{_swap_note(swap_request.message)}"
+    )
+
+    return create_notification(
+        user=target,
+        notification_type=NotificationType.FOOD_TEAM_SWAP_REQUEST,
+        title="Bytteanmodning til madhold",
+        message=message,
+        link="/madhold/bytte",
+        related_user=requester,
+    )
+
+
+def notify_food_swap_answered(
+    swap_request: Any, responder: User, *, accepted: bool
+) -> Notification | None:
+    """Tell the requester whether their 1:1 bytte went through.
+
+    Both outcomes matter: an accept silently moved their cooking day to another
+    date, and a decline means the day is still theirs and they need to try
+    something else before it arrives.
+
+    ``responder`` is passed in rather than read off ``target_membership.user``:
+    an accepted swap moves the users *between* the two membership rows, so after
+    it the target membership holds the requester, and reading the responder off
+    the membership would name the wrong person. The team dates are safe either
+    way — only the user FK moves — so ``requester_membership.team.date`` is the
+    day the requester gave up and ``target_membership.team.date`` the day they
+    took on, before and after.
+    """
+    requester = swap_request.requester
+    gave_up = _cooking_date_label(swap_request.requester_membership.team.date.isoformat())
+    took_on = _cooking_date_label(swap_request.target_membership.team.date.isoformat())
+
+    if accepted:
+        title = "Dit bytte er accepteret"
+        message = (
+            f"{responder.first_name} har byttet med dig. "
+            f"Du har madhold {took_on} i stedet for {gave_up}"
+        )
+        link = "/madhold/mine-hold"
+    else:
+        title = "Dit bytte blev afvist"
+        message = (
+            f"{responder.first_name} kan ikke bytte {took_on}. Du har stadig madhold {gave_up}"
+        )
+        link = "/madhold/bytte"
+    message += _swap_note(swap_request.response_message)
+
+    return create_notification(
+        user=requester,
+        notification_type=NotificationType.FOOD_TEAM_SWAP_REQUEST,
+        title=title,
+        message=message,
+        link=link,
+        related_user=responder,
+    )
+
+
+def notify_food_broadcast_accepted(
+    requester: User, acceptor: User, gave_up_label: str, took_on_label: str
+) -> Notification | None:
+    """Tell a broadcast's sender that someone took the day off their hands."""
+    return create_notification(
+        user=requester,
+        notification_type=NotificationType.FOOD_TEAM_SWAP_REQUEST,
+        title="Din bytteanmodning er accepteret",
+        message=(
+            f"{acceptor.first_name} tager din maddag {gave_up_label}. "
+            f"Du har madhold {took_on_label} i stedet"
+        ),
+        link="/madhold/mine-hold",
+        related_user=acceptor,
+    )
+
+
+def notify_food_shift_taken_over(
+    owner: User, taker: User, date_iso: str, *, settled_favour: bool
+) -> Notification | None:
+    """Tell someone that another resident has taken their cooking day.
+
+    A takeover is unilateral — the owner has no say and finds out afterwards —
+    so this is the only thing that tells them their evening is free, and it says
+    so in those words rather than borrowing the bytteanmodning wording.
+
+    Its own type on purpose: it is never routed through
+    ``notify_food_swap_request``, because someone who switched *requests* off
+    still has to be told about a change to their own calendar that has already
+    happened.
+    """
+    date_label = _cooking_date_label(date_iso)
+    if settled_favour:
+        ledger = f"Den tjeneste, {taker.first_name} skyldte dig, er nu udlignet"
+    else:
+        ledger = f"Du skylder nu {taker.first_name} en tjeneste"
+
+    return create_notification(
+        user=owner,
+        notification_type=NotificationType.FOOD_TEAM_SHIFT_TAKEN,
+        title="Din maddag er overtaget",
+        message=f"{taker.first_name} har overtaget din maddag {date_label}. {ledger}",
+        link="/madhold/bytte",
+        related_user=taker,
+    )
+
+
+def notify_food_team_plan_ready(
+    user: User, cycle_name: str, date_isos: list[str]
+) -> Notification | None:
+    """Tell a cook which days they have in a period that was just planned.
+
+    The plan is the biggest thing madhold ever announces, and until now it
+    announced nothing: the first a resident heard of their own cooking days was
+    the reminder at 20:00 the night before the first one.
+    """
+    labels = [_cooking_date_label(d) for d in sorted(date_isos)]
+    days = _join_danish(labels)
+    plural = "maddage" if len(labels) > 1 else "maddag"
+
+    return create_notification(
+        user=user,
+        notification_type=NotificationType.FOOD_TEAM_PLAN_READY,
+        title=f"Dine {plural}: {days}",
+        message=f"Holdene for {cycle_name} er lagt. Du skal lave mad {days}",
+        link="/madhold/mine-hold",
+    )
+
+
+def notify_food_team_wishes_open(
+    user: User, cycle_name: str, wish_deadline_label: str
+) -> Notification | None:
+    """Tell a resident that a new period is open for wishes.
+
+    The counterpart to :func:`notify_food_team_pause_check`, which goes to the
+    people sitting out. Everyone who *is* participating used to get nothing at
+    all and had to notice a badge on a tab.
+    """
+    return create_notification(
+        user=user,
+        notification_type=NotificationType.FOOD_TEAM_WISHES_OPEN,
+        title="Der er åbnet for madholdsønsker",
+        message=(
+            f"Vælg de dage du kan lave mad i {cycle_name}. Frist {wish_deadline_label}. "
+            "Indsender du ingenting, regner vi med de faste ugedage på din profil."
+        ),
+        link="/madhold/oensker",
+    )
+
+
+def notify_food_team_wish_deadline(
+    user: User, cycle_name: str, wish_deadline_label: str
+) -> Notification | None:
+    """Nudge a resident who still hasn't submitted wishes, shortly before the deadline.
+
+    The deadline is the last moment someone's own availability can change the
+    plan, and a forgotten wish is not harmless: it falls back to the standing
+    weekdays, or to "available every day" for anyone who has set none, which is
+    exactly what leaves the generator too little room and makes it drop dates.
+    """
+    return create_notification(
+        user=user,
+        notification_type=NotificationType.FOOD_TEAM_WISHES_OPEN,
+        title="Husk dine madholdsønsker",
+        message=(
+            f"Fristen for {cycle_name} er {wish_deadline_label}, og vi har ikke fået dine ønsker. "
+            "Indsender du ingenting, regner vi med de faste ugedage på din profil."
+        ),
+        link="/madhold/oensker",
+    )
+
+
 def notify_expense_processed(expense: Any) -> Notification | None:
     """Notify the submitter that their expense (udlæg) was paid or rejected.
 
@@ -858,6 +1185,104 @@ def notify_expense_processed(expense: Any) -> Notification | None:
         message=message,
         link="/udlaeg",
     )
+
+
+# --- Indrapportering ---------------------------------------------------------
+
+# How much of a case description to carry into a notification body.
+_REPORT_EXCERPT_CHARS = 140
+
+
+def _report_excerpt(text: str) -> str:
+    """First line of a report description, trimmed for a notification body."""
+    flat = " ".join((text or "").split())
+    if len(flat) <= _REPORT_EXCERPT_CHARS:
+        return flat
+    return flat[: _REPORT_EXCERPT_CHARS - 1].rstrip() + "…"
+
+
+def _report_link(report: Any) -> str:
+    return f"/indrapportering/{report.subgroup.slug}/{report.number}"
+
+
+def notify_new_report(report: Any) -> None:
+    """Tell an udvalg's members that a new case landed in their queue.
+
+    The reporter is skipped even when they are themselves a member — they just
+    filed it. Nothing is sent to the rest of the community: everyone *can* see
+    the queue, but only the udvalg is on the hook for it.
+    """
+    from apps.reports.services import committee_member_ids
+
+    recipient_ids = {
+        uid for uid in committee_member_ids(report.subgroup_id) if uid != report.submitted_by_id
+    }
+    if not recipient_ids:
+        return
+
+    # Front-loaded on purpose: the Forside widget clamps a title to ~131px and
+    # the notifications page truncates hard at 320px, so whatever matters has to
+    # come first. The udvalg's name is the part that can afford to be cut.
+    title = f"Ny sag #{report.number} · {report.subgroup.name}"
+    message = f"{report.reporter_name}: {_report_excerpt(report.description)}"
+    link = _report_link(report)
+
+    for user in User.objects.filter(id__in=recipient_ids, is_active=True):
+        create_notification(
+            user=user,
+            notification_type=NotificationType.REPORT_NEW,
+            title=title,
+            message=message,
+            link=link,
+            related_user=report.submitted_by,
+        )
+
+
+def notify_report_event(event: Any) -> None:
+    """Tell the people on the hook for a case that something happened on it.
+
+    Recipients are the reporter plus the udvalg's members, minus whoever did it.
+    Grouped on the case URL so a burst of comments on one case collapses into a
+    single unread row rather than filling the bell.
+    """
+    from apps.reports.models import ReportEvent
+    from apps.reports.services import committee_member_ids
+
+    report = event.report
+    recipient_ids = set(committee_member_ids(report.subgroup_id))
+    if report.submitted_by_id:
+        recipient_ids.add(report.submitted_by_id)
+    recipient_ids.discard(event.author_id)
+    if not recipient_ids:
+        return
+
+    who = event.author.get_full_name() if event.author else "Systemet"
+    status_label = dict(report.Status.choices).get(event.new_status, event.new_status)
+
+    # What happened comes FIRST, the case reference last. The Forside widget
+    # clamps a title to ~131px, so "Sag #37 · Afventer udvalgsmøde" lost exactly
+    # the word the notification exists to deliver. Both forms end in "sag #n" so
+    # aggregation can keep the reference while replacing the event with a count.
+    if event.kind == ReportEvent.Kind.STATUS:
+        title = f"{status_label} · sag #{report.number}"
+        message = f"{who} ændrede status."
+        if event.message:
+            message += f" {_report_excerpt(event.message)}"
+    else:
+        title = f"Ny kommentar · sag #{report.number}"
+        message = f"{who}: {_report_excerpt(event.message)}"
+
+    link = _report_link(report)
+    for user in User.objects.filter(id__in=recipient_ids, is_active=True):
+        create_notification(
+            user=user,
+            notification_type=NotificationType.REPORT_UPDATE,
+            title=title,
+            message=message,
+            link=link,
+            related_user=event.author,
+            group_key=link,
+        )
 
 
 def _get_event_recipients(

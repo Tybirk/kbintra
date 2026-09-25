@@ -4,8 +4,10 @@ Serializers for Food models.
 
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+from functools import cached_property
 from typing import Any
 
+from django.db import transaction
 from django.db.models import Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
@@ -19,6 +21,7 @@ from .constants import (
     TICKET_SALE_CUTOFF_TIME,
 )
 from .models import (
+    BroadcastStatus,
     ClosedFoodDay,
     CycleStatus,
     DriveMenuCache,
@@ -30,9 +33,12 @@ from .models import (
     MealPreference,
     MealPrice,
     MealRegistration,
+    SwapBroadcast,
     SwapRequestStatus,
+    TeamFavour,
     TeamSwapRequest,
 )
+from .utils import housemates_of
 
 
 def get_registration_deadline(meal_date: date) -> datetime:
@@ -496,12 +502,20 @@ class FoodTeamSerializer(serializers.ModelSerializer):
 
 
 class FoodTeamListSerializer(serializers.ModelSerializer):
-    """Lightweight serializer for listing teams."""
+    """Lightweight serializer for listing teams.
+
+    ``members_preview`` carries the whole team — name, house number, avatar —
+    with your own house flagged, so a card can print every face and name
+    without being expanded and set the ones from your own household in bold.
+    ``members_display`` is the same names as one flat string, still used where
+    a single dimmed line is all there is room for (the bytte date picker).
+    """
 
     day_name = serializers.CharField(read_only=True)
     member_count = serializers.IntegerField(read_only=True)
     is_my_team = serializers.SerializerMethodField()
     members_display = serializers.SerializerMethodField()
+    members_preview = serializers.SerializerMethodField()
 
     class Meta:
         model = FoodTeam
@@ -512,21 +526,47 @@ class FoodTeamListSerializer(serializers.ModelSerializer):
             "member_count",
             "is_my_team",
             "members_display",
+            "members_preview",
         ]
 
-    def get_is_my_team(self, obj: FoodTeam) -> bool:
+    @cached_property
+    def _housemate_ids(self) -> set[int]:
+        """The rest of the reader's house — one query per request, not per team."""
         request = self.context.get("request")
-        if request and request.user.is_authenticated:
-            return obj.members.filter(user_id=request.user.id).exists()
-        return False
+        if not request or not request.user.is_authenticated:
+            return set()
+        return set(housemates_of(request.user).values_list("id", flat=True))
+
+    def _my_id(self) -> int | None:
+        request = self.context.get("request")
+        return request.user.id if request and request.user.is_authenticated else None
+
+    def get_is_my_team(self, obj: FoodTeam) -> bool:
+        # Read the members the view already prefetched: a .filter().exists()
+        # here is one extra query per team on a list of a whole period.
+        return any(m.user_id == self._my_id() for m in obj.members.all())
 
     def get_members_display(self, obj: FoodTeam) -> str:
         """Get a comma-separated list of members for display."""
-        members = obj.members.select_related("user")[:6]
+        members = list(obj.members.all())[:6]
         return ", ".join(
             f"{m.user.first_name} ({m.house_number})" if m.house_number else m.user.first_name
             for m in members
         )
+
+    def get_members_preview(self, obj: FoodTeam) -> list[dict]:
+        my_id = self._my_id()
+        return [
+            {
+                "user_id": m.user_id,
+                "first_name": m.user.first_name,
+                "house_number": m.house_number,
+                "profile_picture": m.user.avatar_url,
+                "is_own": m.user_id == my_id,
+                "is_housemate": m.user_id in self._housemate_ids,
+            }
+            for m in obj.members.all()
+        ]
 
 
 class SwapRequestUserSerializer(AvatarUrlMixin, serializers.ModelSerializer):
@@ -631,6 +671,21 @@ class CreateSwapRequestSerializer(serializers.Serializer):
                 "You already have a pending swap request for this combination."
             )
 
+        # Don't let someone create a request that could never be accepted (it
+        # would double-book one of them on a team). The accept path re-checks,
+        # since memberships move via takeovers in the meantime.
+        from .utils import membership_swap_conflict
+
+        memberships = FoodTeamMember.objects.select_related("team").in_bulk(
+            [attrs["requester_membership_id"], attrs["target_membership_id"]]
+        )
+        conflict = membership_swap_conflict(
+            memberships[attrs["requester_membership_id"]],
+            memberships[attrs["target_membership_id"]],
+        )
+        if conflict:
+            raise serializers.ValidationError(conflict)
+
         return attrs
 
     def create(self, validated_data: dict) -> TeamSwapRequest:
@@ -734,7 +789,7 @@ class FoodTeamWishSerializer(serializers.ModelSerializer):
             "user_name",
             "available_dates",
             "available_date_count",
-            "comment",
+            "is_unavailable",
             "created_at",
             "updated_at",
         ]
@@ -745,11 +800,29 @@ class FoodTeamWishSerializer(serializers.ModelSerializer):
 
 
 class FoodTeamWishCreateUpdateSerializer(serializers.ModelSerializer):
-    """Serializer for creating/updating food team wishes."""
+    """Create or update the caller's wish, and settle their pause in the same call.
+
+    The wish and the pause are one answer to one question — "can you cook in this
+    period?" — so they are written together rather than left to the caller to
+    keep in step:
+
+    - Naming dates you can cook is how you say you are back, so it lifts
+      ``is_exempt_from_food_teams`` and drops the reason for an absence that is
+      over. Leaving the pause on would have the generator skip someone who just
+      signed up, and the wish would look submitted the whole time.
+    - Marking yourself out of the period stores ``pause_reason`` on the *person*
+      (``User.food_team_pause_reason``), not on the wish, so it outlives the
+      cycle and the organiser can come back and ask whether the break still
+      holds. It does not set the standing pause — that is a separate decision,
+      made on the profile.
+    """
+
+    # Write-only: it is stored on the user, not on the wish.
+    pause_reason = serializers.CharField(required=False, allow_blank=True, write_only=True)
 
     class Meta:
         model = FoodTeamWish
-        fields = ["cycle", "available_dates", "comment"]
+        fields = ["cycle", "available_dates", "is_unavailable", "pause_reason"]
 
     def validate_cycle(self, value: FoodTeamCycle) -> FoodTeamCycle:
         if not value.is_accepting_wishes:
@@ -779,24 +852,49 @@ class FoodTeamWishCreateUpdateSerializer(serializers.ModelSerializer):
 
         return validated
 
+    def _apply_to_user(self, user: User, validated_data: dict) -> None:
+        """Keep the person's pause in step with the wish they just submitted."""
+        updates: dict[str, Any] = {}
+
+        if validated_data.get("is_unavailable"):
+            reason = validated_data.get("pause_reason")
+            if reason is not None and reason != user.food_team_pause_reason:
+                updates["food_team_pause_reason"] = reason
+        elif validated_data.get("available_dates"):
+            if user.is_exempt_from_food_teams:
+                updates["is_exempt_from_food_teams"] = False
+            if user.food_team_pause_reason:
+                updates["food_team_pause_reason"] = ""
+
+        if updates:
+            for field_name, value in updates.items():
+                setattr(user, field_name, value)
+            user.save(update_fields=list(updates))
+
     def create(self, validated_data: dict) -> FoodTeamWish:
-        validated_data["user"] = self.context["request"].user
+        user = self.context["request"].user
+        validated_data["user"] = user
+        # Not a wish field — it belongs on the user (see the class docstring).
+        pause_reason = validated_data.pop("pause_reason", None)
 
-        # Check if user already has a wish for this cycle
-        existing = FoodTeamWish.objects.filter(
-            cycle=validated_data["cycle"],
-            user=validated_data["user"],
-        ).first()
+        with transaction.atomic():
+            self._apply_to_user(user, {**validated_data, "pause_reason": pause_reason})
 
-        if existing:
-            # Update existing wish
-            for key, value in validated_data.items():
-                if key != "user":
-                    setattr(existing, key, value)
-            existing.save()
-            return existing
+            # Check if user already has a wish for this cycle
+            existing = FoodTeamWish.objects.filter(
+                cycle=validated_data["cycle"],
+                user=user,
+            ).first()
 
-        return super().create(validated_data)
+            if existing:
+                # Update existing wish
+                for key, value in validated_data.items():
+                    if key != "user":
+                        setattr(existing, key, value)
+                existing.save()
+                return existing
+
+            return super().create(validated_data)
 
 
 class GenerateTeamsSerializer(serializers.Serializer):
@@ -827,6 +925,7 @@ class TeamGenerationResultSerializer(serializers.Serializer):
     teams_created = serializers.IntegerField()
     unassigned_persons = serializers.ListField(child=serializers.CharField())
     warnings = serializers.ListField(child=serializers.CharField())
+    dropped_dates = serializers.ListField(child=serializers.CharField())
 
 
 class DefaultCookingDaysSerializer(serializers.Serializer):
@@ -952,6 +1051,304 @@ class ClosedFoodDayCreateSerializer(serializers.Serializer):
             )
             results.append(obj)
         return results
+
+
+# --------------------------------------------------------------------------- #
+# Madhold launch: takeover (favours), broadcast swaps, personal profile       #
+# --------------------------------------------------------------------------- #
+
+
+class TeamFavourSerializer(serializers.ModelSerializer):
+    """A 'you owe me one' favour created by a shift takeover."""
+
+    creditor = SwapRequestUserSerializer(read_only=True)
+    debtor = SwapRequestUserSerializer(read_only=True)
+    direction = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TeamFavour
+        fields = [
+            "id",
+            "creditor",
+            "debtor",
+            "origin_date",
+            "settled",
+            "settled_at",
+            "note",
+            "direction",
+            "created_at",
+        ]
+
+    def get_direction(self, obj: TeamFavour) -> str:
+        """'owed_to_me' if the current user is the creditor, else 'i_owe'."""
+        request = self.context.get("request")
+        if request and request.user.is_authenticated and obj.creditor_id == request.user.id:
+            return "owed_to_me"
+        return "i_owe"
+
+
+class TakeoverSerializer(serializers.Serializer):
+    """Take over another user's cooking shift.
+
+    Normally the person taking the shift is owed a favour afterwards. Pass
+    ``settle_favour_id`` to go the other way and work off a favour you already
+    owe: the shift still moves, but the named debt is marked settled instead of
+    a new one being created in your name.
+    """
+
+    target_membership_id = serializers.IntegerField()
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+    settle_favour_id = serializers.IntegerField(required=False, allow_null=True)
+
+    def validate_target_membership_id(self, value: int) -> int:
+        try:
+            membership = FoodTeamMember.objects.select_related("team", "user").get(pk=value)
+        except FoodTeamMember.DoesNotExist as e:
+            raise serializers.ValidationError("Madholdsmedlemskab ikke fundet.") from e
+
+        user = self.context["request"].user
+        if membership.user_id == user.id:
+            raise serializers.ValidationError("Du kan ikke overtage din egen maddag.")
+        if membership.team.date < timezone.localdate():
+            raise serializers.ValidationError("Maddagen er allerede passeret.")
+        # Can't take over a date you're already cooking on.
+        if FoodTeamMember.objects.filter(team=membership.team, user=user).exists():
+            raise serializers.ValidationError("Du er allerede på dette madhold.")
+        self.context["target_membership"] = membership
+        return value
+
+    def validate(self, attrs: dict) -> dict:
+        """Check the favour being settled is one this takeover can actually settle."""
+        favour_id = attrs.get("settle_favour_id")
+        if favour_id is None:
+            return attrs
+
+        user = self.context["request"].user
+        membership: FoodTeamMember = self.context["target_membership"]
+        try:
+            favour = TeamFavour.objects.select_related("creditor").get(pk=favour_id)
+        except TeamFavour.DoesNotExist as e:
+            raise serializers.ValidationError({"settle_favour_id": "Tjenesten findes ikke."}) from e
+
+        if favour.settled:
+            raise serializers.ValidationError(
+                {"settle_favour_id": "Tjenesten er allerede udlignet."}
+            )
+        # Only the person who owes can work a favour off, and only by cooking
+        # for the person they owe it to.
+        if favour.debtor_id != user.id:
+            raise serializers.ValidationError(
+                {"settle_favour_id": "Det er ikke dig, der skylder denne tjeneste."}
+            )
+        if favour.creditor_id != membership.user_id:
+            raise serializers.ValidationError(
+                {
+                    "settle_favour_id": f"Du skylder {favour.creditor.first_name} en tjeneste, "
+                    f"ikke {membership.user.first_name}."
+                }
+            )
+
+        self.context["settle_favour"] = favour
+        return attrs
+
+
+class SwapBroadcastMembershipSerializer(serializers.ModelSerializer):
+    """Membership info embedded in a broadcast."""
+
+    user = SwapRequestUserSerializer(read_only=True)
+    date = serializers.DateField(source="team.date", read_only=True)
+    day_name = serializers.CharField(source="team.day_name", read_only=True)
+
+    class Meta:
+        model = FoodTeamMember
+        fields = ["id", "user", "house_number", "date", "day_name"]
+
+
+class SwapBroadcastSerializer(serializers.ModelSerializer):
+    """Read serializer for a broadcast 'bytteanmodning'."""
+
+    requester = SwapRequestUserSerializer(read_only=True)
+    requester_membership = SwapBroadcastMembershipSerializer(read_only=True)
+    accepted_by = SwapRequestUserSerializer(read_only=True)
+    is_mine = serializers.SerializerMethodField()
+    can_accept = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SwapBroadcast
+        fields = [
+            "id",
+            "requester",
+            "requester_membership",
+            "available_dates",
+            "message",
+            "status",
+            "accepted_by",
+            "is_mine",
+            "can_accept",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_is_mine(self, obj: SwapBroadcast) -> bool:
+        request = self.context.get("request")
+        return bool(request and obj.requester_id == request.user.id)
+
+    def get_can_accept(self, obj: SwapBroadcast) -> bool:
+        """True if the current user holds a membership on one of the offered dates."""
+        request = self.context.get("request")
+        if not request or obj.status != BroadcastStatus.OPEN or obj.requester_id == request.user.id:
+            return False
+        dates = [date.fromisoformat(d) for d in obj.available_dates]
+        return FoodTeamMember.objects.filter(user=request.user, team__date__in=dates).exists()
+
+
+class CreateSwapBroadcastSerializer(serializers.Serializer):
+    """Create a broadcast: get rid of one date, offer to take any of several."""
+
+    requester_membership_id = serializers.IntegerField()
+    available_dates = serializers.ListField(child=serializers.DateField(), min_length=1)
+    message = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def validate_requester_membership_id(self, value: int) -> int:
+        try:
+            membership = FoodTeamMember.objects.select_related("team").get(pk=value)
+        except FoodTeamMember.DoesNotExist as e:
+            raise serializers.ValidationError("Madholdsmedlemskab ikke fundet.") from e
+        if membership.user_id != self.context["request"].user.id:
+            raise serializers.ValidationError("Det er ikke din maddag.")
+        if membership.team.date < timezone.localdate():
+            raise serializers.ValidationError("Maddagen er allerede passeret.")
+        self.context["requester_membership"] = membership
+        return value
+
+    def validate(self, attrs: dict) -> dict:
+        membership = self.context["requester_membership"]
+        own_date = membership.team.date
+        if own_date in attrs["available_dates"]:
+            raise serializers.ValidationError(
+                {"available_dates": "Din egen maddag kan ikke være blandt de ønskede dage."}
+            )
+        return attrs
+
+
+class AcceptSwapBroadcastSerializer(serializers.Serializer):
+    """Accept a broadcast with one of your own memberships on an offered date."""
+
+    membership_id = serializers.IntegerField()
+
+
+class MyFoodProfileSerializer(serializers.ModelSerializer):
+    """Self-service food-team profile settings for the current user.
+
+    ``is_over_50`` reads as the *effective* value (``is_over_50_effective``):
+    for anyone with a birthdate on file it is deduced from that, and the profile
+    page shows it rather than asking. ``has_birthdate`` tells the page which of
+    the two it is looking at, and writing the flag is refused for residents
+    whose age we can work out ourselves.
+    """
+
+    housemate_name = serializers.SerializerMethodField()
+    has_birthdate = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            "can_be_head_chef",
+            "prefers_cooking_with_housemate",
+            "is_over_50",
+            "has_birthdate",
+            "is_exempt_from_food_teams",
+            "default_cooking_days",
+            "food_team_pause_reason",
+            "housemate_name",
+        ]
+
+    def get_housemate_name(self, obj: User) -> str:
+        """First housemate (same house, other user) — for the cook-together toggle."""
+        mate = housemates_of(obj).first()
+        return mate.first_name if mate else ""
+
+    def get_has_birthdate(self, obj: User) -> bool:
+        return obj.birthdate is not None
+
+    def to_representation(self, instance: User) -> dict:
+        data = super().to_representation(instance)
+        data["is_over_50"] = instance.is_over_50_effective
+        return data
+
+    def validate_is_over_50(self, value: bool) -> bool:
+        if self.instance is not None and self.instance.birthdate:
+            raise serializers.ValidationError(
+                "Din alder udledes af din fødselsdato og kan ikke sættes her."
+            )
+        return value
+
+    def validate_default_cooking_days(self, value: list) -> list:
+        return sorted({v for v in value if 0 <= v <= 3})
+
+
+class FoodRosterSerializer(serializers.ModelSerializer):
+    """Admin roster row: a resident's food-team flags, plus why they are sitting out.
+
+    The two "not cooking" states are deliberately separate. ``is_exempt_from_food_teams``
+    is the standing one — away for a season, or stepping back indefinitely — and carries
+    ``food_team_pause_reason``. ``is_unavailable_this_cycle`` comes from this period's
+    wish. Either way the explanation is the same field on the person,
+    ``food_team_pause_reason``: kept off the cycle so it outlives the period and the
+    organiser can ask later whether the break is still needed.
+    """
+
+    house_name = serializers.CharField(source="house.name", read_only=True, default="")
+    house_number = serializers.SerializerMethodField()
+    is_unavailable_this_cycle = serializers.SerializerMethodField()
+    has_submitted_wish = serializers.SerializerMethodField()
+    # What the generator actually balances on: the birthdate when we have one,
+    # the stored flag otherwise. Read-only for the same reason.
+    is_over_50 = serializers.BooleanField(source="is_over_50_effective", read_only=True)
+
+    def get_house_number(self, obj: User) -> str:
+        from .utils import house_number_for
+
+        return house_number_for(obj.house)
+
+    def _wish(self, obj: User):  # type: ignore[no-untyped-def]
+        """This period's wish, from the map the view prefetched (no query per row)."""
+        return self.context.get("wishes_by_user", {}).get(obj.id)
+
+    def get_is_unavailable_this_cycle(self, obj: User) -> bool:
+        wish = self._wish(obj)
+        return bool(wish and wish.is_unavailable)
+
+    def get_has_submitted_wish(self, obj: User) -> bool:
+        return self._wish(obj) is not None
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "first_name",
+            "last_name",
+            "house_name",
+            "can_be_head_chef",
+            "prefers_cooking_with_housemate",
+            "is_over_50",
+            "is_exempt_from_food_teams",
+            "is_food_admin",
+            "food_team_pause_reason",
+            "house_number",
+            "is_unavailable_this_cycle",
+            "has_submitted_wish",
+        ]
+        read_only_fields = [
+            "id",
+            "first_name",
+            "last_name",
+            "house_name",
+            "house_number",
+            "is_over_50",
+            "is_unavailable_this_cycle",
+            "has_submitted_wish",
+        ]
 
 
 # Meal Price Serializers

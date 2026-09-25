@@ -16,6 +16,8 @@ from apps.forum.models import File, Folder, Post, Subgroup, Thread
 from apps.forum.services import member_subgroup_ids
 from apps.houses.models import Car, House
 from apps.houses.utils import format_license_plate, normalize_license_plate
+from apps.reports.models import Report
+from apps.reports.services import readable_reports_q
 from apps.users.models import User
 
 from .services import (
@@ -38,6 +40,7 @@ TYPE_TO_KEY = {
     "car": "cars",
     "file": "files",
     "folder": "folders",
+    "report": "reports",
 }
 
 # Display priority for result groups (most useful types first).
@@ -52,6 +55,7 @@ GROUP_DISPLAY_ORDER = [
     "posts",
     "announcements",
     "events",
+    "reports",
     "houses",
     "cars",
     "files",
@@ -453,6 +457,17 @@ def apply_visibility_filters(results: dict[str, list[dict]], user: User) -> None
             or item["id"] in uploaded_by
         ]
 
+    # Reports (a closed udvalg's queue belongs to its members, plus whoever
+    # reported the individual case). Asking the database which of these ids are
+    # readable, rather than restating the rule here, keeps one definition of it.
+    report_items = results.get("reports") or []
+    if report_items:
+        ids = [item["id"] for item in report_items]
+        visible = set(
+            Report.objects.filter(readable_reports_q(user), id__in=ids).values_list("id", flat=True)
+        )
+        results["reports"] = [item for item in report_items if item["id"] in visible]
+
 
 def _replace_titles(items: list[dict], by_id: dict[int, str]) -> None:
     """Overwrite each item's title using the lookup map. Items not in the map
@@ -552,6 +567,20 @@ def restore_original_titles(results: dict[str, list[dict]]) -> None:
         }
         _replace_titles(users, by_id)
 
+    # A report's indexed title is an excerpt of its description, so rebuild the
+    # excerpt from the unfolded source rather than reading a single field.
+    reports = results.get("reports") or []
+    if reports:
+        _replace_titles(
+            reports,
+            {
+                report_id: create_excerpt(description, 80)
+                for report_id, description in Report.objects.filter(
+                    id__in=[i["id"] for i in reports]
+                ).values_list("id", "description")
+            },
+        )
+
 
 # Types that can be searched via the advanced endpoint. Order matters — used
 # for the default `types` filter and to ensure all keys appear in the response.
@@ -560,6 +589,7 @@ ADVANCED_SEARCHABLE_TYPES = [
     "post",
     "announcement",
     "event",
+    "report",
     "file",
     "folder",
     "subgroup",

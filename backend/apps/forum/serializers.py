@@ -211,6 +211,8 @@ class SubgroupSerializer(serializers.ModelSerializer):
             "is_main",
             "allows_members",
             "default_members_only",
+            "reporting",
+            "reporting_intro",
             "icon",
             "thread_count",
             "unread_thread_count",

@@ -28,6 +28,14 @@ EMAIL_SUBJECT_PREFIX: dict[str, str] = {
     NotificationType.NEW_MESSAGE: "[Besked]",
     NotificationType.MESSAGE_REACTION: "[Besked]",
     NotificationType.FOOD_TICKET: "[Mad]",
+    NotificationType.FOOD_TEAM_REMINDER: "[Madhold]",
+    NotificationType.FOOD_TEAM_TAKEAWAY_READY: "[Madhold]",
+    NotificationType.FOOD_TEAM_LEFTOVERS_READY: "[Madhold]",
+    NotificationType.FOOD_TEAM_SWAP_REQUEST: "[Madhold]",
+    NotificationType.FOOD_TEAM_SHIFT_TAKEN: "[Madhold]",
+    NotificationType.FOOD_TEAM_PLAN_READY: "[Madhold]",
+    NotificationType.FOOD_TEAM_WISHES_OPEN: "[Madhold]",
+    NotificationType.FOOD_TEAM_PAUSE_CHECK: "[Madhold]",
     NotificationType.EVENT_CREATED: "[Kalender]",
     NotificationType.EVENT_UPDATED: "[Kalender]",
     NotificationType.EVENT_CANCELLED: "[Kalender]",
@@ -66,29 +74,36 @@ def should_send_email(user: User, notification_type: NotificationType) -> bool:
         NotificationType.EVENT_CANCELLED: prefs.email_events,
         NotificationType.EVENT_REMINDER: prefs.email_event_reminders,
         NotificationType.FOOD_TICKET: prefs.email_food_tickets,
+        NotificationType.FOOD_TEAM_REMINDER: prefs.email_food_team_reminder,
+        NotificationType.FOOD_TEAM_TAKEAWAY_READY: prefs.email_food_takeaway_ready,
+        NotificationType.FOOD_TEAM_LEFTOVERS_READY: prefs.email_food_leftovers_ready,
+        NotificationType.FOOD_TEAM_SWAP_REQUEST: prefs.email_food_swap_request,
         NotificationType.MENTION: prefs.email_mentions,
         NotificationType.CAR_LOAN_REQUEST: prefs.email_car_sharing,
         NotificationType.CAR_LOAN_UPDATE: prefs.email_car_sharing,
+        NotificationType.REPORT_NEW: prefs.email_reports,
+        NotificationType.REPORT_UPDATE: prefs.email_reports,
     }
 
-    # Expense outcomes have no dedicated email toggle — they piggyback on
-    # whatever email channels the user already has enabled (email if any email).
-    if notification_type == NotificationType.EXPENSE_PROCESSED:
-        return any(
-            (
-                prefs.email_messages,
-                prefs.email_announcements,
-                prefs.email_announcement_updates,
-                prefs.email_forum_subscriptions,
-                prefs.email_thread_replies,
-                prefs.email_subgroup_activity,
-                prefs.email_post_reactions,
-                prefs.email_events,
-                prefs.email_event_reminders,
-                prefs.email_food_tickets,
-                prefs.email_mentions,
-            )
-        )
+    # These have no dedicated email toggle — they piggyback on whatever email
+    # channels the user already has enabled (email if any email). The madhold
+    # pause check especially: someone on a long break may not open the app at
+    # all, and email is then the only way the question reaches them.
+    #
+    # ``has_any_email_channel`` reads the toggles off the model instead of
+    # listing them here: the hand-written list this replaced had drifted and no
+    # longer covered the four food toggles, ``email_car_sharing`` or
+    # ``email_reports``, so a resident whose only e-mail was "påmindelse om
+    # madhold" got none of these — including the pause check the comment above
+    # says e-mail exists to deliver.
+    if notification_type in (
+        NotificationType.EXPENSE_PROCESSED,
+        NotificationType.FOOD_TEAM_PAUSE_CHECK,
+        NotificationType.FOOD_TEAM_SHIFT_TAKEN,
+        NotificationType.FOOD_TEAM_PLAN_READY,
+        NotificationType.FOOD_TEAM_WISHES_OPEN,
+    ):
+        return prefs.has_any_email_channel()
 
     return preference_map.get(notification_type, False)
 

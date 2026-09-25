@@ -164,6 +164,39 @@ def build_fts_query(query: str, prefix: bool = True) -> str:
     return " ".join(parts)
 
 
+def matching_ids(obj_type: str, query: str, *, prefix: bool = True) -> list[int]:
+    """Ids of one type's objects matching *query*, with Danish folding applied.
+
+    List views filter on this rather than on ``__icontains``. SQLite's LIKE
+    folds case for ASCII only, so a queue search for "ødelagt" missed every case
+    written "Ødelagt" — while the same word found them through the global search,
+    because this index folds æ/ø/å at write time and ``build_fts_query`` folds
+    them again at read time. Going through the index means that folding is
+    stated once instead of once per list view.
+
+    It also means *what is searchable* about a model is declared once, in its
+    ``_*_search_fields`` in ``signals.py``. Reports used to declare it twice —
+    the queue matched a legacy reporter's name that the index did not hold, and
+    the index held an excerpt the queue did not match — which is how the two
+    surfaces came to disagree about the same case.
+
+    Ordering is deliberately not handled here: these ids go into a queryset that
+    has its own ordering and, more importantly, its own visibility filter, so
+    nothing this returns can widen what a viewer is allowed to see.
+    """
+    fts_query = build_fts_query(query, prefix=prefix)
+    if not fts_query:
+        return []
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT object_id FROM search_index WHERE search_index MATCH %s AND type = %s",
+            [fts_query, obj_type],
+        )
+        # object_id is an UNINDEXED FTS5 column, so it comes back as text.
+        return [int(row[0]) for row in cursor.fetchall()]
+
+
 def index_object(
     obj_type: str,
     object_id: int,
@@ -215,7 +248,7 @@ def remove_object(obj_type: str, object_id: int) -> None:
 
 # Content types where a dynamic snippet from body is more useful than the
 # stored subtitle (e.g. post content, announcement text).
-_SNIPPET_TYPES = {"post", "announcement", "event", "thread"}
+_SNIPPET_TYPES = {"post", "announcement", "event", "thread", "report"}
 
 
 def _parse_fts_row(row: tuple) -> dict:
@@ -272,7 +305,7 @@ def fts_search(query: str, limit: int = 10) -> list[dict]:
             "FROM search_index WHERE search_index MATCH %s "
             "ORDER BY bm25(search_index, 10.0, 1.0) "
             "  + CASE WHEN created_at = '' THEN 0 "
-            "    WHEN type IN ('thread','post','announcement','event','file') "
+            "    WHEN type IN ('thread','post','announcement','event','file','report') "
             "    THEN 0.01 * (julianday('now') - julianday(created_at)) "
             "    ELSE 0.001 * (julianday('now') - julianday(created_at)) "
             "    END "
@@ -314,7 +347,7 @@ def fts_search_advanced(
         score_expr = (
             "bm25(search_index, 10.0, 1.0) "
             "+ CASE WHEN created_at = '' THEN 0 "
-            "  WHEN type IN ('thread','post','announcement','event','file') "
+            "  WHEN type IN ('thread','post','announcement','event','file','report') "
             "  THEN 0.01 * (julianday('now') - julianday(created_at)) "
             "  ELSE 0.001 * (julianday('now') - julianday(created_at)) "
             "  END"
@@ -370,7 +403,7 @@ def fts_search_per_type(query: str, per_type_limit: int = 10) -> list[dict]:
             "    snippet(search_index, 1, '', '', '…', 15) AS snip, "
             "    bm25(search_index, 10.0, 1.0) "
             "      + CASE WHEN created_at = '' THEN 0 "
-            "        WHEN type IN ('thread','post','announcement','event','file') "
+            "        WHEN type IN ('thread','post','announcement','event','file','report') "
             "        THEN 0.01 * (julianday('now') - julianday(created_at)) "
             "        ELSE 0.001 * (julianday('now') - julianday(created_at)) "
             "        END AS score "
