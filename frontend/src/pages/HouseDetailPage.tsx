@@ -242,7 +242,7 @@ function InhabitantCard({ inhabitant, to }: InhabitantCardProps) {
             </Group>
           )}
           {birthday && (
-            <Group gap={4}>
+            <Group gap={4} wrap="nowrap">
               <IconCake
                 size={14}
                 style={{ color: "var(--mantine-color-dimmed)" }}
@@ -279,7 +279,7 @@ function ChildCard({ child }: ChildCardProps) {
             </Badge>
           </Group>
           {birthdate && (
-            <Group gap={4}>
+            <Group gap={4} wrap="nowrap">
               <IconCake
                 size={14}
                 style={{ color: "var(--mantine-color-dimmed)" }}

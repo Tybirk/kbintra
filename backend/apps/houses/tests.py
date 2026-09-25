@@ -97,7 +97,7 @@ class TestCarModel:
         plate_only = Car(house=house, license_plate="EA78950")
         no_plate = Car(house=house, license_plate="", make="Tesla", model_name="S")
 
-        assert described.name_with_plate == "Tesla S (EA 78 950)"
+        assert described.name_with_plate == "Tesla S (EA\u00a078\u00a0950)"
         assert plate_only.name_with_plate == "EA 78 950"
         assert no_plate.name_with_plate == "Tesla S"
 

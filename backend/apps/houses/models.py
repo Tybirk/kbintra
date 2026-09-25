@@ -218,4 +218,6 @@ class Car(models.Model):
         plate = format_license_plate(self.license_plate)
         if not plate or plate == self.display_name:
             return self.display_name
-        return f"{self.display_name} ({plate})"
+        # Non-breaking, so a narrow screen never splits it into "(EA 78" / "950)".
+        unbroken = plate.replace(" ", "\u00a0")
+        return f"{self.display_name} ({unbroken})"

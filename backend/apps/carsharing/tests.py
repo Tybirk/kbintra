@@ -2023,7 +2023,7 @@ def test_accepting_notifies_the_borrower(owner_house, owner, borrower, borrower_
 
     notification = Notification.objects.get(user=borrower, title="Du har fået en bil")
     # Make and model do not single a car out in a car park; the plate does.
-    assert "Skoda Octavia (AB 12 345)" in notification.message
+    assert "Skoda Octavia (AB\u00a012\u00a0345)" in notification.message
     assert notification.link == f"/bildeling/laan/{candidate.loan_id}"
     assert notification.notification_type == NotificationType.CAR_LOAN_UPDATE
 
