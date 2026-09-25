@@ -41,7 +41,12 @@ import { filterFilesBySize } from "../config"
 
 const EmojiPicker = lazy(() => import("./EmojiPicker"))
 
-import { saveDraft, loadDraft, clearDraft } from "../utils/draftStorage"
+import {
+  DRAFT_SAVE_DELAY_MS,
+  saveDraft,
+  loadDraft,
+  clearDraft,
+} from "../utils/draftStorage"
 
 import { usersApi } from "../api/users"
 
@@ -296,7 +301,7 @@ export default function ChatRichTextEditor({
 
     saveTimerRef.current = setTimeout(() => {
       saveDraft(draftKey, content)
-    }, 1500)
+    }, DRAFT_SAVE_DELAY_MS)
 
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)

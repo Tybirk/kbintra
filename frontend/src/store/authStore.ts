@@ -10,6 +10,8 @@ import * as Sentry from "@sentry/react"
 
 import type { User } from "../types"
 
+import { claimDrafts } from "../utils/draftStorage"
+
 import { authApi } from "../api/auth"
 
 import { getAccessToken } from "../api/client"
@@ -158,3 +160,8 @@ export const useAuthStore = create<AuthState>()(
     },
   ),
 )
+
+// Whoever is logged in owns the drafts in this browser; another user's go.
+useAuthStore.subscribe((state) => {
+  if (state.user) claimDrafts(state.user.id)
+})

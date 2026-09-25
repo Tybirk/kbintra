@@ -30,7 +30,12 @@ import { useMediaQuery } from "@mantine/hooks"
 
 const EmojiPicker = lazy(() => import("./EmojiPicker"))
 
-import { saveDraft, loadDraft, clearDraft } from "../utils/draftStorage"
+import {
+  DRAFT_SAVE_DELAY_MS,
+  saveDraft,
+  loadDraft,
+  clearDraft,
+} from "../utils/draftStorage"
 
 import { mentionSuggestion } from "./mentionSuggestion"
 
@@ -321,7 +326,7 @@ export default function RichTextEditor({
 
         saveTimerRef.current = setTimeout(() => {
           saveDraft(key, html)
-        }, 1500)
+        }, DRAFT_SAVE_DELAY_MS)
       }
 
       detectGiphy(editor, setGiphyStateRef.current)

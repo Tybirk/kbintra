@@ -58,6 +58,8 @@ vi.mock("../utils/draftStorage", () => ({
   saveDraft: vi.fn().mockResolvedValue(undefined),
 
   clearDraft: vi.fn().mockResolvedValue(undefined),
+
+  claimDrafts: vi.fn(),
 }))
 
 vi.mock("../store/authStore", () => ({

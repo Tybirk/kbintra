@@ -10,6 +10,16 @@ const CRYPTO_KEY_ITEM = "_kbi_ck"
 
 const DRAFT_PREFIX = "_kbi_d_"
 
+const OWNER_ITEM = "_kbi_owner"
+
+/**
+ * How long the editors wait after the last keystroke before saving. A reload
+ * loses at most this much typing: timers don't fire during unload, and the
+ * editors cancel a pending save on unmount on purpose — flushing it would put
+ * back a draft the page had just cleared after posting.
+ */
+export const DRAFT_SAVE_DELAY_MS = 300
+
 let cachedKey: CryptoKey | null = null
 
 async function getCryptoKey(): Promise<CryptoKey> {
@@ -142,4 +152,30 @@ export async function loadDraft(key: string): Promise<string | null> {
 
 export function clearDraft(key: string): void {
   localStorage.removeItem(DRAFT_PREFIX + key)
+}
+
+/**
+ * Drafts belong to the user who wrote them. When someone else logs in on this
+ * browser, the previous user's drafts go, and so does the key that decrypts
+ * them; the same user logging back in keeps theirs. A browser with drafts from
+ * before owners were recorded keeps them for whoever logs in first.
+ */
+export function claimDrafts(userId: number): void {
+  const owner = String(userId)
+
+  const previous = localStorage.getItem(OWNER_ITEM)
+
+  if (previous === owner) return
+
+  if (previous !== null) {
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith(DRAFT_PREFIX))
+      .forEach((key) => localStorage.removeItem(key))
+
+    localStorage.removeItem(CRYPTO_KEY_ITEM)
+
+    cachedKey = null
+  }
+
+  localStorage.setItem(OWNER_ITEM, owner)
 }
