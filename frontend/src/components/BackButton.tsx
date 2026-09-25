@@ -23,6 +23,7 @@ export function BackButton({ to, label }: BackButtonProps) {
 
   return (
     <Box
+      data-sticky-top
       style={{
         position: "sticky",
 

@@ -1,12 +1,4 @@
-import {
-  useState,
-  useEffect,
-  useRef,
-  memo,
-  useCallback,
-  lazy,
-  Suspense,
-} from "react"
+import { useState, useEffect, memo, useCallback, lazy, Suspense } from "react"
 
 import { useParams, useNavigate, useLocation } from "react-router-dom"
 
@@ -43,7 +35,7 @@ import { notifications } from "@mantine/notifications"
 
 import { showErrorNotification } from "../utils/errorNotification"
 
-import { holdInView } from "../utils/holdInView"
+import { useHoldHashTarget } from "../hooks/useHoldHashTarget"
 
 import { subgroupOptionLabel } from "../utils/subgroupLabel"
 
@@ -369,10 +361,6 @@ export default function ThreadPage() {
     null,
   )
 
-  const highlightedHashRef = useRef("")
-
-  const releaseHoldRef = useRef<(() => void) | null>(null)
-
   const {
     data: thread,
 
@@ -440,40 +428,8 @@ export default function ThreadPage() {
     }
   }, [thread?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Scroll to and highlight a specific post when navigating from a notification
-
-  useEffect(() => {
-    if (
-      !thread ||
-      !location.hash ||
-      highlightedHashRef.current === location.hash
-    )
-      return
-
-    const el = document.getElementById(location.hash.slice(1))
-
-    if (!el) return
-
-    highlightedHashRef.current = location.hash
-
-    window.history.replaceState(null, "", location.pathname)
-
-    el.style.transition = "box-shadow 0.3s ease"
-
-    el.style.boxShadow = "0 0 0 3px var(--mantine-color-blue-4)"
-
-    setTimeout(() => {
-      el.style.boxShadow = ""
-    }, 2000)
-
-    // Held until the reader scrolls or leaves, not until the next refetch of
-    // `thread` — which would let go while images above are still loading.
-    releaseHoldRef.current?.()
-
-    releaseHoldRef.current = holdInView(el)
-  }, [thread, location.hash]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => () => releaseHoldRef.current?.(), [thread?.id])
+  // Open at the post a notification or search result links to.
+  useHoldHashTarget(!!thread)
 
   const createPostMutation = useMutation({
     mutationFn: ({ data, files, pollData: pd }: CreatePostParams) =>

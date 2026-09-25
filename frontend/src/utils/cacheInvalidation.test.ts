@@ -48,6 +48,17 @@ describe("invalidateCacheForLink", () => {
       })
     })
 
+    it("leaves a #post anchor out of the thread slug", () => {
+      invalidateCacheForLink(
+        queryClient,
+        "/forum/madgruppen/traad/ugens-menu#post-60039",
+      )
+
+      expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+        queryKey: ["thread", "madgruppen", "ugens-menu"],
+      })
+    })
+
     it("invalidates with correct slugs for different subgroup and thread", () => {
       invalidateCacheForLink(queryClient, "/forum/boliggruppen/traad/ny-aftale")
 

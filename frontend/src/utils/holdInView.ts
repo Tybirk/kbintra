@@ -1,8 +1,9 @@
 /**
- * Scroll the window so `el` sits just under the fixed header, and keep it
- * there while the page settles (images above it loading), until the reader
- * scrolls or taps. Instant — no animation to sit through in a long thread.
- * Returns a function that lets go.
+ * Scroll the window so `el` sits just under whatever is stuck to the top —
+ * the app header, and any bar marked `data-sticky-top` (the "Tilbage" bar) —
+ * and keep it there while the page settles (images above it loading), until
+ * the reader scrolls or taps. Instant — no animation to sit through in a long
+ * thread. Returns a function that lets go.
  */
 export function holdInView(el: HTMLElement): () => void {
   const place = () => {
@@ -10,7 +11,16 @@ export function holdInView(el: HTMLElement): () => void {
 
     const header = document.querySelector(".mantine-AppShell-header")
 
-    const headerBottom = header?.getBoundingClientRect().bottom ?? 0
+    const bars = document.querySelectorAll<HTMLElement>("[data-sticky-top]")
+
+    // A sticky bar's bottom once it is stuck, wherever it sits right now.
+    const headerBottom = Math.max(
+      header?.getBoundingClientRect().bottom ?? 0,
+      ...Array.from(
+        bars,
+        (bar) => parseFloat(getComputedStyle(bar).top) + bar.offsetHeight,
+      ),
+    )
 
     window.scrollTo(
       0,

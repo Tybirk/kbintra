@@ -3,7 +3,8 @@ import type { QueryClient } from "@tanstack/react-query"
 /** Invalidate cached queries relevant to a notification link so navigating shows fresh data. */
 
 export function invalidateCacheForLink(queryClient: QueryClient, link: string) {
-  const forumMatch = link.match(/^\/forum\/([^/]+)\/traad\/([^/]+)/)
+  // The slug stops at a #post-N or ?query, or the key never matches the cache.
+  const forumMatch = link.match(/^\/forum\/([^/]+)\/traad\/([^/?#]+)/)
 
   if (forumMatch) {
     const [, subgroupSlug, threadSlug] = forumMatch
