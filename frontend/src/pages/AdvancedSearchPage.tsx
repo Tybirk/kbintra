@@ -317,7 +317,9 @@ export default function AdvancedSearchPage() {
                   </ActionIcon>
                 ) : null
               }
-              autoFocus
+              // Only for a fresh search: focusing on the way back to results
+              // scrolled the page to the top.
+              autoFocus={!params.get("q")}
             />
 
             <div>

@@ -1,6 +1,6 @@
-import { useState, useMemo, useCallback, useRef } from "react"
+import { useState, useMemo, useCallback, useRef, useEffect } from "react"
 
-import { useNavigate, Link } from "react-router-dom"
+import { useNavigate, Link, useSearchParams } from "react-router-dom"
 
 import { useQuery, keepPreviousData } from "@tanstack/react-query"
 
@@ -101,11 +101,36 @@ export default function CalendarPage() {
 
   const [subgroupFilter, setSubgroupFilter] = useState<string | null>(null)
 
-  const [currentDate, setCurrentDate] = useState(dayjs().format("YYYY-MM-DD"))
+  // The list view and the date live in the URL too (?visning=liste&dato=…), so
+  // back from an event returns to the view and month the reader left.
+  const [params, setParams] = useSearchParams()
+
+  const today = dayjs().format("YYYY-MM-DD")
+
+  const [currentDate, setCurrentDate] = useState(params.get("dato") ?? today)
 
   const [currentView, setCurrentView] = useState<ScheduleViewLevel>("month")
 
-  const [displayMode, setDisplayMode] = useState<DisplayMode>("calendar")
+  const [displayMode, setDisplayMode] = useState<DisplayMode>(
+    params.get("visning") === "liste" ? "list" : "calendar",
+  )
+
+  useEffect(() => {
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+
+        if (displayMode === "list") next.set("visning", "liste")
+        else next.delete("visning")
+
+        if (currentDate !== today) next.set("dato", currentDate)
+        else next.delete("dato")
+
+        return next
+      },
+      { replace: true },
+    )
+  }, [displayMode, currentDate]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const listMonthStart = dayjs(currentDate).startOf("month")
 

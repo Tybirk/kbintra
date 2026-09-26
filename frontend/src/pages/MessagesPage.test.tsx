@@ -685,6 +685,30 @@ describe("MessagesPage", () => {
       expect(screen.getByRole("link", { name: "Bob" })).toBeInTheDocument()
     })
 
+    it("names the sender again after a system line of theirs", async () => {
+      vi.mocked(messagingApi.getMessages).mockResolvedValue({
+        results: [
+          makeMessage(1, alice),
+          {
+            ...makeMessage(2, alice),
+            is_system_message: true,
+            content: "Alice omdøbte samtalen",
+          },
+          makeMessage(3, alice),
+        ],
+
+        has_more: false,
+      })
+
+      renderConversation(mockGroupConversation)
+
+      await waitFor(() => {
+        expect(screen.getByText("Besked 3")).toBeInTheDocument()
+      })
+
+      expect(screen.getAllByRole("link", { name: "Alice" })).toHaveLength(2)
+    })
+
     it("shows the thumbnail, not the original, in the bubble", async () => {
       vi.mocked(messagingApi.getMessages).mockResolvedValue({
         results: [

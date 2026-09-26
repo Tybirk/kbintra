@@ -1059,11 +1059,20 @@ const MessageList = memo(function MessageList({
 
           const nextMsg = idx < messages.length - 1 ? messages[idx + 1] : null
 
+          // A system line ("… omdøbte samtalen") belongs to no one's run: the
+          // sender's next message gets its name and avatar back, and the one
+          // before it keeps its time.
           const sameSenderAsPrev =
-            prevMsg != null && prevMsg.sender.id === msg.sender.id
+            prevMsg != null &&
+            !prevMsg.is_system_message &&
+            !msg.is_system_message &&
+            prevMsg.sender.id === msg.sender.id
 
           const sameSenderAsNext =
-            nextMsg != null && nextMsg.sender.id === msg.sender.id
+            nextMsg != null &&
+            !nextMsg.is_system_message &&
+            !msg.is_system_message &&
+            nextMsg.sender.id === msg.sender.id
 
           const timeSincePrev = prevMsg
             ? dayjs(msg.created_at).diff(dayjs(prevMsg.created_at), "minute")
