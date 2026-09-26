@@ -123,6 +123,10 @@ export function AttachmentCarousel({
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || editable)
         return
 
+      // With focus inside the carousel (after clicking an arrow or a dot)
+      // Mantine moves it itself; both at once moved two slides.
+      if (target?.closest(".mantine-Carousel-root")) return
+
       if (e.key === "ArrowLeft") {
         e.preventDefault()
         embla.scrollPrev()
@@ -201,12 +205,18 @@ export function AttachmentCarousel({
         </Text>
       }
       styles={{
-        body: {
-          padding: isMobile ? 0 : undefined,
+        body: isMobile
+          ? {
+              padding: 0,
 
-          // dvh: iOS counts its browser bars in vh, which cut off the dots.
-          height: isMobile ? "calc(100dvh - 60px)" : "75vh",
-        },
+              // The rest of the full-screen modal under its header, whatever
+              // that measures: a fixed "100vh - 60px" ran 15 px off the screen
+              // when "Stor skrift" made the header 75 px, taking the dots along.
+              flex: 1,
+
+              minHeight: 0,
+            }
+          : { height: "75vh" },
 
         content: {
           display: "flex",

@@ -65,11 +65,16 @@ interface ZoomAnchor {
   factor: number
 }
 
-/** The page at the top of the view, and how far down it (0–1), across a resize. */
+/**
+ * The page at the top of the view and how far down it (0–1), and how far
+ * across the content the view starts (0–1), kept across a resize.
+ */
 interface WidthAnchor {
   page: string
 
   fraction: number
+
+  across: number
 }
 
 /** A pinch or ctrl+wheel in progress, previewed with a CSS transform. */
@@ -145,6 +150,8 @@ export default function PdfViewer({ blobUrl }: PdfViewerProps) {
             page: page.dataset.page!,
 
             fraction: (top - rect.top) / rect.height,
+
+            across: el.scrollLeft / el.scrollWidth,
           }
         }
       }
@@ -223,6 +230,9 @@ export default function PdfViewer({ blobUrl }: PdfViewerProps) {
       page.getBoundingClientRect().top -
       el.getBoundingClientRect().top +
       anchor.fraction * page.offsetHeight
+
+    // Zoomed in, the same share of the width across (it was reset to the left).
+    el.scrollLeft = anchor.across * el.scrollWidth
   }, [fitWidth])
 
   // Gestures. Native listeners: touchmove and wheel must be able to

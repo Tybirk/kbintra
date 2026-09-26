@@ -25,7 +25,12 @@ export function ImageZoomViewer({
         const blobUrl = URL.createObjectURL(blob)
         const a = document.createElement("a")
         a.href = blobUrl
-        a.download = alt || "image"
+        // A HEIC photo is shown (and so saved) as its JPEG preview: name it so.
+        const name = alt || "image"
+        a.download =
+          blob.type === "image/jpeg"
+            ? name.replace(/\.hei[cf]$/i, ".jpg")
+            : name
         document.body.appendChild(a)
         a.click()
         document.body.removeChild(a)
