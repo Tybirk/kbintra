@@ -133,6 +133,16 @@ export default function PdfViewer({ blobUrl }: PdfViewerProps) {
     // the view and how far down it the reader was, and go back there.
     let width = 0
 
+    // How far across the reader is, as of the last scroll at the current
+    // width. Read at resize time it is too late: turning to landscape widens
+    // the view past the (not yet re-rendered) pages, and the browser has
+    // already clamped scrollLeft to 0.
+    let across = 0
+
+    const onScroll = () => {
+      if (el.clientWidth === width) across = el.scrollLeft / el.scrollWidth
+    }
+
     const update = () => {
       const next = el.clientWidth
 
@@ -151,7 +161,7 @@ export default function PdfViewer({ blobUrl }: PdfViewerProps) {
 
             fraction: (top - rect.top) / rect.height,
 
-            across: el.scrollLeft / el.scrollWidth,
+            across,
           }
         }
       }
@@ -167,7 +177,13 @@ export default function PdfViewer({ blobUrl }: PdfViewerProps) {
 
     observer.observe(el)
 
-    return () => observer.disconnect()
+    el.addEventListener("scroll", onScroll, { passive: true })
+
+    return () => {
+      observer.disconnect()
+
+      el.removeEventListener("scroll", onScroll)
+    }
   }, [])
 
   /** Zoom to `next`, keeping the point (x, y) of the viewport where it is. */
