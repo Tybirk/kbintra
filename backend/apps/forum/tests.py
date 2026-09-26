@@ -2769,8 +2769,15 @@ class TestRepairLegacyMentions:
         assert m.repair(correct, resolve) == correct
         assert m.repair(self._mention(3, "Peter"), resolve) == "@Peter"
 
-    def test_a_mention_without_a_label_is_left_as_it_is(self):
+    def test_the_older_markup_goes_by_the_name_shown(self):
         m = self._migration()
-        tag = '<a href="/profil/5" class="mention" data-type="mention" data-id="5">@Anders</a>'
+        resolve = m.resolver([(1, "Annette", "Thejsen"), (111, "Carl MM", "Kobel")])
+        old = '<a class="mention" href="/profil/1">@Carl M. Kobel</a>'
+
+        assert m.repair(old, resolve) == '<a class="mention" href="/profil/111">@Carl M. Kobel</a>'
+
+    def test_a_mention_with_no_name_at_all_is_left_as_it_is(self):
+        m = self._migration()
+        tag = '<a href="/profil/5" class="mention" data-type="mention" data-id="5"></a>'
 
         assert m.repair(tag, m.resolver([(9, "Anders", "And")])) == tag

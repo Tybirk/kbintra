@@ -1,25 +1,33 @@
 """Point legacy @-mentions at the person they name.
 
 Posts written before the cutover (2026-02-20 to 2026-04-23) carry mention links with the
-previous platform's user ids: on the prod copy of 2026-09-25, 49 of 100 mention links opened a
-different resident's profile than the name shown ("/profil/107" labelled Peter Emil Tybirk
-opens Peter Vogel). No backup maps the old ids, so the name in `data-label` decides:
+previous platform's user ids: on the prod copy of 2026-09-26, 93 of 161 mention links
+opened a different resident's profile than the name shown ("/profil/107" shown as @Peter
+Emil Tybirk opens Peter Vogel). Two markups: the editor's `data-type="mention"` with
+data-id/data-label, and an older bare `<a class="mention" href="/profil/N">`. No backup maps
+the old ids, so the name decides — data-label, else the link text the reader sees:
 
 1. the full name, ignoring case, spaces and periods;
 2. else the first and last name, ignoring middle names and initials ("Carl M. Kobel");
-3. else, for a one-word label, the only resident with that first name ("Esben").
+3. else, for a one-word name, the only resident with that first name ("Esben").
 
-A mention that still points nowhere or at several people becomes plain "@Name" text (Carl's
-decision, 2026-09-26), so nothing links to the wrong person. Only href/data-id change and the
+83 are re-pointed. The 10 that still point nowhere or at several people ("@Peter", or the
+made-up link text of an early test thread) become plain "@Name" text (Carl's decision,
+2026-09-26), so nothing links to the wrong person. Only href/data-id change and the
 text stays, so the search index is unaffected; bulk_update leaves updated_at alone.
 """
 
 import re
+from html import unescape
 
 from django.db import migrations
 
-MENTION = re.compile(r"<a\b[^>]*\bdata-type=\"mention\"[^>]*>(.*?)</a>", re.S)
-ATTR = re.compile(r'\b(data-id|data-label)="([^"]*)"')
+# Either markup: data-type="mention", or the older class="mention" alone.
+MENTION = re.compile(
+    r"<a\b(?=[^>]*(?:\bdata-type=\"mention\"|\bclass=\"mention\"))[^>]*>(.*?)</a>", re.S
+)
+ATTR = re.compile(r'\b(data-id|data-label|href)="([^"]*)"')
+TAG = re.compile(r"<[^>]+>")
 
 
 def _norm(text: str) -> str:
@@ -61,10 +69,18 @@ def repair(html: str, resolve) -> str:
     def fix(match: re.Match) -> str:
         tag, inner = match.group(0), match.group(1)
         attrs = dict(ATTR.findall(tag))
-        if "data-label" not in attrs:
+        # The label the editor recorded, else the name the reader sees (the older
+        # markup has no label, and a few posts edited the text: "@Terkild nørden").
+        names = [attrs.get("data-label", ""), unescape(TAG.sub("", inner)).strip().lstrip("@")]
+        names = [name for name in names if name.strip()]
+        if not names:
             return tag  # no name to go by: leave it as it is
-        current = int(attrs["data-id"]) if attrs.get("data-id", "").isdigit() else None
-        target = resolve(attrs.get("data-label", ""), current)
+        linked = re.fullmatch(r"/profil/(\d+)", attrs.get("href", ""))
+        current_text = attrs.get("data-id") or (linked.group(1) if linked else "")
+        current = int(current_text) if current_text.isdigit() else None
+        target = next(
+            (found for name in names if (found := resolve(name, current)) is not None), None
+        )
         if target is None:
             return inner
         if target == current:
@@ -88,7 +104,7 @@ def forwards(apps, schema_editor):
     for app_label, model_name, field in FIELDS:
         Model = apps.get_model(app_label, model_name)
         changed = []
-        for obj in Model.objects.filter(**{f"{field}__contains": 'data-type="mention"'}):
+        for obj in Model.objects.filter(**{f"{field}__contains": 'class="mention"'}):
             html = getattr(obj, field)
             repaired = repair(html, resolve)
             if repaired != html:
