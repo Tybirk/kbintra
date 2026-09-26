@@ -10,6 +10,8 @@ import {
   getDefaultZIndex,
 } from "@mantine/core"
 
+import { useMediaQuery } from "@mantine/hooks"
+
 import { IconDownload, IconShare } from "@tabler/icons-react"
 
 interface BeforeInstallPromptEvent extends Event {
@@ -55,6 +57,8 @@ export function InstallPrompt() {
   const ref = useRef<HTMLDivElement>(null)
 
   const visible = showPrompt && !dismissed
+
+  const withNavbar = useMediaQuery("(min-width: 48em)")
 
   // While shown, the banner claims its space at the bottom of the page (see
   // AppShell.Main in App.tsx), as TestDomainBanner does at the top: otherwise
@@ -184,13 +188,15 @@ export function InstallPrompt() {
 
         bottom: 16,
 
-        left: 16,
+        // Beside the navbar where it stays open (from the "sm" breakpoint,
+        // 280 px wide in App.tsx), rather than underneath it.
+        left: withNavbar ? 280 + 16 : 16,
 
         right: 16,
 
-        // Above the page and the navbar (app + 1), below modals: an open
-        // carousel or zoom covers it.
-        zIndex: getDefaultZIndex("app") + 2,
+        // Above the page, under the navbar (app + 1) and modals: the phone's
+        // burger menu and an open carousel or zoom cover it.
+        zIndex: getDefaultZIndex("app"),
 
         maxWidth: 400,
 
