@@ -285,13 +285,25 @@ export function useChatScroll(
     }
   }, [messages, targetId, hasOlder, isLoadingOlder, loadOlder, holdAnchor])
 
-  // Highlight the linked message once it is on screen.
+  // Highlight the linked message once it is on screen, and take the link out
+  // of the address bar, as the forum does. Left in, back to this entry made
+  // the browser jump to the fragment, which read as the reader scrolling there
+  // (−25,538 px) instead of returning to their place. replaceState keeps the
+  // router's entry and its key.
   useEffect(() => {
     if (!targetId) return
 
     const el = document.getElementById(targetId)
 
     if (!el || el.dataset.highlighted) return
+
+    if (window.location.hash === `#${targetId}`) {
+      window.history.replaceState(
+        window.history.state,
+        "",
+        window.location.pathname + window.location.search,
+      )
+    }
 
     el.dataset.highlighted = "true"
 
