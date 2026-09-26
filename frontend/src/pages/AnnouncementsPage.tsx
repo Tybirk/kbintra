@@ -628,7 +628,11 @@ function CreateAnnouncementModal({
                 minHeight={200}
                 onFilePaste={handleAddFiles}
                 draftKey="new-announcement"
-                onClearDraft={() => setTitle("")}
+                onClearDraft={() => {
+                  setTitle("")
+
+                  clearDraft("new-announcement-title")
+                }}
               />
             </div>
 
