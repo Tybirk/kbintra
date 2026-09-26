@@ -27,7 +27,7 @@ import type { ScheduleEventData, ScheduleViewLevel } from "@mantine/schedule"
 
 import "@mantine/schedule/styles.css"
 
-import { useDisclosure, useMediaQuery } from "@mantine/hooks"
+import { useDisclosure, useElementSize, useMediaQuery } from "@mantine/hooks"
 
 import { notifications } from "@mantine/notifications"
 
@@ -52,6 +52,7 @@ import {
   bookingToScheduleData,
   DA_SCHEDULE_LABELS,
   forMobileMonthView,
+  MOBILE_MONTH_VIEW_DANISH,
   expandMultiDayEvents,
   formatScheduleTimeRange,
 } from "../utils/scheduleHelpers"
@@ -199,7 +200,15 @@ export default function BookingsPage() {
   // multi-day events as spanning bars and the mobile "oversigt" agenda lists
   // them, so both keep the original events.
 
-  const inOversigt = isMobile && mobileViewMode === "oversigt"
+  // The library switches its responsive layout to the mobile view by the
+  // schedule's own width (a container query at 600 px), not the window's, so
+  // the page decides the same way: between 601 and 768 px it showed the desktop
+  // grid while the page treated taps as "oversigt" ones.
+  const { ref: scheduleRef, width: scheduleWidth } = useElementSize()
+
+  const compact = scheduleWidth > 0 ? scheduleWidth <= 600 : isMobile
+
+  const inOversigt = compact && mobileViewMode === "oversigt"
 
   // Never in the "oversigt": whatever view the schedule last had (a day tapped
   // in "skema"), its list shows whole bookings, not per-day chips.
@@ -518,7 +527,7 @@ export default function BookingsPage() {
         )}
       </Group>
 
-      {isMobile && (
+      {compact && (
         <Group justify="flex-end" mb="sm">
           <SegmentedControl
             size="xs"
@@ -561,7 +570,7 @@ export default function BookingsPage() {
         </Group>
       )}
 
-      <div className="schedule-wrapper">
+      <div className="schedule-wrapper" ref={scheduleRef}>
         <Schedule
           events={scheduleEvents}
           view={currentView}
@@ -570,9 +579,7 @@ export default function BookingsPage() {
           onDateChange={setCurrentDate}
           locale="da"
           labels={{ ...DA_SCHEDULE_LABELS, noEvents: "Ingen reserveringer" }}
-          layout={
-            isMobile && mobileViewMode === "oversigt" ? "responsive" : undefined
-          }
+          layout={inOversigt ? "responsive" : undefined}
           onEventClick={handleEventClick}
           // Workaround: @mantine/schedule alpha doesn't destructure onTimeSlotClick
 
@@ -686,8 +693,7 @@ export default function BookingsPage() {
 
             onSelectedDateChange: (day) => day && setSelectedDay(day),
 
-            // "fredag 21. august", not the library's English "Friday, August 21"
-            eventsHeaderFormat: "dddd D. MMMM",
+            ...MOBILE_MONTH_VIEW_DANISH,
 
             renderHeader: () => (
               <Group justify="space-between" align="center" w="100%">

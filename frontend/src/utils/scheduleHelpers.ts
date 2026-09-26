@@ -206,6 +206,24 @@ export function formatScheduleTimeRange(
 }
 
 /**
+ * The mobile month view's heading for the chosen day, in Danish:
+ * "Torsdag 1. oktober", where the library wrote "Friday, August 21" and its
+ * stylesheet capitalised every word. Use with MOBILE_MONTH_VIEW_DANISH.
+ */
+export function danishDayHeading(date: string): string {
+  const text = dayjs(date).locale("da").format("dddd D. MMMM")
+
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+/** The heading props both calendars pass to the mobile month view. */
+export const MOBILE_MONTH_VIEW_DANISH = {
+  eventsHeaderFormat: danishDayHeading,
+
+  styles: { mobileMonthViewEventsHeader: { textTransform: "none" as const } },
+}
+
+/**
  * Bookings for the mobile "oversigt", which is @mantine/schedule's mobile month
  * view. It files an event under the days from its start to its end, both
  * included, and only takes events that *start* in the displayed month:

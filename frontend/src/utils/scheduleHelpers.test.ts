@@ -7,6 +7,7 @@ import {
   formatScheduleTimeRange,
   DA_SCHEDULE_LABELS,
   forMobileMonthView,
+  danishDayHeading,
 } from "./scheduleHelpers"
 
 import type { Event, CalendarBooking } from "../types"
@@ -335,5 +336,11 @@ describe("forMobileMonthView", () => {
     const booking = stay("2026-09-03 16:00:00", "2026-09-04 10:00:00")
 
     expect(forMobileMonthView([booking], "2026-09-15")).toEqual([booking])
+  })
+})
+
+describe("danishDayHeading", () => {
+  it("reads like Danish, capitalised only at the start", () => {
+    expect(danishDayHeading("2026-10-01")).toBe("Torsdag 1. oktober")
   })
 })
