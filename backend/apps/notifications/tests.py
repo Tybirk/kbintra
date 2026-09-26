@@ -1090,3 +1090,49 @@ def test_a_reply_in_an_event_thread_links_straight_to_the_thread(user, admin_use
 
     assert notification is not None
     assert notification.link == f"/forum/faelles/traad/{thread.slug}#post-42"
+
+
+@pytest.mark.django_db
+def test_old_event_thread_notifications_move_to_the_thread(user):
+    """Migration 0028: post notifications in event threads linked via /kalender/."""
+    from datetime import timedelta
+    from importlib import import_module
+
+    from django.apps import apps as django_apps
+    from django.utils import timezone
+
+    from apps.events.models import Event
+    from apps.forum.models import Subgroup, Thread
+
+    subgroup = Subgroup.objects.create(name="Fælles", slug="faelles")
+    thread = Thread.objects.create(subgroup=subgroup, title="Sommerfest", author=user)
+    event = Event.objects.create(
+        title="Sommerfest",
+        start_datetime=timezone.now() + timedelta(days=3),
+        end_datetime=timezone.now() + timedelta(days=3, hours=2),
+        created_by=user,
+        thread=thread,
+    )
+    reply = Notification.objects.create(
+        user=user,
+        notification_type=NotificationType.THREAD_REPLY,
+        title="Sommerfest",
+        link=f"/kalender/{event.slug}#post-42",
+        group_key=f"/kalender/{event.slug}",
+    )
+    reminder = Notification.objects.create(
+        user=user,
+        notification_type=NotificationType.EVENT_REMINDER,
+        title="Sommerfest i morgen",
+        link=f"/kalender/{event.slug}",
+    )
+
+    import_module("apps.notifications.migrations.0028_event_thread_links").forwards(
+        django_apps, None
+    )
+
+    reply.refresh_from_db()
+    reminder.refresh_from_db()
+    assert reply.link == f"/forum/faelles/traad/{thread.slug}#post-42"
+    assert reply.group_key == f"/forum/faelles/traad/{thread.slug}"
+    assert reminder.link == f"/kalender/{event.slug}"
