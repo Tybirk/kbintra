@@ -1,145 +1,98 @@
 """
 Django signals to keep the FTS5 search index in sync with model changes.
+
+What goes into a row is decided in `documents.py`, which `rebuild_search_index`
+uses too; the receivers here only decide when.
 """
 
-import json
 import logging
 
 from django.db.models.signals import m2m_changed, post_delete, post_save
 from django.db.utils import OperationalError
 from django.dispatch import receiver
 
-from .services import (
-    _isoformat,
-    create_excerpt,
-    index_object,
-    remove_object,
-    retitle_thread_posts,
-    set_subtitle,
-    strip_html,
+from .documents import (
+    announcement_document,
+    car_document,
+    event_document,
+    file_document,
+    folder_document,
+    house_document,
+    post_document,
+    report_document,
+    subgroup_document,
+    thread_document,
+    user_document,
 )
+from .services import index_object, remove_object, retitle_thread_posts, set_subtitle
 
 logger = logging.getLogger(__name__)
 
 
-# -- User signals --
+def _sync(obj_type: str, object_id: int, document: dict | None) -> None:
+    """Write the object's row, or remove it when it shouldn't be searchable."""
+    if document is None:
+        remove_object(obj_type, object_id)
+    else:
+        index_object(**document)
+
+
+def _deindex(obj_type: str, object_id: int) -> None:
+    try:
+        remove_object(obj_type, object_id)
+    except OperationalError:
+        logger.exception("Failed to deindex %s %s", obj_type, object_id)
+
+
+# -- Users, houses, cars --
 
 
 @receiver(post_save, sender="users.User")
 def index_user(sender, instance, **kwargs):
     try:
-        if not instance.is_active:
-            remove_object("user", instance.id)
-            return
-        index_object(
-            obj_type="user",
-            object_id=instance.id,
-            title=instance.get_full_name() or instance.email,
-            body=instance.email,
-            url=f"/profil/{instance.id}",
-            subtitle=instance.house.name if instance.house_id else "",
-            created_at=_isoformat(instance.date_joined),
-        )
+        _sync("user", instance.id, user_document(instance))
     except OperationalError:
         logger.exception("Failed to index user %s", instance.id)
 
 
 @receiver(post_delete, sender="users.User")
 def deindex_user(sender, instance, **kwargs):
-    try:
-        remove_object("user", instance.id)
-    except OperationalError:
-        logger.exception("Failed to deindex user %s", instance.id)
-
-
-# -- House signals --
+    _deindex("user", instance.id)
 
 
 @receiver(post_save, sender="houses.House")
 def index_house(sender, instance, **kwargs):
     try:
-        index_object(
-            obj_type="house",
-            object_id=instance.id,
-            title=instance.name,
-            body=strip_html(instance.description) if instance.description else "",
-            url=f"/beboere/hus/{instance.slug}",
-            subtitle=create_excerpt(instance.description, 80) if instance.description else "",
-            created_at=_isoformat(instance.created_at),
-        )
+        _sync("house", instance.id, house_document(instance))
     except OperationalError:
         logger.exception("Failed to index house %s", instance.id)
 
 
 @receiver(post_delete, sender="houses.House")
 def deindex_house(sender, instance, **kwargs):
-    try:
-        remove_object("house", instance.id)
-    except OperationalError:
-        logger.exception("Failed to deindex house %s", instance.id)
-
-
-# -- Car signals --
+    _deindex("house", instance.id)
 
 
 @receiver(post_save, sender="houses.Car")
 def index_car(sender, instance, **kwargs):
-    from apps.houses.utils import format_license_plate, normalize_license_plate
-
     try:
-        if not instance.license_plate:
-            remove_object("car", instance.id)
-            return
-        subtitle_parts = [instance.house.name]
-        if instance.is_electric:
-            subtitle_parts.append("Elbil")
-        if instance.is_shared:
-            subtitle_parts.append("Delebil")
-        # Include both display ("AB 12 345") and canonical ("AB12345") forms in
-        # the body so FTS finds plates whether the user types spaces or not.
-        plate_compact = normalize_license_plate(instance.license_plate)
-        # Make/model in the body so searching "Skoda" finds the car, and the
-        # sharing words so "delebil" lists everything shared.
-        body_parts = [instance.house.name, plate_compact, instance.make, instance.model_name]
-        if instance.is_shared:
-            body_parts.append("delebil delebilpark bildeling")
-        index_object(
-            obj_type="car",
-            object_id=instance.id,
-            title=format_license_plate(instance.license_plate),
-            body=" ".join(part for part in body_parts if part),
-            url=f"/beboere/hus/{instance.house.slug}",
-            subtitle=" · ".join(subtitle_parts),
-            created_at=_isoformat(instance.created_at),
-        )
+        _sync("car", instance.id, car_document(instance))
     except OperationalError:
         logger.exception("Failed to index car %s", instance.id)
 
 
 @receiver(post_delete, sender="houses.Car")
 def deindex_car(sender, instance, **kwargs):
-    try:
-        remove_object("car", instance.id)
-    except OperationalError:
-        logger.exception("Failed to deindex car %s", instance.id)
+    _deindex("car", instance.id)
 
 
-# -- Thread signals --
+# -- Threads and posts --
 
 
 @receiver(post_save, sender="forum.Thread")
 def index_thread(sender, instance, **kwargs):
     try:
-        first_post = instance.posts.order_by("created_at").first()
-        index_object(
-            obj_type="thread",
-            object_id=instance.id,
-            title=instance.title,
-            body=strip_html(first_post.content) if first_post else "",
-            url=f"/forum/{instance.subgroup.slug}/traad/{instance.slug}",
-            subtitle=instance.subgroup.name,
-            created_at=_isoformat(instance.created_at),
-        )
+        _sync("thread", instance.id, thread_document(instance))
         # A rename or a move reaches the post rows too: their title is the thread's,
         # and their URL the thread's plus their own #post-<id>. One UPDATE, no
         # re-indexing post by post. Skipped on create (no posts yet) and when
@@ -160,69 +113,34 @@ def index_thread(sender, instance, **kwargs):
 
 @receiver(post_delete, sender="forum.Thread")
 def deindex_thread(sender, instance, **kwargs):
-    try:
-        remove_object("thread", instance.id)
-    except OperationalError:
-        logger.exception("Failed to deindex thread %s", instance.id)
-
-
-# -- Post signals --
+    _deindex("thread", instance.id)
 
 
 @receiver(post_save, sender="forum.Post")
 def index_post(sender, instance, **kwargs):
     try:
+        _sync("post", instance.id, post_document(instance))
+        # The thread's row carries its opening post: refresh it when that is this one.
         thread = instance.thread
-        index_object(
-            obj_type="post",
-            object_id=instance.id,
-            title=thread.title,
-            body=strip_html(instance.content),
-            url=f"/forum/{thread.subgroup.slug}/traad/{thread.slug}#post-{instance.id}",
-            subtitle=create_excerpt(instance.content, 80),
-            extra=json.dumps({"thread_id": thread.id}),
-            created_at=_isoformat(instance.created_at),
-        )
-        # If this is the first post, also update the thread's body so the thread
-        # is findable by its opening content.
         first_post_id = thread.posts.order_by("created_at").values_list("id", flat=True).first()
         if first_post_id == instance.id:
-            index_object(
-                obj_type="thread",
-                object_id=thread.id,
-                title=thread.title,
-                body=strip_html(instance.content),
-                url=f"/forum/{thread.subgroup.slug}/traad/{thread.slug}",
-                subtitle=thread.subgroup.name,
-                created_at=_isoformat(thread.created_at),
-            )
+            _sync("thread", thread.id, thread_document(thread))
     except OperationalError:
         logger.exception("Failed to index post %s", instance.id)
 
 
 @receiver(post_delete, sender="forum.Post")
 def deindex_post(sender, instance, **kwargs):
-    try:
-        remove_object("post", instance.id)
-    except OperationalError:
-        logger.exception("Failed to deindex post %s", instance.id)
+    _deindex("post", instance.id)
 
 
-# -- Subgroup signals --
+# -- Groups --
 
 
 @receiver(post_save, sender="forum.Subgroup")
 def index_subgroup(sender, instance, **kwargs):
     try:
-        index_object(
-            obj_type="subgroup",
-            object_id=instance.id,
-            title=instance.name,
-            body=strip_html(instance.description) if instance.description else "",
-            url=f"/forum/{instance.slug}",
-            subtitle=create_excerpt(instance.description, 80) if instance.description else "",
-            created_at=_isoformat(instance.created_at),
-        )
+        _sync("subgroup", instance.id, subgroup_document(instance))
 
         # Cascade: the group's threads, files and folders all carry its name as
         # their subtitle, and index rows are only rewritten when their own object
@@ -253,78 +171,29 @@ def index_subgroup(sender, instance, **kwargs):
 
 @receiver(post_delete, sender="forum.Subgroup")
 def deindex_subgroup(sender, instance, **kwargs):
-    try:
-        remove_object("subgroup", instance.id)
-    except OperationalError:
-        logger.exception("Failed to deindex subgroup %s", instance.id)
+    _deindex("subgroup", instance.id)
 
 
-# -- Announcement signals --
+# -- Announcements and events --
 
 
 @receiver(post_save, sender="announcements.Announcement")
 def index_announcement(sender, instance, **kwargs):
     try:
-        if not instance.is_active:
-            remove_object("announcement", instance.id)
-            return
-        index_object(
-            obj_type="announcement",
-            object_id=instance.id,
-            title=instance.title,
-            body=strip_html(instance.content),
-            url=f"/opslag#announcement-{instance.id}",
-            subtitle=create_excerpt(instance.content, 80),
-            created_at=_isoformat(instance.created_at),
-        )
+        _sync("announcement", instance.id, announcement_document(instance))
     except OperationalError:
         logger.exception("Failed to index announcement %s", instance.id)
 
 
 @receiver(post_delete, sender="announcements.Announcement")
 def deindex_announcement(sender, instance, **kwargs):
-    try:
-        remove_object("announcement", instance.id)
-    except OperationalError:
-        logger.exception("Failed to deindex announcement %s", instance.id)
-
-
-# -- Event signals --
-
-
-def _index_event(instance) -> None:
-    """Index a single event into the FTS table. Extracted so both post_save and
-    m2m_changed can call it without duplicating logic."""
-    date_str = instance.start_datetime.strftime("%d/%m/%Y %H:%M")
-    location = instance.resolved_location
-    subtitle = f"{date_str} – {location}" if location else date_str
-    index_object(
-        obj_type="event",
-        object_id=instance.id,
-        title=instance.title,
-        body=" ".join(
-            filter(
-                None,
-                [
-                    strip_html(instance.description) if instance.description else "",
-                    location,
-                ],
-            )
-        ),
-        url=f"/kalender/{instance.slug}",
-        subtitle=subtitle,
-        extra=json.dumps({"event_date": _isoformat(instance.start_datetime)}),
-        created_at=_isoformat(instance.created_at),
-    )
+    _deindex("announcement", instance.id)
 
 
 @receiver(post_save, sender="events.Event")
 def index_event(sender, instance, **kwargs):
     try:
-        if instance.is_cancelled:
-            remove_object("event", instance.id)
-            return
-        _index_event(instance)
+        _sync("event", instance.id, event_document(instance))
     except OperationalError:
         logger.exception("Failed to index event %s", instance.id)
 
@@ -335,133 +204,59 @@ def index_event_on_rooms_change(sender, instance, action, **kwargs):
     if action not in ("post_add", "post_remove", "post_clear"):
         return
     try:
-        if instance.is_cancelled:
-            return
-        _index_event(instance)
+        _sync("event", instance.id, event_document(instance))
     except OperationalError:
         logger.exception("Failed to re-index event %s after rooms change", instance.id)
 
 
 @receiver(post_delete, sender="events.Event")
 def deindex_event(sender, instance, **kwargs):
-    try:
-        remove_object("event", instance.id)
-    except OperationalError:
-        logger.exception("Failed to deindex event %s", instance.id)
+    _deindex("event", instance.id)
 
 
-# -- File signals --
+# -- Files and folders --
 
 
 @receiver(post_save, sender="forum.File")
 def index_file(sender, instance, **kwargs):
     try:
-        # Files without a subgroup are event attachments — skip search indexing
-        if not instance.subgroup_id:
-            return
-        try:
-            file_url = instance.file.url
-        except ValueError:
-            file_url = ""
-        index_object(
-            obj_type="file",
-            object_id=instance.id,
-            title=instance.name,
-            body="",
-            url=f"/forum/{instance.subgroup.slug}",
-            subtitle=instance.subgroup.name,
-            extra=json.dumps({"file_url": file_url}) if file_url else "",
-            created_at=_isoformat(instance.uploaded_at),
-        )
+        _sync("file", instance.id, file_document(instance))
     except OperationalError:
         logger.exception("Failed to index file %s", instance.id)
 
 
 @receiver(post_delete, sender="forum.File")
 def deindex_file(sender, instance, **kwargs):
-    try:
-        remove_object("file", instance.id)
-    except OperationalError:
-        logger.exception("Failed to deindex file %s", instance.id)
-
-
-# -- Folder signals --
+    _deindex("file", instance.id)
 
 
 @receiver(post_save, sender="forum.Folder")
 def index_folder(sender, instance, **kwargs):
     try:
-        if not instance.subgroup_id:
-            return
-        index_object(
-            obj_type="folder",
-            object_id=instance.id,
-            title=instance.name,
-            body="",
-            url=f"/forum/{instance.subgroup.slug}/dokumenter/{instance.slug}",
-            subtitle=instance.subgroup.name,
-            created_at=_isoformat(instance.created_at),
-        )
+        _sync("folder", instance.id, folder_document(instance))
     except OperationalError:
         logger.exception("Failed to index folder %s", instance.id)
 
 
 @receiver(post_delete, sender="forum.Folder")
 def deindex_folder(sender, instance, **kwargs):
-    try:
-        remove_object("folder", instance.id)
-    except OperationalError:
-        logger.exception("Failed to deindex folder %s", instance.id)
+    _deindex("folder", instance.id)
 
 
-# -- Report (indrapportering) signals --
-
-
-def _report_search_fields(instance) -> dict:
-    """Index fields for one report.
-
-    The description goes in the *title* rather than the case number: BM25 weights
-    title 10x, and "#12" is not what anyone searches for — "støvsugerslange" is.
-    The number lives in the subtitle where it stays readable.
-
-    This is the single declaration of what is searchable about a case: the
-    queue's own search box filters through this index too, and its placeholder
-    promises "beskrivelse, sted eller navn" — so the name has to be here.
-    """
-    body = instance.description
-    if instance.location:
-        body = f"{body}\n{instance.location}"
-    # Not `reporter_name`: that property falls back to the literal "Ukendt",
-    # which would make every case with no reporter answer a search for it.
-    if instance.submitted_by:
-        body = f"{body}\n{instance.submitted_by.get_full_name() or instance.submitted_by.email}"
-    elif instance.legacy_reporter_name:
-        body = f"{body}\n{instance.legacy_reporter_name}"
-    return {
-        "obj_type": "report",
-        "object_id": instance.id,
-        "title": create_excerpt(instance.description, 80),
-        "body": body,
-        "url": f"/indrapportering/{instance.subgroup.slug}/{instance.number}",
-        "subtitle": f"Indrapportering #{instance.number} · {instance.subgroup.name}",
-        "created_at": _isoformat(instance.created_at),
-    }
+# -- Reports (indrapportering) --
 
 
 @receiver(post_save, sender="reports.Report")
 def index_report(sender, instance, **kwargs):
     try:
-        index_object(**_report_search_fields(instance))
+        _sync("report", instance.id, report_document(instance))
     except OperationalError:
         logger.exception("Failed to index report %s", instance.id)
 
 
 @receiver(post_delete, sender="reports.Report")
 def deindex_report(sender, instance, **kwargs):
-    try:
-        remove_object("report", instance.id)
-    except OperationalError:
-        logger.exception("Failed to deindex report %s", instance.id)
+    _deindex("report", instance.id)
 
 
 @receiver(post_save, sender="users.User")
@@ -483,6 +278,6 @@ def reindex_reports_for_user(sender, instance, **kwargs):
             "subgroup", "submitted_by"
         )
         for report in reports:
-            index_object(**_report_search_fields(report))
+            index_object(**report_document(report))
     except OperationalError:
         logger.exception("Failed to re-index reports for user %s", instance.id)

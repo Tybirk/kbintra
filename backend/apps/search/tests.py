@@ -1217,3 +1217,59 @@ class TestRebuildSearchIndex:
         out = StringIO()
         call_command("rebuild_search_index", if_empty=True, stdout=out)
         assert "skipping rebuild" in out.getvalue()
+
+
+@pytest.mark.django_db
+def test_a_rebuild_writes_exactly_what_saving_wrote(user, house, subgroup, thread):
+    """Signals and rebuild_search_index both build rows from search/documents.py.
+    Built separately, they drifted: a rebuilt car lost its make and "delebil", and
+    a rebuilt event showed its time in UTC."""
+    from datetime import timedelta
+
+    from django.core.management import call_command
+    from django.utils import timezone
+
+    from apps.announcements.models import Announcement
+    from apps.events.models import Event
+    from apps.forum.models import Folder, Post
+    from apps.houses.models import Car
+
+    user.house = house
+    user.save()
+    Car.objects.create(
+        house=house, license_plate="EA78950", make="Tesla", model_name="S", is_shared=True
+    )
+    Post.objects.create(thread=thread, author=user, content="<p>Første indlæg på lørdag</p>")
+    Announcement.objects.create(title="Vigtigt", content="<p>Husk mødet</p>", author=user)
+    Event.objects.create(
+        title="Efterårsmarked",
+        start_datetime=timezone.now() + timedelta(days=5),
+        end_datetime=timezone.now() + timedelta(days=5, hours=3),
+        created_by=user,
+        location="Fælleshuset",
+    )
+    Folder.objects.create(subgroup=subgroup, name="Referater")
+
+    def rows():
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT type, object_id, title, body, url, subtitle, extra, created_at, "
+                "title_raw, body_raw FROM search_index ORDER BY type, object_id"
+            )
+            return cursor.fetchall()
+
+    saved = rows()
+    call_command("rebuild_search_index", stdout=None)
+
+    assert rows() == saved
+    assert {row[0] for row in saved} >= {
+        "user",
+        "house",
+        "car",
+        "thread",
+        "post",
+        "subgroup",
+        "announcement",
+        "event",
+        "folder",
+    }
