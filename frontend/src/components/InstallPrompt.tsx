@@ -188,8 +188,9 @@ export function InstallPrompt() {
 
         right: 16,
 
-        // Above the page, below modals: an open carousel or zoom covers it.
-        zIndex: getDefaultZIndex("app") + 1,
+        // Above the page and the navbar (app + 1), below modals: an open
+        // carousel or zoom covers it.
+        zIndex: getDefaultZIndex("app") + 2,
 
         maxWidth: 400,
 
