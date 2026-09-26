@@ -40,6 +40,8 @@ import {
 
 import type { CarLoan } from "../../types"
 
+import { holdInView } from "../../utils/holdInView"
+
 // --- Tab 2: my loans ---------------------------------------------------------
 
 // Free text from a resident can hold a pasted link or an unbroken word. Without
@@ -385,10 +387,12 @@ export function LoanCard({ loan, highlight }: LoanCardProps) {
 
   // A notification deep-links to one loan and this card gets a blue border —
   // which is no help when the card is a screen and a half below the fold.
+  // Its top goes just under the sticky header (centring put the date and status
+  // behind it), and stays there while the page around it settles.
   const cardRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
-    if (!highlight) return
-    cardRef.current?.scrollIntoView({ block: "center", behavior: "smooth" })
+    if (!highlight || !cardRef.current) return
+    return holdInView(cardRef.current)
   }, [highlight])
 
   const respondMutation = useCarSharingMutation({

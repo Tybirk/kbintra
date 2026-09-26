@@ -1017,7 +1017,11 @@ export default function HouseEditPage() {
       >
         <Stack>
           <TextInput
-            label="Nummerplade (valgfri)"
+            // A car in the delebilpark must have a plate (the server says so).
+            label={
+              editingCar?.is_shared ? "Nummerplade" : "Nummerplade (valgfri)"
+            }
+            required={editingCar?.is_shared}
             placeholder="F.eks. AB12345"
             value={carForm.license_plate}
             onChange={(e) =>
