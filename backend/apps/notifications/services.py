@@ -734,13 +734,10 @@ def notify_thread_reply(
     plain_text = strip_tags(reply_content)
     preview = plain_text[:80] + "..." if len(plain_text) > 80 else plain_text
 
-    from apps.forum.models import Thread as ForumThread
-
-    try:
-        event_slug = ForumThread.objects.get(id=thread_id).event.slug
-        base_link = f"/kalender/{event_slug}"
-    except (ForumThread.DoesNotExist, AttributeError):
-        base_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
+    # Straight to the thread, event threads included: ThreadPage shows the event
+    # header itself, and a /kalender/ link only redirected there — leaving a dead
+    # "Tilbage", a stale cached thread and the notification unread behind it.
+    base_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
 
     link = base_link + (f"#post-{post_id}" if post_id else "")
 
@@ -796,13 +793,10 @@ def notify_post_reply(
     plain_text = strip_tags(reply_content)
     preview = plain_text[:80] + "..." if len(plain_text) > 80 else plain_text
 
-    from apps.forum.models import Thread as ForumThread
-
-    try:
-        event_slug = ForumThread.objects.get(id=thread_id).event.slug
-        base_link = f"/kalender/{event_slug}"
-    except (ForumThread.DoesNotExist, AttributeError):
-        base_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
+    # Straight to the thread, event threads included: ThreadPage shows the event
+    # header itself, and a /kalender/ link only redirected there — leaving a dead
+    # "Tilbage", a stale cached thread and the notification unread behind it.
+    base_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
 
     link = base_link + (f"#post-{post_id}" if post_id else "")
 
@@ -1664,13 +1658,10 @@ def notify_post_reaction(
     if post_author.id == reactor.id:
         return None
 
-    from apps.forum.models import Thread as ForumThread
-
-    try:
-        event_slug = ForumThread.objects.get(id=thread_id).event.slug
-        base_link = f"/kalender/{event_slug}"
-    except (ForumThread.DoesNotExist, AttributeError):
-        base_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
+    # Straight to the thread, event threads included: ThreadPage shows the event
+    # header itself, and a /kalender/ link only redirected there — leaving a dead
+    # "Tilbage", a stale cached thread and the notification unread behind it.
+    base_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
 
     post_fragment = f"#post-{post_id}" if post_id else ""
     link = base_link + post_fragment
@@ -1758,13 +1749,10 @@ def notify_post_edited_by_admin(
     post_id: int,
 ) -> Notification | None:
     """Create notification when an admin edits another user's post."""
-    from apps.forum.models import Thread as ForumThread
-
-    try:
-        event_slug = ForumThread.objects.get(id=thread_id).event.slug
-        base_link = f"/kalender/{event_slug}"
-    except (ForumThread.DoesNotExist, AttributeError):
-        base_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
+    # Straight to the thread, event threads included: ThreadPage shows the event
+    # header itself, and a /kalender/ link only redirected there — leaving a dead
+    # "Tilbage", a stale cached thread and the notification unread behind it.
+    base_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
 
     link = base_link + f"#post-{post_id}"
 

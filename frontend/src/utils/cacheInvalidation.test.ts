@@ -59,6 +59,18 @@ describe("invalidateCacheForLink", () => {
       })
     })
 
+    it("refreshes the event and the cached threads for an event link", () => {
+      invalidateCacheForLink(queryClient, "/kalender/sommerfest#post-12")
+
+      expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+        queryKey: ["event", "sommerfest"],
+      })
+
+      expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+        queryKey: ["thread"],
+      })
+    })
+
     it("invalidates with correct slugs for different subgroup and thread", () => {
       invalidateCacheForLink(queryClient, "/forum/boliggruppen/traad/ny-aftale")
 

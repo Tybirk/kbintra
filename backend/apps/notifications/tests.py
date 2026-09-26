@@ -1039,3 +1039,33 @@ class TestAggregatedReplyTitle:
             == "Mad (4 nye svar)"
         )
         assert migration.STACKED.sub(r"\1", "Mad (2 nye svar)") == "Mad (2 nye svar)"
+
+
+@pytest.mark.django_db
+def test_a_reply_in_an_event_thread_links_straight_to_the_thread(user, admin_user):
+    """A /kalender/ link only redirected to the thread, and the redirect left a
+    dead "Tilbage", a stale cached thread and an unread notification behind."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.events.models import Event
+    from apps.forum.models import Subgroup, Thread
+    from apps.notifications.services import notify_thread_reply
+
+    subgroup = Subgroup.objects.create(name="Fælles", slug="faelles")
+    thread = Thread.objects.create(subgroup=subgroup, title="Sommerfest", author=user)
+    Event.objects.create(
+        title="Sommerfest",
+        start_datetime=timezone.now() + timedelta(days=3),
+        end_datetime=timezone.now() + timedelta(days=3, hours=2),
+        created_by=user,
+        thread=thread,
+    )
+
+    notification = notify_thread_reply(
+        user, admin_user, "Sommerfest", thread.id, "faelles", thread.slug, "<p>Hej</p>", 42
+    )
+
+    assert notification is not None
+    assert notification.link == f"/forum/faelles/traad/{thread.slug}#post-42"

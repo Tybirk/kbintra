@@ -18,6 +18,19 @@ export function invalidateCacheForLink(queryClient: QueryClient, link: string) {
     return
   }
 
+  // An event (older notifications link event threads this way). If the event
+  // has a thread the page redirects to it, and the link doesn't say which: every
+  // cached thread goes stale, and only the one on screen refetches.
+  const eventMatch = link.match(/^\/kalender\/([^/?#]+)/)
+
+  if (eventMatch) {
+    queryClient.invalidateQueries({ queryKey: ["event", eventMatch[1]] })
+
+    queryClient.invalidateQueries({ queryKey: ["thread"] })
+
+    return
+  }
+
   if (link.startsWith("/opslag")) {
     queryClient.invalidateQueries({ queryKey: ["announcements"] })
 
