@@ -1354,6 +1354,11 @@ function ChatArea({
             )}
             <Popover
               opened={participantsPopoverOpened}
+              // Focus moves into the list, so Escape closes it wherever the reader
+              // clicked (Mantine only hears Escape inside the dropdown), and goes
+              // back to the header afterwards.
+              trapFocus
+              returnFocus
               // Controlled, so a tap outside or Escape arrives as onChange(false);
               // onClose alone never fired and the list stayed open.
               onChange={(opened) => {

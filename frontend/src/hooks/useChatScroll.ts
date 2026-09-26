@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef } from "react"
 
 import type { RefObject } from "react"
 
+import { useLocation, useNavigationType } from "react-router-dom"
+
 import type { Message } from "../types"
 
 /**
@@ -23,6 +25,9 @@ import type { Message } from "../types"
  *
  * Sending is the reader's act too: the page calls `followBottom()`. Every jump
  * is instant — no animation to sit through in a long conversation.
+ *
+ * Back and forward return to where the reader was, not to the link they came
+ * in by: the anchor is remembered per history entry when the chat unmounts.
  *
  * Layout changes (an image finishing loading) are caught by a ResizeObserver,
  * but a scroll event can arrive first, and must not read the grown content as
@@ -53,6 +58,9 @@ export const messageElementId = (id: number) => `${MESSAGE_ID_PREFIX}${id}`
 
 const NEAR_BOTTOM_PX = 40
 
+/** The reader's anchor when they left each history entry (location.key). */
+const leftAt = new Map<string, Anchor>()
+
 const LOAD_OLDER_WITHIN_PX = 300
 
 interface ChatScrollOptions {
@@ -81,9 +89,32 @@ export function useChatScroll(
     targetId,
   }: ChatScrollOptions,
 ) {
-  const anchorRef = useRef<Anchor>(
-    targetId ? { id: targetId, offset: "centre", at: 0 } : "bottom",
+  const location = useLocation()
+
+  const navigationType = useNavigationType()
+
+  // Coming back (POP) to an entry the reader left: their place, not the link.
+  // A fresh viewport starts at scrollTop 0, which re-bases `at`.
+  const restored = useRef(
+    navigationType === "POP" ? leftAt.get(location.key) : undefined,
   )
+
+  const anchorRef = useRef<Anchor>(
+    restored.current && restored.current !== "bottom"
+      ? { ...restored.current, at: 0 }
+      : (restored.current ??
+          (targetId ? { id: targetId, offset: "centre", at: 0 } : "bottom")),
+  )
+
+  const skipTarget = useRef(restored.current !== undefined)
+
+  useEffect(() => {
+    const key = location.key
+
+    return () => {
+      leftAt.set(key, anchorRef.current)
+    }
+  }, [location.key])
 
   /** scrollHeight when the anchor was last put back: a difference is a layout change. */
   const heightRef = useRef(0)
@@ -101,6 +132,13 @@ export function useChatScroll(
 
     if (!viewport) return
 
+    // Content that shrank below the view makes the browser clamp scrollTop to
+    // the new maximum: that is not the reader moving (seen on a remount, where
+    // the list is laid out ~65,000 px tall for a moment, then collapses).
+    const clamped =
+      viewport.scrollHeight < heightRef.current &&
+      viewport.scrollTop >= viewport.scrollHeight - viewport.clientHeight - 1
+
     heightRef.current = viewport.scrollHeight
 
     if (anchor === "bottom") {
@@ -113,10 +151,12 @@ export function useChatScroll(
 
     if (!el) return
 
+    const readerMoved = clamped ? 0 : viewport.scrollTop - anchor.at
+
     const wanted =
       anchor.offset === "centre"
         ? Math.max((viewport.clientHeight - el.offsetHeight) / 2, 8)
-        : anchor.offset - (viewport.scrollTop - anchor.at)
+        : anchor.offset - readerMoved
 
     // Scroll the viewport only; scrollIntoView would also scroll the page around it.
     viewport.scrollTop +=
@@ -182,6 +222,12 @@ export function useChatScroll(
 
   // A new link target in the same conversation (e.g. a second notification).
   useEffect(() => {
+    if (skipTarget.current) {
+      skipTarget.current = false
+
+      return
+    }
+
     if (!targetId) return
 
     anchorRef.current = { id: targetId, offset: "centre", at: 0 }
@@ -196,6 +242,14 @@ export function useChatScroll(
     const previousLast = lastIdRef.current
 
     lastIdRef.current = messages.at(-1)?.id
+
+    // A remembered place whose message is no longer loaded: the bottom, rather
+    // than wherever the viewport happens to start.
+    if (restored.current && anchor !== "bottom" && messages.length > 0) {
+      restored.current = undefined
+
+      if (!document.getElementById(anchor.id)) anchorRef.current = "bottom"
+    }
 
     if (
       previousLast !== undefined &&
