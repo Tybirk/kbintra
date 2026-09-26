@@ -27,6 +27,13 @@ from apps.houses.models import House
 from apps.users.models import User
 
 
+@pytest.fixture(autouse=True)
+def _media_in_a_temporary_directory(settings, tmp_path):
+    """Uploads made by tests go to a throwaway directory, not the real backend/media
+    (a full run left a few hundred files there)."""
+    settings.MEDIA_ROOT = tmp_path / "media"
+
+
 @pytest.fixture
 def api_client():
     """Return an API client instance."""

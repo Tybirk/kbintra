@@ -620,6 +620,10 @@ class MessageUnsendView(APIView):
         message.is_deleted = True
         message.content = ""
         message.save()
+        # Unsent means gone, attachments too: the bubble hid them, but the API
+        # kept handing out their links. One by one, so each removes its files.
+        for attachment in message.attachments.all():
+            attachment.delete()
 
         # Broadcast deletion via WebSocket
         from asgiref.sync import async_to_sync

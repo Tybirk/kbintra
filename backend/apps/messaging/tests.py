@@ -736,3 +736,26 @@ class TestMessageAttachmentThumbnail:
 
         att.refresh_from_db()
         assert att.thumbnail
+
+
+def test_unsending_a_message_removes_its_attachments(authenticated_client, message, user):
+    """The bubble hid an unsent message's attachments, but the API still returned
+    their links — and the files stayed on disk."""
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    from apps.messaging.models import MessageAttachment
+
+    attachment = MessageAttachment.objects.create(
+        message=message,
+        file=SimpleUploadedFile("kvittering.pdf", b"%PDF-1.4"),
+        name="kvittering.pdf",
+        uploaded_by=user,
+    )
+    storage, name = attachment.file.storage, attachment.file.name
+    assert storage.exists(name)
+
+    response = authenticated_client.delete(f"/api/messages/messages/{message.id}/unsend/")
+
+    assert response.status_code == 204
+    assert not MessageAttachment.objects.filter(message=message).exists()
+    assert not storage.exists(name)
