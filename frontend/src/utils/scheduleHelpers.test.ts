@@ -6,6 +6,7 @@ import {
   expandMultiDayEvents,
   formatScheduleTimeRange,
   DA_SCHEDULE_LABELS,
+  forMobileMonthView,
 } from "./scheduleHelpers"
 
 import type { Event, CalendarBooking } from "../types"
@@ -300,5 +301,39 @@ describe("DA_SCHEDULE_LABELS", () => {
     expect(DA_SCHEDULE_LABELS.day).toBe("Dag")
 
     expect(DA_SCHEDULE_LABELS.year).toBe("År")
+  })
+})
+
+describe("forMobileMonthView", () => {
+  const stay = (start: string, end: string) => ({
+    id: 1,
+    title: "Gæsteværelse",
+    start,
+    end,
+  })
+
+  it("files a stay from the previous month from the 1st", () => {
+    const [filed] = forMobileMonthView(
+      [stay("2026-08-31 16:00:00", "2026-09-02 10:00:00")],
+      "2026-09-15",
+    )
+
+    expect(filed.start).toBe("2026-09-01 00:00:00")
+    expect(filed.end).toBe("2026-09-02 10:00:00")
+  })
+
+  it("keeps a booking ending at midnight off the day it ends", () => {
+    const [wholeDay] = forMobileMonthView(
+      [stay("2026-09-05 00:00:00", "2026-09-06 00:00:00")],
+      "2026-09-15",
+    )
+
+    expect(wholeDay.end).toBe("2026-09-05 23:59:59")
+  })
+
+  it("leaves an ordinary booking alone", () => {
+    const booking = stay("2026-09-03 16:00:00", "2026-09-04 10:00:00")
+
+    expect(forMobileMonthView([booking], "2026-09-15")).toEqual([booking])
   })
 })

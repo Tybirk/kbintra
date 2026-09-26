@@ -206,6 +206,45 @@ export function formatScheduleTimeRange(
 }
 
 /**
+ * Bookings for the mobile "oversigt", which is @mantine/schedule's mobile month
+ * view. It files an event under the days from its start to its end, both
+ * included, and only takes events that *start* in the displayed month:
+ *
+ *  - a stay that began at the end of the previous month vanished from the days
+ *    it covers in this one (8 of 646 bookings on the prod copy) — it starts at
+ *    midnight on the 1st instead;
+ *  - an end at exactly midnight put a booking on the day it ended (6 whole-day
+ *    bookings) — it ends a second earlier instead, as in expandMultiDayEvents
+ *    and formatScheduleTimeRange.
+ *
+ * Only the filing moves: the list shows each booking's real times.
+ */
+export function forMobileMonthView<T extends EventPayload>(
+  events: ScheduleEventData<T>[],
+  month: string,
+): ScheduleEventData<T>[] {
+  const first = dayjs(month).startOf("month")
+
+  return events.map((event) => {
+    const start = dayjs(event.start)
+
+    const end = dayjs(event.end)
+
+    const filed = { ...event }
+
+    if (start.isBefore(first) && end.isAfter(first)) {
+      filed.start = first.format("YYYY-MM-DD HH:mm:ss")
+    }
+
+    if (end.isAfter(start) && end.isSame(end.startOf("day"))) {
+      filed.end = end.subtract(1, "second").format("YYYY-MM-DD HH:mm:ss")
+    }
+
+    return filed
+  })
+}
+
+/**
  * What `@mantine/schedule` hands `onTimeSlotClick`.
  *
  * It passes the whole slot (plus the native event); a handler that only needs
