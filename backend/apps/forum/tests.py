@@ -2722,3 +2722,55 @@ class TestPostAttachmentThumbnail:
         att.delete()
 
         assert not os.path.exists(preview_path)
+
+
+class TestRepairLegacyMentions:
+    """Migration 0052: legacy mention links carry the previous platform's user ids."""
+
+    def _migration(self):
+        from importlib import import_module
+
+        return import_module("apps.forum.migrations.0052_repair_legacy_mentions")
+
+    def _mention(self, uid, label):
+        return (
+            f'<a href="/profil/{uid}" class="mention" data-type="mention" '
+            f'data-id="{uid}" data-label="{label}">@{label}</a>'
+        )
+
+    def test_points_each_mention_at_the_person_it_names(self):
+        m = self._migration()
+        users = [
+            (1, "Annette", "Thejsen"),
+            (88, "Peter Emil", "Tybirk"),
+            (107, "Peter", "Vogel"),
+            (111, "Carl MM", "Kobel"),
+            (31, "Esben Lykke", "Olsen"),
+            (67, "Peter", "Hansen"),
+        ]
+        resolve = m.resolver(users)
+        html = (
+            f"<p>{self._mention(107, 'Peter Emil Tybirk')} og "
+            f"{self._mention(1, 'Carl M. Kobel')} og {self._mention(55, 'Esben ')}</p>"
+        )
+
+        repaired = m.repair(html, resolve)
+
+        assert 'href="/profil/88"' in repaired and 'data-id="88"' in repaired
+        assert 'href="/profil/111"' in repaired
+        assert 'href="/profil/31"' in repaired
+        assert "/profil/107" not in repaired and '/profil/1"' not in repaired
+
+    def test_leaves_a_correct_mention_alone_and_unwraps_an_ambiguous_one(self):
+        m = self._migration()
+        resolve = m.resolver([(107, "Peter", "Vogel"), (67, "Peter", "Hansen")])
+        correct = self._mention(107, "Peter Vogel")
+
+        assert m.repair(correct, resolve) == correct
+        assert m.repair(self._mention(3, "Peter"), resolve) == "@Peter"
+
+    def test_a_mention_without_a_label_is_left_as_it_is(self):
+        m = self._migration()
+        tag = '<a href="/profil/5" class="mention" data-type="mention" data-id="5">@Anders</a>'
+
+        assert m.repair(tag, m.resolver([(9, "Anders", "And")])) == tag
