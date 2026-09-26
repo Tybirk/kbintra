@@ -204,7 +204,8 @@ export function AttachmentCarousel({
         body: {
           padding: isMobile ? 0 : undefined,
 
-          height: isMobile ? "calc(100vh - 60px)" : "75vh",
+          // dvh: iOS counts its browser bars in vh, which cut off the dots.
+          height: isMobile ? "calc(100dvh - 60px)" : "75vh",
         },
 
         content: {
@@ -230,7 +231,12 @@ export function AttachmentCarousel({
           height="100%"
           nextControlIcon={<IconChevronRight size={24} />}
           previousControlIcon={<IconChevronLeft size={24} />}
-          emblaOptions={{ loop: true }}
+          // Touch swipes; a mouse drag selects (text in a PDF) — arrows, keys
+          // and the dots move between slides on a desktop.
+          emblaOptions={{
+            loop: true,
+            watchDrag: (_, event) => event.type === "touchstart",
+          }}
           getEmblaApi={setEmbla}
           onSlideChange={setSlide}
           styles={{

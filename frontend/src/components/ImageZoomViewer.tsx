@@ -42,7 +42,7 @@ export function ImageZoomViewer({
       padding={0}
       transitionProps={{ transition: "fade", duration: 150 }}
       styles={{
-        body: { padding: 0, height: "100vh" },
+        body: { padding: 0, height: "100dvh" },
         content: { backgroundColor: "rgba(0,0,0,0.92)" },
       }}
     >
@@ -50,7 +50,7 @@ export function ImageZoomViewer({
         style={{
           position: "relative",
           width: "100%",
-          height: "100vh",
+          height: "100dvh",
           overflow: "hidden",
         }}
       >
@@ -79,7 +79,7 @@ export function ImageZoomViewer({
               alt={alt || ""}
               style={{
                 maxWidth: "100vw",
-                maxHeight: "100vh",
+                maxHeight: "100dvh",
                 objectFit: "contain",
                 userSelect: "none",
                 WebkitUserSelect: "none",
