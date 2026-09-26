@@ -65,6 +65,13 @@ interface ZoomAnchor {
   factor: number
 }
 
+/** The page at the top of the view, and how far down it (0–1), across a resize. */
+interface WidthAnchor {
+  page: string
+
+  fraction: number
+}
+
 /** A pinch or ctrl+wheel in progress, previewed with a CSS transform. */
 interface ZoomPreview {
   x: number
@@ -109,12 +116,43 @@ export default function PdfViewer({ blobUrl }: PdfViewerProps) {
 
   const anchorRef = useRef<ZoomAnchor | null>(null)
 
+  const widthAnchorRef = useRef<WidthAnchor | null>(null)
+
   useEffect(() => {
     const el = scrollRef.current
 
     if (!el) return
 
-    const update = () => setFitWidth(el.clientWidth)
+    // A new width (the phone turned) resizes every page, but not the gaps
+    // between them, so it isn't quite a zoom: remember the page at the top of
+    // the view and how far down it the reader was, and go back there.
+    let width = 0
+
+    const update = () => {
+      const next = el.clientWidth
+
+      if (width > 0 && next > 0 && next !== width) {
+        const top = el.getBoundingClientRect().top
+
+        const page = [...el.querySelectorAll<HTMLElement>("[data-page]")].find(
+          (p) => p.getBoundingClientRect().bottom > top,
+        )
+
+        if (page) {
+          const rect = page.getBoundingClientRect()
+
+          widthAnchorRef.current = {
+            page: page.dataset.page!,
+
+            fraction: (top - rect.top) / rect.height,
+          }
+        }
+      }
+
+      width = next
+
+      setFitWidth(next)
+    }
 
     update()
 
@@ -167,6 +205,25 @@ export default function PdfViewer({ blobUrl }: PdfViewerProps) {
 
     el.scrollTop = (anchor.scrollTop + anchor.y) * anchor.factor - anchor.y
   }, [scale])
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+
+    const anchor = widthAnchorRef.current
+
+    if (!el || !anchor) return
+
+    widthAnchorRef.current = null
+
+    const page = el.querySelector<HTMLElement>(`[data-page="${anchor.page}"]`)
+
+    if (!page) return
+
+    el.scrollTop +=
+      page.getBoundingClientRect().top -
+      el.getBoundingClientRect().top +
+      anchor.fraction * page.offsetHeight
+  }, [fitWidth])
 
   // Gestures. Native listeners: touchmove and wheel must be able to
   // preventDefault, and a zoomed-in drag must stop before a surrounding
