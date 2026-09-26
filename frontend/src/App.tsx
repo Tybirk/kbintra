@@ -285,10 +285,20 @@ function App() {
         </AppShell.Navbar>
 
         <AppShell.Main
+          // Room for the install banner while it shows (InstallPrompt sets the
+          // variable): below the page, or off the chat's fixed height.
           style={
             location.pathname.startsWith("/beskeder")
-              ? { height: "100dvh", overflow: "hidden" }
-              : undefined
+              ? {
+                  // min-height too: Mantine's own 100dvh minimum would win.
+                  height: "calc(100dvh - var(--install-prompt-height, 0px))",
+                  minHeight: "calc(100dvh - var(--install-prompt-height, 0px))",
+                  overflow: "hidden",
+                }
+              : {
+                  paddingBottom:
+                    "calc(var(--app-shell-padding) + var(--install-prompt-height, 0px))",
+                }
           }
         >
           <AuthenticatedRoutes />

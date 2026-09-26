@@ -1,6 +1,14 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useLayoutEffect, useRef } from "react"
 
-import { Button, Paper, Group, Text, Stack, CloseButton } from "@mantine/core"
+import {
+  Button,
+  Paper,
+  Group,
+  Text,
+  Stack,
+  CloseButton,
+  getDefaultZIndex,
+} from "@mantine/core"
 
 import { IconDownload, IconShare } from "@tabler/icons-react"
 
@@ -43,6 +51,41 @@ export function InstallPrompt() {
   const [isIos, setIsIos] = useState(false)
 
   const [dismissed, setDismissed] = useState(false)
+
+  const ref = useRef<HTMLDivElement>(null)
+
+  const visible = showPrompt && !dismissed
+
+  // While shown, the banner claims its space at the bottom of the page (see
+  // AppShell.Main in App.tsx), as TestDomainBanner does at the top: otherwise
+  // the last button on a page — Gem, a toggle — sits under it for good.
+  useLayoutEffect(() => {
+    if (!visible) return
+
+    const el = ref.current
+
+    if (!el) return
+
+    const root = document.documentElement
+
+    const apply = () =>
+      root.style.setProperty(
+        "--install-prompt-height",
+        `${el.offsetHeight + 24}px`,
+      )
+
+    apply()
+
+    const observer = new ResizeObserver(apply)
+
+    observer.observe(el)
+
+    return () => {
+      observer.disconnect()
+
+      root.style.removeProperty("--install-prompt-height")
+    }
+  }, [visible])
 
   useEffect(() => {
     const wasDismissed = sessionStorage.getItem("pwa-install-dismissed")
@@ -127,12 +170,13 @@ export function InstallPrompt() {
     sessionStorage.setItem("pwa-install-dismissed", "true")
   }
 
-  if (!showPrompt || dismissed) {
+  if (!visible) {
     return null
   }
 
   return (
     <Paper
+      ref={ref}
       shadow="md"
       p="sm"
       style={{
@@ -144,7 +188,8 @@ export function InstallPrompt() {
 
         right: 16,
 
-        zIndex: 1000,
+        // Above the page, below modals: an open carousel or zoom covers it.
+        zIndex: getDefaultZIndex("app") + 1,
 
         maxWidth: 400,
 

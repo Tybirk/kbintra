@@ -563,7 +563,9 @@ export default function MessagesPage() {
 
               right: 0,
 
-              bottom: keyboardOffset,
+              // Clear of the on-screen keyboard or the install banner, whichever
+              // is taller (InstallPrompt sets the variable while it shows).
+              bottom: `max(${keyboardOffset}px, var(--install-prompt-height, 0px))`,
             }
           : { height: "100%" }),
       }}
