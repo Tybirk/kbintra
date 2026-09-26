@@ -2942,6 +2942,7 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
           attachments={attachments}
           onAttachmentsChange={setAttachments}
           draftKey={NEW_MESSAGE_DRAFT}
+          onClearDraft={() => setSelectedUsers([])}
         />
       </Box>
     </>

@@ -577,7 +577,7 @@ function CreateAnnouncementModal({
     if (errors.length > 0) {
       errors.forEach((error) => {
         notifications.show({
-          title: "File too large",
+          title: "Filen er for stor",
 
           message: error,
 
@@ -628,6 +628,7 @@ function CreateAnnouncementModal({
                 minHeight={200}
                 onFilePaste={handleAddFiles}
                 draftKey="new-announcement"
+                onClearDraft={() => setTitle("")}
               />
             </div>
 

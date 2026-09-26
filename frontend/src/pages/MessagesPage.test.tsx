@@ -784,6 +784,38 @@ describe("MessagesPage", () => {
       ).toBeInTheDocument()
     })
 
+    it("clears the recipients too when the reader clears the draft", async () => {
+      const user = userEvent.setup()
+
+      const first = renderMessagesPage(`/beskeder/ny`)
+
+      await user.click(
+        await screen.findByPlaceholderText(/søg efter personer/i),
+      )
+
+      await user.click(await screen.findByText("Alice Smith"))
+
+      await saveDraft("msg-new", "Halvt skrevet besked")
+
+      await waitFor(() => {
+        expect(screen.getByText("Ny samtale med Alice")).toBeInTheDocument()
+      })
+
+      first.unmount()
+
+      renderMessagesPage(`/beskeder/ny`)
+
+      await screen.findByText("Kladde gendannet automatisk")
+
+      await user.click(screen.getByText("(ryd)"))
+
+      await waitFor(() => {
+        expect(
+          screen.queryByText("Ny samtale med Alice"),
+        ).not.toBeInTheDocument()
+      })
+    })
+
     it("opens the compose view from its URL", async () => {
       renderMessagesPage(`/beskeder/ny`)
 

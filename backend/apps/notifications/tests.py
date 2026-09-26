@@ -992,6 +992,27 @@ class TestEmailHtmlIsSanitized:
         assert "<script" not in body
         assert "javascript:" not in body
 
+    def test_site_relative_links_become_absolute(self, user, mailoutbox, settings):
+        """A mention's /profil/5 points nowhere from a mail client."""
+        from apps.notifications.email_service import send_notification_email
+
+        settings.SITE_URL = "https://kb-intra.dk"
+        NotificationPreference.objects.update_or_create(
+            user=user, defaults={"email_announcements": True}
+        )
+
+        send_notification_email(
+            user,
+            NotificationType.NEW_ANNOUNCEMENT,
+            "Opslag",
+            "Et nyt opslag",
+            html_content='<p><a href="/profil/5">@Anna</a> <a href="https://x.dk/a">ude</a></p>',
+        )
+
+        body = mailoutbox[0].body
+        assert 'href="https://kb-intra.dk/profil/5"' in body
+        assert 'href="https://x.dk/a"' in body
+
     def test_a_private_message_is_text_not_markup(
         self, user, admin_user, mailoutbox, django_capture_on_commit_callbacks
     ):

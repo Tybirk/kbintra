@@ -14,8 +14,6 @@ const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes)
 
 import { useAuthStore } from "./store/authStore"
 
-import { getAccessToken } from "./api/client"
-
 import { trackNavigation } from "./utils/navigationHistory"
 
 import { ErrorBoundary } from "./components/ErrorBoundary"
@@ -165,12 +163,10 @@ function App() {
   useAccessibilityModeSync()
 
   useEffect(() => {
+    // Without a token checkAuth clears the persisted user itself, so a forced
+    // logout leaves no profile behind in storage.
     const initAuth = async () => {
-      const token = getAccessToken()
-
-      if (token) {
-        await checkAuth()
-      }
+      await checkAuth()
 
       setIsInitializing(false)
     }

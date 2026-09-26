@@ -853,6 +853,7 @@ export default function EventFormPage() {
                 placeholder="Beskrivelse, dagsorden, etc. (valgfrit)"
                 minHeight={120}
                 draftKey={isEditMode ? undefined : "new-event-description"}
+                onClearDraft={() => setTitle("")}
               />
             </div>
 

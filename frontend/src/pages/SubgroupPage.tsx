@@ -1530,6 +1530,7 @@ function CreateThreadModal({
                 onFilePaste={handleAddFiles}
                 onSubmit={handleSubmit}
                 draftKey={"new-thread-" + subgroupSlug}
+                onClearDraft={() => setTitle("")}
               />
             </div>
 

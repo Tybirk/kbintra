@@ -166,6 +166,13 @@ export interface RichTextEditorProps {
   /** Unique key for persisting a draft across refreshes. Omit for edit forms. */
 
   draftKey?: string
+
+  /**
+   * Called when the reader clears a restored draft with "(ryd)", so the page can
+   * clear what it saved beside it — a title, the recipients.
+   */
+
+  onClearDraft?: () => void
 }
 
 export default function RichTextEditor({
@@ -182,6 +189,7 @@ export default function RichTextEditor({
   onSubmit,
 
   draftKey,
+  onClearDraft,
 }: RichTextEditorProps) {
   const isMobile = useMediaQuery("(max-width: 768px)")
 
@@ -478,6 +486,8 @@ export default function RichTextEditor({
     setDraftRestored(false)
 
     onChange("")
+
+    onClearDraft?.()
   }
 
   return (
