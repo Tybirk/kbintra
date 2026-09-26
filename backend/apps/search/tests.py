@@ -42,6 +42,7 @@ def ensure_fts_table(db):
             "type UNINDEXED, object_id UNINDEXED, "
             "url UNINDEXED, subtitle UNINDEXED, extra UNINDEXED, "
             "created_at UNINDEXED, "
+            "title_raw UNINDEXED, body_raw UNINDEXED, "
             "tokenize='unicode61 remove_diacritics 2'"
             ")"
         )
@@ -313,6 +314,63 @@ class TestIndexAndSearch:
         for query in ("sommerfest", "referater", "budget"):
             assert fts_search(query)[0]["subtitle"] == "Begivenheder", query
         assert thread.id == fts_search("sommerfest")[0]["object_id"]
+
+    def test_results_keep_their_danish_letters(self):
+        """Matching folds æ/ø/å; what the reader sees must not ("Soeren", "loerdags")."""
+        index_object(
+            obj_type="post",
+            object_id=11,
+            title="Støvsuger til fælleshuset",
+            body="Søren kommer med den på lørdag, så vi kan gøre rent før festen.",
+            url="/forum/faelles/traad/stoevsuger#post-11",
+        )
+
+        result = fts_search("stoevsuger")[0]
+
+        assert result["title"] == "Støvsuger til fælleshuset"
+        assert "Søren kommer med den på lørdag" in result["subtitle"]
+        assert fts_search("lørdag")[0]["object_id"] == 11
+
+    def test_unfold_snippet_maps_back_across_the_whole_body(self):
+        from apps.search.services import fold_danish, unfold_snippet
+
+        original = "Første punkt. " * 30 + "Ålborg-turen er på søndag, Æblegården betaler."
+        cut = "…" + fold_danish("Ålborg-turen er på søndag, Æblegården") + "…"
+
+        assert unfold_snippet(cut, original) == "…Ålborg-turen er på søndag, Æblegården…"
+
+    def test_renaming_a_thread_keeps_each_post_s_anchor(self, subgroup, user):
+        """Re-indexing posts from their thread wrote the bare thread URL, so 2,320
+        post results lost their #post-N; and it did so post by post."""
+        from django.db import connection as conn
+        from django.test.utils import CaptureQueriesContext
+
+        from apps.forum.models import Post, Thread
+
+        thread = Thread.objects.create(subgroup=subgroup, title="Gammel titel", author=user)
+        posts = [
+            Post.objects.create(thread=thread, author=user, content=f"<p>indlæg {i}</p>")
+            for i in range(5)
+        ]
+
+        thread.title = "Ny titel på tråden"
+        with CaptureQueriesContext(conn) as five:
+            thread.save()
+
+        for post in posts:
+            row = next(r for r in fts_search("indlaeg", limit=20) if r["object_id"] == post.id)
+            assert row["title"] == "Ny titel på tråden"
+            assert row["url"] == f"/forum/{subgroup.slug}/traad/{thread.slug}#post-{post.id}"
+
+        more = [
+            Post.objects.create(thread=thread, author=user, content=f"<p>mere {i}</p>")
+            for i in range(10)
+        ]
+        assert more
+        thread.title = "Tredje titel"
+        with CaptureQueriesContext(conn) as fifteen:
+            thread.save()
+        assert len(fifteen) == len(five)
 
     def test_activity_bump_does_not_cascade_a_reindex(self, subgroup, user):
         """The last_activity_at bump runs on every new thread and post, so it must

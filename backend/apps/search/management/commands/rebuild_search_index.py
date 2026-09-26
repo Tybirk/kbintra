@@ -7,7 +7,13 @@ import json
 from django.core.management.base import BaseCommand
 from django.db import connection, transaction
 
-from apps.search.services import _isoformat, create_excerpt, index_object, strip_html
+from apps.search import services
+from apps.search.services import _isoformat, create_excerpt, strip_html
+
+
+def index_object(**fields) -> None:
+    """The table was emptied first, so there is no earlier row to replace."""
+    services.index_object(**fields, replace=False)
 
 
 class Command(BaseCommand):

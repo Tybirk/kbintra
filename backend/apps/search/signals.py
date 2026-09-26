@@ -14,6 +14,7 @@ from .services import (
     create_excerpt,
     index_object,
     remove_object,
+    retitle_thread_posts,
     set_subtitle,
     strip_html,
 )
@@ -139,24 +140,20 @@ def index_thread(sender, instance, **kwargs):
             subtitle=instance.subgroup.name,
             created_at=_isoformat(instance.created_at),
         )
-        # Cascade: re-index all posts so they pick up a changed title or subgroup URL.
-        # Skip on create (no posts yet) and when update_fields excludes both "title" and "subgroup".
+        # A rename or a move reaches the post rows too: their title is the thread's,
+        # and their URL the thread's plus their own #post-<id>. One UPDATE, no
+        # re-indexing post by post. Skipped on create (no posts yet) and when
+        # update_fields excludes both "title" and "subgroup".
         created = kwargs.get("created", False)
         update_fields = kwargs.get("update_fields")
         if not created and (
             update_fields is None or "title" in update_fields or "subgroup" in update_fields
         ):
-            for post in instance.posts.select_related("thread__subgroup").all():
-                index_object(
-                    obj_type="post",
-                    object_id=post.id,
-                    title=instance.title,
-                    body=strip_html(post.content),
-                    url=f"/forum/{instance.subgroup.slug}/traad/{instance.slug}",
-                    subtitle=create_excerpt(post.content, 80),
-                    extra=json.dumps({"thread_id": instance.id}),
-                    created_at=_isoformat(post.created_at),
-                )
+            retitle_thread_posts(
+                instance.id,
+                instance.title,
+                f"/forum/{instance.subgroup.slug}/traad/{instance.slug}",
+            )
     except OperationalError:
         logger.exception("Failed to index thread %s", instance.id)
 
