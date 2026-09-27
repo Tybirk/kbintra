@@ -82,6 +82,32 @@ class TestConversationAPI:
         assert Conversation.objects.count() == 1
         assert Message.objects.filter(content="Hi there!").exists()
 
+    def test_create_conversation_joins_every_participant_socket(
+        self, authenticated_client, user, second_user, monkeypatch
+    ):
+        """The creator's sockets join the new conversation too, not only the recipients'.
+
+        A text message reaches its own sender's screen only through the group
+        broadcast, so without this a conversation started from a profile's "Send
+        besked" showed its creator nothing they wrote until a reload.
+        """
+        sent: list[tuple[str, dict]] = []
+
+        class FakeChannelLayer:
+            async def group_send(self, group, payload):
+                sent.append((group, payload))
+
+        monkeypatch.setattr("channels.layers.get_channel_layer", lambda: FakeChannelLayer())
+
+        response = authenticated_client.post(
+            "/api/messages/conversations/",
+            {"participant_ids": [second_user.id]},
+            format="json",
+        )
+        assert response.status_code == 201
+        joined = {group for group, payload in sent if payload["type"] == "new_conversation"}
+        assert joined == {f"user_{user.id}", f"user_{second_user.id}"}
+
     def test_create_conversation_returns_existing(
         self, authenticated_client, second_user, conversation
     ):
