@@ -181,8 +181,13 @@ class ConversationListCreateView(generics.ListCreateAPIView):
                     message_id=message.id,
                 )
 
-        # Notify other participants over WebSocket so their conversation list
-        # refreshes immediately and their socket joins the conversation group.
+        # Notify every participant over WebSocket so their conversation list
+        # refreshes and each of their open sockets joins the conversation group.
+        # The creator too: their sockets connected before the conversation existed,
+        # and a text message is shown to its sender only when the group broadcast
+        # comes back. Excluding them meant a conversation started from a profile or
+        # a post ("Send besked", which doesn't join from the client) swallowed every
+        # message its creator wrote until they reloaded the app.
         from asgiref.sync import async_to_sync
         from channels.layers import get_channel_layer
 
@@ -190,7 +195,7 @@ class ConversationListCreateView(generics.ListCreateAPIView):
         conversation_data = ConversationDetailSerializer(
             conversation, context={"request": request}
         ).data
-        for participant in conversation.participants.exclude(id=request.user.id):
+        for participant in conversation.participants.all():
             async_to_sync(channel_layer.group_send)(
                 f"user_{participant.id}",
                 {
