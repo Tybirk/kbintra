@@ -90,7 +90,9 @@ export function AttachmentCarousel({
 
   initialIndex = 0,
 }: AttachmentCarouselProps) {
-  const isMobile = useMediaQuery("(max-width: 768px)")
+  // A phone held sideways too (844 px wide, 390 tall): as a desktop modal,
+  // 75vh under its header left a PDF 109 px.
+  const isMobile = useMediaQuery("(max-width: 768px), (max-height: 500px)")
 
   // "Stor skrift" enlarges Mantine button heights, so the default 32px slide
   // bottom padding isn't enough to keep them clear of the indicator dots on
