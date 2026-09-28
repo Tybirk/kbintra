@@ -56,7 +56,14 @@ export function InstallPrompt() {
 
   const ref = useRef<HTMLDivElement>(null)
 
-  const visible = showPrompt && !dismissed
+  // Not on a phone held sideways: its ~92 px took a quarter of the height on
+  // every page, and left Bildeling 134 px for the car list. It comes back
+  // when the phone is turned upright.
+  const tooShort = useMediaQuery("(max-height: 500px)", undefined, {
+    getInitialValueInEffect: false,
+  })
+
+  const visible = showPrompt && !dismissed && !tooShort
 
   const withNavbar = useMediaQuery("(min-width: 48em)")
 
