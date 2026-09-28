@@ -182,6 +182,9 @@ export function InstallPrompt() {
     <Paper
       ref={ref}
       shadow="md"
+      // In dark mode the card and the page are the same colour, and the
+      // shadow is black on black: the border is its only edge.
+      withBorder
       p="sm"
       style={{
         position: "fixed",
@@ -222,7 +225,7 @@ export function InstallPrompt() {
               </Text>
             </Group>
           </Stack>
-          <CloseButton size="sm" onClick={handleDismiss} />
+          <CloseButton size="xl" aria-label="Luk" onClick={handleDismiss} />
         </Group>
       ) : (
         <Group justify="space-between" wrap="nowrap">
@@ -234,7 +237,7 @@ export function InstallPrompt() {
             <Button size="xs" onClick={handleInstall}>
               Installér
             </Button>
-            <CloseButton size="sm" onClick={handleDismiss} />
+            <CloseButton size="xl" aria-label="Luk" onClick={handleDismiss} />
           </Group>
         </Group>
       )}

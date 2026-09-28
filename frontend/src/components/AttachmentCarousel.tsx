@@ -268,6 +268,10 @@ export function AttachmentCarousel({
             control: {
               backgroundColor: "var(--mantine-color-default)",
 
+              // The library's black chevron, on the dark scheme's dark
+              // button, was about 1.4:1.
+              color: "var(--mantine-color-text)",
+
               border: "1px solid var(--mantine-color-default-border)",
 
               boxShadow: "var(--mantine-shadow-sm)",
