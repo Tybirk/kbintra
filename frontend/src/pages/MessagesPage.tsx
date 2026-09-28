@@ -427,10 +427,20 @@ export default function MessagesPage() {
 
   // condition. Instead, run once per conversation selection (tracked via ref)
 
-  // and invalidate the sidebar list and header badge caches.
+  // and invalidate the sidebar list and header badge caches. Leaving the chat
+
+  // ends the selection, however it is left (the phone's back arrow too), so
+
+  // opening it again marks what arrived meanwhile.
 
   useEffect(() => {
-    if (!selectedConversation || !activeConversation) return
+    if (!selectedConversation) {
+      lastMarkedReadConversation.current = null
+
+      return
+    }
+
+    if (!activeConversation) return
 
     if (lastMarkedReadConversation.current === selectedConversation) return
 
@@ -507,13 +517,10 @@ export default function MessagesPage() {
 
   // Shared cleanup after marking (part of) a conversation unread. We must leave
   // the conversation so opening/listing it doesn't instantly re-mark it read
-  // (both via the server fetch and the auto-mark-read effect), reset the
-  // "already marked read this session" guard so re-opening marks it read again,
-  // and refresh the conversation list + unread badge.
+  // (both via the server fetch and the auto-mark-read effect), and refresh the
+  // conversation list + unread badge.
 
   const settleAfterMarkUnread = () => {
-    lastMarkedReadConversation.current = null
-
     setSelectedConversation(null)
 
     navigate("/beskeder", { replace: true })
