@@ -153,6 +153,24 @@ describe("forumApi", () => {
       expect(result).toEqual(mockThread)
     })
 
+    it("sends the client token and waits longer when uploading images", async () => {
+      vi.mocked(apiClient.post).mockResolvedValue({ data: { id: 1 } })
+
+      const photo = new File(["x"], "a.jpg", { type: "image/jpeg" })
+
+      await forumApi.createThread(
+        "test-group",
+        { title: "Hej", content: "Billeder", client_token: "tok-1" },
+        [photo],
+      )
+
+      const [, body, config] = vi.mocked(apiClient.post).mock.calls[0]
+
+      expect((body as FormData).get("client_token")).toBe("tok-1")
+
+      expect(config?.timeout).toBe(120_000)
+    })
+
     it("should delete thread", async () => {
       vi.mocked(apiClient.delete).mockResolvedValue({})
 
@@ -189,6 +207,22 @@ describe("forumApi", () => {
       })
 
       expect(result).toEqual(mockPost)
+    })
+
+    it("sends the client token with a reply that has images", async () => {
+      vi.mocked(apiClient.post).mockResolvedValue({ data: { id: 1 } })
+
+      const photo = new File(["x"], "a.jpg", { type: "image/jpeg" })
+
+      await forumApi.createPost(1, { content: "Svar", client_token: "tok-2" }, [
+        photo,
+      ])
+
+      const [, body, config] = vi.mocked(apiClient.post).mock.calls[0]
+
+      expect((body as FormData).get("client_token")).toBe("tok-2")
+
+      expect(config?.timeout).toBe(120_000)
     })
 
     it("should update post", async () => {

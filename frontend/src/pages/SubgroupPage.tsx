@@ -1383,6 +1383,10 @@ function CreateThreadModal({
 
   const [membersOnly, setMembersOnly] = useState(defaultMembersOnly)
 
+  // Kept across retries of the same thread. After a timeout the server may already
+  // have saved it, and "Prøv igen" must not post it a second time.
+  const clientTokenRef = useRef<string | null>(null)
+
   const titleDraftKey = "new-thread-title-" + subgroupSlug
 
   useEffect(() => {
@@ -1431,6 +1435,8 @@ function CreateThreadModal({
 
       setMembersOnly(false)
 
+      clientTokenRef.current = null
+
       clearDraft("new-thread-" + subgroupSlug)
 
       clearDraft("new-thread-title-" + subgroupSlug)
@@ -1457,6 +1463,8 @@ function CreateThreadModal({
       return
     }
 
+    clientTokenRef.current ??= crypto.randomUUID()
+
     createMutation.mutate({
       data: {
         title: title.trim(),
@@ -1464,6 +1472,8 @@ function CreateThreadModal({
         content: content.trim(),
 
         ...(allowsMembers && membersOnly ? { members_only: true } : {}),
+
+        client_token: clientTokenRef.current,
       },
 
       files: attachments,

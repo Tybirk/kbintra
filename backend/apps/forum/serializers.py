@@ -607,8 +607,8 @@ class PostCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Post
-        fields = ["content", "attachments", "remove_attachment_ids", "poll_data"]
-        extra_kwargs = {"content": {"allow_blank": True}}
+        fields = ["content", "attachments", "remove_attachment_ids", "poll_data", "client_token"]
+        extra_kwargs = {"content": {"allow_blank": True}, "client_token": {"write_only": True}}
 
     def validate(self, attrs: dict) -> dict:
         # On update the post already exists (self.instance is set), so the
@@ -650,6 +650,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
         attachments = validated_data.pop("attachments", [])
         remove_attachment_ids = validated_data.pop("remove_attachment_ids", [])
         validated_data.pop("poll_data", None)  # poll updates handled separately
+        validated_data.pop("client_token", None)  # set once, at creation
 
         instance = super().update(instance, validated_data)
 
@@ -986,8 +987,18 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Thread
-        fields = ["id", "title", "slug", "content", "attachments", "poll_data", "members_only"]
+        fields = [
+            "id",
+            "title",
+            "slug",
+            "content",
+            "attachments",
+            "poll_data",
+            "members_only",
+            "client_token",
+        ]
         read_only_fields = ["slug"]
+        extra_kwargs = {"client_token": {"write_only": True}}
 
     def validate(self, attrs: dict) -> dict:
         members_only = attrs.get("members_only", False)

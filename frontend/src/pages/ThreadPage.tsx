@@ -1,4 +1,12 @@
-import { useState, useEffect, memo, useCallback, lazy, Suspense } from "react"
+import {
+  useState,
+  useEffect,
+  useRef,
+  memo,
+  useCallback,
+  lazy,
+  Suspense,
+} from "react"
 
 import { useParams, useNavigate, useLocation } from "react-router-dom"
 
@@ -433,6 +441,10 @@ export default function ThreadPage() {
   // Open at the post a notification or search result links to.
   useHoldHashTarget(!!thread, !isFetching)
 
+  // Kept across retries of the same reply. After a timeout the server may already
+  // have saved it, and "Prøv igen" must not post it a second time.
+  const replyTokenRef = useRef<string | null>(null)
+
   const createPostMutation = useMutation({
     mutationFn: ({ data, files, pollData: pd }: CreatePostParams) =>
       forumApi.createPost(
@@ -458,6 +470,8 @@ export default function ThreadPage() {
       })
 
       clearDraft("reply-" + thread!.id)
+
+      replyTokenRef.current = null
 
       setReplySubmitKey((k) => k + 1)
 
@@ -728,7 +742,13 @@ export default function ThreadPage() {
 
   const handleReplySubmit = useCallback(
     (content: string, files: File[], pollData?: CreatePollData) => {
-      createPostMutation.mutate({ data: { content }, files, pollData })
+      replyTokenRef.current ??= crypto.randomUUID()
+
+      createPostMutation.mutate({
+        data: { content, client_token: replyTokenRef.current },
+        files,
+        pollData,
+      })
     },
 
     // eslint-disable-next-line react-hooks/exhaustive-deps

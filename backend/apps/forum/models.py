@@ -194,6 +194,12 @@ class Thread(models.Model):
         default=False,
         help_text="If true, only members of the subgroup (and the author) can see this thread.",
     )
+    client_token = models.UUIDField(
+        null=True,
+        blank=True,
+        unique=True,
+        help_text="One per compose form. A retry with the same token gets this thread back.",
+    )
     legacy_url = models.CharField(max_length=500, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -247,6 +253,12 @@ class Post(models.Model):
         null=True,
         blank=True,
         related_name="edited_posts",
+    )
+    client_token = models.UUIDField(
+        null=True,
+        blank=True,
+        unique=True,
+        help_text="One per reply form. A retry with the same token gets this post back.",
     )
     legacy_url = models.CharField(max_length=500, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)

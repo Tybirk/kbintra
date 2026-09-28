@@ -824,10 +824,16 @@ export interface CreateThreadData {
   content: string
 
   members_only?: boolean
+
+  // One per form: a retry with the same token gets the saved thread back.
+  client_token?: string
 }
 
 export interface CreatePostData {
   content: string
+
+  // One per reply: a retry with the same token gets the saved post back.
+  client_token?: string
 }
 
 export interface RecentActivity {

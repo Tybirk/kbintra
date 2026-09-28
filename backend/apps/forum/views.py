@@ -3,6 +3,7 @@ Views for Forum models.
 """
 
 import io
+import uuid
 import zipfile
 from typing import Any
 
@@ -104,6 +105,24 @@ def _is_member(user: Any, subgroup: Subgroup) -> bool:
     if not user or not user.is_authenticated:
         return False
     return SubgroupMembership.objects.filter(user=user, subgroup=subgroup).exists()
+
+
+def _already_created(model: type[Thread] | type[Post], request: Request) -> Any:
+    """What this author already created with the request's client token, if anything.
+
+    A phone that gives up waiting on a slow upload says "Prøv igen", but the server
+    may have finished saving by then. The retry carries the form's token, so it gets
+    the saved thread or post back instead of creating a second one and notifying
+    everyone again.
+    """
+    token = request.data.get("client_token")
+    if not token:
+        return None
+    try:
+        token = uuid.UUID(str(token))
+    except ValueError:
+        return None  # the serializer rejects it with a 400
+    return model.objects.filter(author=request.user, client_token=token).first()
 
 
 class IsMemberOrAdmin(permissions.BasePermission):
@@ -589,6 +608,12 @@ class ThreadListCreateView(generics.ListCreateAPIView):
             return ThreadCreateSerializer
         return ThreadSerializer
 
+    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        existing = _already_created(Thread, request)
+        if existing is not None:
+            return Response(self.get_serializer(existing).data, status=status.HTTP_200_OK)
+        return super().create(request, *args, **kwargs)
+
     def get_queryset(self) -> Any:
         self._subgroup = get_object_or_404(Subgroup, slug=self.kwargs["slug"])
         qs = (
@@ -933,6 +958,9 @@ class PostListCreateView(generics.ListCreateAPIView):
             from django.http import Http404
 
             raise Http404
+        existing = _already_created(Post, request)
+        if existing is not None:
+            return Response(self.get_serializer(existing).data, status=status.HTTP_200_OK)
         return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer: Any) -> None:
