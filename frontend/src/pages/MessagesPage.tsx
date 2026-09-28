@@ -169,7 +169,10 @@ export default function MessagesPage() {
 
   const [conversationSearch, setConversationSearch] = useState("")
 
-  const isMobile = useMediaQuery("(max-width: 768px)")
+  // One pane at a time, the list or the open chat, until both fit beside the
+  // navbar: 280 px navbar + 320 px list + a 360 px chat + padding is
+  // Mantine's md (62em). Two panes on an iPad in portrait left the chat 186 px.
+  const isMobile = useMediaQuery("(max-width: 61.99em)")
 
   const inConversationMobile =
     !!isMobile && (!!selectedConversation || isComposingNew)
@@ -573,7 +576,9 @@ export default function MessagesPage() {
 
               top: "var(--app-shell-header-offset, 60px)",
 
-              left: 0,
+              // Beside the navbar where it stays open (from 48em, an iPad in
+              // portrait); under it, it covered the back arrow at 768 px.
+              left: "var(--app-shell-navbar-offset, 0px)",
 
               right: 0,
 
