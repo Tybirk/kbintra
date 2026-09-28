@@ -236,9 +236,17 @@ class ConversationSerializer(serializers.ModelSerializer):
         else:
             last_msg = obj.messages.order_by("-created_at").first()
         if last_msg:
+            # A message without text is an attachment, or one taken back: the
+            # list showed an empty line for both.
+            if last_msg.content:
+                preview = last_msg.content[:100]
+            elif last_msg.is_deleted:
+                preview = "Besked slettet"
+            else:
+                preview = "(Vedhæftet fil)"
             return {
                 "id": last_msg.id,
-                "content": last_msg.content[:100] if last_msg.content else "",
+                "content": preview,
                 "sender_id": last_msg.sender_id,
                 "created_at": last_msg.created_at.isoformat(),
             }

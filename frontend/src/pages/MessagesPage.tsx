@@ -1056,6 +1056,11 @@ const MessageList = memo(function MessageList({
             <Loader size="sm" />
           </Center>
         )}
+        {!isLoading && messages.length === 0 && (
+          <Text size="sm" c="dimmed" ta="center" py="xl">
+            Ingen beskeder endnu. Skriv den første nedenfor.
+          </Text>
+        )}
         {/* The slot stays while there is history, so the loader appearing
             doesn't push the messages down under the reader */}
         {hasOlder && (
@@ -1372,7 +1377,12 @@ function ChatArea({
         <Group gap="sm" justify="space-between" wrap="nowrap">
           <Group gap="sm" style={{ flex: 1, minWidth: 0 }}>
             {onBack && (
-              <ActionIcon variant="subtle" onClick={onBack} size="lg">
+              <ActionIcon
+                variant="subtle"
+                onClick={onBack}
+                size="lg"
+                aria-label="Tilbage"
+              >
                 <IconArrowLeft size={20} />
               </ActionIcon>
             )}
@@ -2625,6 +2635,22 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
 
   // Fetch users for search
 
+  const { data: conversations } = useQuery({
+    queryKey: ["conversations"],
+
+    queryFn: messagingApi.getConversations,
+  })
+
+  // One recipient you already write with: the message goes into that
+  // conversation (the server reuses it), so it isn't a new one.
+  const existingConversation =
+    selectedUsers.length === 1 &&
+    conversations?.some(
+      (c) =>
+        c.other_participants?.length === 1 &&
+        c.other_participants[0].id === selectedUsers[0].id,
+    )
+
   const { data: users } = useQuery({
     queryKey: ["users"],
 
@@ -2760,7 +2786,12 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
       >
         <Group gap="sm" mb="xs">
           {onBack && (
-            <ActionIcon variant="subtle" onClick={onBack} size="lg">
+            <ActionIcon
+              variant="subtle"
+              onClick={onBack}
+              size="lg"
+              aria-label="Tilbage"
+            >
               <IconArrowLeft size={20} />
             </ActionIcon>
           )}
@@ -2920,11 +2951,15 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
               </Avatar.Group>
               <Text fw={500}>
                 {selectedUsers.length === 1
-                  ? `Ny samtale med ${selectedUsers[0].first_name}`
+                  ? `${
+                      existingConversation ? "Samtale" : "Ny samtale"
+                    } med ${selectedUsers[0].first_name}`
                   : `Gruppesamtale med ${selectedUsers.length} personer`}
               </Text>
               <Text size="sm" c="dimmed">
-                Skriv din første besked nedenfor
+                {existingConversation
+                  ? "Beskeden kommer i jeres samtale"
+                  : "Skriv din første besked nedenfor"}
               </Text>
             </Stack>
           </Center>

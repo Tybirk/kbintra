@@ -3,6 +3,7 @@ Views for Messaging app.
 """
 
 from django.db.models import Count, Max, QuerySet
+from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -39,8 +40,10 @@ class ConversationListCreateView(generics.ListCreateAPIView):
         return (
             Conversation.objects.filter(participants=self.request.user)
             .prefetch_related("participants")
-            .annotate(last_message_at=Max("messages__created_at"))
-            .order_by("-last_message_at", "-updated_at")
+            # A conversation without messages yet sorts by when it was made:
+            # NULL sorted it last, off-screen while it was the one just opened.
+            .annotate(last_activity=Coalesce(Max("messages__created_at"), "created_at"))
+            .order_by("-last_activity", "-updated_at")
         )
 
     def list(self, request: Request, *args, **kwargs) -> Response:

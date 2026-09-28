@@ -139,6 +139,32 @@ class TestConversationAPI:
         # The initial message must have been created in the existing conversation
         assert Message.objects.filter(content="Hej igen!", conversation=conversation).exists()
 
+    def test_list_previews_a_message_without_text(
+        self, authenticated_client, user, conversation, admin_user
+    ):
+        """An attachment-only or unsent last message still gets a preview line."""
+        Message.objects.create(conversation=conversation, sender=user, content="")
+        taken_back = Conversation.objects.create()
+        taken_back.participants.add(user, admin_user)
+        Message.objects.create(conversation=taken_back, sender=user, content="", is_deleted=True)
+
+        results = authenticated_client.get("/api/messages/conversations/").json()
+        previews = {c["id"]: c["last_message"]["content"] for c in results}
+
+        assert previews == {conversation.id: "(Vedhæftet fil)", taken_back.id: "Besked slettet"}
+
+    def test_list_sorts_an_empty_conversation_by_when_it_was_made(
+        self, authenticated_client, user, conversation, message, admin_user
+    ):
+        """A conversation just created, with no messages yet, is not sorted last."""
+        Message.objects.filter(pk=message.pk).update(created_at="2024-01-01T12:00:00Z")
+        empty = Conversation.objects.create()
+        empty.participants.add(user, admin_user)
+
+        results = authenticated_client.get("/api/messages/conversations/").json()
+
+        assert [c["id"] for c in results] == [empty.id, conversation.id]
+
     def test_get_conversation_detail(self, authenticated_client, conversation):
         """Test getting conversation details."""
         response = authenticated_client.get(f"/api/messages/conversations/{conversation.id}/")
