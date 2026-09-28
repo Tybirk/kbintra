@@ -8,24 +8,21 @@ import {
   Box,
   Stack,
   Avatar,
-  Loader,
 } from "@mantine/core"
 
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 
 import { IconMoodSmile, IconDots } from "@tabler/icons-react"
 
-import { lazy, Suspense, useState } from "react"
+import { useState } from "react"
 
 import { forumApi } from "../api/forum"
 
 import type { ReactionSummary, ReactionType } from "../types"
 
+import EmojiMartPicker, { type PickedEmoji } from "./EmojiMartPicker"
+
 import UserLink from "./UserLink"
-
-const LazyPicker = lazy(() => import("@emoji-mart/react"))
-
-const emojiDataPromise = () => import("@emoji-mart/data").then((m) => m.default)
 
 // Default quick-reaction emojis (first 6)
 
@@ -42,10 +39,6 @@ const DEFAULT_EMOJIS: string[] = [
 
   "\u{1F389}",
 ]
-
-interface EmojiData {
-  native: string
-}
 
 interface ReactionsProps {
   postId: number
@@ -67,8 +60,6 @@ export default function Reactions({
   const [pickerOpened, setPickerOpened] = useState(false)
 
   const [fullPickerOpened, setFullPickerOpened] = useState(false)
-
-  const [emojiData, setEmojiData] = useState<object | null>(null)
 
   const [openReactionType, setOpenReactionType] = useState<ReactionType | null>(
     null,
@@ -94,37 +85,14 @@ export default function Reactions({
   }
 
   const handleOpenFullPicker = () => {
-    if (!emojiData) {
-      emojiDataPromise().then(setEmojiData)
-    }
-
     setPickerOpened(false)
 
     setFullPickerOpened((o) => !o)
   }
 
-  const handleFullPickerSelect = (emoji: EmojiData) => {
+  const handleFullPickerSelect = (emoji: PickedEmoji) => {
     handleReaction(emoji.native)
   }
-
-  const pickerContent = (
-    <Suspense fallback={<Loader size="sm" m="md" />}>
-      <LazyPicker
-        data={emojiData}
-        onEmojiSelect={handleFullPickerSelect}
-        locale="en"
-        theme="light"
-        previewPosition="none"
-        skinTonePosition="search"
-        searchPosition="sticky"
-        navPosition="top"
-        perLine={9}
-        emojiSize={22}
-        emojiButtonSize={32}
-        maxFrequentRows={2}
-      />
-    </Suspense>
-  )
 
   return (
     <Group gap="sm">
@@ -306,7 +274,9 @@ export default function Reactions({
           <Box style={{ width: 0, height: 0 }} />
         </Popover.Target>
         <Popover.Dropdown p={0} style={{ border: "none", background: "none" }}>
-          {fullPickerOpened && pickerContent}
+          {fullPickerOpened && (
+            <EmojiMartPicker onEmojiSelect={handleFullPickerSelect} />
+          )}
         </Popover.Dropdown>
       </Popover>
     </Group>

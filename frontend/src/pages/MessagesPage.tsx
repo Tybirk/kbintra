@@ -1,12 +1,4 @@
-import {
-  useState,
-  useEffect,
-  useRef,
-  memo,
-  lazy,
-  Suspense,
-  type RefObject,
-} from "react"
+import { useState, useEffect, useRef, memo, type RefObject } from "react"
 
 import { Link, useParams, useNavigate, useLocation } from "react-router-dom"
 
@@ -106,6 +98,10 @@ import { messageElementId, useChatScroll } from "../hooks/useChatScroll"
 
 import UserLink from "../components/UserLink"
 
+import EmojiMartPicker, {
+  type PickedEmoji,
+} from "../components/EmojiMartPicker"
+
 import { htmlToPlainText } from "../utils/htmlText"
 
 import {
@@ -119,10 +115,6 @@ import { AttachmentCarousel } from "../components/AttachmentCarousel"
 import FileDropzone from "../components/FileDropzone"
 
 import { filterFilesBySize } from "../config"
-
-const LazyPicker = lazy(() => import("@emoji-mart/react"))
-
-const emojiDataPromise = () => import("@emoji-mart/data").then((m) => m.default)
 
 // Default quick-reaction emojis
 
@@ -139,10 +131,6 @@ const DEFAULT_EMOJIS: string[] = [
 
   "\u{1F389}",
 ]
-
-interface EmojiPickerData {
-  native: string
-}
 
 const NEW_MESSAGE_PATH = "ny"
 
@@ -1797,8 +1785,6 @@ const MessageBubble = memo(function MessageBubble({
 
   const [fullEmojiPickerOpened, setFullEmojiPickerOpened] = useState(false)
 
-  const [emojiData, setEmojiData] = useState<object | null>(null)
-
   const [isHovered, setIsHovered] = useState(false)
 
   const [isEditing, setIsEditing] = useState(false)
@@ -2038,16 +2024,12 @@ const MessageBubble = memo(function MessageBubble({
   )
 
   const handleOpenFullEmojiPicker = () => {
-    if (!emojiData) {
-      emojiDataPromise().then(setEmojiData)
-    }
-
     setReactionPickerOpened(false)
 
     setFullEmojiPickerOpened((o) => !o)
   }
 
-  const handleFullEmojiSelect = (emoji: EmojiPickerData) => {
+  const handleFullEmojiSelect = (emoji: PickedEmoji) => {
     reactionMutation.mutate(emoji.native)
   }
 
@@ -2139,22 +2121,7 @@ const MessageBubble = memo(function MessageBubble({
         </Popover.Target>
         <Popover.Dropdown p={0} style={{ border: "none", background: "none" }}>
           {fullEmojiPickerOpened && (
-            <Suspense fallback={<Loader size="sm" m="md" />}>
-              <LazyPicker
-                data={emojiData}
-                onEmojiSelect={handleFullEmojiSelect}
-                locale="da"
-                theme="light"
-                previewPosition="none"
-                skinTonePosition="search"
-                searchPosition="sticky"
-                navPosition="top"
-                perLine={9}
-                emojiSize={22}
-                emojiButtonSize={32}
-                maxFrequentRows={2}
-              />
-            </Suspense>
+            <EmojiMartPicker onEmojiSelect={handleFullEmojiSelect} />
           )}
         </Popover.Dropdown>
       </Popover>
