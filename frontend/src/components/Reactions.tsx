@@ -9,10 +9,7 @@ import {
   Stack,
   Avatar,
   Loader,
-  Drawer,
 } from "@mantine/core"
-
-import { useMediaQuery } from "@mantine/hooks"
 
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 
@@ -66,8 +63,6 @@ export default function Reactions({
   reactions,
 }: ReactionsProps) {
   const queryClient = useQueryClient()
-
-  const isMobile = useMediaQuery("(max-width: 48em)")
 
   const [pickerOpened, setPickerOpened] = useState(false)
 
@@ -293,38 +288,27 @@ export default function Reactions({
         </Popover.Dropdown>
       </Popover>
 
-      {/* Full emoji picker — Drawer on mobile, Popover on desktop */}
-      {isMobile ? (
-        <Drawer
-          opened={fullPickerOpened}
-          onClose={() => setFullPickerOpened(false)}
-          position="bottom"
-          size="auto"
-          withCloseButton={false}
-          padding={0}
-          styles={{ body: { padding: 0 } }}
-        >
+      {/* Full emoji picker — a Popover on every screen, as in the chat, so a
+          tap outside closes it. The phone Drawer it replaced filled the
+          screen (Mantine 9.5 has no size "auto") and had no way to close. */}
+      <Popover
+        opened={fullPickerOpened}
+        onChange={setFullPickerOpened}
+        position="top"
+        width="auto"
+        shadow="md"
+        // Slide it back on screen when neither above nor below has room for
+        // its 435 px — a post mid-screen on a phone — rather than cutting off
+        // the search field and the categories.
+        middlewares={{ flip: true, shift: { crossAxis: true } }}
+      >
+        <Popover.Target>
+          <Box style={{ width: 0, height: 0 }} />
+        </Popover.Target>
+        <Popover.Dropdown p={0} style={{ border: "none", background: "none" }}>
           {fullPickerOpened && pickerContent}
-        </Drawer>
-      ) : (
-        <Popover
-          opened={fullPickerOpened}
-          onChange={setFullPickerOpened}
-          position="top"
-          width="auto"
-          shadow="md"
-        >
-          <Popover.Target>
-            <Box style={{ width: 0, height: 0 }} />
-          </Popover.Target>
-          <Popover.Dropdown
-            p={0}
-            style={{ border: "none", background: "none" }}
-          >
-            {fullPickerOpened && pickerContent}
-          </Popover.Dropdown>
-        </Popover>
-      )}
+        </Popover.Dropdown>
+      </Popover>
     </Group>
   )
 }
