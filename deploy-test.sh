@@ -15,21 +15,31 @@ cd "$(dirname "$0")"
 PROD_REMOTE=${PROD_REMOTE:-kbintra-dev}
 PROD_DATA_DIR=${PROD_DATA_DIR:-/root/kbintra-prod/data}
 
-echo ">>> Rsyncing prod SQLite files from $PROD_REMOTE:$PROD_DATA_DIR (read-only)..."
+# Snapshot with sqlite's own backup, not by copying files. Prod's DB is hot:
+# three containers write to it through a live WAL, so copying db.sqlite3 and
+# its -wal one after the other captures them at different moments. That torn
+# copy failed a migration on 2026-09-25 with foreign keys pointing at rows
+# that "did not exist", while prod itself had none. The backup is a single
+# consistent file, written to /tmp on prod (read-only on the DB itself) and
+# removed again straight after.
+SNAPSHOT=/tmp/kbintra-test-snapshot.sqlite3
+
+echo ">>> Snapshotting prod DB on $PROD_REMOTE:$PROD_DATA_DIR (read-only)..."
 mkdir -p ./data
+trap 'ssh "$PROD_REMOTE" "rm -f $SNAPSHOT"' EXIT
+ssh "$PROD_REMOTE" "sqlite3 -readonly '$PROD_DATA_DIR/db.sqlite3' '.backup $SNAPSHOT'"
+rsync -avz "$PROD_REMOTE:$SNAPSHOT" ./data/db.sqlite3.new
+ssh "$PROD_REMOTE" "rm -f $SNAPSHOT"
+trap - EXIT
 
-# Main DB file (required).
-rsync -avz --inplace \
-    "$PROD_REMOTE:$PROD_DATA_DIR/db.sqlite3" \
-    ./data/db.sqlite3
-
-# WAL/SHM files (best-effort; may not exist if prod has no in-flight writes).
-rsync -avz --inplace \
-    "$PROD_REMOTE:$PROD_DATA_DIR/db.sqlite3-wal" \
-    ./data/db.sqlite3-wal 2>/dev/null || rm -f ./data/db.sqlite3-wal
-rsync -avz --inplace \
-    "$PROD_REMOTE:$PROD_DATA_DIR/db.sqlite3-shm" \
-    ./data/db.sqlite3-shm 2>/dev/null || rm -f ./data/db.sqlite3-shm
+# Swap the file in only while nothing here has it open. A running container
+# holds the old database and its -wal; replacing them under it, it checkpointed
+# its stale pages into the new file on shutdown and left it malformed
+# (2026-09-25). deploy.sh starts the containers again.
+echo ">>> Stopping the app containers to swap in the new database..."
+docker compose stop backend backend-ws huey
+mv ./data/db.sqlite3.new ./data/db.sqlite3
+rm -f ./data/db.sqlite3-wal ./data/db.sqlite3-shm
 
 # Media files written by the backend container are root-owned on the host (the
 # container runs as root). Without sudo, this deploy user can't let the rsync

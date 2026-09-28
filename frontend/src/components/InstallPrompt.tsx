@@ -1,6 +1,16 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useLayoutEffect, useRef } from "react"
 
-import { Button, Paper, Group, Text, Stack, CloseButton } from "@mantine/core"
+import {
+  Button,
+  Paper,
+  Group,
+  Text,
+  Stack,
+  CloseButton,
+  getDefaultZIndex,
+} from "@mantine/core"
+
+import { useMediaQuery } from "@mantine/hooks"
 
 import { IconDownload, IconShare } from "@tabler/icons-react"
 
@@ -43,6 +53,50 @@ export function InstallPrompt() {
   const [isIos, setIsIos] = useState(false)
 
   const [dismissed, setDismissed] = useState(false)
+
+  const ref = useRef<HTMLDivElement>(null)
+
+  // Not on a phone held sideways: its ~92 px took a quarter of the height on
+  // every page, and left Bildeling 134 px for the car list. It comes back
+  // when the phone is turned upright.
+  const tooShort = useMediaQuery("(max-height: 500px)", undefined, {
+    getInitialValueInEffect: false,
+  })
+
+  const visible = showPrompt && !dismissed && !tooShort
+
+  const withNavbar = useMediaQuery("(min-width: 48em)")
+
+  // While shown, the banner claims its space at the bottom of the page (see
+  // AppShell.Main in App.tsx), as TestDomainBanner does at the top: otherwise
+  // the last button on a page — Gem, a toggle — sits under it for good.
+  useLayoutEffect(() => {
+    if (!visible) return
+
+    const el = ref.current
+
+    if (!el) return
+
+    const root = document.documentElement
+
+    const apply = () =>
+      root.style.setProperty(
+        "--install-prompt-height",
+        `${el.offsetHeight + 24}px`,
+      )
+
+    apply()
+
+    const observer = new ResizeObserver(apply)
+
+    observer.observe(el)
+
+    return () => {
+      observer.disconnect()
+
+      root.style.removeProperty("--install-prompt-height")
+    }
+  }, [visible])
 
   useEffect(() => {
     const wasDismissed = sessionStorage.getItem("pwa-install-dismissed")
@@ -127,24 +181,32 @@ export function InstallPrompt() {
     sessionStorage.setItem("pwa-install-dismissed", "true")
   }
 
-  if (!showPrompt || dismissed) {
+  if (!visible) {
     return null
   }
 
   return (
     <Paper
+      ref={ref}
       shadow="md"
+      // In dark mode the card and the page are the same colour, and the
+      // shadow is black on black: the border is its only edge.
+      withBorder
       p="sm"
       style={{
         position: "fixed",
 
         bottom: 16,
 
-        left: 16,
+        // Beside the navbar where it stays open (from the "sm" breakpoint,
+        // 280 px wide in App.tsx), rather than underneath it.
+        left: withNavbar ? 280 + 16 : 16,
 
         right: 16,
 
-        zIndex: 1000,
+        // Above the page, under the navbar (app + 1) and modals: the phone's
+        // burger menu and an open carousel or zoom cover it.
+        zIndex: getDefaultZIndex("app"),
 
         maxWidth: 400,
 
@@ -170,7 +232,7 @@ export function InstallPrompt() {
               </Text>
             </Group>
           </Stack>
-          <CloseButton size="sm" onClick={handleDismiss} />
+          <CloseButton size="xl" aria-label="Luk" onClick={handleDismiss} />
         </Group>
       ) : (
         <Group justify="space-between" wrap="nowrap">
@@ -182,7 +244,7 @@ export function InstallPrompt() {
             <Button size="xs" onClick={handleInstall}>
               Installér
             </Button>
-            <CloseButton size="sm" onClick={handleDismiss} />
+            <CloseButton size="xl" aria-label="Luk" onClick={handleDismiss} />
           </Group>
         </Group>
       )}

@@ -159,7 +159,9 @@ def _subgroup_list_queryset() -> Any:
             ),
         )
         .annotate(subscriber_count=Count("subscriptions", distinct=True))
-        .all()
+        # The annotate's GROUP BY makes Django drop Meta.ordering, which left the
+        # list in no order at all — visible in every group picker.
+        .order_by(*Subgroup._meta.ordering)
     )
 
 

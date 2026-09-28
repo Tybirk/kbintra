@@ -14,13 +14,13 @@ const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes)
 
 import { useAuthStore } from "./store/authStore"
 
-import { getAccessToken } from "./api/client"
-
 import { trackNavigation } from "./utils/navigationHistory"
 
 import { ErrorBoundary } from "./components/ErrorBoundary"
 
 import { useVersionCheck } from "./hooks/useVersionCheck"
+
+import { useScrollToTopOnNavigate } from "./hooks/useScrollToTopOnNavigate"
 
 import { usePushSubscriptionSync } from "./hooks/usePushSubscriptionSync"
 
@@ -148,6 +148,8 @@ function App() {
     setNavbarOpened(false)
   }, [location.pathname])
 
+  useScrollToTopOnNavigate()
+
   // Check for app updates when user returns to the app
 
   useVersionCheck()
@@ -161,12 +163,10 @@ function App() {
   useAccessibilityModeSync()
 
   useEffect(() => {
+    // Without a token checkAuth clears the persisted user itself, so a forced
+    // logout leaves no profile behind in storage.
     const initAuth = async () => {
-      const token = getAccessToken()
-
-      if (token) {
-        await checkAuth()
-      }
+      await checkAuth()
 
       setIsInitializing(false)
     }
@@ -281,10 +281,20 @@ function App() {
         </AppShell.Navbar>
 
         <AppShell.Main
+          // Room for the install banner while it shows (InstallPrompt sets the
+          // variable): below the page, or off the chat's fixed height.
           style={
             location.pathname.startsWith("/beskeder")
-              ? { height: "100dvh", overflow: "hidden" }
-              : undefined
+              ? {
+                  // min-height too: Mantine's own 100dvh minimum would win.
+                  height: "calc(100dvh - var(--install-prompt-height, 0px))",
+                  minHeight: "calc(100dvh - var(--install-prompt-height, 0px))",
+                  overflow: "hidden",
+                }
+              : {
+                  paddingBottom:
+                    "calc(var(--app-shell-padding) + var(--install-prompt-height, 0px))",
+                }
           }
         >
           <AuthenticatedRoutes />

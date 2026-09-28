@@ -41,7 +41,12 @@ import { filterFilesBySize } from "../config"
 
 const EmojiPicker = lazy(() => import("./EmojiPicker"))
 
-import { saveDraft, loadDraft, clearDraft } from "../utils/draftStorage"
+import {
+  DRAFT_SAVE_DELAY_MS,
+  saveDraft,
+  loadDraft,
+  clearDraft,
+} from "../utils/draftStorage"
 
 import { usersApi } from "../api/users"
 
@@ -83,6 +88,13 @@ interface ChatRichTextEditorProps {
   /** Unique key for persisting a draft across refreshes. */
 
   draftKey?: string
+
+  /**
+   * Called when the reader clears a restored draft with "(ryd)", so the page can
+   * clear what it saved beside it — a title, the recipients.
+   */
+
+  onClearDraft?: () => void
 }
 
 function isImageFile(file: File): boolean {
@@ -117,6 +129,7 @@ export default function ChatRichTextEditor({
   mentionableUsers,
 
   draftKey,
+  onClearDraft,
 }: ChatRichTextEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -296,7 +309,7 @@ export default function ChatRichTextEditor({
 
     saveTimerRef.current = setTimeout(() => {
       saveDraft(draftKey, content)
-    }, 1500)
+    }, DRAFT_SAVE_DELAY_MS)
 
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
@@ -688,7 +701,7 @@ export default function ChatRichTextEditor({
     if (errors.length > 0) {
       errors.forEach((error) => {
         notifications.show({
-          title: "File too large",
+          title: "Filen er for stor",
 
           message: error,
 
@@ -712,6 +725,8 @@ export default function ChatRichTextEditor({
     setDraftRestored(false)
 
     onChange("")
+
+    onClearDraft?.()
   }
 
   const isEmpty = !content.trim() && attachments.length === 0
@@ -1015,6 +1030,7 @@ export default function ChatRichTextEditor({
           variant="filled"
           onClick={() => onSend()}
           disabled={disabled || isEmpty}
+          aria-label="Send"
           mb={1}
           mr={isMobile ? 2 : undefined}
         >

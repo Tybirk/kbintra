@@ -10,8 +10,6 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.announcements.models import Announcement
-from apps.events.models import Event
 from apps.forum.models import File, Folder, Post, Subgroup, Thread
 from apps.forum.services import member_subgroup_ids
 from apps.houses.models import Car, House
@@ -242,11 +240,6 @@ class GlobalSearchView(APIView):
         # index doesn't store members_only state.
         apply_visibility_filters(results, request.user)
 
-        # FTS5 stores Danish-folded titles for matching; swap in the originals
-        # before returning so the UI shows "Grønt udvalg" instead of "Groent
-        # udvalg". Purely display — no effect on what was matched.
-        restore_original_titles(results)
-
         # Ensure all expected keys exist
         for key in GROUP_DISPLAY_ORDER:
             results.setdefault(key, [])
@@ -469,119 +462,6 @@ def apply_visibility_filters(results: dict[str, list[dict]], user: User) -> None
         results["reports"] = [item for item in report_items if item["id"] in visible]
 
 
-def _replace_titles(items: list[dict], by_id: dict[int, str]) -> None:
-    """Overwrite each item's title using the lookup map. Items not in the map
-    are left unchanged (they may have come from a heuristic shortcut that
-    already used the original spelling)."""
-    for item in items:
-        original = by_id.get(item["id"])
-        if original:
-            item["title"] = original
-
-
-def restore_original_titles(results: dict[str, list[dict]]) -> None:
-    """Replace FTS-returned Danish-folded titles with the source models'
-    unfolded names. FTS5 stores `Grønt udvalg` as `Groent udvalg` so MATCH
-    works regardless of which spelling the user types; this restores the
-    original display form. One bulk query per non-empty bucket; safe to call
-    on any results dict shape (missing keys are skipped).
-    """
-    threads = results.get("threads") or []
-    if threads:
-        _replace_titles(
-            threads,
-            dict(
-                Thread.objects.filter(id__in=[i["id"] for i in threads]).values_list("id", "title")
-            ),
-        )
-
-    posts = results.get("posts") or []
-    if posts:
-        _replace_titles(
-            posts,
-            dict(
-                Post.objects.filter(id__in=[i["id"] for i in posts]).values_list(
-                    "id", "thread__title"
-                )
-            ),
-        )
-
-    subgroups = results.get("subgroups") or []
-    if subgroups:
-        _replace_titles(
-            subgroups,
-            dict(
-                Subgroup.objects.filter(id__in=[i["id"] for i in subgroups]).values_list(
-                    "id", "name"
-                )
-            ),
-        )
-
-    announcements = results.get("announcements") or []
-    if announcements:
-        _replace_titles(
-            announcements,
-            dict(
-                Announcement.objects.filter(id__in=[i["id"] for i in announcements]).values_list(
-                    "id", "title"
-                )
-            ),
-        )
-
-    events = results.get("events") or []
-    if events:
-        _replace_titles(
-            events,
-            dict(Event.objects.filter(id__in=[i["id"] for i in events]).values_list("id", "title")),
-        )
-
-    houses = results.get("houses") or []
-    if houses:
-        _replace_titles(
-            houses,
-            dict(House.objects.filter(id__in=[i["id"] for i in houses]).values_list("id", "name")),
-        )
-
-    folders = results.get("folders") or []
-    if folders:
-        _replace_titles(
-            folders,
-            dict(
-                Folder.objects.filter(id__in=[i["id"] for i in folders]).values_list("id", "name")
-            ),
-        )
-
-    files = results.get("files") or []
-    if files:
-        _replace_titles(
-            files,
-            dict(File.objects.filter(id__in=[i["id"] for i in files]).values_list("id", "name")),
-        )
-
-    users = results.get("users") or []
-    if users:
-        ids = [i["id"] for i in users]
-        by_id = {
-            u.id: (u.get_full_name() or u.email)
-            for u in User.objects.filter(id__in=ids).only("id", "first_name", "last_name", "email")
-        }
-        _replace_titles(users, by_id)
-
-    # A report's indexed title is an excerpt of its description, so rebuild the
-    # excerpt from the unfolded source rather than reading a single field.
-    reports = results.get("reports") or []
-    if reports:
-        _replace_titles(
-            reports,
-            {
-                report_id: create_excerpt(description, 80)
-                for report_id, description in Report.objects.filter(
-                    id__in=[i["id"] for i in reports]
-                ).values_list("id", "description")
-            },
-        )
-
-
 # Types that can be searched via the advanced endpoint. Order matters — used
 # for the default `types` filter and to ensure all keys appear in the response.
 ADVANCED_SEARCHABLE_TYPES = [
@@ -700,9 +580,6 @@ class AdvancedSearchView(APIView):
             self._apply_fuzzy_fallback(query, results, seen, selected_types, limit)
 
         apply_visibility_filters(results, request.user)
-
-        # Swap FTS-folded titles for their original spellings (æ/ø/å).
-        restore_original_titles(results)
 
         # Ensure all selected type keys exist in the response
         for t in selected_types:

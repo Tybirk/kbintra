@@ -1,6 +1,6 @@
-import { useState, useMemo, useCallback, useRef } from "react"
+import { useState, useMemo, useCallback, useRef, useEffect } from "react"
 
-import { useNavigate, Link } from "react-router-dom"
+import { useNavigate, Link, useSearchParams } from "react-router-dom"
 
 import { useQuery, keepPreviousData } from "@tanstack/react-query"
 
@@ -47,9 +47,12 @@ import { LocationText } from "../components/LocationText"
 import {
   eventToScheduleData,
   DA_SCHEDULE_LABELS,
+  MOBILE_MONTH_VIEW_DANISH,
 } from "../utils/scheduleHelpers"
 
 import type { TimeSlotClickData } from "../utils/scheduleHelpers"
+
+import { subgroupOptionLabel } from "../utils/subgroupLabel"
 
 import type { Event } from "../types"
 
@@ -99,11 +102,63 @@ export default function CalendarPage() {
 
   const [subgroupFilter, setSubgroupFilter] = useState<string | null>(null)
 
-  const [currentDate, setCurrentDate] = useState(dayjs().format("YYYY-MM-DD"))
+  // The list view and the date live in the URL too (?visning=liste&dato=…), so
+  // back from an event returns to the view and month the reader left.
+  const [params, setParams] = useSearchParams()
+
+  const today = dayjs().format("YYYY-MM-DD")
+
+  // A hand-edited ?dato= that isn't a date crashed the page; today instead.
+  const linked = dayjs(params.get("dato"))
+
+  const [currentDate, setCurrentDate] = useState(
+    params.get("dato") && linked.isValid()
+      ? linked.format("YYYY-MM-DD")
+      : today,
+  )
+
+  // The day the phone's month list shows. Kept here rather than inside the
+  // library's view so that stepping a month moves it along; it stayed on the
+  // old day, in a month no longer shown, and listed nothing.
+  const [selectedDay, setSelectedDay] = useState(currentDate)
+
+  const goToMonth = useCallback(
+    (delta: number) => {
+      const next = dayjs(currentDate).add(delta, "month").format("YYYY-MM-DD")
+
+      setCurrentDate(next)
+
+      setSelectedDay(next)
+    },
+    [currentDate],
+  )
 
   const [currentView, setCurrentView] = useState<ScheduleViewLevel>("month")
 
-  const [displayMode, setDisplayMode] = useState<DisplayMode>("calendar")
+  const [displayMode, setDisplayMode] = useState<DisplayMode>(
+    params.get("visning") === "liste" ? "list" : "calendar",
+  )
+
+  useEffect(() => {
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+
+        if (displayMode === "list") next.set("visning", "liste")
+        else next.delete("visning")
+
+        // Just the day (the desktop views hand over date-times), and none for
+        // today — "I dag" leaves a clean URL.
+        const day = dayjs(currentDate).format("YYYY-MM-DD")
+
+        if (day !== today) next.set("dato", day)
+        else next.delete("dato")
+
+        return next
+      },
+      { replace: true },
+    )
+  }, [displayMode, currentDate]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const listMonthStart = dayjs(currentDate).startOf("month")
 
@@ -203,6 +258,8 @@ export default function CalendarPage() {
   const handleDayClick = useCallback((date: string) => {
     setCurrentDate(date)
 
+    setSelectedDay(date)
+
     setCurrentView("day")
   }, [])
 
@@ -229,23 +286,17 @@ export default function CalendarPage() {
       touchStartY.current = null
 
       if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
-        setCurrentDate(
-          dayjs(currentDate)
-
-            .add(deltaX < 0 ? 1 : -1, "month")
-
-            .format("YYYY-MM-DD"),
-        )
+        goToMonth(deltaX < 0 ? 1 : -1)
       }
     },
 
-    [currentDate],
+    [goToMonth],
   )
 
   const subgroupOptions = (subgroups || []).map((s) => ({
     value: String(s.id),
 
-    label: s.name,
+    label: subgroupOptionLabel(s),
   }))
 
   if (error) {
@@ -323,11 +374,7 @@ export default function CalendarPage() {
               variant="subtle"
               size="lg"
               aria-label="Forrige måned"
-              onClick={() =>
-                setCurrentDate(
-                  dayjs(currentDate).subtract(1, "month").format("YYYY-MM-DD"),
-                )
-              }
+              onClick={() => goToMonth(-1)}
             >
               <IconChevronLeft size={20} />
             </ActionIcon>
@@ -343,11 +390,7 @@ export default function CalendarPage() {
               variant="subtle"
               size="lg"
               aria-label="Næste måned"
-              onClick={() =>
-                setCurrentDate(
-                  dayjs(currentDate).add(1, "month").format("YYYY-MM-DD"),
-                )
-              }
+              onClick={() => goToMonth(1)}
             >
               <IconChevronRight size={20} />
             </ActionIcon>
@@ -551,20 +594,18 @@ export default function CalendarPage() {
                 mobileMonthViewProps={{
                   firstDayOfWeek: 1,
 
+                  selectedDate: selectedDay,
+
+                  onSelectedDateChange: (day) => day && setSelectedDay(day),
+
+                  ...MOBILE_MONTH_VIEW_DANISH,
+
                   renderHeader: () => (
                     <Group justify="space-between" align="center" w="100%">
                       <ActionIcon
                         variant="subtle"
                         aria-label="Forrige måned"
-                        onClick={() =>
-                          setCurrentDate(
-                            dayjs(currentDate)
-
-                              .subtract(1, "month")
-
-                              .format("YYYY-MM-DD"),
-                          )
-                        }
+                        onClick={() => goToMonth(-1)}
                       >
                         <IconChevronLeft
                           size={18}
@@ -581,15 +622,7 @@ export default function CalendarPage() {
                       <ActionIcon
                         variant="subtle"
                         aria-label="Næste måned"
-                        onClick={() =>
-                          setCurrentDate(
-                            dayjs(currentDate)
-
-                              .add(1, "month")
-
-                              .format("YYYY-MM-DD"),
-                          )
-                        }
+                        onClick={() => goToMonth(1)}
                       >
                         <IconChevronRight
                           size={18}

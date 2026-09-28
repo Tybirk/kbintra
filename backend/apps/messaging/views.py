@@ -3,6 +3,7 @@ Views for Messaging app.
 """
 
 from django.db.models import Count, Max, QuerySet
+from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -10,18 +11,18 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.backup.signing import signed_media_url
-from apps.forum.image_processing import ensure_attachment_preview
-
-from .models import Conversation, Message, MessageAttachment, MessageReaction, MessageReadStatus
+from .models import Conversation, Message, MessageReaction, MessageReadStatus
 from .serializers import (
     AddParticipantsSerializer,
     ConversationDetailSerializer,
     ConversationSerializer,
     CreateConversationSerializer,
     CreateMessageSerializer,
+    MessageAttachmentSerializer,
     MessageSerializer,
-    message_attachment_preview_url,
+    create_message_attachment,
+    message_page,
+    serialize_messages,
 )
 
 
@@ -39,8 +40,10 @@ class ConversationListCreateView(generics.ListCreateAPIView):
         return (
             Conversation.objects.filter(participants=self.request.user)
             .prefetch_related("participants")
-            .annotate(last_message_at=Max("messages__created_at"))
-            .order_by("-last_message_at", "-updated_at")
+            # A conversation without messages yet sorts by when it was made:
+            # NULL sorted it last, off-screen while it was the one just opened.
+            .annotate(last_activity=Coalesce(Max("messages__created_at"), "created_at"))
+            .order_by("-last_activity", "-updated_at")
         )
 
     def list(self, request: Request, *args, **kwargs) -> Response:
@@ -106,17 +109,9 @@ class ConversationListCreateView(generics.ListCreateAPIView):
                             sender=request.user,
                             content=initial_message,
                         )
-                        attachment_objects = []
-                        for attachment_file in attachments:
-                            att = MessageAttachment.objects.create(
-                                message=message,
-                                file=attachment_file,
-                                name=attachment_file.name,
-                                uploaded_by=request.user,
-                            )
-                            attachment_objects.append(att)
-                            # Inline: the broadcast below reads `preview`.
-                            ensure_attachment_preview("messaging", "MessageAttachment", att)
+                        attachment_objects = [
+                            create_message_attachment(message, request.user, f) for f in attachments
+                        ]
 
                         # Broadcast message via WebSocket so all clients update instantly
                         from asgiref.sync import async_to_sync
@@ -138,15 +133,9 @@ class ConversationListCreateView(generics.ListCreateAPIView):
                             "is_read": False,
                             "is_system_message": False,
                             "created_at": message.created_at.isoformat(),
-                            "attachments": [
-                                {
-                                    "id": att.id,
-                                    "name": att.name,
-                                    "file_url": signed_media_url(att.file.url) if att.file else "",
-                                    "preview_url": message_attachment_preview_url(att),
-                                }
-                                for att in attachment_objects
-                            ],
+                            "attachments": MessageAttachmentSerializer(
+                                attachment_objects, many=True
+                            ).data,
                         }
                         async_to_sync(channel_layer.group_send)(
                             f"conversation_{conv.id}",
@@ -180,15 +169,8 @@ class ConversationListCreateView(generics.ListCreateAPIView):
                 content=initial_message,
             )
 
-            # Create attachments
             for attachment_file in attachments:
-                att = MessageAttachment.objects.create(
-                    message=message,
-                    file=attachment_file,
-                    name=attachment_file.name,
-                    uploaded_by=request.user,
-                )
-                ensure_attachment_preview("messaging", "MessageAttachment", att)
+                create_message_attachment(message, request.user, attachment_file)
 
             # Send notifications to other participants in background
             from apps.notifications.tasks import notify_new_message_task
@@ -276,14 +258,6 @@ class MessageListCreateView(generics.ListCreateAPIView):
             pk=self.kwargs["conversation_id"],
         )
 
-    def get_queryset(self) -> QuerySet[Message]:
-        conversation = self.get_conversation()
-        return (
-            conversation.messages.select_related("sender")
-            .prefetch_related("reactions__user")
-            .order_by("created_at")
-        )
-
     def get_serializer_context(self):
         context = super().get_serializer_context()
         if self.request.method == "POST":
@@ -291,8 +265,21 @@ class MessageListCreateView(generics.ListCreateAPIView):
         return context
 
     def list(self, request: Request, *args, **kwargs) -> Response:
-        # Mark messages as read when listing using bulk_create to avoid N+1 queries
+        """One page of messages, oldest first: the newest page, or with
+        `?before=<message id>` the page just before that message."""
         conversation = self.get_conversation()
+
+        before = None
+        before_id = request.query_params.get("before")
+        if before_id is not None:
+            # isascii too: "²".isdigit() is True, and int("²") raises.
+            if not (before_id.isascii() and before_id.isdigit()):
+                return Response(
+                    {"before": "Ugyldigt besked-id."}, status=status.HTTP_400_BAD_REQUEST
+                )
+            before = get_object_or_404(conversation.messages, pk=int(before_id))
+
+        # Mark messages as read when listing using bulk_create to avoid N+1 queries
         unread_messages = conversation.messages.exclude(sender=request.user).exclude(
             read_statuses__user=request.user
         )
@@ -300,7 +287,16 @@ class MessageListCreateView(generics.ListCreateAPIView):
             MessageReadStatus(message=msg, user=request.user) for msg in unread_messages
         ]
         MessageReadStatus.objects.bulk_create(read_statuses, ignore_conflicts=True)
-        return super().list(request, *args, **kwargs)
+
+        messages, has_more = message_page(conversation, before)
+        return Response(
+            {
+                "results": serialize_messages(
+                    messages, conversation, self.get_serializer_context()
+                ),
+                "has_more": has_more,
+            }
+        )
 
 
 class MarkMessagesReadView(APIView):
@@ -632,6 +628,10 @@ class MessageUnsendView(APIView):
         message.is_deleted = True
         message.content = ""
         message.save()
+        # Unsent means gone, attachments too: the bubble hid them, but the API
+        # kept handing out their links. One by one, so each removes its files.
+        for attachment in message.attachments.all():
+            attachment.delete()
 
         # Broadcast deletion via WebSocket
         from asgiref.sync import async_to_sync

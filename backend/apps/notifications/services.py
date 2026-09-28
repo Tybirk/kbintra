@@ -17,6 +17,7 @@ from channels.layers import get_channel_layer
 from django.conf import settings
 from django.db import transaction
 from django.db.models import QuerySet
+from django.utils.html import escape
 
 from apps.users.models import User
 
@@ -68,20 +69,24 @@ def _priority_rank(notification_type: str) -> int:
     return len(_FORUM_ACTIVITY_TIERS)
 
 
+# " (2 nye svar)", once or — from before this was stripped — several times over.
+REPLY_COUNT_SUFFIX = re.compile(r"(?: \(\d+ nye svar\))+$")
+
+
 def _make_aggregate_title(notification_type: str, count: int, existing_title: str) -> str:
     """Return an updated notification title reflecting the aggregated count."""
-    if notification_type == NotificationType.THREAD_REPLY:
-        # Title is the thread name; keep it and add count
-        return f"{existing_title} ({count} nye svar)"
-    if notification_type == NotificationType.POST_REPLY:
-        return f"{existing_title} ({count} nye svar)"
+    if notification_type in (
+        NotificationType.THREAD_REPLY,
+        NotificationType.POST_REPLY,
+        NotificationType.SUBGROUP_ACTIVITY,
+    ):
+        # Title is the thread name: replace the previous count rather than
+        # appending another ("(2 nye svar) (3 nye svar) (4 nye svar)").
+        return f"{REPLY_COUNT_SUFFIX.sub('', existing_title)} ({count} nye svar)"
     if notification_type == NotificationType.POST_REACTION:
         return f"{count} reaktioner på dit indlæg"
     if notification_type == NotificationType.MESSAGE_REACTION:
         return f"{count} reaktioner på din besked"
-    if notification_type == NotificationType.SUBGROUP_ACTIVITY:
-        # Title is the thread name; keep it and add count
-        return f"{existing_title} ({count} nye svar)"
     if notification_type == NotificationType.REPORT_UPDATE:
         # Report titles are "<what happened> · sag #14"; keep the trailing case
         # reference and replace the event with a count, so the row still says
@@ -97,6 +102,7 @@ PUSH_TTL: dict[str, int] = {
     NotificationType.NEW_MESSAGE: 24 * 3600,  # 24 hours
     NotificationType.MESSAGE_REACTION: 24 * 3600,  # 24 hours
     NotificationType.MENTION: 24 * 3600,  # 24 hours
+    NotificationType.BIRTHDAY: 12 * 3600,  # 12 hours — stale by tomorrow
 }
 PUSH_TTL_DEFAULT = 48 * 3600  # 48 hours
 
@@ -143,8 +149,8 @@ def get_user_preference(user: User, notification_type: NotificationType) -> bool
     try:
         prefs = user.notification_preferences
     except NotificationPreference.DoesNotExist:
-        # Default to True if no preferences set
-        return True
+        # No row yet (it is created lazily): the model's defaults, as for email.
+        prefs = NotificationPreference(user=user)
 
     preference_map = {
         NotificationType.NEW_ANNOUNCEMENT: prefs.notify_announcements,
@@ -195,6 +201,7 @@ def get_user_preference(user: User, notification_type: NotificationType) -> bool
         NotificationType.CAR_LOAN_UPDATE: prefs.notify_car_sharing,
         NotificationType.REPORT_NEW: prefs.notify_reports,
         NotificationType.REPORT_UPDATE: prefs.notify_reports,
+        NotificationType.BIRTHDAY: prefs.notify_birthdays,
     }
 
     return preference_map.get(notification_type, True)
@@ -205,8 +212,8 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
     try:
         prefs = user.notification_preferences
     except NotificationPreference.DoesNotExist:
-        # Default to True if no preferences set
-        return True
+        # No row yet: the model's defaults — birthday push stays off, as for everyone.
+        prefs = NotificationPreference(user=user)
 
     preference_map = {
         NotificationType.NEW_MESSAGE: prefs.push_messages,
@@ -232,6 +239,7 @@ def get_user_push_preference(user: User, notification_type: NotificationType) ->
         NotificationType.CAR_LOAN_UPDATE: prefs.push_car_sharing,
         NotificationType.REPORT_NEW: prefs.push_reports,
         NotificationType.REPORT_UPDATE: prefs.push_reports,
+        NotificationType.BIRTHDAY: prefs.push_birthdays,
     }
 
     # These types have no dedicated push toggle — they piggyback on whatever
@@ -594,7 +602,7 @@ def notify_new_message(
         message=preview,
         link=link,
         related_user=sender,
-        html_content=f"<p>{message_content}</p>",  # Full message in email
+        html_content=f"<p>{escape(message_content)}</p>",  # Full message in email
     )
 
 
@@ -628,7 +636,7 @@ def notify_new_announcement(
             message=f"{author.first_name} oprettede et nyt opslag",
             link=f"/opslag#announcement-{announcement_id}",
             related_user=author,
-            html_content=f"<h3>{announcement_title}</h3>{announcement_content}"
+            html_content=f"<h3>{escape(announcement_title)}</h3>{announcement_content}"
             if announcement_content
             else None,
         )
@@ -677,7 +685,7 @@ def notify_new_thread(
             message=f"{author.first_name} oprettede en ny tråd",
             link=thread_link,
             related_user=author,
-            html_content=f"<h3>{thread_title}</h3>{initial_post_content}"
+            html_content=f"<h3>{escape(thread_title)}</h3>{initial_post_content}"
             if initial_post_content
             else None,
             superseded_by=superseded_by_map.get(user.id, ()),
@@ -726,13 +734,10 @@ def notify_thread_reply(
     plain_text = strip_tags(reply_content)
     preview = plain_text[:80] + "..." if len(plain_text) > 80 else plain_text
 
-    from apps.forum.models import Thread as ForumThread
-
-    try:
-        event_slug = ForumThread.objects.get(id=thread_id).event.slug
-        base_link = f"/kalender/{event_slug}"
-    except (ForumThread.DoesNotExist, AttributeError):
-        base_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
+    # Straight to the thread, event threads included: ThreadPage shows the event
+    # header itself, and a /kalender/ link only redirected there — leaving a dead
+    # "Tilbage", a stale cached thread and the notification unread behind it.
+    base_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
 
     link = base_link + (f"#post-{post_id}" if post_id else "")
 
@@ -743,7 +748,7 @@ def notify_thread_reply(
         message=f"{replier.first_name}: {preview}",
         link=link,
         related_user=replier,
-        html_content=f"<p><strong>I tråden: {thread_title}</strong></p>{reply_content}",
+        html_content=f"<p><strong>I tråden: {escape(thread_title)}</strong></p>{reply_content}",
         group_key=base_link,  # Aggregate all replies to same thread
         superseded_by=superseded_by,
     )
@@ -788,13 +793,10 @@ def notify_post_reply(
     plain_text = strip_tags(reply_content)
     preview = plain_text[:80] + "..." if len(plain_text) > 80 else plain_text
 
-    from apps.forum.models import Thread as ForumThread
-
-    try:
-        event_slug = ForumThread.objects.get(id=thread_id).event.slug
-        base_link = f"/kalender/{event_slug}"
-    except (ForumThread.DoesNotExist, AttributeError):
-        base_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
+    # Straight to the thread, event threads included: ThreadPage shows the event
+    # header itself, and a /kalender/ link only redirected there — leaving a dead
+    # "Tilbage", a stale cached thread and the notification unread behind it.
+    base_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
 
     link = base_link + (f"#post-{post_id}" if post_id else "")
 
@@ -805,7 +807,7 @@ def notify_post_reply(
         message=f"{replier.first_name}: {preview}",
         link=link,
         related_user=replier,
-        html_content=f"<p><strong>I tråden: {thread_title}</strong></p>{reply_content}",
+        html_content=f"<p><strong>I tråden: {escape(thread_title)}</strong></p>{reply_content}",
         group_key=base_link,  # Aggregate all replies to same thread
         superseded_by=superseded_by,
     )
@@ -1656,13 +1658,10 @@ def notify_post_reaction(
     if post_author.id == reactor.id:
         return None
 
-    from apps.forum.models import Thread as ForumThread
-
-    try:
-        event_slug = ForumThread.objects.get(id=thread_id).event.slug
-        base_link = f"/kalender/{event_slug}"
-    except (ForumThread.DoesNotExist, AttributeError):
-        base_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
+    # Straight to the thread, event threads included: ThreadPage shows the event
+    # header itself, and a /kalender/ link only redirected there — leaving a dead
+    # "Tilbage", a stale cached thread and the notification unread behind it.
+    base_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
 
     post_fragment = f"#post-{post_id}" if post_id else ""
     link = base_link + post_fragment
@@ -1750,13 +1749,10 @@ def notify_post_edited_by_admin(
     post_id: int,
 ) -> Notification | None:
     """Create notification when an admin edits another user's post."""
-    from apps.forum.models import Thread as ForumThread
-
-    try:
-        event_slug = ForumThread.objects.get(id=thread_id).event.slug
-        base_link = f"/kalender/{event_slug}"
-    except (ForumThread.DoesNotExist, AttributeError):
-        base_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
+    # Straight to the thread, event threads included: ThreadPage shows the event
+    # header itself, and a /kalender/ link only redirected there — leaving a dead
+    # "Tilbage", a stale cached thread and the notification unread behind it.
+    base_link = f"/forum/{subgroup_slug}/traad/{thread_slug}"
 
     link = base_link + f"#post-{post_id}"
 
@@ -1936,7 +1932,8 @@ def notify_car_loan_accepted(candidate: Any) -> Notification | None:
         notification_type=NotificationType.CAR_LOAN_UPDATE,
         title="Du har fået en bil",
         message=(
-            f"{candidate.car.house.name} siger ja — du låner {candidate.car.display_name} {window}."
+            f"{candidate.car.house.name} siger ja — du låner "
+            f"{candidate.car.name_with_plate} {window}."
         ),
         link=_car_loan_link(loan),
         related_user=candidate.responded_by,
@@ -2164,3 +2161,29 @@ def notify_car_loan_completed(loan: Any) -> list[Notification]:
         if notification is not None:
             created.append(notification)
     return created
+
+
+def notify_birthday(
+    user: User,
+    label: str,
+    first_name: str,
+    turning: int | None,
+    link: str,
+    related_user: User | None = None,
+) -> Notification | None:
+    """Tell a resident that someone — a resident or a child — has a birthday today.
+
+    ``label`` names them in the title ("Anna Hansen", "Emma (Hus 12)"), the
+    message then uses just ``first_name`` so it doesn't repeat the title.
+    ``turning`` is None for a resident who hides their birth year.
+    """
+    return create_notification(
+        user=user,
+        notification_type=NotificationType.BIRTHDAY,
+        title=f"{label} har fødselsdag i dag",
+        message=(
+            "Ønsk tillykke!" if turning is None else f"{first_name} fylder {turning} år i dag."
+        ),
+        link=link,
+        related_user=related_user,
+    )

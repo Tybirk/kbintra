@@ -509,7 +509,8 @@ export function BorrowTab({ onRequested }: BorrowTabProps) {
         // dropping that put "Send forespørgsel" below eight screens of cars.
         style={{
           position: "sticky",
-          bottom: 0,
+          // Above the install banner while it shows (InstallPrompt sets it).
+          bottom: "var(--install-prompt-height, 0px)",
           zIndex: 2,
           background: "var(--mantine-color-body)",
           paddingBottom: shortViewport

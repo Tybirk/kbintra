@@ -21,9 +21,9 @@ export const EXPENSE_MAX_ATTACHMENT_SIZE =
 
 export function validateFileSize(file: File): string | null {
   if (file.size > MAX_UPLOAD_FILE_SIZE) {
-    const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1)
+    const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1).replace(".", ",")
 
-    return `File "${file.name}" is too large (${fileSizeMB}MB). Maximum allowed size is ${MAX_UPLOAD_FILE_SIZE_MB}MB.`
+    return `"${file.name}" fylder ${fileSizeMB} MB. En fil må højst fylde ${MAX_UPLOAD_FILE_SIZE_MB} MB.`
   }
 
   return null

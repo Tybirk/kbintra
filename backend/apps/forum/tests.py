@@ -239,6 +239,21 @@ class TestSubgroupViews:
         assert response.status_code == 200
         assert len(response.data) >= 1
 
+    def test_list_subgroups_in_model_order(self, authenticated_client):
+        """Fælles first, then the udvalg, then the rest — each by name."""
+        for name, flags in [
+            ("Badminton", {}),
+            ("Madudvalget", {"is_committee": True}),
+            ("Årlig tur", {}),
+            ("Fælles", {"is_main": True}),
+            ("Bestyrelsen", {"is_committee": True}),
+        ]:
+            Subgroup.objects.create(name=name, **flags)
+
+        response = authenticated_client.get("/api/forum/subgroups/")
+        names = [sg["name"] for sg in get_results(response.data)]
+        assert names == ["Fælles", "Bestyrelsen", "Madudvalget", "Badminton", "Årlig tur"]
+
     def test_list_subgroups_unauthenticated(self, api_client, subgroup):
         """Test that unauthenticated users cannot list subgroups."""
         response = api_client.get("/api/forum/subgroups/")
@@ -249,6 +264,34 @@ class TestSubgroupViews:
         response = authenticated_client.get(f"/api/forum/subgroups/{subgroup.slug}/")
         assert response.status_code == 200
         assert response.data["name"] == "General Discussion"
+
+    def _queries_to_save_description(self, client, user, name, threads):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        group = Subgroup.objects.create(name=name)
+        for i in range(threads):
+            thread = Thread.objects.create(subgroup=group, title=f"Tråd {i}", author=user)
+            for _ in range(2):
+                Post.objects.create(thread=thread, author=user, content="<p>Indlæg</p>")
+
+        with CaptureQueriesContext(connection) as queries:
+            # The payload "Rediger gruppe" sends: all three fields, name unchanged.
+            response = client.patch(
+                f"/api/forum/subgroups/{group.slug}/update/",
+                {"name": name, "description": "<p>Ny beskrivelse</p>", "allows_members": False},
+                format="json",
+            )
+        assert response.status_code == 200
+        return len(queries)
+
+    def test_saving_a_description_costs_the_same_in_a_big_group(self, admin_client, user):
+        """Every save used to re-index each thread, post, file and folder in the group
+        one row at a time: 7.3 s for Driftsudvalget and 68.7 s for Fælles, well past
+        the client's 30 s timeout, so "Gem" spun while the save had in fact landed."""
+        small = self._queries_to_save_description(admin_client, user, "Lille", threads=1)
+        big = self._queries_to_save_description(admin_client, user, "Stor", threads=5)
+        assert big == small
 
 
 class TestSubscriptionViews:
@@ -2679,3 +2722,62 @@ class TestPostAttachmentThumbnail:
         att.delete()
 
         assert not os.path.exists(preview_path)
+
+
+class TestRepairLegacyMentions:
+    """Migration 0052: legacy mention links carry the previous platform's user ids."""
+
+    def _migration(self):
+        from importlib import import_module
+
+        return import_module("apps.forum.migrations.0052_repair_legacy_mentions")
+
+    def _mention(self, uid, label):
+        return (
+            f'<a href="/profil/{uid}" class="mention" data-type="mention" '
+            f'data-id="{uid}" data-label="{label}">@{label}</a>'
+        )
+
+    def test_points_each_mention_at_the_person_it_names(self):
+        m = self._migration()
+        users = [
+            (1, "Annette", "Thejsen"),
+            (88, "Peter Emil", "Tybirk"),
+            (107, "Peter", "Vogel"),
+            (111, "Carl MM", "Kobel"),
+            (31, "Esben Lykke", "Olsen"),
+            (67, "Peter", "Hansen"),
+        ]
+        resolve = m.resolver(users)
+        html = (
+            f"<p>{self._mention(107, 'Peter Emil Tybirk')} og "
+            f"{self._mention(1, 'Carl M. Kobel')} og {self._mention(55, 'Esben ')}</p>"
+        )
+
+        repaired = m.repair(html, resolve)
+
+        assert 'href="/profil/88"' in repaired and 'data-id="88"' in repaired
+        assert 'href="/profil/111"' in repaired
+        assert 'href="/profil/31"' in repaired
+        assert "/profil/107" not in repaired and '/profil/1"' not in repaired
+
+    def test_leaves_a_correct_mention_alone_and_unwraps_an_ambiguous_one(self):
+        m = self._migration()
+        resolve = m.resolver([(107, "Peter", "Vogel"), (67, "Peter", "Hansen")])
+        correct = self._mention(107, "Peter Vogel")
+
+        assert m.repair(correct, resolve) == correct
+        assert m.repair(self._mention(3, "Peter"), resolve) == "@Peter"
+
+    def test_the_older_markup_goes_by_the_name_shown(self):
+        m = self._migration()
+        resolve = m.resolver([(1, "Annette", "Thejsen"), (111, "Carl MM", "Kobel")])
+        old = '<a class="mention" href="/profil/1">@Carl M. Kobel</a>'
+
+        assert m.repair(old, resolve) == '<a class="mention" href="/profil/111">@Carl M. Kobel</a>'
+
+    def test_a_mention_with_no_name_at_all_is_left_as_it_is(self):
+        m = self._migration()
+        tag = '<a href="/profil/5" class="mention" data-type="mention" data-id="5"></a>'
+
+        assert m.repair(tag, m.resolver([(9, "Anders", "And")])) == tag

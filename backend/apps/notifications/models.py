@@ -48,6 +48,7 @@ class NotificationType(models.TextChoices):
     CAR_LOAN_UPDATE = "car_loan_update", "Opdatering om bildeling"
     REPORT_NEW = "report_new", "Ny indrapportering"
     REPORT_UPDATE = "report_update", "Opdatering på indrapportering"
+    BIRTHDAY = "birthday", "Fødselsdag"
 
 
 class Notification(models.Model):
@@ -128,6 +129,7 @@ class NotificationPreference(models.Model):
     notify_mentions = models.BooleanField(default=True)
     notify_car_sharing = models.BooleanField(default=True)
     notify_reports = models.BooleanField(default=True)
+    notify_birthdays = models.BooleanField(default=True)
 
     # Email notification preferences (per notification type)
     email_messages = models.BooleanField(default=False)
@@ -150,6 +152,7 @@ class NotificationPreference(models.Model):
     # from the in-app queue, and any resident may comment on any case, so this
     # is the one notification type that could genuinely become chatty.
     email_reports = models.BooleanField(default=False)
+    email_birthdays = models.BooleanField(default=False)
 
     # Push notification preferences (per notification type)
     push_messages = models.BooleanField(default=True)
@@ -169,6 +172,9 @@ class NotificationPreference(models.Model):
     push_mentions = models.BooleanField(default=True)
     push_car_sharing = models.BooleanField(default=True)
     push_reports = models.BooleanField(default=True)
+    # Off by default, unlike most push toggles: with ~180 birthdays a year this
+    # would push everyone roughly every other day.
+    push_birthdays = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

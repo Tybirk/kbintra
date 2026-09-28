@@ -170,7 +170,8 @@ class UpcomingBirthdaysView(APIView):
     Children are not users, so each entry says which it is: a user links to
     their profile, a child to their house page. ``days_until`` and ``turning``
     are worked out here, in the server's local date, so every client agrees on
-    what "today" is.
+    what "today" is. For a resident who hides their birth year, ``birthdate``
+    has no year and ``turning`` is null.
     """
 
     permission_classes = [permissions.IsAuthenticated]
@@ -187,7 +188,9 @@ class UpcomingBirthdaysView(APIView):
         today = timezone.localdate()
         entries: list[dict[str, Any]] = []
 
-        def add(kind: str, obj: Any, name: str, house_slug: str | None) -> None:
+        def add(
+            kind: str, obj: Any, name: str, house_slug: str | None, hide_year: bool = False
+        ) -> None:
             upcoming = _next_birthday(obj.birthdate, today)
             days_until = (upcoming - today).days
             if days_until > days:
@@ -199,16 +202,16 @@ class UpcomingBirthdaysView(APIView):
                     "name": name,
                     "profile_picture": obj.avatar_url,
                     "house_slug": house_slug,
-                    "birthdate": obj.birthdate.isoformat(),
+                    "birthdate": obj.public_birthdate if hide_year else obj.birthdate.isoformat(),
                     "days_until": days_until,
-                    "turning": upcoming.year - obj.birthdate.year,
+                    "turning": None if hide_year else upcoming.year - obj.birthdate.year,
                 }
             )
 
         users = User.objects.filter(is_active=True, birthdate__isnull=False).select_related("house")
         for user in users:
             name = f"{user.first_name} {user.last_name}".strip() or user.email
-            add("user", user, name, user.house.slug if user.house else None)
+            add("user", user, name, user.house.slug if user.house else None, user.hide_birth_year)
 
         for child in Child.objects.filter(birthdate__isnull=False).select_related("house"):
             add("child", child, child.name, child.house.slug)

@@ -27,6 +27,8 @@ from django.utils import timezone
 from huey import crontab
 from huey.contrib.djhuey import db_periodic_task, db_task
 
+from config.scheduling import local_crontab
+
 logger = logging.getLogger(__name__)
 
 
@@ -97,7 +99,7 @@ def _materialize_for_houses(dates: list[date]) -> int:
     return created
 
 
-@db_periodic_task(crontab(day_of_week="4", hour="0", minute="30"))
+@db_periodic_task(local_crontab(day_of_week="4", hour="0", minute="30"))
 def materialize_week_registrations() -> None:
     """Run every Thursday 00:30 to freeze registrations for the upcoming Mon-Thu.
 
@@ -117,7 +119,7 @@ def materialize_week_registrations() -> None:
     logger.info("Materialized %d registrations", created)
 
 
-@db_periodic_task(crontab(hour=20, minute=0))
+@db_periodic_task(local_crontab(hour=20, minute=0))
 def send_food_team_reminders() -> None:
     """Run daily at 20:00 to remind tomorrow's cooking team — and their households.
 
@@ -222,7 +224,7 @@ def notify_residents_of_new_cycle(cycle_id: int) -> None:
 WISH_REMINDER_LEAD_HOURS = 48
 
 
-@db_periodic_task(crontab(hour=17, minute=30))
+@db_periodic_task(local_crontab(hour=17, minute=30))
 def send_wish_deadline_reminders() -> None:
     """Nudge residents who still owe wishes, a day or two before the deadline.
 

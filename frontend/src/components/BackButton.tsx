@@ -15,14 +15,20 @@ interface BackButtonProps {
 export function BackButton({ to, label }: BackButtonProps) {
   const navigate = useNavigate()
 
-  const location = useLocation()
+  // Re-read on every navigation.
+  useLocation()
 
-  const canGoBack = location.key !== "default"
+  // React Router's own index into this tab's history: 0 on a cold start (a
+  // push opened with the app closed, a pasted link), and a redirect with
+  // `replace` leaves it there. The location key changes on a replace too, so
+  // it offered a "Tilbage" with nothing behind it.
+  const canGoBack = (window.history.state?.idx ?? 0) > 0
 
   const showBoth = canGoBack && getPreviousPathname() !== to
 
   return (
     <Box
+      data-sticky-top
       style={{
         position: "sticky",
 

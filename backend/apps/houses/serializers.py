@@ -194,6 +194,9 @@ class CarCreateUpdateSerializer(serializers.ModelSerializer):
 class HouseInhabitantSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """Serializer for users as house inhabitants (minimal info)."""
 
+    # Same as UserSerializer: the year is left out for those who hide it.
+    birthdate = serializers.CharField(source="public_birthdate", read_only=True, allow_null=True)
+
     class Meta:
         model = User
         fields = [
@@ -204,10 +207,6 @@ class HouseInhabitantSerializer(AvatarUrlMixin, serializers.ModelSerializer):
             "bio",
             "phone_number",
             "email",
-            # Full date, year included, same as ChildSerializer gives for children:
-            # the house page shows both the birthday and the age. UserSerializer
-            # already publishes this to every logged-in resident, so the two
-            # endpoints agree about what a birthdate is.
             "birthdate",
         ]
 

@@ -45,6 +45,7 @@ import {
   IconReceipt2,
   IconCar,
   IconTool,
+  IconCake,
 } from "@tabler/icons-react"
 
 import dayjs from "dayjs"
@@ -121,6 +122,8 @@ const notificationIcons: Record<NotificationType, React.ReactNode> = {
   report_new: <IconTool size={20} />,
 
   report_update: <IconTool size={20} />,
+
+  birthday: <IconCake size={20} />,
 }
 
 const notificationColors: Record<NotificationType, string> = {
@@ -189,6 +192,8 @@ const notificationColors: Record<NotificationType, string> = {
   report_new: "orange",
 
   report_update: "orange",
+
+  birthday: "pink",
 }
 
 export default function NotificationsPage() {

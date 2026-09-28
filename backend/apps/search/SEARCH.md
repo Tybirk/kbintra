@@ -61,9 +61,11 @@ To make search work in both directions (`Kløverbakkebogen` finds
 - **At query time** (`build_fts_query`) — incoming queries are folded the
   same way before tokenization.
 
-A consequence is that titles displayed from FTS results show the folded form
-(`Møde` → `Moede`). For the small KB user base this trade-off is acceptable;
-clicking through to the actual record shows the original spelling.
+The originals are stored too, in the UNINDEXED columns `title_raw` and
+`body_raw`, and results are shown from them: the title as written, and the
+snippet FTS5 cut from the folded body mapped back to the original's spelling
+(`unfold_snippet` — folding is one character to one or two, so the span maps
+exactly).
 
 **After deploying changes that affect folding or indexing**, run
 `uv run python manage.py rebuild_search_index` once to repopulate existing
@@ -119,7 +121,7 @@ The search endpoint combines FTS5 results with three heuristic shortcuts:
 
 ## Signal Cascading
 
-When a **Thread** is saved, the signal also re-indexes all its posts so they pick up any title change. Other cascading (e.g., user house change) relies on the next `rebuild_search_index` run.
+When a **Thread** is renamed or moved, `retitle_thread_posts` gives its post rows the new title and URL in one UPDATE, each keeping its `#post-<id>` anchor. When a **Subgroup** is renamed, `set_subtitle` rewrites the group name on its threads, files and folders in one UPDATE per type. Other cascading (e.g., user house change) relies on the next `rebuild_search_index` run.
 
 ## Management Commands
 
@@ -141,6 +143,3 @@ The `--if-empty` variant is used in `docker-entrypoint.sh` on container startup.
 2. Add indexing logic to `rebuild_search_index.py`
 3. Add the type to `TYPE_TO_KEY` in `views.py`
 4. Add the type to the `ensure_all_keys` list in `views.py`
-5. Add a branch to `restore_original_titles` in `views.py` — otherwise results
-   display the Danish-folded title (`Stoevsuger` instead of `Støvsuger`). Easy to
-   miss: the index and the search both work, only the displayed text is wrong.

@@ -3,7 +3,9 @@ Email service for sending notification emails.
 """
 
 import logging
+from collections.abc import Callable
 
+import nh3
 from django.conf import settings
 from django.core.mail import EmailMessage
 from django.template.loader import render_to_string
@@ -13,6 +15,24 @@ from apps.users.models import User
 from .models import NotificationPreference, NotificationType
 
 logger = logging.getLogger(__name__)
+
+# Email is the second place user-written HTML gets rendered (the browser is the
+# first, through sanitizeHtml). Posts and announcements arrive here as stored,
+# so clean them on the way out; the leftovers photo keeps its inline sizing.
+EMAIL_HTML_ATTRIBUTES = {**nh3.ALLOWED_ATTRIBUTES, "img": nh3.ALLOWED_ATTRIBUTES["img"] | {"style"}}
+
+
+def _absolute_url(site_url: str) -> Callable[[str, str, str], str]:
+    """An nh3 attribute filter: in a mail client a site-relative link — a
+    mention's /profil/5, an image's /media/… — points nowhere, so prefix the site."""
+
+    def resolve(element: str, attribute: str, value: str) -> str:
+        if attribute in ("href", "src") and value.startswith("/") and not value.startswith("//"):
+            return site_url.rstrip("/") + value
+        return value
+
+    return resolve
+
 
 # Type-specific email subject prefixes (more informative than generic [KB Intra])
 EMAIL_SUBJECT_PREFIX: dict[str, str] = {
@@ -83,6 +103,7 @@ def should_send_email(user: User, notification_type: NotificationType) -> bool:
         NotificationType.CAR_LOAN_UPDATE: prefs.email_car_sharing,
         NotificationType.REPORT_NEW: prefs.email_reports,
         NotificationType.REPORT_UPDATE: prefs.email_reports,
+        NotificationType.BIRTHDAY: prefs.email_birthdays,
     }
 
     # These have no dedicated email toggle — they piggyback on whatever email
@@ -147,7 +168,13 @@ def send_notification_email(
         "user": user,
         "title": title,
         "message": message,
-        "html_content": html_content,
+        "html_content": nh3.clean(
+            html_content,
+            attributes=EMAIL_HTML_ATTRIBUTES,
+            attribute_filter=_absolute_url(site_url),
+        )
+        if html_content
+        else None,
         "link": full_link,
         "related_user": related_user,
         "notification_type": notification_type,

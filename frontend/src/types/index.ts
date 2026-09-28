@@ -13,7 +13,15 @@ export interface User {
 
   phone_number: string
 
+  /**
+   * "1990-09-25", or "--09-25" (no year) for someone who hides their birth
+   * year. Always the full date for the current user. Format with
+   * utils/birthdate rather than parsing it directly.
+   */
   birthdate: string | null
+
+  // Only returned for the current user (GET /users/me/).
+  hide_birth_year?: boolean
 
   profile_picture: string | null
 
@@ -263,6 +271,8 @@ export interface CarLoan {
 
   car_display_name: string
 
+  car_license_plate: string
+
   car_house_name: string
 
   /** Decides whether the settlement form may say the energy is already covered. */
@@ -408,11 +418,13 @@ export interface UpcomingBirthday {
 
   house_slug: string | null
 
+  /** Without the year ("--09-25") for a resident who hides it. */
   birthdate: string
 
   days_until: number
 
-  turning: number
+  /** Null for a resident who hides their birth year. */
+  turning: number | null
 }
 
 export interface Invitation {
@@ -1443,6 +1455,9 @@ export interface MessageAttachment {
 
   preview_url?: string
 
+  /** Square thumbnail for the chat bubble; the original until it exists. */
+  thumbnail_url: string
+
   preview_html?: string
 
   uploaded_at: string
@@ -1534,8 +1549,14 @@ export interface Conversation {
   updated_at: string
 }
 
-export interface ConversationDetail extends Conversation {
-  messages: Message[]
+// The detail endpoint still sends `messages` for clients on the previous bundle;
+// the chat reads them from the paginated message list instead (MessagePage).
+export type ConversationDetail = Conversation
+
+export interface MessagePage {
+  results: Message[]
+
+  has_more: boolean
 }
 
 export interface CreateConversationData {
@@ -1630,7 +1651,7 @@ export type WsMessage = WsNewMessage | WsMessagesRead | WsTyping | WsNewConversa
 
 // Notification Types
 
-export type NotificationType = "new_message" | "message_reaction" | "new_announcement" | "announcement_updated" | "new_thread" | "thread_reply" | "post_reply" | "subgroup_activity" | "post_reaction" | "event_created" | "event_updated" | "event_cancelled" | "event_reminder" | "food_ticket" | "food_team_reminder" | "food_takeaway_ready" | "food_leftovers_ready" | "food_swap_request" | "food_team_shift_taken" | "food_team_plan_ready" | "food_team_wishes_open" | "food_team_pause_check" | "mention" | "subgroup_member_added" | "subgroup_member_removed" | "post_edited_by_admin" | "event_edited_by_admin" | "announcement_edited_by_admin" | "expense_processed" | "car_loan_request" | "car_loan_update" | "report_new" | "report_update"
+export type NotificationType = "new_message" | "message_reaction" | "new_announcement" | "announcement_updated" | "new_thread" | "thread_reply" | "post_reply" | "subgroup_activity" | "post_reaction" | "event_created" | "event_updated" | "event_cancelled" | "event_reminder" | "food_ticket" | "food_team_reminder" | "food_takeaway_ready" | "food_leftovers_ready" | "food_swap_request" | "food_team_shift_taken" | "food_team_plan_ready" | "food_team_wishes_open" | "food_team_pause_check" | "mention" | "subgroup_member_added" | "subgroup_member_removed" | "post_edited_by_admin" | "event_edited_by_admin" | "announcement_edited_by_admin" | "expense_processed" | "car_loan_request" | "car_loan_update" | "report_new" | "report_update" | "birthday"
 
 export interface MentionUser {
   id: number
@@ -1707,6 +1728,8 @@ export interface NotificationPreference {
 
   notify_reports: boolean
 
+  notify_birthdays: boolean
+
   // Email preferences
 
   email_messages: boolean
@@ -1734,6 +1757,8 @@ export interface NotificationPreference {
   email_car_sharing: boolean
 
   email_reports: boolean
+
+  email_birthdays: boolean
 
   // Push preferences
 
@@ -1779,6 +1804,8 @@ export interface NotificationPreference {
   push_food_swap_request: boolean
 
   push_reports: boolean
+
+  push_birthdays: boolean
 
   created_at: string
 
@@ -1836,6 +1863,8 @@ export interface UpdateNotificationPreferenceData {
 
   notify_reports?: boolean
 
+  notify_birthdays?: boolean
+
   email_messages?: boolean
 
   email_announcements?: boolean
@@ -1862,6 +1891,8 @@ export interface UpdateNotificationPreferenceData {
 
   email_reports?: boolean
 
+  email_birthdays?: boolean
+
   push_messages?: boolean
 
   push_announcements?: boolean
@@ -1887,6 +1918,8 @@ export interface UpdateNotificationPreferenceData {
   push_car_sharing?: boolean
 
   push_reports?: boolean
+
+  push_birthdays?: boolean
 }
 
 // Food Team Types

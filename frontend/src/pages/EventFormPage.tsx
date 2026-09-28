@@ -31,7 +31,14 @@ import { IconMapPin, IconAlertCircle } from "@tabler/icons-react"
 
 import dayjs from "dayjs"
 
-import { clearDraft, loadDraft, saveDraft } from "../utils/draftStorage"
+import {
+  DRAFT_SAVE_DELAY_MS,
+  clearDraft,
+  loadDraft,
+  saveDraft,
+} from "../utils/draftStorage"
+
+import { subgroupOptionLabel } from "../utils/subgroupLabel"
 
 import { useAuthStore } from "../store/authStore"
 
@@ -236,7 +243,10 @@ export default function EventFormPage() {
   useEffect(() => {
     if (isEditMode) return
 
-    const t = setTimeout(() => saveDraft("new-event-title", title), 1500)
+    const t = setTimeout(
+      () => saveDraft("new-event-title", title),
+      DRAFT_SAVE_DELAY_MS,
+    )
 
     return () => clearTimeout(t)
   }, [title, isEditMode])
@@ -803,7 +813,7 @@ export default function EventFormPage() {
   const subgroupOptions = (subgroups || []).map((s) => ({
     value: String(s.id),
 
-    label: s.name,
+    label: subgroupOptionLabel(s),
   }))
 
   return (
@@ -843,6 +853,11 @@ export default function EventFormPage() {
                 placeholder="Beskrivelse, dagsorden, etc. (valgfrit)"
                 minHeight={120}
                 draftKey={isEditMode ? undefined : "new-event-description"}
+                onClearDraft={() => {
+                  setTitle("")
+
+                  clearDraft("new-event-title")
+                }}
               />
             </div>
 

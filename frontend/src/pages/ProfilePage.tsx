@@ -127,10 +127,14 @@ export default function ProfilePage() {
 
     error,
   } = useQuery({
-    queryKey: ["user", userId || "me"],
+    // Your own profile via /profil/<your id> too: the public version hides
+    // your birth year from you if you chose to hide it from others.
+    queryKey: ["user", isOwnProfile ? "me" : userId],
 
     queryFn: () =>
-      userId ? usersApi.getUser(Number(userId)) : usersApi.getCurrentUser(),
+      isOwnProfile
+        ? usersApi.getCurrentUser()
+        : usersApi.getUser(Number(userId)),
   })
 
   if (isLoading) {

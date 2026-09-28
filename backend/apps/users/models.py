@@ -65,6 +65,10 @@ class User(AbstractUser):
     # Profile fields
     phone_number = models.CharField(max_length=20, blank=True)
     birthdate = models.DateField(null=True, blank=True)
+    hide_birth_year = models.BooleanField(
+        default=False,
+        help_text="Show others only the day and month of the birthday, never the year or age",
+    )
     profile_picture = models.ImageField(
         upload_to="profile_pictures/",
         null=True,
@@ -165,6 +169,20 @@ class User(AbstractUser):
             "those (only those) paid or rejected."
         ),
     )
+
+    @property
+    def public_birthdate(self) -> str | None:
+        """The birthdate as other residents may see it.
+
+        ISO "1990-09-25" normally, but "--09-25" (ISO 8601's date without a
+        year) for someone who has chosen to hide their year. It is dropped here
+        rather than in the browser, because anything the API sends can be read.
+        """
+        if not self.birthdate:
+            return None
+        if self.hide_birth_year:
+            return self.birthdate.strftime("--%m-%d")
+        return self.birthdate.isoformat()
 
     @property
     def age(self) -> int | None:

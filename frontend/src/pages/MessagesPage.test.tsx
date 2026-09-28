@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
 import { screen, waitFor } from "@testing-library/react"
 
@@ -14,7 +14,11 @@ import { messagingApi } from "../api/messaging"
 
 import { apiClient } from "../api/client"
 
-import type { Conversation, User } from "../types"
+import { saveDraft } from "../utils/draftStorage"
+
+import { Route, Routes } from "react-router-dom"
+
+import type { Conversation, Message, Participant, User } from "../types"
 
 // Mock the messaging API
 
@@ -222,9 +226,30 @@ const mockGroupConversation: Conversation = {
   created_at: "2024-01-15T11:00:00Z",
 }
 
+// Mounted under the same route as in App.tsx, so /beskeder/ny and
+// /beskeder/<id> reach the page as they do in the app.
+const renderMessagesPage = (path = "/beskeder") =>
+  render(
+    <Routes>
+      <Route path="/beskeder/:conversationId?" element={<MessagesPage />} />
+    </Routes>,
+    { initialEntries: [path] },
+  )
+
 describe("MessagesPage", () => {
+  afterEach(async () => {
+    // Choosing a recipient saves an encrypted draft asynchronously. Let that
+    // land and then drop it, so it can't restore into the next test.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    localStorage.clear()
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
+
+    // Drafts of an unsent message live in localStorage; start every test clean.
+    localStorage.clear()
 
     useAuthStore.setState({
       user: mockUser,
@@ -240,7 +265,7 @@ describe("MessagesPage", () => {
   })
 
   it("should render messages page with new message button", async () => {
-    render(<MessagesPage />)
+    renderMessagesPage()
 
     expect(screen.getByText("Beskeder")).toBeInTheDocument()
 
@@ -250,7 +275,7 @@ describe("MessagesPage", () => {
   })
 
   it("should show empty state when no conversations", async () => {
-    render(<MessagesPage />)
+    renderMessagesPage()
 
     await waitFor(() => {
       expect(screen.getByText("Ingen samtaler endnu")).toBeInTheDocument()
@@ -262,7 +287,7 @@ describe("MessagesPage", () => {
       mockConversation,
     ])
 
-    render(<MessagesPage />)
+    renderMessagesPage()
 
     await waitFor(() => {
       expect(screen.getByText("Alice")).toBeInTheDocument()
@@ -275,7 +300,7 @@ describe("MessagesPage", () => {
         mockGroupConversation,
       ])
 
-      render(<MessagesPage />)
+      renderMessagesPage()
 
       await waitFor(() => {
         expect(screen.getByText("Alice, Bob")).toBeInTheDocument()
@@ -287,7 +312,7 @@ describe("MessagesPage", () => {
         mockGroupConversation,
       ])
 
-      render(<MessagesPage />)
+      renderMessagesPage()
 
       await waitFor(() => {
         expect(screen.getByText(/Bob:/)).toBeInTheDocument()
@@ -299,7 +324,7 @@ describe("MessagesPage", () => {
         mockGroupConversation,
       ])
 
-      render(<MessagesPage />)
+      renderMessagesPage()
 
       await waitFor(() => {
         expect(screen.getByText("1")).toBeInTheDocument()
@@ -315,7 +340,7 @@ describe("MessagesPage", () => {
     it("should show inline compose area when clicking new message button", async () => {
       const user = userEvent.setup()
 
-      render(<MessagesPage />)
+      renderMessagesPage()
 
       await user.click(screen.getByRole("button", { name: /ny besked/i }))
 
@@ -329,7 +354,7 @@ describe("MessagesPage", () => {
     it("should show search input with placeholder", async () => {
       const user = userEvent.setup()
 
-      render(<MessagesPage />)
+      renderMessagesPage()
 
       await user.click(screen.getByRole("button", { name: /ny besked/i }))
 
@@ -343,7 +368,7 @@ describe("MessagesPage", () => {
     it("should display users in search results when focused", async () => {
       const user = userEvent.setup()
 
-      render(<MessagesPage />)
+      renderMessagesPage()
 
       await user.click(screen.getByRole("button", { name: /ny besked/i }))
 
@@ -369,7 +394,7 @@ describe("MessagesPage", () => {
     it("should filter users by search", async () => {
       const user = userEvent.setup()
 
-      render(<MessagesPage />)
+      renderMessagesPage()
 
       await user.click(screen.getByRole("button", { name: /ny besked/i }))
 
@@ -393,7 +418,7 @@ describe("MessagesPage", () => {
     it("should select user and show as badge", async () => {
       const user = userEvent.setup()
 
-      render(<MessagesPage />)
+      renderMessagesPage()
 
       await user.click(screen.getByRole("button", { name: /ny besked/i }))
 
@@ -427,7 +452,7 @@ describe("MessagesPage", () => {
     it("should allow selecting multiple users", async () => {
       const user = userEvent.setup()
 
-      render(<MessagesPage />)
+      renderMessagesPage()
 
       await user.click(screen.getByRole("button", { name: /ny besked/i }))
 
@@ -475,7 +500,7 @@ describe("MessagesPage", () => {
     it("should show group conversation info when multiple users selected", async () => {
       const user = userEvent.setup()
 
-      render(<MessagesPage />)
+      renderMessagesPage()
 
       await user.click(screen.getByRole("button", { name: /ny besked/i }))
 
@@ -527,7 +552,7 @@ describe("MessagesPage", () => {
     it("should show hint about adding multiple people", async () => {
       const user = userEvent.setup()
 
-      render(<MessagesPage />)
+      renderMessagesPage()
 
       await user.click(screen.getByRole("button", { name: /ny besked/i }))
 
@@ -559,7 +584,7 @@ describe("MessagesPage", () => {
     it("should not show already selected users in search results", async () => {
       const user = userEvent.setup()
 
-      render(<MessagesPage />)
+      renderMessagesPage()
 
       await user.click(screen.getByRole("button", { name: /ny besked/i }))
 
@@ -594,6 +619,231 @@ describe("MessagesPage", () => {
       await waitFor(() => {
         expect(screen.getByText("Ingen brugere fundet")).toBeInTheDocument()
       })
+    })
+  })
+
+  describe("Sender names", () => {
+    const alice: Participant = mockGroupConversation.other_participants[0]
+
+    const bob: Participant = mockGroupConversation.other_participants[1]
+
+    const makeMessage = (id: number, sender: Participant): Message => ({
+      id,
+
+      conversation: 2,
+
+      sender,
+
+      content: `Besked ${id}`,
+
+      is_own: sender.id === mockUser.id,
+
+      is_read: true,
+
+      is_system_message: false,
+
+      is_deleted: false,
+
+      edited_at: null,
+
+      created_at: `2024-01-15T14:0${id}:00Z`,
+
+      attachments: [],
+    })
+
+    const renderConversation = (conversation: Conversation) => {
+      vi.mocked(messagingApi.getConversations).mockResolvedValue([conversation])
+
+      vi.mocked(messagingApi.getConversation).mockResolvedValue(conversation)
+
+      return renderMessagesPage(`/beskeder/${conversation.id}`)
+    }
+
+    it("names the sender once per run of incoming messages in a group chat", async () => {
+      vi.mocked(messagingApi.getMessages).mockResolvedValue({
+        results: [
+          makeMessage(1, alice),
+          makeMessage(2, alice),
+          makeMessage(3, bob),
+        ],
+
+        has_more: false,
+      })
+
+      renderConversation(mockGroupConversation)
+
+      await waitFor(() => {
+        expect(screen.getByText("Besked 3")).toBeInTheDocument()
+      })
+
+      const aliceLinks = screen.getAllByRole("link", { name: "Alice" })
+
+      expect(aliceLinks).toHaveLength(1)
+
+      expect(aliceLinks[0]).toHaveAttribute("href", "/profil/2")
+
+      expect(screen.getByRole("link", { name: "Bob" })).toBeInTheDocument()
+    })
+
+    it("names the sender again after a system line of theirs", async () => {
+      vi.mocked(messagingApi.getMessages).mockResolvedValue({
+        results: [
+          makeMessage(1, alice),
+          {
+            ...makeMessage(2, alice),
+            is_system_message: true,
+            content: "Alice omdøbte samtalen",
+          },
+          makeMessage(3, alice),
+        ],
+
+        has_more: false,
+      })
+
+      renderConversation(mockGroupConversation)
+
+      await waitFor(() => {
+        expect(screen.getByText("Besked 3")).toBeInTheDocument()
+      })
+
+      expect(screen.getAllByRole("link", { name: "Alice" })).toHaveLength(2)
+    })
+
+    it("shows the thumbnail, not the original, in the bubble", async () => {
+      vi.mocked(messagingApi.getMessages).mockResolvedValue({
+        results: [
+          {
+            ...makeMessage(1, alice),
+
+            attachments: [
+              {
+                id: 7,
+
+                name: "ferie.jpg",
+
+                file: "/media/message_attachments/ferie.jpg",
+
+                file_url: "/media/message_attachments/ferie.jpg?sig=a",
+
+                preview_url: "/media/message_attachments/ferie.jpg?sig=a",
+
+                thumbnail_url: "/media/message_attachments/thumbs/7.jpg?sig=b",
+
+                uploaded_at: "2024-01-15T14:01:00Z",
+              },
+            ],
+          },
+        ],
+
+        has_more: false,
+      })
+
+      renderConversation(mockGroupConversation)
+
+      const img = await screen.findByAltText("ferie.jpg")
+
+      expect(img).toHaveAttribute(
+        "src",
+        "/media/message_attachments/thumbs/7.jpg?sig=b",
+      )
+
+      expect(img).toHaveAttribute("loading", "lazy")
+    })
+
+    it("does not name the sender in a 1:1 chat", async () => {
+      vi.mocked(messagingApi.getMessages).mockResolvedValue({
+        results: [makeMessage(1, mockConversation.other_participants[0])],
+
+        has_more: false,
+      })
+
+      renderConversation({ ...mockConversation, id: 2 })
+
+      await waitFor(() => {
+        expect(screen.getByText("Besked 1")).toBeInTheDocument()
+      })
+
+      expect(
+        screen.queryByRole("link", { name: "Alice" }),
+      ).not.toBeInTheDocument()
+    })
+  })
+
+  describe("Unsent new message", () => {
+    beforeEach(() => {
+      vi.mocked(apiClient.get).mockResolvedValue({ data: mockUsers })
+    })
+
+    it("keeps its recipients and text across a reload", async () => {
+      const user = userEvent.setup()
+
+      const first = renderMessagesPage(`/beskeder/ny`)
+
+      await user.click(
+        await screen.findByPlaceholderText(/søg efter personer/i),
+      )
+
+      await user.click(await screen.findByText("Alice Smith"))
+
+      await waitFor(() => {
+        expect(screen.getByText("Ny samtale med Alice")).toBeInTheDocument()
+      })
+
+      await saveDraft("msg-new", "Halvt skrevet besked")
+
+      first.unmount()
+
+      renderMessagesPage(`/beskeder/ny`)
+
+      expect(
+        await screen.findByText("Ny samtale med Alice"),
+      ).toBeInTheDocument()
+
+      expect(
+        await screen.findByText("Kladde gendannet automatisk"),
+      ).toBeInTheDocument()
+
+      expect(
+        screen.getByDisplayValue("Halvt skrevet besked"),
+      ).toBeInTheDocument()
+    })
+
+    it("clears the recipients too when the reader clears the draft", async () => {
+      const user = userEvent.setup()
+
+      const first = renderMessagesPage(`/beskeder/ny`)
+
+      await user.click(
+        await screen.findByPlaceholderText(/søg efter personer/i),
+      )
+
+      await user.click(await screen.findByText("Alice Smith"))
+
+      await saveDraft("msg-new", "Halvt skrevet besked")
+
+      await waitFor(() => {
+        expect(screen.getByText("Ny samtale med Alice")).toBeInTheDocument()
+      })
+
+      first.unmount()
+
+      renderMessagesPage(`/beskeder/ny`)
+
+      await screen.findByText("Kladde gendannet automatisk")
+
+      await user.click(screen.getByText("(ryd)"))
+
+      await waitFor(() => {
+        expect(
+          screen.queryByText("Ny samtale med Alice"),
+        ).not.toBeInTheDocument()
+      })
+    })
+
+    it("opens the compose view from its URL", async () => {
+      renderMessagesPage(`/beskeder/ny`)
+
+      expect(await screen.findByText("Til:")).toBeInTheDocument()
     })
   })
 })

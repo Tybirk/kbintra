@@ -273,6 +273,62 @@ class TestUpcomingBirthdaysAPI:
 
         assert authenticated_client.get("/api/users/birthdays/").json() == []
 
+    def test_birthdays_leave_out_the_year_for_those_who_hide_it(
+        self, authenticated_client, second_user
+    ):
+        """Still listed, on the right day, but with no year and no age."""
+        upcoming = timezone.localdate() + timedelta(days=2)
+        second_user.birthdate = upcoming.replace(year=1980)
+        second_user.hide_birth_year = True
+        second_user.save()
+
+        [entry] = authenticated_client.get("/api/users/birthdays/").json()
+        assert entry["days_until"] == 2
+        assert entry["birthdate"] == upcoming.strftime("--%m-%d")
+        assert entry["turning"] is None
+
+
+@pytest.mark.django_db
+class TestHiddenBirthYear:
+    """A resident may hide their birth year: others see day and month only."""
+
+    @pytest.fixture
+    def hider(self, second_user):
+        second_user.birthdate = date(1980, 3, 14)
+        second_user.hide_birth_year = True
+        second_user.save()
+        return second_user
+
+    def test_others_get_day_and_month_only(self, authenticated_client, hider):
+        detail = authenticated_client.get(f"/api/users/{hider.pk}/").json()
+        assert detail["birthdate"] == "--03-14"
+        assert "hide_birth_year" not in detail
+
+        listed = {u["id"]: u for u in authenticated_client.get("/api/users/").json()}
+        assert listed[hider.pk]["birthdate"] == "--03-14"
+
+    def test_the_year_is_shown_by_default(self, authenticated_client, second_user):
+        second_user.birthdate = date(1980, 3, 14)
+        second_user.save()
+
+        detail = authenticated_client.get(f"/api/users/{second_user.pk}/").json()
+        assert detail["birthdate"] == "1980-03-14"
+
+    def test_the_owner_still_sees_the_full_date(self, api_client, hider):
+        api_client.force_authenticate(user=hider)
+
+        me = api_client.get("/api/users/me/").json()
+        assert me["birthdate"] == "1980-03-14"
+        assert me["hide_birth_year"] is True
+
+    def test_the_setting_is_changed_on_the_own_profile(self, authenticated_client, user):
+        response = authenticated_client.patch(
+            "/api/users/me/", {"hide_birth_year": True}, format="json"
+        )
+        assert response.status_code == 200
+        user.refresh_from_db()
+        assert user.hide_birth_year is True
+
 
 class TestNextBirthday:
     """The date arithmetic behind the birthdays list."""
@@ -914,3 +970,107 @@ class TestMentionAutocomplete:
 
         # The two above plus the fixture's own user.
         assert len(authenticated_client.get("/api/users/mentions/").data) == 3
+
+
+@pytest.mark.django_db
+class TestBirthdayNotifications:
+    """The 08:00 task tells every other active resident about today's birthdays."""
+
+    TODAY = date(2026, 9, 25)
+
+    def _run(self):
+        from unittest.mock import patch
+
+        from apps.users.tasks import send_birthday_notifications
+
+        with patch("django.utils.timezone.localdate", return_value=self.TODAY):
+            send_birthday_notifications.call_local()
+
+    def _residents(self, house):
+        birthday = User.objects.create_user(
+            email="bday@example.com",
+            password="pass",
+            first_name="Anna",
+            last_name="Hansen",
+            house=house,
+            birthdate=date(1990, 9, 25),
+        )
+        other = User.objects.create_user(
+            email="other@example.com", password="pass", first_name="Bo", house=house
+        )
+        return birthday, other
+
+    def test_others_are_told_and_the_birthday_person_is_not(self, house):
+        from apps.notifications.models import Notification, NotificationType
+
+        birthday, other = self._residents(house)
+        User.objects.create_user(
+            email="gone@example.com", password="pass", first_name="Gone", is_active=False
+        )
+
+        self._run()
+
+        rows = Notification.objects.filter(notification_type=NotificationType.BIRTHDAY)
+        assert list(rows.values_list("user__email", flat=True)) == ["other@example.com"]
+        row = rows.get()
+        assert row.title == "Anna Hansen har fødselsdag i dag"
+        assert row.message == "Anna fylder 36 år i dag."
+        assert row.link == f"/profil/{birthday.pk}"
+
+    def test_children_are_included_and_link_to_their_house(self, house):
+        from apps.houses.models import Child
+        from apps.notifications.models import Notification
+
+        _, other = self._residents(house)
+        Child.objects.create(house=house, name="Emma", birthdate=date(2020, 9, 25))
+
+        self._run()
+
+        row = Notification.objects.get(user=other, title__startswith="Emma")
+        assert row.title == f"Emma ({house.name}) har fødselsdag i dag"
+        assert row.message == "Emma fylder 6 år i dag."  # the house is in the title
+        assert row.link == f"/beboere/hus/{house.slug}"
+
+    def test_no_age_for_a_resident_who_hides_their_year(self, house):
+        from apps.notifications.models import Notification
+
+        birthday, other = self._residents(house)
+        birthday.hide_birth_year = True
+        birthday.save()
+
+        self._run()
+
+        row = Notification.objects.get(user=other)
+        assert row.title == "Anna Hansen har fødselsdag i dag"
+        assert row.message == "Ønsk tillykke!"
+
+    def test_no_notification_on_other_days(self, house):
+        from apps.notifications.models import Notification
+
+        birthday, _ = self._residents(house)
+        birthday.birthdate = date(1990, 9, 26)
+        birthday.save()
+
+        self._run()
+
+        assert not Notification.objects.exists()
+
+    def test_opting_out_stops_it(self, house):
+        from apps.notifications.models import Notification, NotificationPreference
+
+        _, other = self._residents(house)
+        NotificationPreference.objects.update_or_create(
+            user=other, defaults={"notify_birthdays": False}
+        )
+
+        self._run()
+
+        assert not Notification.objects.filter(user=other).exists()
+
+    def test_only_in_app_is_on_by_default(self, user):
+        from apps.notifications.models import NotificationPreference
+
+        prefs = NotificationPreference(user=user)
+        assert prefs.notify_birthdays is True
+        assert prefs.push_birthdays is False
+        assert prefs.email_birthdays is False

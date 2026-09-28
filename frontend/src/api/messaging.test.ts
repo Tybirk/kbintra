@@ -95,17 +95,33 @@ describe("messagingApi", () => {
         { id: 2, content: "Hi there", sender: 2 },
       ]
 
-      vi.mocked(apiClient.get).mockResolvedValue({
-        data: { results: mockMessages },
-      })
+      const page = { results: mockMessages, has_more: false }
+
+      vi.mocked(apiClient.get).mockResolvedValue({ data: page })
 
       const result = await messagingApi.getMessages(1)
 
       expect(apiClient.get).toHaveBeenCalledWith(
         "/messages/conversations/1/messages/",
+
+        { params: undefined },
       )
 
-      expect(result).toEqual(mockMessages)
+      expect(result).toEqual(page)
+    })
+
+    it("should ask for the page before a message", async () => {
+      vi.mocked(apiClient.get).mockResolvedValue({
+        data: { results: [], has_more: false },
+      })
+
+      await messagingApi.getMessages(1, 42)
+
+      expect(apiClient.get).toHaveBeenCalledWith(
+        "/messages/conversations/1/messages/",
+
+        { params: { before: 42 } },
+      )
     })
   })
 

@@ -25,7 +25,12 @@ export function ImageZoomViewer({
         const blobUrl = URL.createObjectURL(blob)
         const a = document.createElement("a")
         a.href = blobUrl
-        a.download = alt || "image"
+        // A HEIC photo is shown (and so saved) as its JPEG preview: name it so.
+        const name = alt || "image"
+        a.download =
+          blob.type === "image/jpeg"
+            ? name.replace(/\.hei[cf]$/i, ".jpg")
+            : name
         document.body.appendChild(a)
         a.click()
         document.body.removeChild(a)
@@ -42,7 +47,7 @@ export function ImageZoomViewer({
       padding={0}
       transitionProps={{ transition: "fade", duration: 150 }}
       styles={{
-        body: { padding: 0, height: "100vh" },
+        body: { padding: 0, height: "100dvh" },
         content: { backgroundColor: "rgba(0,0,0,0.92)" },
       }}
     >
@@ -50,7 +55,7 @@ export function ImageZoomViewer({
         style={{
           position: "relative",
           width: "100%",
-          height: "100vh",
+          height: "100dvh",
           overflow: "hidden",
         }}
       >
@@ -79,7 +84,7 @@ export function ImageZoomViewer({
               alt={alt || ""}
               style={{
                 maxWidth: "100vw",
-                maxHeight: "100vh",
+                maxHeight: "100dvh",
                 objectFit: "contain",
                 userSelect: "none",
                 WebkitUserSelect: "none",

@@ -24,18 +24,23 @@ import {
   parseDecimalInput,
 } from "../../utils/decimalInput"
 
+import { formatLicensePlate } from "../../utils/licensePlate"
+
 import {
   describeSettlement,
   formatDateTime,
   formatKr,
   formatWindow,
   kmInputError,
+  LicensePlateBadge,
   moneyInputError,
   settlementBreakdown,
   useCarSharingMutation,
 } from "./shared"
 
 import type { CarLoan } from "../../types"
+
+import { holdInView } from "../../utils/holdInView"
 
 // --- Tab 2: my loans ---------------------------------------------------------
 
@@ -382,10 +387,12 @@ export function LoanCard({ loan, highlight }: LoanCardProps) {
 
   // A notification deep-links to one loan and this card gets a blue border —
   // which is no help when the card is a screen and a half below the fold.
+  // Its top goes just under the sticky header (centring put the date and status
+  // behind it), and stays there while the page around it settles.
   const cardRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
-    if (!highlight) return
-    cardRef.current?.scrollIntoView({ block: "center", behavior: "smooth" })
+    if (!highlight || !cardRef.current) return
+    return holdInView(cardRef.current)
   }, [highlight])
 
   const respondMutation = useCarSharingMutation({
@@ -501,9 +508,18 @@ export function LoanCard({ loan, highlight }: LoanCardProps) {
             )}
 
             {loan.car !== null && (
-              <Text size="sm">
-                <strong>{loan.car_display_name}</strong> · {loan.car_house_name}
-              </Text>
+              <Group gap="xs" wrap="wrap">
+                <Text size="sm">
+                  <strong>{loan.car_display_name}</strong> ·{" "}
+                  {loan.car_house_name}
+                </Text>
+                {/* Make and model do not pick a car out of a car park. */}
+                {loan.car_license_plate &&
+                  loan.car_display_name !==
+                    formatLicensePlate(loan.car_license_plate) && (
+                    <LicensePlateBadge plate={loan.car_license_plate} />
+                  )}
+              </Group>
             )}
 
             {loan.status === "active" && loan.car_practical_note && (

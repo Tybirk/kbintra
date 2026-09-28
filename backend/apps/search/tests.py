@@ -42,6 +42,7 @@ def ensure_fts_table(db):
             "type UNINDEXED, object_id UNINDEXED, "
             "url UNINDEXED, subtitle UNINDEXED, extra UNINDEXED, "
             "created_at UNINDEXED, "
+            "title_raw UNINDEXED, body_raw UNINDEXED, "
             "tokenize='unicode61 remove_diacritics 2'"
             ")"
         )
@@ -291,18 +292,85 @@ class TestIndexAndSearch:
         a cascade a rename leaves all of them advertising the old name — which is
         what kept search saying "Arrangementer" after the Begivenheder rename.
         """
-        from apps.forum.models import Thread
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from apps.forum.models import File, Folder, Thread
 
         thread = Thread.objects.create(
             subgroup=subgroup, title="Sommerfest paa graespladsen", author=user
+        )
+        Folder.objects.create(subgroup=subgroup, name="Referater")
+        File.objects.create(
+            subgroup=subgroup,
+            uploaded_by=user,
+            file=SimpleUploadedFile("budget.txt", b"content"),
+            name="budget.txt",
         )
         assert fts_search("sommerfest")[0]["subtitle"] == subgroup.name
 
         subgroup.name = "Begivenheder"
         subgroup.save()
 
-        assert fts_search("sommerfest")[0]["subtitle"] == "Begivenheder"
+        for query in ("sommerfest", "referater", "budget"):
+            assert fts_search(query)[0]["subtitle"] == "Begivenheder", query
         assert thread.id == fts_search("sommerfest")[0]["object_id"]
+
+    def test_results_keep_their_danish_letters(self):
+        """Matching folds æ/ø/å; what the reader sees must not ("Soeren", "loerdags")."""
+        index_object(
+            obj_type="post",
+            object_id=11,
+            title="Støvsuger til fælleshuset",
+            body="Søren kommer med den på lørdag, så vi kan gøre rent før festen.",
+            url="/forum/faelles/traad/stoevsuger#post-11",
+        )
+
+        result = fts_search("stoevsuger")[0]
+
+        assert result["title"] == "Støvsuger til fælleshuset"
+        assert "Søren kommer med den på lørdag" in result["subtitle"]
+        assert fts_search("lørdag")[0]["object_id"] == 11
+
+    def test_unfold_snippet_maps_back_across_the_whole_body(self):
+        from apps.search.services import fold_danish, unfold_snippet
+
+        original = "Første punkt. " * 30 + "Ålborg-turen er på søndag, Æblegården betaler."
+        cut = "…" + fold_danish("Ålborg-turen er på søndag, Æblegården") + "…"
+
+        assert unfold_snippet(cut, original) == "…Ålborg-turen er på søndag, Æblegården…"
+
+    def test_renaming_a_thread_keeps_each_post_s_anchor(self, subgroup, user):
+        """Re-indexing posts from their thread wrote the bare thread URL, so 2,320
+        post results lost their #post-N; and it did so post by post."""
+        from django.db import connection as conn
+        from django.test.utils import CaptureQueriesContext
+
+        from apps.forum.models import Post, Thread
+
+        thread = Thread.objects.create(subgroup=subgroup, title="Gammel titel", author=user)
+        posts = [
+            Post.objects.create(thread=thread, author=user, content=f"<p>indlæg {i}</p>")
+            for i in range(5)
+        ]
+
+        thread.title = "Ny titel på tråden"
+        with CaptureQueriesContext(conn) as five:
+            thread.save()
+
+        for post in posts:
+            row = next(r for r in fts_search("indlaeg", limit=20) if r["object_id"] == post.id)
+            assert row["title"] == "Ny titel på tråden"
+            assert row["url"] == f"/forum/{subgroup.slug}/traad/{thread.slug}#post-{post.id}"
+
+        more = [
+            Post.objects.create(thread=thread, author=user, content=f"<p>mere {i}</p>")
+            for i in range(10)
+        ]
+        assert more
+        thread.title = "Tredje titel"
+        with CaptureQueriesContext(conn) as fifteen:
+            thread.save()
+        assert len(fifteen) == len(five)
 
     def test_activity_bump_does_not_cascade_a_reindex(self, subgroup, user):
         """The last_activity_at bump runs on every new thread and post, so it must
@@ -312,7 +380,7 @@ class TestIndexAndSearch:
         from django.utils import timezone
 
         subgroup.last_activity_at = timezone.now()
-        with patch("apps.search.signals.index_thread") as cascaded:
+        with patch("apps.search.signals.set_subtitle") as cascaded:
             subgroup.save(update_fields=["last_activity_at"])
         cascaded.assert_not_called()
 
@@ -1149,3 +1217,59 @@ class TestRebuildSearchIndex:
         out = StringIO()
         call_command("rebuild_search_index", if_empty=True, stdout=out)
         assert "skipping rebuild" in out.getvalue()
+
+
+@pytest.mark.django_db
+def test_a_rebuild_writes_exactly_what_saving_wrote(user, house, subgroup, thread):
+    """Signals and rebuild_search_index both build rows from search/documents.py.
+    Built separately, they drifted: a rebuilt car lost its make and "delebil", and
+    a rebuilt event showed its time in UTC."""
+    from datetime import timedelta
+
+    from django.core.management import call_command
+    from django.utils import timezone
+
+    from apps.announcements.models import Announcement
+    from apps.events.models import Event
+    from apps.forum.models import Folder, Post
+    from apps.houses.models import Car
+
+    user.house = house
+    user.save()
+    Car.objects.create(
+        house=house, license_plate="EA78950", make="Tesla", model_name="S", is_shared=True
+    )
+    Post.objects.create(thread=thread, author=user, content="<p>Første indlæg på lørdag</p>")
+    Announcement.objects.create(title="Vigtigt", content="<p>Husk mødet</p>", author=user)
+    Event.objects.create(
+        title="Efterårsmarked",
+        start_datetime=timezone.now() + timedelta(days=5),
+        end_datetime=timezone.now() + timedelta(days=5, hours=3),
+        created_by=user,
+        location="Fælleshuset",
+    )
+    Folder.objects.create(subgroup=subgroup, name="Referater")
+
+    def rows():
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT type, object_id, title, body, url, subtitle, extra, created_at, "
+                "title_raw, body_raw FROM search_index ORDER BY type, object_id"
+            )
+            return cursor.fetchall()
+
+    saved = rows()
+    call_command("rebuild_search_index", stdout=None)
+
+    assert rows() == saved
+    assert {row[0] for row in saved} >= {
+        "user",
+        "house",
+        "car",
+        "thread",
+        "post",
+        "subgroup",
+        "announcement",
+        "event",
+        "folder",
+    }

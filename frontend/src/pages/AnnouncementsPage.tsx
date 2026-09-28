@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react"
 
-import { useLocation, useNavigate } from "react-router-dom"
-
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 
 import {
@@ -48,9 +46,16 @@ import { announcementsApi } from "../api/announcements"
 
 import { notificationsApi } from "../api/notifications"
 
+import { useHoldHashTarget } from "../hooks/useHoldHashTarget"
+
 import { filterFilesBySize } from "../config"
 
-import { clearDraft, loadDraft, saveDraft } from "../utils/draftStorage"
+import {
+  DRAFT_SAVE_DELAY_MS,
+  clearDraft,
+  loadDraft,
+  saveDraft,
+} from "../utils/draftStorage"
 
 import RichTextEditor from "../components/RichTextEditor"
 import { RichTextContent } from "../components/RichTextContent"
@@ -78,12 +83,6 @@ import type {
 export default function AnnouncementsPage() {
   const queryClient = useQueryClient()
 
-  const location = useLocation()
-
-  const navigate = useNavigate()
-
-  const { hash } = location
-
   const [
     createModalOpened,
 
@@ -107,6 +106,8 @@ export default function AnnouncementsPage() {
 
     isLoading,
 
+    isFetching,
+
     error,
   } = useQuery({
     queryKey: ["announcements"],
@@ -129,39 +130,8 @@ export default function AnnouncementsPage() {
       .catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Scroll to and highlight a specific announcement when navigating from a
-  // notification or search result. Clear the hash through React Router so a
-  // subsequent click on the same notification re-fires this effect.
-
-  useEffect(() => {
-    if (!hash || !announcements) return
-
-    const el = document.getElementById(hash.slice(1))
-
-    if (!el) return
-
-    navigate(location.pathname + location.search, { replace: true })
-
-    // Intentionally no clearTimeout cleanup: the announcements query may
-    // refetch (e.g. for "Opdateret:" notifications, an announcement object's
-    // content just changed), changing the array reference and re-firing this
-    // effect within the 100ms window. Tearing down the timer would cancel
-    // the scroll-and-highlight before it ever fires. The timer is short and
-    // idempotent — letting it run is safe.
-    setTimeout(() => {
-      el.scrollIntoView({ behavior: "smooth", block: "center" })
-
-      el.style.borderRadius = "var(--mantine-radius-md)"
-
-      el.style.transition = "box-shadow 0.3s ease"
-
-      el.style.boxShadow = "0 0 0 3px var(--mantine-color-blue-4)"
-
-      setTimeout(() => {
-        el.style.boxShadow = ""
-      }, 2000)
-    }, 100)
-  }, [hash, announcements, navigate, location.pathname, location.search])
+  // Open at the announcement a notification or search result links to.
+  useHoldHashTarget(!!announcements, !isFetching)
 
   const deleteMutation = useMutation({
     mutationFn: announcementsApi.deleteAnnouncement,
@@ -538,7 +508,10 @@ function CreateAnnouncementModal({
   }, [])
 
   useEffect(() => {
-    const t = setTimeout(() => saveDraft("new-announcement-title", title), 1500)
+    const t = setTimeout(
+      () => saveDraft("new-announcement-title", title),
+      DRAFT_SAVE_DELAY_MS,
+    )
 
     return () => clearTimeout(t)
   }, [title])
@@ -604,7 +577,7 @@ function CreateAnnouncementModal({
     if (errors.length > 0) {
       errors.forEach((error) => {
         notifications.show({
-          title: "File too large",
+          title: "Filen er for stor",
 
           message: error,
 
@@ -655,6 +628,11 @@ function CreateAnnouncementModal({
                 minHeight={200}
                 onFilePaste={handleAddFiles}
                 draftKey="new-announcement"
+                onClearDraft={() => {
+                  setTitle("")
+
+                  clearDraft("new-announcement-title")
+                }}
               />
             </div>
 

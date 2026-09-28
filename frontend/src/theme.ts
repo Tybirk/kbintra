@@ -1,4 +1,5 @@
 import {
+  PasswordInput,
   SegmentedControl,
   Select,
   Title,
@@ -68,6 +69,15 @@ export const theme = createTheme({
   },
 
   components: {
+    // Mantine's own label for the eye button is English.
+    PasswordInput: PasswordInput.extend({
+      defaultProps: {
+        visibilityToggleButtonProps: {
+          "aria-label": "Vis eller skjul adgangskode",
+        },
+      },
+    }),
+
     Typography: Typography.extend({
       styles: {
         root: { overflowWrap: "break-word" },

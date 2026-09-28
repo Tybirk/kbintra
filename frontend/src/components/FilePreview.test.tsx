@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
-import { screen, waitFor } from "@testing-library/react"
+import { renderHook, screen, waitFor } from "@testing-library/react"
 
 import { render } from "../test/testUtils"
 
 import {
   FileActionButtons,
   getRenderableFileType,
+  useFileActions,
   type FileActions,
 } from "./FilePreview"
 
@@ -203,5 +204,29 @@ describe("getRenderableFileType", () => {
         preview_url: "/media/x/previews/1.jpg?exp=1&sig=def",
       }),
     ).toBe("image")
+  })
+})
+
+describe("useFileActions for a HEIC photo", () => {
+  it("fetches and names the JPEG on screen, not the raw HEIC", async () => {
+    globalThis.fetch = vi.fn(
+      async () => new Response(new Blob(["jpg"], { type: "image/jpeg" })),
+    )
+
+    URL.createObjectURL = vi.fn(() => "blob:x")
+
+    URL.revokeObjectURL = vi.fn()
+
+    const photo = {
+      name: "IMG_0412.HEIC",
+      file_url: "/media/message_attachments/IMG_0412.HEIC",
+      preview_url: "/media/message_attachments/previews/IMG_0412.jpg",
+    }
+
+    const { result } = renderHook(() => useFileActions(photo, true))
+
+    await waitFor(() => expect(result.current.blobUrl).toBe("blob:x"))
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(photo.preview_url)
   })
 })

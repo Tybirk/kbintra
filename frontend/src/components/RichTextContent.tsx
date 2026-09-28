@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect, useCallback, useMemo } from "react"
+import { sanitizeHtml } from "../utils/sanitizeHtml"
 import { ImageZoomViewer } from "./ImageZoomViewer"
 
 interface RichTextContentProps {
@@ -7,6 +8,9 @@ interface RichTextContentProps {
 }
 
 export function RichTextContent({ html, className }: RichTextContentProps) {
+  // Memoized as the object React gets, so a re-render never has it rewrite the
+  // post's DOM (which dropped the images' zoom cursor set below).
+  const innerHtml = useMemo(() => ({ __html: sanitizeHtml(html) }), [html])
   const containerRef = useRef<HTMLDivElement>(null)
   const [zoomSrc, setZoomSrc] = useState<string | null>(null)
   const [zoomAlt, setZoomAlt] = useState<string | undefined>(undefined)
@@ -35,14 +39,14 @@ export function RichTextContent({ html, className }: RichTextContentProps) {
     return () => {
       container.removeEventListener("click", handleClick)
     }
-  }, [html, handleClick])
+  }, [innerHtml, handleClick])
 
   return (
     <>
       <div
         ref={containerRef}
         className={className}
-        dangerouslySetInnerHTML={{ __html: html }}
+        dangerouslySetInnerHTML={innerHtml}
       />
       <ImageZoomViewer
         src={zoomSrc || ""}

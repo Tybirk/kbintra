@@ -139,6 +139,32 @@ class TestConversationAPI:
         # The initial message must have been created in the existing conversation
         assert Message.objects.filter(content="Hej igen!", conversation=conversation).exists()
 
+    def test_list_previews_a_message_without_text(
+        self, authenticated_client, user, conversation, admin_user
+    ):
+        """An attachment-only or unsent last message still gets a preview line."""
+        Message.objects.create(conversation=conversation, sender=user, content="")
+        taken_back = Conversation.objects.create()
+        taken_back.participants.add(user, admin_user)
+        Message.objects.create(conversation=taken_back, sender=user, content="", is_deleted=True)
+
+        results = authenticated_client.get("/api/messages/conversations/").json()
+        previews = {c["id"]: c["last_message"]["content"] for c in results}
+
+        assert previews == {conversation.id: "(Vedhæftet fil)", taken_back.id: "Besked slettet"}
+
+    def test_list_sorts_an_empty_conversation_by_when_it_was_made(
+        self, authenticated_client, user, conversation, message, admin_user
+    ):
+        """A conversation just created, with no messages yet, is not sorted last."""
+        Message.objects.filter(pk=message.pk).update(created_at="2024-01-01T12:00:00Z")
+        empty = Conversation.objects.create()
+        empty.participants.add(user, admin_user)
+
+        results = authenticated_client.get("/api/messages/conversations/").json()
+
+        assert [c["id"] for c in results] == [empty.id, conversation.id]
+
     def test_get_conversation_detail(self, authenticated_client, conversation):
         """Test getting conversation details."""
         response = authenticated_client.get(f"/api/messages/conversations/{conversation.id}/")
@@ -223,6 +249,74 @@ class TestMessageAPI:
         )
         assert response.status_code == 201
         assert Message.objects.filter(content="New message!").exists()
+
+
+class TestMessagePagination:
+    """The chat loads the newest page first, then older pages via ?before=<id>."""
+
+    def _seed(self, conversation, sender, count):
+        return [
+            Message.objects.create(conversation=conversation, sender=sender, content=f"msg {i}")
+            for i in range(count)
+        ]
+
+    def _url(self, conversation, before=None):
+        url = f"/api/messages/conversations/{conversation.id}/messages/"
+        return f"{url}?before={before}" if before is not None else url
+
+    def test_newest_page_first_oldest_first_within(
+        self, authenticated_client, conversation, second_user
+    ):
+        from apps.messaging.serializers import MESSAGE_PAGE_SIZE
+
+        messages = self._seed(conversation, second_user, MESSAGE_PAGE_SIZE + 5)
+
+        data = authenticated_client.get(self._url(conversation)).json()
+
+        assert [m["id"] for m in data["results"]] == [m.id for m in messages[5:]]
+        assert data["has_more"] is True
+
+    def test_before_returns_the_page_just_older(
+        self, authenticated_client, conversation, second_user
+    ):
+        from apps.messaging.serializers import MESSAGE_PAGE_SIZE
+
+        messages = self._seed(conversation, second_user, MESSAGE_PAGE_SIZE + 5)
+
+        data = authenticated_client.get(self._url(conversation, messages[5].id)).json()
+
+        assert [m["id"] for m in data["results"]] == [m.id for m in messages[:5]]
+        assert data["has_more"] is False
+
+    def test_before_must_belong_to_the_conversation(
+        self, authenticated_client, conversation, user, second_user
+    ):
+        other = Conversation.objects.create()
+        other.participants.add(user, second_user)
+        foreign = Message.objects.create(conversation=other, sender=second_user, content="x")
+
+        assert authenticated_client.get(self._url(conversation, foreign.id)).status_code == 404
+        assert authenticated_client.get(self._url(conversation, "abc")).status_code == 400
+        # "²".isdigit() is True in Python, and int("²") raises: this used to be a 500.
+        assert authenticated_client.get(self._url(conversation, "²")).status_code == 400
+
+    def test_query_count_does_not_scale_with_messages(
+        self, authenticated_client, conversation, second_user
+    ):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        self._seed(conversation, second_user, 3)
+        assert authenticated_client.get(self._url(conversation)).status_code == 200
+        with CaptureQueriesContext(connection) as small:
+            authenticated_client.get(self._url(conversation))
+
+        self._seed(conversation, second_user, 20)
+        assert authenticated_client.get(self._url(conversation)).status_code == 200
+        with CaptureQueriesContext(connection) as big:
+            authenticated_client.get(self._url(conversation))
+
+        assert len(big) == len(small)
 
 
 class TestMarkMessagesReadAPI:
@@ -575,9 +669,7 @@ class TestHeicAttachmentBroadcast:
         # relies on the queued task leaves `preview` empty at broadcast time.
         import apps.forum.tasks as forum_tasks
 
-        monkeypatch.setattr(
-            forum_tasks.generate_attachment_preview_task, "__call__", lambda *a, **k: None
-        )
+        monkeypatch.setattr(forum_tasks, "generate_attachment_preview_task", lambda *a: None)
 
         response = authenticated_client.post(
             f"/api/messages/conversations/{conversation.id}/messages/",
@@ -596,3 +688,126 @@ class TestHeicAttachmentBroadcast:
         assert "previews/" in broadcast["preview_url"], (
             "recipients received the undecodable original: " + broadcast["preview_url"]
         )
+
+
+class TestMessageAttachmentThumbnail:
+    """Chat bubbles show a 400px square thumbnail instead of the original upload."""
+
+    def _jpeg_upload(self, width=1600, height=900, name="photo.jpg"):
+        from io import BytesIO
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+
+        buf = BytesIO()
+        Image.new("RGB", (width, height), color=(40, 80, 120)).save(buf, format="JPEG")
+        return SimpleUploadedFile(name, buf.getvalue(), content_type="image/jpeg")
+
+    def _send(self, client, conversation, upload):
+        response = client.post(
+            f"/api/messages/conversations/{conversation.id}/messages/",
+            {"content": "", "attachments": upload},
+            format="multipart",
+        )
+        assert response.status_code == 201, response.data
+        return Message.objects.filter(conversation=conversation).latest("id").attachments.get()
+
+    def test_upload_gets_a_square_thumbnail_served_to_the_bubble(
+        self, authenticated_client, conversation
+    ):
+        from PIL import Image
+
+        att = self._send(authenticated_client, conversation, self._jpeg_upload())
+        att.refresh_from_db()
+
+        assert att.thumbnail
+        with att.thumbnail.open("rb") as fh, Image.open(fh) as thumb:
+            assert thumb.size == (400, 400)
+            assert thumb.format == "JPEG"
+
+        page = authenticated_client.get(
+            f"/api/messages/conversations/{conversation.id}/messages/"
+        ).json()
+        served = page["results"][-1]["attachments"][0]
+        assert "/thumbs/" in served["thumbnail_url"]
+        assert "/thumbs/" not in served["file_url"]
+
+    def test_broadcast_already_carries_the_thumbnail(
+        self, authenticated_client, conversation, monkeypatch
+    ):
+        captured: list[dict] = []
+
+        class FakeChannelLayer:
+            async def group_send(self, group, payload):
+                captured.append(payload)
+
+        monkeypatch.setattr("channels.layers.get_channel_layer", lambda: FakeChannelLayer())
+
+        self._send(authenticated_client, conversation, self._jpeg_upload())
+
+        broadcast = captured[0]["message"]["attachments"][0]
+        assert "/thumbs/" in broadcast["thumbnail_url"], (
+            "every open chat would download the original: " + broadcast["thumbnail_url"]
+        )
+
+    def test_upload_survives_a_failing_thumbnail(
+        self, authenticated_client, conversation, monkeypatch
+    ):
+        import apps.forum.image_processing as image_processing
+
+        def explode(att):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(image_processing, "generate_attachment_thumbnail", explode)
+
+        att = self._send(authenticated_client, conversation, self._jpeg_upload())
+
+        assert not att.thumbnail
+
+    def test_non_image_gets_no_thumbnail(self, authenticated_client, conversation):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        upload = SimpleUploadedFile("notes.pdf", b"%PDF-1.4 x", content_type="application/pdf")
+        att = self._send(authenticated_client, conversation, upload)
+        att.refresh_from_db()
+
+        assert not att.thumbnail
+
+    def test_backfill_command_thumbnails_existing_images(self, conversation, user):
+        from django.core.management import call_command
+
+        from apps.messaging.models import MessageAttachment
+
+        message = Message.objects.create(conversation=conversation, sender=user, content="")
+        att = MessageAttachment.objects.create(
+            message=message, file=self._jpeg_upload(), name="photo.jpg", uploaded_by=user
+        )
+        assert not att.thumbnail
+
+        call_command("rebuild_message_attachment_thumbnails")
+
+        att.refresh_from_db()
+        assert att.thumbnail
+
+
+def test_unsending_a_message_removes_its_attachments(authenticated_client, message, user):
+    """The bubble hid an unsent message's attachments, but the API still returned
+    their links — and the files stayed on disk."""
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    from apps.messaging.models import MessageAttachment
+
+    attachment = MessageAttachment.objects.create(
+        message=message,
+        file=SimpleUploadedFile("kvittering.pdf", b"%PDF-1.4"),
+        name="kvittering.pdf",
+        uploaded_by=user,
+    )
+    storage, name = attachment.file.storage, attachment.file.name
+    assert storage.exists(name)
+
+    response = authenticated_client.delete(f"/api/messages/messages/{message.id}/unsend/")
+
+    assert response.status_code == 204
+    assert not MessageAttachment.objects.filter(message=message).exists()
+    assert not storage.exists(name)

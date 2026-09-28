@@ -128,6 +128,12 @@ class MessageAttachment(models.Model):
         related_name="attachments",
     )
     file = models.FileField(upload_to="message_attachments/")
+    thumbnail = models.ImageField(
+        upload_to="message_attachments/thumbs/",
+        blank=True,
+        null=True,
+        help_text="400px square JPEG for the chat bubble.",
+    )
     preview = models.ImageField(
         upload_to="message_attachments/previews/",
         blank=True,
@@ -152,4 +158,6 @@ class MessageAttachment(models.Model):
             self.file.delete(save=False)
         if self.preview:
             self.preview.delete(save=False)
+        if self.thumbnail:
+            self.thumbnail.delete(save=False)
         super().delete(*args, **kwargs)

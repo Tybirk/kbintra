@@ -1123,7 +1123,7 @@ function BirthdayPreview({ birthday }: BirthdayPreviewProps) {
             {name}
           </Text>
           <Text size="xs" c="dimmed">
-            Fylder {turning} år
+            {turning === null ? "Har fødselsdag" : `Fylder ${turning} år`}
           </Text>
         </div>
         {daysUntil === 0 && (
