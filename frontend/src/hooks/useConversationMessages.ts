@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useCallback, useMemo } from "react"
 
 import {
   useInfiniteQuery,
@@ -44,16 +44,28 @@ export function useConversationMessages(conversationId: number) {
     [query.data],
   )
 
+  const { fetchNextPage } = query
+
+  // Asked for while a refetch is running, an older page waits for it rather
+  // than cancelling it: a cancelled refetch drops whatever arrived since the
+  // pages were fetched.
+  const loadOlder = useCallback(
+    () => fetchNextPage({ cancelRefetch: false }),
+    [fetchNextPage],
+  )
+
   return {
     messages,
 
     isLoading: query.isLoading,
 
+    isFetching: query.isFetching,
+
     hasOlder: query.hasNextPage,
 
     isLoadingOlder: query.isFetchingNextPage,
 
-    loadOlder: query.fetchNextPage,
+    loadOlder,
   }
 }
 

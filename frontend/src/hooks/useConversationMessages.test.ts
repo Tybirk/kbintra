@@ -1,14 +1,29 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 
-import { QueryClient, type InfiniteData } from "@tanstack/react-query"
+import { createElement, type ReactNode } from "react"
+
+import { act, renderHook, waitFor } from "@testing-library/react"
+
+import {
+  QueryClient,
+  QueryClientProvider,
+  type InfiniteData,
+} from "@tanstack/react-query"
 
 import {
   appendMessage,
   conversationMessagesKey,
   updateMessage,
+  useConversationMessages,
 } from "./useConversationMessages"
 
+import { messagingApi } from "../api/messaging"
+
 import type { Message, MessagePage } from "../types"
+
+vi.mock("../api/messaging", () => ({
+  messagingApi: { getMessages: vi.fn() },
+}))
 
 const message = (id: number): Message => ({
   id,
@@ -96,5 +111,50 @@ describe("updateMessage", () => {
     expect(after.pages[1].results[1]).toBe(before.pages[1].results[1])
 
     expect(after.pages[0]).toBe(before.pages[0])
+  })
+})
+
+describe("useConversationMessages", () => {
+  it("lets a refetch finish when an older page is asked for meanwhile", async () => {
+    const { queryClient, read } = seeded()
+
+    // The chat was left earlier, and message 5 arrived since.
+    await queryClient.invalidateQueries({ refetchType: "none" })
+
+    let answerRefetch: (page: MessagePage) => void = () => {}
+
+    vi.mocked(messagingApi.getMessages).mockImplementation(
+      (_conversation, before) =>
+        before === undefined
+          ? new Promise((resolve) => {
+              answerRefetch = resolve
+            })
+          : Promise.resolve({
+              results: [message(1), message(2)],
+              has_more: false,
+            }),
+    )
+
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: queryClient }, children)
+
+    const { result } = renderHook(() => useConversationMessages(1), { wrapper })
+
+    await waitFor(() => expect(result.current.isFetching).toBe(true))
+
+    act(() => {
+      result.current.loadOlder()
+    })
+
+    await act(async () => {
+      answerRefetch({
+        results: [message(3), message(4), message(5)],
+        has_more: true,
+      })
+    })
+
+    await waitFor(() => expect(result.current.isFetching).toBe(false))
+
+    expect(read().pages[0].results.map((m) => m.id)).toEqual([3, 4, 5])
   })
 })

@@ -409,6 +409,13 @@ export default function MessagesPage() {
       unsubConnection()
 
       unsubMessage()
+
+      // Nothing keeps the cached chats current once this page is closed, so
+      // the next open refetches them, however recently they were fetched.
+      queryClient.invalidateQueries({
+        queryKey: ["conversation-messages"],
+        refetchType: "none",
+      })
     }
   }, [queryClient])
 
@@ -1212,8 +1219,14 @@ function ChatArea({
 
   const contentRef = useRef<HTMLDivElement>(null)
 
-  const { messages, isLoading, hasOlder, isLoadingOlder, loadOlder } =
-    useConversationMessages(conversation.id)
+  const {
+    messages,
+    isLoading,
+    isFetching,
+    hasOlder,
+    isLoadingOlder,
+    loadOlder,
+  } = useConversationMessages(conversation.id)
 
   const { followBottom } = useChatScroll(scrollRef, contentRef, {
     messages,
@@ -1221,6 +1234,8 @@ function ChatArea({
     hasOlder,
 
     isLoadingOlder,
+
+    isFetching,
 
     loadOlder,
 

@@ -63,12 +63,31 @@ const leftAt = new Map<string, Anchor>()
 
 const LOAD_OLDER_WITHIN_PX = 300
 
+/**
+ * Take a link that has been dealt with out of the address bar, as the forum
+ * does. Left in, back to this entry made the browser jump to the fragment,
+ * which read as the reader scrolling there (−25,538 px) instead of returning
+ * to their place. replaceState keeps the router's entry and its key.
+ */
+function dropLink(elementId: string) {
+  if (window.location.hash !== `#${elementId}`) return
+
+  window.history.replaceState(
+    window.history.state,
+    "",
+    window.location.pathname + window.location.search,
+  )
+}
+
 interface ChatScrollOptions {
   messages: Message[]
 
   hasOlder: boolean
 
   isLoadingOlder: boolean
+
+  /** Any fetch of the messages under way: the first, a refetch, an older page. */
+  isFetching: boolean
 
   loadOlder: () => void
 
@@ -85,6 +104,7 @@ export function useChatScroll(
     messages,
     hasOlder,
     isLoadingOlder,
+    isFetching,
     loadOlder,
     targetId,
   }: ChatScrollOptions,
@@ -220,7 +240,8 @@ export function useChatScroll(
       : null
   }, [viewportRef, contentRef])
 
-  // A new link target in the same conversation (e.g. a second notification).
+  // A new link in the same conversation (e.g. a second notification), even
+  // to the message the last one pointed at: each is its own history entry.
   useEffect(() => {
     if (skipTarget.current) {
       skipTarget.current = false
@@ -233,7 +254,7 @@ export function useChatScroll(
     anchorRef.current = { id: targetId, offset: "centre", at: 0 }
 
     holdAnchor()
-  }, [targetId, holdAnchor])
+  }, [targetId, location.key, holdAnchor])
 
   // Messages changed: put the anchor back where it was, before the paint.
   useLayoutEffect(() => {
@@ -264,48 +285,60 @@ export function useChatScroll(
     holdAnchor()
   }, [messages, holdAnchor])
 
-  // An anchored message that isn't loaded yet lives further back in the history.
+  // A linked message that isn't loaded. Older than the loaded history, it is
+  // further back. Otherwise it is not there to find, so the chat opens at the
+  // bottom, where it will appear if it is new. Nothing is decided while a
+  // fetch is under way: a refetch — the one on opening a chat left earlier —
+  // may be bringing it.
   useEffect(() => {
     const anchor = anchorRef.current
 
     if (
       anchor === "bottom" ||
       anchor.offset !== "centre" ||
-      document.getElementById(anchor.id)
+      document.getElementById(anchor.id) ||
+      isFetching ||
+      messages.length === 0
     ) {
       return
     }
 
-    if (hasOlder) {
-      if (!isLoadingOlder) loadOlder()
-    } else if (messages.length > 0) {
+    if (
+      hasOlder &&
+      Number(anchor.id.slice(MESSAGE_ID_PREFIX.length)) < messages[0].id
+    ) {
+      loadOlder()
+    } else {
       anchorRef.current = "bottom"
+
+      dropLink(anchor.id)
 
       holdAnchor()
     }
-  }, [messages, targetId, hasOlder, isLoadingOlder, loadOlder, holdAnchor])
+  }, [
+    messages,
+    targetId,
+    location.key,
+    hasOlder,
+    isFetching,
+    loadOlder,
+    holdAnchor,
+  ])
 
-  // Highlight the linked message once it is on screen, and take the link out
-  // of the address bar, as the forum does. Left in, back to this entry made
-  // the browser jump to the fragment, which read as the reader scrolling there
-  // (−25,538 px) instead of returning to their place. replaceState keeps the
-  // router's entry and its key.
+  /** The history entry whose link has been highlighted. */
+  const highlightedFor = useRef<string | null>(null)
+
+  // Highlight the linked message once it is on screen, once per link.
   useEffect(() => {
     if (!targetId) return
 
     const el = document.getElementById(targetId)
 
-    if (!el || el.dataset.highlighted) return
+    if (!el || highlightedFor.current === location.key) return
 
-    if (window.location.hash === `#${targetId}`) {
-      window.history.replaceState(
-        window.history.state,
-        "",
-        window.location.pathname + window.location.search,
-      )
-    }
+    highlightedFor.current = location.key
 
-    el.dataset.highlighted = "true"
+    dropLink(targetId)
 
     el.style.transition = "box-shadow 0.3s ease"
 
@@ -314,7 +347,7 @@ export function useChatScroll(
     setTimeout(() => {
       el.style.boxShadow = ""
     }, 2000)
-  }, [messages, targetId])
+  }, [messages, targetId, location.key])
 
   // Content growing (images loading, a reaction row appearing) or the viewport
   // shrinking (the on-screen keyboard opening) keeps the anchor.
