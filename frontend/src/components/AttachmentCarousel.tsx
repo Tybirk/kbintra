@@ -29,7 +29,6 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconFileTypePdf,
-  IconFileTypeDoc,
   IconFileTypePpt,
   IconMessage,
 } from "@tabler/icons-react"
@@ -41,10 +40,10 @@ import {
   useFileActions,
   FileActionButtons,
   PdfPreview,
+  WordPreview,
 } from "./FilePreview"
 import { ErrorBoundary } from "./ErrorBoundary"
 import { ImageZoomViewer } from "./ImageZoomViewer"
-import { sanitizeHtml } from "../utils/sanitizeHtml"
 
 interface Attachment {
   id: number
@@ -605,56 +604,15 @@ function SlideContent({
   // Word document
 
   if (fileType === "word") {
-    if (attachment.preview_html) {
-      return (
-        <Stack gap="md" style={{ height: "100%" }} p={isMobile ? "xs" : "md"}>
-          <ScrollArea style={{ flex: 1 }}>
-            <Box
-              p="md"
-              style={{
-                backgroundColor: "var(--mantine-color-default-hover)",
-
-                borderRadius: "var(--mantine-radius-md)",
-
-                overflowWrap: "break-word",
-              }}
-              dangerouslySetInnerHTML={{
-                __html: sanitizeHtml(attachment.preview_html),
-              }}
-            />
-          </ScrollArea>
-          <FileActionButtons
-            actions={actions}
-            size="sm"
-            extra={threadLinkButton}
-          />
-        </Stack>
-      )
-    }
-
     return (
-      <Stack
-        align="center"
-        justify="center"
-        gap="lg"
-        style={{ height: "100%" }}
-        p="xl"
-      >
-        <IconFileTypeDoc size={80} color="var(--mantine-color-blue-6)" />
-        <Text size="lg" fw={500} ta="center">
-          {attachment.name}
-        </Text>
-        <Text c="dimmed" ta="center">
-          Word-dokumenter kan ikke vises direkte i appen.
-          <br />
-          Åbn dokumentet i din standard-app, eller gem det.
-        </Text>
-        <FileActionButtons
+      <Box h="100%" p={isMobile ? "xs" : "md"}>
+        <WordPreview
+          file={attachment}
           actions={actions}
           size="sm"
           extra={threadLinkButton}
         />
-      </Stack>
+      </Box>
     )
   }
 
