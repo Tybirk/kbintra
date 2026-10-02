@@ -2502,6 +2502,11 @@ function TakeoverShiftButton({
         size="xs"
         leftSection={<IconHeartHandshake size={14} />}
         onClick={open}
+        // The label carries the consequence ("de skylder dig en"), so let it
+        // wrap on a phone instead of being cut off mid-sentence.
+        h="auto"
+        py={6}
+        styles={{ label: { whiteSpace: "normal", textAlign: "left" } }}
       >
         {label}
       </Button>
