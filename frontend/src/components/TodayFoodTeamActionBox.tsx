@@ -17,6 +17,7 @@ import {
   Divider,
   SimpleGrid,
   Skeleton,
+  Chip,
 } from "@mantine/core"
 
 import { notifications } from "@mantine/notifications"
@@ -36,6 +37,8 @@ import {
 import { foodApi } from "../api/food"
 
 import { showErrorNotification } from "../utils/errorNotification"
+
+import { takeawayTimeOptions } from "../utils/takeawayTime"
 
 import { RecipeDrawer, FrontPageDrawer } from "./RecipeView"
 
@@ -77,6 +80,11 @@ export default function TodayFoodTeamActionBox() {
 
   const [leftoversOpen, setLeftoversOpen] = useState(false)
 
+  const [takeawayOpen, setTakeawayOpen] = useState(false)
+
+  // "" = ready now; otherwise the advance pickup time ("17:15").
+  const [takeawayTime, setTakeawayTime] = useState("")
+
   const [leftoverImage, setLeftoverImage] = useState<File | null>(null)
 
   const [leftoverMessage, setLeftoverMessage] = useState("")
@@ -94,15 +102,20 @@ export default function TodayFoodTeamActionBox() {
   })
 
   const takeawayMutation = useMutation({
-    mutationFn: () => foodApi.notifyTakeaway(teamId as number),
+    mutationFn: () =>
+      foodApi.notifyTakeaway(teamId as number, takeawayTime || undefined),
 
     onSuccess: (res) => {
+      setTakeawayOpen(false)
+
       refreshActionBox()
 
       if (res.sent) {
         notifications.show({
           title: "Takeaway-besked sendt",
-          message: "Beboerne er blevet notificeret om, at takeaway er klar.",
+          message: takeawayTime
+            ? `Dem, der har bestilt takeaway, har fået besked om, at maden kan hentes fra kl. ${takeawayTime}.`
+            : "Dem, der har bestilt takeaway, har fået besked om, at maden er klar.",
           color: "green",
         })
       } else {
@@ -300,11 +313,18 @@ export default function TodayFoodTeamActionBox() {
                 <IconToolsKitchen2 size={16} />
               )
             }
-            loading={takeawayMutation.isPending}
-            disabled={takeawayMutation.isPending || !teamId || takeawaySent}
-            onClick={() => takeawayMutation.mutate()}
+            disabled={!teamId || takeawaySent}
+            onClick={() => {
+              setTakeawayTime("")
+              setTakeawayOpen((o) => !o)
+              setLeftoversOpen(false)
+            }}
           >
-            {takeawaySent ? "Takeaway-besked sendt" : "Takeaway er klar"}
+            {takeawaySent
+              ? data.takeaway_ready_at
+                ? `Takeaway klar kl. ${data.takeaway_ready_at}`
+                : "Takeaway-besked sendt"
+              : "Takeaway er klar"}
           </Button>
 
           <Button
@@ -314,12 +334,61 @@ export default function TodayFoodTeamActionBox() {
             leftSection={
               leftoversSent ? <IconCheck size={16} /> : <IconBowl size={16} />
             }
-            onClick={() => setLeftoversOpen((o) => !o)}
+            onClick={() => {
+              setLeftoversOpen((o) => !o)
+              setTakeawayOpen(false)
+            }}
             disabled={!teamId || leftoversSent}
           >
             {leftoversSent ? "Rester-besked sendt" : "Rester er klar"}
           </Button>
         </Group>
+
+        <Collapse expanded={takeawayOpen && !takeawaySent}>
+          <Stack gap="xs">
+            <Text size="sm" c="dimmed">
+              Takeaway hentes normalt kl. 17:30. Send kun en besked, hvis maden
+              er klar før. Vælg gerne et tidspunkt i god tid, så folk kan nå at
+              komme.
+            </Text>
+            <Text size="sm" fw={500}>
+              Hvornår kan takeaway hentes?
+            </Text>
+            <Chip.Group
+              value={takeawayTime}
+              onChange={(v) => setTakeawayTime(v as string)}
+            >
+              <Group gap="xs">
+                <Chip value="">Nu</Chip>
+                {takeawayTimeOptions(new Date()).map((t) => (
+                  <Chip key={t} value={t}>
+                    kl. {t}
+                  </Chip>
+                ))}
+              </Group>
+            </Chip.Group>
+            <Group gap="sm">
+              <Button
+                color="orange"
+                size="sm"
+                leftSection={<IconToolsKitchen2 size={16} />}
+                loading={takeawayMutation.isPending}
+                disabled={takeawayMutation.isPending}
+                onClick={() => takeawayMutation.mutate()}
+              >
+                Send takeaway-besked
+              </Button>
+              <Button
+                variant="subtle"
+                color="gray"
+                size="sm"
+                onClick={() => setTakeawayOpen(false)}
+              >
+                Annuller
+              </Button>
+            </Group>
+          </Stack>
+        </Collapse>
 
         <Collapse expanded={leftoversOpen && !leftoversSent}>
           <Stack gap="xs">

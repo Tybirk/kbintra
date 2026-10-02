@@ -1,7 +1,7 @@
 """Tests for the madhold launch features: takeover/favours, broadcast swaps,
 self-service profile, today action box, and per-cycle unavailability."""
 
-from datetime import timedelta
+from datetime import time, timedelta
 from io import BytesIO
 from unittest.mock import patch
 
@@ -1352,3 +1352,72 @@ class TestFoodRoster:
         response = api_client.get(reverse("food:food-roster"))
 
         assert response.status_code == 403
+
+
+@pytest.mark.django_db
+class TestTakeawayReadyAt:
+    """Take-away is collected at 17:30, so the team announces an earlier time ahead.
+
+    "Now" is pinned through ``views._local_time`` so these hold at any hour.
+    """
+
+    def _post(self, api_client, team, cook, **data):
+        api_client.force_authenticate(user=cook)
+        url = reverse("food:team-notify-takeaway", kwargs={"pk": team.id})
+        with (
+            patch("apps.food.views._local_time", return_value=time(16, 30)),
+            patch("apps.notifications.tasks.broadcast_takeaway_ready") as broadcast,
+        ):
+            response = api_client.post(url, data, format="json")
+        return response, broadcast
+
+    def test_advance_time_is_stored_and_passed_on(self, api_client, todays_team):
+        team, cook = todays_team
+        response, broadcast = self._post(api_client, team, cook, ready_at="17:00")
+
+        assert response.data["sent"] is True
+        broadcast.assert_called_once_with(team.id, cook.id, "17:00")
+        team.refresh_from_db()
+        assert team.takeaway_ready_at == time(17, 0)
+        today = api_client.get(reverse("food:team-today"))
+        assert today.data["takeaway_ready_at"] == "17:00"
+
+    def test_no_time_means_ready_now(self, api_client, todays_team):
+        team, cook = todays_team
+        response, broadcast = self._post(api_client, team, cook)
+
+        assert response.data["sent"] is True
+        broadcast.assert_called_once_with(team.id, cook.id, "")
+        team.refresh_from_db()
+        assert team.takeaway_ready_at is None
+
+    def test_time_already_passed_means_ready_now(self, api_client, todays_team):
+        team, cook = todays_team
+        _response, broadcast = self._post(api_client, team, cook, ready_at="16:15")
+
+        broadcast.assert_called_once_with(team.id, cook.id, "")
+
+    @pytest.mark.parametrize("ready_at", ["17:30", "18:00", "kl. 5", "25:00"])
+    def test_standard_time_or_nonsense_is_refused_and_nothing_is_claimed(
+        self, api_client, todays_team, ready_at
+    ):
+        team, cook = todays_team
+        response, broadcast = self._post(api_client, team, cook, ready_at=ready_at)
+
+        assert response.status_code == 400
+        broadcast.assert_not_called()
+        team.refresh_from_db()
+        assert team.takeaway_announced_at is None
+
+    def test_notification_names_the_time(self, monday_date):
+        from apps.notifications.models import Notification, NotificationType
+        from apps.notifications.tasks import broadcast_takeaway_ready
+
+        team, actor, ua, _ub, _uc = TestLeftoversAndTakeawayBroadcastFiltering()._setup(monday_date)
+        broadcast_takeaway_ready(team.id, actor.id, "17:15")
+
+        note = Notification.objects.get(
+            user=ua, notification_type=NotificationType.FOOD_TEAM_TAKEAWAY_READY
+        )
+        assert note.title == "Takeaway klar kl. 17:15"
+        assert "fra kl. 17:15" in note.message

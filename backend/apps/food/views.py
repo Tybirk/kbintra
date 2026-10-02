@@ -4,7 +4,7 @@ Views for Food app.
 
 import contextlib
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from django.db import transaction
@@ -1231,8 +1231,6 @@ class SuggestedCyclePlanView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsFoodAdmin]
 
     def get(self, request: Request) -> Response:
-        from datetime import datetime, time, timedelta
-
         from .services import cycle_planning as planning
 
         eligible = planning.eligible_food_team_count()
@@ -2079,6 +2077,9 @@ class TodayTeamActionBoxView(APIView):
                 # Let the widget render the buttons as already-sent on load
                 # instead of only learning it from a rejected press.
                 "takeaway_sent": team.takeaway_announced_at is not None,
+                "takeaway_ready_at": (
+                    team.takeaway_ready_at.strftime("%H:%M") if team.takeaway_ready_at else None
+                ),
                 "leftovers_sent": team.leftovers_announced_at is not None,
             }
         )
@@ -2236,10 +2237,48 @@ class NotifyTakeawayReadyView(APIView):
             )
         from apps.notifications.tasks import broadcast_takeaway_ready
 
-        if not _claim_announcement(team, "takeaway_announced_at"):
+        try:
+            ready_at = _takeaway_ready_at(request.data.get("ready_at"))
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not _claim_announcement(team, "takeaway_announced_at", takeaway_ready_at=ready_at):
             return Response({"detail": "Beskeden er allerede sendt i dag.", "sent": False})
-        broadcast_takeaway_ready(team.id, request.user.id)
+        broadcast_takeaway_ready(
+            team.id, request.user.id, ready_at.strftime("%H:%M") if ready_at else ""
+        )
         return Response({"detail": "Besked sendt.", "sent": True})
+
+
+def _local_time() -> time:
+    """Now, as a local wall-clock time. Its own function so tests can pin it."""
+    return timezone.localtime().time()
+
+
+def _takeaway_ready_at(raw: object) -> time | None:
+    """The pickup time from a "Takeaway er klar" request, or None for "ready now".
+
+    The team may announce ahead of time ("klar kl. 17:15"), which is the useful
+    case: people collecting take-away plan around 17:30, so they need to hear
+    about an earlier time before it arrives. A time that has already passed
+    simply means "ready now". A time at or after the usual 17:30 is refused,
+    because it tells nobody anything they did not already know.
+    """
+    from .constants import TAKEAWAY_STANDARD_TIME
+
+    if raw in (None, ""):
+        return None
+    try:
+        ready_at = datetime.strptime(str(raw), "%H:%M").time()
+    except ValueError as exc:
+        raise ValueError("Ugyldigt tidspunkt. Brug TT:MM.") from exc
+    if ready_at >= TAKEAWAY_STANDARD_TIME:
+        raise ValueError(
+            "Takeaway hentes normalt kl. 17:30. Send kun beskeden, hvis maden er klar før."
+        )
+    if ready_at <= _local_time():
+        return None
+    return ready_at
 
 
 class NotifyLeftoversReadyView(APIView):
