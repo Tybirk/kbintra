@@ -502,6 +502,16 @@ def _scrub_private_messages(db_copy_path: str, user_id: int) -> None:
             """,
             other_ids,
         )
+        # Delete reactions
+        conn.execute(
+            f"""
+            DELETE FROM messaging_messagereaction
+            WHERE message_id IN (
+                SELECT id FROM messaging_message WHERE conversation_id IN ({placeholders})
+            )
+            """,
+            other_ids,
+        )
         # Delete messages
         conn.execute(
             f"DELETE FROM messaging_message WHERE conversation_id IN ({placeholders})",
