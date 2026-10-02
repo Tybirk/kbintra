@@ -1,6 +1,8 @@
 # Madhold launch — design & implementation notes
 
-Status: in progress. This document captures the decisions made while turning the
+Status: launched October 2026 — see `madhold-go-live.md` for the go-live runbook and notification map.
+
+This document captures the decisions made while turning the
 hidden "Madhold" (cooking-team) functionality into a first-class, launched feature.
 The user was AFK during the build, so every non-obvious decision is recorded here.
 
