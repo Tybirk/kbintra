@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="da"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KB Intra – kort guide</title>
+<style>
+@page { size: A4 landscape; margin: 0; }
+:root { --ink:#16181d; --muted:#4a5160; --accent:#1c7ed6; --soft:#e7f1fb; --paper:#ffffff;
+  --green:#2f9e44; --greensoft:#ebfbee; }
+* { box-sizing: border-box; }
+html, body { margin:0; background:var(--paper); color:var(--ink);
+  font-family: "Noto Sans", "DejaVu Sans", "Segoe UI", Arial, sans-serif; }
+.slide { width:297mm; height:210mm; padding:16mm 18mm; display:flex; gap:12mm;
+  align-items:center; page-break-after:always; break-after:page; overflow:hidden; }
+.text { flex:1 1 0; min-width:108mm; }
+.text.wide { flex:1 1 100%; }
+.kicker { margin:0 0 3mm; color:var(--accent); font-weight:700; font-size:15pt; letter-spacing:.04em; }
+h1 { font-size:58pt; margin:0 0 6mm; line-height:1.02; }
+h2 { font-size:31pt; margin:0 0 7mm; line-height:1.1; }
+p, li { font-size:18pt; line-height:1.4; }
+p { margin:0 0 5mm; }
+ul, ol { margin:0 0 5mm; padding-left:9mm; }
+li { margin-bottom:3.5mm; }
+.small { font-size:14.5pt; color:var(--muted); line-height:1.4; }
+li .small { display:inline-block; margin-top:2mm; }
+.dense p, .dense li { font-size:16pt; }
+.dense h2 { margin-bottom:5mm; }
+.lead { font-size:23pt; color:var(--muted); max-width:150mm; }
+.url { display:inline-block; margin-top:6mm; font-size:22pt; font-weight:700; color:var(--accent);
+  background:var(--soft); padding:3mm 7mm; border-radius:4mm; }
+.note { margin-top:4mm; font-size:15.5pt; background:var(--greensoft); border-left:2mm solid var(--green);
+  padding:3.5mm 5mm; border-radius:2mm; line-height:1.4; }
+.shots { flex:0 0 auto; display:flex; gap:7mm; align-items:center; justify-content:center; }
+.phone { margin:0; border:2.4mm solid #20232a; border-radius:6mm; overflow:hidden; background:#fff;
+  box-shadow:0 3mm 8mm rgba(0,0,0,.18); }
+.phone img { display:block; width:100%; height:auto; }
+.phone.short { width:64mm; max-height:172mm; }
+.n1 .phone.short { width:76mm; }
+.phone.full { height:168mm; width:auto; }
+.phone.full img { height:100%; width:auto; }
+.n2 .phone.full { height:142mm; }
+.col { display:flex; flex-direction:column; gap:6mm; }
+.four .text { flex:0 0 120mm; }
+.n4 { display:grid; grid-template-columns:1fr 1fr; gap:6mm; }
+.n4 .phone { width:58mm; border-width:1.8mm; border-radius:4mm; }
+table { border-collapse:collapse; width:100%; margin-bottom:4mm; }
+th, td { text-align:left; padding:2.2mm 3.5mm; font-size:13.5pt; vertical-align:top; line-height:1.3; }
+th { background:var(--soft); color:var(--accent); font-size:12pt; text-transform:uppercase; letter-spacing:.04em; }
+tr + tr td { border-top:0.3mm solid #dfe3ea; }
+.textonly h2 { margin-bottom:5mm; }
+.steps { list-style:none; padding:0; display:grid; grid-template-columns:1fr 1fr; gap:5mm 10mm; }
+.steps li { display:flex; gap:5mm; align-items:flex-start; margin:0; font-size:16.5pt; }
+.steps b.n { flex:0 0 13mm; height:13mm; border-radius:50%; background:var(--accent); color:#fff;
+  display:flex; align-items:center; justify-content:center; font-size:17pt; }
+.three { display:grid; grid-template-columns:1fr 1fr 1fr; gap:7mm; }
+.three div { background:var(--soft); border-radius:4mm; padding:6mm; }
+.three h3 { margin:0 0 3mm; font-size:19pt; }
+.three p { font-size:15pt; margin:0 0 3mm; }
+.help { margin-top:4mm; font-size:17pt; background:var(--greensoft); border-left:2mm solid var(--green);
+  padding:4mm 6mm; border-radius:2mm; }
+</style></head>
+<body>
+<section class="slide cover">
+  <div class="text">
+    <p class="kicker">Kløverbakken · oktober 2026</p>
+    <h1>KB Intra</h1>
+    <p class="lead">En kort guide til vores fælles intranet — på telefonen og på computeren.</p>
+    <p class="url">kb-intra.dk</p>
+  </div>
+  <div class="shots n1"><figure class="phone full"><img src="billeder/idag.png" alt=""></figure></div>
+</section>
+<section class="slide dense">
+  <div class="text"><p class="kicker">1</p><h2>Kom i gang</h2><ol>
+<li>Gå ind på <b>kb-intra.dk</b>.</li>
+<li>Skriv din <b>e-mail</b> og <b>adgangskode</b>, og tryk <b>Log ind</b>.</li>
+<li>Glemt adgangskoden? Tryk <b>Glemt adgangskode?</b> og få en mail.</li>
+<li>Læg den på telefonens <b>hjemmeskærm</b>, så den virker som en app.<br>
+<span class="small">iPhone: tryk på del-knappen og vælg <b>Føj til hjemmeskærm</b>.<br>
+Android: tryk <b>Installér</b>, når telefonen spørger.</span></li>
+</ol></div>
+  <div class="shots n2"><figure class="phone short"><img src="billeder/login.png" alt=""></figure><figure class="phone short"><img src="billeder/banner.png" alt=""></figure></div>
+</section>
+<section class="slide ">
+  <div class="text"><p class="kicker">2</p><h2>Menuen</h2><p>Alt findes i menuen. Tryk på de <b>tre streger ☰</b> øverst til venstre.</p>
+<ul>
+<li>Det røde tal viser, hvor meget nyt der er.</li>
+<li><b>Kuverten</b> øverst er dine beskeder.</li>
+<li><b>Klokken</b> er dine notifikationer.</li>
+<li><b>Søg</b>-feltet finder tråde, opslag, arrangementer og naboer.</li>
+</ul></div>
+  <div class="shots n1"><figure class="phone full"><img src="billeder/menu.png" alt=""></figure></div>
+</section>
+<section class="slide ">
+  <div class="text"><p class="kicker">3</p><h2>Forsiden</h2><p>Forsiden viser det vigtigste lige nu:</p>
+<ul>
+<li>Dine ulæste notifikationer.</li>
+<li>Dagens mad, og hvem der laver den.</li>
+<li>Seneste vigtige post og forumtråde.</li>
+<li>Kommende arrangementer og fødselsdage.</li>
+</ul></div>
+  <div class="shots n2"><figure class="phone short"><img src="billeder/notif_widget.png" alt=""></figure><figure class="phone short"><img src="billeder/mad_widget.png" alt=""></figure></div>
+</section>
+<section class="slide ">
+  <div class="text"><p class="kicker">4</p><h2>Notifikationer</h2><p>Når der sker noget, der vedrører dig, kommer det under <b>klokken</b>.</p>
+<ul>
+<li>Tryk på en notifikation for at åbne den.</li>
+<li><b>✓</b> markerer den som læst.</li>
+<li>Blå = ny. Hvid = læst.</li>
+</ul>
+<p class="small">Se en liste over de vigtigste notifikationer bagerst i guiden.</p></div>
+  <div class="shots n1"><figure class="phone full"><img src="billeder/notifikationer.png" alt=""></figure></div>
+</section>
+<section class="slide ">
+  <div class="text"><p class="kicker">5</p><h2>Vælg, hvad du får besked om</h2><p>Tryk <b>Indstillinger</b> på notifikationssiden.</p>
+<ul>
+<li><b>I appen</b>: hvad der kommer under klokken.</li>
+<li><b>E-mail</b>: hvad der også sendes som mail.</li>
+<li><b>Push</b>: besked direkte på telefonen, også når appen er lukket. Tryk <b>Aktivér push-notifikationer</b> og sig ja.</li>
+</ul></div>
+  <div class="shots n2"><figure class="phone full"><img src="billeder/indstillinger.png" alt=""></figure><figure class="phone short"><img src="billeder/push.png" alt=""></figure></div>
+</section>
+<section class="slide ">
+  <div class="text"><p class="kicker">6</p><h2>Mad — tilmelding</h2><p>Under <b>Mad</b> ser du ugens menu og melder husstanden til.</p>
+<ul>
+<li>Vælg <b>Fælleshuset</b> eller <b>Tag med</b>, og <b>17:30</b> eller <b>18:30</b>.</li>
+<li>Fristen er <b>onsdag kl. 23:59</b> for næste uge. Derefter står der <b>Bestilt</b>.</li>
+<li>Kan du alligevel ikke? Tryk <b>Sælg billet</b>, så kan en nabo købe den.</li>
+</ul></div>
+  <div class="shots n1"><figure class="phone full"><img src="billeder/mad.png" alt=""></figure></div>
+</section>
+<section class="slide dense">
+  <div class="text"><p class="kicker">7</p><h2>Madhold — dine maddage</h2><p>Under <b>Madhold</b> → <b>Mine hold</b> står de dage, du skal lave mad, og hvem du laver mad med.</p>
+<ul>
+<li>Når en ny periode åbner, får du besked. Vælg alle de dage, du kan, under <b>Indsend ønsker</b>.</li>
+<li>Madholdet er en fælles opgave. Kun hvis du har en god grund, fx en lang rejse eller sygdom, slår du <b>Jeg er forhindret i hele perioden</b> til og skriver hvorfor.</li>
+</ul></div>
+  <div class="shots n2"><figure class="phone full"><img src="billeder/madhold.png" alt=""></figure><figure class="phone short"><img src="billeder/oensker.png" alt=""></figure></div>
+</section>
+<section class="slide dense">
+  <div class="text"><p class="kicker">8</p><h2>Madhold — dagen, du laver mad</h2><p>På din maddag er der en <b>grøn boks</b> øverst på forsiden med holdet, dagens opskrifter og hvor mange der spiser.</p>
+<ul>
+<li><b>Takeaway er klar</b>: kun hvis maden er klar <b>før 17:30</b>. Vælg gerne et tidspunkt i god tid, fx kl. 17:15.</li>
+<li><b>Rester er klar</b>: hvis der er mad tilovers. Skriv gerne hvad.</li>
+</ul>
+<p class="small">Naboerne får en notifikation med det samme.</p></div>
+  <div class="shots n2"><figure class="phone full"><img src="billeder/idag.png" alt=""></figure><figure class="phone short"><img src="billeder/takeaway.png" alt=""></figure></div>
+</section>
+<section class="slide dense">
+  <div class="text"><p class="kicker">9</p><h2>Madhold — bytte og profil</h2><ul>
+<li><b>Anmod specifik person om bytte</b>: når I har aftalt et bytte, fx over hækken, eller du vil spørge én bestemt nabo. Den anden trykker <b>Accepter</b>, så er planen opdateret.</li>
+<li><b>Anmod fællesskabet om bytte</b>: alle, der kan tage dagen, får besked.</li>
+<li><b>Chefkok</b> på din profil er ingen rolle. Det bruges kun til at fordele dem, der er vant til at lave mad til mange.</li>
+</ul></div>
+  <div class="shots n2"><figure class="phone short"><img src="billeder/bytte.png" alt=""></figure><figure class="phone short"><img src="billeder/mprofil.png" alt=""></figure></div>
+</section>
+<section class="slide ">
+  <div class="text"><p class="kicker">10</p><h2>Forum og Vigtig post</h2><ul>
+<li><b>Forum</b> er grupperne. <b>Fælles</b> er for alle. Tryk <b>Ny tråd</b> for at skrive.</li>
+<li>Tryk på klokken ved en gruppe for at følge den.</li>
+<li><b>Vigtig post</b> er opslag, alle bør læse. Du får en notifikation, når der kommer et nyt.</li>
+</ul></div>
+  <div class="shots n2"><figure class="phone full"><img src="billeder/faelles.png" alt=""></figure><figure class="phone full"><img src="billeder/opslag.png" alt=""></figure></div>
+</section>
+<section class="slide ">
+  <div class="text"><p class="kicker">11</p><h2>Beskeder</h2><p>Skriv direkte til en eller flere naboer.</p>
+<ul>
+<li>Tryk på <b>kuverten</b> øverst, eller <b>Beskeder</b> i menuen.</li>
+<li><b>Ny besked</b> → vælg naboen → skriv → tryk på pilen.</li>
+<li>Du kan også sende billeder og filer.</li>
+</ul>
+<p class="small">Beskeder er private. Kun dem i samtalen kan læse dem.</p></div>
+  <div class="shots n1"><figure class="phone full"><img src="billeder/besked.png" alt=""></figure></div>
+</section>
+<section class="slide ">
+  <div class="text"><p class="kicker">12</p><h2>Kalender og booking</h2><ul>
+<li><b>Begivenhedskalender</b>: det, der er relevant for bofællesskabet — fællesmøder, arbejdsdage, fester for alle, affaldsdage.</li>
+<li><b>Bookingkalender</b>: her booker du et lokale til noget privat, fx en fødselsdag. Se om det er ledigt, og tryk <b>Ny</b>.</li>
+</ul>
+<p class="small">Du kan også booke lokaler, når du opretter en begivenhed.</p></div>
+  <div class="shots n2"><figure class="phone full"><img src="billeder/kalender.png" alt=""></figure><figure class="phone full"><img src="billeder/booking.png" alt=""></figure></div>
+</section>
+<section class="slide ">
+  <div class="text"><p class="kicker">13</p><h2>Naboer og din profil</h2><ul>
+<li><b>Beboeroversigt</b>: alle huse og beboere. Søg på et navn eller et husnummer.</li>
+<li>Tryk på et navn for at se kontaktoplysninger.</li>
+<li>Din egen profil: tryk på dine initialer øverst til højre → <b>Min profil</b> → <b>Rediger profil</b>. Tilføj gerne et billede.</li>
+</ul></div>
+  <div class="shots n2"><figure class="phone short"><img src="billeder/beboere.png" alt=""></figure><figure class="phone full"><img src="billeder/profil.png" alt=""></figure></div>
+</section>
+<section class="slide four">
+  <div class="text"><p class="kicker">14</p><h2>Mere i menuen</h2>
+  <ul>
+  <li><b>Bildeling</b>: lån en delebil.</li>
+  <li><b>Udlæg</b>: få penge tilbage for noget, du har købt til fællesskabet.</li>
+  <li><b>Indrapportering</b>: meld noget i stykker eller kom med et forslag.</li>
+  <li><b>Nyttige links</b>: vedtægter, referater og meget mere.</li>
+  </ul></div>
+  <div class="shots n4"><figure class="phone short"><img src="billeder/bildeling.png" alt=""></figure><figure class="phone short"><img src="billeder/udlaeg.png" alt=""></figure><figure class="phone short"><img src="billeder/indrap.png" alt=""></figure><figure class="phone short"><img src="billeder/links.png" alt=""></figure></div>
+</section>
+<section class="slide textonly ">
+  <div class="text wide"><p class="kicker">15</p><h2>De notifikationer, du oftest får</h2><table>
+<tr><th>Notifikation</th><th>Hvornår</th></tr>
+<tr><td><b>Dine maddage: …</b></td><td>Når madholdsplanen er lagt</td></tr>
+<tr><td><b>Du har madhold i morgen</b></td><td>Aftenen før kl. 20 — også til resten af husstanden</td></tr>
+<tr><td><b>Der er åbnet for madholdsønsker</b></td><td>Når en ny periode åbner. En påmindelse 1–2 dage før fristen, hvis du mangler</td></tr>
+<tr><td><b>Bytteanmodning til madhold</b></td><td>Når en nabo gerne vil bytte maddag med dig</td></tr>
+<tr><td><b>Din maddag er overtaget</b></td><td>Når en nabo har taget din maddag</td></tr>
+<tr><td><b>Takeaway klar kl. …</b></td><td>Når maden kan hentes før 17:30 — hvis I har bestilt Tag med</td></tr>
+<tr><td><b>Rester er klar</b></td><td>Når der er rester — hvis I spiser 17:30 eller tager med</td></tr>
+<tr><td><b>Nyt i Vigtig post</b></td><td>Når der kommer et opslag, alle bør læse</td></tr>
+<tr><td><b>I morgen: …</b></td><td>Dagen før et arrangement</td></tr>
+<tr><td><b>Svar og nye tråde</b></td><td>I tråde, du deltager i, og grupper, du følger</td></tr>
+</table>
+<p class="small">Nye beskeder vises som et tal på kuverten, ikke under klokken. Mere om madhold i den særskilte madholdsguide.</p>
+<div class="help"><b>Brug for hjælp?</b> Spørg en nabo, eller skriv i <b>Forum → Fælles</b>.</div></div>
+</section></body></html>

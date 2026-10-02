@@ -226,3 +226,6 @@ old_food_teams/
 plans/
 .agents/
 skills-lock.json
+# Resident guides: PDFs are rebuilt from the HTML (too big for the large-file hook); raw shots stay local
+docs/guides/**/*.pdf
+docs/guides/kilde/shots/
