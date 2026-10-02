@@ -161,7 +161,7 @@ describe("AppNavbar", () => {
     expect(screen.queryByText("0")).not.toBeInTheDocument()
   })
 
-  // --- Madhold is being trialled: test site and local dev only --------------
+  // --- Trial gating: nothing is trialled since madhold launched ------------
   //
   // jsdom serves these tests from localhost, which counts as a test environment,
   // so the local case needs no setup and the real-site case overrides the host.
@@ -173,7 +173,7 @@ describe("AppNavbar", () => {
     expect(screen.getByText("Udlæg")).toBeInTheDocument()
   })
 
-  it("hides Madhold on the real site and leaves the rest of the menu alone", async () => {
+  it("shows Madhold and the rest of the menu on the real site", async () => {
     vi.spyOn(window, "location", "get").mockReturnValue({
       ...window.location,
       hostname: "kb-intra.dk",
@@ -181,8 +181,7 @@ describe("AppNavbar", () => {
 
     render(<AppNavbar />)
 
-    expect(screen.queryByText("Madhold")).not.toBeInTheDocument()
-    // Released features are in the menu for everyone.
+    expect(screen.getByText("Madhold")).toBeInTheDocument()
     expect(screen.getByText("Udlæg")).toBeInTheDocument()
     expect(screen.getByText("Bildeling")).toBeInTheDocument()
     expect(screen.getByText("Indrapportering")).toBeInTheDocument()

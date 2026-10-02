@@ -93,8 +93,8 @@ const navItems: NavItem[] = [
 // Features still being trialled: shown on local dev and the test site, kept off
 // the real site until we are happy with them. Only the nav entry is hidden — the
 // route and the API stay open, so this is discovery-hiding, not access control.
-// Madhold: shipped to prod with the rest of develop, but not yet announced.
-const TRIAL_ONLY_PATHS: string[] = ["/madhold"]
+// Empty since madhold launched (October 2026); add a path here to trial the next one.
+const TRIAL_ONLY_PATHS: string[] = []
 
 interface AppNavbarProps {
   onNavigate?: () => void
