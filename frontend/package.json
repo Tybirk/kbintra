@@ -40,6 +40,7 @@
     "@tiptap/suggestion": "^3.13.0",
     "axios": "^1.13.2",
     "dayjs": "^1.11.19",
+    "docx-preview": "0.4.1",
     "dompurify": "^3.4.16",
     "embla-carousel": "^8.6.0",
     "embla-carousel-react": "^8.6.0",
