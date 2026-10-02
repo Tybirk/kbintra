@@ -2298,6 +2298,8 @@ export interface TodayTeamActionBox {
   // Whether today's team has already broadcast each announcement, so the
   // buttons can render as sent on load instead of only after a rejected press.
   takeaway_sent?: boolean
+  // "17:15" when take-away was announced ahead of time; null when it was "ready now".
+  takeaway_ready_at?: string | null
   leftovers_sent?: boolean
 }
 

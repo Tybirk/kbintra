@@ -636,12 +636,14 @@ export const foodApi = {
     return response.data
   },
 
-  notifyTakeaway: async (teamId: number): Promise<{
+  // readyAt ("17:15") announces take-away ahead of time; omit it for "ready now".
+  notifyTakeaway: async (teamId: number, readyAt?: string): Promise<{
     detail: string
     sent: boolean
   }> => {
     const response = await apiClient.post(
       `/food/teams/${teamId}/notify-takeaway/`,
+      readyAt ? { ready_at: readyAt } : {},
     )
 
     return response.data

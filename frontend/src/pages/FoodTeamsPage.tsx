@@ -762,8 +762,8 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
                 <Switch
                   checked={isUnavailable}
                   onChange={(e) => setIsUnavailable(e.currentTarget.checked)}
-                  label="Jeg kan ikke i denne periode"
-                  description="Markér dette hvis du slet ikke kan lave mad i denne periode. Så behøver du ikke vælge datoer."
+                  label="Jeg er forhindret i hele perioden"
+                  description="Kun ved en god grund, fx en lang rejse, sygdom eller et brækket ben. Madholdet er en fælles opgave, så skriv kort, hvad der forhindrer dig."
                   color="red"
                 />
 
@@ -893,9 +893,9 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
 
               {isUnavailable && (
                 <Textarea
-                  label="Hvorfor kan du ikke? (valgfri)"
+                  label="Hvad forhindrer dig?"
                   description="Læses af madhold-ansvarlig. Gemmes på din profil, så den også gælder, hvis pausen varer længere end denne periode."
-                  placeholder="F.eks. jeg er på ferie hele september..."
+                  placeholder="F.eks. på rejse hele perioden, brækket ben..."
                   value={comment}
                   onChange={(e) => setComment(e.target.value)}
                   minRows={2}
@@ -905,7 +905,7 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
               <Group justify="space-between">
                 <Text size="sm" c="dimmed">
                   {isUnavailable
-                    ? "Du har markeret, at du ikke kan i denne periode"
+                    ? "Du har markeret, at du er forhindret i hele perioden"
                     : `${selectedDates.length} af ${cycle.cooking_dates.length} datoer valgt`}
                 </Text>
                 <Button
@@ -2026,8 +2026,9 @@ function SwapShiftActions({
       >
         <Stack gap="md">
           <Text size="sm">
-            Vælg en anden holddato at bytte med. Personen du vælger skal
-            acceptere din anmodning.
+            Vælg datoen og den person, du vil bytte med. Har I allerede aftalt
+            et bytte, fx over hækken, så send det her: den anden trykker
+            Accepter, og så er planen opdateret.
           </Text>
 
           <div>
@@ -2046,7 +2047,7 @@ function SwapShiftActions({
                   Ingen andre holddatoer tilgængelige.
                 </Text>
               ) : (
-                availableSwapTeams.slice(0, 8).map((t) => (
+                availableSwapTeams.map((t) => (
                   <Paper
                     key={t.id}
                     withBorder
@@ -3335,7 +3336,7 @@ function FoodProfilePanel() {
               })
             }
             label="Jeg kan være chefkok"
-            description="Markér hvis du er tryg ved at have hovedansvaret for et måltid."
+            description="Ingen rolle og intet ekstra ansvar. Vi bruger det kun til at fordele dem, der er vant til at lave mad til mange, jævnt på holdene."
           />
 
           <Switch
@@ -3372,7 +3373,7 @@ function FoodProfilePanel() {
               })
             }
             label="Jeg holder pause fra madhold"
-            description="Du bliver ikke sat på madhold, så længe dette er slået til. Slå det fra igen, når du er klar."
+            description="Til længere fravær med en god grund, fx barsel, sygdom eller en anden fast opgave i fællesskabet. Du bliver ikke sat på madhold, så længe den er slået til."
             color="red"
           />
 
@@ -3380,7 +3381,7 @@ function FoodProfilePanel() {
             <>
               <Textarea
                 label="Hvorfor holder du pause?"
-                description="Vises for madhold-ansvarlig, så de ved hvad de kan regne med. Kort er fint — og du kan lade den stå tom."
+                description="Vises for madhold-ansvarlig, så de ved, hvad de kan regne med. Kort er fint."
                 placeholder="F.eks. væk til foråret, sygdom, nyfødt i huset..."
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}

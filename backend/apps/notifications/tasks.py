@@ -1149,8 +1149,11 @@ def _cooking_team_user_ids(team, actor_user_id: int) -> list[int]:
 
 
 @db_task(retries=1, retry_delay=60)
-def broadcast_takeaway_ready(team_id: int, actor_user_id: int) -> None:
+def broadcast_takeaway_ready(team_id: int, actor_user_id: int, ready_at: str = "") -> None:
     """Notify the people who actually ordered take-away today.
+
+    ``ready_at`` ("17:15") is set when the team announced ahead of time; the
+    message then says when to come rather than that it is ready now.
 
     Only users whose house has an active MealRegistration for today with
     dining_option=take_away are notified (the per-user preference toggle still
@@ -1190,8 +1193,12 @@ def broadcast_takeaway_ready(team_id: int, actor_user_id: int) -> None:
         notification = create_notification(
             user=user,
             notification_type=NotificationType.FOOD_TEAM_TAKEAWAY_READY,
-            title="Takeaway er klar",
-            message="Dagens takeaway er klar til afhentning i fælleshuset",
+            title=f"Takeaway klar kl. {ready_at}" if ready_at else "Takeaway er klar",
+            message=(
+                f"Dagens takeaway kan hentes i fælleshuset fra kl. {ready_at}"
+                if ready_at
+                else "Dagens takeaway er klar til afhentning i fælleshuset"
+            ),
             link="/mad",
             related_user=actor,
         )

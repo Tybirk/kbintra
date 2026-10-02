@@ -270,6 +270,13 @@ class FoodTeam(models.Model):
         blank=True,
         help_text="When the 'Takeaway er klar' announcement was sent.",
     )
+    # The pickup time, when the team announced take-away ahead of time ("klar kl.
+    # 17:15"). Null means it was ready at the moment of the announcement.
+    takeaway_ready_at = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Pickup time given with an advance 'Takeaway er klar' announcement.",
+    )
     # Leftovers announcement (one per team; overwritten if announced more than once).
     leftovers_message = models.TextField(
         blank=True,
