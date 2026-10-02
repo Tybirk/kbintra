@@ -213,18 +213,18 @@ Switch to **User A** (regular). Go to **Madhold → Indsend ønsker**.
 4. **Manually toggle dates**: click a few date cards on/off; the counter
    **"X af Y datoer valgt"** updates. Try **"Vælg alle"** then **"Ryd alle"**.
 5. Verify there is **no free-text Kommentar** here while you are available — the
-   date cards already say when you can cook. Tick **"Jeg kan ikke i denne
-   periode"** and a **"Hvorfor kan du ikke? (valgfri)"** box appears; untick it
-   and the box goes away again.
+   date cards already say when you can cook. Tick **"Jeg er forhindret i hele
+   perioden"** (its description asks for a good reason) and a **"Hvad forhindrer
+   dig?"** box appears; untick it and the box goes away again.
 6. Re-select a handful of dates, click **"Indsend ønsker"** → green toast
    **"Ønsker indsendt"**. Reload the tab: a blue alert **"Du har allerede
    indsendt dine ønsker (N datoer valgt)…"** appears, the button reads
    **"Opdater ønsker"**, and the tab's orange "!" badge is **gone**.
 7. **Update path**: change the selection, click **"Opdater ønsker"** → toast,
    count updates.
-8. **Unavailable toggle**: turn on **"Jeg kan ikke i denne periode"** → date grid
+8. **Unavailable toggle**: turn on **"Jeg er forhindret i hele perioden"** → date grid
    + defaults grey out (disabled), helper text changes to "Du har markeret, at du
-   ikke kan i denne periode". Submit → toast. Reload → switch is still on. Turn it
+   er forhindret i hele perioden". Submit → toast. Reload → switch is still on. Turn it
    back off and re-submit dates to leave a clean state.
 9. **Closed-cycle behaviour** (optional): the admin's first seeded cycle is
    finalized/closed; if it surfaces as the active cycle instead, expect the
@@ -293,9 +293,12 @@ This makes a `FoodTeam` dated **today** with the admin + 5 random members.
      Friday. Note which case you see.
 3. **Food widget subtle line**: scroll to today's **FoodDayWidget** on the
    dashboard → under the menu text, a muted line **"Dagens madhold: <fornavne>"**.
-4. **Takeaway flow**: click **"Takeaway er klar"** → green toast **"Takeaway-besked
-   sendt"**. Click it **again** → blue toast **"Allerede sendt"** (once-per-day
-   guard). Verify a `FOOD_TEAM_TAKEAWAY_READY` notification was created (Phase 9).
+4. **Takeaway flow**: click **"Takeaway er klar"** → a panel opens ("Takeaway hentes
+   normalt kl. 17:30…") with chips **Nu** and the quarter-hours left before 17:30.
+   Pick one (e.g. **kl. 17:15**) → **"Send takeaway-besked"** → green toast
+   **"Takeaway-besked sendt"**, and the button now reads **"Takeaway klar kl.
+   17:15"** (disabled: once-per-day guard). Recipients see **"Takeaway klar kl.
+   17:15"**; with **Nu** it is "Takeaway er klar". Verify a `FOOD_TEAM_TAKEAWAY_READY` notification was created (Phase 9).
 5. **Leftovers flow**: click **"Rester er klar"** → an inline panel expands.
    - Type a message, e.g. `Der er lasagne tilbage i køleskabet`.
    - Click **"Vælg billede"**, upload any small image → filename shows.
@@ -320,7 +323,7 @@ team dates, both non-past.
 
 1. **User A** → **Mine hold** → on a team card click **"Anmod om bytte"**.
 2. In the modal: your date is shown; pick a target date (one of B's dates from the
-   list, max 8 shown), then under **"Vælg hvem du vil bytte med"** pick **User B**.
+   list, all of the period's dates), then under **"Vælg hvem du vil bytte med"** pick **User B**.
    Add an optional message. Click **"Send anmodning"** → green toast **"Bytte
    anmodet"**.
 3. **User A** → **Bytte** tab: under **"Mine anmodninger"** see the outgoing
