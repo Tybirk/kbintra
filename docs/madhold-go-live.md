@@ -91,8 +91,8 @@ at the time; anyone created since gets the model default (on).
 | `FOOD_TEAM_SWAP_REQUEST` "Din bytteanmodning er accepteret" | A candidate accepts a broadcast | The broadcaster | same | `/madhold/mine-hold` |
 | `FOOD_TEAM_SHIFT_TAKEN` "Din maddag er overtaget" | Someone takes your day (overtag / repay favour) | The previous owner | none | `/madhold/bytte` |
 | `FOOD_TEAM_PLAN_READY` "Dine maddage: …" | Admin's real "Generer hold" (not dry run, not import) | Each cook, one message for all their days | none | `/madhold/mine-hold` |
-| `FOOD_TEAM_WISHES_OPEN` "Der er åbnet for madholdsønsker" | Admin creates a period | Everyone not on pause | none | `/madhold/oensker` |
-| `FOOD_TEAM_PAUSE_CHECK` "Holder du stadig pause?" | Admin creates a period | Everyone on pause (instead of the above) | none | `/madhold/profil` |
+| `FOOD_TEAM_WISHES_OPEN` "Der er åbnet for madholdsønsker" | Admin creates a period | Every resident (active, with a house) not on pause | none | `/madhold/oensker` |
+| `FOOD_TEAM_PAUSE_CHECK` "Holder du stadig pause?" | Admin creates a period | Every resident on pause (instead of the above) | none | `/madhold/profil` |
 | `FOOD_TEAM_WISHES_OPEN` "Husk dine madholdsønsker" | Daily 17:30, once per period, 24–48 h before the deadline | Participants without a wish | none | `/madhold/oensker` |
 
 The no-toggle types are always in-app. They go by e-mail/push to anyone who has *any*
