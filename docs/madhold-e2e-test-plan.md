@@ -184,7 +184,10 @@ Logged in as **admin**, open **Madhold → Admin**.
    lists any **Ikke-tildelte personer** and **Advarsler**. Crucially, after
    closing, the cycle's **Hold count stays 0** (dry-run did not persist) and
    status is still "Indsamler ønsker".
-5. **Generer hold (real)**: click **"Generer hold"** → green toast **"Hold
+5. **Generer hold (real)**: click **"Generer hold"** → a confirmation modal
+   opens. Before the wish deadline it shows an orange "Deadline for ønsker er
+   ikke nået" warning and the button reads **"Ja, generer før deadline"**;
+   after it, **"Ja, generer hold"**. Confirm → green toast **"Hold
    genereret"**, result modal again. Close it. Verify the card now shows status
    **"Afsluttet"**, Hold > 0, and the Forhåndsvisning/Generer buttons are **gone**
    (cannot regenerate a finalized cycle).
