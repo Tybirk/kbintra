@@ -520,6 +520,7 @@ class TestFoodTicketViews:
         with patch("apps.food.serializers.timezone") as mock_tz:
             mock_now = timezone.make_aware(datetime.combine(mock_now_date, time(10, 0)))
             mock_tz.now.return_value = mock_now
+            mock_tz.localdate.return_value = timezone.localtime(mock_now).date()
             mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
             data = {
                 "date": future_date.isoformat(),
@@ -574,7 +575,7 @@ class TestFoodTicketViews:
         url = reverse("food:ticket-claim", kwargs={"pk": food_ticket.pk})
         response = api_client.post(url)
         assert response.status_code == 400
-        assert "no longer available" in response.json()["detail"].lower()
+        assert "ikke længere til salg" in response.json()["detail"]
 
     def test_owner_cannot_claim_ticket_claimed_by_other(
         self, authenticated_client, food_ticket, admin_user
@@ -589,7 +590,7 @@ class TestFoodTicketViews:
         url = reverse("food:ticket-claim", kwargs={"pk": food_ticket.pk})
         response = authenticated_client.post(url)
         assert response.status_code == 400
-        assert "no longer available" in response.json()["detail"].lower()
+        assert "ikke længere til salg" in response.json()["detail"]
 
     def test_after_claiming_own_ticket_can_register(self, api_client, user_with_house, monday_date):
         """Test that user can register even when they have an active ticket (partial selling)."""
@@ -809,10 +810,11 @@ class TestTeamGenerator:
         assert generator.cycle == food_team_cycle
         assert len(generator.cooking_dates) > 0
 
-    def test_load_data(self, food_team_cycle, user):
+    def test_load_data(self, food_team_cycle, user, house):
         """Test loading data from database."""
-        # Mark user as eligible
+        # Mark user as eligible: a resident (with a house) not on a pause
         user.is_exempt_from_food_teams = False
+        user.house = house
         user.save()
 
         generator = TeamGenerator(food_team_cycle)
@@ -1497,6 +1499,7 @@ class TestFoodTicketDefaultPricing:
                 timezone.datetime(2025, 12, 18, 10, 0)  # Thursday
             )
             mock_tz.now.return_value = mock_now
+            mock_tz.localdate.return_value = timezone.localtime(mock_now).date()
             mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
 
             # Ticket for next Monday (veg - no meat on Monday)
@@ -1555,6 +1558,7 @@ class TestPartialTicketSelling:
         with patch("apps.food.serializers.timezone") as mock_tz:
             mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))
             mock_tz.now.return_value = mock_now
+            mock_tz.localdate.return_value = timezone.localtime(mock_now).date()
             mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
 
             url = reverse("food:ticket-list")
@@ -1591,6 +1595,7 @@ class TestPartialTicketSelling:
         with patch("apps.food.serializers.timezone") as mock_tz:
             mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))
             mock_tz.now.return_value = mock_now
+            mock_tz.localdate.return_value = timezone.localtime(mock_now).date()
             mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
 
             url = reverse("food:ticket-list")
@@ -1626,6 +1631,7 @@ class TestPartialTicketSelling:
         with patch("apps.food.serializers.timezone") as mock_tz:
             mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))
             mock_tz.now.return_value = mock_now
+            mock_tz.localdate.return_value = timezone.localtime(mock_now).date()
             mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
 
             url = reverse("food:ticket-list")
@@ -1713,6 +1719,7 @@ class TestTicketCreationDeadline:
         with patch("apps.food.serializers.timezone") as mock_tz:
             mock_now = timezone.make_aware(timezone.datetime(2025, 12, 15, 10, 0))
             mock_tz.now.return_value = mock_now
+            mock_tz.localdate.return_value = timezone.localtime(mock_now).date()
             mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
 
             next_monday = date(2025, 12, 22)
@@ -1747,6 +1754,7 @@ class TestTicketCreationDeadline:
         with patch("apps.food.serializers.timezone") as mock_tz:
             mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))
             mock_tz.now.return_value = mock_now
+            mock_tz.localdate.return_value = timezone.localtime(mock_now).date()
             mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
 
             url = reverse("food:ticket-list")
@@ -2087,6 +2095,7 @@ class TestRegistrationLock:
         with patch("apps.food.serializers.timezone") as mock_tz:
             mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))  # Thursday
             mock_tz.now.return_value = mock_now
+            mock_tz.localdate.return_value = timezone.localtime(mock_now).date()
             mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
 
             url = reverse("food:registration-list")
@@ -2117,6 +2126,7 @@ class TestRegistrationLock:
         with patch("apps.food.serializers.timezone") as mock_tz:
             mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))  # Thursday
             mock_tz.now.return_value = mock_now
+            mock_tz.localdate.return_value = timezone.localtime(mock_now).date()
             mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
 
             url = reverse("food:registration-detail", kwargs={"pk": registration.pk})
@@ -2141,6 +2151,7 @@ class TestRegistrationLock:
         with patch("apps.food.serializers.timezone") as mock_tz:
             mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))
             mock_tz.now.return_value = mock_now
+            mock_tz.localdate.return_value = timezone.localtime(mock_now).date()
             mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
 
             url = reverse("food:registration-detail", kwargs={"pk": registration.pk})
@@ -2168,6 +2179,7 @@ class TestRegistrationLock:
         with patch("apps.food.serializers.timezone") as mock_tz:
             mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))
             mock_tz.now.return_value = mock_now
+            mock_tz.localdate.return_value = timezone.localtime(mock_now).date()
             mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
 
             url = reverse("food:registration-detail", kwargs={"pk": registration.pk})
@@ -2195,6 +2207,7 @@ class TestRegistrationLock:
         with patch("apps.food.serializers.timezone") as mock_tz:
             mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))
             mock_tz.now.return_value = mock_now
+            mock_tz.localdate.return_value = timezone.localtime(mock_now).date()
             mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
 
             url = reverse("food:registration-detail", kwargs={"pk": registration.pk})
@@ -2237,6 +2250,7 @@ class TestTicketValidationWithExisting:
         with patch("apps.food.serializers.timezone") as mock_tz:
             mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))
             mock_tz.now.return_value = mock_now
+            mock_tz.localdate.return_value = timezone.localtime(mock_now).date()
             mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
 
             url = reverse("food:ticket-list")
@@ -2266,6 +2280,7 @@ class TestTicketValidationWithExisting:
         with patch("apps.food.serializers.timezone") as mock_tz:
             mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))
             mock_tz.now.return_value = mock_now
+            mock_tz.localdate.return_value = timezone.localtime(mock_now).date()
             mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
 
             url = reverse("food:ticket-list")
@@ -2296,6 +2311,7 @@ class TestTicketValidationWithExisting:
         with patch("apps.food.serializers.timezone") as mock_tz:
             mock_now = timezone.make_aware(timezone.datetime(2025, 12, 18, 10, 0))
             mock_tz.now.return_value = mock_now
+            mock_tz.localdate.return_value = timezone.localtime(mock_now).date()
             mock_tz.get_current_timezone.return_value = timezone.get_current_timezone()
 
             url = reverse("food:ticket-list")

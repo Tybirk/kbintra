@@ -189,7 +189,7 @@ class DailyRegistrationStatsView(APIView):
                 target_date = date.fromisoformat(date_str)
             except ValueError:
                 return Response(
-                    {"detail": "Invalid date format. Use YYYY-MM-DD."},
+                    {"detail": "Ugyldig dato. Brug formatet ÅÅÅÅ-MM-DD."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             closed_obj = ClosedFoodDay.objects.filter(date=target_date).first()
@@ -204,7 +204,7 @@ class DailyRegistrationStatsView(APIView):
                 week_start = date.fromisoformat(week_start_str)
             except ValueError:
                 return Response(
-                    {"detail": "Invalid date format. Use YYYY-MM-DD."},
+                    {"detail": "Ugyldig dato. Brug formatet ÅÅÅÅ-MM-DD."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             dates = [week_start + timedelta(days=d) for d in range(4)]
@@ -221,7 +221,7 @@ class DailyRegistrationStatsView(APIView):
 
         else:
             return Response(
-                {"detail": "Please provide 'date' or 'week_start' query parameter."},
+                {"detail": "Angiv en dato (date) eller en uge (week_start)."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -558,7 +558,7 @@ class MealRegistrationListCreateView(generics.ListCreateAPIView):
         try:
             week_start = date.fromisoformat(week_start_str)
         except ValueError:
-            return Response({"detail": "Invalid date."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Ugyldig dato."}, status=status.HTTP_400_BAD_REQUEST)
 
         real_regs = {r.date: r for r in self.get_queryset()}
         user = request.user
@@ -649,7 +649,7 @@ class FoodTicketListCreateView(generics.ListCreateAPIView):
         if not show_all:
             queryset = queryset.filter(
                 is_available=True,
-                date__gte=timezone.now().date(),
+                date__gte=timezone.localdate(),
             )
 
         return queryset
@@ -696,17 +696,17 @@ class ClaimTicketView(APIView):
                 ticket = FoodTicket.objects.select_for_update().get(pk=pk)
             except FoodTicket.DoesNotExist:
                 return Response(
-                    {"detail": "Ticket not found."},
+                    {"detail": "Billetten blev ikke fundet."},
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
             if not ticket.is_available:
                 return Response(
-                    {"detail": "This ticket is no longer available."},
+                    {"detail": "Billetten er ikke længere til salg."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            if ticket.date < timezone.now().date():
+            if ticket.date < timezone.localdate():
                 return Response(
                     {"detail": "Der kan ikke købes billet til datoer i fortiden."},
                     status=status.HTTP_400_BAD_REQUEST,
@@ -833,7 +833,7 @@ class ReleaseTicketView(APIView):
             ticket = FoodTicket.objects.get(pk=pk)
         except FoodTicket.DoesNotExist:
             return Response(
-                {"detail": "Ticket not found."},
+                {"detail": "Billetten blev ikke fundet."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
@@ -847,7 +847,7 @@ class ReleaseTicketView(APIView):
 
         if ticket.is_available:
             return Response(
-                {"detail": "This ticket is not claimed."},
+                {"detail": "Billetten er ikke købt af nogen."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -867,7 +867,7 @@ class MyTicketsView(generics.ListAPIView):
     serializer_class = FoodTicketSerializer
 
     def get_queryset(self) -> QuerySet[FoodTicket]:
-        today = timezone.now().date()
+        today = timezone.localdate()
         user = self.request.user
         house_q = Q(house=user.house) if user.house_id else Q(pk__in=[])
         return (
@@ -903,7 +903,7 @@ class FoodTeamListView(generics.ListAPIView):
 
         # Default to show upcoming teams only
         if not from_date and not to_date:
-            queryset = queryset.filter(date__gte=timezone.now().date())
+            queryset = queryset.filter(date__gte=timezone.localdate())
 
         return queryset
 
@@ -993,10 +993,20 @@ class SwapRequestListCreateView(generics.ListCreateAPIView):
             notify_food_swap_request_created(swap_request)
 
     def get_queryset(self) -> QuerySet[TeamSwapRequest]:
-        # Show requests where user is either requester or target
+        # Show requests where user is either requester or target. A request still
+        # pending once one of its days has passed can no longer be answered, so
+        # it is left out rather than waiting forever under "Afventer".
+        today = timezone.localdate()
         return (
             TeamSwapRequest.objects.filter(
                 Q(requester=self.request.user) | Q(target_membership__user=self.request.user)
+            )
+            .exclude(
+                Q(status=SwapRequestStatus.PENDING)
+                & (
+                    Q(requester_membership__team__date__lt=today)
+                    | Q(target_membership__team__date__lt=today)
+                )
             )
             .select_related(
                 "requester",
@@ -1054,32 +1064,6 @@ class RespondSwapRequestView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request: Request, pk: int) -> Response:
-        try:
-            swap_request = TeamSwapRequest.objects.select_related(
-                "requester_membership__user",
-                "requester_membership__team",
-                "target_membership__user",
-                "target_membership__team",
-            ).get(pk=pk)
-        except TeamSwapRequest.DoesNotExist:
-            return Response(
-                {"detail": "Bytteanmodningen blev ikke fundet."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        # Only target user can respond
-        if swap_request.target_membership.user != request.user:
-            return Response(
-                {"detail": "Kun modtageren kan svare på denne anmodning."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        if swap_request.status != SwapRequestStatus.PENDING:
-            return Response(
-                {"detail": "This request has already been processed."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
         serializer = RespondSwapRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -1088,61 +1072,108 @@ class RespondSwapRequestView(APIView):
 
         from apps.notifications.services import notify_food_swap_answered
 
-        if action == "decline":
-            swap_request.status = SwapRequestStatus.DECLINED
-            swap_request.response_message = response_message
-            swap_request.save()
+        from .utils import any_day_passed, membership_swap_conflict
 
-            # A decline matters as much as an accept: the day is still theirs and
-            # they have to try something else before it arrives.
-            with contextlib.suppress(Exception):
-                notify_food_swap_answered(swap_request, request.user, accepted=False)
-
-            return Response(
-                TeamSwapRequestSerializer(swap_request, context={"request": request}).data
-            )
-
-        # Accept: perform the swap atomically
+        # Read everything that decides whether this answer still counts inside
+        # the transaction. SQLite takes the write lock as it begins (IMMEDIATE),
+        # so a second answer arriving while the first is being written waits for
+        # it, then sees its result. Loaded before the lock, two accepts of
+        # requests on the same day both went through on stale rows and dropped
+        # a cook from every team.
         with transaction.atomic():
-            requester_membership = swap_request.requester_membership
-            target_membership = swap_request.target_membership
+            try:
+                swap_request = TeamSwapRequest.objects.select_related(
+                    "requester_membership__user",
+                    "requester_membership__team",
+                    "target_membership__user",
+                    "target_membership__team",
+                ).get(pk=pk)
+            except TeamSwapRequest.DoesNotExist:
+                return Response(
+                    {"detail": "Bytteanmodningen blev ikke fundet."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
 
-            # Re-check inside the transaction: memberships may have moved via a
-            # takeover or another swap since this request was created.
-            from .utils import membership_swap_conflict
+            # Only target user can respond
+            if swap_request.target_membership.user_id != request.user.id:
+                return Response(
+                    {"detail": "Kun modtageren kan svare på denne anmodning."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
-            conflict = membership_swap_conflict(requester_membership, target_membership)
-            if conflict:
-                return Response({"detail": conflict}, status=status.HTTP_400_BAD_REQUEST)
+            if swap_request.status != SwapRequestStatus.PENDING:
+                return Response(
+                    {"detail": "Anmodningen er allerede besvaret eller trukket tilbage."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-            # Swap the users between teams
-            requester_user = requester_membership.user
-            requester_house = requester_membership.house_number
-            target_user = target_membership.user
-            target_house = target_membership.house_number
+            if action == "decline":
+                swap_request.status = SwapRequestStatus.DECLINED
+                swap_request.response_message = response_message
+                swap_request.save()
+            else:
+                requester_membership = swap_request.requester_membership
+                target_membership = swap_request.target_membership
 
-            requester_membership.user = target_user
-            requester_membership.house_number = target_house
-            target_membership.user = requester_user
-            target_membership.house_number = requester_house
+                # A day that has been cooked can't be swapped any more: accepting
+                # it would move a future day and rewrite who cooked the past one.
+                if any_day_passed(requester_membership.team.date, target_membership.team.date):
+                    return Response(
+                        {"detail": "Maddagen er allerede passeret."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
 
-            requester_membership.save()
-            target_membership.save()
+                # The requester must still hold the day they offered. If it has
+                # changed hands, accepting would move whoever holds it now.
+                if requester_membership.user_id != swap_request.requester_id:
+                    swap_request.status = SwapRequestStatus.CANCELLED
+                    swap_request.save(update_fields=["status", "updated_at"])
+                    return Response(
+                        {"detail": "Anmodningen gælder ikke længere: maddagen har skiftet hænder."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
 
-            swap_request.status = SwapRequestStatus.ACCEPTED
-            swap_request.response_message = response_message
-            swap_request.save()
+                # Memberships may also have moved via a takeover since the
+                # request was created.
+                conflict = membership_swap_conflict(requester_membership, target_membership)
+                if conflict:
+                    return Response({"detail": conflict}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Cancel any other pending requests involving these memberships
-            TeamSwapRequest.objects.filter(status=SwapRequestStatus.PENDING).filter(
-                Q(requester_membership__in=[requester_membership, target_membership])
-                | Q(target_membership__in=[requester_membership, target_membership])
-            ).exclude(pk=swap_request.pk).update(status=SwapRequestStatus.CANCELLED)
+                # Swap the users between teams
+                requester_user = requester_membership.user
+                requester_house = requester_membership.house_number
+                target_user = target_membership.user
+                target_house = target_membership.house_number
 
-        # Their cooking day just moved to another date without them doing
-        # anything else — tell them which date it is now.
+                requester_membership.user = target_user
+                requester_membership.house_number = target_house
+                target_membership.user = requester_user
+                target_membership.house_number = requester_house
+
+                requester_membership.save()
+                target_membership.save()
+
+                swap_request.status = SwapRequestStatus.ACCEPTED
+                swap_request.response_message = response_message
+                swap_request.save()
+
+                # Close every other offer on these two days, as a takeover and a
+                # broadcast accept do. A broadcast left open here pointed at a
+                # membership that now holds the other person, and accepting it
+                # later moved them to a third day without asking.
+                both = [requester_membership, target_membership]
+                TeamSwapRequest.objects.filter(status=SwapRequestStatus.PENDING).filter(
+                    Q(requester_membership__in=both) | Q(target_membership__in=both)
+                ).exclude(pk=swap_request.pk).update(status=SwapRequestStatus.CANCELLED)
+                SwapBroadcast.objects.filter(
+                    status=BroadcastStatus.OPEN, requester_membership__in=both
+                ).update(status=BroadcastStatus.CANCELLED)
+
+        # A decline matters as much as an accept: the day is still theirs and they
+        # have to try something else before it arrives. An accept moved their
+        # cooking day to another date — tell them which date it is now.
         with contextlib.suppress(Exception):
-            notify_food_swap_answered(swap_request, request.user, accepted=True)
+            notify_food_swap_answered(swap_request, request.user, accepted=action == "accept")
 
         return Response(TeamSwapRequestSerializer(swap_request, context={"request": request}).data)
 
@@ -1235,19 +1266,17 @@ class SuggestedCyclePlanView(APIView):
 
         eligible = planning.eligible_food_team_count()
         day_count = planning.suggested_day_count(eligible)
-        cooking_dates = planning.next_cooking_dates(day_count)
+        # Continue after the latest period, but never on a day that can no
+        # longer be planned before its own reminder goes out.
+        start = max(planning.suggested_start_date(), planning.earliest_start_date())
+        cooking_dates = planning.next_cooking_dates(day_count, start=start)
         name = planning.suggest_cycle_name(cooking_dates)
 
-        # Deadline: a week out, but always before the first cooking day so the
-        # period is still open for wishes when it starts.
-        now = timezone.now()
-        deadline = now + timedelta(days=7)
-        if cooking_dates:
-            first = datetime.combine(date.fromisoformat(cooking_dates[0]), time(23, 59))
-            first = timezone.make_aware(first, timezone.get_current_timezone())
-            day_before = first - timedelta(days=1)
-            if day_before < deadline:
-                deadline = max(now + timedelta(hours=1), day_before)
+        deadline = (
+            planning.suggested_wish_deadline(date.fromisoformat(cooking_dates[0]))
+            if cooking_dates
+            else timezone.now() + timedelta(days=planning.WISH_WINDOW_DAYS)
+        )
 
         return Response(
             {
@@ -1274,8 +1303,8 @@ class CycleResetTeamsView(APIView):
     cycle's takeovers are deleted explicitly; the shift they were earned on is
     about to stop existing.
 
-    Refused once any cooking date has passed: people have then actually cooked,
-    and deleting the teams would erase that history.
+    Refused once any cooking date is today or has passed: people have then
+    cooked, or are cooking right now, and deleting the teams would erase that.
     """
 
     permission_classes = [permissions.IsAuthenticated, IsFoodAdmin]
@@ -1293,13 +1322,16 @@ class CycleResetTeamsView(APIView):
     ) -> tuple[QuerySet[FoodTeam], QuerySet[TeamFavour], dict[str, int]]:
         """Return (teams, favours, counts) for what a reset would remove."""
         dates = self._cycle_dates(cycle)
-        # Match save_teams(): teams are keyed by date, but include anything
-        # still linked to the cycle so a stale row can't survive the reset.
-        teams = FoodTeam.objects.filter(Q(cycle=cycle) | Q(date__in=dates))
+        # This period's own teams only. Matching by date as well deleted another
+        # period's team that happened to share a date. A team with no period at
+        # all on one of our dates is taken along, as before.
+        teams = FoodTeam.objects.filter(Q(cycle=cycle) | Q(cycle__isnull=True, date__in=dates))
         membership_ids = list(
             FoodTeamMember.objects.filter(team__in=teams).values_list("id", flat=True)
         )
-        favours = TeamFavour.objects.filter(Q(cycle=cycle) | Q(origin_date__in=dates))
+        favours = TeamFavour.objects.filter(
+            Q(cycle=cycle) | Q(cycle__isnull=True, origin_date__in=dates)
+        )
         counts = {
             "teams": teams.count(),
             "memberships": len(membership_ids),
@@ -1317,10 +1349,11 @@ class CycleResetTeamsView(APIView):
         return teams, favours, counts
 
     def _past_dates(self, cycle: FoodTeamCycle, teams: QuerySet[FoodTeam]) -> list[date]:
-        """Cooking dates already behind us — the reason a reset is refused."""
+        """Cooking dates already behind us or under way today — the reason a
+        reset is refused. Today counts: that team is in the kitchen."""
         today = timezone.localdate()
         all_dates = set(self._cycle_dates(cycle)) | set(teams.values_list("date", flat=True))
-        return sorted(d for d in all_dates if d < today)
+        return sorted(d for d in all_dates if d <= today)
 
     def get_object(self, pk: int) -> FoodTeamCycle | None:
         return FoodTeamCycle.objects.filter(pk=pk).first()
@@ -1361,9 +1394,9 @@ class CycleResetTeamsView(APIView):
                 return Response(
                     {
                         "detail": (
-                            f"Perioden har madlavningsdage, der allerede er passeret "
-                            f"({shown}). Holdene kan ikke slettes, fordi det ville slette "
-                            "historikken om afholdte vagter, bytninger og tjenester. "
+                            f"Perioden har madlavningsdage, der er i dag eller allerede "
+                            f"passeret ({shown}). Holdene kan ikke slettes, fordi det ville "
+                            "slette historikken om afholdte vagter, bytninger og tjenester. "
                             "Opret i stedet en ny periode."
                         )
                     },
@@ -1550,12 +1583,12 @@ def _parse_date_range(request: Request, default_weeks: int) -> tuple[date, date]
         end = date.fromisoformat(end_str) if end_str else today
     except ValueError:
         return Response(
-            {"detail": "start_date and end_date must be ISO dates (YYYY-MM-DD)."},
+            {"detail": "Start- og slutdato skal have formatet ÅÅÅÅ-MM-DD."},
             status=status.HTTP_400_BAD_REQUEST,
         )
     if end < start:
         return Response(
-            {"detail": "end_date must be on or after start_date."},
+            {"detail": "Slutdatoen skal ligge på eller efter startdatoen."},
             status=status.HTTP_400_BAD_REQUEST,
         )
     return start, end
@@ -1974,7 +2007,7 @@ class DriveMenuRefreshAllView(APIView):
         refresh_all_drive_menus_task()
 
         return Response(
-            {"detail": "Menu refresh started in background."},
+            {"detail": "Menuerne hentes igen i baggrunden."},
             status=status.HTTP_202_ACCEPTED,
         )
 
@@ -2339,7 +2372,9 @@ class NotifyLeftoversReadyView(APIView):
                 f"food_leftovers/{team.date.isoformat()}_{team.id}.jpg", processed
             )
             rel_url = default_storage.url(path)
-            image_url = request.build_absolute_uri(rel_url)
+            # Stored site-relative: /mad/rester signs it per request, and the
+            # page is served from the same origin.
+            image_url = rel_url
             # /media is auth-gated (see apps.backup.views.serve_media) and an
             # <img> in an email carries neither JWT nor session cookie, so the
             # email needs a signed URL. Built off SITE_URL, like every other
@@ -2570,12 +2605,18 @@ class SwapBroadcastListCreateView(generics.ListCreateAPIView):
             .select_related("requester", "requester_membership__team", "accepted_by")
             .order_by("-created_at")
         )
+        today = timezone.localdate()
         relevant_ids = [
             b.id
             for b in base
-            if b.requester_id == user.id
-            or user.id in (b.candidate_user_ids or [])
-            or (my_date_strs & set(b.available_dates or []))
+            # An open broadcast for a day that has been cooked can't be taken
+            # any more; leave it out instead of offering a dead "Accepter".
+            if not (b.status == BroadcastStatus.OPEN and b.requester_membership.team.date < today)
+            and (
+                b.requester_id == user.id
+                or user.id in (b.candidate_user_ids or [])
+                or (my_date_strs & set(b.available_dates or []))
+            )
         ]
         return base.filter(id__in=relevant_ids)
 
@@ -2675,7 +2716,8 @@ class AcceptSwapBroadcastView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        requester_membership = broadcast.requester_membership
+        from .utils import any_day_passed, membership_swap_conflict
+
         with transaction.atomic():
             # Lock the broadcast and re-check its status: two candidates
             # accepting simultaneously must not both pass the OPEN check and
@@ -2690,7 +2732,31 @@ class AcceptSwapBroadcastView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            from .utils import membership_swap_conflict
+            # Both days as they are now, not as they were when the request came in.
+            requester_membership = FoodTeamMember.objects.select_related("team").get(
+                pk=locked_broadcast.requester_membership_id
+            )
+            my_membership = FoodTeamMember.objects.select_related("team").get(pk=my_membership.pk)
+            if my_membership.user_id != request.user.id:
+                return Response(
+                    {"detail": "Den valgte maddag er ikke længere din."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if any_day_passed(requester_membership.team.date, my_membership.team.date):
+                return Response(
+                    {"detail": "Maddagen er allerede passeret."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            # The sender must still hold the day they offered. If it changed
+            # hands (a 1:1 bytte, an overtag), accepting would move whoever
+            # holds it now — someone who never asked to swap.
+            if requester_membership.user_id != locked_broadcast.requester_id:
+                locked_broadcast.status = BroadcastStatus.CANCELLED
+                locked_broadcast.save(update_fields=["status", "updated_at"])
+                return Response(
+                    {"detail": "Anmodningen gælder ikke længere: maddagen har skiftet hænder."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             conflict = membership_swap_conflict(requester_membership, my_membership)
             if conflict:
@@ -2861,13 +2927,11 @@ class FoodRosterListView(generics.ListAPIView):
         return context
 
     def get_queryset(self) -> QuerySet:
-        from apps.users.models import User
+        from .utils import residents
 
-        return (
-            User.objects.filter(is_active=True)
-            .select_related("house")
-            .order_by("house__name", "first_name")
-        )
+        # Residents only: an account without a house is never planned, so it
+        # has no place in the overview of who is.
+        return residents().select_related("house").order_by("house__name", "first_name")
 
     def list(self, request: Request, *args: object, **kwargs: object) -> Response:
         cycle = _roster_cycle()

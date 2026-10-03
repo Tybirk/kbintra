@@ -660,7 +660,7 @@ class TestCycleResetTeams:
         cycle = FoodTeamCycle.objects.create(
             name="Regenerering",
             cooking_dates=dates,
-            wish_deadline=timezone.now() + timedelta(days=1),
+            wish_deadline=timezone.now() - timedelta(minutes=1),  # generated after the deadline
             status=CycleStatus.COLLECTING_WISHES,
             created_by=admin_user,
         )
@@ -873,6 +873,25 @@ class TestLeftoversImageHandling:
         # The same path without the signature stays gated.
         assert anonymous.get(path_with_query.split("?")[0]).status_code == 401
 
+    def test_the_leftovers_page_photo_loads_without_a_session_cookie(
+        self, api_client, todays_team, settings, tmp_path
+    ):
+        """/mad/rester's <img> carries no JWT, and on iOS often no session
+        cookie either, so the signature on its URL has to verify on its own."""
+        from django.test import Client
+
+        settings.MEDIA_ROOT = str(tmp_path)
+        team, cook = todays_team
+        api_client.force_authenticate(user=cook)
+
+        upload = SimpleUploadedFile("rester.jpg", _heic_photo(400, 300), content_type="image/jpeg")
+        resp, _broadcast = self._post_photo(api_client, team, upload)
+        assert resp.status_code == 200, resp.data
+
+        image_url = api_client.get(reverse("food:leftovers-today")).data["image_url"]
+
+        assert Client().get(image_url).status_code == 200
+
     def test_non_image_upload_is_rejected_without_announcing(
         self, api_client, todays_team, settings, tmp_path
     ):
@@ -897,12 +916,16 @@ class TestLeftoversImageIsSignedForReaders:
     every other media URL in the app."""
 
     def test_today_leftovers_image_url_is_signed(self, api_client, user, future_monday):
+        from urllib.parse import parse_qs, urlsplit
+
         from django.utils import timezone
 
+        from apps.backup.signing import verify_media_signature
         from apps.food.models import FoodTeam
 
         team = FoodTeam.objects.create(date=timezone.localdate())
         team.leftovers_message = "Der er lasagne tilbage"
+        # Rows written before 2026-10 hold an absolute URL.
         team.leftovers_image_url = "http://testserver/media/food_leftovers/x.jpg"
         team.leftovers_announced_at = timezone.now()
         team.save()
@@ -913,7 +936,9 @@ class TestLeftoversImageIsSignedForReaders:
         assert response.status_code == 200
         assert response.data["has_leftovers"] is True
         url = response.data["image_url"]
-        assert "exp=" in url and "sig=" in url, url
+        query = parse_qs(urlsplit(url).query)
+        # Signed over the path serve_media checks, not over "http:/testserver/...".
+        assert verify_media_signature("food_leftovers/x.jpg", query["exp"][0], query["sig"][0])
 
     def test_no_image_stays_empty(self, api_client, user):
         from django.utils import timezone

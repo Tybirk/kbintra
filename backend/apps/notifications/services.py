@@ -103,6 +103,12 @@ PUSH_TTL: dict[str, int] = {
     NotificationType.MESSAGE_REACTION: 24 * 3600,  # 24 hours
     NotificationType.MENTION: 24 * 3600,  # 24 hours
     NotificationType.BIRTHDAY: 12 * 3600,  # 12 hours — stale by tomorrow
+    # Madhold pushes about one particular evening. A phone that was off all
+    # night must not be told "i morgen" about today, or "takeaway er klar"
+    # about yesterday's food.
+    NotificationType.FOOD_TEAM_REMINDER: 20 * 3600,  # 20:00 → cooking starts next afternoon
+    NotificationType.FOOD_TEAM_TAKEAWAY_READY: 2 * 3600,  # 2 hours
+    NotificationType.FOOD_TEAM_LEFTOVERS_READY: 3 * 3600,  # 3 hours
 }
 PUSH_TTL_DEFAULT = 48 * 3600  # 48 hours
 

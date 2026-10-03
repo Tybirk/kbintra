@@ -396,6 +396,33 @@ class TestPushRetryClassification:
             )
         assert PushSubscription.objects.filter(id=push_subscription.id).exists()
 
+    @pytest.mark.parametrize(
+        ("notification_type", "ttl"),
+        [
+            ("food_team_reminder", 20 * 3600),
+            ("food_takeaway_ready", 2 * 3600),
+            ("food_leftovers_ready", 3 * 3600),
+            ("new_announcement", 48 * 3600),
+        ],
+    )
+    def test_madhold_pushes_expire_with_their_evening(
+        self, push_subscription, notification_type, ttl
+    ):
+        """A phone that was off all evening must not be told "takeaway er klar"
+        the next morning."""
+        from apps.notifications.services import send_push_to_subscription
+
+        with patch("pywebpush.webpush", return_value=MagicMock(status_code=201)) as webpush:
+            send_push_to_subscription(
+                subscription=push_subscription,
+                notification_type=notification_type,
+                title="t",
+                message="m",
+                link="/x",
+            )
+
+        assert webpush.call_args.kwargs["ttl"] == ttl
+
     @pytest.mark.parametrize("status_code", [404, 410])
     def test_expired_does_not_raise_and_deletes_subscription(self, push_subscription, status_code):
         from apps.notifications.services import send_push_to_subscription

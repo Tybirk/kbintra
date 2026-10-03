@@ -338,7 +338,7 @@ class FoodTicketCreateSerializer(serializers.ModelSerializer):
         if is_closed_food_day(value):
             raise serializers.ValidationError("Denne dag er lukket for fællesspisning.")
         # Don't allow past dates
-        if value < timezone.now().date():
+        if value < timezone.localdate():
             raise serializers.ValidationError("Der kan ikke oprettes billet til datoer i fortiden.")
 
         # Don't allow selling tickets after the cutoff time on the meal day
@@ -597,6 +597,7 @@ class TeamSwapRequestSerializer(serializers.ModelSerializer):
     target_membership = SwapRequestMembershipSerializer(read_only=True)
     is_incoming = serializers.SerializerMethodField()
     is_outgoing = serializers.SerializerMethodField()
+    can_accept = serializers.SerializerMethodField()
 
     class Meta:
         model = TeamSwapRequest
@@ -610,6 +611,7 @@ class TeamSwapRequestSerializer(serializers.ModelSerializer):
             "response_message",
             "is_incoming",
             "is_outgoing",
+            "can_accept",
             "created_at",
             "updated_at",
         ]
@@ -625,6 +627,19 @@ class TeamSwapRequestSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             return obj.requester_id == request.user.id
         return False
+
+    def get_can_accept(self, obj: TeamSwapRequest) -> bool:
+        """True if the current user can answer it: addressed to them, still
+        pending, and neither day has been cooked yet."""
+        from .utils import any_day_passed
+
+        return (
+            self.get_is_incoming(obj)
+            and obj.status == SwapRequestStatus.PENDING
+            and not any_day_passed(
+                obj.requester_membership.team.date, obj.target_membership.team.date
+            )
+        )
 
 
 class CreateSwapRequestSerializer(serializers.Serializer):
@@ -667,9 +682,7 @@ class CreateSwapRequestSerializer(serializers.Serializer):
         ).exists()
 
         if existing:
-            raise serializers.ValidationError(
-                "You already have a pending swap request for this combination."
-            )
+            raise serializers.ValidationError("Du har allerede sendt den samme bytteanmodning.")
 
         # Don't let someone create a request that could never be accepted (it
         # would double-book one of them on a team). The accept path re-checks,
@@ -679,10 +692,15 @@ class CreateSwapRequestSerializer(serializers.Serializer):
         memberships = FoodTeamMember.objects.select_related("team").in_bulk(
             [attrs["requester_membership_id"], attrs["target_membership_id"]]
         )
-        conflict = membership_swap_conflict(
-            memberships[attrs["requester_membership_id"]],
-            memberships[attrs["target_membership_id"]],
-        )
+        mine = memberships[attrs["requester_membership_id"]]
+        theirs = memberships[attrs["target_membership_id"]]
+
+        from .utils import any_day_passed
+
+        if any_day_passed(mine.team.date, theirs.team.date):
+            raise serializers.ValidationError("Maddagen er allerede passeret.")
+
+        conflict = membership_swap_conflict(mine, theirs)
         if conflict:
             raise serializers.ValidationError(conflict)
 
@@ -759,12 +777,37 @@ class FoodTeamCycleCreateSerializer(serializers.ModelSerializer):
         fields = ["name", "cooking_dates", "wish_deadline"]
 
     def validate_cooking_dates(self, value: list) -> list:
-        from .utils import get_closed_food_dates
+        from .utils import danish_date_label, get_closed_food_dates
 
         closed = get_closed_food_dates(value)
         if closed:
             closed_strs = ", ".join(sorted(d.isoformat() for d in closed))
             raise serializers.ValidationError(f"Følgende datoer er lukkede maddage: {closed_strs}")
+
+        # A date belongs to one period. FoodTeam.date is unique, so generating a
+        # second period on the same day deleted the first one's team, cooks and
+        # swaps without a word to anyone.
+        others = FoodTeamCycle.objects.all()
+        teams = FoodTeam.objects.filter(date__in=value).select_related("cycle")
+        if self.instance is not None:
+            others = others.exclude(pk=self.instance.pk)
+            teams = teams.exclude(cycle=self.instance)
+        wanted = {d.isoformat() for d in value}
+        taken: dict[str, str] = {}
+        for other in others.only("name", "cooking_dates"):
+            for d in wanted.intersection(other.cooking_dates or []):
+                taken.setdefault(d, other.name)
+        for team in teams:
+            taken.setdefault(team.date.isoformat(), team.cycle.name if team.cycle else "et hold")
+        if taken:
+            listing = ", ".join(
+                f"{danish_date_label(date.fromisoformat(d))} ({name})"
+                for d, name in sorted(taken.items())
+            )
+            raise serializers.ValidationError(
+                f"Disse datoer hører allerede til en anden periode: {listing}."
+            )
+
         # Sort dates and convert to ISO format strings
         sorted_dates = sorted(value)
         return [d.isoformat() for d in sorted_dates]
@@ -814,7 +857,9 @@ class FoodTeamWishCreateUpdateSerializer(serializers.ModelSerializer):
       (``User.food_team_pause_reason``), not on the wish, so it outlives the
       cycle and the organiser can come back and ask whether the break still
       holds. It does not set the standing pause — that is a separate decision,
-      made on the profile.
+      made on the profile — with one exception: if this same wish's dates ended
+      a pause, correcting it to "kan ikke" undoes that and gives the pause, and
+      its reason, back.
     """
 
     # Write-only: it is stored on the user, not on the wish.
@@ -852,17 +897,33 @@ class FoodTeamWishCreateUpdateSerializer(serializers.ModelSerializer):
 
         return validated
 
-    def _apply_to_user(self, user: User, validated_data: dict) -> None:
-        """Keep the person's pause in step with the wish they just submitted."""
+    def _apply_to_user(
+        self, user: User, validated_data: dict, existing: FoodTeamWish | None
+    ) -> dict[str, Any]:
+        """Keep the person's pause in step with the wish they just submitted.
+
+        Returns the ``lifted_pause`` fields to store on the wish.
+        """
         updates: dict[str, Any] = {}
+        wish_fields: dict[str, Any] = {}
 
         if validated_data.get("is_unavailable"):
             reason = validated_data.get("pause_reason")
+            if existing is not None and existing.lifted_pause:
+                # This wish's dates ended a pause; the correction takes that back.
+                updates["is_exempt_from_food_teams"] = True
+                wish_fields = {"lifted_pause": False, "lifted_pause_reason": ""}
+                if not reason:
+                    reason = existing.lifted_pause_reason
             if reason is not None and reason != user.food_team_pause_reason:
                 updates["food_team_pause_reason"] = reason
         elif validated_data.get("available_dates"):
             if user.is_exempt_from_food_teams:
                 updates["is_exempt_from_food_teams"] = False
+                wish_fields = {
+                    "lifted_pause": True,
+                    "lifted_pause_reason": user.food_team_pause_reason,
+                }
             if user.food_team_pause_reason:
                 updates["food_team_pause_reason"] = ""
 
@@ -870,6 +931,7 @@ class FoodTeamWishCreateUpdateSerializer(serializers.ModelSerializer):
             for field_name, value in updates.items():
                 setattr(user, field_name, value)
             user.save(update_fields=list(updates))
+        return wish_fields
 
     def create(self, validated_data: dict) -> FoodTeamWish:
         user = self.context["request"].user
@@ -878,13 +940,17 @@ class FoodTeamWishCreateUpdateSerializer(serializers.ModelSerializer):
         pause_reason = validated_data.pop("pause_reason", None)
 
         with transaction.atomic():
-            self._apply_to_user(user, {**validated_data, "pause_reason": pause_reason})
-
             # Check if user already has a wish for this cycle
             existing = FoodTeamWish.objects.filter(
                 cycle=validated_data["cycle"],
                 user=user,
             ).first()
+
+            validated_data.update(
+                self._apply_to_user(
+                    user, {**validated_data, "pause_reason": pause_reason}, existing
+                )
+            )
 
             if existing:
                 # Update existing wish
@@ -898,10 +964,17 @@ class FoodTeamWishCreateUpdateSerializer(serializers.ModelSerializer):
 
 
 class GenerateTeamsSerializer(serializers.Serializer):
-    """Serializer for triggering team generation."""
+    """Serializer for triggering team generation.
+
+    A real run publishes the plan to every cook and closes the wish form, so
+    before the wish deadline it needs ``before_deadline: true`` — the admin's
+    explicit "yes, plan now, without the people who haven't answered yet".
+    A dry run (Forhåndsvisning) is allowed at any time.
+    """
 
     cycle_id = serializers.IntegerField()
     dry_run = serializers.BooleanField(default=False)
+    before_deadline = serializers.BooleanField(default=False)
 
     def validate_cycle_id(self, value: int) -> int:
         try:
@@ -911,10 +984,22 @@ class GenerateTeamsSerializer(serializers.Serializer):
 
         if cycle.status == CycleStatus.FINALIZED:
             raise serializers.ValidationError(
-                "This cycle has already been finalized. Delete existing teams first to regenerate."
+                "Holdene for perioden er allerede lagt. Slet dem først, hvis de skal laves om."
             )
 
+        self.context["cycle"] = cycle
         return value
+
+    def validate(self, attrs: dict) -> dict:
+        cycle: FoodTeamCycle = self.context["cycle"]
+        real_run = not attrs["dry_run"]
+        if real_run and not attrs["before_deadline"] and timezone.now() < cycle.wish_deadline:
+            deadline = timezone.localtime(cycle.wish_deadline)
+            raise serializers.ValidationError(
+                f"Fristen for ønsker er først {deadline.day}/{deadline.month} kl. "
+                f"{deadline:%H:%M}. Bekræft, hvis holdene skal lægges allerede nu."
+            )
+        return attrs
 
 
 class TeamGenerationResultSerializer(serializers.Serializer):
@@ -1194,11 +1279,17 @@ class SwapBroadcastSerializer(serializers.ModelSerializer):
         return bool(request and obj.requester_id == request.user.id)
 
     def get_can_accept(self, obj: SwapBroadcast) -> bool:
-        """True if the current user holds a membership on one of the offered dates."""
+        """True if the current user holds a membership on one of the offered
+        dates, and neither that day nor the sender's has been cooked yet."""
+        from .utils import any_day_passed
+
         request = self.context.get("request")
         if not request or obj.status != BroadcastStatus.OPEN or obj.requester_id == request.user.id:
             return False
-        dates = [date.fromisoformat(d) for d in obj.available_dates]
+        if any_day_passed(obj.requester_membership.team.date):
+            return False
+        today = timezone.localdate()
+        dates = [d for d in map(date.fromisoformat, obj.available_dates) if d >= today]
         return FoodTeamMember.objects.filter(user=request.user, team__date__in=dates).exists()
 
 
@@ -1227,6 +1318,10 @@ class CreateSwapBroadcastSerializer(serializers.Serializer):
         if own_date in attrs["available_dates"]:
             raise serializers.ValidationError(
                 {"available_dates": "Din egen maddag kan ikke være blandt de ønskede dage."}
+            )
+        if any(d < timezone.localdate() for d in attrs["available_dates"]):
+            raise serializers.ValidationError(
+                {"available_dates": "Du kan kun tilbyde dage, der ikke er passeret."}
             )
         return attrs
 

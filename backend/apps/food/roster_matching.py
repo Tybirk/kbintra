@@ -6,14 +6,18 @@ and all_persons.csv), so both resolve a name the same way.
 
 import difflib
 
-from apps.food.utils import house_number_for
+from apps.food.utils import house_number_for, residents
 from apps.users.models import User
 
 
 def residents_by_house() -> dict[str, list[User]]:
-    """Every active resident, grouped by the number on their house."""
+    """Every resident, grouped by the number on their house.
+
+    Accounts without a house are left out: a blank house number on the list
+    must not resolve to an admin or test account.
+    """
     by_house: dict[str, list[User]] = {}
-    for user in User.objects.filter(is_active=True).select_related("house"):
+    for user in residents().select_related("house"):
         by_house.setdefault(house_number_for(user.house), []).append(user)
     return by_house
 
