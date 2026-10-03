@@ -46,6 +46,10 @@ import type {
   CreateMealPriceData,
 } from "../types"
 
+// A phone photo can take longer than the client's 30 s default to upload.
+// Cloudflare cuts any request off at about 100 s anyway. Same as forum.ts.
+const UPLOAD_TIMEOUT_MS = 120_000
+
 export interface ExpenseDay {
   date: string
 
@@ -431,11 +435,18 @@ export const foodApi = {
     cycleId: number,
 
     dryRun = false,
+
+    // A real run before the wish deadline is refused unless the admin has
+    // confirmed it: whoever has not answered yet is planned from their
+    // standing weekdays.
+    beforeDeadline = false,
   ): Promise<TeamGenerationResult> => {
     const response = await apiClient.post("/food/generate-teams/", {
       cycle_id: cycleId,
 
       dry_run: dryRun,
+
+      ...(beforeDeadline ? { before_deadline: true } : {}),
     })
 
     return response.data
@@ -669,6 +680,7 @@ export const foodApi = {
     const response = await apiClient.post(
       `/food/teams/${teamId}/notify-leftovers/`,
       formData,
+      image ? { timeout: UPLOAD_TIMEOUT_MS } : undefined,
     )
 
     return response.data
