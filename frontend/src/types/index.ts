@@ -2039,6 +2039,9 @@ export interface TeamSwapRequest {
 
   is_outgoing: boolean
 
+  /** Incoming, still pending, and neither date has passed: yours to answer. */
+  can_accept: boolean
+
   created_at: string
 
   updated_at: string

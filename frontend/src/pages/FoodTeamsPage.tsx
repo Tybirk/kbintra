@@ -1,8 +1,15 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 
 import { Link, useNavigate, useParams } from "react-router-dom"
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query"
+
+import { isAxiosError } from "axios"
 
 import {
   Title,
@@ -88,6 +95,72 @@ interface GenerateTeamsParams {
   cycleId: number
 
   dryRun: boolean
+
+  beforeDeadline?: boolean
+}
+
+// One cache entry for the food profile, read by both Min profil and Indsend
+// ønsker. Two keys for the same endpoint let one panel hold on to a pause
+// reason the other had already replaced, and send it back.
+const MY_FOOD_PROFILE_KEY = ["food", "my-food-profile"]
+
+/**
+ * Refresh everything a change of who cooks when can move. A takeover, a swap
+ * or an accepted broadcast moves a shift, and the server then cancels the
+ * pending requests and broadcasts on those days and books or settles a favour.
+ */
+function invalidateMadholdQueries(queryClient: QueryClient) {
+  for (const queryKey of [
+    ["food", "teams"],
+    ["food", "swap-requests"],
+    ["food", "swap-broadcasts"],
+    ["food", "favours"],
+  ]) {
+    queryClient.invalidateQueries({ queryKey })
+  }
+
+  // The dashboard's box for today's team, in case the shift was today's.
+  queryClient.invalidateQueries({ queryKey: ["today-food-team"], exact: true })
+}
+
+/** A query's result, as far as a "Prøv igen" button needs it. */
+interface RetryableQuery {
+  isError: boolean
+
+  isFetching: boolean
+
+  refetch: () => unknown
+}
+
+interface LoadErrorProps {
+  message: string
+
+  queries: RetryableQuery[]
+}
+
+/**
+ * A list that could not be fetched says so. Showing its empty text instead
+ * would tell someone they have no cooking days when the network merely failed.
+ */
+function LoadError({ message, queries }: LoadErrorProps) {
+  const failed = queries.filter((q) => q.isError)
+
+  return (
+    <Alert icon={<IconAlertCircle size={16} />} color="red">
+      <Stack gap="xs" align="flex-start">
+        <Text size="sm">{message}</Text>
+        <Button
+          size="xs"
+          variant="light"
+          color="red"
+          loading={failed.some((q) => q.isFetching)}
+          onClick={() => failed.forEach((q) => q.refetch())}
+        >
+          Prøv igen
+        </Button>
+      </Stack>
+    </Alert>
+  )
 }
 
 export default function FoodTeamsPage() {
@@ -101,18 +174,29 @@ export default function FoodTeamsPage() {
   // the food admin who runs the rotation is usually not a Django superuser.
   const canFoodAdmin = !!(user?.is_staff || user?.is_food_admin)
 
-  // Path-based tab state
+  // Path-based tab state. Only the tabs this user is shown count: the admin
+  // tab is not rendered for everyone else, so selecting it left a blank page.
 
-  const validTabs = [
+  const visibleTabs = [
     "mine-hold",
     "alle-hold",
     "bytte",
     "oensker",
     "profil",
-    "admin",
+    ...(canFoodAdmin ? ["admin"] : []),
   ]
 
-  const activeTab = tab && validTabs.includes(tab) ? tab : "mine-hold"
+  const tabIsVisible = !tab || visibleTabs.includes(tab)
+
+  const activeTab = tab && tabIsVisible ? tab : "mine-hold"
+
+  // An unknown slug, or /madhold/admin for someone who is not a food admin,
+  // lands on Mine hold. Replace, so Back does not lead straight here again.
+  useEffect(() => {
+    if (user && !tabIsVisible) {
+      navigate("/madhold/mine-hold", { replace: true })
+    }
+  }, [user, tabIsVisible, navigate])
 
   const setActiveTab = (newTab: string | null) => {
     if (newTab && newTab !== "mine-hold") {
@@ -124,39 +208,47 @@ export default function FoodTeamsPage() {
 
   // Fetch my teams
 
-  const { data: myTeams, isLoading: myTeamsLoading } = useQuery({
+  const myTeamsQuery = useQuery({
     queryKey: ["food", "teams", "my"],
 
     queryFn: foodApi.getMyTeams,
   })
 
+  const myTeams = myTeamsQuery.data
+
   // Fetch all upcoming teams
 
-  const { data: allTeams, isLoading: allTeamsLoading } = useQuery({
+  const allTeamsQuery = useQuery({
     queryKey: ["food", "teams", "all"],
 
     queryFn: () => foodApi.getTeams(),
   })
 
+  const allTeams = allTeamsQuery.data
+
   // Fetch the upcoming maddage of everyone else in my house
 
-  const { data: housemateTeams, isLoading: housemateTeamsLoading } = useQuery({
+  const housemateTeamsQuery = useQuery({
     queryKey: ["food", "teams", "housemates"],
 
     queryFn: foodApi.getHousemateTeams,
   })
 
+  const housemateTeams = housemateTeamsQuery.data
+
   // Fetch swap requests
 
-  const { data: swapRequests, isLoading: swapRequestsLoading } = useQuery({
+  const swapRequestsQuery = useQuery({
     queryKey: ["food", "swap-requests"],
 
     queryFn: foodApi.getSwapRequests,
   })
 
-  // Fetch active cycle for wish submission
+  const swapRequests = swapRequestsQuery.data
 
-  const { data: activeCycle, isLoading: cycleLoading } = useQuery({
+  // Fetch active cycle for wish submission. A 404 means there is none.
+
+  const activeCycleQuery = useQuery({
     queryKey: ["food", "cycles", "active"],
 
     queryFn: foodApi.getActiveCycle,
@@ -164,21 +256,45 @@ export default function FoodTeamsPage() {
     retry: false,
   })
 
+  const activeCycle = activeCycleQuery.data
+
+  const activeCycleFailed =
+    activeCycleQuery.isError &&
+    !(
+      isAxiosError(activeCycleQuery.error) &&
+      activeCycleQuery.error.response?.status === 404
+    )
+
   // Fetch favours ledger
 
-  const { data: favours, isLoading: favoursLoading } = useQuery({
+  const favoursQuery = useQuery({
     queryKey: ["food", "favours"],
 
     queryFn: foodApi.getFavours,
   })
 
+  const favours = favoursQuery.data
+
   // Fetch swap broadcasts
 
-  const { data: broadcasts, isLoading: broadcastsLoading } = useQuery({
+  const broadcastsQuery = useQuery({
     queryKey: ["food", "swap-broadcasts"],
 
     queryFn: foodApi.getSwapBroadcasts,
   })
+
+  const broadcasts = broadcastsQuery.data
+
+  // What each tab lists, so a failed fetch shows an error, not an empty list
+
+  const mineHoldQueries = [myTeamsQuery, housemateTeamsQuery]
+
+  const byttenQueries = [
+    myTeamsQuery,
+    swapRequestsQuery,
+    broadcastsQuery,
+    favoursQuery,
+  ]
 
   const pendingRequests =
     swapRequests?.filter((r) => r.status === "pending") ?? []
@@ -192,7 +308,10 @@ export default function FoodTeamsPage() {
       (b) => b.can_accept && b.status === "open" && !b.is_mine,
     ) ?? []
 
-  const byttenBadgeCount = pendingRequests.length + incomingBroadcasts.length
+  // Only what is yours to answer: your own outgoing requests wait on others.
+  const answerableRequests = (swapRequests ?? []).filter((r) => r.can_accept)
+
+  const byttenBadgeCount = answerableRequests.length + incomingBroadcasts.length
 
   // My shifts and my household's, in one list by date: a day in the kitchen is
   // the household's evening either way, and the bold name on the card says
@@ -206,12 +325,12 @@ export default function FoodTeamsPage() {
   ].sort((a, b) => a.team.date.localeCompare(b.team.date))
 
   const isLoading =
-    myTeamsLoading ||
-    allTeamsLoading ||
-    housemateTeamsLoading ||
-    swapRequestsLoading ||
-    favoursLoading ||
-    broadcastsLoading
+    myTeamsQuery.isLoading ||
+    allTeamsQuery.isLoading ||
+    housemateTeamsQuery.isLoading ||
+    swapRequestsQuery.isLoading ||
+    favoursQuery.isLoading ||
+    broadcastsQuery.isLoading
 
   return (
     <>
@@ -273,9 +392,14 @@ export default function FoodTeamsPage() {
             <Center h={200}>
               <Loader size="lg" />
             </Center>
+          ) : mineHoldQueries.some((q) => q.isError) ? (
+            <LoadError
+              message="Kunne ikke hente dine madhold."
+              queries={mineHoldQueries}
+            />
           ) : (
             <Stack gap="md">
-              {(!myTeams || myTeams.length === 0) && (
+              {myTeams?.length === 0 && (
                 <Alert icon={<IconAlertCircle size={16} />} color="blue">
                   Du er ikke tildelt nogle kommende madhold.
                 </Alert>
@@ -303,6 +427,11 @@ export default function FoodTeamsPage() {
             <Center h={200}>
               <Loader size="lg" />
             </Center>
+          ) : allTeamsQuery.isError ? (
+            <LoadError
+              message="Kunne ikke hente madholdene."
+              queries={[allTeamsQuery]}
+            />
           ) : !allTeams || allTeams.length === 0 ? (
             <Alert icon={<IconAlertCircle size={16} />} color="yellow">
               Ingen kommende madhold planlagt.
@@ -321,6 +450,11 @@ export default function FoodTeamsPage() {
             <Center h={200}>
               <Loader size="lg" />
             </Center>
+          ) : byttenQueries.some((q) => q.isError) ? (
+            <LoadError
+              message="Kunne ikke hente dine maddage og bytteanmodninger."
+              queries={byttenQueries}
+            />
           ) : (
             <Stack gap="lg">
               {/* Start a swap — the same two buttons as on Mine hold, one row
@@ -423,10 +557,15 @@ export default function FoodTeamsPage() {
         </Tabs.Panel>
 
         <Tabs.Panel value="oensker">
-          {cycleLoading ? (
+          {activeCycleQuery.isLoading ? (
             <Center h={200}>
               <Loader size="lg" />
             </Center>
+          ) : activeCycleFailed ? (
+            <LoadError
+              message="Kunne ikke hente madholdsperioden."
+              queries={[activeCycleQuery]}
+            />
           ) : !activeCycle ? (
             <Alert icon={<IconAlertCircle size={16} />} color="blue">
               Der er ingen aktiv madholdsperiode i øjeblikket. Kom tilbage
@@ -511,6 +650,85 @@ function TeamCooks({ cooks }: TeamCooksProps) {
   )
 }
 
+interface DefaultCookingDaysEditor {
+  /** What to show: the user's latest taps, or the server's value. */
+  days: number[]
+
+  setDays: (days: number[]) => void
+}
+
+/**
+ * The weekdays someone usually can cook, edited from Min profil and from the
+ * wish form alike (one field on the profile).
+ *
+ * Every tap goes into local state at once and is what gets sent, so a second
+ * tap before the first save returns builds on the first instead of on the
+ * stale server value. Saves run one at a time in tap order, so the last tap
+ * is what the server ends up with. With nothing pending the server's value
+ * shows, so a save made elsewhere appears here too.
+ */
+function useDefaultCookingDays(
+  serverDays: number[] | undefined,
+): DefaultCookingDaysEditor {
+  const queryClient = useQueryClient()
+
+  // Taps the server has not confirmed yet. Null: show the server's value.
+  const [draft, setDraft] = useState<number[] | null>(null)
+
+  const pendingSaves = useRef(0)
+
+  const mutation = useMutation({
+    mutationFn: (days: number[]) =>
+      foodApi.updateMyFoodProfile({ default_cooking_days: days }),
+
+    scope: { id: "food-default-cooking-days" },
+
+    onSuccess: (updated) => {
+      queryClient.setQueryData(MY_FOOD_PROFILE_KEY, updated)
+
+      // One toast for a run of quick taps, when the last one is saved.
+      if (pendingSaves.current === 1) {
+        notifications.show({
+          title: "Ugedage gemt",
+
+          message: "Dine standard madlavningsdage er blevet gemt.",
+
+          color: "green",
+        })
+      }
+    },
+
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke gemme dine ugedage. Prøv igen.")
+
+      // Show what the server has again, not a selection it refused.
+      setDraft(null)
+    },
+
+    onSettled: () => {
+      pendingSaves.current -= 1
+
+      if (pendingSaves.current === 0) {
+        setDraft(null)
+
+        queryClient.invalidateQueries({ queryKey: MY_FOOD_PROFILE_KEY })
+      }
+    },
+  })
+
+  const setDays = (next: number[]) => {
+    const sorted = [...next].sort((a, b) => a - b)
+
+    pendingSaves.current += 1
+
+    setDraft(sorted)
+
+    mutation.mutate(sorted)
+  }
+
+  return { days: draft ?? serverDays ?? [], setDays }
+}
+
 interface WishSubmissionPanelProps {
   cycle: FoodTeamCycle
 }
@@ -520,9 +738,9 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
 
   const [selectedDates, setSelectedDates] = useState<string[]>([])
 
-  const [comment, setComment] = useState("")
-
-  const [commentLoaded, setCommentLoaded] = useState(false)
+  // What the user typed as their reason. Null until they type, and then the
+  // profile's reason shows, kept fresh if it is changed under Min profil.
+  const [reasonDraft, setReasonDraft] = useState<string | null>(null)
 
   const [isUnavailable, setIsUnavailable] = useState(false)
 
@@ -531,18 +749,12 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
   // The reason for being away is kept on the profile, not on this cycle's wish,
   // so it survives the period and the organiser can follow it up later.
   const { data: myProfile } = useQuery({
-    queryKey: ["food", "my-food-profile"],
+    queryKey: MY_FOOD_PROFILE_KEY,
 
     queryFn: foodApi.getMyFoodProfile,
   })
 
-  useEffect(() => {
-    if (myProfile && !commentLoaded) {
-      setComment(myProfile.food_team_pause_reason)
-
-      setCommentLoaded(true)
-    }
-  }, [myProfile, commentLoaded])
+  const pauseReason = reasonDraft ?? myProfile?.food_team_pause_reason ?? ""
 
   // Fetch existing wish
 
@@ -556,42 +768,18 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
     refetchOnMount: true,
   })
 
-  // Fetch default cooking days
+  // Default cooking days: the same profile field as under Min profil
 
-  const { data: defaultCookingDaysData } = useQuery({
-    queryKey: ["food", "default-cooking-days"],
-
-    queryFn: foodApi.getDefaultCookingDays,
-  })
-
-  // Update default cooking days mutation
-
-  const updateDefaultsMutation = useMutation({
-    mutationFn: foodApi.updateDefaultCookingDays,
-
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["food", "default-cooking-days"],
-      })
-
-      notifications.show({
-        title: "Standarder gemt",
-
-        message: "Dine standard madlavningsdage er blevet gemt.",
-
-        color: "green",
-      })
-    },
-  })
-
-  const defaultDays = defaultCookingDaysData?.default_cooking_days ?? []
+  const { days: defaultDays, setDays: setDefaultDays } = useDefaultCookingDays(
+    myProfile?.default_cooking_days,
+  )
 
   const handleDefaultDayToggle = (day: number) => {
-    const newDefaults = defaultDays.includes(day)
-      ? defaultDays.filter((d) => d !== day)
-      : [...defaultDays, day].sort()
-
-    updateDefaultsMutation.mutate(newDefaults)
+    setDefaultDays(
+      defaultDays.includes(day)
+        ? defaultDays.filter((d) => d !== day)
+        : [...defaultDays, day],
+    )
   }
 
   // Apply defaults to selected dates when first loading (if no existing wish)
@@ -629,18 +817,28 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
   const submitWishMutation = useMutation({
     mutationFn: (data: CreateWishData) => foodApi.submitWish(cycle.id, data),
 
-    onSuccess: () => {
+    onSuccess: (_, data) => {
       queryClient.invalidateQueries({
         queryKey: ["food", "wishes", "my", cycle.id],
       })
 
       queryClient.invalidateQueries({ queryKey: ["food", "cycles", "active"] })
 
+      // The reason just sent is now the profile's, so the field can follow
+      // the profile again without flashing the old one before the refetch.
+      const sentReason = data.pause_reason
+
+      if (sentReason !== undefined) {
+        queryClient.setQueryData<MyFoodProfile>(MY_FOOD_PROFILE_KEY, (old) =>
+          old ? { ...old, food_team_pause_reason: sentReason } : old,
+        )
+      }
+
+      setReasonDraft(null)
+
       // The wish also settles the pause on the server (naming dates lifts it,
       // sitting the period out records why), so re-read what it decided.
-      queryClient.invalidateQueries({ queryKey: ["food", "my-food-profile"] })
-
-      queryClient.invalidateQueries({ queryKey: ["food", "profile"] })
+      queryClient.invalidateQueries({ queryKey: MY_FOOD_PROFILE_KEY })
 
       queryClient.invalidateQueries({ queryKey: ["food", "roster"] })
 
@@ -674,14 +872,18 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
 
   // One call: the wish and the pause are one answer to one question, and the
   // server keeps them in step. Naming days lifts a standing pause; sitting the
-  // period out records why, on the profile so it outlives this cycle.
+  // period out records why, on the profile so it outlives this cycle. A reason
+  // the user did not touch is left out, and the server keeps the one it has:
+  // sending it back could overwrite a newer one saved under Min profil.
   const handleSubmit = () => {
     submitWishMutation.mutate({
       available_dates: isUnavailable ? [] : selectedDates,
 
       is_unavailable: isUnavailable,
 
-      ...(isUnavailable ? { pause_reason: comment } : {}),
+      ...(isUnavailable && reasonDraft !== null
+        ? { pause_reason: reasonDraft }
+        : {}),
     })
   }
 
@@ -896,8 +1098,8 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
                   label="Hvad er grunden?"
                   description="Læses af madhold-ansvarlig. Gemmes på din profil, så den også gælder, hvis pausen varer længere end denne periode."
                   placeholder="F.eks. sygdom, stress, på rejse hele perioden..."
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
+                  value={pauseReason}
+                  onChange={(e) => setReasonDraft(e.target.value)}
                   minRows={2}
                 />
               )}
@@ -1094,11 +1296,13 @@ function AdminPanel({ canFoodAdmin }: AdminPanelProps) {
 
   // Fetch all cycles
 
-  const { data: cycles, isLoading: cyclesLoading } = useQuery({
+  const cyclesQuery = useQuery({
     queryKey: ["food", "cycles"],
 
     queryFn: foodApi.getCycles,
   })
+
+  const cycles = cyclesQuery.data
 
   // Create cycle mutation
 
@@ -1127,8 +1331,8 @@ function AdminPanel({ canFoodAdmin }: AdminPanelProps) {
   // Generate teams mutation
 
   const generateTeamsMutation = useMutation({
-    mutationFn: ({ cycleId, dryRun }: GenerateTeamsParams) =>
-      foodApi.generateTeams(cycleId, dryRun),
+    mutationFn: ({ cycleId, dryRun, beforeDeadline }: GenerateTeamsParams) =>
+      foodApi.generateTeams(cycleId, dryRun, beforeDeadline),
 
     onSuccess: (result) => {
       setGenerationResult(result)
@@ -1158,7 +1362,7 @@ function AdminPanel({ canFoodAdmin }: AdminPanelProps) {
     },
   })
 
-  if (cyclesLoading) {
+  if (cyclesQuery.isLoading) {
     return (
       <Center h={200}>
         <Loader size="lg" />
@@ -1179,7 +1383,12 @@ function AdminPanel({ canFoodAdmin }: AdminPanelProps) {
         </Button>
       </Group>
 
-      {!cycles || cycles.length === 0 ? (
+      {cyclesQuery.isError ? (
+        <LoadError
+          message="Kunne ikke hente perioderne."
+          queries={[cyclesQuery]}
+        />
+      ) : !cycles || cycles.length === 0 ? (
         <Alert icon={<IconAlertCircle size={16} />} color="blue">
           Der er endnu ikke oprettet nogen perioder. Opret en periode for at
           begynde at indsamle ønsker.
@@ -1191,8 +1400,14 @@ function AdminPanel({ canFoodAdmin }: AdminPanelProps) {
               key={cycle.id}
               cycle={cycle}
               canFoodAdmin={canFoodAdmin}
-              onGenerate={(dryRun) =>
-                generateTeamsMutation.mutate({ cycleId: cycle.id, dryRun })
+              onGenerate={(dryRun, beforeDeadline) =>
+                generateTeamsMutation.mutate({
+                  cycleId: cycle.id,
+
+                  dryRun,
+
+                  beforeDeadline,
+                })
               }
               isGenerating={generateTeamsMutation.isPending}
             />
@@ -1296,7 +1511,7 @@ interface CycleAdminCardProps {
 
   canFoodAdmin: boolean
 
-  onGenerate: (dryRun: boolean) => void
+  onGenerate: (dryRun: boolean, beforeDeadline?: boolean) => void
 
   isGenerating: boolean
 }
@@ -1312,6 +1527,12 @@ function CycleAdminCard({
 }: CycleAdminCardProps) {
   const [resetModalOpened, { open: openResetModal, close: closeResetModal }] =
     useDisclosure(false)
+
+  const [
+    generateModalOpened,
+
+    { open: openGenerateModal, close: closeGenerateModal },
+  ] = useDisclosure(false)
 
   const statusColors: Record<string, string> = {
     draft: "gray",
@@ -1390,13 +1611,24 @@ function CycleAdminCard({
           </Button>
           <Button
             leftSection={<IconPlayerPlay size={16} />}
-            onClick={() => onGenerate(false)}
+            onClick={openGenerateModal}
             loading={isGenerating}
           >
             Generer hold
           </Button>
         </Group>
       )}
+
+      <GenerateTeamsModal
+        cycle={cycle}
+        opened={generateModalOpened}
+        onClose={closeGenerateModal}
+        onConfirm={(beforeDeadline) => {
+          closeGenerateModal()
+
+          onGenerate(false, beforeDeadline)
+        }}
+      />
 
       {/* A finalized cycle refuses regeneration, so the only way back to a new
           plan is to delete the teams and reopen the period for wishes. */}
@@ -1421,6 +1653,72 @@ function CycleAdminCard({
         </>
       )}
     </Card>
+  )
+}
+
+// Generate Teams Modal — a real run plans the period and tells every cook
+// their days, so it is confirmed first (the dry run needs no confirmation).
+
+interface GenerateTeamsModalProps {
+  cycle: FoodTeamCycle
+
+  opened: boolean
+
+  onClose: () => void
+
+  /** `beforeDeadline`: the admin chose to plan before the wish deadline. */
+  onConfirm: (beforeDeadline: boolean) => void
+}
+
+function GenerateTeamsModal({
+  cycle,
+  opened,
+  onClose,
+  onConfirm,
+}: GenerateTeamsModalProps) {
+  const beforeDeadline = dayjs(cycle.wish_deadline).isAfter(dayjs())
+
+  return (
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title={`Generer hold for ${cycle.name}`}
+      centered
+      size="md"
+    >
+      <Stack gap="md">
+        <Text size="sm">
+          Planen bliver gemt, og alle kokke får besked om, hvilke dage de skal
+          lave mad.
+        </Text>
+
+        {beforeDeadline && (
+          <Alert
+            color="orange"
+            icon={<IconAlertCircle size={16} />}
+            title="Deadline for ønsker er ikke nået"
+          >
+            Deadline er{" "}
+            {dayjs(cycle.wish_deadline).format("D. MMMM YYYY [kl.] HH:mm")}.
+            Dem, der ikke har svaret endnu, bliver planlagt ud fra deres faste
+            ugedage eller, hvis de ikke har nogen, alle datoer i perioden.
+          </Alert>
+        )}
+
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>
+            Annuller
+          </Button>
+          <Button
+            color={beforeDeadline ? "orange" : undefined}
+            leftSection={<IconPlayerPlay size={16} />}
+            onClick={() => onConfirm(beforeDeadline)}
+          >
+            {beforeDeadline ? "Ja, generer før deadline" : "Ja, generer hold"}
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
   )
 }
 
@@ -1502,13 +1800,14 @@ function ResetTeamsModal({ cycle, opened, onClose }: ResetTeamsModalProps) {
               Holdene kan ikke slettes
             </Text>
             <Text size="sm">
-              Perioden har madlavningsdage, der allerede er passeret (
+              Perioden har madlavningsdage, der er i dag eller allerede passeret
+              (
               {preview.past_dates
                 .slice(0, 3)
                 .map((d) => dayjs(d).format("D. MMM"))
                 .join(", ")}
-              {preview.past_dates.length > 3 ? " m.fl." : ""}). Der er allerede
-              lavet mad på dem, og en sletning ville slette historikken om
+              {preview.past_dates.length > 3 ? " m.fl." : ""}). Der bliver eller
+              er lavet mad på dem, og en sletning ville slette historikken om
               afholdte vagter, bytninger og tjenester. Opret i stedet en ny
               periode.
             </Text>
@@ -2470,11 +2769,7 @@ function TakeoverShiftButton({
       }),
 
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["food", "teams"] })
-
-      queryClient.invalidateQueries({ queryKey: ["food", "favours"] })
-
-      queryClient.invalidateQueries({ queryKey: ["food", "swap-broadcasts"] })
+      invalidateMadholdQueries(queryClient)
 
       notifications.show({
         title: "Maddag overtaget",
@@ -2579,9 +2874,7 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
       }),
 
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["food", "swap-requests"] })
-
-      queryClient.invalidateQueries({ queryKey: ["food", "teams"] })
+      invalidateMadholdQueries(queryClient)
 
       notifications.show({
         title:
@@ -2726,7 +3019,11 @@ function SwapRequestCard({ request }: SwapRequestCardProps) {
 
         {request.status === "pending" && (
           <>
-            {request.is_incoming ? (
+            {request.is_incoming && !request.can_accept ? (
+              <Text size="sm" c="dimmed">
+                Byttet kan ikke længere gennemføres.
+              </Text>
+            ) : request.is_incoming ? (
               <>
                 {showResponseInput && (
                   <Textarea
@@ -3038,9 +3335,7 @@ function IncomingBroadcastCard({
       foodApi.acceptSwapBroadcast(broadcast.id, membershipId),
 
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["food", "swap-broadcasts"] })
-
-      queryClient.invalidateQueries({ queryKey: ["food", "teams"] })
+      invalidateMadholdQueries(queryClient)
 
       notifications.show({
         title: "Byt accepteret",
@@ -3266,32 +3561,30 @@ const WEEKDAY_OPTIONS = [
 function FoodProfilePanel() {
   const queryClient = useQueryClient()
 
-  const { data: profile, isLoading } = useQuery({
-    queryKey: ["food", "profile"],
+  const profileQuery = useQuery({
+    queryKey: MY_FOOD_PROFILE_KEY,
 
     queryFn: foodApi.getMyFoodProfile,
   })
 
-  const [comment, setComment] = useState("")
+  const profile = profileQuery.data
 
-  const [commentLoaded, setCommentLoaded] = useState(false)
+  // What the user typed as their reason. Null until they type, and then the
+  // profile's reason shows, kept fresh if the wish form changes it.
+  const [reasonDraft, setReasonDraft] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (profile && !commentLoaded) {
-      setComment(profile.food_team_pause_reason)
-
-      setCommentLoaded(true)
-    }
-  }, [profile, commentLoaded])
+  const { days: defaultDays, setDays: setDefaultDays } = useDefaultCookingDays(
+    profile?.default_cooking_days,
+  )
 
   const updateMutation = useMutation({
     mutationFn: (data: Partial<MyFoodProfile>) =>
       foodApi.updateMyFoodProfile(data),
 
     onSuccess: (updated) => {
-      queryClient.setQueryData(["food", "profile"], updated)
+      queryClient.setQueryData(MY_FOOD_PROFILE_KEY, updated)
 
-      queryClient.invalidateQueries({ queryKey: ["food", "profile"] })
+      queryClient.invalidateQueries({ queryKey: MY_FOOD_PROFILE_KEY })
 
       notifications.show({
         title: "Profil gemt",
@@ -3307,7 +3600,16 @@ function FoodProfilePanel() {
     },
   })
 
-  if (isLoading || !profile) {
+  if (profileQuery.isError) {
+    return (
+      <LoadError
+        message="Kunne ikke hente din madhold-profil."
+        queries={[profileQuery]}
+      />
+    )
+  }
+
+  if (!profile) {
     return (
       <Center h={200}>
         <Loader size="lg" />
@@ -3319,7 +3621,7 @@ function FoodProfilePanel() {
     ? ` (med ${profile.housemate_name})`
     : ""
 
-  const selectedDays = profile.default_cooking_days.map((d) => String(d))
+  const pauseReason = reasonDraft ?? profile.food_team_pause_reason
 
   return (
     <Stack gap="lg">
@@ -3388,18 +3690,21 @@ function FoodProfilePanel() {
                 label="Hvorfor holder du pause?"
                 description="Vises for madhold-ansvarlig, så de ved, hvad de kan regne med. Kort er fint."
                 placeholder="F.eks. væk til foråret, sygdom, nyfødt i huset..."
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
+                value={pauseReason}
+                onChange={(e) => setReasonDraft(e.target.value)}
                 minRows={2}
                 autosize
               />
               <Group justify="flex-end">
                 <Button
                   onClick={() =>
-                    updateMutation.mutate({ food_team_pause_reason: comment })
+                    updateMutation.mutate(
+                      { food_team_pause_reason: pauseReason },
+                      { onSuccess: () => setReasonDraft(null) },
+                    )
                   }
                   loading={updateMutation.isPending}
-                  disabled={comment === profile.food_team_pause_reason}
+                  disabled={pauseReason === profile.food_team_pause_reason}
                 >
                   Gem begrundelse
                 </Button>
@@ -3419,13 +3724,9 @@ function FoodProfilePanel() {
             </Text>
             <Chip.Group
               multiple
-              value={selectedDays}
+              value={defaultDays.map(String)}
               onChange={(value) =>
-                updateMutation.mutate({
-                  default_cooking_days: (value as string[]).map((v) =>
-                    Number(v),
-                  ),
-                })
+                setDefaultDays((value as string[]).map(Number))
               }
             >
               <Group gap="xs">
