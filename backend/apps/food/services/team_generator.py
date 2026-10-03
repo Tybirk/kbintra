@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from django.db import transaction
+from django.utils import timezone
 
 from apps.food.models import (
     CycleStatus,
@@ -42,8 +43,7 @@ from apps.food.models import (
     FoodTeamMember,
     FoodTeamWish,
 )
-from apps.food.utils import house_number_for
-from apps.users.models import User
+from apps.food.utils import food_team_pool, house_number_for
 
 
 class SchedulingError(RuntimeError):
@@ -122,7 +122,12 @@ class TeamGenerator:
         # admin asked for; ``cooking_dates`` is what we actually staff, which
         # _trim_dates_to_capacity may shorten from the end.
         self.requested_dates = [date.fromisoformat(d) for d in cycle.cooking_dates]
-        self.cooking_dates = list(self.requested_dates)
+        # Today and earlier can't be planned any more: today's reminder went out
+        # last night, and a past day has been cooked (or not) without a plan.
+        # A period generated late plans the days still ahead of it.
+        today = timezone.localdate()
+        self.past_dates = [d for d in self.requested_dates if d <= today]
+        self.cooking_dates = [d for d in self.requested_dates if d > today]
         self.cooking_dates_set: set[date] = set(self.cooking_dates)
         self.dropped_dates: list[date] = []
 
@@ -147,13 +152,11 @@ class TeamGenerator:
 
     def load_data(self) -> None:
         """Load persons and their wishes from the database."""
-        # ``is_active`` as well as the opt-out: a resident who has moved out is
-        # deactivated, not exempted, and every other madhold query already skips
-        # them — the suggested day count, the roster, the reminders. Without it
-        # here the generator plans days around people who no longer live here.
-        users = User.objects.filter(is_active=True, is_exempt_from_food_teams=False).select_related(
-            "house"
-        )
+        # Residents not on a pause, the same pool as the suggested day count,
+        # the roster and the reminders. A resident who has moved out is
+        # deactivated, not exempted, and an admin or test account has no house:
+        # neither may be planned as a cook.
+        users = food_team_pool().select_related("house")
 
         wishes = {w.user_id: w for w in FoodTeamWish.objects.filter(cycle=self.cycle)}
 
@@ -863,14 +866,37 @@ class TeamGenerator:
                         self.warnings.append(f"Datoen {d} har flere personer fra samme hus.")
                 seen[house] = uid
 
+    def _refuse_dates_planned_elsewhere(self) -> None:
+        """Stop if another period already has a team on one of our dates.
+
+        ``FoodTeam.date`` is unique, so planning such a date means deleting that
+        team — its cooks, their swaps and broadcasts — without telling anyone.
+        """
+        clashes = FoodTeam.objects.filter(date__in=self.cooking_dates)
+        if self.cycle.pk is not None:
+            clashes = clashes.exclude(cycle_id=self.cycle.pk)
+        clashes = clashes.select_related("cycle").order_by("date")
+        if clashes:
+            listing = ", ".join(
+                f"{t.date.isoformat()} ({t.cycle.name if t.cycle else 'uden periode'})"
+                for t in clashes
+            )
+            raise SchedulingError(
+                f"Der er allerede hold på disse datoer i en anden periode: {listing}. "
+                "Fjern datoerne fra denne periode, før holdene lægges."
+            )
+
     # ---- persistence ------------------------------------------------------ #
 
     @transaction.atomic
     def save_teams(self) -> int:
         """Save the generated teams to the database."""
-        # Delete existing teams across everything the admin asked for, not just
-        # the trimmed list, so a dropped date can't keep a stale team.
-        FoodTeam.objects.filter(date__in=self.requested_dates).delete()
+        # Clear this period's own teams on every date still ahead, not just the
+        # trimmed list, so a dropped date can't keep a stale team. Never another
+        # period's (refused above) and never a day already cooked.
+        FoodTeam.objects.filter(
+            cycle=self.cycle, date__in=self.requested_dates, date__gt=timezone.localdate()
+        ).delete()
 
         teams_created = 0
         for d, member_ids in self.date_to_persons.items():
@@ -891,9 +917,10 @@ class TeamGenerator:
 
         # Hand the dropped dates to the next cycle: cycle_planning starts the
         # next period the day after this one's last cooking date, so the cycle
-        # has to record what it actually covered. Saved inside this transaction
+        # has to record what it actually covered — which also leaves out days
+        # that had passed before it was planned. Saved inside this transaction
         # so the teams and the date list can never disagree.
-        if self.dropped_dates:
+        if self.dropped_dates or self.past_dates:
             self.cycle.cooking_dates = [  # ty: ignore[invalid-assignment]
                 d.isoformat() for d in self.cooking_dates
             ]
@@ -904,6 +931,13 @@ class TeamGenerator:
     def generate(self, save: bool = True) -> TeamGenerationResult:
         """Run the full team generation algorithm."""
         try:
+            if not self.cooking_dates:
+                return TeamGenerationResult(
+                    success=False,
+                    message="Alle periodens datoer er i dag eller passeret, så der er intet at planlægge.",
+                )
+            self._refuse_dates_planned_elsewhere()
+
             self.load_data()
 
             if not self.persons:
@@ -912,6 +946,11 @@ class TeamGenerator:
                     message="Ingen kvalificerede personer fundet til holddannelse",
                 )
 
+            if self.past_dates:
+                self.warnings.append(
+                    "Disse datoer er i dag eller passeret og er ikke planlagt: "
+                    f"{', '.join(d.isoformat() for d in self.past_dates)}."
+                )
             self._trim_dates_to_capacity()
             self.run_assignment()
             self.validate_result()

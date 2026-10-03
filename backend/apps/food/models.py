@@ -509,6 +509,17 @@ class FoodTeamWish(models.Model):
             "is_exempt_from_food_teams). The generator skips them for this cycle."
         ),
     )
+    # Submitting dates ends a standing pause. Remember that it was this wish
+    # that did it, and the reason it had, so correcting the same wish to "kan
+    # ikke" gives the pause back instead of leaving the person un-paused.
+    lifted_pause = models.BooleanField(
+        default=False,
+        help_text="Submitting this wish's dates ended the user's standing madhold pause.",
+    )
+    lifted_pause_reason = models.TextField(
+        blank=True,
+        help_text="The pause reason this wish cleared, restored if it is corrected to 'kan ikke'.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

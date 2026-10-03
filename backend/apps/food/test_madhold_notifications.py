@@ -279,7 +279,7 @@ class TestPlanReadyAnnouncement:
         cycle = FoodTeamCycle.objects.create(
             name="Madhold september",
             cooking_dates=[d1.isoformat(), d2.isoformat()],
-            wish_deadline=timezone.now() + timedelta(days=2),
+            wish_deadline=timezone.now() - timedelta(minutes=1),  # generated after the deadline
             status=CycleStatus.COLLECTING_WISHES,
         )
         # Enough cooks for two full teams of six, all in one of two houses, so
@@ -340,7 +340,7 @@ class TestPlanReadyAnnouncement:
         cycle = FoodTeamCycle.objects.create(
             name="Tom periode",
             cooking_dates=[future_monday.isoformat()],
-            wish_deadline=timezone.now() + timedelta(days=2),
+            wish_deadline=timezone.now() - timedelta(minutes=1),
             status=CycleStatus.COLLECTING_WISHES,
         )
         User.objects.filter(is_active=True).update(is_exempt_from_food_teams=True)

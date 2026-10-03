@@ -52,6 +52,34 @@ def housemates_of(user):  # type: ignore[no-untyped-def]
     )
 
 
+def residents():  # type: ignore[no-untyped-def]
+    """Everyone who lives here: active, and with a house.
+
+    Admin, test and shared accounts are active but have no house. They are not
+    residents, so madhold must never invite, nudge or plan them as cooks.
+    """
+    from apps.users.models import User
+
+    return User.objects.filter(is_active=True, house__isnull=False)
+
+
+def food_team_pool():  # type: ignore[no-untyped-def]
+    """The residents madhold plans and asks: everyone not on a standing pause."""
+    return residents().filter(is_exempt_from_food_teams=False)
+
+
+def any_day_passed(*days: date) -> bool:
+    """True if any of these cooking days is before today (local time).
+
+    Today itself has not passed: a swap or takeover on the morning of the day
+    is how someone who falls ill gets cover.
+    """
+    from django.utils import timezone
+
+    today = timezone.localdate()
+    return any(d < today for d in days)
+
+
 def get_closed_food_dates(dates: list[date]) -> set[date]:
     """Return the subset of ``dates`` that are closed food days."""
     from .models import ClosedFoodDay

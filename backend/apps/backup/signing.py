@@ -20,7 +20,7 @@ import hmac
 import posixpath
 import time
 from typing import overload
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 from django.conf import settings
 
@@ -57,7 +57,9 @@ def _media_relative_path(url: str) -> str:
     signature that could never verify, so every æ/ø/å file fell back to the
     session cookie — exactly what signed URLs exist to avoid.
     """
-    path = unquote(url.split("?", 1)[0]).lstrip("/")
+    # The path only: an absolute URL (the leftovers photo was stored as one)
+    # otherwise signed "https:/host/media/..." and could never verify.
+    path = unquote(urlsplit(url).path).lstrip("/")
     media_prefix = settings.MEDIA_URL.lstrip("/")
     if media_prefix and path.startswith(media_prefix):
         path = path[len(media_prefix) :]

@@ -193,9 +193,9 @@ def notify_residents_of_new_cycle(cycle_id: int) -> None:
         notify_food_team_pause_check,
         notify_food_team_wishes_open,
     )
-    from apps.users.models import User
 
     from .models import FoodTeamCycle
+    from .utils import residents
 
     cycle = FoodTeamCycle.objects.filter(pk=cycle_id).first()
     if cycle is None:
@@ -205,7 +205,7 @@ def notify_residents_of_new_cycle(cycle_id: int) -> None:
     deadline_label = _deadline_label(cycle)
 
     asked = invited = 0
-    for user in User.objects.filter(is_active=True):
+    for user in residents():
         if user.is_exempt_from_food_teams:
             notify_food_team_pause_check(user, cycle.name, deadline_label)
             asked += 1
@@ -233,9 +233,9 @@ def send_wish_deadline_reminders() -> None:
     produce one nudge, however many days its window stays open.
     """
     from apps.notifications.services import notify_food_team_wish_deadline
-    from apps.users.models import User
 
     from .models import CycleStatus, FoodTeamCycle, FoodTeamWish
+    from .utils import food_team_pool
 
     now = timezone.now()
     cycles = FoodTeamCycle.objects.filter(
@@ -249,9 +249,7 @@ def send_wish_deadline_reminders() -> None:
         submitted = set(FoodTeamWish.objects.filter(cycle=cycle).values_list("user_id", flat=True))
         deadline_label = _deadline_label(cycle)
         nudged = 0
-        for user in User.objects.filter(is_active=True, is_exempt_from_food_teams=False).exclude(
-            pk__in=submitted
-        ):
+        for user in food_team_pool().exclude(pk__in=submitted):
             notify_food_team_wish_deadline(user, cycle.name, deadline_label)
             nudged += 1
 
