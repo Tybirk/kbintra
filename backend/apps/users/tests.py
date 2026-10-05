@@ -1038,7 +1038,9 @@ class TestBirthdayNotifications:
         with patch("django.utils.timezone.localdate", return_value=self.TODAY):
             send_birthday_notifications.call_local()
 
-    def _residents(self, house):
+    def _residents(self, house, opted_in=True):
+        from apps.notifications.models import NotificationPreference
+
         birthday = User.objects.create_user(
             email="bday@example.com",
             password="pass",
@@ -1050,6 +1052,8 @@ class TestBirthdayNotifications:
         other = User.objects.create_user(
             email="other@example.com", password="pass", first_name="Bo", house=house
         )
+        if opted_in:
+            NotificationPreference.objects.create(user=other, notify_birthdays=True)
         return birthday, other
 
     def test_others_are_told_and_the_birthday_person_is_not(self, house):
@@ -1107,22 +1111,19 @@ class TestBirthdayNotifications:
 
         assert not Notification.objects.exists()
 
-    def test_opting_out_stops_it(self, house):
-        from apps.notifications.models import Notification, NotificationPreference
+    def test_nobody_is_told_without_opting_in(self, house):
+        from apps.notifications.models import Notification
 
-        _, other = self._residents(house)
-        NotificationPreference.objects.update_or_create(
-            user=other, defaults={"notify_birthdays": False}
-        )
+        self._residents(house, opted_in=False)
 
         self._run()
 
-        assert not Notification.objects.filter(user=other).exists()
+        assert not Notification.objects.exists()
 
-    def test_only_in_app_is_on_by_default(self, user):
+    def test_every_channel_is_off_by_default(self, user):
         from apps.notifications.models import NotificationPreference
 
         prefs = NotificationPreference(user=user)
-        assert prefs.notify_birthdays is True
+        assert prefs.notify_birthdays is False
         assert prefs.push_birthdays is False
         assert prefs.email_birthdays is False
