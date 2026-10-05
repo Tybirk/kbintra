@@ -129,7 +129,9 @@ class NotificationPreference(models.Model):
     notify_mentions = models.BooleanField(default=True)
     notify_car_sharing = models.BooleanField(default=True)
     notify_reports = models.BooleanField(default=True)
-    notify_birthdays = models.BooleanField(default=True)
+    # Off by default, the one in-app toggle that is: ~180 birthdays a year put
+    # one in everybody's bell roughly every other day (migration 0029).
+    notify_birthdays = models.BooleanField(default=False)
 
     # Email notification preferences (per notification type)
     email_messages = models.BooleanField(default=False)

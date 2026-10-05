@@ -834,6 +834,58 @@ class TestAdminDownloadAPI:
         assert response.status_code == 200
         assert response["Content-Type"] == "application/x-sqlite3"
 
+    @pytest.mark.django_db(transaction=True)
+    def test_download_db_leaves_no_orphans(self, admin_client, admin_user, settings, tmp_path):
+        """Scrubbing other people's conversations must not leave rows pointing at the deleted
+        messages: Django's SQLite backend runs PRAGMA foreign_key_check after every migration,
+        so one orphan makes the downloaded copy fail `migrate`."""
+        import sqlite3
+
+        from django.db import connection
+
+        from apps.messaging.models import (
+            Conversation,
+            Message,
+            MessageReaction,
+            MessageReadStatus,
+        )
+
+        a = User.objects.create_user(email="a@test.com", password="x")
+        b = User.objects.create_user(email="b@test.com", password="x")
+        own = Conversation.objects.create()
+        own.participants.set([admin_user, a])
+        own_message = Message.objects.create(conversation=own, sender=a, content="hej")
+        MessageReaction.objects.create(message=own_message, user=admin_user, reaction_type="❤️")
+        other = Conversation.objects.create()
+        other.participants.set([a, b])
+        other_message = Message.objects.create(conversation=other, sender=a, content="privat")
+        MessageReaction.objects.create(message=other_message, user=b, reaction_type="👍")
+        MessageReadStatus.objects.create(message=other_message, user=b)
+
+        db_file = tmp_path / "db.sqlite3"
+        connection.ensure_connection()
+        copy = sqlite3.connect(db_file)
+        connection.connection.backup(copy)
+        copy.close()
+        settings.DATABASES = {"default": {**settings.DATABASES["default"], "NAME": str(db_file)}}
+
+        response = admin_client.get("/api/auth/admin/download-db/")
+        downloaded = tmp_path / "downloaded.sqlite3"
+        downloaded.write_bytes(b"".join(response.streaming_content))
+        response.close()
+
+        conn = sqlite3.connect(downloaded)
+        try:
+            assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+            assert conn.execute("SELECT conversation_id FROM messaging_message").fetchall() == [
+                (own.id,)
+            ]
+            assert conn.execute("SELECT message_id FROM messaging_messagereaction").fetchall() == [
+                (own_message.id,)
+            ]
+        finally:
+            conn.close()
+
     def test_download_media_requires_auth(self, api_client, db):
         """Test that unauthenticated requests are rejected."""
         response = api_client.get("/api/auth/admin/download-media/")
@@ -986,7 +1038,9 @@ class TestBirthdayNotifications:
         with patch("django.utils.timezone.localdate", return_value=self.TODAY):
             send_birthday_notifications.call_local()
 
-    def _residents(self, house):
+    def _residents(self, house, opted_in=True):
+        from apps.notifications.models import NotificationPreference
+
         birthday = User.objects.create_user(
             email="bday@example.com",
             password="pass",
@@ -998,6 +1052,8 @@ class TestBirthdayNotifications:
         other = User.objects.create_user(
             email="other@example.com", password="pass", first_name="Bo", house=house
         )
+        if opted_in:
+            NotificationPreference.objects.create(user=other, notify_birthdays=True)
         return birthday, other
 
     def test_others_are_told_and_the_birthday_person_is_not(self, house):
@@ -1055,22 +1111,19 @@ class TestBirthdayNotifications:
 
         assert not Notification.objects.exists()
 
-    def test_opting_out_stops_it(self, house):
-        from apps.notifications.models import Notification, NotificationPreference
+    def test_nobody_is_told_without_opting_in(self, house):
+        from apps.notifications.models import Notification
 
-        _, other = self._residents(house)
-        NotificationPreference.objects.update_or_create(
-            user=other, defaults={"notify_birthdays": False}
-        )
+        self._residents(house, opted_in=False)
 
         self._run()
 
-        assert not Notification.objects.filter(user=other).exists()
+        assert not Notification.objects.exists()
 
-    def test_only_in_app_is_on_by_default(self, user):
+    def test_every_channel_is_off_by_default(self, user):
         from apps.notifications.models import NotificationPreference
 
         prefs = NotificationPreference(user=user)
-        assert prefs.notify_birthdays is True
+        assert prefs.notify_birthdays is False
         assert prefs.push_birthdays is False
         assert prefs.email_birthdays is False

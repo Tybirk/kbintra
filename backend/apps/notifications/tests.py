@@ -853,7 +853,8 @@ class TestEmailPreferenceFallback:
         user.refresh_from_db()
 
         assert get_user_push_preference(user, NotificationType.BIRTHDAY) is False
-        assert get_user_preference(user, NotificationType.BIRTHDAY) is True
+        assert get_user_preference(user, NotificationType.BIRTHDAY) is False
+        assert get_user_preference(user, NotificationType.EVENT_CREATED) is True
         assert get_user_preference(user, NotificationType.SUBGROUP_ACTIVITY) is False
         assert get_user_push_preference(user, NotificationType.NEW_MESSAGE) is True
 
