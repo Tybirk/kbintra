@@ -1,6 +1,6 @@
 # Madhold bug hunt (2026-10-02)
 
-## Fix tracker (branch `fix/madhold-bughunt`, off `madhold-go-live` 27dc691)
+## Fix tracker (merged to `develop` on top of `madhold-go-live`)
 
 Status per item; commits are listed under "Commits" below.
 
@@ -31,8 +31,11 @@ Status per item; commits are listed under "Commits" below.
 
 | Commit | What |
 |---|---|
-| 0ce9777 | Backend: S1–S4, N1–N2, C1–C7, migration `food/0030`, `apps/food/CLAUDE.md` |
-| 3d7f268 | Frontend: F1–F7, the C3 confirmation modal, and the C5 reset text |
+| ea825ed | Backend: S1–S4, N1–N2, C1–C7, migration `food/0030`, `apps/food/CLAUDE.md` |
+| 70005dd | Frontend: F1–F7, the C3 confirmation modal, and the C5 reset text |
+
+These are the SHAs on `develop`, where the fixes were replayed on top of `madhold-go-live`
+(c7f3a2c) on 2026-10-06. They first sat on `fix/madhold-bughunt` as 0ce9777 and 3d7f268.
 
 ### Verification (2026-10-03)
 

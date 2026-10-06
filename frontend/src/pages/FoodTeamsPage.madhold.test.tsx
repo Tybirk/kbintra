@@ -598,7 +598,7 @@ describe("F3: a pause reason saved under Min profil survives the wish form", () 
     )
 
     expect(
-      await screen.findByRole("textbox", { name: /Hvad forhindrer dig/ }),
+      await screen.findByRole("textbox", { name: /Hvad er grunden/ }),
     ).toHaveValue("barsel")
 
     await user.click(screen.getByRole("button", { name: "Indsend ønsker" }))
@@ -627,7 +627,7 @@ describe("F3: a pause reason saved under Min profil survives the wish form", () 
     )
 
     await user.type(
-      await screen.findByRole("textbox", { name: /Hvad forhindrer dig/ }),
+      await screen.findByRole("textbox", { name: /Hvad er grunden/ }),
       "rejse",
     )
 
