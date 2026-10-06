@@ -214,8 +214,8 @@ Switch to **User A** (regular). Go to **Madhold → Indsend ønsker**.
    **"X af Y datoer valgt"** updates. Try **"Vælg alle"** then **"Ryd alle"**.
 5. Verify there is **no free-text Kommentar** here while you are available — the
    date cards already say when you can cook. Tick **"Jeg er forhindret i hele
-   perioden"** (its description asks for a good reason) and a **"Hvad forhindrer
-   dig?"** box appears; untick it and the box goes away again.
+   perioden"** (its description asks for a good reason) and a **"Hvad er
+   grunden?"** box appears; untick it and the box goes away again.
 6. Re-select a handful of dates, click **"Indsend ønsker"** → green toast
    **"Ønsker indsendt"**. Reload the tab: a blue alert **"Du har allerede
    indsendt dine ønsker (N datoer valgt)…"** appears, the button reads
@@ -294,7 +294,8 @@ This makes a `FoodTeam` dated **today** with the admin + 5 random members.
 3. **Food widget subtle line**: scroll to today's **FoodDayWidget** on the
    dashboard → under the menu text, a muted line **"Dagens madhold: <fornavne>"**.
 4. **Takeaway flow**: click **"Takeaway er klar"** → a panel opens ("Takeaway hentes
-   normalt kl. 17:30…") with chips **Nu** and the quarter-hours left before 17:30.
+   normalt kl. 17:30…") with chips **Nu**, **kl. 17:10**, **kl. 17:15** and **kl. 17:20** (only the ones
+   still ahead).
    Pick one (e.g. **kl. 17:15**) → **"Send takeaway-besked"** → green toast
    **"Takeaway-besked sendt"**, and the button now reads **"Takeaway klar kl.
    17:15"** (disabled: once-per-day guard). Recipients see **"Takeaway klar kl.

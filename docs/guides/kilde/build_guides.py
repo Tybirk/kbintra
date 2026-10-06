@@ -3,7 +3,7 @@
     uv run --no-project --with playwright --with pillow python build_guides.py
 
 Writes docs/guides/beboerguide/ and docs/guides/madholdguide/: an HTML page,
-its billeder/ and a PDF (A4 landscape). The PDFs are gitignored — rebuild them
+its billeder/ and a PDF (A4 landscape). The PDFs are gitignored; rebuild them
 with this command, or open the HTML and print it (A4, liggende).
 """
 
@@ -150,7 +150,7 @@ tr + tr td { border-top:0.3mm solid #dfe3ea; }
 # Beboerguide: the whole app, short.
 # --------------------------------------------------------------------------- #
 def beboerguide() -> Guide:
-    g = Guide("beboerguide", "kb-intra-guide", "KB Intra – kort guide")
+    g = Guide("beboerguide", "kb-intra-guide", "KB Intra: kort guide")
     i = {
         "idag": g.put("idag", "forside"),
         "login": g.put("login", "install_login", (0, 1100)),
@@ -163,9 +163,9 @@ def beboerguide() -> Guide:
         "push": g.put("push", "push", (0, 900)),
         "mad": g.put("mad", "mad"),
         "madhold": g.put("madhold", "mh_mine_hold_full", (0, 1688)),
-        "oensker": g.put("oensker", "mh_oensker_forhindret_full", (0, 1300)),
+        "oensker": g.put("oensker", "mh_oensker_forhindret_full", (0, 1330)),
         "rester": g.put("rester", "rester_form", (440, 1130)),
-        "takeaway": g.put("takeaway", "mh_takeaway_panel", (330, 1060)),
+        "takeaway": g.put("takeaway", "mh_takeaway_panel", (330, 1140)),
         "bytte": g.put("bytte", "mh_indgaaende"),
         "mprofil": g.put("mprofil", "mh_profil_full", (560, 1888)),
         "faelles": g.put("faelles", "faelles"),
@@ -184,7 +184,7 @@ def beboerguide() -> Guide:
         cover(
             "Kløverbakken · oktober 2026",
             "KB Intra",
-            "En kort guide til vores fælles intranet — på telefonen og på computeren.",
+            "En kort guide til vores fælles intranet, på telefonen og på computeren.",
             phone(i["idag"], "full"),
         ),
         slide(
@@ -252,7 +252,7 @@ Android: tryk <b>Installér</b>, når telefonen spørger.</span></li>
             kicker="5",
         ),
         slide(
-            "Mad — tilmelding",
+            "Mad: tilmelding",
             """<p>Under <b>Mad</b> ser du ugens menu og melder husstanden til.</p>
 <ul>
 <li>Vælg <b>Fælleshuset</b> eller <b>Tag med</b>, og <b>17:30</b> eller <b>18:30</b>.</li>
@@ -263,11 +263,11 @@ Android: tryk <b>Installér</b>, når telefonen spørger.</span></li>
             kicker="6",
         ),
         slide(
-            "Madhold — dine maddage",
+            "Madhold: dine maddage",
             """<p>Under <b>Madhold</b> → <b>Mine hold</b> står de dage, du skal lave mad, og hvem du laver mad med.</p>
 <ul>
 <li>Når en ny periode åbner, får du besked. Vælg alle de dage, du kan, under <b>Indsend ønsker</b>.</li>
-<li>Madholdet er en fælles opgave. Kun hvis du har en god grund, fx en lang rejse eller sygdom, slår du <b>Jeg er forhindret i hele perioden</b> til og skriver hvorfor.</li>
+<li>Madholdet er en fælles opgave. Du kan melde dig fra en periode, hvis der er en god grund, fx sygdom (også stress) eller en lang rejse. Slå <b>Jeg er forhindret i hele perioden</b> til, og skriv hvorfor.</li>
 </ul>""",
             phone(i["madhold"], "full"),
             phone(i["oensker"]),
@@ -275,10 +275,10 @@ Android: tryk <b>Installér</b>, når telefonen spørger.</span></li>
             cls="dense",
         ),
         slide(
-            "Madhold — dagen, du laver mad",
+            "Madhold: dagen, du laver mad",
             """<p>På din maddag er der en <b>grøn boks</b> øverst på forsiden med holdet, dagens opskrifter og hvor mange der spiser.</p>
 <ul>
-<li><b>Takeaway er klar</b>: kun hvis maden er klar <b>før 17:30</b>. Vælg gerne et tidspunkt i god tid, fx kl. 17:15.</li>
+<li><b>Takeaway er klar</b>: kun hvis maden er klar <b>før 17:30</b>. Vælg kl. 17:10, 17:15, 17:20 eller Nu, gerne i god tid.</li>
 <li><b>Rester er klar</b>: hvis der er mad tilovers. Skriv gerne hvad.</li>
 </ul>
 <p class="small">Naboerne får en notifikation med det samme.</p>""",
@@ -288,7 +288,7 @@ Android: tryk <b>Installér</b>, når telefonen spørger.</span></li>
             cls="dense",
         ),
         slide(
-            "Madhold — bytte og profil",
+            "Madhold: bytte og profil",
             """<ul>
 <li><b>Anmod specifik person om bytte</b>: når I har aftalt et bytte, fx over hækken, eller du vil spørge én bestemt nabo. Den anden trykker <b>Accepter</b>, så er planen opdateret.</li>
 <li><b>Anmod fællesskabet om bytte</b>: alle, der kan tage dagen, får besked.</li>
@@ -325,7 +325,7 @@ Android: tryk <b>Installér</b>, når telefonen spørger.</span></li>
         slide(
             "Kalender og booking",
             """<ul>
-<li><b>Begivenhedskalender</b>: det, der er relevant for bofællesskabet — fællesmøder, arbejdsdage, fester for alle, affaldsdage.</li>
+<li><b>Begivenhedskalender</b>: det, der er relevant for bofællesskabet, fx fællesmøder, arbejdsdage, fester for alle og affaldsdage.</li>
 <li><b>Bookingkalender</b>: her booker du et lokale til noget privat, fx en fødselsdag. Se om det er ledigt, og tryk <b>Ny</b>.</li>
 </ul>
 <p class="small">Du kan også booke lokaler, når du opretter en begivenhed.</p>""",
@@ -361,12 +361,12 @@ Android: tryk <b>Installér</b>, når telefonen spørger.</span></li>
             """<table>
 <tr><th>Notifikation</th><th>Hvornår</th></tr>
 <tr><td><b>Dine maddage: …</b></td><td>Når madholdsplanen er lagt</td></tr>
-<tr><td><b>Du har madhold i morgen</b></td><td>Aftenen før kl. 20 — også til resten af husstanden</td></tr>
+<tr><td><b>Du har madhold i morgen</b></td><td>Aftenen før kl. 20, også til resten af husstanden</td></tr>
 <tr><td><b>Der er åbnet for madholdsønsker</b></td><td>Når en ny periode åbner. En påmindelse 1–2 dage før fristen, hvis du mangler</td></tr>
 <tr><td><b>Bytteanmodning til madhold</b></td><td>Når en nabo gerne vil bytte maddag med dig</td></tr>
 <tr><td><b>Din maddag er overtaget</b></td><td>Når en nabo har taget din maddag</td></tr>
-<tr><td><b>Takeaway klar kl. …</b></td><td>Når maden kan hentes før 17:30 — hvis I har bestilt Tag med</td></tr>
-<tr><td><b>Rester er klar</b></td><td>Når der er rester — hvis I spiser 17:30 eller tager med</td></tr>
+<tr><td><b>Takeaway klar kl. …</b></td><td>Når maden kan hentes før 17:30, hvis I har bestilt Tag med</td></tr>
+<tr><td><b>Rester er klar</b></td><td>Når der er rester, hvis I spiser 17:30 eller tager med</td></tr>
 <tr><td><b>Nyt i Vigtig post</b></td><td>Når der kommer et opslag, alle bør læse</td></tr>
 <tr><td><b>I morgen: …</b></td><td>Dagen før et arrangement</td></tr>
 <tr><td><b>Svar og nye tråde</b></td><td>I tråde, du deltager i, og grupper, du følger</td></tr>
@@ -387,9 +387,9 @@ def madholdguide() -> Guide:
     i = {
         "idag": g.put("idag", "mh_idag"),
         "oensker": g.put("oensker", "mh_oensker_full", (560, 2000)),
-        "forhindret": g.put("forhindret", "mh_oensker_forhindret_full", (560, 1250)),
+        "forhindret": g.put("forhindret", "mh_oensker_forhindret_full", (560, 1310)),
         "forhindret_grund": g.put(
-            "forhindret_grund", "mh_oensker_forhindret_full", (3150, 3690)
+            "forhindret_grund", "mh_oensker_forhindret_full", (3190, 3725)
         ),
         "profil": g.put("profil", "mh_profil_full", (560, 1888)),
         "minehold": g.put("minehold", "mh_mine_hold_full", (480, 2072)),
@@ -403,7 +403,7 @@ def madholdguide() -> Guide:
         "tilmeldinger": g.put("tilmeldinger", "mh_tilmeldinger"),
         "dagens_forside": g.put("dagens_forside", "mh_dagens_forside", (250, 1688)),
         "opskrift": g.put("opskrift", "mh_opskrift", (250, 1020)),
-        "takeaway_panel": g.put("takeaway_panel", "mh_takeaway_panel", (330, 1060)),
+        "takeaway_panel": g.put("takeaway_panel", "mh_takeaway_panel", (330, 1140)),
         "takeaway_sent": g.put("takeaway_sent", "mh_takeaway_sent", (0, 560)),
         "rester_form": g.put("rester_form", "rester_form", (440, 1130)),
         "rester_side": g.put("rester_side", "rester_side", (0, 900)),
@@ -416,7 +416,7 @@ def madholdguide() -> Guide:
         cover(
             "KB Intra · oktober 2026",
             "Madhold",
-            "Dine maddage, bytte, takeaway og rester — sådan gør du i KB Intra.",
+            "Dine maddage, bytte, takeaway og rester: sådan gør du i KB Intra.",
             phone(i["idag"], "full"),
         ),
         text_slide(
@@ -426,7 +426,7 @@ def madholdguide() -> Guide:
 <li><b class="n">1</b><span><b>Perioden åbner.</b> Du får besked: <i>Der er åbnet for madholdsønsker</i>.</span></li>
 <li><b class="n">2</b><span><b>Indsend ønsker</b> inden fristen. Mangler du, får du en påmindelse 1–2 dage før.</span></li>
 <li><b class="n">3</b><span><b>Holdene lægges.</b> Du får besked om dine dage: <i>Dine maddage: …</i></span></li>
-<li><b class="n">4</b><span><b>Bliver du forhindret?</b> Byt med en nabo — det tager et øjeblik.</span></li>
+<li><b class="n">4</b><span><b>Bliver du forhindret?</b> Byt med en nabo. Det tager et øjeblik.</span></li>
 <li><b class="n">5</b><span><b>Aftenen før kl. 20:</b> <i>Du har madhold i morgen</i>. Resten af husstanden får også besked.</span></li>
 <li><b class="n">6</b><span><b>Maddagen:</b> en grøn boks på forsiden med holdet, opskrifter og knapper til takeaway og rester.</span></li>
 </ol>
@@ -448,9 +448,10 @@ def madholdguide() -> Guide:
             "Forhindret i hele perioden?",
             """<p>Madholdet er en fælles opgave, og alle tager deres tur.</p>
 <ul>
-<li>Kun ved en <b>god grund</b> — fx en lang rejse, sygdom eller et brækket ben — slår du <b>Jeg er forhindret i hele perioden</b> til.</li>
-<li>Skriv kort, <b>hvad der forhindrer dig</b>. Madholdsansvarlig læser det.</li>
-<li>Er du væk i længere tid, fx på barsel, kan du sætte <b>pause</b> på din madhold-profil.</li>
+<li>Du kan melde dig fra en periode, hvis der er en <b>god grund</b>. Slå <b>Jeg er forhindret i hele perioden</b> til.</li>
+<li>En god grund kan være sygdom, både fysisk og psykisk, fx stress. Eller en lang rejse.</li>
+<li>Skriv kort, <b>hvad grunden er</b>. Madholdsansvarlig læser det.</li>
+<li>På barsel? Det gælder i 6 måneder efter en fødsel. Sæt <b>pause</b> på din madhold-profil.</li>
 </ul>""",
             phone(i["forhindret"]),
             phone(i["forhindret_grund"]),
@@ -463,7 +464,7 @@ def madholdguide() -> Guide:
 <ul>
 <li><b>Chefkok</b> er ingen rolle og intet ekstra ansvar. Det bruges kun til at fordele dem, der er vant til at lave mad til mange, jævnt på holdene.</li>
 <li><b>Medbeboer</b>: I kommer på hold sammen, hvis det kan lade sig gøre.</li>
-<li><b>Pause</b>: kun til længere fravær med en god grund.</li>
+<li><b>Pause</b>: til længere fravær med en god grund, fx barsel (6 måneder efter en fødsel).</li>
 <li><b>Ugedage</b>: de dage, du typisk kan.</li>
 </ul>""",
             phone(i["profil"]),
@@ -483,10 +484,10 @@ def madholdguide() -> Guide:
         ),
         text_slide(
             "6",
-            "Bytte — tre muligheder",
+            "Bytte: tre muligheder",
             """<div class="three">
 <div><h3>Byt med en bestemt nabo</h3>
-<p>I har aftalt et bytte, fx over hækken — eller du vil spørge én bestemt.</p>
+<p>I har aftalt et bytte, fx over hækken, eller du vil spørge én bestemt.</p>
 <p>Den anden trykker <b>Accepter</b>, og så er planen opdateret.</p></div>
 <div><h3>Spørg fællesskabet</h3>
 <p>Alle, der kan tage din dag og har en dag, du kan tage, får besked.</p>
@@ -524,7 +525,7 @@ def madholdguide() -> Guide:
             cls="dense",
         ),
         slide(
-            "Tag en dag — og tjenester",
+            "Tag en dag og tjenester",
             """<ul>
 <li>Under en bytteanmodning kan du vælge <b>Eller tag den uden at bytte</b>. Du tager dagen, og naboen skylder dig en tjeneste.</li>
 <li><b>Tjeneste-regnskab</b> under <b>Bytte</b> viser, hvem der skylder hvem.</li>
@@ -568,7 +569,7 @@ def madholdguide() -> Guide:
             """<p>Takeaway hentes normalt <b>kl. 17:30</b>. Send kun en besked, hvis maden er klar <b>før</b>.</p>
 <ol>
 <li>Tryk <b>Takeaway er klar</b>.</li>
-<li>Vælg <b>hvornår</b> den kan hentes, fx kl. 17:15 — gerne i god tid. Eller <b>Nu</b>.</li>
+<li>Vælg <b>hvornår</b> den kan hentes: kl. 17:10, 17:15 eller 17:20. Eller <b>Nu</b>. Send den gerne i god tid.</li>
 <li>Tryk <b>Send takeaway-besked</b>.</li>
 </ol>
 <p class="small">Beskeden går ud med det samme til dem, der har bestilt takeaway, og kan kun sendes én gang om dagen.</p>""",
@@ -605,12 +606,12 @@ def madholdguide() -> Guide:
 <tr><td><b>Takeaway klar kl. …</b></td><td>Holdet melder takeaway</td><td>Husstande med Tag med</td><td>Ja: Takeaway er klar</td></tr>
 <tr><td><b>Rester er klar</b></td><td>Holdet melder rester</td><td>Tag med og 17:30</td><td>Ja: Rester er klar</td></tr>
 </table>
-<p class="small">"Nej" betyder, at beskeden altid kommer i appen — og som mail eller push, hvis du har slået mail eller push til for noget som helst. De kommer sjældent og er vigtige.</p>""",
+<p class="small">"Nej" betyder, at beskeden altid kommer i appen, og som mail eller push, hvis du har slået mail eller push til for noget som helst. De kommer sjældent og er vigtige.</p>""",
             cls="dense",
         ),
         f"""
 <section class="slide">
-  <div class="text"><p class="kicker">15</p><h2>Sådan ser de ud — og sådan vælger du</h2>
+  <div class="text"><p class="kicker">15</p><h2>Sådan ser de ud, og sådan vælger du</h2>
   <ul>
   <li>Madhold-beskeder har et lille <b>køkken-ikon</b>.</li>
   <li>Tryk på en for at komme direkte til den rigtige side.</li>

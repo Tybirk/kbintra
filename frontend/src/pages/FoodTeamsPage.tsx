@@ -763,7 +763,7 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
                   checked={isUnavailable}
                   onChange={(e) => setIsUnavailable(e.currentTarget.checked)}
                   label="Jeg er forhindret i hele perioden"
-                  description="Kun ved en god grund, fx en lang rejse, sygdom eller et brækket ben. Madholdet er en fælles opgave, så skriv kort, hvad der forhindrer dig."
+                  description="Du kan melde dig fra perioden, hvis der er en god grund. Det kan være sygdom, også stress eller andet, der gør det svært lige nu, eller en lang rejse. Skriv kort, hvad grunden er."
                   color="red"
                 />
 
@@ -893,9 +893,9 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
 
               {isUnavailable && (
                 <Textarea
-                  label="Hvad forhindrer dig?"
+                  label="Hvad er grunden?"
                   description="Læses af madhold-ansvarlig. Gemmes på din profil, så den også gælder, hvis pausen varer længere end denne periode."
-                  placeholder="F.eks. på rejse hele perioden, brækket ben..."
+                  placeholder="F.eks. sygdom, stress, på rejse hele perioden..."
                   value={comment}
                   onChange={(e) => setComment(e.target.value)}
                   minRows={2}
@@ -3378,7 +3378,7 @@ function FoodProfilePanel() {
               })
             }
             label="Jeg holder pause fra madhold"
-            description="Til længere fravær med en god grund, fx barsel, sygdom eller en anden fast opgave i fællesskabet. Du bliver ikke sat på madhold, så længe den er slået til."
+            description="Til længere fravær med en god grund, fx barsel (6 måneder efter en fødsel), sygdom eller en anden fast opgave i fællesskabet. Du bliver ikke sat på madhold, så længe den er slået til."
             color="red"
           />
 
