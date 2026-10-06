@@ -1,4 +1,11 @@
-import { useState, useEffect, lazy, Suspense, type ReactNode } from "react"
+import {
+  useState,
+  useEffect,
+  useCallback,
+  lazy,
+  Suspense,
+  type ReactNode,
+} from "react"
 
 import { useMediaQuery } from "@mantine/hooks"
 
@@ -40,6 +47,9 @@ import { ErrorBoundary } from "./ErrorBoundary"
 
 // pdf.js is heavy — only load it when a PDF is actually opened.
 const PdfViewer = lazy(() => import("./PdfViewer"))
+
+// docx-preview and JSZip likewise, for a Word document.
+const DocxViewer = lazy(() => import("./DocxViewer"))
 
 // File type detection utilities
 
@@ -233,8 +243,9 @@ function triggerDownload(url: string, filename: string) {
  * FilePreviewModal and AttachmentCarousel so they behave identically.
  *
  * Document-like types are fetched to an (authenticated) blob so we can render
- * a PDF inline, hand the file to the OS share sheet / default viewer ("Åbn"),
- * and save it ("Gem") — all without navigating away or hitting the media 401.
+ * a PDF or .docx inline, hand the file to the OS share sheet / default viewer
+ * ("Åbn"), and save it ("Gem") — all without navigating away or hitting the
+ * media 401.
  */
 export function useFileActions(file: PreviewableFile | null, enabled: boolean) {
   const fileType = file ? getRenderableFileType(file) : "other"
@@ -498,6 +509,133 @@ export function PdfPreview({ blobUrl }: PdfPreviewProps) {
   )
 }
 
+interface WordFile
+  extends PreviewableFile {
+  /** Server-side mammoth HTML; only .docx uploaded since mid-2026 have it. */
+  preview_html?: string | null
+}
+
+/** Whether a Word file gets a preview at all, rather than just an icon. */
+export function hasWordPreview(file: WordFile): boolean {
+  return getFileExtension(file.name) === "docx" || !!file.preview_html
+}
+
+interface WordPreviewProps {
+  file: WordFile
+
+  actions: FileActions
+
+  size?: ButtonProps["size"]
+
+  /** Extra buttons rendered before Del/Gem (e.g. "Gå til tråd"). */
+  extra?: ReactNode
+}
+
+/**
+ * A Word document with Del/Gem underneath, filling its parent's height.
+ *
+ * A .docx renders in the browser (DocxViewer). Where that can't happen — a
+ * .doc/.odt/.rtf, a file that won't parse, a browser too old for the code —
+ * the server's mammoth HTML stands in if there is any, and otherwise an icon.
+ */
+export function WordPreview({ file, actions, size, extra }: WordPreviewProps) {
+  const { blobUrl, blobError } = actions
+
+  // The blob the renderer gave up on; the next file gets its own try.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
+
+  const handleRenderError = useCallback(() => setFailedUrl(blobUrl), [blobUrl])
+
+  const tryRenderer =
+    getFileExtension(file.name) === "docx" &&
+    !blobError &&
+    !(blobUrl && failedUrl === blobUrl)
+
+  const buttons = (
+    <FileActionButtons actions={actions} size={size} extra={extra} />
+  )
+
+  const serverPreview = file.preview_html ? (
+    <Box
+      h="100%"
+      p="md"
+      style={{
+        overflow: "auto",
+
+        backgroundColor: "#ffffff",
+
+        color: "#000000",
+
+        borderRadius: "var(--mantine-radius-md)",
+
+        overflowWrap: "break-word",
+      }}
+      dangerouslySetInnerHTML={{ __html: sanitizeHtml(file.preview_html) }}
+    />
+  ) : null
+
+  const notice = (
+    <>
+      <IconFileTypeDoc size={80} color="var(--mantine-color-blue-6)" />
+      <Text size="lg" fw={500} ta="center">
+        {file.name}
+      </Text>
+      <Text c="dimmed" ta="center">
+        Dokumentet kan ikke vises her.
+        <br />
+        Gem det, og åbn det i din foretrukne app.
+      </Text>
+    </>
+  )
+
+  if (!tryRenderer && !serverPreview) {
+    return (
+      <Stack align="center" justify="center" gap="lg" h="100%" p="xl">
+        {notice}
+        {buttons}
+      </Stack>
+    )
+  }
+
+  const loader = (
+    <Center h="100%">
+      <Loader />
+    </Center>
+  )
+
+  let body = serverPreview
+
+  if (tryRenderer) {
+    body = blobUrl ? (
+      // A failed chunk load (a deploy mid-session) or a render-time throw
+      // lands here; the server preview, if any, is the next best thing.
+      <ErrorBoundary
+        resetKeys={[blobUrl]}
+        fallback={
+          serverPreview ?? (
+            <Stack align="center" justify="center" gap="lg" h="100%" p="xl">
+              {notice}
+            </Stack>
+          )
+        }
+      >
+        <Suspense fallback={loader}>
+          <DocxViewer blobUrl={blobUrl} onError={handleRenderError} />
+        </Suspense>
+      </ErrorBoundary>
+    ) : (
+      loader
+    )
+  }
+
+  return (
+    <Stack gap="sm" h="100%">
+      <Box style={{ flex: 1, minHeight: 0 }}>{body}</Box>
+      {buttons}
+    </Stack>
+  )
+}
+
 interface FilePreviewModalProps {
   file: ForumFile | null
 
@@ -519,7 +657,9 @@ export function FilePreviewModal({
 
   const [error, setError] = useState<string | null>(null)
 
-  const isMobile = useMediaQuery("(max-width: 768px)")
+  // A phone held sideways counts too, as in AttachmentCarousel: a centred
+  // modal there left a document under 300 px of the 412 on screen.
+  const isMobile = useMediaQuery("(max-width: 768px), (max-height: 500px)")
 
   const actions = useFileActions(file, opened)
 
@@ -564,6 +704,12 @@ export function FilePreviewModal({
   }, [file, opened, fileType])
 
   if (!file) return null
+
+  const wordPreview = fileType === "word" && hasWordPreview(file)
+
+  // A document fills a phone: the body takes whatever the header leaves, as
+  // in AttachmentCarousel, rather than a fixed share of the screen.
+  const fillScreen = isMobile && wordPreview
 
   const renderPreviewContent = () => {
     switch (fileType) {
@@ -686,44 +832,12 @@ export function FilePreviewModal({
         )
 
       case "word":
-        if (file.preview_html) {
-          return (
-            <Stack gap="md">
-              <ScrollArea h="60vh">
-                <Box
-                  p="md"
-                  style={{
-                    backgroundColor: "#ffffff",
-
-                    color: "#000000",
-
-                    borderRadius: "var(--mantine-radius-md)",
-
-                    overflowWrap: "break-word",
-                  }}
-                  dangerouslySetInnerHTML={{
-                    __html: sanitizeHtml(file.preview_html),
-                  }}
-                />
-              </ScrollArea>
-              <FileActionButtons actions={actions} />
-            </Stack>
-          )
-        }
-
+        // Full height on a phone (the modal body is a flex column there, see
+        // below); on a computer, room for a page.
         return (
-          <Stack align="center" gap="lg" py="xl">
-            <IconFileTypeDoc size={80} color="var(--mantine-color-blue-6)" />
-            <Text size="lg" fw={500}>
-              {file.name}
-            </Text>
-            <Text c="dimmed" ta="center">
-              Word-dokumenter kan ikke vises direkte i appen.
-              <br />
-              Åbn dokumentet i din standard-app, eller gem det.
-            </Text>
-            <FileActionButtons actions={actions} />
-          </Stack>
+          <Box h={isMobile ? "100%" : wordPreview ? "80vh" : undefined}>
+            <WordPreview file={file} actions={actions} />
+          </Box>
         )
 
       case "powerpoint":
@@ -769,7 +883,7 @@ export function FilePreviewModal({
         return "xl"
 
       case "word":
-        return file?.preview_html ? "xl" : "md"
+        return wordPreview ? "90%" : "md"
 
       case "image":
         return "auto"
@@ -787,6 +901,15 @@ export function FilePreviewModal({
       size={modalSize()}
       fullScreen={isMobile}
       centered
+      styles={
+        fillScreen
+          ? {
+              content: { display: "flex", flexDirection: "column" },
+
+              body: { flex: 1, minHeight: 0 },
+            }
+          : undefined
+      }
     >
       {renderPreviewContent()}
     </Modal>
