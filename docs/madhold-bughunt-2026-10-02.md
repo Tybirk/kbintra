@@ -31,11 +31,11 @@ Status per item; commits are listed under "Commits" below.
 
 | Commit | What |
 |---|---|
-| ea825ed | Backend: S1–S4, N1–N2, C1–C7, migration `food/0030`, `apps/food/CLAUDE.md` |
-| 70005dd | Frontend: F1–F7, the C3 confirmation modal, and the C5 reset text |
+| b011164 | Backend: S1–S4, N1–N2, C1–C7, migration `food/0030`, `apps/food/CLAUDE.md` |
+| b083526 | Frontend: F1–F7, the C3 confirmation modal, and the C5 reset text |
 
 These are the SHAs on `develop`, where the fixes were replayed on top of `madhold-go-live`
-(c7f3a2c) on 2026-10-06. They first sat on `fix/madhold-bughunt` as 0ce9777 and 3d7f268.
+(276c45e on develop) on 2026-10-06. They first sat on `fix/madhold-bughunt` as 0ce9777 and 3d7f268.
 
 ### Verification (2026-10-03)
 
