@@ -3643,7 +3643,7 @@ function FoodProfilePanel() {
               })
             }
             label="Jeg kan være chefkok"
-            description="Ingen rolle og intet ekstra ansvar. Vi bruger det kun til at fordele dem, der er vant til at lave mad til mange, jævnt på holdene."
+            description="Du tager gerne teten i køkkenet: overblik, opgavefordeling og tid. Vi bruger det til at fordele chefkokkene jævnt på holdene."
           />
 
           <Switch
