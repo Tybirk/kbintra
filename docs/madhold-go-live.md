@@ -1,5 +1,8 @@
 # Madhold go-live (October 2026)
 
+**Launched 2026-10-08** (prod at be931f3). See `docs/handoffs/2026-10-08-madhold-launch.md`
+for what was run and the result. The dates below are from the original 4/10 plan.
+
 Written 2026-10-02 at `origin/develop` 00dde7d. Covers whether madhold is ready, every
 notification it sends, and how to load the September–October plan
 (`madhold-september-oktober-2026.pdf`) into prod.
