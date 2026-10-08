@@ -292,7 +292,7 @@ Android: tryk <b>Installér</b>, når telefonen spørger.</span></li>
             """<ul>
 <li><b>Anmod specifik person om bytte</b>: når I har aftalt et bytte, fx over hækken, eller du vil spørge én bestemt nabo. Den anden trykker <b>Accepter</b>, så er planen opdateret.</li>
 <li><b>Anmod fællesskabet om bytte</b>: alle, der kan tage dagen, får besked.</li>
-<li><b>Chefkok</b> på din profil betyder, at du gerne tager teten i køkkenet. Det bruges til at fordele chefkokkene jævnt på holdene.</li>
+<li><b>Chefkok</b> på din profil er ingen rolle. Det betyder bare, at du plejer at have let ved at skabe overblik i et køkken, og det bruges kun til at sammensætte bedre hold.</li>
 </ul>""",
             phone(i["bytte"]),
             phone(i["mprofil"]),
@@ -462,7 +462,7 @@ def madholdguide() -> Guide:
             "Din madhold-profil",
             """<p><b>Madhold</b> → <b>Min profil</b>.</p>
 <ul>
-<li><b>Chefkok</b> er en, der gerne tager teten i køkkenet: overblik, opgavefordeling og tid. Det bruges til at fordele chefkokkene jævnt på holdene.</li>
+<li><b>Chefkok</b> er ingen rolle og intet ekstra ansvar. Det betyder bare, at du plejer at have let ved at skabe overblik i et køkken, og det bruges kun til at sammensætte bedre hold.</li>
 <li><b>Medbeboer</b>: I kommer på hold sammen, hvis det kan lade sig gøre.</li>
 <li><b>Pause</b>: til længere fravær med en god grund, fx barsel (6 måneder efter en fødsel).</li>
 <li><b>Ugedage</b>: de dage, du typisk kan.</li>
