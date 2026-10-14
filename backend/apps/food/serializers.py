@@ -1002,6 +1002,19 @@ class GenerateTeamsSerializer(serializers.Serializer):
         return attrs
 
 
+class PlannedMemberSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    house_number = serializers.CharField()
+    is_over_50 = serializers.BooleanField()
+    can_be_head_chef = serializers.BooleanField()
+    prefers_housemate = serializers.BooleanField()
+
+
+class PlannedTeamSerializer(serializers.Serializer):
+    date = serializers.CharField()
+    members = PlannedMemberSerializer(many=True)
+
+
 class TeamGenerationResultSerializer(serializers.Serializer):
     """Serializer for team generation results."""
 
@@ -1011,6 +1024,7 @@ class TeamGenerationResultSerializer(serializers.Serializer):
     unassigned_persons = serializers.ListField(child=serializers.CharField())
     warnings = serializers.ListField(child=serializers.CharField())
     dropped_dates = serializers.ListField(child=serializers.CharField())
+    teams = PlannedTeamSerializer(many=True)
 
 
 class DefaultCookingDaysSerializer(serializers.Serializer):
@@ -1428,6 +1442,7 @@ class FoodRosterSerializer(serializers.ModelSerializer):
             "prefers_cooking_with_housemate",
             "is_over_50",
             "is_exempt_from_food_teams",
+            "is_child",
             "is_food_admin",
             "food_team_pause_reason",
             "house_number",

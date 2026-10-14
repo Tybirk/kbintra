@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, type ReactNode } from "react"
 
 import { Link, useNavigate, useParams } from "react-router-dom"
 
@@ -39,7 +39,7 @@ import {
   List,
 } from "@mantine/core"
 
-import { useDisclosure } from "@mantine/hooks"
+import { useDisclosure, useMediaQuery } from "@mantine/hooks"
 
 import { notifications } from "@mantine/notifications"
 
@@ -65,6 +65,7 @@ import {
   IconBroadcast,
   IconExternalLink,
   IconTrash,
+  IconDownload,
 } from "@tabler/icons-react"
 
 import dayjs from "dayjs"
@@ -76,6 +77,8 @@ import { useAuthStore } from "../store/authStore"
 import { forumApi } from "../api/forum"
 
 import { saveDraft } from "../utils/draftStorage"
+
+import { downloadTeamPlanCsv } from "../utils/teamPlanCsv"
 
 import type {
   FoodTeam,
@@ -89,6 +92,7 @@ import type {
   MyFoodProfile,
   CreateWishData,
   CycleResetPreview,
+  PlannedTeam,
 } from "../types"
 
 interface GenerateTeamsParams {
@@ -1129,7 +1133,77 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
 
 // Admin Panel for managing cycles and generating teams
 
+// The generated plan, team by team, so the admin can check it before it is
+// published (dry run) or see what was just published (real run).
+
+interface PlannedTeamsListProps {
+  teams: PlannedTeam[]
+}
+
+function PlannedTeamsList({ teams }: PlannedTeamsListProps) {
+  return (
+    <div>
+      <Text fw={500} mb="xs">
+        Holdene ({teams.length}):
+      </Text>
+      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+        {teams.map((team) => (
+          <Paper key={team.date} withBorder p="sm" radius="sm">
+            <Group justify="space-between" mb={6}>
+              <Text fw={600} size="sm" tt="capitalize">
+                {dayjs(team.date).format("dddd D. MMM")}
+              </Text>
+              <Badge variant="light" color="gray">
+                {team.members.length} kokke
+              </Badge>
+            </Group>
+            <Stack gap={4}>
+              {team.members.map((member) => (
+                <Group key={member.name} gap={6} wrap="nowrap">
+                  <Text size="sm" style={{ flex: 1, minWidth: 0 }} truncate>
+                    {member.name}
+                    {member.house_number && (
+                      <Text span c="dimmed">
+                        {" "}
+                        (hus {member.house_number})
+                      </Text>
+                    )}
+                  </Text>
+                  {member.can_be_head_chef && (
+                    <Badge size="xs" variant="light" color="green">
+                      Chefkok
+                    </Badge>
+                  )}
+                  {member.is_over_50 && (
+                    <Badge size="xs" variant="light" color="gray">
+                      50+
+                    </Badge>
+                  )}
+                  {member.prefers_housemate && (
+                    <Badge size="xs" variant="light" color="blue">
+                      Medbeboer
+                    </Badge>
+                  )}
+                </Group>
+              ))}
+            </Stack>
+          </Paper>
+        ))}
+      </SimpleGrid>
+    </div>
+  )
+}
+
 // Resident overview for food admins: who can cook, and who is sitting out.
+
+// Mirrors TeamGenerator.MAX_COOKS_PER_HOUSE in the backend.
+const MAX_COOKS_PER_HOUSE = 2
+
+interface SetChildParams {
+  id: number
+
+  isChild: boolean
+}
 
 interface OverblikGroupProps {
   title: string
@@ -1142,6 +1216,9 @@ interface OverblikGroupProps {
   reasonOf?: (row: FoodRosterEntry) => string
 
   color?: string
+
+  /** A button next to each row, for groups the admin can act on. */
+  actionOf?: (row: FoodRosterEntry) => ReactNode
 }
 
 function OverblikGroup({
@@ -1150,6 +1227,7 @@ function OverblikGroup({
   rows,
   reasonOf,
   color,
+  actionOf,
 }: OverblikGroupProps) {
   return (
     <div>
@@ -1173,15 +1251,18 @@ function OverblikGroup({
 
             return (
               <Paper key={row.id} withBorder p="xs" radius="sm">
-                <Text size="sm">
-                  {row.first_name} {row.last_name}
-                  {row.house_number && (
-                    <Text span c="dimmed">
-                      {" "}
-                      (hus {row.house_number})
-                    </Text>
-                  )}
-                </Text>
+                <Group justify="space-between" gap="xs" wrap="nowrap">
+                  <Text size="sm">
+                    {row.first_name} {row.last_name}
+                    {row.house_number && (
+                      <Text span c="dimmed">
+                        {" "}
+                        (hus {row.house_number})
+                      </Text>
+                    )}
+                  </Text>
+                  {actionOf?.(row)}
+                </Group>
                 {reason && (
                   <Text size="xs" c="dimmed" mt={2}>
                     "{reason}"
@@ -1205,10 +1286,28 @@ function OverblikGroup({
  * which is the part a food admin actually needs when planning.
  */
 function BeboerOverblik() {
+  const queryClient = useQueryClient()
+
   const { data, isLoading } = useQuery({
     queryKey: ["food", "roster"],
 
     queryFn: foodApi.getFoodRoster,
+  })
+
+  const setChildMutation = useMutation({
+    mutationFn: ({ id, isChild }: SetChildParams) =>
+      foodApi.updateFoodRosterEntry(id, { is_child: isChild }),
+
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["food", "roster"] })
+
+      // The suggested number of cooking days counts the cooks.
+      queryClient.invalidateQueries({ queryKey: ["food", "cycles"] })
+    },
+
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke gemme ændringen.")
+    },
   })
 
   if (isLoading) {
@@ -1219,7 +1318,13 @@ function BeboerOverblik() {
     )
   }
 
-  const residents = data?.residents ?? []
+  const everyone = data?.residents ?? []
+
+  // Children with an account are never cooks, so they are left out of every
+  // count below and listed on their own.
+  const children = everyone.filter((r) => r.is_child)
+
+  const residents = everyone.filter((r) => !r.is_child)
 
   const paused = residents.filter((r) => r.is_exempt_from_food_teams)
 
@@ -1235,6 +1340,37 @@ function BeboerOverblik() {
 
   const withHousemate = cooking.filter((r) => r.prefers_cooking_with_housemate)
 
+  // More than two cooks from one house usually means a child who isn't marked
+  // as one. The generator warns about the same thing.
+  const cooksByHouse = new Map<string, FoodRosterEntry[]>()
+
+  for (const r of cooking) {
+    if (!r.house_number) continue
+
+    cooksByHouse.set(r.house_number, [
+      ...(cooksByHouse.get(r.house_number) ?? []),
+      r,
+    ])
+  }
+
+  const crowdedHouses = [...cooksByHouse.entries()].filter(
+    ([, cooks]) => cooks.length > MAX_COOKS_PER_HOUSE,
+  )
+
+  const childButton = (row: FoodRosterEntry, isChild: boolean) => (
+    <Button
+      size="compact-xs"
+      variant="light"
+      color={isChild ? "orange" : "gray"}
+      loading={
+        setChildMutation.isPending && setChildMutation.variables?.id === row.id
+      }
+      onClick={() => setChildMutation.mutate({ id: row.id, isChild })}
+    >
+      {isChild ? "Er et barn" : "Er voksen"}
+    </Button>
+  )
+
   return (
     <Stack gap="md">
       <div>
@@ -1245,6 +1381,38 @@ function BeboerOverblik() {
             : `${cooking.length} af ${residents.length} beboere er med i madhold.`}
         </Text>
       </div>
+
+      {crowdedHouses.length > 0 && (
+        <Alert
+          color="yellow"
+          icon={<IconAlertCircle size={16} />}
+          title={`Flere end ${MAX_COOKS_PER_HOUSE} kokke i samme hus`}
+        >
+          <Text size="sm" mb="xs">
+            Er en af dem et barn? Markér dem, så kommer de ikke med på madhold,
+            uanset alder.
+          </Text>
+          <Stack gap="xs">
+            {crowdedHouses.map(([houseNumber, cooks]) => (
+              <div key={houseNumber}>
+                <Text size="sm" fw={500} mb={4}>
+                  Hus {houseNumber}
+                </Text>
+                <Stack gap={4}>
+                  {cooks.map((cook) => (
+                    <Group key={cook.id} justify="space-between" gap="xs">
+                      <Text size="sm">
+                        {cook.first_name} {cook.last_name}
+                      </Text>
+                      {childButton(cook, true)}
+                    </Group>
+                  ))}
+                </Stack>
+              </div>
+            ))}
+          </Stack>
+        </Alert>
+      )}
 
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
         <OverblikGroup
@@ -1273,6 +1441,13 @@ function BeboerOverblik() {
           rows={withHousemate}
           color="blue"
         />
+        <OverblikGroup
+          title="Børn med konto"
+          description="Kommer aldrig med på madhold, uanset alder. Sættes her eller i Django admin."
+          rows={children}
+          color="grape"
+          actionOf={(row) => childButton(row, false)}
+        />
       </SimpleGrid>
     </Stack>
   )
@@ -1293,6 +1468,14 @@ function AdminPanel({ canFoodAdmin }: AdminPanelProps) {
 
   const [generationResult, setGenerationResult] =
     useState<TeamGenerationResult | null>(null)
+
+  // A preview and a real run share the result modal; only the wording differs.
+  const [generationWasDryRun, setGenerationWasDryRun] = useState(false)
+
+  const isMobile = useMediaQuery("(max-width: 48em)")
+
+  // Absent from a response by a backend older than this frontend.
+  const plannedTeams = generationResult?.teams ?? []
 
   // Fetch all cycles
 
@@ -1334,8 +1517,15 @@ function AdminPanel({ canFoodAdmin }: AdminPanelProps) {
     mutationFn: ({ cycleId, dryRun, beforeDeadline }: GenerateTeamsParams) =>
       foodApi.generateTeams(cycleId, dryRun, beforeDeadline),
 
-    onSuccess: (result) => {
+    onSuccess: (result, { dryRun }) => {
       setGenerationResult(result)
+
+      setGenerationWasDryRun(dryRun)
+
+      if (dryRun) {
+        // Nothing was saved, so there is nothing to refresh; the modal is the news.
+        return
+      }
 
       // A real run persists/finalizes even when it completes with problems, so
       // refresh either way. The detailed outcome (unassigned, warnings) is in
@@ -1419,8 +1609,13 @@ function AdminPanel({ canFoodAdmin }: AdminPanelProps) {
         <Modal
           opened={!!generationResult}
           onClose={() => setGenerationResult(null)}
-          title="Holdgenerering resultat"
-          size="lg"
+          title={
+            generationWasDryRun
+              ? "Forhåndsvisning af hold"
+              : "Holdgenerering resultat"
+          }
+          size="xl"
+          fullScreen={isMobile}
         >
           <Stack gap="md">
             <Alert
@@ -1436,7 +1631,19 @@ function AdminPanel({ canFoodAdmin }: AdminPanelProps) {
               {generationResult.message}
             </Alert>
 
-            <Text>Hold oprettet: {generationResult.teams_created}</Text>
+            {generationWasDryRun ? (
+              <Alert
+                color="blue"
+                variant="light"
+                icon={<IconInfoCircle size={16} />}
+              >
+                Intet er gemt, og ingen har fået besked. Planen kan blive en
+                anden, når du trykker "Generer hold", hvis nogen nåede at ændre
+                deres ønsker i mellemtiden.
+              </Alert>
+            ) : (
+              <Text>Hold oprettet: {generationResult.teams_created}</Text>
+            )}
 
             {generationResult.dropped_dates.length > 0 && (
               <Alert
@@ -1489,7 +1696,29 @@ function AdminPanel({ canFoodAdmin }: AdminPanelProps) {
               </div>
             )}
 
-            <Button onClick={() => setGenerationResult(null)}>Luk</Button>
+            {plannedTeams.length > 0 && (
+              <PlannedTeamsList teams={plannedTeams} />
+            )}
+
+            <Group justify="flex-end">
+              {plannedTeams.length > 0 && (
+                <Button
+                  variant="default"
+                  leftSection={<IconDownload size={16} />}
+                  onClick={() =>
+                    downloadTeamPlanCsv(
+                      plannedTeams,
+                      `madhold_${
+                        generationWasDryRun ? "forhaandsvisning" : "plan"
+                      }_${dayjs().format("YYYY-MM-DD")}.csv`,
+                    )
+                  }
+                >
+                  Hent som regneark
+                </Button>
+              )}
+              <Button onClick={() => setGenerationResult(null)}>Luk</Button>
+            </Group>
           </Stack>
         </Modal>
       )}
@@ -3643,7 +3872,7 @@ function FoodProfilePanel() {
               })
             }
             label="Jeg kan være chefkok"
-            description="Ingen rolle og intet ekstra ansvar. Vi bruger det kun til at fordele dem, der er vant til at lave mad til mange, jævnt på holdene."
+            description="Ingen rolle og intet ekstra ansvar. Sæt hak, hvis du plejer at have let ved at skabe overblik i et køkken. Vi bruger det kun til at sammensætte bedre hold."
           />
 
           <Switch
