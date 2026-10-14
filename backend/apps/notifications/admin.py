@@ -4,7 +4,15 @@ Admin configuration for Notifications app.
 
 from django.contrib import admin
 
-from .models import Notification, NotificationPreference, PushSubscription
+from .models import Notification, NotificationPreference, PushSubscription, _channel_fields
+
+# Derived from the model so a new notification type shows up here without anyone
+# remembering to list it (the hand-written lists had fallen a dozen fields behind).
+PREFERENCE_FIELDSETS = [
+    ("In-app", {"fields": _channel_fields("notify_")}),
+    ("Email", {"fields": _channel_fields("email_")}),
+    ("Push", {"fields": _channel_fields("push_")}),
+]
 
 
 @admin.register(Notification)
@@ -51,57 +59,7 @@ class NotificationPreferenceAdmin(admin.ModelAdmin):
     ]
     search_fields = ["user__first_name", "user__last_name", "user__email"]
     raw_id_fields = ["user"]
-    fieldsets = [
-        (None, {"fields": ["user"]}),
-        (
-            "In-app",
-            {
-                "fields": [
-                    "notify_message_reactions",
-                    "notify_announcements",
-                    "notify_forum_subscriptions",
-                    "notify_thread_replies",
-                    "notify_post_reactions",
-                    "notify_events",
-                    "notify_event_reminders",
-                    "notify_food_tickets",
-                    "notify_mentions",
-                ]
-            },
-        ),
-        (
-            "Email",
-            {
-                "fields": [
-                    "email_messages",
-                    "email_announcements",
-                    "email_forum_subscriptions",
-                    "email_thread_replies",
-                    "email_post_reactions",
-                    "email_events",
-                    "email_event_reminders",
-                    "email_food_tickets",
-                    "email_mentions",
-                ]
-            },
-        ),
-        (
-            "Push",
-            {
-                "fields": [
-                    "push_messages",
-                    "push_announcements",
-                    "push_forum_subscriptions",
-                    "push_thread_replies",
-                    "push_post_reactions",
-                    "push_events",
-                    "push_event_reminders",
-                    "push_food_tickets",
-                    "push_mentions",
-                ]
-            },
-        ),
-    ]
+    fieldsets = [(None, {"fields": ["user"]}), *PREFERENCE_FIELDSETS]
 
 
 @admin.register(PushSubscription)
