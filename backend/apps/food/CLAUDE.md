@@ -71,7 +71,7 @@ All three of these types plus `FOOD_TEAM_SHIFT_TAKEN` follow the `FOOD_TEAM_PAUS
 
 ### Next-cycle planning (create form defaults)
 
-`services/cycle_planning.py` centralises "what should the next period look like": **eligible cooks** = residents (`utils.residents()`: active *and* with a house) with `is_exempt_from_food_teams=False` (children aren't users; admin, test and shared accounts have no house); **suggested cooking days** = `eligible // 6` (teams target 6 and never go below it — leftovers overflow to 7 rather than opening a half-staffed day, so 89 cooks means 14 days, not 15); **dates** = the next Mon–Thu days skipping `ClosedFoodDay`s, continuing after the latest existing cycle so periods don't overlap, and never before `earliest_start_date()` (today + 3); **wish deadline** = a week out, but at the latest 23:59 two days before the first cooking day (`suggested_wish_deadline()`), so the plan can be generated and announced before day 1's 20:00 reminder the evening before. A date belongs to one period: creating or editing a cycle onto another cycle's dates (or teams) is refused, and the generator refuses to plan a date another period has a team on — `FoodTeam.date` is unique, so planning it used to delete that team silently. The generator also leaves out dates that are today or past, with a warning. `GET cycles/suggested/` (food-admin) returns `{eligible_count, suggested_day_count, name, cooking_dates, wish_deadline}` and the "Opret periode" modal auto-prefills (editable) from it. The seeder reuses the same helpers. Initial resident flags were seeded from the cooking team's roster in `users/migrations/0012_seed_food_team_flags.py`.
+`services/cycle_planning.py` centralises "what should the next period look like": **eligible cooks** = residents (`utils.residents()`: active *and* with a house) with `is_exempt_from_food_teams=False` and `is_child=False` (admin, test and shared accounts have no house); **suggested cooking days** = `eligible // 6` (teams target 6 and never go below it — leftovers overflow to 7 rather than opening a half-staffed day, so 89 cooks means 14 days, not 15); **dates** = the next Mon–Thu days skipping `ClosedFoodDay`s, continuing after the latest existing cycle so periods don't overlap, and never before `earliest_start_date()` (today + 3); **wish deadline** = a week out, but at the latest 23:59 two days before the first cooking day (`suggested_wish_deadline()`), so the plan can be generated and announced before day 1's 20:00 reminder the evening before. A date belongs to one period: creating or editing a cycle onto another cycle's dates (or teams) is refused, and the generator refuses to plan a date another period has a team on — `FoodTeam.date` is unique, so planning it used to delete that team silently. The generator also leaves out dates that are today or past, with a warning. `GET cycles/suggested/` (food-admin) returns `{eligible_count, suggested_day_count, name, cooking_dates, wish_deadline}` and the "Opret periode" modal auto-prefills (editable) from it. The seeder reuses the same helpers. Initial resident flags were seeded from the cooking team's roster in `users/migrations/0012_seed_food_team_flags.py`.
 
 ### Too few cooks shortens the period, it never thins the teams
 
@@ -89,8 +89,8 @@ Users declare which dates they're available to cook. Without a usable wish we fa
 - **Unit-based**: couples (two housemates both flagged `prefers_cooking_with_housemate`, scheduled on the *intersection* of their wishes) and singles go through one ordering — fewest options, then head-chefs first, then over-50 first — placing each on the least-filled valid date. This beats "couples first".
 - Repair pipeline: swap-repair for unplaced people, overflow (team_size+1), then rebalance passes for over-50 and head-chefs.
 - **Auto-escalation**: if anyone is unplaced, the whole assignment restarts with `max_old_per_day += 1` up to a ceiling (4). Tunable via class constants (`TEAM_SIZE`, `OVERFLOW`, `MAX_OLD_PER_DAY_START/CEILING`, `MAX_HEADCHEFS_PER_DAY`, `REBALANCE_ITERATIONS`).
-- **Eligible pool** = `utils.food_team_pool()`: residents (active, with a house) not on
-  a pause — the same pool as `cycle_planning.eligible_food_team_count()`, the admin
+- **Eligible pool** = `utils.food_team_pool()`: residents (active, with a house) who are
+  not children (`utils.madhold_residents()`) and not on a pause — the same pool as `cycle_planning.eligible_food_team_count()`, the admin
   roster, the period-opening notice and the wish nudge. A resident who has moved out
   is *deactivated*, not exempted, and an admin or test account has no house; neither
   may be planned as a cook.
@@ -108,6 +108,26 @@ Users declare which dates they're available to cook. Without a usable wish we fa
   switch can't fix that (it preserves both sizes), so it searches for a *chain* of
   wished-for moves (up to `MAX_MOVE_CHAIN`) ending on an under-full date; only the
   two ends change size. Couples are placed as a pair and are never moved singly.
+
+### Children with an account
+
+Some children have accounts, and some of them are adults by age (grown-up children
+living at home), so the birthdate can't tell. `User.is_child` says it outright: a child
+is never a cook, never invited to give wishes and never asked about a pause
+(`utils.madhold_residents()` leaves them out; `food_team_pool()` builds on it). A food
+admin sets it from Beboeroverblik (PATCH `admin/roster/<id>/` with `is_child`), or it can
+be set in the Django admin under House. The roster still returns children, and the
+overview lists them on their own, so the flag can be undone.
+
+### Checking a plan before it is published
+
+`generate-teams/` returns the plan itself in `teams` (date, then each cook's name, house
+number and flags), on a dry run as well as a real one. "Forhåndsvisning" shows it in the
+result modal, with a CSV download (semicolon-separated with a BOM, so Danish Excel opens
+it as columns). A dry run saves nothing and notifies nobody. More than
+`TeamGenerator.MAX_COOKS_PER_HOUSE` (2) cooks from one house is a warning, not a
+constraint. It usually means a child who isn't marked, so the warning and the
+Beboeroverblik alert name everyone in that house.
 
 ### Team constraints
 

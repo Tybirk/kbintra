@@ -63,9 +63,18 @@ def residents():  # type: ignore[no-untyped-def]
     return User.objects.filter(is_active=True, house__isnull=False)
 
 
+def madhold_residents():  # type: ignore[no-untyped-def]
+    """The residents madhold concerns: everyone who lives here except the children.
+
+    A child with an account (``User.is_child``) is never a cook, whatever their
+    age, so they are neither invited, asked about a pause, nor planned.
+    """
+    return residents().filter(is_child=False)
+
+
 def food_team_pool():  # type: ignore[no-untyped-def]
-    """The residents madhold plans and asks: everyone not on a standing pause."""
-    return residents().filter(is_exempt_from_food_teams=False)
+    """The residents madhold plans and asks: every adult not on a standing pause."""
+    return madhold_residents().filter(is_exempt_from_food_teams=False)
 
 
 def any_day_passed(*days: date) -> bool:
