@@ -822,9 +822,15 @@ class TeamGenerator:
         """
         max_old = self.MAX_OLD_PER_DAY_START
         ceiling = self.MAX_OLD_PER_DAY_CEILING
+        # Warnings from before the assignment (dropped dates, crowded houses) hold
+        # for every attempt; those an attempt writes describe only that attempt. A
+        # discarded attempt's warnings used to survive it, so a couple that the
+        # retry placed together was still reported as split.
+        warnings_before = list(self.warnings)
 
         while True:
             self._reset_assignment()
+            self.warnings = list(warnings_before)
             self.max_old = max_old
 
             unplaced_units = self.assign_greedy()
