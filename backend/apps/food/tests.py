@@ -2797,6 +2797,98 @@ class TestFrontPageParser:
         doc.add_paragraph("Torsdag")
         assert DriveMenuService()._parse_front_pages(doc) == []
 
+    # The layouts below are all taken from real menu documents in the Drive
+    # archive; each one used to lose one or two days' forside.
+
+    @staticmethod
+    def _doc(*pages: list[str]):
+        from docx import Document
+        from docx.enum.text import WD_BREAK
+
+        doc = Document()
+        for i, lines in enumerate(pages):
+            if i:
+                doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
+            for line in lines:
+                doc.add_paragraph(line)
+        return doc
+
+    @staticmethod
+    def _titles(doc) -> dict[str, str]:
+        from apps.food.services.drive_menu import DriveMenuService
+
+        return {p["weekday"]: p["title"] for p in DriveMenuService()._parse_front_pages(doc)}
+
+    OVERVIEW = ["Uge test", "Mandag", "Ret M", "Tirsdag", "Ret T", "Onsdag", "Ret O"]
+
+    def test_page_without_weekday_heading_is_the_next_listed_day(self):
+        # Uge 25: Mandag's page starts straight with the dish; "TIRSDAG" in capitals.
+        doc = self._doc(
+            self.OVERVIEW,
+            ["Marokkansk gryderet", "Tilbehør", "Bulgur"],
+            ["TIRSDAG", "Aubergineragout"],
+            ["Onsdag", "Boller i karry"],
+        )
+        assert self._titles(doc) == {
+            "Mandag": "Marokkansk gryderet",
+            "Tirsdag": "Aubergineragout",
+            "Onsdag": "Boller i karry",
+        }
+
+    def test_two_days_on_one_page(self):
+        # Uge 40: Tirsdag and Onsdag share a page with no page break between them.
+        doc = self._doc(
+            self.OVERVIEW,
+            ["Mandag", "Karrykål"],
+            ["Tirsdag", "Peanutnudler", "God fornøjelse!", "Onsdag", "Pollo cacciatore"],
+        )
+        pages = self._titles(doc)
+        assert pages == {
+            "Mandag": "Karrykål",
+            "Tirsdag": "Peanutnudler",
+            "Onsdag": "Pollo cacciatore",
+        }
+
+    def test_heading_left_at_the_bottom_of_the_overview(self):
+        # Uge 11: "MANDAG" is the last line of page 1, its dish starts page 2.
+        doc = self._doc(
+            [*self.OVERVIEW, "MANDAG"],
+            ["Jordnøddegryde", "Tilbehør"],
+            ["Tirsdag", "Pesto pasta"],
+        )
+        assert self._titles(doc) == {"Mandag": "Jordnøddegryde", "Tirsdag": "Pesto pasta"}
+
+    def test_first_day_starts_on_the_overview_page(self):
+        # Uge 13: Mandag's detail section follows the overview without a page break.
+        doc = self._doc(
+            [*self.OVERVIEW, "Gnavegrønt til ugen", "5 kg æbler", "Mandag", "Tortillatærte"],
+            ["Tirsdag", "Maskeret blomkål"],
+        )
+        assert self._titles(doc) == {"Mandag": "Tortillatærte", "Tirsdag": "Maskeret blomkål"}
+
+    def test_headless_page_before_a_headed_day_continues_the_previous_day(self):
+        # A day running over onto the next page must not steal the next day's slot.
+        doc = self._doc(
+            self.OVERVIEW,
+            ["Mandag", "Ret M", "Tilbehør"],
+            ["Ved servering", "På fad"],
+            ["Tirsdag", "Ret T"],
+        )
+        from apps.food.services.drive_menu import DriveMenuService
+
+        pages = DriveMenuService()._parse_front_pages(doc)
+        assert [p["weekday"] for p in pages] == ["Mandag", "Tirsdag"]
+        assert [b["text"] for b in pages[0]["blocks"]] == ["Tilbehør", "Ved servering", "På fad"]
+
+    def test_short_week_only_has_the_days_it_lists(self):
+        # Uge 22: a three-day week starting Tirsdag; the headless page is Tirsdag.
+        doc = self._doc(
+            ["Kort uge", "Tirsdag\nSpaghetti", "Onsdag\nTikka masala"],
+            ["Spaghetti puttanesca"],
+            ["Onsdag", "Tikka masala"],
+        )
+        assert self._titles(doc) == {"Tirsdag": "Spaghetti puttanesca", "Onsdag": "Tikka masala"}
+
 
 class TestWeekRecipesFrontPages:
     """The week endpoint surfaces cached per-day front pages."""
