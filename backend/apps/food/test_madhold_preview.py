@@ -201,3 +201,34 @@ class TestCrowdedHouseWarning:
         people[2].save(update_fields=["is_child"])
 
         assert self._warnings(admin_user) == []
+
+
+@pytest.mark.django_db
+class TestWhySomeoneIsUnplaced:
+    def test_a_housemate_on_the_only_date_is_named_not_the_over_50_cap(self, admin_user):
+        """Two housemates who can both only cook the same day: one is placed, and the
+        warning about the other names the housemate, not the over-50 limit."""
+        from apps.food.models import FoodTeamWish
+
+        cycle = _cycle(admin_user, days=2)
+        people = _residents(12, per_house=1)
+        house = people[0].house
+        bo = User.objects.create_user(
+            email="bo@example.com", password="x", first_name="Bo", house=house
+        )
+        only_day = cycle.cooking_dates[0]
+        for person in (people[0], bo):
+            FoodTeamWish.objects.create(cycle=cycle, user=person, available_dates=[only_day])
+
+        generator = TeamGenerator(cycle)
+        result = generator.generate(save=False)
+
+        unplaced = result.unassigned_persons
+        assert len(unplaced) == 1
+        placed = "Bo" if unplaced == ["Kok0"] else "Kok0"
+        day = date.fromisoformat(only_day)
+        assert (
+            f"{unplaced[0]} (hus 1) kunne ikke sættes på et hold. "
+            f"{day.day}/{day.month}: {placed} fra samme hus er allerede på holdet."
+        ) in result.warnings
+        assert not any("over-50" in w for w in result.warnings)

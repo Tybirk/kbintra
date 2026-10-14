@@ -841,13 +841,50 @@ class TeamGenerator:
             if not self.unassigned:
                 break
             if max_old >= ceiling:
-                self.warnings.append(
-                    f"Nåede grænsen for over-50 pr. hold ({ceiling}); "
-                    f"{len(self.unassigned)} person(er) kunne ikke placeres."
-                )
+                self.warnings.extend(self._why_unplaced(uid) for uid in self.unassigned)
                 break
 
             max_old += 1
+
+    def _why_unplaced(self, user_id: int) -> str:
+        """Say, date by date, what kept this person off every team they could cook on.
+
+        Raising the over-50 cap is the only retry the generator has, so this used to
+        report every unplaced person as an over-50 problem, also when the real reason
+        was a housemate already on their only date.
+        """
+        person = self.persons[user_id]
+        max_size = self.TEAM_SIZE + self.OVERFLOW
+        reasons = []
+        for d in person.available_dates:
+            members = self.date_to_persons[d]
+            housemate = next(
+                (
+                    self.persons[m].first_name
+                    for m in members
+                    if person.house_id is not None and self.persons[m].house_id == person.house_id
+                ),
+                None,
+            )
+            if housemate:
+                why = f"{housemate} fra samme hus er allerede på holdet"
+            elif len(members) >= max_size:
+                why = f"holdet er fuldt ({max_size})"
+            elif person.is_over_50 and self.date_to_old_count[d] >= self.max_old:
+                why = f"holdet har allerede {self.max_old} over 50"
+            elif (
+                person.can_be_head_chef
+                and self.date_to_head_chef_count[d] >= self.MAX_HEADCHEFS_PER_DAY
+            ):
+                why = f"holdet har allerede {self.MAX_HEADCHEFS_PER_DAY} chefkokke"
+            else:
+                why = "ingen ledig plads"
+            reasons.append(f"{d.day}/{d.month}: {why}")
+        return (
+            f"{person.first_name} (hus {person.house_number}) kunne ikke sættes på et hold. "
+            + "; ".join(reasons)
+            + "."
+        )
 
     def _find_missed_move(self, under: dict[date, int]) -> tuple[str, date] | None:
         """
