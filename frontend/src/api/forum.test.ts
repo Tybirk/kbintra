@@ -33,9 +33,25 @@ describe("forumApi", () => {
 
       const result = await forumApi.getSubgroups()
 
-      expect(apiClient.get).toHaveBeenCalledWith("/forum/subgroups/")
+      expect(apiClient.get).toHaveBeenCalledWith("/forum/subgroups/", {
+        params: {},
+      })
 
       expect(result).toEqual(mockSubgroups)
+    })
+
+    it("should fetch subgroups with include_archived when requested", async () => {
+      const mockSubgroups = [{ id: 1, name: "Test Group", slug: "test-group" }]
+
+      vi.mocked(apiClient.get).mockResolvedValue({
+        data: { results: mockSubgroups },
+      })
+
+      await forumApi.getSubgroups({ includeArchived: true })
+
+      expect(apiClient.get).toHaveBeenCalledWith("/forum/subgroups/", {
+        params: { include_archived: "true" },
+      })
     })
 
     it("should fetch single subgroup by slug", async () => {

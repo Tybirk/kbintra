@@ -106,7 +106,7 @@ def du(db):
     return Subgroup.objects.create(
         name="Driftsudvalget",
         slug="driftsudvalget",
-        is_committee=True,
+        group_type=Subgroup.GroupType.UDVALG,
         allows_members=True,
         reporting=Subgroup.Reporting.OPEN,
     )

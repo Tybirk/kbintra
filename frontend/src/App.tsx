@@ -105,6 +105,8 @@ const PrivacyPolicyPage = lazy(() => import("./pages/PrivacyPolicyPage"))
 
 const AdvancedSearchPage = lazy(() => import("./pages/AdvancedSearchPage"))
 
+const OverviewPage = lazy(() => import("./pages/OverviewPage"))
+
 import AppHeader from "./components/AppHeader"
 
 import AppNavbar from "./components/AppNavbar"
@@ -486,6 +488,30 @@ const AuthenticatedRoutes = memo(function AuthenticatedRoutes() {
             <ProtectedRoute>
               <ErrorBoundary>
                 <ThreadPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Grafisk overblik. The `:slug` variant selects a group in the detail
+            panel, so a group is linkable and the back button closes the
+            drawer on mobile. */}
+        <Route
+          path="/overblik"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <OverviewPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/overblik/:slug"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <OverviewPage />
               </ErrorBoundary>
             </ProtectedRoute>
           }
