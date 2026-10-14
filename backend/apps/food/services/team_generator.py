@@ -70,6 +70,26 @@ class PersonData:
     prefers_housemate: bool
     can_be_switched: bool
     available_dates: list[date] = field(default_factory=list)
+    last_name: str = ""
+
+
+@dataclass
+class PlannedMember:
+    """One cook on a planned team, as the admin sees it in the result."""
+
+    name: str
+    house_number: str
+    is_over_50: bool
+    can_be_head_chef: bool
+    prefers_housemate: bool
+
+
+@dataclass
+class PlannedTeam:
+    """One planned cooking date and its cooks."""
+
+    date: str
+    members: list[PlannedMember] = field(default_factory=list)
 
 
 @dataclass
@@ -84,6 +104,9 @@ class TeamGenerationResult:
     # Trailing dates dropped because there weren't enough cooks (ISO strings).
     # They roll into the next cycle, which starts where this one really ended.
     dropped_dates: list[str] = field(default_factory=list)
+    # The plan itself, date by date — also on a dry run, which is the point of
+    # one: the admin checks who cooks when before anyone is told anything.
+    teams: list[PlannedTeam] = field(default_factory=list)
 
 
 # A unit is a tuple of member user-ids (1 for singles, 2 for couples) plus the
@@ -110,6 +133,9 @@ class TeamGenerator:
     REBALANCE_ITERATIONS = 100
     # How many hops a size-balancing chain may take (see balance_team_sizes).
     MAX_MOVE_CHAIN = 4
+    # More cooks than this from one house usually means a child with an account
+    # who isn't marked as one. Only a warning: the house may really be bigger.
+    MAX_COOKS_PER_HOUSE = 2
 
     # Backwards-compatible aliases (older code / tests may reference these).
     MIN_TEAM_SIZE = TEAM_SIZE
@@ -194,6 +220,7 @@ class TeamGenerator:
                 house_id=user.house_id,
                 house_number=house_number,
                 first_name=user.first_name,
+                last_name=user.last_name,
                 is_over_50=user.is_over_50_effective,
                 can_be_head_chef=user.can_be_head_chef,
                 prefers_housemate=user.prefers_cooking_with_housemate,
@@ -207,6 +234,49 @@ class TeamGenerator:
                 self.special_persons.append(user.id)
             else:
                 self.regular_persons.append(user.id)
+
+        self._warn_about_crowded_houses()
+
+    def _warn_about_crowded_houses(self) -> None:
+        """Warn about a house with more cooks than ``MAX_COOKS_PER_HOUSE``.
+
+        The usual cause is a child with an account who is not marked as a child,
+        so the warning names everyone in that house for the admin to check.
+        """
+        by_house: dict[str, list[str]] = {}
+        for person in self.persons.values():
+            if person.house_id is not None:
+                by_house.setdefault(person.house_number, []).append(person.first_name)
+        for house_number, names in sorted(by_house.items()):
+            if len(names) > self.MAX_COOKS_PER_HOUSE:
+                self.warnings.append(
+                    f"Hus {house_number} har {len(names)} kokke med ({', '.join(sorted(names))}), "
+                    f"men højst {self.MAX_COOKS_PER_HOUSE} pr. hus er normalt. Er en af dem et "
+                    "barn? Markér dem som barn i Beboeroverblik, så kommer de ikke med."
+                )
+
+    def planned_teams(self) -> list[PlannedTeam]:
+        """The plan as it stands, date by date, for the admin to look over."""
+        teams = []
+        for d in sorted(self.date_to_persons):
+            members = [self.persons[uid] for uid in self.date_to_persons[d]]
+            members.sort(key=lambda p: (p.house_number, p.first_name))
+            teams.append(
+                PlannedTeam(
+                    date=d.isoformat(),
+                    members=[
+                        PlannedMember(
+                            name=f"{p.first_name} {p.last_name}".strip(),
+                            house_number=p.house_number,
+                            is_over_50=p.is_over_50,
+                            can_be_head_chef=p.can_be_head_chef,
+                            prefers_housemate=p.prefers_housemate,
+                        )
+                        for p in members
+                    ],
+                )
+            )
+        return teams
 
     def _trim_dates_to_capacity(self) -> None:
         """Drop trailing dates the community isn't big enough to staff.
@@ -976,6 +1046,7 @@ class TeamGenerator:
                 unassigned_persons=unassigned_names,
                 warnings=self.warnings,
                 dropped_dates=[d.isoformat() for d in self.dropped_dates],
+                teams=self.planned_teams(),
             )
 
         except SchedulingError as e:

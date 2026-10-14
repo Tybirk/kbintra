@@ -54,7 +54,14 @@ class UserAdmin(BaseUserAdmin):
         "is_active",
         "is_exempt_from_food_teams",
     )
-    list_filter = ("is_staff", "is_superuser", "is_active", "is_exempt_from_food_teams", "house")
+    list_filter = (
+        "is_staff",
+        "is_superuser",
+        "is_active",
+        "is_child",
+        "is_exempt_from_food_teams",
+        "house",
+    )
     search_fields = ("email", "first_name", "last_name")
     ordering = ("email",)
     inlines = [
@@ -80,7 +87,7 @@ class UserAdmin(BaseUserAdmin):
                 )
             },
         ),
-        ("House", {"fields": ("house",)}),
+        ("House", {"fields": ("house", "is_child")}),
         (
             "Madhold",
             {

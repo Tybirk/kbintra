@@ -195,7 +195,7 @@ def notify_residents_of_new_cycle(cycle_id: int) -> None:
     )
 
     from .models import FoodTeamCycle
-    from .utils import residents
+    from .utils import madhold_residents
 
     cycle = FoodTeamCycle.objects.filter(pk=cycle_id).first()
     if cycle is None:
@@ -205,7 +205,7 @@ def notify_residents_of_new_cycle(cycle_id: int) -> None:
     deadline_label = _deadline_label(cycle)
 
     asked = invited = 0
-    for user in residents():
+    for user in madhold_residents():
         if user.is_exempt_from_food_teams:
             notify_food_team_pause_check(user, cycle.name, deadline_label)
             asked += 1

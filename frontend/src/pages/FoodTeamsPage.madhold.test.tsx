@@ -166,6 +166,7 @@ const generationResult: TeamGenerationResult = {
   unassigned_persons: [],
   warnings: [],
   dropped_dates: [],
+  teams: [],
 }
 
 const notFound = Object.assign(new Error("404"), {
@@ -852,5 +853,46 @@ describe("C3: Generer hold asks first", () => {
     expect(api.generateTeams.mock.calls[0].slice(0, 2)).toEqual([7, true])
 
     expect(api.generateTeams.mock.calls[0][2]).toBeFalsy()
+  })
+
+  it("Forhåndsvisning shows every team and says nothing was saved", async () => {
+    api.getCycles.mockResolvedValue([cycle])
+
+    api.generateTeams.mockResolvedValue({
+      ...generationResult,
+      teams_created: 0,
+      teams: [
+        {
+          date: "2030-10-14",
+          members: [
+            {
+              name: "Åse Ørsted",
+              house_number: "12",
+              is_over_50: true,
+              can_be_head_chef: true,
+              prefers_housemate: false,
+            },
+          ],
+        },
+      ],
+    })
+
+    renderAt("/madhold/admin")
+
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Forhåndsvisning" }))
+
+    expect(await screen.findByText("Forhåndsvisning af hold")).toBeTruthy()
+
+    expect(
+      screen.getByText(/Intet er gemt, og ingen har fået besked/),
+    ).toBeTruthy()
+
+    expect(screen.getByText("Åse Ørsted")).toBeTruthy()
+
+    expect(
+      screen.getByRole("button", { name: "Hent som regneark" }),
+    ).toBeTruthy()
   })
 })

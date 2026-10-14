@@ -118,6 +118,14 @@ class User(AbstractUser):
         related_name="inhabitants",
     )
 
+    is_child = models.BooleanField(
+        default=False,
+        help_text=(
+            "A child of the household who has an account. Age doesn't decide it: a "
+            "grown-up child living at home is still one. Children are never madhold cooks."
+        ),
+    )
+
     # Food team related fields
     is_exempt_from_food_teams = models.BooleanField(
         default=False,

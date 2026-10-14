@@ -2186,6 +2186,23 @@ export interface TeamGenerationResult {
 
   /** Trailing dates that had too few cooks and roll into the next period. */
   dropped_dates: string[]
+
+  /** The plan date by date; also on a dry run, where nothing is saved. */
+  teams: PlannedTeam[]
+}
+
+export interface PlannedMember {
+  name: string
+  house_number: string
+  is_over_50: boolean
+  can_be_head_chef: boolean
+  prefers_housemate: boolean
+}
+
+export interface PlannedTeam {
+  /** ISO date */
+  date: string
+  members: PlannedMember[]
 }
 
 // Madhold launch: takeover/favours, broadcast swaps, action box, profile
@@ -2350,6 +2367,8 @@ export interface FoodRosterEntry {
   // Standing pause: set on the person, lasts until they turn it off.
   is_exempt_from_food_teams: boolean
   food_team_pause_reason: string
+  // A child of the household with an account: never a cook, whatever their age.
+  is_child: boolean
   // This period only: comes from their wish for the cycle below.
   is_unavailable_this_cycle: boolean
   has_submitted_wish: boolean

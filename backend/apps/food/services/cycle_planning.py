@@ -3,10 +3,9 @@
 Centralises the "what should the next madhold period look like?" logic so the
 admin create-cycle form, the API, and the test seeder all agree:
 
-- **Eligible cooks**: residents (active, with a house) who have not opted out
-  (``is_exempt_from_food_teams``). Children are not in scope because residents
-  under 18 do not have user accounts; the opt-out flag is the single source of
-  truth for participation.
+- **Eligible cooks**: residents (active, with a house) who are not children
+  (``is_child``, set by hand, since some children with accounts are adults by age)
+  and have not opted out (``is_exempt_from_food_teams``).
 - **Suggested number of cooking days**: ``round(eligible / 6)`` — each team
   targets ~6 people (the generator overflows to 7 as needed). This mirrors the
   community's own spreadsheet ("Antal maddage per cyklus" = total cooks / 6).
