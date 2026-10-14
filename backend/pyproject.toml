@@ -35,13 +35,14 @@ dependencies = [
 dev = [
     "pytest>=9.0.2",
     "pytest-django>=4.11.1",
+    "pytest-xdist>=3.8.0",
     "ruff>=0.14.9",
 ]
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings"
 python_files = ["test_*.py", "*_test.py", "tests.py"]
-addopts = "-v --tb=short"
+addopts = "-n 4 --tb=short"  # pytest-xdist; 4 beat auto (each worker migrates ~10 s). -n0 for pdb
 
 [tool.ruff]
 line-length = 100

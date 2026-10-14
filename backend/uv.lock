@@ -563,9 +563,9 @@ resolution-markers = [
     "python_full_version < '3.12'",
 ]
 dependencies = [
-    { name = "asgiref", marker = "python_full_version < '3.12'" },
-    { name = "sqlparse", marker = "python_full_version < '3.12'" },
-    { name = "tzdata", marker = "python_full_version < '3.12' and sys_platform == 'win32'" },
+    { name = "asgiref" },
+    { name = "sqlparse" },
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/eb/1c/188ce85ee380f714b704283013434976df8d3a2df8e735221a02605b6794/django-5.2.9.tar.gz", hash = "sha256:16b5ccfc5e8c27e6c0561af551d2ea32852d7352c67d452ae3e76b4f6b2ca495", size = 10848762, upload-time = "2025-12-02T14:01:08.418Z" }
 wheels = [
@@ -581,9 +581,9 @@ resolution-markers = [
     "python_full_version == '3.12.*'",
 ]
 dependencies = [
-    { name = "asgiref", marker = "python_full_version >= '3.12'" },
-    { name = "sqlparse", marker = "python_full_version >= '3.12'" },
-    { name = "tzdata", marker = "python_full_version >= '3.12' and sys_platform == 'win32'" },
+    { name = "asgiref" },
+    { name = "sqlparse" },
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/15/75/19762bfc4ea556c303d9af8e36f0cd910ab17dff6c8774644314427a2120/django-6.0.tar.gz", hash = "sha256:7b0c1f50c0759bbe6331c6a39c89ae022a84672674aeda908784617ef47d8e26", size = 10932418, upload-time = "2025-12-03T16:26:21.878Z" }
 wheels = [
@@ -639,6 +639,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d3/38/af70d7ab1ae9d4da450eeec1fa3918940a5fafb9055e934af8d6eb0c2313/et_xmlfile-2.0.0.tar.gz", hash = "sha256:dab3f4764309081ce75662649be815c4c9081e88f0837825f90fd28317d4da54", size = 17234, upload-time = "2024-10-25T17:25:40.039Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c1/8b/5fe2cc11fee489817272089c4203e679c63b570a5aaeb18d852ae3cbba6a/et_xmlfile-2.0.0-py3-none-any.whl", hash = "sha256:7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa", size = 18059, upload-time = "2024-10-25T17:25:39.051Z" },
+]
+
+[[package]]
+name = "execnet"
+version = "2.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/bf/89/780e11f9588d9e7128a3f87788354c7946a9cbb1401ad38a48c4db9a4f07/execnet-2.1.2.tar.gz", hash = "sha256:63d83bfdd9a23e35b9c6a3261412324f964c2ec8dcd8d3c6916ee9373e0befcd", size = 166622, upload-time = "2025-11-12T09:56:37.75Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ab/84/02fc1827e8cdded4aa65baef11296a9bbe595c474f0d6d758af082d849fd/execnet-2.1.2-py3-none-any.whl", hash = "sha256:67fba928dd5a544b783f6056f449e5e3931a5c378b128bc18501f7ea79e296ec", size = 40708, upload-time = "2025-11-12T09:56:36.333Z" },
 ]
 
 [[package]]
@@ -945,6 +954,7 @@ dependencies = [
 dev = [
     { name = "pytest" },
     { name = "pytest-django" },
+    { name = "pytest-xdist" },
     { name = "ruff" },
 ]
 
@@ -980,6 +990,7 @@ requires-dist = [
 dev = [
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-django", specifier = ">=4.11.1" },
+    { name = "pytest-xdist", specifier = ">=3.8.0" },
     { name = "ruff", specifier = ">=0.14.9" },
 ]
 
@@ -1718,6 +1729,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b1/fb/55d580352db26eb3d59ad50c64321ddfe228d3d8ac107db05387a2fadf3a/pytest_django-4.11.1.tar.gz", hash = "sha256:a949141a1ee103cb0e7a20f1451d355f83f5e4a5d07bdd4dcfdd1fd0ff227991", size = 86202, upload-time = "2025-04-03T18:56:09.338Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/be/ac/bd0608d229ec808e51a21044f3f2f27b9a37e7a0ebaca7247882e67876af/pytest_django-4.11.1-py3-none-any.whl", hash = "sha256:1b63773f648aa3d8541000c26929c1ea63934be1cfa674c76436966d73fe6a10", size = 25281, upload-time = "2025-04-03T18:56:07.678Z" },
+]
+
+[[package]]
+name = "pytest-xdist"
+version = "3.8.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "execnet" },
+    { name = "pytest" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/78/b4/439b179d1ff526791eb921115fca8e44e596a13efeda518b9d845a619450/pytest_xdist-3.8.0.tar.gz", hash = "sha256:7e578125ec9bc6050861aa93f2d59f1d8d085595d6551c2c90b6f4fad8d3a9f1", size = 88069, upload-time = "2025-07-01T13:30:59.346Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ca/31/d4e37e9e550c2b92a9cbc2e4d0b7420a27224968580b5a447f420847c975/pytest_xdist-3.8.0-py3-none-any.whl", hash = "sha256:202ca578cfeb7370784a8c33d6d05bc6e13b4f25b5053c30a152269fd10f0b88", size = 46396, upload-time = "2025-07-01T13:30:56.632Z" },
 ]
 
 [[package]]
