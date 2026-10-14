@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # The weekly menu .docx has a 4-day overview on page 1, then one detailed page
 # per weekday (Mandag…Torsdag). We extract each weekday's detail page so the app
 # can show "Dagens forside" in-app instead of only the one-line menu.
-FRONT_PAGE_SCHEMA_VERSION = 1
+FRONT_PAGE_SCHEMA_VERSION = 2
 WEEKDAY_NAMES = ["Mandag", "Tirsdag", "Onsdag", "Torsdag"]
 WEEKDAY_TO_INDEX = {name.lower(): i for i, name in enumerate(WEEKDAY_NAMES)}
 # Recurring sub-section labels in the detail pages; rendered as headings even
@@ -526,35 +526,95 @@ class DriveMenuService:
         key = paragraph.text.strip().rstrip(":").lower()
         return key in FRONT_PAGE_SECTION_LABELS
 
-    def _parse_front_pages(self, doc) -> list[dict]:
-        """Extract each weekday's detail page from the menu document.
+    @staticmethod
+    def _weekday_heading(paragraph) -> int | None:
+        """Weekday index if the paragraph is just a weekday name ("Mandag", "TIRSDAG:")."""
+        return WEEKDAY_TO_INDEX.get(paragraph.text.strip().rstrip(":").strip().lower())
 
-        The overview page lists all four weekdays; a detail page has exactly one
-        weekday name as a standalone paragraph. For each detail page the first
-        content line is treated as the dish title and the rest as body blocks.
+    @staticmethod
+    def _leading_weekday(paragraph) -> int | None:
+        """Weekday a paragraph starts with, also "Tirsdag\\nRet ..." on the overview."""
+        text = paragraph.text.strip()
+        for day, name in enumerate(WEEKDAY_NAMES):
+            if re.match(rf"{name}\b", text, re.IGNORECASE):
+                return day
+        return None
+
+    def _parse_front_pages(self, doc) -> list[dict]:
+        """Extract each weekday's detail section from the menu document.
+
+        Page 1 is the overview of the week. The detail sections after it are
+        written by hand by many different cooks, and the real archive has every
+        variation of the layout: a section headed by its weekday on its own page,
+        two days on one page with no page break between them, a page with no
+        weekday heading at all, the heading left at the bottom of the overview
+        page, and the first day starting on the overview page itself. So sections
+        are split by weekday heading, not by page, and a page that starts without
+        a heading belongs to the next day the overview lists — unless that day
+        has a heading of its own further on, in which case the page is just the
+        previous day running over.
         """
+        pages = self._split_into_pages(doc)
+        if not pages:
+            return []
+
+        # Where the detail sections begin: the second page, or earlier if page 1
+        # repeats a weekday heading it has already listed (the cook carried on
+        # without a page break, or left the next page's heading on this one).
+        listed: set[int] = set()
+        overview_end = len(pages[0])
+        for i, para in enumerate(pages[0]):
+            if self._weekday_heading(para) in listed:
+                overview_end = i
+                break
+            day = self._leading_weekday(para)
+            if day is not None:
+                listed.add(day)
+        overview_days = sorted(listed) or list(range(len(WEEKDAY_NAMES)))
+        detail_pages = [pages[0][overview_end:], *pages[1:]]
+
+        # Split into sections: (weekday or None, paragraphs).
+        sections: list[tuple[int | None, list]] = []
+        for page in detail_pages:
+            starts_page = True
+            for para in page:
+                day = self._weekday_heading(para)
+                if day is not None:
+                    sections.append((day, []))
+                elif para.text.strip():
+                    if starts_page or not sections:
+                        sections.append((None, []))
+                    sections[-1][1].append(para)
+                else:
+                    continue
+                starts_page = False
+
+        # Give each headless page a day, or fold it into the day before it.
+        headed = {day for day, _ in sections if day is not None}
+        assigned: list[tuple[int, list]] = []
+        for day, paras in sections:
+            if day is None:
+                prev = assigned[-1][0] if assigned else None
+                later = [d for d in overview_days if prev is None or d > prev]
+                if later and later[0] not in headed:
+                    day = later[0]
+                elif assigned:
+                    assigned[-1][1].extend(paras)
+                    continue
+                else:
+                    continue
+            assigned.append((day, paras))
+
         results: list[dict] = []
         seen_days: set[int] = set()
-        for page in self._split_into_pages(doc):
-            day_hits = [
-                (i, WEEKDAY_TO_INDEX[para.text.strip().lower()])
-                for i, para in enumerate(page)
-                if para.text.strip().lower() in WEEKDAY_TO_INDEX
-            ]
-            # Skip the overview (multiple weekdays) and pages with none.
-            if len({day for _, day in day_hits}) != 1:
-                continue
-            header_pos, day = day_hits[0]
+        for day, paras in assigned:
+            # A day already parsed keeps its first section (some documents repeat one).
             if day in seen_days:
                 continue
-            seen_days.add(day)
-
             title = ""
             blocks: list[dict] = []
-            for para in page[header_pos + 1 :]:
+            for para in paras:
                 text = para.text.strip()
-                if not text:
-                    continue
                 if not title:
                     title = text  # first content line is the dish title
                     continue
@@ -562,6 +622,7 @@ class DriveMenuService:
                     {"text": para.text.rstrip(), "heading": self._is_front_page_heading(para)}
                 )
             if title or blocks:
+                seen_days.add(day)
                 results.append(
                     {
                         "day": day,
