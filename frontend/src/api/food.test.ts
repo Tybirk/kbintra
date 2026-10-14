@@ -281,6 +281,48 @@ describe("foodApi", () => {
     })
   })
 
+  describe("Team generation", () => {
+    it("sends before_deadline only when the admin confirmed it", async () => {
+      vi.mocked(apiClient.post).mockResolvedValue({ data: {} })
+
+      await foodApi.generateTeams(7, false, true)
+
+      await foodApi.generateTeams(7, true)
+
+      expect(vi.mocked(apiClient.post).mock.calls[0]).toEqual([
+        "/food/generate-teams/",
+
+        { cycle_id: 7, dry_run: false, before_deadline: true },
+      ])
+
+      expect(vi.mocked(apiClient.post).mock.calls[1]).toEqual([
+        "/food/generate-teams/",
+
+        { cycle_id: 7, dry_run: true },
+      ])
+    })
+  })
+
+  describe("Leftovers", () => {
+    it("waits longer when a photo is attached", async () => {
+      vi.mocked(apiClient.post).mockResolvedValue({
+        data: { detail: "ok", sent: true },
+      })
+
+      const photo = new File(["x"], "rester.jpg", { type: "image/jpeg" })
+
+      await foodApi.notifyLeftovers(3, "Rester i køkkenet", photo)
+
+      const [url, body, config] = vi.mocked(apiClient.post).mock.calls[0]
+
+      expect(url).toBe("/food/teams/3/notify-leftovers/")
+
+      expect((body as FormData).get("image")).toBeInstanceOf(File)
+
+      expect(config?.timeout).toBe(120_000)
+    })
+  })
+
   describe("Default Cooking Days", () => {
     it("should fetch default cooking days", async () => {
       const mockData = { default_cooking_days: [0, 1, 2] }

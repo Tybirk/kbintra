@@ -7,6 +7,7 @@ import { apiClient } from "./client"
 import type {
   Notification,
   NotificationPreference,
+  NotificationPreferenceSchema,
   UpdateNotificationPreferenceData,
 } from "../types"
 
@@ -109,6 +110,14 @@ export const notificationsApi = {
 
   getPreferences: async (): Promise<NotificationPreference> => {
     const response = await apiClient.get("/notifications/preferences/")
+
+    return response.data
+  },
+
+  // Grouped settings schema (groups + per-field Danish labels)
+
+  getPreferenceSchema: async (): Promise<NotificationPreferenceSchema> => {
+    const response = await apiClient.get("/notifications/preferences/schema/")
 
     return response.data
   },

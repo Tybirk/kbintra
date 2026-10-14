@@ -220,9 +220,11 @@ function GalleryTile({ item, onOpenImage, onOpenDoc }: GalleryTileProps) {
           borderRadius: "var(--mantine-radius-sm)",
           border: isPrivate
             ? "2px solid var(--mantine-color-grape-8)"
-            : "1px solid var(--mantine-color-gray-3)",
+            : "1px solid var(--mantine-color-default-border)",
           cursor: "pointer",
-          background: "var(--mantine-color-gray-0)",
+          // gray-0 in both schemes left the file name (light text in dark
+          // mode) at 1.14:1.
+          background: "var(--mantine-color-default-hover)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",

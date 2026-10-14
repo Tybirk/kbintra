@@ -17,32 +17,12 @@ def generate_post_attachment_thumbnail_task(attachment_id: int) -> None:
     image. Pillow open errors are swallowed inside `generate_thumbnail` so
     a single corrupt upload doesn't keep retrying forever.
     """
-    from apps.forum.image_processing import generate_thumbnail, is_image_attachment
+    from apps.forum.image_processing import generate_attachment_thumbnail
     from apps.forum.models import PostAttachment
 
     att = PostAttachment.objects.filter(id=attachment_id).first()
-    if not att:
-        return
-    if att.thumbnail:
-        return
-    if not is_image_attachment(att.name):
-        return
-
-    try:
-        with att.file.open("rb") as src:
-            thumb = generate_thumbnail(src)
-    except FileNotFoundError:
-        logger.warning("Skipping thumbnail for attachment %s: source file missing", attachment_id)
-        return
-
-    if thumb is None:
-        return
-
-    # Persist only this column — the preview task writes `preview` on its own
-    # instance at the same time, and a full-row save would clobber it.
-    att.thumbnail.save(f"{att.id}.jpg", thumb, save=False)
-    att.save(update_fields=["thumbnail"])
-    logger.info("Generated thumbnail for attachment %s", attachment_id)
+    if att and generate_attachment_thumbnail(att):
+        logger.info("Generated thumbnail for attachment %s", attachment_id)
 
 
 @db_task(retries=2, retry_delay=30)

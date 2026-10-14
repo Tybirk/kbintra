@@ -43,6 +43,10 @@ import { notifications } from "@mantine/notifications"
 
 import { showErrorNotification } from "../utils/errorNotification"
 
+import { useHoldHashTarget } from "../hooks/useHoldHashTarget"
+
+import { subgroupOptionLabel } from "../utils/subgroupLabel"
+
 import {
   IconDotsVertical,
   IconEdit,
@@ -365,12 +369,12 @@ export default function ThreadPage() {
     null,
   )
 
-  const highlightedHashRef = useRef("")
-
   const {
     data: thread,
 
     isLoading,
+
+    isFetching,
 
     error,
   } = useQuery({
@@ -434,46 +438,12 @@ export default function ThreadPage() {
     }
   }, [thread?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Scroll to and highlight a specific post when navigating from a notification
+  // Open at the post a notification or search result links to.
+  useHoldHashTarget(!!thread, !isFetching)
 
-  useEffect(() => {
-    if (
-      !thread ||
-      !location.hash ||
-      highlightedHashRef.current === location.hash
-    )
-      return
-
-    const el = document.getElementById(location.hash.slice(1))
-
-    if (!el) return
-
-    const hash = location.hash
-
-    window.history.replaceState(null, "", location.pathname)
-
-    // Small delay to ensure layout is settled. The ref is set inside the timer
-
-    // so strict mode's cleanup+re-run cycle doesn't prevent the highlight from firing.
-
-    const timer = setTimeout(() => {
-      if (highlightedHashRef.current === hash) return
-
-      highlightedHashRef.current = hash
-
-      el.scrollIntoView({ behavior: "smooth", block: "center" })
-
-      el.style.transition = "box-shadow 0.3s ease"
-
-      el.style.boxShadow = "0 0 0 3px var(--mantine-color-blue-4)"
-
-      setTimeout(() => {
-        el.style.boxShadow = ""
-      }, 2000)
-    }, 100)
-
-    return () => clearTimeout(timer)
-  }, [thread, location.hash]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Kept across retries of the same reply. After a timeout the server may already
+  // have saved it, and "Prøv igen" must not post it a second time.
+  const replyTokenRef = useRef<string | null>(null)
 
   const createPostMutation = useMutation({
     mutationFn: ({ data, files, pollData: pd }: CreatePostParams) =>
@@ -500,6 +470,8 @@ export default function ThreadPage() {
       })
 
       clearDraft("reply-" + thread!.id)
+
+      replyTokenRef.current = null
 
       setReplySubmitKey((k) => k + 1)
 
@@ -770,7 +742,13 @@ export default function ThreadPage() {
 
   const handleReplySubmit = useCallback(
     (content: string, files: File[], pollData?: CreatePollData) => {
-      createPostMutation.mutate({ data: { content }, files, pollData })
+      replyTokenRef.current ??= crypto.randomUUID()
+
+      createPostMutation.mutate({
+        data: { content, client_token: replyTokenRef.current },
+        files,
+        pollData,
+      })
     },
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1203,10 +1181,11 @@ export default function ThreadPage() {
           placeholder="Vælg gruppe"
           data={
             subgroups
-
               ?.filter((sg) => sg.slug !== thread.subgroup_slug)
-
-              .map((sg) => ({ value: sg.slug, label: sg.name })) ?? []
+              .map((sg) => ({
+                value: sg.slug,
+                label: subgroupOptionLabel(sg),
+              })) ?? []
           }
           value={targetSubgroupSlug}
           onChange={setTargetSubgroupSlug}

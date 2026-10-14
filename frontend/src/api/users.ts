@@ -5,7 +5,13 @@
 import { apiClient } from "./client"
 import { asArray } from "./helpers"
 
-import type { User, PaginatedResponse, Invitation, MentionUser } from "../types"
+import type {
+  User,
+  PaginatedResponse,
+  Invitation,
+  MentionUser,
+  UpcomingBirthday,
+} from "../types"
 
 export const usersApi = {
   async getUsers(): Promise<PaginatedResponse<User>> {
@@ -22,7 +28,7 @@ export const usersApi = {
     return asArray(response.data)
   },
 
-  async getUpcomingBirthdays(days = 7): Promise<User[]> {
+  async getUpcomingBirthdays(days = 7): Promise<UpcomingBirthday[]> {
     const response = await apiClient.get(`/users/birthdays/?days=${days}`)
 
     return asArray(response.data)

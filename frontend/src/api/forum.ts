@@ -28,6 +28,10 @@ import type {
   GroupType,
 } from "../types"
 
+// A handful of phone photos can take longer than the client's 30 s default to
+// upload. Cloudflare cuts any request off at about 100 s anyway.
+const UPLOAD_TIMEOUT_MS = 120_000
+
 export interface GetThreadsOptions {
   page?: number
   pageSize?: number
@@ -304,6 +308,10 @@ export const forumApi = {
         formData.append("members_only", "true")
       }
 
+      if (data.client_token) {
+        formData.append("client_token", data.client_token)
+      }
+
       attachments.forEach((file) => {
         formData.append("attachments", file)
       })
@@ -323,6 +331,8 @@ export const forumApi = {
           headers: {
             "Content-Type": undefined,
           },
+
+          timeout: UPLOAD_TIMEOUT_MS,
         },
       )
 
@@ -414,6 +424,10 @@ export const forumApi = {
 
       formData.append("content", data.content)
 
+      if (data.client_token) {
+        formData.append("client_token", data.client_token)
+      }
+
       attachments.forEach((file) => {
         formData.append("attachments", file)
       })
@@ -433,6 +447,8 @@ export const forumApi = {
           headers: {
             "Content-Type": undefined,
           },
+
+          timeout: UPLOAD_TIMEOUT_MS,
         },
       )
 

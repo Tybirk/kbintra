@@ -315,7 +315,8 @@ class CarDetailView(generics.RetrieveUpdateDestroyAPIView):
                 # nothing at all.
                 raise ValidationError(
                     "Bilen kan ikke fjernes, fordi den har været lånt ud. "
-                    'Slå "Med i delebilparken" fra i stedet, hvis den ikke skal kunne lånes.'
+                    'Slå "Med i delebilparken" fra under Bildeling → Mine biler i stedet, '
+                    "hvis den ikke skal kunne lånes."
                 ) from exc
 
         # Only once the removal is real: telling someone their request is dead and

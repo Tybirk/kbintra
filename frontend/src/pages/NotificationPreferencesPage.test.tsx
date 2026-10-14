@@ -44,15 +44,53 @@ vi.mock("../utils/pushNotifications", () => ({
 
 const mockGetPreferences = vi.fn()
 
+const mockGetPreferenceSchema = vi.fn()
+
 const mockUpdatePreferences = vi.fn()
 
 vi.mock("../api/notifications", () => ({
   notificationsApi: {
     getPreferences: () => mockGetPreferences(),
 
+    getPreferenceSchema: () => mockGetPreferenceSchema(),
+
     updatePreferences: (...args: unknown[]) => mockUpdatePreferences(...args),
   },
 }))
+
+const mockSchema = {
+  groups: [
+    {
+      key: "messages",
+      label: "Beskeder",
+      fields: [
+        {
+          key: "message_reactions",
+          label: "Reaktioner på dine beskeder",
+          description: "",
+        },
+      ],
+    },
+    {
+      key: "forum",
+      label: "Forum",
+      fields: [
+        { key: "forum_subscriptions", label: "Nye tråde", description: "" },
+        { key: "thread_replies", label: "Svar i dine tråde", description: "" },
+        {
+          key: "post_reactions",
+          label: "Reaktioner på dine indlæg",
+          description: "",
+        },
+      ],
+    },
+    {
+      key: "announcements",
+      label: "Vigtige opslag",
+      fields: [{ key: "announcements", label: "Nye opslag", description: "" }],
+    },
+  ],
+}
 
 const mockPreferences = {
   notify_announcements: true,
@@ -108,6 +146,8 @@ describe("NotificationPreferencesPage", () => {
 
     mockGetPreferences.mockResolvedValue(mockPreferences)
 
+    mockGetPreferenceSchema.mockResolvedValue(mockSchema)
+
     mockUpdatePreferences.mockResolvedValue(mockPreferences)
   })
 
@@ -127,17 +167,13 @@ describe("NotificationPreferencesPage", () => {
     render(<NotificationPreferencesPage />)
 
     await waitFor(() => {
-      // "Vigtig post" only appears in in-app tab, so getByText is safe here
+      // Labels come from the backend-driven schema groups.
 
-      expect(screen.getByText("Vigtig post")).toBeInTheDocument()
+      expect(screen.getAllByText("Nye opslag").length).toBeGreaterThan(0)
 
-      // Some labels appear in both in-app and email tabs, use getAllByText
+      expect(screen.getAllByText("Nye tråde").length).toBeGreaterThan(0)
 
-      expect(screen.getAllByText("Forum-abonnementer").length).toBeGreaterThan(
-        0,
-      )
-
-      expect(screen.getAllByText("Trådsvar").length).toBeGreaterThan(0)
+      expect(screen.getAllByText("Svar i dine tråde").length).toBeGreaterThan(0)
     })
   })
 
@@ -147,12 +183,12 @@ describe("NotificationPreferencesPage", () => {
     render(<NotificationPreferencesPage />)
 
     await waitFor(() => {
-      expect(screen.getByText("Vigtig post")).toBeInTheDocument()
+      expect(screen.getAllByText("Nye opslag").length).toBeGreaterThan(0)
     })
 
-    // Find the first switch for "Reaktioner" (in the in-app tab which is active)
+    // Toggle the "Reaktioner på dine indlæg" switch (in the active in-app tab)
 
-    const reaktionerLabels = screen.getAllByText("Reaktioner")
+    const reaktionerLabels = screen.getAllByText("Reaktioner på dine indlæg")
 
     const reaktionerSwitch = reaktionerLabels[0]
 
@@ -185,7 +221,9 @@ describe("NotificationPreferencesPage", () => {
     await user.click(screen.getByRole("tab", { name: /e-mail/i }))
 
     await waitFor(() => {
-      expect(screen.getByText("Nye beskeder")).toBeInTheDocument()
+      expect(
+        screen.getAllByText("Reaktioner på dine beskeder").length,
+      ).toBeGreaterThan(0)
     })
   })
 

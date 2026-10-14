@@ -5,6 +5,7 @@ User models for KB Intra community platform.
 from __future__ import annotations
 
 import secrets
+from datetime import date as date_type
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -13,7 +14,7 @@ from django.db import models
 from django.utils import timezone
 
 if TYPE_CHECKING:
-    pass
+    from apps.expenses.models import Expense
 
 
 class UserManager(BaseUserManager["User"]):
@@ -64,6 +65,10 @@ class User(AbstractUser):
     # Profile fields
     phone_number = models.CharField(max_length=20, blank=True)
     birthdate = models.DateField(null=True, blank=True)
+    hide_birth_year = models.BooleanField(
+        default=False,
+        help_text="Show others only the day and month of the birthday, never the year or age",
+    )
     profile_picture = models.ImageField(
         upload_to="profile_pictures/",
         null=True,
@@ -113,6 +118,14 @@ class User(AbstractUser):
         related_name="inhabitants",
     )
 
+    is_child = models.BooleanField(
+        default=False,
+        help_text=(
+            "A child of the household who has an account. Age doesn't decide it: a "
+            "grown-up child living at home is still one. Children are never madhold cooks."
+        ),
+    )
+
     # Food team related fields
     is_exempt_from_food_teams = models.BooleanField(
         default=False,
@@ -120,7 +133,10 @@ class User(AbstractUser):
     )
     is_over_50 = models.BooleanField(
         default=False,
-        help_text="User is over 50 (max 2 per team for balance)",
+        help_text=(
+            "Fallback for residents without a birthdate — read via "
+            "is_over_50_effective, never directly (max 2 per team for balance)"
+        ),
     )
     can_be_head_chef = models.BooleanField(
         default=False,
@@ -135,9 +151,13 @@ class User(AbstractUser):
         blank=True,
         help_text="Default days of the week user is available to cook (0=Mon, 1=Tue, 2=Wed, 3=Thu)",
     )
-    food_team_comment = models.TextField(
+    food_team_pause_reason = models.TextField(
         blank=True,
-        help_text="Special notes about food team participation",
+        help_text=(
+            "Why this user is stepping back from food teams, shown to food admins "
+            "next to is_exempt_from_food_teams. Free text: 'away until spring', "
+            "'health', or nothing at all."
+        ),
     )
     is_food_admin = models.BooleanField(
         default=False,
@@ -150,6 +170,52 @@ class User(AbstractUser):
             "and view the food cost report)."
         ),
     )
+    is_food_economy_admin = models.BooleanField(
+        default=False,
+        help_text=(
+            "Madøkonomiansvarlig: gets the notice for udlæg to fællesmad and may mark "
+            "those (only those) paid or rejected."
+        ),
+    )
+
+    @property
+    def public_birthdate(self) -> str | None:
+        """The birthdate as other residents may see it.
+
+        ISO "1990-09-25" normally, but "--09-25" (ISO 8601's date without a
+        year) for someone who has chosen to hide their year. It is dropped here
+        rather than in the browser, because anything the API sends can be read.
+        """
+        if not self.birthdate:
+            return None
+        if self.hide_birth_year:
+            return self.birthdate.strftime("--%m-%d")
+        return self.birthdate.isoformat()
+
+    @property
+    def age(self) -> int | None:
+        """Age in whole years, or None when we have no birthdate on file."""
+        if not self.birthdate:
+            return None
+        today = date_type.today()
+        return (
+            today.year
+            - self.birthdate.year
+            - ((today.month, today.day) < (self.birthdate.month, self.birthdate.day))
+        )
+
+    @property
+    def is_over_50_effective(self) -> bool:
+        """Whether the food-team generator should count this person as over 50.
+
+        Deduced from the birthdate whenever we have one, so nobody has to keep a
+        second copy of their own age up to date (and nobody quietly ages out of
+        the balancing rule). ``is_over_50`` is only the fallback for residents
+        who have not filled in a birthdate, and is the only case where the
+        profile page still asks.
+        """
+        age = self.age
+        return age >= 50 if age is not None else self.is_over_50
 
     @property
     def has_food_admin(self) -> bool:
@@ -160,6 +226,16 @@ class User(AbstractUser):
     def has_economy_admin(self) -> bool:
         """Regular admins (is_staff) implicitly have economy admin privileges."""
         return self.is_staff or self.is_economy_admin
+
+    def can_process_expense(self, expense: Expense) -> bool:
+        """Whether this user may mark *expense* paid/rejected.
+
+        The treasurer (economy admin, or staff) settles every udlæg; the
+        madøkonomiansvarlig settles only the ones flagged ``food_related``.
+        """
+        if self.has_economy_admin:
+            return True
+        return bool(self.is_food_economy_admin and expense.food_related)
 
     # Accessibility preference
     accessibility_mode = models.BooleanField(

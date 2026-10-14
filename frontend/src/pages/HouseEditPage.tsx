@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 
-import { useNavigate } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 
@@ -23,6 +23,7 @@ import {
   Alert,
   Switch,
   Badge,
+  Anchor,
 } from "@mantine/core"
 
 import { DateInput } from "@mantine/dates"
@@ -531,7 +532,7 @@ export default function HouseEditPage() {
         Rediger hus
       </Title>
 
-      <Paper withBorder p="xl" radius="md" mb="xl">
+      <Paper withBorder p={{ base: "md", sm: "xl" }} radius="md" mb="xl">
         <Group gap="md" mb="md">
           <Avatar
             src={house.profile_picture}
@@ -552,7 +553,7 @@ export default function HouseEditPage() {
         </Group>
       </Paper>
 
-      <Paper withBorder p="xl" radius="md" mb="xl">
+      <Paper withBorder p={{ base: "md", sm: "xl" }} radius="md" mb="xl">
         <Title order={4} mb="md">
           Husets billede
         </Title>
@@ -630,7 +631,7 @@ export default function HouseEditPage() {
         </Group>
       </Paper>
 
-      <Paper withBorder p="xl" radius="md" mb="xl">
+      <Paper withBorder p={{ base: "md", sm: "xl" }} radius="md" mb="xl">
         {isEditingDescription ? (
           <form onSubmit={handleSubmit}>
             <Stack>
@@ -692,7 +693,7 @@ export default function HouseEditPage() {
         )}
       </Paper>
 
-      <Paper withBorder p="xl" radius="md">
+      <Paper withBorder p={{ base: "md", sm: "xl" }} radius="md">
         <Group justify="space-between" mb="md">
           <Title order={4}>Børn i husstanden</Title>
           <Button
@@ -709,63 +710,61 @@ export default function HouseEditPage() {
         </Text>
 
         {house.children && house.children.length > 0 ? (
-          <Table.ScrollContainer minWidth={400}>
-            <Table>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Navn</Table.Th>
-                  <Table.Th>Fødselsdag</Table.Th>
-                  <Table.Th style={{ width: 100 }}>Handlinger</Table.Th>
+          <Table>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Navn</Table.Th>
+                <Table.Th>Fødselsdag</Table.Th>
+                <Table.Th style={{ width: 100 }}>Handlinger</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {house.children.map((child) => (
+                <Table.Tr key={child.id}>
+                  <Table.Td>
+                    <Group gap="sm" wrap="nowrap">
+                      <Avatar
+                        src={child.profile_picture}
+                        radius="xl"
+                        size="md"
+                        color="grape"
+                      >
+                        {child.name?.[0]}
+                      </Avatar>
+                      <Text>{child.name}</Text>
+                    </Group>
+                  </Table.Td>
+                  <Table.Td>
+                    {child.birthdate
+                      ? dayjs(child.birthdate).format("D. MMMM YYYY")
+                      : "-"}
+                  </Table.Td>
+                  <Table.Td>
+                    <Group gap="xs">
+                      <ActionIcon
+                        variant="subtle"
+                        color="blue"
+                        size="lg"
+                        onClick={() => handleOpenEditChild(child)}
+                        aria-label="Rediger barn"
+                      >
+                        <IconPencil size={18} />
+                      </ActionIcon>
+                      <ActionIcon
+                        variant="subtle"
+                        color="red"
+                        size="lg"
+                        onClick={() => handleOpenDeleteChild(child)}
+                        aria-label="Fjern barn"
+                      >
+                        <IconTrash size={18} />
+                      </ActionIcon>
+                    </Group>
+                  </Table.Td>
                 </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {house.children.map((child) => (
-                  <Table.Tr key={child.id}>
-                    <Table.Td>
-                      <Group gap="sm" wrap="nowrap">
-                        <Avatar
-                          src={child.profile_picture}
-                          radius="xl"
-                          size="md"
-                          color="grape"
-                        >
-                          {child.name?.[0]}
-                        </Avatar>
-                        <Text>{child.name}</Text>
-                      </Group>
-                    </Table.Td>
-                    <Table.Td>
-                      {child.birthdate
-                        ? dayjs(child.birthdate).format("D. MMMM YYYY")
-                        : "-"}
-                    </Table.Td>
-                    <Table.Td>
-                      <Group gap="xs">
-                        <ActionIcon
-                          variant="subtle"
-                          color="blue"
-                          size="lg"
-                          onClick={() => handleOpenEditChild(child)}
-                          aria-label="Rediger barn"
-                        >
-                          <IconPencil size={18} />
-                        </ActionIcon>
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          size="lg"
-                          onClick={() => handleOpenDeleteChild(child)}
-                          aria-label="Fjern barn"
-                        >
-                          <IconTrash size={18} />
-                        </ActionIcon>
-                      </Group>
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
+              ))}
+            </Table.Tbody>
+          </Table>
         ) : (
           <Text c="dimmed" ta="center" py="lg">
             Ingen børn registreret i husstanden.
@@ -773,7 +772,7 @@ export default function HouseEditPage() {
         )}
       </Paper>
 
-      <Paper withBorder p="xl" radius="md" mt="xl">
+      <Paper withBorder p={{ base: "md", sm: "xl" }} radius="md" mt="xl">
         <Group justify="space-between" mb="md">
           <Title order={4}>Biler i husstanden</Title>
           <Button
@@ -789,63 +788,61 @@ export default function HouseEditPage() {
         </Text>
 
         {house.cars && house.cars.length > 0 ? (
-          <Table.ScrollContainer minWidth={400}>
-            <Table>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Nummerplade</Table.Th>
-                  <Table.Th>Type</Table.Th>
-                  <Table.Th style={{ width: 100 }}>Handlinger</Table.Th>
+          <Table>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Nummerplade</Table.Th>
+                <Table.Th>Type</Table.Th>
+                <Table.Th style={{ width: 100 }}>Handlinger</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {house.cars.map((car) => (
+                <Table.Tr key={car.id}>
+                  <Table.Td>
+                    {car.license_plate ? (
+                      formatLicensePlate(car.license_plate)
+                    ) : (
+                      <Text size="sm">Bil</Text>
+                    )}
+                  </Table.Td>
+                  <Table.Td>
+                    {car.is_electric ? (
+                      <Badge size="sm" variant="light" color="green">
+                        Elbil
+                      </Badge>
+                    ) : (
+                      <Badge size="sm" variant="light" color="gray">
+                        Ikke-elbil
+                      </Badge>
+                    )}
+                  </Table.Td>
+                  <Table.Td>
+                    <Group gap="xs">
+                      <ActionIcon
+                        variant="subtle"
+                        color="blue"
+                        size="lg"
+                        onClick={() => handleOpenEditCar(car)}
+                        aria-label="Rediger bil"
+                      >
+                        <IconPencil size={18} />
+                      </ActionIcon>
+                      <ActionIcon
+                        variant="subtle"
+                        color="red"
+                        size="lg"
+                        onClick={() => handleOpenDeleteCar(car)}
+                        aria-label="Fjern bil"
+                      >
+                        <IconTrash size={18} />
+                      </ActionIcon>
+                    </Group>
+                  </Table.Td>
                 </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {house.cars.map((car) => (
-                  <Table.Tr key={car.id}>
-                    <Table.Td>
-                      {car.license_plate ? (
-                        formatLicensePlate(car.license_plate)
-                      ) : (
-                        <Text size="sm">Bil</Text>
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      {car.is_electric ? (
-                        <Badge size="sm" variant="light" color="green">
-                          Elbil
-                        </Badge>
-                      ) : (
-                        <Badge size="sm" variant="light" color="gray">
-                          Ikke-elbil
-                        </Badge>
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      <Group gap="xs">
-                        <ActionIcon
-                          variant="subtle"
-                          color="blue"
-                          size="lg"
-                          onClick={() => handleOpenEditCar(car)}
-                          aria-label="Rediger bil"
-                        >
-                          <IconPencil size={18} />
-                        </ActionIcon>
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          size="lg"
-                          onClick={() => handleOpenDeleteCar(car)}
-                          aria-label="Fjern bil"
-                        >
-                          <IconTrash size={18} />
-                        </ActionIcon>
-                      </Group>
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
+              ))}
+            </Table.Tbody>
+          </Table>
         ) : (
           <Text c="dimmed" ta="center" py="lg">
             Ingen biler registreret i husstanden.
@@ -1020,7 +1017,11 @@ export default function HouseEditPage() {
       >
         <Stack>
           <TextInput
-            label="Nummerplade (valgfri)"
+            // A car in the delebilpark must have a plate (the server says so).
+            label={
+              editingCar?.is_shared ? "Nummerplade" : "Nummerplade (valgfri)"
+            }
+            required={editingCar?.is_shared}
             placeholder="F.eks. AB12345"
             value={carForm.license_plate}
             onChange={(e) =>
@@ -1045,6 +1046,14 @@ export default function HouseEditPage() {
               }))
             }}
           />
+
+          <Text size="sm" c="dimmed">
+            Om bilen er med i delebilparken, vælger du under{" "}
+            <Anchor component={Link} to="/bildeling?tab=cars" inherit>
+              Bildeling → Mine biler
+            </Anchor>
+            .
+          </Text>
 
           <Group justify="flex-end" mt="md">
             <Button

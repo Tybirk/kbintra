@@ -187,6 +187,9 @@ class CarLoanSerializer(serializers.ModelSerializer):
 
     borrower_name = serializers.SerializerMethodField()
     car_display_name = serializers.CharField(source="car.display_name", read_only=True, default="")
+    car_license_plate = serializers.CharField(
+        source="car.license_plate", read_only=True, default=""
+    )
     car_house_name = serializers.CharField(source="car.house.name", read_only=True, default="")
     # The settlement form used to tell every borrower that charging with the fob
     # was covered — including someone who had just filled a petrol tank and was
@@ -237,6 +240,7 @@ class CarLoanSerializer(serializers.ModelSerializer):
             "owner_terms_version",
             "car",
             "car_display_name",
+            "car_license_plate",
             "car_house_name",
             "car_has_charge_fob",
             "car_household_size",

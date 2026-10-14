@@ -285,3 +285,17 @@ describe("authStore", () => {
     })
   })
 })
+
+describe("drafts follow the logged-in user", () => {
+  it("drops the previous user's drafts when another user logs in", () => {
+    localStorage.setItem("_kbi_owner", "1")
+
+    localStorage.setItem("_kbi_d_msg-new", "encrypted")
+
+    useAuthStore.setState({ user: { ...mockUser, id: 2 } })
+
+    expect(localStorage.getItem("_kbi_d_msg-new")).toBeNull()
+
+    expect(localStorage.getItem("_kbi_owner")).toBe("2")
+  })
+})

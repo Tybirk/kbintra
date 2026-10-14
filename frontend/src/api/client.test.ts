@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
-import { AxiosError, type AxiosRequestConfig } from "axios"
+import axios, { AxiosError, type AxiosRequestConfig } from "axios"
 
 import {
   apiClient,
@@ -183,5 +183,135 @@ describe("Connection toast gating", () => {
       .catch(() => {})
 
     expect(show).not.toHaveBeenCalled()
+  })
+})
+
+describe("Token refresh", () => {
+  // A token the client can read the expiry of. Nothing here checks signatures.
+  const jwt = (expiresInS: number, id: string) =>
+    `h.${btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + expiresInS, jti: id }))}.s`
+
+  const unauthorized = (config?: AxiosRequestConfig) =>
+    new AxiosError("Unauthorized", "ERR_BAD_REQUEST", config as never, null, {
+      status: 401,
+      statusText: "Unauthorized",
+      data: {},
+      headers: {},
+      config: config as never,
+    })
+
+  let sent: (string | undefined)[]
+
+  let refresh: ReturnType<typeof vi.spyOn>
+
+  // The API answers 401 to `revoked`, and 200 to anything else.
+  const serve = (revoked?: string) => {
+    apiClient.defaults.adapter = (config) => {
+      const auth = config.headers?.Authorization as string | undefined
+
+      sent.push(auth)
+
+      if (revoked && auth === `Bearer ${revoked}`) {
+        return Promise.reject(unauthorized(config))
+      }
+
+      return Promise.resolve({
+        data: {},
+        status: 200,
+        statusText: "OK",
+        headers: {},
+        config: config as never,
+      })
+    }
+  }
+
+  beforeEach(() => {
+    localStorage.clear()
+
+    sent = []
+
+    refresh = vi.spyOn(axios, "post")
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it("refreshes an expired token once before sending, however many requests wait", async () => {
+    const fresh = jwt(3600, "fresh")
+
+    setTokens(jwt(-60, "old"), "r1")
+
+    refresh.mockResolvedValue({ data: { access: fresh, refresh: "r2" } })
+
+    serve()
+
+    await Promise.all(["/a", "/b", "/c"].map((url) => apiClient.get(url)))
+
+    expect(refresh).toHaveBeenCalledTimes(1)
+
+    expect(sent).toEqual(Array(3).fill(`Bearer ${fresh}`))
+
+    expect(getRefreshToken()).toBe("r2")
+  })
+
+  it("leaves a token that is still valid alone", async () => {
+    const valid = jwt(3600, "valid")
+
+    setTokens(valid, "r1")
+
+    serve()
+
+    await apiClient.get("/a")
+
+    expect(refresh).not.toHaveBeenCalled()
+
+    expect(sent).toEqual([`Bearer ${valid}`])
+  })
+
+  it("refreshes and retries when the server rejects a token that looked valid", async () => {
+    const revoked = jwt(3600, "revoked")
+
+    const fresh = jwt(3600, "fresh")
+
+    setTokens(revoked, "r1")
+
+    refresh.mockResolvedValue({ data: { access: fresh, refresh: "r2" } })
+
+    serve(revoked)
+
+    await apiClient.get("/a")
+
+    expect(refresh).toHaveBeenCalledTimes(1)
+
+    expect(sent).toEqual([`Bearer ${revoked}`, `Bearer ${fresh}`])
+  })
+
+  it("keeps the session when the refresh fails for want of a connection", async () => {
+    const old = jwt(-60, "old")
+
+    setTokens(old, "r1")
+
+    refresh.mockRejectedValue(new AxiosError("Network Error", "ERR_NETWORK"))
+
+    serve(old)
+
+    await expect(apiClient.get("/a")).rejects.toThrow("Network Error")
+
+    expect(getRefreshToken()).toBe("r1")
+  })
+
+  it("ends the session when the server turns the refresh token down", async () => {
+    const old = jwt(-60, "old")
+
+    setTokens(old, "r1")
+
+    refresh.mockRejectedValue(unauthorized())
+
+    serve(old)
+
+    await expect(apiClient.get("/a")).rejects.toThrow("Unauthorized")
+
+    expect(getRefreshToken()).toBeNull()
   })
 })

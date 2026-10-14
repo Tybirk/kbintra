@@ -2,8 +2,10 @@
 Serializers for Messaging models.
 """
 
+import logging
 from collections import defaultdict
 
+from django.db.models import Q
 from rest_framework import serializers
 
 from apps.backup.signing import signed_media_url
@@ -11,6 +13,8 @@ from apps.users.models import User
 from apps.users.serializer_mixins import AvatarUrlMixin
 
 from .models import Conversation, Message, MessageAttachment, MessageReadStatus
+
+logger = logging.getLogger(__name__)
 
 
 class ParticipantSerializer(AvatarUrlMixin, serializers.ModelSerializer):
@@ -31,15 +35,63 @@ def message_attachment_preview_url(att: MessageAttachment) -> str:
     return ""
 
 
+def message_attachment_thumbnail_url(att: MessageAttachment) -> str:
+    """URL for the chat bubble: the square thumbnail once it exists, until then
+    whatever the bubble can display — the HEIC preview, else the original."""
+    if att.thumbnail:
+        return signed_media_url(att.thumbnail.url)
+    return message_attachment_preview_url(att)
+
+
+def create_message_attachment(
+    message: Message, uploaded_by: User, attachment_file
+) -> MessageAttachment:
+    """Create a MessageAttachment together with its previews and thumbnail.
+
+    All inline, not queued: the response and the WebSocket broadcast read
+    `preview` and `thumbnail` straight away, and a queued task would not have
+    run yet — every open chat would download the full original instead.
+    """
+    from apps.forum.image_processing import (
+        ensure_attachment_preview,
+        generate_attachment_thumbnail,
+    )
+    from apps.forum.utils import generate_docx_preview
+
+    att = MessageAttachment.objects.create(
+        message=message,
+        file=attachment_file,
+        name=attachment_file.name,
+        uploaded_by=uploaded_by,
+        preview_html=generate_docx_preview(attachment_file),
+    )
+    ensure_attachment_preview("messaging", "MessageAttachment", att)
+    try:
+        generate_attachment_thumbnail(att)
+    except Exception:  # noqa: BLE001 — an upload must not fail over its thumbnail
+        logger.exception("Thumbnail failed for message attachment %s", att.pk)
+    return att
+
+
 class MessageAttachmentSerializer(serializers.ModelSerializer):
     """Serializer for MessageAttachment model."""
 
     file_url = serializers.SerializerMethodField()
     preview_url = serializers.SerializerMethodField()
+    thumbnail_url = serializers.SerializerMethodField()
 
     class Meta:
         model = MessageAttachment
-        fields = ["id", "name", "file", "file_url", "preview_url", "preview_html", "uploaded_at"]
+        fields = [
+            "id",
+            "name",
+            "file",
+            "file_url",
+            "preview_url",
+            "thumbnail_url",
+            "preview_html",
+            "uploaded_at",
+        ]
         read_only_fields = ["id", "uploaded_at"]
 
     def get_file_url(self, obj: MessageAttachment) -> str:
@@ -47,6 +99,9 @@ class MessageAttachmentSerializer(serializers.ModelSerializer):
 
     def get_preview_url(self, obj: MessageAttachment) -> str:
         return message_attachment_preview_url(obj)
+
+    def get_thumbnail_url(self, obj: MessageAttachment) -> str:
+        return message_attachment_thumbnail_url(obj)
 
 
 class MessageSerializer(serializers.ModelSerializer):
@@ -181,9 +236,17 @@ class ConversationSerializer(serializers.ModelSerializer):
         else:
             last_msg = obj.messages.order_by("-created_at").first()
         if last_msg:
+            # A message without text is an attachment, or one taken back: the
+            # list showed an empty line for both.
+            if last_msg.content:
+                preview = last_msg.content[:100]
+            elif last_msg.is_deleted:
+                preview = "Besked slettet"
+            else:
+                preview = "(Vedhæftet fil)"
             return {
                 "id": last_msg.id,
-                "content": last_msg.content[:100] if last_msg.content else "",
+                "content": preview,
                 "sender_id": last_msg.sender_id,
                 "created_at": last_msg.created_at.isoformat(),
             }
@@ -203,8 +266,59 @@ class ConversationSerializer(serializers.ModelSerializer):
         )
 
 
+MESSAGE_PAGE_SIZE = 50
+
+
+def message_page(conversation: Conversation, before: Message | None = None) -> tuple[list, bool]:
+    """The newest MESSAGE_PAGE_SIZE messages, oldest first, and whether older ones exist.
+
+    With `before`, the page ends just before that message, which is how the chat
+    loads history one page at a time as the reader scrolls up.
+    """
+    messages = conversation.messages.select_related("sender").prefetch_related(
+        "reactions__user", "attachments"
+    )
+    if before is not None:
+        messages = messages.filter(
+            Q(created_at__lt=before.created_at) | Q(created_at=before.created_at, id__lt=before.id)
+        )
+    page = list(messages.order_by("-created_at", "-id")[: MESSAGE_PAGE_SIZE + 1])
+    has_more = len(page) > MESSAGE_PAGE_SIZE
+    page = page[:MESSAGE_PAGE_SIZE]
+    page.reverse()
+    return page, has_more
+
+
+def serialize_messages(messages: list, conversation: Conversation, context: dict) -> list:
+    """Serialize a page of messages without per-message queries: read status is
+    precomputed in one query so MessageSerializer.is_read resolves in memory."""
+    request = context.get("request")
+    current_user_id = request.user.id if request and request.user.is_authenticated else None
+    read_status_map: dict[int, set[int]] = defaultdict(set)
+    if messages:
+        for msg_id, user_id in MessageReadStatus.objects.filter(
+            message_id__in=[m.id for m in messages]
+        ).values_list("message_id", "user_id"):
+            read_status_map[msg_id].add(user_id)
+    other_participant_ids = {
+        p.id for p in conversation.participants.all() if p.id != current_user_id
+    }
+
+    context = {
+        **context,
+        "read_status_map": read_status_map,
+        "other_participant_ids": other_participant_ids,
+    }
+    return MessageSerializer(messages, many=True, context=context).data
+
+
 class ConversationDetailSerializer(ConversationSerializer):
-    """Detailed serializer with recent messages."""
+    """Detailed serializer with recent messages.
+
+    The current frontend loads messages from the paginated message list instead;
+    `messages` stays for one release so clients still running the previous bundle
+    keep working until useVersionCheck reloads them. Remove it after that.
+    """
 
     messages = serializers.SerializerMethodField()
 
@@ -212,33 +326,8 @@ class ConversationDetailSerializer(ConversationSerializer):
         fields = ConversationSerializer.Meta.fields + ["messages"]
 
     def get_messages(self, obj: Conversation) -> list:
-        # Get last 50 messages (oldest first). Prefetch attachments + reactions so
-        # the MessageSerializer doesn't issue per-message queries for them.
-        messages = list(
-            obj.messages.select_related("sender")
-            .prefetch_related("reactions__user", "attachments")
-            .order_by("-created_at")[:50]
-        )
-        messages.reverse()
-
-        # Precompute read status for these messages in a single query, so
-        # MessageSerializer.is_read resolves in memory instead of N+1 queries.
-        request = self.context.get("request")
-        current_user_id = request.user.id if request and request.user.is_authenticated else None
-        read_status_map: dict[int, set[int]] = defaultdict(set)
-        if messages:
-            for msg_id, user_id in MessageReadStatus.objects.filter(
-                message_id__in=[m.id for m in messages]
-            ).values_list("message_id", "user_id"):
-                read_status_map[msg_id].add(user_id)
-        other_participant_ids = {p.id for p in obj.participants.all() if p.id != current_user_id}
-
-        context = {
-            **self.context,
-            "read_status_map": read_status_map,
-            "other_participant_ids": other_participant_ids,
-        }
-        return MessageSerializer(messages, many=True, context=context).data
+        messages, _ = message_page(obj)
+        return serialize_messages(messages, obj, self.context)
 
 
 class CreateConversationSerializer(serializers.Serializer):
@@ -349,24 +438,8 @@ class CreateMessageSerializer(serializers.ModelSerializer):
         validated_data["conversation"] = self.context["conversation"]
         message = super().create(validated_data)
 
-        # Create attachments
-        from apps.forum.image_processing import ensure_attachment_preview
-        from apps.forum.utils import generate_docx_preview
-
         user = self.context["request"].user
-        attachment_objects = []
-        for attachment_file in attachments:
-            att = MessageAttachment.objects.create(
-                message=message,
-                file=attachment_file,
-                name=attachment_file.name,
-                uploaded_by=user,
-                preview_html=generate_docx_preview(attachment_file),
-            )
-            attachment_objects.append(att)
-            # Inline, not queued: the WebSocket broadcast below reads `preview` to
-            # build preview_url, and a queued task would not have run yet.
-            ensure_attachment_preview("messaging", "MessageAttachment", att)
+        attachment_objects = [create_message_attachment(message, user, f) for f in attachments]
 
         # Update conversation's updated_at
         message.conversation.save()
@@ -387,16 +460,7 @@ class CreateMessageSerializer(serializers.ModelSerializer):
             "is_read": False,
             "is_system_message": message.is_system_message,
             "created_at": message.created_at.isoformat(),
-            "attachments": [
-                {
-                    "id": att.id,
-                    "name": att.name,
-                    "file_url": signed_media_url(att.file.url) if att.file else "",
-                    "preview_url": message_attachment_preview_url(att),
-                    "preview_html": att.preview_html,
-                }
-                for att in attachment_objects
-            ],
+            "attachments": MessageAttachmentSerializer(attachment_objects, many=True).data,
         }
         async_to_sync(channel_layer.group_send)(
             f"conversation_{message.conversation.id}",

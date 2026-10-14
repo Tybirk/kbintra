@@ -180,11 +180,71 @@ export const clearTokens = (): void => {
   localStorage.removeItem(REFRESH_TOKEN_KEY)
 }
 
+// Token refresh
+
+// Refresh tokens rotate, and the old one is blacklisted, so two refreshes at once
+// would have the server turn the second one down and log the user out. Every
+// caller shares the one in flight.
+let refreshInFlight: Promise<string> | null = null
+
+const refreshAccessToken = (): Promise<string> => {
+  refreshInFlight ??= (async () => {
+    const refreshToken = getRefreshToken()
+
+    if (!refreshToken) throw new Error("No refresh token")
+
+    const response = await axios.post(`${API_BASE_URL}/auth/token/refresh/`, {
+      refresh: refreshToken,
+    })
+
+    const { access, refresh: newRefreshToken } = response.data
+
+    setTokens(access, newRefreshToken ?? refreshToken)
+
+    return access as string
+  })().finally(() => {
+    refreshInFlight = null
+  })
+
+  return refreshInFlight
+}
+
+// Treat a token this close to expiry as expired: it could lapse on the way.
+const EXPIRY_MARGIN_S = 30
+
+const isExpired = (token: string): boolean => {
+  try {
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")
+
+    const { exp } = JSON.parse(atob(payload))
+
+    return typeof exp === "number" && exp - EXPIRY_MARGIN_S < Date.now() / 1000
+  } catch {
+    return false // Not a token we can read; let the server decide.
+  }
+}
+
+const logOut = () => {
+  clearTokens()
+
+  window.location.href = "/login"
+}
+
 // Request interceptor to add auth header
 
 apiClient.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
-    const token = getAccessToken()
+  async (config: InternalAxiosRequestConfig) => {
+    let token = getAccessToken()
+
+    // The access token lives an hour, so opening the app after a break used to
+    // cost a 401 and a retry before anything could load. Refresh first instead.
+    if (token && isExpired(token) && getRefreshToken()) {
+      try {
+        token = await refreshAccessToken()
+      } catch {
+        // Send the old token; the 401 path below decides what the failure means.
+      }
+    }
 
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
@@ -203,36 +263,6 @@ apiClient.interceptors.request.use(
 )
 
 // Response interceptor to handle token refresh
-
-type RefreshSubscriber = {
-  resolve: (token: string) => void
-
-  reject: (error: unknown) => void
-}
-
-let isRefreshing = false
-
-let refreshSubscribers: RefreshSubscriber[] = []
-
-const subscribeTokenRefresh = (
-  resolve: (token: string) => void,
-
-  reject: (error: unknown) => void,
-) => {
-  refreshSubscribers.push({ resolve, reject })
-}
-
-const onTokenRefreshed = (token: string) => {
-  refreshSubscribers.forEach((subscriber) => subscriber.resolve(token))
-
-  refreshSubscribers = []
-}
-
-const onTokenRefreshFailed = (error: unknown) => {
-  refreshSubscribers.forEach((subscriber) => subscriber.reject(error))
-
-  refreshSubscribers = []
-}
 
 apiClient.interceptors.response.use(
   (response) => {
@@ -257,70 +287,32 @@ apiClient.interceptors.response.use(
       !originalRequest._retry &&
       !isLoginRequest
     ) {
-      if (isRefreshing) {
-        // Wait for the token to be refreshed
-
-        return new Promise((resolve, reject) => {
-          subscribeTokenRefresh(
-            (token: string) => {
-              originalRequest.headers.Authorization = `Bearer ${token}`
-
-              resolve(apiClient(originalRequest))
-            },
-
-            (refreshError: unknown) => {
-              reject(refreshError)
-            },
-          )
-        })
-      }
-
       originalRequest._retry = true
 
-      isRefreshing = true
-
-      const refreshToken = getRefreshToken()
-
-      if (!refreshToken) {
-        isRefreshing = false
-
-        onTokenRefreshFailed(error)
-
-        clearTokens()
-
-        window.location.href = "/login"
+      if (!getRefreshToken()) {
+        logOut()
 
         return Promise.reject(error)
       }
 
       try {
-        const response = await axios.post(
-          `${API_BASE_URL}/auth/token/refresh/`,
-
-          {
-            refresh: refreshToken,
-          },
-        )
-
-        const { access, refresh: newRefreshToken } = response.data
-
-        setTokens(access, newRefreshToken ?? refreshToken)
-
-        onTokenRefreshed(access)
+        const access = await refreshAccessToken()
 
         originalRequest.headers.Authorization = `Bearer ${access}`
 
         return apiClient(originalRequest)
       } catch (refreshError) {
-        onTokenRefreshFailed(refreshError)
+        // Only the server turning the refresh token down ends the session. A
+        // dropped connection or a deploy's 502 keeps it, so the next try can refresh.
+        const status = axios.isAxiosError(refreshError)
+          ? refreshError.response?.status
+          : undefined
 
-        clearTokens()
-
-        window.location.href = "/login"
+        if (status === 400 || status === 401) {
+          logOut()
+        }
 
         return Promise.reject(refreshError)
-      } finally {
-        isRefreshing = false
       }
     }
 

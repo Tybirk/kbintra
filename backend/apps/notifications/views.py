@@ -10,6 +10,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .groups import NOTIFICATION_GROUPS
 from .models import Notification, NotificationPreference, NotificationType, PushSubscription
 from .serializers import (
     MarkNotificationsReadSerializer,
@@ -135,6 +136,15 @@ class NotificationPreferenceView(generics.RetrieveUpdateAPIView):
         # Get or create preferences for the user
         preferences, _ = NotificationPreference.objects.get_or_create(user=self.request.user)
         return preferences
+
+
+class NotificationPreferenceSchemaView(APIView):
+    """Return the grouped notification-preference schema for rendering the settings UI."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        return Response({"groups": NOTIFICATION_GROUPS})
 
 
 class ClearAllNotificationsView(APIView):

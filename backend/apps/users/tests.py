@@ -2,13 +2,15 @@
 Tests for the Users app.
 """
 
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pytest
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from apps.houses.models import Child
 from apps.users.models import EmailChangeToken, Invitation, PasswordResetToken, User
+from apps.users.views import _next_birthday
 
 
 @pytest.fixture
@@ -144,7 +146,7 @@ class TestUpcomingBirthdaysAPI:
     def test_birthdays_upcoming(self, authenticated_client, user):
         """Test birthdays endpoint returns users with upcoming birthdays."""
         # Set user's birthday to 3 days from now (same month/day in the year)
-        today = timezone.now().date()
+        today = timezone.localdate()
         birthday = today.replace(year=1990) + timedelta(days=3)
         user.birthdate = birthday
         user.save()
@@ -158,7 +160,7 @@ class TestUpcomingBirthdaysAPI:
 
     def test_birthdays_today(self, authenticated_client, user):
         """Test birthdays endpoint includes today's birthdays."""
-        today = timezone.now().date()
+        today = timezone.localdate()
         user.birthdate = today.replace(year=1990)
         user.save()
 
@@ -171,7 +173,7 @@ class TestUpcomingBirthdaysAPI:
 
     def test_birthdays_past_this_year(self, authenticated_client, user):
         """Test birthdays endpoint excludes birthdays that passed this year."""
-        today = timezone.now().date()
+        today = timezone.localdate()
         # Set birthday to 10 days ago (should not appear in 7-day window)
         birthday = today.replace(year=1990) - timedelta(days=10)
         user.birthdate = birthday
@@ -185,7 +187,7 @@ class TestUpcomingBirthdaysAPI:
 
     def test_birthdays_custom_days(self, authenticated_client, user):
         """Test birthdays endpoint with custom days parameter."""
-        today = timezone.now().date()
+        today = timezone.localdate()
         # Set birthday to 15 days from now
         birthday = today.replace(year=1990) + timedelta(days=15)
         user.birthdate = birthday
@@ -203,7 +205,7 @@ class TestUpcomingBirthdaysAPI:
 
     def test_birthdays_sorted_by_date(self, authenticated_client, user, second_user):
         """Test birthdays are sorted by proximity."""
-        today = timezone.now().date()
+        today = timezone.localdate()
 
         # User has birthday in 5 days
         user.birthdate = (today + timedelta(days=5)).replace(year=1990)
@@ -221,6 +223,127 @@ class TestUpcomingBirthdaysAPI:
         # Second user should come first (closer birthday)
         assert data[0]["id"] == second_user.id
         assert data[1]["id"] == user.id
+
+    def test_birthdays_include_children(self, authenticated_client, house):
+        """Children are listed too, marked as such and pointing at their house."""
+        today = timezone.localdate()
+        child = Child.objects.create(
+            house=house, name="Lille Bo", birthdate=(today + timedelta(days=4)).replace(year=2019)
+        )
+
+        response = authenticated_client.get("/api/users/birthdays/")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["kind"] == "child"
+        assert data[0]["id"] == child.id
+        assert data[0]["name"] == "Lille Bo"
+        assert data[0]["house_slug"] == house.slug
+
+    def test_birthdays_mix_users_and_children_by_date(self, authenticated_client, user, house):
+        """One list, soonest first, whoever the birthday belongs to."""
+        today = timezone.localdate()
+        user.birthdate = (today + timedelta(days=6)).replace(year=1990)
+        user.save()
+        Child.objects.create(
+            house=house, name="Lille Bo", birthdate=(today + timedelta(days=1)).replace(year=2019)
+        )
+
+        data = authenticated_client.get("/api/users/birthdays/").json()
+        assert [(e["kind"], e["days_until"]) for e in data] == [("child", 1), ("user", 6)]
+
+    def test_birthdays_report_the_age_being_turned(self, authenticated_client, user):
+        """``turning`` is the age on the day, not the age today."""
+        today = timezone.localdate()
+        upcoming = today + timedelta(days=3)
+        user.birthdate = upcoming.replace(year=upcoming.year - 40)
+        user.save()
+
+        data = authenticated_client.get("/api/users/birthdays/").json()
+        assert data[0]["kind"] == "user"
+        assert data[0]["days_until"] == 3
+        assert data[0]["turning"] == 40
+
+    def test_birthdays_skip_inactive_users(self, authenticated_client, second_user):
+        """Someone who has moved out does not get a birthday on the dashboard."""
+        second_user.birthdate = timezone.localdate().replace(year=1985)
+        second_user.is_active = False
+        second_user.save()
+
+        assert authenticated_client.get("/api/users/birthdays/").json() == []
+
+    def test_birthdays_leave_out_the_year_for_those_who_hide_it(
+        self, authenticated_client, second_user
+    ):
+        """Still listed, on the right day, but with no year and no age."""
+        upcoming = timezone.localdate() + timedelta(days=2)
+        second_user.birthdate = upcoming.replace(year=1980)
+        second_user.hide_birth_year = True
+        second_user.save()
+
+        [entry] = authenticated_client.get("/api/users/birthdays/").json()
+        assert entry["days_until"] == 2
+        assert entry["birthdate"] == upcoming.strftime("--%m-%d")
+        assert entry["turning"] is None
+
+
+@pytest.mark.django_db
+class TestHiddenBirthYear:
+    """A resident may hide their birth year: others see day and month only."""
+
+    @pytest.fixture
+    def hider(self, second_user):
+        second_user.birthdate = date(1980, 3, 14)
+        second_user.hide_birth_year = True
+        second_user.save()
+        return second_user
+
+    def test_others_get_day_and_month_only(self, authenticated_client, hider):
+        detail = authenticated_client.get(f"/api/users/{hider.pk}/").json()
+        assert detail["birthdate"] == "--03-14"
+        assert "hide_birth_year" not in detail
+
+        listed = {u["id"]: u for u in authenticated_client.get("/api/users/").json()}
+        assert listed[hider.pk]["birthdate"] == "--03-14"
+
+    def test_the_year_is_shown_by_default(self, authenticated_client, second_user):
+        second_user.birthdate = date(1980, 3, 14)
+        second_user.save()
+
+        detail = authenticated_client.get(f"/api/users/{second_user.pk}/").json()
+        assert detail["birthdate"] == "1980-03-14"
+
+    def test_the_owner_still_sees_the_full_date(self, api_client, hider):
+        api_client.force_authenticate(user=hider)
+
+        me = api_client.get("/api/users/me/").json()
+        assert me["birthdate"] == "1980-03-14"
+        assert me["hide_birth_year"] is True
+
+    def test_the_setting_is_changed_on_the_own_profile(self, authenticated_client, user):
+        response = authenticated_client.patch(
+            "/api/users/me/", {"hide_birth_year": True}, format="json"
+        )
+        assert response.status_code == 200
+        user.refresh_from_db()
+        assert user.hide_birth_year is True
+
+
+class TestNextBirthday:
+    """The date arithmetic behind the birthdays list."""
+
+    def test_a_birthday_today_is_today(self):
+        assert _next_birthday(date(1990, 9, 25), date(2026, 9, 25)) == date(2026, 9, 25)
+
+    def test_a_birthday_already_passed_moves_to_next_year(self):
+        assert _next_birthday(date(1990, 1, 3), date(2026, 9, 25)) == date(2027, 1, 3)
+
+    def test_a_leap_day_birthday_falls_on_the_28th_in_other_years(self):
+        assert _next_birthday(date(2000, 2, 29), date(2026, 2, 1)) == date(2026, 2, 28)
+
+    def test_a_leap_day_birthday_is_kept_in_a_leap_year(self):
+        assert _next_birthday(date(2000, 2, 29), date(2028, 2, 1)) == date(2028, 2, 29)
 
 
 class TestCurrentUserAPI:
@@ -711,111 +834,57 @@ class TestAdminDownloadAPI:
         assert response.status_code == 200
         assert response["Content-Type"] == "application/x-sqlite3"
 
-    def _scrubbable_db(self, path) -> None:
-        """A database shaped like the real one: two conversations, each with a
-        message, and a reaction on each message."""
+    @pytest.mark.django_db(transaction=True)
+    def test_download_db_leaves_no_orphans(self, admin_client, admin_user, settings, tmp_path):
+        """Scrubbing other people's conversations must not leave rows pointing at the deleted
+        messages: Django's SQLite backend runs PRAGMA foreign_key_check after every migration,
+        so one orphan makes the downloaded copy fail `migrate`."""
         import sqlite3
 
-        conn = sqlite3.connect(str(path))
-        conn.executescript(
-            """
-            CREATE TABLE messaging_conversation (id INTEGER PRIMARY KEY);
-            CREATE TABLE messaging_conversation_participants (
-                id INTEGER PRIMARY KEY, conversation_id INTEGER, user_id INTEGER);
-            CREATE TABLE messaging_message (
-                id INTEGER PRIMARY KEY,
-                conversation_id INTEGER REFERENCES messaging_conversation(id));
-            CREATE TABLE messaging_messageattachment (
-                id INTEGER PRIMARY KEY,
-                message_id INTEGER REFERENCES messaging_message(id));
-            CREATE TABLE messaging_messagereadstatus (
-                id INTEGER PRIMARY KEY,
-                message_id INTEGER REFERENCES messaging_message(id));
-            CREATE TABLE messaging_messagereaction (
-                id INTEGER PRIMARY KEY,
-                message_id INTEGER REFERENCES messaging_message(id));
+        from django.db import connection
 
-            INSERT INTO messaging_conversation (id) VALUES (1), (2);
-            INSERT INTO messaging_message (id, conversation_id) VALUES (10, 1), (20, 2);
-            INSERT INTO messaging_messagereaction (id, message_id) VALUES (100, 10), (200, 20);
-            INSERT INTO messaging_messagereadstatus (id, message_id) VALUES (300, 20);
-            """
+        from apps.messaging.models import (
+            Conversation,
+            Message,
+            MessageReaction,
+            MessageReadStatus,
         )
-        conn.commit()
-        conn.close()
 
-    def test_download_db_copy_has_no_dangling_rows(
-        self, admin_client, admin_user, settings, tmp_path
-    ):
-        """The served copy must be referentially clean.
-
-        Any orphan makes the first schema migration run against the downloaded
-        file blow up: Django's SQLite backend re-checks every foreign key in the
-        database after a table rebuild, so an orphaned reaction surfaces as an
-        IntegrityError during an unrelated app's migration. Reactions were the
-        table the hand-written scrub forgot.
-        """
-        import sqlite3
+        a = User.objects.create_user(email="a@test.com", password="x")
+        b = User.objects.create_user(email="b@test.com", password="x")
+        own = Conversation.objects.create()
+        own.participants.set([admin_user, a])
+        own_message = Message.objects.create(conversation=own, sender=a, content="hej")
+        MessageReaction.objects.create(message=own_message, user=admin_user, reaction_type="❤️")
+        other = Conversation.objects.create()
+        other.participants.set([a, b])
+        other_message = Message.objects.create(conversation=other, sender=a, content="privat")
+        MessageReaction.objects.create(message=other_message, user=b, reaction_type="👍")
+        MessageReadStatus.objects.create(message=other_message, user=b)
 
         db_file = tmp_path / "db.sqlite3"
-        self._scrubbable_db(db_file)
-        # The admin is in conversation 1, so conversation 2 gets scrubbed.
-        conn = sqlite3.connect(str(db_file))
-        conn.execute(
-            "INSERT INTO messaging_conversation_participants (id, conversation_id, user_id)"
-            " VALUES (1, 1, ?)",
-            (admin_user.id,),
-        )
-        conn.commit()
-        conn.close()
-
+        connection.ensure_connection()
+        copy = sqlite3.connect(db_file)
+        connection.connection.backup(copy)
+        copy.close()
         settings.DATABASES = {"default": {**settings.DATABASES["default"], "NAME": str(db_file)}}
+
         response = admin_client.get("/api/auth/admin/download-db/")
-        assert response.status_code == 200
+        downloaded = tmp_path / "downloaded.sqlite3"
+        downloaded.write_bytes(b"".join(response.streaming_content))
+        response.close()
 
-        served = tmp_path / "served.sqlite3"
-        served.write_bytes(b"".join(response.streaming_content))
-
-        check = sqlite3.connect(str(served))
+        conn = sqlite3.connect(downloaded)
         try:
-            assert check.execute("PRAGMA foreign_key_check").fetchall() == []
-            # The scrubbed conversation is gone, including its reaction...
-            assert check.execute("SELECT id FROM messaging_message").fetchall() == [(10,)]
-            assert check.execute("SELECT id FROM messaging_messagereaction").fetchall() == [(100,)]
-            # ...and the admin's own conversation survives untouched.
-            assert check.execute("SELECT id FROM messaging_conversation").fetchall() == [(1,)]
+            assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+            assert conn.execute("SELECT conversation_id FROM messaging_message").fetchall() == [
+                (own.id,)
+            ]
+            assert conn.execute("SELECT message_id FROM messaging_messagereaction").fetchall() == [
+                (own_message.id,)
+            ]
         finally:
-            check.close()
-
-    def test_download_db_sweeps_orphans_it_did_not_create(self, admin_client, settings, tmp_path):
-        """Orphans already in the source are removed too, so a copy taken from a
-        database that a previous buggy download corrupted is still usable."""
-        import sqlite3
-
-        db_file = tmp_path / "db.sqlite3"
-        self._scrubbable_db(db_file)
-        conn = sqlite3.connect(str(db_file))
-        # A reaction pointing at a message that does not exist.
-        conn.execute("INSERT INTO messaging_messagereaction (id, message_id) VALUES (999, 4242)")
-        conn.commit()
-        conn.close()
-
-        settings.DATABASES = {"default": {**settings.DATABASES["default"], "NAME": str(db_file)}}
-        response = admin_client.get("/api/auth/admin/download-db/")
-        assert response.status_code == 200
-
-        served = tmp_path / "served.sqlite3"
-        served.write_bytes(b"".join(response.streaming_content))
-
-        check = sqlite3.connect(str(served))
-        try:
-            assert check.execute("PRAGMA foreign_key_check").fetchall() == []
-            assert (
-                check.execute("SELECT id FROM messaging_messagereaction WHERE id = 999").fetchall()
-                == []
-            )
-        finally:
-            check.close()
+            conn.close()
 
     def test_download_media_requires_auth(self, api_client, db):
         """Test that unauthenticated requests are rejected."""
@@ -903,3 +972,158 @@ class TestUserProfileThumbnail:
         # compare the base path before the ?exp=&sig= query).
         assert u.avatar_url.startswith(u.profile_picture_thumbnail.url)
         assert not u.avatar_url.startswith(u.profile_picture.url)
+
+
+@pytest.mark.django_db
+class TestMentionAutocomplete:
+    """@mention lookup goes through the search index, like the other name searches.
+
+    It had no coverage at all before, which is how the Danish-letter bug lived
+    here as long as it did.
+    """
+
+    def _people(self):
+        from apps.users.models import User
+
+        return (
+            User.objects.create_user(
+                email="oejvind@test.com", password="x", first_name="Øjvind", last_name="Ørsted"
+            ),
+            User.objects.create_user(
+                email="hansen@test.com", password="x", first_name="Hanne", last_name="Hansen"
+            ),
+        )
+
+    def test_finds_a_name_typed_in_either_case(self, authenticated_client):
+        self._people()
+
+        for query in ("øjvind", "Øjvind", "ØJVIND", "oejvind"):
+            names = [
+                person["first_name"]
+                for person in authenticated_client.get(f"/api/users/mentions/?q={query}").data
+            ]
+            assert names == ["Øjvind"], query
+
+    def test_matches_either_part_of_the_name(self, authenticated_client):
+        self._people()
+
+        assert len(authenticated_client.get("/api/users/mentions/?q=ørsted").data) == 1
+        assert len(authenticated_client.get("/api/users/mentions/?q=hanne").data) == 1
+
+    def test_matches_from_the_start_of_a_name_not_the_middle(self, authenticated_client):
+        """Prefix, not substring — "ans" no longer offers "Hansen"."""
+        self._people()
+
+        assert len(authenticated_client.get("/api/users/mentions/?q=Han").data) == 1
+        assert len(authenticated_client.get("/api/users/mentions/?q=ans").data) == 0
+
+    def test_no_query_returns_everyone_active(self, authenticated_client):
+        self._people()
+
+        # The two above plus the fixture's own user.
+        assert len(authenticated_client.get("/api/users/mentions/").data) == 3
+
+
+@pytest.mark.django_db
+class TestBirthdayNotifications:
+    """The 08:00 task tells every other active resident about today's birthdays."""
+
+    TODAY = date(2026, 9, 25)
+
+    def _run(self):
+        from unittest.mock import patch
+
+        from apps.users.tasks import send_birthday_notifications
+
+        with patch("django.utils.timezone.localdate", return_value=self.TODAY):
+            send_birthday_notifications.call_local()
+
+    def _residents(self, house, opted_in=True):
+        from apps.notifications.models import NotificationPreference
+
+        birthday = User.objects.create_user(
+            email="bday@example.com",
+            password="pass",
+            first_name="Anna",
+            last_name="Hansen",
+            house=house,
+            birthdate=date(1990, 9, 25),
+        )
+        other = User.objects.create_user(
+            email="other@example.com", password="pass", first_name="Bo", house=house
+        )
+        if opted_in:
+            NotificationPreference.objects.create(user=other, notify_birthdays=True)
+        return birthday, other
+
+    def test_others_are_told_and_the_birthday_person_is_not(self, house):
+        from apps.notifications.models import Notification, NotificationType
+
+        birthday, other = self._residents(house)
+        User.objects.create_user(
+            email="gone@example.com", password="pass", first_name="Gone", is_active=False
+        )
+
+        self._run()
+
+        rows = Notification.objects.filter(notification_type=NotificationType.BIRTHDAY)
+        assert list(rows.values_list("user__email", flat=True)) == ["other@example.com"]
+        row = rows.get()
+        assert row.title == "Anna Hansen har fødselsdag i dag"
+        assert row.message == "Anna fylder 36 år i dag."
+        assert row.link == f"/profil/{birthday.pk}"
+
+    def test_children_are_included_and_link_to_their_house(self, house):
+        from apps.houses.models import Child
+        from apps.notifications.models import Notification
+
+        _, other = self._residents(house)
+        Child.objects.create(house=house, name="Emma", birthdate=date(2020, 9, 25))
+
+        self._run()
+
+        row = Notification.objects.get(user=other, title__startswith="Emma")
+        assert row.title == f"Emma ({house.name}) har fødselsdag i dag"
+        assert row.message == "Emma fylder 6 år i dag."  # the house is in the title
+        assert row.link == f"/beboere/hus/{house.slug}"
+
+    def test_no_age_for_a_resident_who_hides_their_year(self, house):
+        from apps.notifications.models import Notification
+
+        birthday, other = self._residents(house)
+        birthday.hide_birth_year = True
+        birthday.save()
+
+        self._run()
+
+        row = Notification.objects.get(user=other)
+        assert row.title == "Anna Hansen har fødselsdag i dag"
+        assert row.message == "Ønsk tillykke!"
+
+    def test_no_notification_on_other_days(self, house):
+        from apps.notifications.models import Notification
+
+        birthday, _ = self._residents(house)
+        birthday.birthdate = date(1990, 9, 26)
+        birthday.save()
+
+        self._run()
+
+        assert not Notification.objects.exists()
+
+    def test_nobody_is_told_without_opting_in(self, house):
+        from apps.notifications.models import Notification
+
+        self._residents(house, opted_in=False)
+
+        self._run()
+
+        assert not Notification.objects.exists()
+
+    def test_every_channel_is_off_by_default(self, user):
+        from apps.notifications.models import NotificationPreference
+
+        prefs = NotificationPreference(user=user)
+        assert prefs.notify_birthdays is False
+        assert prefs.push_birthdays is False
+        assert prefs.email_birthdays is False

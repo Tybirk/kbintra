@@ -79,6 +79,18 @@ class Subgroup(models.Model):
         GroupType.UDVALG,
     }
 
+    class Reporting(models.TextChoices):
+        """Whether this group takes indrapporteringer, and who may read them.
+
+        One field rather than an on/off flag beside a private/public flag: two
+        booleans can express "closed but switched off", a state with no meaning
+        that every read site would then have to think about.
+        """
+
+        OFF = "off", "Ingen indrapportering"
+        OPEN = "open", "Åben — alle kan læse sagerne"
+        CLOSED = "closed", "Lukket — kun udvalget og indrapportøren kan læse sagerne"
+
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
     links_info = models.TextField(
@@ -109,6 +121,25 @@ class Subgroup(models.Model):
     default_members_only = models.BooleanField(
         default=False,
         help_text="If true, the 'Privat tråd' checkbox is checked by default when creating threads/files.",
+    )
+    reporting = models.CharField(
+        max_length=10,
+        choices=Reporting.choices,
+        default=Reporting.OFF,
+        help_text=(
+            "Whether residents can file reports (indrapporteringer) to this group, and who "
+            "may read the queue. The group's members are the caseworkers either way, so "
+            "anything but 'off' requires allows_members."
+        ),
+    )
+    reporting_intro = models.CharField(
+        max_length=120,
+        blank=True,
+        default="",
+        help_text=(
+            "One line under the udvalg's name in the 'Til:' picker, saying what belongs "
+            "here — e.g. 'Fejlmelding af inventar'. Keep it to one line on a phone."
+        ),
     )
     is_main = models.BooleanField(
         default=False,
@@ -162,15 +193,36 @@ class Subgroup(models.Model):
     def __str__(self) -> str:
         return self.name
 
+    def clean(self) -> None:
+        """A group taking reports must be one that has members.
+
+        Its members are the caseworkers: without them a case arrives where
+        nobody can move it, and a closed queue would be one nobody can even
+        read. Admin runs model validation on the change form and on the
+        editable list, which is everywhere this gets flipped.
+        """
+        super().clean()
+        validate_subgroup_parent(self, self.parent)
+        if self.reporting != self.Reporting.OFF and not self.allows_members:
+            raise ValidationError(
+                {
+                    "reporting": (
+                        "Indrapportering kræver, at gruppen har medlemmer "
+                        "(«Tillader medlemmer»), for det er dem der behandler sagerne."
+                    )
+                }
+            )
+
+    @property
+    def reporting_is_closed(self) -> bool:
+        """Whether only the udvalg (and each reporter) may read its queue."""
+        return self.reporting == self.Reporting.CLOSED
+
     def save(self, *args: object, **kwargs: object) -> None:
         """Generate slug from name if not provided."""
         if not self.slug:
             self.slug = danish_slugify(self.name)
         super().save(*args, **kwargs)
-
-    def clean(self) -> None:
-        super().clean()
-        validate_subgroup_parent(self, self.parent)
 
     @property
     def is_organ(self) -> bool:
@@ -237,6 +289,12 @@ class Thread(models.Model):
         default=False,
         help_text="If true, only members of the subgroup (and the author) can see this thread.",
     )
+    client_token = models.UUIDField(
+        null=True,
+        blank=True,
+        unique=True,
+        help_text="One per compose form. A retry with the same token gets this thread back.",
+    )
     legacy_url = models.CharField(max_length=500, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -290,6 +348,12 @@ class Post(models.Model):
         null=True,
         blank=True,
         related_name="edited_posts",
+    )
+    client_token = models.UUIDField(
+        null=True,
+        blank=True,
+        unique=True,
+        help_text="One per reply form. A retry with the same token gets this post back.",
     )
     legacy_url = models.CharField(max_length=500, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)

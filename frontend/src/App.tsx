@@ -14,13 +14,13 @@ const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes)
 
 import { useAuthStore } from "./store/authStore"
 
-import { getAccessToken } from "./api/client"
-
 import { trackNavigation } from "./utils/navigationHistory"
 
 import { ErrorBoundary } from "./components/ErrorBoundary"
 
 import { useVersionCheck } from "./hooks/useVersionCheck"
+
+import { useScrollToTopOnNavigate } from "./hooks/useScrollToTopOnNavigate"
 
 import { usePushSubscriptionSync } from "./hooks/usePushSubscriptionSync"
 
@@ -68,6 +68,9 @@ const ProfileEditPage = lazy(() => import("./pages/ProfileEditPage"))
 const AnnouncementsPage = lazy(() => import("./pages/AnnouncementsPage"))
 
 const FoodPage = lazy(() => import("./pages/FoodPage"))
+const LeftoversPage = lazy(() => import("./pages/LeftoversPage"))
+
+const RecipesPage = lazy(() => import("./pages/RecipesPage"))
 
 const FoodPreferencesPage = lazy(() => import("./pages/FoodPreferencesPage"))
 
@@ -82,6 +85,10 @@ const EventFormPage = lazy(() => import("./pages/EventFormPage"))
 const BookingsPage = lazy(() => import("./pages/BookingsPage"))
 
 const ExpensesPage = lazy(() => import("./pages/ExpensesPage"))
+
+const ReportsPage = lazy(() => import("./pages/ReportsPage"))
+
+const ReportDetailPage = lazy(() => import("./pages/ReportDetailPage"))
 const CarSharingPage = lazy(() => import("./pages/CarSharingPage"))
 
 const NotificationPreferencesPage = lazy(
@@ -143,6 +150,8 @@ function App() {
     setNavbarOpened(false)
   }, [location.pathname])
 
+  useScrollToTopOnNavigate()
+
   // Check for app updates when user returns to the app
 
   useVersionCheck()
@@ -156,12 +165,10 @@ function App() {
   useAccessibilityModeSync()
 
   useEffect(() => {
+    // Without a token checkAuth clears the persisted user itself, so a forced
+    // logout leaves no profile behind in storage.
     const initAuth = async () => {
-      const token = getAccessToken()
-
-      if (token) {
-        await checkAuth()
-      }
+      await checkAuth()
 
       setIsInitializing(false)
     }
@@ -276,10 +283,20 @@ function App() {
         </AppShell.Navbar>
 
         <AppShell.Main
+          // Room for the install banner while it shows (InstallPrompt sets the
+          // variable): below the page, or off the chat's fixed height.
           style={
             location.pathname.startsWith("/beskeder")
-              ? { height: "100dvh", overflow: "hidden" }
-              : undefined
+              ? {
+                  // min-height too: Mantine's own 100dvh minimum would win.
+                  height: "calc(100dvh - var(--install-prompt-height, 0px))",
+                  minHeight: "calc(100dvh - var(--install-prompt-height, 0px))",
+                  overflow: "hidden",
+                }
+              : {
+                  paddingBottom:
+                    "calc(var(--app-shell-padding) + var(--install-prompt-height, 0px))",
+                }
           }
         >
           <AuthenticatedRoutes />
@@ -436,6 +453,16 @@ const AuthenticatedRoutes = memo(function AuthenticatedRoutes() {
           }
         />
         <Route
+          path="/forum/:slug/indrapportering"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <SubgroupPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/forum/:slug"
           element={
             <ProtectedRoute>
@@ -519,6 +546,26 @@ const AuthenticatedRoutes = memo(function AuthenticatedRoutes() {
             <ProtectedRoute>
               <ErrorBoundary>
                 <FoodPreferencesPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mad/rester"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <LeftoversPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mad/opskrifter"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <RecipesPage />
               </ErrorBoundary>
             </ProtectedRoute>
           }
@@ -617,6 +664,28 @@ const AuthenticatedRoutes = memo(function AuthenticatedRoutes() {
             <ProtectedRoute>
               <ErrorBoundary>
                 <ExpensesPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Indrapportering */}
+        <Route
+          path="/indrapportering"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <ReportsPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/indrapportering/:subgroupSlug/:number"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <ReportDetailPage />
               </ErrorBoundary>
             </ProtectedRoute>
           }

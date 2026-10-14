@@ -1,14 +1,6 @@
-import {
-  useState,
-  useEffect,
-  useRef,
-  memo,
-  lazy,
-  Suspense,
-  type RefObject,
-} from "react"
+import { useState, useEffect, useRef, memo, type RefObject } from "react"
 
-import { useParams, useNavigate, useLocation } from "react-router-dom"
+import { Link, useParams, useNavigate, useLocation } from "react-router-dom"
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 
@@ -93,7 +85,22 @@ import type {
 
 import ChatRichTextEditor from "../components/ChatRichTextEditor"
 
-import { clearDraft } from "../utils/draftStorage"
+import { clearDraft, loadDraft, saveDraft } from "../utils/draftStorage"
+
+import {
+  appendMessage,
+  conversationMessagesKey,
+  updateMessage,
+  useConversationMessages,
+} from "../hooks/useConversationMessages"
+
+import { messageElementId, useChatScroll } from "../hooks/useChatScroll"
+
+import UserLink from "../components/UserLink"
+
+import EmojiMartPicker, {
+  type PickedEmoji,
+} from "../components/EmojiMartPicker"
 
 import { htmlToPlainText } from "../utils/htmlText"
 
@@ -108,10 +115,6 @@ import { AttachmentCarousel } from "../components/AttachmentCarousel"
 import FileDropzone from "../components/FileDropzone"
 
 import { filterFilesBySize } from "../config"
-
-const LazyPicker = lazy(() => import("@emoji-mart/react"))
-
-const emojiDataPromise = () => import("@emoji-mart/data").then((m) => m.default)
 
 // Default quick-reaction emojis
 
@@ -129,9 +132,7 @@ const DEFAULT_EMOJIS: string[] = [
   "\u{1F389}",
 ]
 
-interface EmojiPickerData {
-  native: string
-}
+const NEW_MESSAGE_PATH = "ny"
 
 export default function MessagesPage() {
   const { user } = useAuthStore()
@@ -142,18 +143,24 @@ export default function MessagesPage() {
 
   const queryClient = useQueryClient()
 
-  const [selectedConversation, setSelectedConversation] =
-    useState<number | null>(
-      conversationId ? parseInt(conversationId, 10) : null,
-    )
+  // "Ny besked" has its own URL, so a reload brings the reader back to the
+  // half-written message (its text and recipients are kept as drafts).
+  const isComposingNew = conversationId === NEW_MESSAGE_PATH
 
-  const [isComposingNew, setIsComposingNew] = useState(false)
+  const urlConversationId =
+    conversationId && !isComposingNew ? parseInt(conversationId, 10) : null
+
+  const [selectedConversation, setSelectedConversation] =
+    useState<number | null>(urlConversationId)
 
   const [isWsConnected, setIsWsConnected] = useState(chatWs.isConnected)
 
   const [conversationSearch, setConversationSearch] = useState("")
 
-  const isMobile = useMediaQuery("(max-width: 768px)")
+  // One pane at a time, the list or the open chat, until both fit beside the
+  // navbar: 280 px navbar + 320 px list + a 360 px chat + padding is
+  // Mantine's md (62em). Two panes on an iPad in portrait left the chat 186 px.
+  const isMobile = useMediaQuery("(max-width: 61.99em)")
 
   const inConversationMobile =
     !!isMobile && (!!selectedConversation || isComposingNew)
@@ -191,16 +198,8 @@ export default function MessagesPage() {
   // Sync URL param to state when URL changes (e.g., from notification link)
 
   useEffect(() => {
-    const urlConversationId = conversationId
-      ? parseInt(conversationId, 10)
-      : null
-
     if (urlConversationId !== selectedConversation) {
       setSelectedConversation(urlConversationId)
-
-      if (urlConversationId) {
-        setIsComposingNew(false)
-      }
     }
 
     // Note: selectedConversation is intentionally excluded to prevent sync loops.
@@ -310,134 +309,66 @@ export default function MessagesPage() {
 
       if (wsData.type === "new_message") {
         // Update conversation list
-
         queryClient.invalidateQueries({ queryKey: ["conversations"] })
 
-        // Update active conversation if it matches
+        appendMessage(queryClient, wsData.message.conversation, wsData.message)
 
+        // Mark as read immediately since we're actively viewing this conversation
         const currentConv = selectedConversationRef.current
-
         if (wsData.message.conversation === currentConv) {
-          queryClient.setQueryData<ConversationDetail>(
-            ["conversation", currentConv],
-
-            (old) => {
-              if (!old) return old
-
-              // Check if message already exists to prevent duplicates
-
-              if (old.messages.some((m) => m.id === wsData.message.id)) {
-                return old
-              }
-
-              return {
-                ...old,
-
-                messages: [...old.messages, wsData.message],
-              }
-            },
-          )
-
-          // Mark as read immediately since we're actively viewing this conversation
-
           chatWs.markRead(currentConv)
-
           queryClient.invalidateQueries({
             queryKey: ["messages", "unread-count"],
           })
         }
       } else if (wsData.type === "messages_read") {
         // Update read status in active conversation
-
         queryClient.invalidateQueries({
-          queryKey: ["conversation", wsData.conversation_id],
+          queryKey: conversationMessagesKey(wsData.conversation_id),
         })
       } else if (wsData.type === "new_conversation") {
         queryClient.invalidateQueries({ queryKey: ["conversations"] })
       } else if (wsData.type === "message_edited") {
         const editedData = wsData as WsMessageEdited
 
-        queryClient.setQueryData<ConversationDetail>(
-          ["conversation", editedData.conversation_id],
-
-          (old) => {
-            if (!old) return old
-
-            return {
-              ...old,
-
-              messages: old.messages.map((m) =>
-                m.id === editedData.message_id
-                  ? {
-                      ...m,
-
-                      content: editedData.content,
-
-                      edited_at: editedData.edited_at,
-                    }
-                  : m,
-              ),
-            }
-          },
+        updateMessage(
+          queryClient,
+          editedData.conversation_id,
+          editedData.message_id,
+          { content: editedData.content, edited_at: editedData.edited_at },
         )
       } else if (wsData.type === "message_deleted") {
         const deletedData = wsData as WsMessageDeleted
 
-        queryClient.setQueryData<ConversationDetail>(
-          ["conversation", deletedData.conversation_id],
-
-          (old) => {
-            if (!old) return old
-
-            return {
-              ...old,
-
-              messages: old.messages.map((m) =>
-                m.id === deletedData.message_id
-                  ? { ...m, is_deleted: true, content: "" }
-                  : m,
-              ),
-            }
-          },
+        updateMessage(
+          queryClient,
+          deletedData.conversation_id,
+          deletedData.message_id,
+          { is_deleted: true, content: "" },
         )
       } else if (wsData.type === "message_reacted") {
         const reactedData = wsData as WsMessageReacted
 
         const currentUserId = user?.id ?? -1
 
-        queryClient.setQueryData<ConversationDetail>(
-          ["conversation", reactedData.conversation_id],
+        updateMessage(
+          queryClient,
+          reactedData.conversation_id,
+          reactedData.message_id,
+          {
+            reactions: reactedData.reactions.map(
+              (r: WsMessageReactionEntry): MessageReactionSummary => ({
+                reaction_type: r.reaction_type as ReactionType,
 
-          (old) => {
-            if (!old) return old
+                emoji: r.emoji,
 
-            return {
-              ...old,
+                count: r.count,
 
-              messages: old.messages.map((m) =>
-                m.id === reactedData.message_id
-                  ? {
-                      ...m,
+                has_reacted: r.user_ids.includes(currentUserId),
 
-                      reactions: reactedData.reactions.map(
-                        (
-                          r: WsMessageReactionEntry,
-                        ): MessageReactionSummary => ({
-                          reaction_type: r.reaction_type as ReactionType,
-
-                          emoji: r.emoji,
-
-                          count: r.count,
-
-                          has_reacted: r.user_ids.includes(currentUserId),
-
-                          users: r.users,
-                        }),
-                      ),
-                    }
-                  : m,
-              ),
-            }
+                users: r.users,
+              }),
+            ),
           },
         )
       } else if (wsData.type === "conversation_renamed") {
@@ -469,6 +400,13 @@ export default function MessagesPage() {
       unsubConnection()
 
       unsubMessage()
+
+      // Nothing keeps the cached chats current once this page is closed, so
+      // the next open refetches them, however recently they were fetched.
+      queryClient.invalidateQueries({
+        queryKey: ["conversation-messages"],
+        refetchType: "none",
+      })
     }
   }, [queryClient])
 
@@ -480,10 +418,20 @@ export default function MessagesPage() {
 
   // condition. Instead, run once per conversation selection (tracked via ref)
 
-  // and invalidate the sidebar list and header badge caches.
+  // and invalidate the sidebar list and header badge caches. Leaving the chat
+
+  // ends the selection, however it is left (the phone's back arrow too), so
+
+  // opening it again marks what arrived meanwhile.
 
   useEffect(() => {
-    if (!selectedConversation || !activeConversation) return
+    if (!selectedConversation) {
+      lastMarkedReadConversation.current = null
+
+      return
+    }
+
+    if (!activeConversation) return
 
     if (lastMarkedReadConversation.current === selectedConversation) return
 
@@ -507,7 +455,7 @@ export default function MessagesPage() {
 
     const pollInterval = setInterval(() => {
       queryClient.invalidateQueries({
-        queryKey: ["conversation", selectedConversation],
+        queryKey: conversationMessagesKey(selectedConversation),
       })
 
       queryClient.invalidateQueries({ queryKey: ["conversations"] })
@@ -519,22 +467,16 @@ export default function MessagesPage() {
   const handleSelectConversation = (id: number) => {
     setSelectedConversation(id)
 
-    setIsComposingNew(false)
-
     navigate(`/beskeder/${id}`, { replace: true })
   }
 
   const handleStartNewMessage = () => {
     setSelectedConversation(null)
 
-    setIsComposingNew(true)
-
-    navigate("/beskeder", { replace: true })
+    navigate(`/beskeder/${NEW_MESSAGE_PATH}`, { replace: true })
   }
 
   const handleNewConversationCreated = (newConversationId: number) => {
-    setIsComposingNew(false)
-
     chatWs.joinConversation(newConversationId)
 
     setSelectedConversation(newConversationId)
@@ -545,7 +487,7 @@ export default function MessagesPage() {
   }
 
   const handleCancelNewMessage = () => {
-    setIsComposingNew(false)
+    navigate("/beskeder", { replace: true })
   }
 
   const handleLeaveConversation = async () => {
@@ -566,13 +508,10 @@ export default function MessagesPage() {
 
   // Shared cleanup after marking (part of) a conversation unread. We must leave
   // the conversation so opening/listing it doesn't instantly re-mark it read
-  // (both via the server fetch and the auto-mark-read effect), reset the
-  // "already marked read this session" guard so re-opening marks it read again,
-  // and refresh the conversation list + unread badge.
+  // (both via the server fetch and the auto-mark-read effect), and refresh the
+  // conversation list + unread badge.
 
   const settleAfterMarkUnread = () => {
-    lastMarkedReadConversation.current = null
-
     setSelectedConversation(null)
 
     navigate("/beskeder", { replace: true })
@@ -625,11 +564,15 @@ export default function MessagesPage() {
 
               top: "var(--app-shell-header-offset, 60px)",
 
-              left: 0,
+              // Beside the navbar where it stays open (from 48em, an iPad in
+              // portrait); under it, it covered the back arrow at 768 px.
+              left: "var(--app-shell-navbar-offset, 0px)",
 
               right: 0,
 
-              bottom: keyboardOffset,
+              // Clear of the on-screen keyboard or the install banner, whichever
+              // is taller (InstallPrompt sets the variable while it shows).
+              bottom: `max(${keyboardOffset}px, var(--install-prompt-height, 0px))`,
             }
           : { height: "100%" }),
       }}
@@ -803,7 +746,7 @@ export default function MessagesPage() {
                     // If we used REST fallback or sent attachments/mentions, refresh to get the new message
 
                     queryClient.invalidateQueries({
-                      queryKey: ["conversation", selectedConversation],
+                      queryKey: conversationMessagesKey(selectedConversation),
                     })
 
                     queryClient.invalidateQueries({
@@ -817,6 +760,10 @@ export default function MessagesPage() {
                   })
 
                   queryClient.invalidateQueries({
+                    queryKey: conversationMessagesKey(selectedConversation),
+                  })
+
+                  queryClient.invalidateQueries({
                     queryKey: ["conversations"],
                   })
                 }}
@@ -824,44 +771,18 @@ export default function MessagesPage() {
                 onMarkUnread={handleMarkUnread}
                 onMarkMessageUnread={handleMarkMessageUnread}
                 isMobile={isMobile ?? false}
-                onMessageUpdated={(messageId, content, editedAt) => {
-                  queryClient.setQueryData<ConversationDetail>(
-                    ["conversation", selectedConversation],
-
-                    (old) => {
-                      if (!old) return old
-
-                      return {
-                        ...old,
-
-                        messages: old.messages.map((m) =>
-                          m.id === messageId
-                            ? { ...m, content, edited_at: editedAt }
-                            : m,
-                        ),
-                      }
-                    },
-                  )
-                }}
-                onMessageDeleted={(messageId) => {
-                  queryClient.setQueryData<ConversationDetail>(
-                    ["conversation", selectedConversation],
-
-                    (old) => {
-                      if (!old) return old
-
-                      return {
-                        ...old,
-
-                        messages: old.messages.map((m) =>
-                          m.id === messageId
-                            ? { ...m, is_deleted: true, content: "" }
-                            : m,
-                        ),
-                      }
-                    },
-                  )
-                }}
+                onMessageUpdated={(messageId, content, editedAt) =>
+                  updateMessage(queryClient, selectedConversation, messageId, {
+                    content,
+                    edited_at: editedAt,
+                  })
+                }
+                onMessageDeleted={(messageId) =>
+                  updateMessage(queryClient, selectedConversation, messageId, {
+                    is_deleted: true,
+                    content: "",
+                  })
+                }
               />
             ) : null
           ) : (
@@ -1063,6 +984,15 @@ const TIME_GAP_MINUTES = 20
 interface MessageListProps {
   messages: Message[]
 
+  isLoading: boolean
+
+  hasOlder: boolean
+
+  isLoadingOlder: boolean
+
+  /** Group chats name the sender above each run of incoming messages. */
+  showSenderNames: boolean
+
   isMobile: boolean | undefined
 
   onEdit?: (messageId: number, content: string, editedAt: string) => void
@@ -1072,10 +1002,20 @@ interface MessageListProps {
   onMarkMessageUnread?: (messageId: number) => void
 
   scrollViewportRef: RefObject<HTMLDivElement | null>
+
+  contentRef: RefObject<HTMLDivElement | null>
 }
 
 const MessageList = memo(function MessageList({
   messages,
+
+  isLoading,
+
+  hasOlder,
+
+  isLoadingOlder,
+
+  showSenderNames,
 
   isMobile,
 
@@ -1086,6 +1026,8 @@ const MessageList = memo(function MessageList({
   onMarkMessageUnread,
 
   scrollViewportRef,
+
+  contentRef,
 }: MessageListProps) {
   return (
     <div
@@ -1102,19 +1044,47 @@ const MessageList = memo(function MessageList({
         padding: "var(--mantine-spacing-md)",
 
         overscrollBehavior: "contain",
+
+        // useChatScroll keeps the reader's place through every change (and
+        // Safari has no scroll anchoring); the browser's would do it twice.
+        overflowAnchor: "none",
       }}
     >
-      <Stack gap="sm" style={{ width: "100%" }}>
+      <Stack ref={contentRef} gap="sm" style={{ width: "100%" }}>
+        {isLoading && (
+          <Center py="sm">
+            <Loader size="sm" />
+          </Center>
+        )}
+        {!isLoading && messages.length === 0 && (
+          <Text size="sm" c="dimmed" ta="center" py="xl">
+            Ingen beskeder endnu. Skriv den første nedenfor.
+          </Text>
+        )}
+        {/* The slot stays while there is history, so the loader appearing
+            doesn't push the messages down under the reader */}
+        {hasOlder && (
+          <Center h={36}>{isLoadingOlder && <Loader size="sm" />}</Center>
+        )}
         {messages.map((msg, idx) => {
           const prevMsg = idx > 0 ? messages[idx - 1] : null
 
           const nextMsg = idx < messages.length - 1 ? messages[idx + 1] : null
 
+          // A system line ("… omdøbte samtalen") belongs to no one's run: the
+          // sender's next message gets its name and avatar back, and the one
+          // before it keeps its time.
           const sameSenderAsPrev =
-            prevMsg != null && prevMsg.sender.id === msg.sender.id
+            prevMsg != null &&
+            !prevMsg.is_system_message &&
+            !msg.is_system_message &&
+            prevMsg.sender.id === msg.sender.id
 
           const sameSenderAsNext =
-            nextMsg != null && nextMsg.sender.id === msg.sender.id
+            nextMsg != null &&
+            !nextMsg.is_system_message &&
+            !msg.is_system_message &&
+            nextMsg.sender.id === msg.sender.id
 
           const timeSincePrev = prevMsg
             ? dayjs(msg.created_at).diff(dayjs(prevMsg.created_at), "minute")
@@ -1159,6 +1129,20 @@ const MessageList = memo(function MessageList({
               {showAvatar &&
                 !showDateSeparator &&
                 timeSincePrev >= TIME_GAP_MINUTES && <Box mt="xs" />}
+              {showSenderNames &&
+                showAvatar &&
+                !msg.is_own &&
+                !msg.is_system_message && ( // Indented past the avatar (sm = 26px) and the gap (xs = 10px)
+                  <Text size="xs" c="dimmed" pl={36} mb={2}>
+                    <UserLink
+                      id={msg.sender.id}
+                      firstName={msg.sender.first_name}
+                      lastName={msg.sender.last_name}
+                    >
+                      {msg.sender.first_name}
+                    </UserLink>
+                  </Text>
+                )}
               <MessageBubble
                 message={msg}
                 showAvatar={showAvatar}
@@ -1238,9 +1222,30 @@ function ChatArea({
 
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  const prevConversationIdRef = useRef<number | null>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
 
-  const highlightedHashRef = useRef<string | null>(null)
+  const {
+    messages,
+    isLoading,
+    isFetching,
+    hasOlder,
+    isLoadingOlder,
+    loadOlder,
+  } = useConversationMessages(conversation.id)
+
+  const { followBottom } = useChatScroll(scrollRef, contentRef, {
+    messages,
+
+    hasOlder,
+
+    isLoadingOlder,
+
+    isFetching,
+
+    loadOlder,
+
+    targetId: location.hash ? location.hash.slice(1) : null,
+  })
 
   const addParticipantsMutation = useMutation({
     mutationFn: (userIds: number[]) =>
@@ -1295,49 +1300,6 @@ function ChatArea({
     }
   }
 
-  // Scroll to bottom when opening a conversation (instant) or when new messages arrive (smooth)
-
-  useEffect(() => {
-    if (scrollRef.current) {
-      const isNewConversation =
-        prevConversationIdRef.current !== conversation.id
-
-      // If navigating with a hash fragment, scroll to that message instead
-
-      if (location.hash && highlightedHashRef.current !== location.hash) {
-        highlightedHashRef.current = location.hash
-
-        const timer = setTimeout(() => {
-          const el = document.getElementById(location.hash.slice(1))
-
-          if (el) {
-            el.scrollIntoView({ behavior: "smooth", block: "center" })
-
-            el.style.transition = "box-shadow 0.3s ease"
-
-            el.style.boxShadow = "0 0 0 3px var(--mantine-color-blue-4)"
-
-            setTimeout(() => {
-              el.style.boxShadow = ""
-            }, 2000)
-          }
-        }, 100)
-
-        prevConversationIdRef.current = conversation.id
-
-        return () => clearTimeout(timer)
-      }
-
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-
-        behavior: isNewConversation ? "auto" : "smooth",
-      })
-
-      prevConversationIdRef.current = conversation.id
-    }
-  }, [conversation.id, conversation.messages, location.hash])
-
   const handleSend = async (contentOverride?: string) => {
     const messageContent =
       contentOverride !== undefined ? contentOverride : message
@@ -1360,6 +1322,8 @@ function ChatArea({
     setMentionedUserIds([])
 
     clearDraft("msg-" + conversation.id)
+
+    followBottom()
 
     try {
       await onSendMessage(messageContent, messageAttachments, messageMentions)
@@ -1413,13 +1377,27 @@ function ChatArea({
         <Group gap="sm" justify="space-between" wrap="nowrap">
           <Group gap="sm" style={{ flex: 1, minWidth: 0 }}>
             {onBack && (
-              <ActionIcon variant="subtle" onClick={onBack} size="lg">
+              <ActionIcon
+                variant="subtle"
+                onClick={onBack}
+                size="lg"
+                aria-label="Tilbage"
+              >
                 <IconArrowLeft size={20} />
               </ActionIcon>
             )}
             <Popover
               opened={participantsPopoverOpened}
-              onClose={closeParticipantsPopover}
+              // Focus moves into the list, so Escape closes it wherever the reader
+              // clicked (Mantine only hears Escape inside the dropdown), and goes
+              // back to the header afterwards.
+              trapFocus
+              returnFocus
+              // Controlled, so a tap outside or Escape arrives as onChange(false);
+              // onClose alone never fired and the list stayed open.
+              onChange={(opened) => {
+                if (!opened) closeParticipantsPopover()
+              }}
               position="bottom-start"
               shadow="md"
               withinPortal
@@ -1484,16 +1462,25 @@ function ChatArea({
               </Popover.Target>
               <Popover.Dropdown>
                 <ScrollArea.Autosize mah={320}>
-                  <Stack gap="xs">
+                  {/* Rows touch, 36 px each: no dead gap between tap targets. */}
+                  <Stack gap={0}>
                     {allParticipants.map((p) => (
-                      <Group key={p.id} gap="sm" wrap="nowrap">
-                        <Avatar src={p.profile_picture} radius="xl" size="sm">
-                          {p.first_name?.[0]}
-                        </Avatar>
-                        <Text size="sm">
-                          {p.first_name} {p.last_name}
-                        </Text>
-                      </Group>
+                      <UnstyledButton
+                        key={p.id}
+                        component={Link}
+                        to={`/profil/${p.id}`}
+                        onClick={closeParticipantsPopover}
+                        py={5}
+                      >
+                        <Group gap="sm" wrap="nowrap">
+                          <Avatar src={p.profile_picture} radius="xl" size="sm">
+                            {p.first_name?.[0]}
+                          </Avatar>
+                          <Text size="sm">
+                            {p.first_name} {p.last_name}
+                          </Text>
+                        </Group>
+                      </UnstyledButton>
                     ))}
                   </Stack>
                 </ScrollArea.Autosize>
@@ -1624,12 +1611,17 @@ function ChatArea({
 
       {/* Messages */}
       <MessageList
-        messages={conversation.messages}
+        messages={messages}
+        isLoading={isLoading}
+        hasOlder={hasOlder}
+        isLoadingOlder={isLoadingOlder}
+        showSenderNames={isGroupChat}
         isMobile={isMobile}
         onEdit={onMessageUpdated}
         onUnsend={onMessageDeleted}
         onMarkMessageUnread={onMarkMessageUnread}
         scrollViewportRef={scrollRef}
+        contentRef={contentRef}
       />
 
       {/* Input */}
@@ -1803,8 +1795,6 @@ const MessageBubble = memo(function MessageBubble({
 
   const [fullEmojiPickerOpened, setFullEmojiPickerOpened] = useState(false)
 
-  const [emojiData, setEmojiData] = useState<object | null>(null)
-
   const [isHovered, setIsHovered] = useState(false)
 
   const [isEditing, setIsEditing] = useState(false)
@@ -1813,7 +1803,11 @@ const MessageBubble = memo(function MessageBubble({
 
   const [isSavingEdit, setIsSavingEdit] = useState(false)
 
-  const isMobileDevice = useMediaQuery("(max-width: 768px)")
+  // Read synchronously: a bubble that first renders in the desktop layout and
+  // then switches would change height after useChatScroll has measured it.
+  const isMobileDevice = useMediaQuery("(max-width: 768px)", undefined, {
+    getInitialValueInEffect: false,
+  })
 
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -1914,7 +1908,7 @@ const MessageBubble = memo(function MessageBubble({
 
     return (
       <Group
-        id={`msg-${message.id}`}
+        id={messageElementId(message.id)}
         justify={isOwn ? "flex-end" : "flex-start"}
         gap="xs"
         align="flex-end"
@@ -2040,16 +2034,12 @@ const MessageBubble = memo(function MessageBubble({
   )
 
   const handleOpenFullEmojiPicker = () => {
-    if (!emojiData) {
-      emojiDataPromise().then(setEmojiData)
-    }
-
     setReactionPickerOpened(false)
 
     setFullEmojiPickerOpened((o) => !o)
   }
 
-  const handleFullEmojiSelect = (emoji: EmojiPickerData) => {
+  const handleFullEmojiSelect = (emoji: PickedEmoji) => {
     reactionMutation.mutate(emoji.native)
   }
 
@@ -2141,22 +2131,7 @@ const MessageBubble = memo(function MessageBubble({
         </Popover.Target>
         <Popover.Dropdown p={0} style={{ border: "none", background: "none" }}>
           {fullEmojiPickerOpened && (
-            <Suspense fallback={<Loader size="sm" m="md" />}>
-              <LazyPicker
-                data={emojiData}
-                onEmojiSelect={handleFullEmojiSelect}
-                locale="da"
-                theme="light"
-                previewPosition="none"
-                skinTonePosition="search"
-                searchPosition="sticky"
-                navPosition="top"
-                perLine={9}
-                emojiSize={22}
-                emojiButtonSize={32}
-                maxFrequentRows={2}
-              />
-            </Suspense>
+            <EmojiMartPicker onEmojiSelect={handleFullEmojiSelect} />
           )}
         </Popover.Dropdown>
       </Popover>
@@ -2302,7 +2277,7 @@ const MessageBubble = memo(function MessageBubble({
   if (isEditing) {
     return (
       <Stack
-        id={`msg-${message.id}`}
+        id={messageElementId(message.id)}
         gap="xs"
         ref={(el) =>
           el?.scrollIntoView({ behavior: "smooth", block: "nearest" })
@@ -2350,7 +2325,7 @@ const MessageBubble = memo(function MessageBubble({
   return (
     <>
       <Group
-        id={`msg-${message.id}`}
+        id={messageElementId(message.id)}
         justify={isOwn ? "flex-end" : "flex-start"}
         gap="xs"
         align="flex-end"
@@ -2397,12 +2372,13 @@ const MessageBubble = memo(function MessageBubble({
                   onClick={() => handleAttachmentClick(attachment)}
                 >
                   <Image
-                    src={attachment.preview_url ?? attachment.file_url}
+                    src={attachment.thumbnail_url}
                     alt={attachment.name}
                     radius="md"
-                    maw={200}
-                    mah={200}
-                    fit="contain"
+                    w={200}
+                    h={200}
+                    fit="cover"
+                    loading="lazy"
                     style={{ display: "block" }}
                   />
                 </Box>
@@ -2628,6 +2604,10 @@ const MessageBubble = memo(function MessageBubble({
   )
 })
 
+const NEW_MESSAGE_DRAFT = "msg-new"
+
+const NEW_MESSAGE_RECIPIENTS_DRAFT = "msg-new-recipients"
+
 interface NewConversationAreaProps {
   onBack?: () => void
 
@@ -2651,7 +2631,25 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
 
   const searchInputRef = useRef<HTMLInputElement>(null)
 
+  const recipientsRestoredRef = useRef(false)
+
   // Fetch users for search
+
+  const { data: conversations } = useQuery({
+    queryKey: ["conversations"],
+
+    queryFn: messagingApi.getConversations,
+  })
+
+  // One recipient you already write with: the message goes into that
+  // conversation (the server reuses it), so it isn't a new one.
+  const existingConversation =
+    selectedUsers.length === 1 &&
+    conversations?.some(
+      (c) =>
+        c.other_participants?.length === 1 &&
+        c.other_participants[0].id === selectedUsers[0].id,
+    )
 
   const { data: users } = useQuery({
     queryKey: ["users"],
@@ -2667,11 +2665,8 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
     mutationFn: messagingApi.createConversation,
 
     onSuccess: (data) => {
-      // Seed the conversation cache with the full response so messages are
-
-      // visible immediately when navigating to the conversation, without
-
-      // waiting for a separate fetch or WebSocket event.
+      // Seed the conversation cache so the header shows without waiting for a
+      // fetch; the messages load through useConversationMessages.
 
       queryClient.setQueryData<ConversationDetail>(
         ["conversation", data.id],
@@ -2681,6 +2676,10 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
 
       queryClient.invalidateQueries({ queryKey: ["conversations"] })
 
+      clearDraft(NEW_MESSAGE_DRAFT)
+
+      clearDraft(NEW_MESSAGE_RECIPIENTS_DRAFT)
+
       onSuccess(data.id)
     },
 
@@ -2688,6 +2687,41 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
       showErrorNotification(error, "Kunne ikke starte samtale")
     },
   })
+
+  // Bring back the recipients of an unsent message once the user list is here.
+  useEffect(() => {
+    if (!users || recipientsRestoredRef.current) return
+
+    recipientsRestoredRef.current = true
+
+    loadDraft(NEW_MESSAGE_RECIPIENTS_DRAFT)
+      .then((saved) => {
+        if (!saved) return
+
+        const ids: unknown = JSON.parse(saved)
+
+        if (!Array.isArray(ids)) return
+
+        const restored = ids.flatMap((id) => users.filter((u) => u.id === id))
+
+        setSelectedUsers((current) => (current.length > 0 ? current : restored))
+      })
+      .catch(() => clearDraft(NEW_MESSAGE_RECIPIENTS_DRAFT))
+  }, [users])
+
+  useEffect(() => {
+    if (!recipientsRestoredRef.current) return
+
+    if (selectedUsers.length > 0) {
+      void saveDraft(
+        NEW_MESSAGE_RECIPIENTS_DRAFT,
+
+        JSON.stringify(selectedUsers.map((u) => u.id)),
+      )
+    } else {
+      clearDraft(NEW_MESSAGE_RECIPIENTS_DRAFT)
+    }
+  }, [selectedUsers])
 
   const searchTerm = search.trim().toLowerCase()
 
@@ -2752,7 +2786,12 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
       >
         <Group gap="sm" mb="xs">
           {onBack && (
-            <ActionIcon variant="subtle" onClick={onBack} size="lg">
+            <ActionIcon
+              variant="subtle"
+              onClick={onBack}
+              size="lg"
+              aria-label="Tilbage"
+            >
               <IconArrowLeft size={20} />
             </ActionIcon>
           )}
@@ -2912,11 +2951,15 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
               </Avatar.Group>
               <Text fw={500}>
                 {selectedUsers.length === 1
-                  ? `Ny samtale med ${selectedUsers[0].first_name}`
+                  ? `${
+                      existingConversation ? "Samtale" : "Ny samtale"
+                    } med ${selectedUsers[0].first_name}`
                   : `Gruppesamtale med ${selectedUsers.length} personer`}
               </Text>
               <Text size="sm" c="dimmed">
-                Skriv din første besked nedenfor
+                {existingConversation
+                  ? "Beskeden kommer i jeres samtale"
+                  : "Skriv din første besked nedenfor"}
               </Text>
             </Stack>
           </Center>
@@ -2936,6 +2979,8 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
           disabled={selectedUsers.length === 0 || createMutation.isPending}
           attachments={attachments}
           onAttachmentsChange={setAttachments}
+          draftKey={NEW_MESSAGE_DRAFT}
+          onClearDraft={() => setSelectedUsers([])}
         />
       </Box>
     </>

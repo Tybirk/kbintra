@@ -186,6 +186,7 @@ function activeLoan(overrides: Partial<CarLoan> = {}): CarLoan {
     owner_terms_version: "2026-08-01",
     car: 1,
     car_display_name: "Skoda Octavia",
+    car_license_plate: "AB12345",
     car_house_name: "Kløverbakkevej 7",
     car_practical_note: "Nøglen hænger i skabet",
     rate_per_km: "4.00",
@@ -457,6 +458,18 @@ describe("CarSharingPage", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Nøglen hænger i skabet")).toBeInTheDocument()
+    })
+  })
+
+  it("shows the plate of the lent car, so the borrower can find it", async () => {
+    mockGetLoans.mockResolvedValue([activeLoan()])
+
+    render(<CarSharingPage />)
+
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    await waitFor(() => {
+      expect(screen.getByText("AB 12 345")).toBeInTheDocument()
     })
   })
 

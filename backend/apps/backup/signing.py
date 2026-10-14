@@ -20,7 +20,7 @@ import hmac
 import posixpath
 import time
 from typing import overload
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 from django.conf import settings
 
@@ -28,6 +28,13 @@ from django.conf import settings
 # the hour (the browser/cache can reuse it instead of re-fetching every render);
 # it changes at most once per hour and stays valid for ~TTL_HOURS.
 TTL_HOURS = 2
+
+# Validity window for URLs baked into an outgoing email. An email is read on the
+# recipient's schedule, not ours, and the `<img>` can't re-request a fresh token
+# the way the SPA can — the 2-hour default leaves a broken image in the inbox by
+# bedtime. A day covers "read your mail today" without widening the window where
+# a forwarded URL works for an outsider more than it has to.
+EMAIL_TTL_HOURS = 24
 
 
 def _signing_key() -> bytes:
@@ -50,7 +57,9 @@ def _media_relative_path(url: str) -> str:
     signature that could never verify, so every æ/ø/å file fell back to the
     session cookie — exactly what signed URLs exist to avoid.
     """
-    path = unquote(url.split("?", 1)[0]).lstrip("/")
+    # The path only: an absolute URL (the leftovers photo was stored as one)
+    # otherwise signed "https:/host/media/..." and could never verify.
+    path = unquote(urlsplit(url).path).lstrip("/")
     media_prefix = settings.MEDIA_URL.lstrip("/")
     if media_prefix and path.startswith(media_prefix):
         path = path[len(media_prefix) :]
@@ -63,30 +72,32 @@ def _sign(path: str, exp: int) -> str:
     return base64.urlsafe_b64encode(digest).decode().rstrip("=")
 
 
-def _current_expiry() -> int:
-    """Unix timestamp TTL_HOURS hours after the start of the current hour.
+def _current_expiry(ttl_hours: int = TTL_HOURS) -> int:
+    """Unix timestamp ``ttl_hours`` hours after the start of the current hour.
 
     Same for every call within a wall-clock hour → cache-stable URLs.
     """
     now = int(time.time())
-    return ((now // 3600) + TTL_HOURS) * 3600
+    return ((now // 3600) + ttl_hours) * 3600
 
 
 @overload
-def signed_media_url(url: str) -> str: ...
+def signed_media_url(url: str, ttl_hours: int = ...) -> str: ...
 @overload
-def signed_media_url(url: None) -> None: ...
+def signed_media_url(url: None, ttl_hours: int = ...) -> None: ...
 
 
-def signed_media_url(url: str | None) -> str | None:
+def signed_media_url(url: str | None, ttl_hours: int = TTL_HOURS) -> str | None:
     """Append a short-lived ``?exp=&sig=`` token to a ``/media/...`` URL.
 
-    Returns the input unchanged for falsy values (no avatar/attachment).
+    Returns the input unchanged for falsy values (no avatar/attachment). Pass
+    ``ttl_hours=EMAIL_TTL_HOURS`` for URLs that end up in an email, where the
+    reader — not the app — decides when the request is made.
     """
     if not url:
         return url
     rel = _media_relative_path(url)
-    exp = _current_expiry()
+    exp = _current_expiry(ttl_hours)
     sig = _sign(rel, exp)
     sep = "&" if "?" in url else "?"
     return f"{url}{sep}exp={exp}&sig={sig}"

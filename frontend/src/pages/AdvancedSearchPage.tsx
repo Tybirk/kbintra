@@ -39,6 +39,7 @@ import {
   IconMessage,
   IconMessages,
   IconSearch,
+  IconTool,
   IconUser,
   IconX,
 } from "@tabler/icons-react"
@@ -66,6 +67,7 @@ const TYPE_OPTIONS: TypeOption[] = [
   { value: "post", label: "Indlæg" },
   { value: "announcement", label: "Opslag" },
   { value: "event", label: "Begivenheder" },
+  { value: "report", label: "Indrapporteringer" },
   { value: "file", label: "Filer" },
   { value: "folder", label: "Mapper" },
   { value: "subgroup", label: "Forummer" },
@@ -85,6 +87,7 @@ const TYPE_LABELS: Record<SearchResultType, string> = {
   car: "Biler",
   file: "Filer",
   folder: "Mapper",
+  report: "Indrapporteringer",
 }
 
 const TYPE_ICONS: Record<Exclude<SearchResultType, "file" | "folder">, typeof IconSearch> =
@@ -97,6 +100,7 @@ const TYPE_ICONS: Record<Exclude<SearchResultType, "file" | "folder">, typeof Ic
     event: IconCalendar,
     house: IconHome,
     car: IconCar,
+    report: IconTool,
   }
 
 // Backend plural keys -> singular type
@@ -111,6 +115,7 @@ const RESULT_KEY_TO_TYPE: Record<string, SearchResultType> = {
   cars: "car",
   files: "file",
   folders: "folder",
+  reports: "report",
 }
 
 interface FuzzinessOption {
@@ -312,7 +317,9 @@ export default function AdvancedSearchPage() {
                   </ActionIcon>
                 ) : null
               }
-              autoFocus
+              // Only for a fresh search: focusing on the way back to results
+              // scrolled the page to the top.
+              autoFocus={!params.get("q")}
             />
 
             <div>

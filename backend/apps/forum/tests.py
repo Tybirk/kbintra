@@ -3,6 +3,8 @@ Tests for the Forum app.
 """
 
 import json
+import uuid
+from unittest.mock import patch
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -14,6 +16,7 @@ from apps.forum.models import (
     PollOption,
     PollVote,
     Post,
+    PostAttachment,
     Subgroup,
     SubgroupSubscription,
     Thread,
@@ -289,6 +292,23 @@ class TestSubgroupViews:
         assert response.status_code == 200
         assert len(response.data) >= 1
 
+    def test_list_subgroups_in_model_order(self, authenticated_client):
+        """Fælles first, then the udvalg, then the rest — each by name."""
+        for name, flags in [
+            ("Badminton", {}),
+            ("Madudvalget", {"group_type": Subgroup.GroupType.UDVALG}),
+            ("Årlig tur", {}),
+            ("Fælles", {"is_main": True}),
+            ("Bestyrelsen", {"group_type": Subgroup.GroupType.BESTYRELSE}),
+        ]:
+            Subgroup.objects.create(name=name, **flags)
+
+        response = authenticated_client.get("/api/forum/subgroups/")
+        created = {"Fælles", "Bestyrelsen", "Madudvalget", "Badminton", "Årlig tur"}
+        # Migration 0057 seeds Generalforsamlingen and Fællesmødet; leave them out.
+        names = [sg["name"] for sg in get_results(response.data) if sg["name"] in created]
+        assert names == ["Fælles", "Bestyrelsen", "Madudvalget", "Badminton", "Årlig tur"]
+
     def test_list_subgroups_unauthenticated(self, api_client, subgroup):
         """Test that unauthenticated users cannot list subgroups."""
         response = api_client.get("/api/forum/subgroups/")
@@ -299,6 +319,34 @@ class TestSubgroupViews:
         response = authenticated_client.get(f"/api/forum/subgroups/{subgroup.slug}/")
         assert response.status_code == 200
         assert response.data["name"] == "General Discussion"
+
+    def _queries_to_save_description(self, client, user, name, threads):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        group = Subgroup.objects.create(name=name)
+        for i in range(threads):
+            thread = Thread.objects.create(subgroup=group, title=f"Tråd {i}", author=user)
+            for _ in range(2):
+                Post.objects.create(thread=thread, author=user, content="<p>Indlæg</p>")
+
+        with CaptureQueriesContext(connection) as queries:
+            # The payload "Rediger gruppe" sends: all three fields, name unchanged.
+            response = client.patch(
+                f"/api/forum/subgroups/{group.slug}/update/",
+                {"name": name, "description": "<p>Ny beskrivelse</p>", "allows_members": False},
+                format="json",
+            )
+        assert response.status_code == 200
+        return len(queries)
+
+    def test_saving_a_description_costs_the_same_in_a_big_group(self, admin_client, user):
+        """Every save used to re-index each thread, post, file and folder in the group
+        one row at a time: 7.3 s for Driftsudvalget and 68.7 s for Fælles, well past
+        the client's 30 s timeout, so "Gem" spun while the save had in fact landed."""
+        small = self._queries_to_save_description(admin_client, user, "Lille", threads=1)
+        big = self._queries_to_save_description(admin_client, user, "Stor", threads=5)
+        assert big == small
 
 
 class TestSubscriptionViews:
@@ -357,6 +405,53 @@ class TestThreadViews:
         # Check that initial post was created
         thread = Thread.objects.get(title="New Thread")
         assert thread.posts.count() == 1
+
+    def test_retry_with_the_same_client_token_returns_the_saved_thread(
+        self, authenticated_client, subgroup
+    ):
+        """A phone that timed out and retries must not create a second thread (24237)."""
+        token = str(uuid.uuid4())
+        url = f"/api/forum/subgroups/{subgroup.slug}/threads/"
+
+        def post():
+            files = [SimpleUploadedFile(f"{n}.jpg", b"x" * 10) for n in range(3)]
+            data = {"title": "Hej", "content": "Billeder", "attachments": files}
+            return authenticated_client.post(
+                url, {**data, "client_token": token}, format="multipart"
+            )
+
+        with patch("apps.notifications.tasks.notify_new_thread_task") as notify:
+            first = post()
+            second = post()
+
+        assert first.status_code == 201
+        assert second.status_code == 200
+        assert second.data["id"] == first.data["id"]
+        assert Thread.objects.filter(subgroup=subgroup).count() == 1
+        assert PostAttachment.objects.count() == 3
+        assert notify.call_count == 1
+
+    def test_a_new_client_token_creates_a_new_thread(self, authenticated_client, subgroup):
+        url = f"/api/forum/subgroups/{subgroup.slug}/threads/"
+        for _ in range(2):
+            data = {"title": "Hej", "content": "x", "client_token": str(uuid.uuid4())}
+            assert authenticated_client.post(url, data).status_code == 201
+
+        assert Thread.objects.filter(subgroup=subgroup).count() == 2
+
+    def test_another_users_client_token_does_not_return_their_thread(
+        self, api_client, user, second_user, subgroup
+    ):
+        token = str(uuid.uuid4())
+        url = f"/api/forum/subgroups/{subgroup.slug}/threads/"
+        api_client.force_authenticate(user=user)
+        api_client.post(url, {"title": "Mit", "content": "x", "client_token": token})
+
+        api_client.force_authenticate(user=second_user)
+        response = api_client.post(url, {"title": "Dit", "content": "y", "client_token": token})
+
+        assert response.status_code == 400
+        assert "id" not in response.data
 
     def test_get_thread_detail(self, authenticated_client, thread, post):
         """Test getting thread detail with posts."""
@@ -511,6 +606,41 @@ class TestPostViews:
         )
         assert response.status_code == 201
         assert Post.objects.filter(content="New post content").exists()
+
+    def test_retry_with_the_same_client_token_returns_the_saved_post(
+        self, authenticated_client, thread
+    ):
+        token = str(uuid.uuid4())
+        url = f"/api/forum/threads/{thread.id}/posts/"
+
+        def post():
+            files = [SimpleUploadedFile(f"{n}.jpg", b"x" * 10) for n in range(2)]
+            data = {"content": "Svar", "attachments": files, "client_token": token}
+            return authenticated_client.post(url, data, format="multipart")
+
+        with patch("apps.notifications.tasks.notify_thread_reply_task") as notify:
+            first = post()
+            second = post()
+
+        assert (first.status_code, second.status_code) == (201, 200)
+        assert Post.objects.filter(thread=thread, content="Svar").count() == 1
+        assert PostAttachment.objects.count() == 2
+        assert notify.call_count == 1
+
+    def test_editing_a_post_keeps_its_client_token(self, authenticated_client, thread):
+        token = uuid.uuid4()
+        url = f"/api/forum/threads/{thread.id}/posts/"
+        authenticated_client.post(url, {"content": "Svar", "client_token": str(token)})
+        post = Post.objects.get(client_token=token)
+
+        response = authenticated_client.patch(
+            f"/api/forum/posts/{post.id}/",
+            {"content": "Rettet", "client_token": str(uuid.uuid4())},
+        )
+
+        assert response.status_code == 200
+        post.refresh_from_db()
+        assert (post.content, post.client_token) == ("Rettet", token)
 
     def test_update_post_owner(self, authenticated_client, post):
         """Test that post owner can update post."""
@@ -3311,3 +3441,62 @@ class TestSubgroupCreateGroupType:
         assert organ_node is not None
         child_slugs = {child["slug"] for child in organ_node["children"]}
         assert "groenne-fingre" in child_slugs
+
+
+class TestRepairLegacyMentions:
+    """Migration 0052: legacy mention links carry the previous platform's user ids."""
+
+    def _migration(self):
+        from importlib import import_module
+
+        return import_module("apps.forum.migrations.0052_repair_legacy_mentions")
+
+    def _mention(self, uid, label):
+        return (
+            f'<a href="/profil/{uid}" class="mention" data-type="mention" '
+            f'data-id="{uid}" data-label="{label}">@{label}</a>'
+        )
+
+    def test_points_each_mention_at_the_person_it_names(self):
+        m = self._migration()
+        users = [
+            (1, "Annette", "Thejsen"),
+            (88, "Peter Emil", "Tybirk"),
+            (107, "Peter", "Vogel"),
+            (111, "Carl MM", "Kobel"),
+            (31, "Esben Lykke", "Olsen"),
+            (67, "Peter", "Hansen"),
+        ]
+        resolve = m.resolver(users)
+        html = (
+            f"<p>{self._mention(107, 'Peter Emil Tybirk')} og "
+            f"{self._mention(1, 'Carl M. Kobel')} og {self._mention(55, 'Esben ')}</p>"
+        )
+
+        repaired = m.repair(html, resolve)
+
+        assert 'href="/profil/88"' in repaired and 'data-id="88"' in repaired
+        assert 'href="/profil/111"' in repaired
+        assert 'href="/profil/31"' in repaired
+        assert "/profil/107" not in repaired and '/profil/1"' not in repaired
+
+    def test_leaves_a_correct_mention_alone_and_unwraps_an_ambiguous_one(self):
+        m = self._migration()
+        resolve = m.resolver([(107, "Peter", "Vogel"), (67, "Peter", "Hansen")])
+        correct = self._mention(107, "Peter Vogel")
+
+        assert m.repair(correct, resolve) == correct
+        assert m.repair(self._mention(3, "Peter"), resolve) == "@Peter"
+
+    def test_the_older_markup_goes_by_the_name_shown(self):
+        m = self._migration()
+        resolve = m.resolver([(1, "Annette", "Thejsen"), (111, "Carl MM", "Kobel")])
+        old = '<a class="mention" href="/profil/1">@Carl M. Kobel</a>'
+
+        assert m.repair(old, resolve) == '<a class="mention" href="/profil/111">@Carl M. Kobel</a>'
+
+    def test_a_mention_with_no_name_at_all_is_left_as_it_is(self):
+        m = self._migration()
+        tag = '<a href="/profil/5" class="mention" data-type="mention" data-id="5"></a>'
+
+        assert m.repair(tag, m.resolver([(9, "Anders", "And")])) == tag

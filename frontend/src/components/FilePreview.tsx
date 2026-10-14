@@ -34,6 +34,8 @@ import type { ForumFile } from "../types"
 
 import { unsignedMediaUrl } from "../utils/mediaUrl"
 
+import { sanitizeHtml } from "../utils/sanitizeHtml"
+
 import { ErrorBoundary } from "./ErrorBoundary"
 
 // pdf.js is heavy — only load it when a PDF is actually opened.
@@ -242,7 +244,8 @@ export function useFileActions(file: PreviewableFile | null, enabled: boolean) {
   // whether the browser accepts the type — and sharing a photo is precisely what
   // Chrome/Android does allow. Without a blob, canShare is permanently false and
   // the Del button never appears. The fetch hits the same URL the <img> already
-  // loaded, so it comes from the HTTP cache.
+  // loaded — the JPEG preview for a HEIC — so it comes from the HTTP cache, and
+  // Del/Gem hand over the picture on screen, not a raw HEIC few can open.
   const needsBlob =
     fileType === "pdf" ||
     fileType === "word" ||
@@ -256,9 +259,18 @@ export function useFileActions(file: PreviewableFile | null, enabled: boolean) {
 
   const [blobError, setBlobError] = useState(false)
 
-  const fileUrl = file?.file_url ?? null
+  const shown =
+    fileType === "image" &&
+    file?.preview_url &&
+    file.preview_url !== file.file_url
+      ? file.preview_url
+      : null
 
-  const filename = file?.name ?? ""
+  const fileUrl = shown ?? file?.file_url ?? null
+
+  const filename = shown
+    ? (file?.name ?? "").replace(/\.[^.]+$/, "") + ".jpg"
+    : (file?.name ?? "")
 
   // Fetch document-like files to an authenticated blob (used for inline PDF
   // render, "Åbn" via the share sheet, and "Gem"). Revoked on close / change.
@@ -604,7 +616,8 @@ export function FilePreviewModal({
 
         return (
           <Stack gap="md">
-            <ScrollArea h={isMobile ? "78vh" : "70vh"}>
+            {/* PdfViewer scrolls and zooms itself; it only needs a height. */}
+            <Box h={isMobile ? "78vh" : "70vh"}>
               {/* pdf.js (pdfjs-dist 5.x) calls Promise.withResolvers, which
                   iOS/Safari < 17.4 lacks, so inline rendering throws there.
                   Catch it and fall back to the Åbn/Gem buttons below rather
@@ -628,7 +641,7 @@ export function FilePreviewModal({
               >
                 <PdfPreview blobUrl={blobUrl} />
               </ErrorBoundary>
-            </ScrollArea>
+            </Box>
             <FileActionButtons actions={actions} />
           </Stack>
         )
@@ -688,7 +701,9 @@ export function FilePreviewModal({
 
                     overflowWrap: "break-word",
                   }}
-                  dangerouslySetInnerHTML={{ __html: file.preview_html }}
+                  dangerouslySetInnerHTML={{
+                    __html: sanitizeHtml(file.preview_html),
+                  }}
                 />
               </ScrollArea>
               <FileActionButtons actions={actions} />

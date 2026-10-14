@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
 
-import { saveDraft, loadDraft, clearDraft } from "./draftStorage"
+import { saveDraft, loadDraft, clearDraft, claimDrafts } from "./draftStorage"
 
 describe("draftStorage", () => {
   beforeEach(() => {
@@ -110,6 +110,46 @@ describe("draftStorage", () => {
 
     it("is a no-op when key does not exist", () => {
       expect(() => clearDraft("does-not-exist")).not.toThrow()
+    })
+  })
+
+  describe("claimDrafts", () => {
+    it("keeps a user's drafts when they log in again", async () => {
+      claimDrafts(7)
+
+      await saveDraft("msg-new", "<p>Hemmeligt</p>")
+
+      claimDrafts(7)
+
+      expect(await loadDraft("msg-new")).toBe("<p>Hemmeligt</p>")
+    })
+
+    it("removes the previous user's drafts and key when someone else logs in", async () => {
+      claimDrafts(7)
+
+      await saveDraft("msg-new", "<p>Hemmeligt</p>")
+
+      await saveDraft("msg-new-recipients", "[14, 22]")
+
+      const key = localStorage.getItem("_kbi_ck")
+
+      claimDrafts(14)
+
+      expect(await loadDraft("msg-new")).toBeNull()
+
+      expect(await loadDraft("msg-new-recipients")).toBeNull()
+
+      await saveDraft("msg-new", "<p>Ny</p>")
+
+      expect(localStorage.getItem("_kbi_ck")).not.toBe(key)
+    })
+
+    it("leaves drafts from before owners were recorded to the first login", async () => {
+      await saveDraft("msg-8", "<p>Gammel kladde</p>")
+
+      claimDrafts(7)
+
+      expect(await loadDraft("msg-8")).toBe("<p>Gammel kladde</p>")
     })
   })
 })

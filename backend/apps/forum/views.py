@@ -3,10 +3,23 @@ Views for Forum models.
 """
 
 import io
+import uuid
 import zipfile
 from typing import Any
 
-from django.db.models import Count, F, Max, OuterRef, Prefetch, Q, Subquery
+from django.db.models import (
+    Case,
+    Count,
+    F,
+    IntegerField,
+    Max,
+    OuterRef,
+    Prefetch,
+    Q,
+    Subquery,
+    Value,
+    When,
+)
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -118,6 +131,24 @@ def _can_edit_organ(user: Any, subgroup: Subgroup) -> bool:
     return bool(user and user.is_authenticated and (user.is_staff or _is_member(user, subgroup)))
 
 
+def _already_created(model: type[Thread] | type[Post], request: Request) -> Any:
+    """What this author already created with the request's client token, if anything.
+
+    A phone that gives up waiting on a slow upload says "Prøv igen", but the server
+    may have finished saving by then. The retry carries the form's token, so it gets
+    the saved thread or post back instead of creating a second one and notifying
+    everyone again.
+    """
+    token = request.data.get("client_token")
+    if not token:
+        return None
+    try:
+        token = uuid.UUID(str(token))
+    except ValueError:
+        return None  # the serializer rejects it with a 400
+    return model.objects.filter(author=request.user, client_token=token).first()
+
+
 class IsMemberOrAdmin(permissions.BasePermission):
     """Permission for users who are either staff or members of a given subgroup.
 
@@ -176,7 +207,18 @@ def _subgroup_list_queryset() -> Any:
             ),
         )
         .annotate(subscriber_count=Count("subscriptions", distinct=True))
-        .all()
+        # The annotate's GROUP BY makes Django drop Meta.ordering, which left the
+        # list in no order at all — visible in every group picker. Fælles first,
+        # then the organer (bestyrelse, udvalg, ...), then the rest — each by name.
+        .order_by(
+            "-is_main",
+            Case(
+                When(group_type__in=Subgroup.ORGAN_TYPES, then=Value(0)),
+                default=Value(1),
+                output_field=IntegerField(),
+            ),
+            "name",
+        )
     )
 
 
@@ -761,6 +803,12 @@ class ThreadListCreateView(generics.ListCreateAPIView):
             return ThreadCreateSerializer
         return ThreadSerializer
 
+    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        existing = _already_created(Thread, request)
+        if existing is not None:
+            return Response(self.get_serializer(existing).data, status=status.HTTP_200_OK)
+        return super().create(request, *args, **kwargs)
+
     def get_queryset(self) -> Any:
         self._subgroup = get_object_or_404(Subgroup, slug=self.kwargs["slug"])
         qs = (
@@ -1105,6 +1153,9 @@ class PostListCreateView(generics.ListCreateAPIView):
             from django.http import Http404
 
             raise Http404
+        existing = _already_created(Post, request)
+        if existing is not None:
+            return Response(self.get_serializer(existing).data, status=status.HTTP_200_OK)
         return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer: Any) -> None:

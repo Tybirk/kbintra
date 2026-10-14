@@ -4,6 +4,7 @@ FTS5 full-text search services.
 
 import json
 import re
+from bisect import bisect_left
 from datetime import datetime
 from html import unescape
 
@@ -164,6 +165,39 @@ def build_fts_query(query: str, prefix: bool = True) -> str:
     return " ".join(parts)
 
 
+def matching_ids(obj_type: str, query: str, *, prefix: bool = True) -> list[int]:
+    """Ids of one type's objects matching *query*, with Danish folding applied.
+
+    List views filter on this rather than on ``__icontains``. SQLite's LIKE
+    folds case for ASCII only, so a queue search for "ødelagt" missed every case
+    written "Ødelagt" — while the same word found them through the global search,
+    because this index folds æ/ø/å at write time and ``build_fts_query`` folds
+    them again at read time. Going through the index means that folding is
+    stated once instead of once per list view.
+
+    It also means *what is searchable* about a model is declared once, in its
+    ``_*_search_fields`` in ``signals.py``. Reports used to declare it twice —
+    the queue matched a legacy reporter's name that the index did not hold, and
+    the index held an excerpt the queue did not match — which is how the two
+    surfaces came to disagree about the same case.
+
+    Ordering is deliberately not handled here: these ids go into a queryset that
+    has its own ordering and, more importantly, its own visibility filter, so
+    nothing this returns can widen what a viewer is allowed to see.
+    """
+    fts_query = build_fts_query(query, prefix=prefix)
+    if not fts_query:
+        return []
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT object_id FROM search_index WHERE search_index MATCH %s AND type = %s",
+            [fts_query, obj_type],
+        )
+        # object_id is an UNINDEXED FTS5 column, so it comes back as text.
+        return [int(row[0]) for row in cursor.fetchall()]
+
+
 def index_object(
     obj_type: str,
     object_id: int,
@@ -173,24 +207,31 @@ def index_object(
     subtitle: str = "",
     extra: str = "",
     created_at: str = "",
+    replace: bool = True,
 ) -> None:
     """Index (or re-index) an object in the FTS5 search_index table.
 
+    ``replace=False`` skips the DELETE of an earlier row, for a table known to be
+    empty: FTS5 can only find a row by an UNINDEXED column by scanning, so a
+    rebuild that deleted before every insert did O(n²) work (85 s on the prod copy).
+
     Title and body are stored Danish-folded (æ→ae, ø→oe, å→aa) so MATCH queries
-    work regardless of which spelling the user types. Subtitle is left unfolded
-    so the displayed text keeps its original Danish spelling.
+    work regardless of which spelling the user types, and again as written, in
+    UNINDEXED columns, for display (see ``_parse_fts_row``). Subtitle is left
+    unfolded so the displayed text keeps its original Danish spelling.
     """
     folded_title = fold_danish(title)
     folded_body = fold_danish(body)
     with transaction.atomic(), connection.cursor() as cursor:
-        cursor.execute(
-            "DELETE FROM search_index WHERE type = %s AND object_id = %s",
-            [obj_type, str(object_id)],
-        )
+        if replace:
+            cursor.execute(
+                "DELETE FROM search_index WHERE type = %s AND object_id = %s",
+                [obj_type, str(object_id)],
+            )
         cursor.execute(
             "INSERT INTO search_index "
-            "(title, body, type, object_id, url, subtitle, extra, created_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            "(title, body, type, object_id, url, subtitle, extra, created_at, title_raw, body_raw) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             [
                 folded_title,
                 folded_body,
@@ -200,6 +241,8 @@ def index_object(
                 subtitle,
                 extra,
                 created_at,
+                title,
+                body,
             ],
         )
 
@@ -213,18 +256,86 @@ def remove_object(obj_type: str, object_id: int) -> None:
         )
 
 
+def set_subtitle(obj_type: str, object_ids: list[int], subtitle: str) -> None:
+    """Rewrite just the `subtitle` of existing index rows, in one statement.
+
+    `subtitle` is UNINDEXED, so this needs no DELETE+INSERT per row: 0.1 s for
+    the 3491 threads in Fælles, against 16.7 s row by row. Rows that already say
+    `subtitle` are left alone, so a save that did not rename anything writes
+    nothing. Missing rows are not created; `rebuild_search_index` does that.
+    """
+    if not object_ids:
+        return
+    placeholders = ",".join(["%s"] * len(object_ids))
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE search_index SET subtitle = %s "
+            f"WHERE type = %s AND subtitle != %s AND object_id IN ({placeholders})",
+            [subtitle, obj_type, subtitle, *(str(i) for i in object_ids)],
+        )
+
+
+def retitle_thread_posts(thread_id: int, title: str, thread_url: str) -> None:
+    """Give a thread's post rows its current title and URL, in one statement.
+
+    Each post keeps its own anchor (``#post-<id>``): re-indexing them from the
+    thread used to write the bare thread URL, so 2,320 post results opened at
+    the top of their thread. Rows already up to date are left alone, so a save
+    that renamed and moved nothing writes nothing.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE search_index SET title = %s, title_raw = %s, url = %s || '#post-' || object_id "
+            "WHERE type = 'post' AND extra = %s "
+            "AND (title_raw IS NOT %s OR url != %s || '#post-' || object_id)",
+            [
+                fold_danish(title),
+                title,
+                thread_url,
+                json.dumps({"thread_id": thread_id}),
+                title,
+                thread_url,
+            ],
+        )
+
+
+def unfold_snippet(snippet: str, original: str) -> str:
+    """The snippet FTS5 cut from the folded body, spelled as the original.
+
+    Folding is one character to one or two (æ→ae), so the folded span maps back
+    to an exact span of the original. snippet() marks its cuts with "…".
+    """
+    core = snippet.strip("…")
+    start = fold_danish(original).find(core) if core else -1
+    if start < 0:
+        return snippet
+    offsets = [0]
+    for char in original:
+        offsets.append(offsets[-1] + len(_DANISH_FOLD.get(ord(char), char)))
+    first = bisect_left(offsets, start)
+    last = bisect_left(offsets, start + len(core))
+    return snippet.replace(core, original[first:last], 1)
+
+
 # Content types where a dynamic snippet from body is more useful than the
 # stored subtitle (e.g. post content, announcement text).
-_SNIPPET_TYPES = {"post", "announcement", "event", "thread"}
+_SNIPPET_TYPES = {"post", "announcement", "event", "thread", "report"}
+
+
+# The columns every search query selects, in the order _parse_fts_row reads them.
+_RESULT_COLUMNS = "type, object_id, title, subtitle, url, extra, created_at, title_raw, body_raw"
 
 
 def _parse_fts_row(row: tuple) -> dict:
-    columns = ["type", "object_id", "title", "subtitle", "url", "extra", "created_at", "snippet"]
+    columns = [c.strip() for c in _RESULT_COLUMNS.split(",")] + ["snippet"]
     item = dict(zip(columns, row, strict=False))
     item["object_id"] = int(item["object_id"])
+    # Shown as written; the folded copies are only for matching.
+    item["title"] = item.pop("title_raw") or item["title"]
+    body_raw = item.pop("body_raw") or ""
     snippet = item.pop("snippet", "")
     if snippet and item["type"] in _SNIPPET_TYPES:
-        item["subtitle"] = snippet
+        item["subtitle"] = unfold_snippet(snippet, body_raw) if body_raw else snippet
     if item["extra"]:
         try:
             item["extra"] = json.loads(item["extra"])
@@ -267,12 +378,12 @@ def fts_search(query: str, limit: int = 10) -> list[dict]:
 
     with connection.cursor() as cursor:
         cursor.execute(
-            "SELECT type, object_id, title, subtitle, url, extra, created_at, "
+            "SELECT " + _RESULT_COLUMNS + ", "
             "  snippet(search_index, 1, '', '', '…', 15) "
             "FROM search_index WHERE search_index MATCH %s "
             "ORDER BY bm25(search_index, 10.0, 1.0) "
             "  + CASE WHEN created_at = '' THEN 0 "
-            "    WHEN type IN ('thread','post','announcement','event','file') "
+            "    WHEN type IN ('thread','post','announcement','event','file','report') "
             "    THEN 0.01 * (julianday('now') - julianday(created_at)) "
             "    ELSE 0.001 * (julianday('now') - julianday(created_at)) "
             "    END "
@@ -314,7 +425,7 @@ def fts_search_advanced(
         score_expr = (
             "bm25(search_index, 10.0, 1.0) "
             "+ CASE WHEN created_at = '' THEN 0 "
-            "  WHEN type IN ('thread','post','announcement','event','file') "
+            "  WHEN type IN ('thread','post','announcement','event','file','report') "
             "  THEN 0.01 * (julianday('now') - julianday(created_at)) "
             "  ELSE 0.001 * (julianday('now') - julianday(created_at)) "
             "  END"
@@ -331,7 +442,7 @@ def fts_search_advanced(
     with connection.cursor() as cursor:
         cursor.execute(
             "WITH ranked AS ("
-            "  SELECT type, object_id, title, subtitle, url, extra, created_at, "
+            "  SELECT " + _RESULT_COLUMNS + ", "
             "    snippet(search_index, 1, '', '', '…', 15) AS snip, "
             "    " + score_expr + " AS score "
             "  FROM search_index WHERE search_index MATCH %s" + type_filter_sql + " "
@@ -340,7 +451,7 @@ def fts_search_advanced(
             "  SELECT *, ROW_NUMBER() OVER (PARTITION BY type ORDER BY score) AS rn "
             "  FROM ranked"
             ") "
-            "SELECT type, object_id, title, subtitle, url, extra, created_at, snip "
+            "SELECT " + _RESULT_COLUMNS + ", snip "
             "FROM numbered WHERE rn <= %s ORDER BY type, rn",
             params,
         )
@@ -366,11 +477,11 @@ def fts_search_per_type(query: str, per_type_limit: int = 10) -> list[dict]:
     with connection.cursor() as cursor:
         cursor.execute(
             "WITH ranked AS ("
-            "  SELECT type, object_id, title, subtitle, url, extra, created_at, "
+            "  SELECT " + _RESULT_COLUMNS + ", "
             "    snippet(search_index, 1, '', '', '…', 15) AS snip, "
             "    bm25(search_index, 10.0, 1.0) "
             "      + CASE WHEN created_at = '' THEN 0 "
-            "        WHEN type IN ('thread','post','announcement','event','file') "
+            "        WHEN type IN ('thread','post','announcement','event','file','report') "
             "        THEN 0.01 * (julianday('now') - julianday(created_at)) "
             "        ELSE 0.001 * (julianday('now') - julianday(created_at)) "
             "        END AS score "
@@ -380,7 +491,7 @@ def fts_search_per_type(query: str, per_type_limit: int = 10) -> list[dict]:
             "  SELECT *, ROW_NUMBER() OVER (PARTITION BY type ORDER BY score) AS rn "
             "  FROM ranked"
             ") "
-            "SELECT type, object_id, title, subtitle, url, extra, created_at, snip "
+            "SELECT " + _RESULT_COLUMNS + ", snip "
             "FROM numbered WHERE rn <= %s ORDER BY type, rn",
             [fts_query, per_type_limit],
         )

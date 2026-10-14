@@ -1,0 +1,426 @@
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react"
+
+import type { RefObject } from "react"
+
+import { useLocation, useNavigationType } from "react-router-dom"
+
+import type { Message } from "../types"
+
+/**
+ * Scrolling for a chat, as one rule: the view holds on to an anchor, and only
+ * the reader moves it.
+ *
+ * - `"bottom"`: the reader is at the newest message; the view stays there while
+ *   content grows (new messages, images finishing loading).
+ * - a message and `"centre"`: opened from a link to it; the view keeps it
+ *   centred (a message taller than the view: its top) while the page settles,
+ *   loading older pages until it exists, and lets go on the reader's first
+ *   input. A link to one of the last messages — a push, even one that has had
+ *   replies since — leaves the view at the bottom, and becomes `"bottom"`; so
+ *   does a link to the newest message once another arrives, however tall.
+ * - a message and an offset: the reader has scrolled into the history; the
+ *   message at the top of the view stays exactly where it is, whatever changes
+ *   around it — an older page arriving, an edit, reaction or deletion above,
+ *   an image loading, a refetch — plus whatever the reader has scrolled since.
+ *
+ * Sending is the reader's act too: the page calls `followBottom()`. Every jump
+ * is instant — no animation to sit through in a long conversation.
+ *
+ * Back and forward return to where the reader was, not to the link they came
+ * in by: the anchor is remembered per history entry when the chat unmounts.
+ *
+ * Layout changes (an image finishing loading) are caught by a ResizeObserver,
+ * but a scroll event can arrive first, and must not read the grown content as
+ * the reader moving: the scroll handler compensates any change it sees before
+ * it records anything.
+ */
+
+/**
+ * A message and where in the view it is held: centred, or px below the top as
+ * it was when the viewport's scrollTop was `at`. Scroll events lag a frame, so
+ * the reader may have moved on by the time content changes; that movement is
+ * scrollTop − at, and it is kept.
+ */
+interface MessageAnchor {
+  id: string
+
+  offset: number | "centre"
+
+  at: number
+}
+
+type Anchor = "bottom" | MessageAnchor
+
+const MESSAGE_ID_PREFIX = "msg-"
+
+/** The element id a message is rendered with, and a link to it points at. */
+export const messageElementId = (id: number) => `${MESSAGE_ID_PREFIX}${id}`
+
+const NEAR_BOTTOM_PX = 40
+
+/** The reader's anchor when they left each history entry (location.key). */
+const leftAt = new Map<string, Anchor>()
+
+const LOAD_OLDER_WITHIN_PX = 300
+
+/**
+ * Take a link that has been dealt with out of the address bar, as the forum
+ * does. Left in, back to this entry made the browser jump to the fragment,
+ * which read as the reader scrolling there (−25,538 px) instead of returning
+ * to their place. replaceState keeps the router's entry and its key.
+ */
+function dropLink(elementId: string) {
+  if (window.location.hash !== `#${elementId}`) return
+
+  window.history.replaceState(
+    window.history.state,
+    "",
+    window.location.pathname + window.location.search,
+  )
+}
+
+interface ChatScrollOptions {
+  messages: Message[]
+
+  hasOlder: boolean
+
+  isLoadingOlder: boolean
+
+  /** Any fetch of the messages under way: the first, a refetch, an older page. */
+  isFetching: boolean
+
+  loadOlder: () => void
+
+  /** Element id of a message to open at, as made by `messageElementId`. */
+  targetId: string | null
+}
+
+export function useChatScroll(
+  viewportRef: RefObject<HTMLDivElement | null>,
+
+  contentRef: RefObject<HTMLDivElement | null>,
+
+  {
+    messages,
+    hasOlder,
+    isLoadingOlder,
+    isFetching,
+    loadOlder,
+    targetId,
+  }: ChatScrollOptions,
+) {
+  const location = useLocation()
+
+  const navigationType = useNavigationType()
+
+  // Coming back (POP) to an entry the reader left: their place, not the link.
+  // A fresh viewport starts at scrollTop 0, which re-bases `at`.
+  const restored = useRef(
+    navigationType === "POP" ? leftAt.get(location.key) : undefined,
+  )
+
+  const anchorRef = useRef<Anchor>(
+    restored.current && restored.current !== "bottom"
+      ? { ...restored.current, at: 0 }
+      : (restored.current ??
+          (targetId ? { id: targetId, offset: "centre", at: 0 } : "bottom")),
+  )
+
+  const skipTarget = useRef(restored.current !== undefined)
+
+  useEffect(() => {
+    const key = location.key
+
+    return () => {
+      leftAt.set(key, anchorRef.current)
+    }
+  }, [location.key])
+
+  /** scrollHeight when the anchor was last put back: a difference is a layout change. */
+  const heightRef = useRef(0)
+
+  const lastIdRef = useRef<number | undefined>(undefined)
+
+  const loadOlderRef = useRef<() => void>(() => {})
+
+  loadOlderRef.current = hasOlder && !isLoadingOlder ? loadOlder : () => {}
+
+  const holdAnchor = useCallback(() => {
+    const viewport = viewportRef.current
+
+    const anchor = anchorRef.current
+
+    if (!viewport) return
+
+    // Content that shrank below the view makes the browser clamp scrollTop to
+    // the new maximum: that is not the reader moving (seen on a remount, where
+    // the list is laid out ~65,000 px tall for a moment, then collapses).
+    const clamped =
+      viewport.scrollHeight < heightRef.current &&
+      viewport.scrollTop >= viewport.scrollHeight - viewport.clientHeight - 1
+
+    heightRef.current = viewport.scrollHeight
+
+    if (anchor === "bottom") {
+      viewport.scrollTop = viewport.scrollHeight
+
+      return
+    }
+
+    const el = document.getElementById(anchor.id)
+
+    if (!el) return
+
+    const readerMoved = clamped ? 0 : viewport.scrollTop - anchor.at
+
+    const wanted =
+      anchor.offset === "centre"
+        ? Math.max((viewport.clientHeight - el.offsetHeight) / 2, 8)
+        : anchor.offset - readerMoved
+
+    // Scroll the viewport only; scrollIntoView would also scroll the page around it.
+    viewport.scrollTop +=
+      el.getBoundingClientRect().top -
+      viewport.getBoundingClientRect().top -
+      wanted
+
+    if (anchor.offset !== "centre") {
+      anchorRef.current = {
+        id: anchor.id,
+        offset: wanted,
+        at: viewport.scrollTop,
+      }
+    } else if (
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <
+      NEAR_BOTTOM_PX
+    ) {
+      anchorRef.current = "bottom"
+    }
+  }, [viewportRef])
+
+  /** The message at the top of the view, and how far below the top it sits. */
+  const readerAnchor = useCallback((): MessageAnchor | null => {
+    const viewport = viewportRef.current
+
+    const content = contentRef.current
+
+    if (!viewport || !content) return null
+
+    const top = viewport.getBoundingClientRect().top
+
+    const rendered = content.querySelectorAll<HTMLElement>(
+      `[id^="${MESSAGE_ID_PREFIX}"]`,
+    )
+
+    // The first message whose bottom edge is below the top of the view.
+    let low = 0
+
+    let high = rendered.length - 1
+
+    let found: HTMLElement | null = null
+
+    while (low <= high) {
+      const mid = (low + high) >> 1
+
+      if (rendered[mid].getBoundingClientRect().bottom > top) {
+        found = rendered[mid]
+
+        high = mid - 1
+      } else {
+        low = mid + 1
+      }
+    }
+
+    return found
+      ? {
+          id: found.id,
+          offset: found.getBoundingClientRect().top - top,
+          at: viewport.scrollTop,
+        }
+      : null
+  }, [viewportRef, contentRef])
+
+  // A new link in the same conversation (e.g. a second notification), even
+  // to the message the last one pointed at: each is its own history entry.
+  useEffect(() => {
+    if (skipTarget.current) {
+      skipTarget.current = false
+
+      return
+    }
+
+    if (!targetId) return
+
+    anchorRef.current = { id: targetId, offset: "centre", at: 0 }
+
+    holdAnchor()
+  }, [targetId, location.key, holdAnchor])
+
+  // Messages changed: put the anchor back where it was, before the paint.
+  useLayoutEffect(() => {
+    const anchor = anchorRef.current
+
+    const previousLast = lastIdRef.current
+
+    lastIdRef.current = messages.at(-1)?.id
+
+    // A remembered place whose message is no longer loaded: the bottom, rather
+    // than wherever the viewport happens to start.
+    if (restored.current && anchor !== "bottom" && messages.length > 0) {
+      restored.current = undefined
+
+      if (!document.getElementById(anchor.id)) anchorRef.current = "bottom"
+    }
+
+    if (
+      previousLast !== undefined &&
+      lastIdRef.current !== previousLast &&
+      anchor !== "bottom" &&
+      anchor.offset === "centre" &&
+      anchor.id === messageElementId(previousLast)
+    ) {
+      anchorRef.current = "bottom"
+    }
+
+    holdAnchor()
+  }, [messages, holdAnchor])
+
+  // A linked message that isn't loaded. Older than the loaded history, it is
+  // further back. Otherwise it is not there to find, so the chat opens at the
+  // bottom, where it will appear if it is new. Nothing is decided while a
+  // fetch is under way: a refetch — the one on opening a chat left earlier —
+  // may be bringing it.
+  useEffect(() => {
+    const anchor = anchorRef.current
+
+    if (
+      anchor === "bottom" ||
+      anchor.offset !== "centre" ||
+      document.getElementById(anchor.id) ||
+      isFetching ||
+      messages.length === 0
+    ) {
+      return
+    }
+
+    if (
+      hasOlder &&
+      Number(anchor.id.slice(MESSAGE_ID_PREFIX.length)) < messages[0].id
+    ) {
+      loadOlder()
+    } else {
+      anchorRef.current = "bottom"
+
+      dropLink(anchor.id)
+
+      holdAnchor()
+    }
+  }, [
+    messages,
+    targetId,
+    location.key,
+    hasOlder,
+    isFetching,
+    loadOlder,
+    holdAnchor,
+  ])
+
+  /** The history entry whose link has been highlighted. */
+  const highlightedFor = useRef<string | null>(null)
+
+  // Highlight the linked message once it is on screen, once per link.
+  useEffect(() => {
+    if (!targetId) return
+
+    const el = document.getElementById(targetId)
+
+    if (!el || highlightedFor.current === location.key) return
+
+    highlightedFor.current = location.key
+
+    dropLink(targetId)
+
+    el.style.transition = "box-shadow 0.3s ease"
+
+    el.style.boxShadow = "0 0 0 3px var(--mantine-color-blue-4)"
+
+    setTimeout(() => {
+      el.style.boxShadow = ""
+    }, 2000)
+  }, [messages, targetId, location.key])
+
+  // Content growing (images loading, a reaction row appearing) or the viewport
+  // shrinking (the on-screen keyboard opening) keeps the anchor.
+  useEffect(() => {
+    const viewport = viewportRef.current
+
+    const content = contentRef.current
+
+    if (!viewport || !content) return
+
+    const observer = new ResizeObserver(holdAnchor)
+
+    observer.observe(content)
+
+    observer.observe(viewport)
+
+    return () => observer.disconnect()
+  }, [viewportRef, contentRef, holdAnchor])
+
+  // The reader moves the anchor. A link target only lets go on real input, since
+  // our own re-centring fires scroll events too.
+  useEffect(() => {
+    const viewport = viewportRef.current
+
+    if (!viewport) return
+
+    const isLinkTarget = (anchor: Anchor) =>
+      anchor !== "bottom" && anchor.offset === "centre"
+
+    const releaseTarget = () => {
+      if (isLinkTarget(anchorRef.current)) {
+        anchorRef.current = readerAnchor() ?? anchorRef.current
+      }
+    }
+
+    const onScroll = () => {
+      if (viewport.scrollHeight !== heightRef.current) holdAnchor()
+
+      if (isLinkTarget(anchorRef.current)) return
+
+      const fromBottom =
+        viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
+
+      anchorRef.current =
+        fromBottom < NEAR_BOTTOM_PX
+          ? "bottom"
+          : (readerAnchor() ?? anchorRef.current)
+
+      if (viewport.scrollTop < LOAD_OLDER_WITHIN_PX) loadOlderRef.current()
+    }
+
+    const inputs = ["wheel", "touchstart", "keydown", "pointerdown"] as const
+
+    inputs.forEach((type) =>
+      viewport.addEventListener(type, releaseTarget, { passive: true }),
+    )
+
+    viewport.addEventListener("scroll", onScroll, { passive: true })
+
+    return () => {
+      inputs.forEach((type) =>
+        viewport.removeEventListener(type, releaseTarget),
+      )
+
+      viewport.removeEventListener("scroll", onScroll)
+    }
+  }, [viewportRef, readerAnchor, holdAnchor])
+
+  const followBottom = useCallback(() => {
+    anchorRef.current = "bottom"
+
+    holdAnchor()
+  }, [holdAnchor])
+
+  return { followBottom }
+}

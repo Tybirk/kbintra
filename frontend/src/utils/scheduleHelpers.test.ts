@@ -4,7 +4,10 @@ import {
   eventToScheduleData,
   bookingToScheduleData,
   expandMultiDayEvents,
+  formatScheduleTimeRange,
   DA_SCHEDULE_LABELS,
+  forMobileMonthView,
+  danishDayHeading,
 } from "./scheduleHelpers"
 
 import type { Event, CalendarBooking } from "../types"
@@ -251,6 +254,39 @@ describe("expandMultiDayEvents", () => {
   })
 })
 
+describe("formatScheduleTimeRange", () => {
+  it("shows only clock times within one day", () => {
+    expect(
+      formatScheduleTimeRange("2026-08-21 19:00:00", "2026-08-21 22:00:00"),
+    ).toBe("19:00 – 22:00")
+  })
+
+  it("adds the weekday to both ends across days", () => {
+    // The report: a 24-hour stay read "16:00 – 16:00".
+    expect(
+      formatScheduleTimeRange("2026-08-20 16:00:00", "2026-08-21 16:00:00"),
+    ).toBe("to. 16:00 – fr. 16:00")
+  })
+
+  it("keeps a whole-day booking as Hele dagen", () => {
+    expect(
+      formatScheduleTimeRange("2026-08-21 00:00:00", "2026-08-22 00:00:00"),
+    ).toBe("Hele dagen")
+  })
+
+  it("names the first and last day of whole days in a row", () => {
+    expect(
+      formatScheduleTimeRange("2026-06-27 00:00:00", "2026-06-30 00:00:00"),
+    ).toBe("lø. – ma.")
+  })
+
+  it("keeps an evening that ends at midnight on its own day", () => {
+    expect(
+      formatScheduleTimeRange("2026-08-21 19:00:00", "2026-08-22 00:00:00"),
+    ).toBe("19:00 – 00:00")
+  })
+})
+
 describe("DA_SCHEDULE_LABELS", () => {
   it("has Danish labels for all expected keys", () => {
     expect(DA_SCHEDULE_LABELS.today).toBe("I dag")
@@ -266,5 +302,45 @@ describe("DA_SCHEDULE_LABELS", () => {
     expect(DA_SCHEDULE_LABELS.day).toBe("Dag")
 
     expect(DA_SCHEDULE_LABELS.year).toBe("År")
+  })
+})
+
+describe("forMobileMonthView", () => {
+  const stay = (start: string, end: string) => ({
+    id: 1,
+    title: "Gæsteværelse",
+    start,
+    end,
+  })
+
+  it("files a stay from the previous month from the 1st", () => {
+    const [filed] = forMobileMonthView(
+      [stay("2026-08-31 16:00:00", "2026-09-02 10:00:00")],
+      "2026-09-15",
+    )
+
+    expect(filed.start).toBe("2026-09-01 00:00:00")
+    expect(filed.end).toBe("2026-09-02 10:00:00")
+  })
+
+  it("keeps a booking ending at midnight off the day it ends", () => {
+    const [wholeDay] = forMobileMonthView(
+      [stay("2026-09-05 00:00:00", "2026-09-06 00:00:00")],
+      "2026-09-15",
+    )
+
+    expect(wholeDay.end).toBe("2026-09-05 23:59:59")
+  })
+
+  it("leaves an ordinary booking alone", () => {
+    const booking = stay("2026-09-03 16:00:00", "2026-09-04 10:00:00")
+
+    expect(forMobileMonthView([booking], "2026-09-15")).toEqual([booking])
+  })
+})
+
+describe("danishDayHeading", () => {
+  it("reads like Danish, capitalised only at the start", () => {
+    expect(danishDayHeading("2026-10-01")).toBe("Torsdag 1. oktober")
   })
 })

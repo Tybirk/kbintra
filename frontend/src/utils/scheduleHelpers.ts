@@ -173,6 +173,96 @@ export const DA_SCHEDULE_LABELS = {
 }
 
 /**
+ * The time line under a booking in the mobile "oversigt" agenda.
+ *
+ * The agenda lists a multi-day booking on every day it covers, always with its
+ * own start and end, so clock times alone made a 24-hour stay read
+ * "16:00 – 16:00": zero-length, or a second booking of the same room. Across
+ * days each end therefore carries its weekday: "to. 16:00 – fr. 16:00".
+ *
+ * As in expandMultiDayEvents, an end at exactly midnight belongs to the day
+ * before, so a whole-day booking (00:00 to 00:00 the next day) stays
+ * "Hele dagen", and whole days in a row read "lø. – ma.".
+ */
+export function formatScheduleTimeRange(
+  start: Date | string,
+  end: Date | string,
+): string {
+  const from = dayjs(start)
+  const to = dayjs(end)
+  const atMidnight = (time: dayjs.Dayjs) => time.isSame(time.startOf("day"))
+  const lastDay =
+    to.isAfter(from) && atMidnight(to) ? to.subtract(1, "day") : to
+
+  if (atMidnight(from) && atMidnight(to)) {
+    return from.isSame(lastDay, "day")
+      ? DA_SCHEDULE_LABELS.allDay
+      : `${from.format("dd")} – ${lastDay.format("dd")}`
+  }
+
+  return from.isSame(lastDay, "day")
+    ? `${from.format("HH:mm")} – ${to.format("HH:mm")}`
+    : `${from.format("dd HH:mm")} – ${to.format("dd HH:mm")}`
+}
+
+/**
+ * The mobile month view's heading for the chosen day, in Danish:
+ * "Torsdag 1. oktober", where the library wrote "Friday, August 21" and its
+ * stylesheet capitalised every word. Use with MOBILE_MONTH_VIEW_DANISH.
+ */
+export function danishDayHeading(date: string): string {
+  const text = dayjs(date).locale("da").format("dddd D. MMMM")
+
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+/** The heading props both calendars pass to the mobile month view. */
+export const MOBILE_MONTH_VIEW_DANISH = {
+  eventsHeaderFormat: danishDayHeading,
+
+  styles: { mobileMonthViewEventsHeader: { textTransform: "none" as const } },
+}
+
+/**
+ * Bookings for the mobile "oversigt", which is @mantine/schedule's mobile month
+ * view. It files an event under the days from its start to its end, both
+ * included, and only takes events that *start* in the displayed month:
+ *
+ *  - a stay that began at the end of the previous month vanished from the days
+ *    it covers in this one (8 of 646 bookings on the prod copy) — it starts at
+ *    midnight on the 1st instead;
+ *  - an end at exactly midnight put a booking on the day it ended (6 whole-day
+ *    bookings) — it ends a second earlier instead, as in expandMultiDayEvents
+ *    and formatScheduleTimeRange.
+ *
+ * Only the filing moves: the list shows each booking's real times.
+ */
+export function forMobileMonthView<T extends EventPayload>(
+  events: ScheduleEventData<T>[],
+  month: string,
+): ScheduleEventData<T>[] {
+  const first = dayjs(month).startOf("month")
+
+  return events.map((event) => {
+    const start = dayjs(event.start)
+
+    const end = dayjs(event.end)
+
+    const filed = { ...event }
+
+    if (start.isBefore(first) && end.isAfter(first)) {
+      filed.start = first.format("YYYY-MM-DD HH:mm:ss")
+    }
+
+    if (end.isAfter(start) && end.isSame(end.startOf("day"))) {
+      filed.end = end.subtract(1, "second").format("YYYY-MM-DD HH:mm:ss")
+    }
+
+    return filed
+  })
+}
+
+/**
  * What `@mantine/schedule` hands `onTimeSlotClick`.
  *
  * It passes the whole slot (plus the native event); a handler that only needs

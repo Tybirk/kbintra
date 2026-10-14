@@ -44,6 +44,7 @@ import {
 } from "./FilePreview"
 import { ErrorBoundary } from "./ErrorBoundary"
 import { ImageZoomViewer } from "./ImageZoomViewer"
+import { sanitizeHtml } from "../utils/sanitizeHtml"
 
 interface Attachment {
   id: number
@@ -89,7 +90,9 @@ export function AttachmentCarousel({
 
   initialIndex = 0,
 }: AttachmentCarouselProps) {
-  const isMobile = useMediaQuery("(max-width: 768px)")
+  // A phone held sideways too (844 px wide, 390 tall): as a desktop modal,
+  // 75vh under its header left a PDF 109 px.
+  const isMobile = useMediaQuery("(max-width: 768px), (max-height: 500px)")
 
   // "Stor skrift" enlarges Mantine button heights, so the default 32px slide
   // bottom padding isn't enough to keep them clear of the indicator dots on
@@ -105,6 +108,11 @@ export function AttachmentCarousel({
 
   const [embla, setEmbla] = useState<EmblaCarouselType | null>(null)
 
+  // The slide on screen, once the reader has moved; null means the one opened.
+  const [slide, setSlide] = useState<number | null>(null)
+
+  useEffect(() => setSlide(null), [opened, initialIndex])
+
   // Arrow keys navigate the carousel while the modal is open. Skip when the
   // user is typing in a form field so we don't hijack input cursors.
   useEffect(() => {
@@ -116,6 +124,10 @@ export function AttachmentCarousel({
       const editable = target?.isContentEditable
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || editable)
         return
+
+      // With focus inside the carousel (after clicking an arrow or a dot)
+      // Mantine moves it itself; both at once moved two slides.
+      if (target?.closest(".mantine-Carousel-root")) return
 
       if (e.key === "ArrowLeft") {
         e.preventDefault()
@@ -152,6 +164,17 @@ export function AttachmentCarousel({
 
   if (orderedAttachments.length === 0) return null
 
+  // Only the slide on screen and its neighbours render. Every slide loads its
+  // file — the original, for a photo — and a PDF holds canvases, so rendering
+  // them all downloaded 22 MB of a 9-photo message to show one of them.
+  const current = slide ?? Math.max(adjustedInitialIndex, 0)
+
+  const isNear = (index: number) => {
+    const distance = Math.abs(index - current)
+
+    return Math.min(distance, orderedAttachments.length - distance) <= 1
+  }
+
   // Single image: skip the carousel preview entirely and open the zoom viewer directly.
   if (
     orderedAttachments.length === 1 &&
@@ -184,11 +207,18 @@ export function AttachmentCarousel({
         </Text>
       }
       styles={{
-        body: {
-          padding: isMobile ? 0 : undefined,
+        body: isMobile
+          ? {
+              padding: 0,
 
-          height: isMobile ? "calc(100vh - 60px)" : "75vh",
-        },
+              // The rest of the full-screen modal under its header, whatever
+              // that measures: a fixed "100vh - 60px" ran 15 px off the screen
+              // when "Stor skrift" made the header 75 px, taking the dots along.
+              flex: 1,
+
+              minHeight: 0,
+            }
+          : { height: "75vh" },
 
         content: {
           display: "flex",
@@ -213,8 +243,14 @@ export function AttachmentCarousel({
           height="100%"
           nextControlIcon={<IconChevronRight size={24} />}
           previousControlIcon={<IconChevronLeft size={24} />}
-          emblaOptions={{ loop: true }}
+          // Touch swipes; a mouse drag selects (text in a PDF) — arrows, keys
+          // and the dots move between slides on a desktop.
+          emblaOptions={{
+            loop: true,
+            watchDrag: (_, event) => event.type === "touchstart",
+          }}
           getEmblaApi={setEmbla}
+          onSlideChange={setSlide}
           styles={{
             root: { height: "100%" },
 
@@ -233,6 +269,10 @@ export function AttachmentCarousel({
 
             control: {
               backgroundColor: "var(--mantine-color-default)",
+
+              // The library's black chevron, on the dark scheme's dark
+              // button, was about 1.4:1.
+              color: "var(--mantine-color-text)",
 
               border: "1px solid var(--mantine-color-default-border)",
 
@@ -262,14 +302,16 @@ export function AttachmentCarousel({
             },
           }}
         >
-          {orderedAttachments.map((attachment) => (
+          {orderedAttachments.map((attachment, index) => (
             <Carousel.Slide key={attachment.id}>
-              <SlideContent
-                attachment={attachment}
-                isMobile={isMobile}
-                opened={opened}
-                onImageZoom={(src, name) => setZoomImage({ src, name })}
-              />
+              {isNear(index) && (
+                <SlideContent
+                  attachment={attachment}
+                  isMobile={isMobile}
+                  opened={opened}
+                  onImageZoom={(src, name) => setZoomImage({ src, name })}
+                />
+              )}
             </Carousel.Slide>
           ))}
         </Carousel>
@@ -482,7 +524,8 @@ function SlideContent({
 
     return (
       <Stack gap="md" style={{ height: "100%" }} p={isMobile ? "xs" : "md"}>
-        <ScrollArea style={{ flex: 1, minHeight: 0 }}>
+        {/* PdfViewer scrolls and zooms itself; it only needs a height. */}
+        <Box style={{ flex: 1, minHeight: 0 }}>
           {/* pdf.js (pdfjs-dist 5.x) calls Promise.withResolvers, which
               iOS/Safari < 17.4 lacks, so inline rendering throws there.
               Catch it and fall back to the Åbn/Gem buttons below rather
@@ -505,7 +548,7 @@ function SlideContent({
           >
             <PdfPreview blobUrl={blobUrl} />
           </ErrorBoundary>
-        </ScrollArea>
+        </Box>
         <FileActionButtons
           actions={actions}
           size="sm"
@@ -575,7 +618,9 @@ function SlideContent({
 
                 overflowWrap: "break-word",
               }}
-              dangerouslySetInnerHTML={{ __html: attachment.preview_html }}
+              dangerouslySetInnerHTML={{
+                __html: sanitizeHtml(attachment.preview_html),
+              }}
             />
           </ScrollArea>
           <FileActionButtons

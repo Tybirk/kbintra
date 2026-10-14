@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { writeFileSync } from 'fs';
+import { join } from 'path';
 
 // Generate version based on build timestamp
 const appVersion = new Date().toISOString();
@@ -55,9 +56,9 @@ export default defineConfig(({ command }) => ({
       plugins: [
         {
           name: 'generate-version',
-          writeBundle() {
+          writeBundle(options) {
             writeFileSync(
-              'dist/version.json',
+              join(options.dir ?? 'dist', 'version.json'),
               JSON.stringify({ version: appVersion, buildTime: appVersion })
             );
           },

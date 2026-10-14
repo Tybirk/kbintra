@@ -52,6 +52,7 @@ import {
   IconPin,
   IconLock,
   IconMessage,
+  IconTool,
   IconFolder,
   IconUpload,
   IconFolderPlus,
@@ -86,13 +87,20 @@ import { flattenOrgTree } from "../utils/orgTree"
 
 import { BackButton } from "../components/BackButton"
 
-import { clearDraft, loadDraft, saveDraft } from "../utils/draftStorage"
+import {
+  DRAFT_SAVE_DELAY_MS,
+  clearDraft,
+  loadDraft,
+  saveDraft,
+} from "../utils/draftStorage"
 
 import { filterFilesBySize } from "../config"
 
 import { CompactEventCard } from "../components/CompactEventCard"
 
 import GalleryTab from "../components/GalleryTab"
+
+import { ReportQueue } from "./reports/ReportQueue"
 
 import type { RichTextEditorProps } from "../components/RichTextEditor"
 import { RichTextContent } from "../components/RichTextContent"
@@ -181,9 +189,11 @@ export default function SubgroupPage() {
     ? "documents"
     : location.pathname.includes("/galleri")
       ? "gallery"
-      : location.pathname.includes("/info")
-        ? "info"
-        : "threads"
+      : location.pathname.includes("/indrapportering")
+        ? "reports"
+        : location.pathname.includes("/info")
+          ? "info"
+          : "threads"
 
   const [
     createThreadModalOpened,
@@ -1072,6 +1082,7 @@ When done, print a short summary:
         onChange={(tab) => {
           if (tab === "documents") navigate(`/forum/${slug}/dokumenter`)
           else if (tab === "gallery") navigate(`/forum/${slug}/galleri`)
+          else if (tab === "reports") navigate(`/forum/${slug}/indrapportering`)
           else if (tab === "info") navigate(`/forum/${slug}/info`)
           else navigate(`/forum/${slug}`)
         }}
@@ -1105,6 +1116,20 @@ When done, print a short summary:
           <Tabs.Tab value="gallery" leftSection={<IconPhoto size={16} />}>
             Galleri
           </Tabs.Tab>
+          {subgroup.reporting !== "off" && (
+            <Tabs.Tab
+              value="reports"
+              leftSection={
+                subgroup.reporting === "closed" ? (
+                  <IconLock size={16} />
+                ) : (
+                  <IconTool size={16} />
+                )
+              }
+            >
+              Indrapportering
+            </Tabs.Tab>
+          )}
           <Tabs.Tab value="info" leftSection={<IconLink size={16} />}>
             Links og info
           </Tabs.Tab>
@@ -1204,6 +1229,29 @@ When done, print a short summary:
 
         <Tabs.Panel value="gallery" pt="md">
           <GalleryTab subgroupSlug={slug!} />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="reports" pt="md">
+          {/* What belongs here, and who reads it — the same two facts the
+              picker on /indrapportering shows, for people who arrived the
+              other way. */}
+          {subgroup.reporting_intro && (
+            <Text size="sm" c="dimmed" mb="xs">
+              {subgroup.reporting_intro}
+            </Text>
+          )}
+          {subgroup.reporting === "closed" && (
+            <Group gap={6} mb="md" wrap="nowrap">
+              <IconLock size={14} style={{ flexShrink: 0 }} />
+              <Text size="xs" c="dimmed">
+                Kun {subgroup.name} kan læse sagerne her — bortset fra din egen.
+              </Text>
+            </Group>
+          )}
+          <ReportQueue
+            subgroupSlug={slug!}
+            canExport={!!user && (user.is_staff || subgroup.is_member)}
+          />
         </Tabs.Panel>
 
         <Tabs.Panel value="info" pt="md">
@@ -1585,6 +1633,10 @@ function CreateThreadModal({
 
   const [membersOnly, setMembersOnly] = useState(defaultMembersOnly)
 
+  // Kept across retries of the same thread. After a timeout the server may already
+  // have saved it, and "Prøv igen" must not post it a second time.
+  const clientTokenRef = useRef<string | null>(null)
+
   const titleDraftKey = "new-thread-title-" + subgroupSlug
 
   useEffect(() => {
@@ -1594,7 +1646,10 @@ function CreateThreadModal({
   }, [titleDraftKey])
 
   useEffect(() => {
-    const t = setTimeout(() => saveDraft(titleDraftKey, title), 1500)
+    const t = setTimeout(
+      () => saveDraft(titleDraftKey, title),
+      DRAFT_SAVE_DELAY_MS,
+    )
 
     return () => clearTimeout(t)
   }, [title, titleDraftKey])
@@ -1630,6 +1685,8 @@ function CreateThreadModal({
 
       setMembersOnly(false)
 
+      clientTokenRef.current = null
+
       clearDraft("new-thread-" + subgroupSlug)
 
       clearDraft("new-thread-title-" + subgroupSlug)
@@ -1656,6 +1713,8 @@ function CreateThreadModal({
       return
     }
 
+    clientTokenRef.current ??= crypto.randomUUID()
+
     createMutation.mutate({
       data: {
         title: title.trim(),
@@ -1663,6 +1722,8 @@ function CreateThreadModal({
         content: content.trim(),
 
         ...(allowsMembers && membersOnly ? { members_only: true } : {}),
+
+        client_token: clientTokenRef.current,
       },
 
       files: attachments,
@@ -1729,6 +1790,11 @@ function CreateThreadModal({
                 onFilePaste={handleAddFiles}
                 onSubmit={handleSubmit}
                 draftKey={"new-thread-" + subgroupSlug}
+                onClearDraft={() => {
+                  setTitle("")
+
+                  clearDraft(titleDraftKey)
+                }}
               />
             </div>
 

@@ -30,7 +30,12 @@ import { useMediaQuery } from "@mantine/hooks"
 
 const EmojiPicker = lazy(() => import("./EmojiPicker"))
 
-import { saveDraft, loadDraft, clearDraft } from "../utils/draftStorage"
+import {
+  DRAFT_SAVE_DELAY_MS,
+  saveDraft,
+  loadDraft,
+  clearDraft,
+} from "../utils/draftStorage"
 
 import { mentionSuggestion } from "./mentionSuggestion"
 
@@ -161,6 +166,13 @@ export interface RichTextEditorProps {
   /** Unique key for persisting a draft across refreshes. Omit for edit forms. */
 
   draftKey?: string
+
+  /**
+   * Called when the reader clears a restored draft with "(ryd)", so the page can
+   * clear what it saved beside it — a title, the recipients.
+   */
+
+  onClearDraft?: () => void
 }
 
 export default function RichTextEditor({
@@ -177,6 +189,7 @@ export default function RichTextEditor({
   onSubmit,
 
   draftKey,
+  onClearDraft,
 }: RichTextEditorProps) {
   const isMobile = useMediaQuery("(max-width: 768px)")
 
@@ -321,7 +334,7 @@ export default function RichTextEditor({
 
         saveTimerRef.current = setTimeout(() => {
           saveDraft(key, html)
-        }, 1500)
+        }, DRAFT_SAVE_DELAY_MS)
       }
 
       detectGiphy(editor, setGiphyStateRef.current)
@@ -473,6 +486,8 @@ export default function RichTextEditor({
     setDraftRestored(false)
 
     onChange("")
+
+    onClearDraft?.()
   }
 
   return (

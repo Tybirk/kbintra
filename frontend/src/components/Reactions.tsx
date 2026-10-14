@@ -8,27 +8,21 @@ import {
   Box,
   Stack,
   Avatar,
-  Loader,
-  Drawer,
 } from "@mantine/core"
-
-import { useMediaQuery } from "@mantine/hooks"
 
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 
 import { IconMoodSmile, IconDots } from "@tabler/icons-react"
 
-import { lazy, Suspense, useState } from "react"
+import { useState } from "react"
 
 import { forumApi } from "../api/forum"
 
 import type { ReactionSummary, ReactionType } from "../types"
 
+import EmojiMartPicker, { type PickedEmoji } from "./EmojiMartPicker"
+
 import UserLink from "./UserLink"
-
-const LazyPicker = lazy(() => import("@emoji-mart/react"))
-
-const emojiDataPromise = () => import("@emoji-mart/data").then((m) => m.default)
 
 // Default quick-reaction emojis (first 6)
 
@@ -45,10 +39,6 @@ const DEFAULT_EMOJIS: string[] = [
 
   "\u{1F389}",
 ]
-
-interface EmojiData {
-  native: string
-}
 
 interface ReactionsProps {
   postId: number
@@ -67,13 +57,9 @@ export default function Reactions({
 }: ReactionsProps) {
   const queryClient = useQueryClient()
 
-  const isMobile = useMediaQuery("(max-width: 48em)")
-
   const [pickerOpened, setPickerOpened] = useState(false)
 
   const [fullPickerOpened, setFullPickerOpened] = useState(false)
-
-  const [emojiData, setEmojiData] = useState<object | null>(null)
 
   const [openReactionType, setOpenReactionType] = useState<ReactionType | null>(
     null,
@@ -99,37 +85,14 @@ export default function Reactions({
   }
 
   const handleOpenFullPicker = () => {
-    if (!emojiData) {
-      emojiDataPromise().then(setEmojiData)
-    }
-
     setPickerOpened(false)
 
     setFullPickerOpened((o) => !o)
   }
 
-  const handleFullPickerSelect = (emoji: EmojiData) => {
+  const handleFullPickerSelect = (emoji: PickedEmoji) => {
     handleReaction(emoji.native)
   }
-
-  const pickerContent = (
-    <Suspense fallback={<Loader size="sm" m="md" />}>
-      <LazyPicker
-        data={emojiData}
-        onEmojiSelect={handleFullPickerSelect}
-        locale="en"
-        theme="light"
-        previewPosition="none"
-        skinTonePosition="search"
-        searchPosition="sticky"
-        navPosition="top"
-        perLine={9}
-        emojiSize={22}
-        emojiButtonSize={32}
-        maxFrequentRows={2}
-      />
-    </Suspense>
-  )
 
   return (
     <Group gap="sm">
@@ -293,38 +256,29 @@ export default function Reactions({
         </Popover.Dropdown>
       </Popover>
 
-      {/* Full emoji picker — Drawer on mobile, Popover on desktop */}
-      {isMobile ? (
-        <Drawer
-          opened={fullPickerOpened}
-          onClose={() => setFullPickerOpened(false)}
-          position="bottom"
-          size="auto"
-          withCloseButton={false}
-          padding={0}
-          styles={{ body: { padding: 0 } }}
-        >
-          {fullPickerOpened && pickerContent}
-        </Drawer>
-      ) : (
-        <Popover
-          opened={fullPickerOpened}
-          onChange={setFullPickerOpened}
-          position="top"
-          width="auto"
-          shadow="md"
-        >
-          <Popover.Target>
-            <Box style={{ width: 0, height: 0 }} />
-          </Popover.Target>
-          <Popover.Dropdown
-            p={0}
-            style={{ border: "none", background: "none" }}
-          >
-            {fullPickerOpened && pickerContent}
-          </Popover.Dropdown>
-        </Popover>
-      )}
+      {/* Full emoji picker — a Popover on every screen, as in the chat, so a
+          tap outside closes it. The phone Drawer it replaced filled the
+          screen (Mantine 9.5 has no size "auto") and had no way to close. */}
+      <Popover
+        opened={fullPickerOpened}
+        onChange={setFullPickerOpened}
+        position="top"
+        width="auto"
+        shadow="md"
+        // Slide it back on screen when neither above nor below has room for
+        // its 435 px — a post mid-screen on a phone — rather than cutting off
+        // the search field and the categories.
+        middlewares={{ flip: true, shift: { crossAxis: true } }}
+      >
+        <Popover.Target>
+          <Box style={{ width: 0, height: 0 }} />
+        </Popover.Target>
+        <Popover.Dropdown p={0} style={{ border: "none", background: "none" }}>
+          {fullPickerOpened && (
+            <EmojiMartPicker onEmojiSelect={handleFullPickerSelect} />
+          )}
+        </Popover.Dropdown>
+      </Popover>
     </Group>
   )
 }

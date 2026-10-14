@@ -15,21 +15,31 @@ cd "$(dirname "$0")"
 PROD_REMOTE=${PROD_REMOTE:-kbintra-dev}
 PROD_DATA_DIR=${PROD_DATA_DIR:-/root/kbintra-prod/data}
 
-echo ">>> Rsyncing prod SQLite files from $PROD_REMOTE:$PROD_DATA_DIR (read-only)..."
+# Snapshot with sqlite's own backup, not by copying files. Prod's DB is hot:
+# three containers write to it through a live WAL, so copying db.sqlite3 and
+# its -wal one after the other captures them at different moments. That torn
+# copy failed a migration on 2026-09-25 with foreign keys pointing at rows
+# that "did not exist", while prod itself had none. The backup is a single
+# consistent file, written to /tmp on prod (read-only on the DB itself) and
+# removed again straight after.
+SNAPSHOT=/tmp/kbintra-test-snapshot.sqlite3
+
+echo ">>> Snapshotting prod DB on $PROD_REMOTE:$PROD_DATA_DIR (read-only)..."
 mkdir -p ./data
+trap 'ssh "$PROD_REMOTE" "rm -f $SNAPSHOT"' EXIT
+ssh "$PROD_REMOTE" "sqlite3 -readonly '$PROD_DATA_DIR/db.sqlite3' '.backup $SNAPSHOT'"
+rsync -avz "$PROD_REMOTE:$SNAPSHOT" ./data/db.sqlite3.new
+ssh "$PROD_REMOTE" "rm -f $SNAPSHOT"
+trap - EXIT
 
-# Main DB file (required).
-rsync -avz --inplace \
-    "$PROD_REMOTE:$PROD_DATA_DIR/db.sqlite3" \
-    ./data/db.sqlite3
-
-# WAL/SHM files (best-effort; may not exist if prod has no in-flight writes).
-rsync -avz --inplace \
-    "$PROD_REMOTE:$PROD_DATA_DIR/db.sqlite3-wal" \
-    ./data/db.sqlite3-wal 2>/dev/null || rm -f ./data/db.sqlite3-wal
-rsync -avz --inplace \
-    "$PROD_REMOTE:$PROD_DATA_DIR/db.sqlite3-shm" \
-    ./data/db.sqlite3-shm 2>/dev/null || rm -f ./data/db.sqlite3-shm
+# Swap the file in only while nothing here has it open. A running container
+# holds the old database and its -wal; replacing them under it, it checkpointed
+# its stale pages into the new file on shutdown and left it malformed
+# (2026-09-25). deploy.sh starts the containers again.
+echo ">>> Stopping the app containers to swap in the new database..."
+docker compose stop backend backend-ws huey
+mv ./data/db.sqlite3.new ./data/db.sqlite3
+rm -f ./data/db.sqlite3-wal ./data/db.sqlite3-shm
 
 # Media files written by the backend container are root-owned on the host (the
 # container runs as root). Without sudo, this deploy user can't let the rsync
@@ -61,4 +71,38 @@ rsync -avz --delete \
     ./data/media/
 
 echo ">>> Running standard deploy.sh..."
-exec ./deploy.sh
+./deploy.sh
+
+# The rsync above replaced the database with prod's, so anything staged only for
+# testing is gone. Put the food-team plan back: it is the thing being tested
+# right now, and retyping ninety names by hand is not a test step.
+#
+# ./data survives the rsync (only db.sqlite3 and media/ are overwritten), so the
+# roster we imported from stays put and can simply be replayed. Best-effort:
+# a stale or half-written roster must not fail a deploy that already succeeded.
+# --skip-if-past stops once the period is over, so an old plan is not
+# resurrected on every deploy forever; the year comes from a '# år: 2026'
+# header in the file, so this keeps working without editing the script.
+# Drop in a newer list to test a newer period.
+ROSTER=./data/madhold-import.txt
+if [ -f "$ROSTER" ]; then
+    echo ">>> Re-importing the food-team plan from $ROSTER (test-only data)..."
+    docker compose exec -T backend uv run python manage.py import_food_teams \
+        "/app/data/$(basename "$ROSTER")" --replace --skip-if-past \
+        || echo "WARNING: could not re-import $ROSTER; the test server has prod's teams only."
+fi
+
+# Same reasoning as the roster: Driftsudvalgets 13 real cases live only in the
+# export from their previous reporting app, so the database rsync above wipes
+# them from the test site on every deploy. The export sits in ./data (which
+# survives the rsync), so it can simply be replayed. The import is idempotent on
+# (udvalg, sagsnummer) and re-creates the photos too, so it is safe to run every
+# time. reporting_enabled is set by a data migration, not by hand, for the same
+# reason — a flag set in admin would not survive either.
+REPORTS_EXPORT=$(ls ./data/Sager*.xlsx 2>/dev/null | head -1)
+if [ -n "$REPORTS_EXPORT" ]; then
+    echo ">>> Re-importing Driftsudvalgets cases from $REPORTS_EXPORT (test-only data)..."
+    docker compose exec -T backend uv run python manage.py import_du_reports \
+        "/app/data/$(basename "$REPORTS_EXPORT")" \
+        || echo "WARNING: could not re-import $REPORTS_EXPORT; the test server has no cases."
+fi

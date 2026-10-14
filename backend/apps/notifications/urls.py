@@ -11,6 +11,7 @@ from .views import (
     MarkNotificationsUnreadView,
     NotificationDetailView,
     NotificationListView,
+    NotificationPreferenceSchemaView,
     NotificationPreferenceView,
     PushSubscriptionView,
     TestPushNotificationView,
@@ -31,6 +32,11 @@ urlpatterns = [
     path("unread-count/", UnreadNotificationCountView.as_view(), name="notification-unread-count"),
     path("clear-all/", ClearAllNotificationsView.as_view(), name="notification-clear-all"),
     path("preferences/", NotificationPreferenceView.as_view(), name="notification-preferences"),
+    path(
+        "preferences/schema/",
+        NotificationPreferenceSchemaView.as_view(),
+        name="notification-preference-schema",
+    ),
     # Push notifications
     path("push/vapid-key/", VapidPublicKeyView.as_view(), name="push-vapid-key"),
     path("push/subscribe/", PushSubscriptionView.as_view(), name="push-subscribe"),

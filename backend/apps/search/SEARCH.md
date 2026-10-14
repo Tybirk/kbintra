@@ -31,14 +31,14 @@ Results are ordered by:
 ```sql
 bm25(search_index, 10.0, 1.0)
   + CASE
-    WHEN type IN ('thread','post','announcement','event','file')
+    WHEN type IN ('thread','post','announcement','event','file','report')
       THEN 0.01 * age_in_days    -- ~3.65/year (strong decay)
     ELSE  0.001 * age_in_days    -- ~0.365/year (mild tiebreaker)
     END
 ```
 
 - **BM25**: Title matches weighted 10x over body. Returns negative values (more negative = better).
-- **Content types** (threads, posts, announcements, events, files): Strong recency decay. A 6-month-old post is penalized ~1.8 points; a 2-year-old post ~7.3. Older content is significantly downranked.
+- **Content types** (threads, posts, announcements, events, files, reports): Strong recency decay. A 6-month-old post is penalized ~1.8 points; a 2-year-old post ~7.3. Older content is significantly downranked.
 - **Static types** (users, houses, subgroups): Mild tiebreaker only. These rarely go stale.
 
 ### Query Building
@@ -61,9 +61,11 @@ To make search work in both directions (`Kløverbakkebogen` finds
 - **At query time** (`build_fts_query`) — incoming queries are folded the
   same way before tokenization.
 
-A consequence is that titles displayed from FTS results show the folded form
-(`Møde` → `Moede`). For the small KB user base this trade-off is acceptable;
-clicking through to the actual record shows the original spelling.
+The originals are stored too, in the UNINDEXED columns `title_raw` and
+`body_raw`, and results are shown from them: the title as written, and the
+snippet FTS5 cut from the folded body mapped back to the original's spelling
+(`unfold_snippet` — folding is one character to one or two, so the span maps
+exactly).
 
 **After deploying changes that affect folding or indexing**, run
 `uv run python manage.py rebuild_search_index` once to repopulate existing
@@ -105,6 +107,7 @@ and leave threads/posts/announcements with zero hits.
 | Event | `event` | `created_at` | Title | Description + location |
 | File | `file` | `uploaded_at` | Filename | (empty) |
 | Folder | `folder` | `created_at` | Name | (empty) |
+| Report | `report` | `created_at` | Description excerpt (80 chars) | Description + location |
 
 ## API Heuristics
 
@@ -118,7 +121,7 @@ The search endpoint combines FTS5 results with three heuristic shortcuts:
 
 ## Signal Cascading
 
-When a **Thread** is saved, the signal also re-indexes all its posts so they pick up any title change. Other cascading (e.g., user house change) relies on the next `rebuild_search_index` run.
+When a **Thread** is renamed or moved, `retitle_thread_posts` gives its post rows the new title and URL in one UPDATE, each keeping its `#post-<id>` anchor. When a **Subgroup** is renamed, `set_subtitle` rewrites the group name on its threads, files and folders in one UPDATE per type. Other cascading (e.g., user house change) relies on the next `rebuild_search_index` run.
 
 ## Management Commands
 

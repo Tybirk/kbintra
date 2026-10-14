@@ -72,6 +72,7 @@ INSTALLED_APPS = [
     "apps.links",
     "apps.expenses",
     "apps.carsharing",
+    "apps.reports",
     "apps.backup",
 ]
 
@@ -216,7 +217,7 @@ CORS_ALLOWED_ORIGINS: list[str] = os.getenv(
 CORS_ALLOW_CREDENTIALS = True
 
 # Internationalization
-LANGUAGE_CODE = "en-us"
+LANGUAGE_CODE = "da"
 TIME_ZONE = "Europe/Copenhagen"
 USE_I18N = True
 USE_TZ = True
@@ -276,6 +277,11 @@ DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "KB Intra <noreply@kbintra.
 # Treasurer/economy inbox that receives a notice whenever a new udlæg is
 # submitted. Empty disables the notice (e.g. in dev).
 ECONOMY_EMAIL = os.getenv("ECONOMY_EMAIL", "")
+
+# Udlæg to fællesmad skip the treasurer and go to the madøkonomiansvarlig
+# (users with is_food_economy_admin). Set this to send them to one fixed
+# address instead, e.g. a shared madøkonomi inbox.
+FOOD_ECONOMY_EMAIL = os.getenv("FOOD_ECONOMY_EMAIL", "")
 
 # Max raw bytes of receipts attached to the udlæg notice, and the per-file cap
 # enforced on receipt uploads (so a receipt always fits the mail). Cloudflare

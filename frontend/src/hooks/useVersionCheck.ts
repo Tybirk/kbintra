@@ -80,37 +80,11 @@ export function useVersionCheck() {
             `[VersionCheck] New version detected: ${serverVersion} (current: ${CURRENT_VERSION})`,
           )
 
-          // Clear all caches before reload
+          // The caches are left alone: the page comes from the network, and
+          // the service worker replaces its precache itself (deleting it
+          // here left one device with none).
 
-          if ("caches" in window) {
-            const cacheNames = await caches.keys()
-
-            await Promise.all(cacheNames.map((name) => caches.delete(name)))
-
-            console.log("[VersionCheck] Cleared all caches")
-          }
-
-          // Try to update and activate new service worker
-
-          if ("serviceWorker" in navigator) {
-            const registration = await navigator.serviceWorker.getRegistration()
-
-            if (registration) {
-              await registration.update()
-
-              // If there's a waiting worker, skip waiting
-
-              if (registration.waiting) {
-                registration.waiting.postMessage({ type: "SKIP_WAITING" })
-              }
-            }
-          }
-
-          // Small delay to let SW activate, then hard reload
-
-          setTimeout(() => {
-            window.location.reload()
-          }, 100)
+          window.location.reload()
         }
       } catch {
         // Silently fail - don't break the app if version check fails
@@ -139,6 +113,15 @@ export function useVersionCheck() {
       checkVersion()
     }
 
+    // A part of the app that fails to load has usually been removed by a
+    // deploy (the PDF viewer isn't precached): check now, not at the next
+    // focus or poll.
+    function handlePreloadError() {
+      lastCheckRef.current = 0
+
+      checkVersion()
+    }
+
     // Check on initial load (after a delay to not slow down startup)
 
     const initialCheckTimer = setTimeout(checkVersion, 3000)
@@ -153,6 +136,8 @@ export function useVersionCheck() {
 
     window.addEventListener("focus", handleFocus)
 
+    window.addEventListener("vite:preloadError", handlePreloadError)
+
     return () => {
       clearTimeout(initialCheckTimer)
 
@@ -163,6 +148,8 @@ export function useVersionCheck() {
       window.removeEventListener("pageshow", handlePageShow)
 
       window.removeEventListener("focus", handleFocus)
+
+      window.removeEventListener("vite:preloadError", handlePreloadError)
     }
   }, [isAuthenticated])
 }

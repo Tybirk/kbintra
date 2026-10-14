@@ -67,7 +67,12 @@ echo "Pulling images for $IMAGE_TAG from ghcr.io (old containers keep serving)..
 # Normal case: you ran deploy.sh right after pushing and CI is still building/pushing
 # this commit's images. Retry the pull until they appear, up to 10 minutes.
 pull_elapsed=0
-until docker compose pull; do
+# Only our own images: they are what changes between deploys, and they come from
+# ghcr.io. Pulling the third-party ones too (traefik, redis, nginx, …) on every
+# retry used up Docker Hub's anonymous limit of 100 pulls an hour on 2026-09-25
+# and stalled a deploy for 45 minutes. `docker compose up` still fetches any
+# image that is missing altogether.
+until docker compose pull backend backend-ws huey frontend; do
     if [ "$pull_elapsed" -ge "$pull_timeout" ]; then
         if [ "$pull_timeout" -eq 0 ]; then
             echo "ERROR: no image on ghcr.io for $IMAGE_TAG, and CI never builds one for it."

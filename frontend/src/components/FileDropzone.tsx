@@ -156,10 +156,35 @@ export default function FileDropzone({
 interface AttachmentAreaProps {
   onAddFiles: (files: File[]) => void
 
+  /**
+   * Content shown inside the area — in practice the badges for files already
+   * picked. Clicks in here are swallowed, so removing a badge doesn't reopen
+   * the file picker. A label the user is meant to click therefore belongs in
+   * `prompt`, not here.
+   */
   children?: ReactNode
+
+  /**
+   * Replaces the default "træk filer hertil" line when there are no children.
+   * Unlike `children` it is part of the click target, so the whole rectangle —
+   * label and icon included — opens the picker.
+   */
+  prompt?: ReactNode
+
+  /**
+   * Value for the file input's `accept`. Omitted by default, so existing callers
+   * keep taking any file. Pass "image/*" for a photo-only picker — on a phone it
+   * is also what makes the OS offer Camera/Photos instead of the file browser.
+   */
+  accept?: string
 }
 
-export function AttachmentArea({ onAddFiles, children }: AttachmentAreaProps) {
+export function AttachmentArea({
+  onAddFiles,
+  children,
+  prompt,
+  accept,
+}: AttachmentAreaProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const hasChildren = !!children
@@ -213,6 +238,7 @@ export function AttachmentArea({ onAddFiles, children }: AttachmentAreaProps) {
       <input
         type="file"
         multiple
+        accept={accept}
         ref={fileInputRef}
         style={{ display: "none" }}
         onChange={handleChange}
@@ -226,12 +252,14 @@ export function AttachmentArea({ onAddFiles, children }: AttachmentAreaProps) {
           </Text>
         </>
       ) : (
-        <Group gap="xs" justify="center">
-          <IconUpload size={14} color="var(--mantine-color-dimmed)" />
-          <Text size="xs" c="dimmed">
-            Træk filer hertil, indsæt med Ctrl+V, eller klik for at vælge
-          </Text>
-        </Group>
+        (prompt ?? (
+          <Group gap="xs" justify="center">
+            <IconUpload size={14} color="var(--mantine-color-dimmed)" />
+            <Text size="xs" c="dimmed">
+              Træk filer hertil, indsæt med Ctrl+V, eller klik for at vælge
+            </Text>
+          </Group>
+        ))
       )}
     </Box>
   )

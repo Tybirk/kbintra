@@ -95,7 +95,10 @@ class Child(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["name"]
+        # Oldest first, which is how families introduce their children. A child
+        # with no birthdate goes last rather than first, where a NULL would sort
+        # in SQLite, and name breaks the tie for twins.
+        ordering = [models.F("birthdate").asc(nulls_last=True), "name"]
         verbose_name_plural = "children"
 
     def __str__(self) -> str:
@@ -204,3 +207,17 @@ class Car(models.Model):
 
         described = " ".join(str(part) for part in (self.make, self.model_name) if part)
         return described or format_license_plate(self.license_plate) or "Bil"
+
+    @property
+    def name_with_plate(self) -> str:
+        """The label plus the plate — "Tesla S (EA 78 950)" — for a borrower who
+        has to find the car in a car park, where make and model do not single it
+        out."""
+        from .utils import format_license_plate
+
+        plate = format_license_plate(self.license_plate)
+        if not plate or plate == self.display_name:
+            return self.display_name
+        # Non-breaking, so a narrow screen never splits it into "(EA 78" / "950)".
+        unbroken = plate.replace(" ", "\u00a0")
+        return f"{self.display_name} ({unbroken})"

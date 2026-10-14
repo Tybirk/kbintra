@@ -27,7 +27,7 @@ import type { ScheduleEventData, ScheduleViewLevel } from "@mantine/schedule"
 
 import "@mantine/schedule/styles.css"
 
-import { useDisclosure, useMediaQuery } from "@mantine/hooks"
+import { useDisclosure, useElementSize, useMediaQuery } from "@mantine/hooks"
 
 import { notifications } from "@mantine/notifications"
 
@@ -51,7 +51,10 @@ import { useAuthStore } from "../store/authStore"
 import {
   bookingToScheduleData,
   DA_SCHEDULE_LABELS,
+  forMobileMonthView,
+  MOBILE_MONTH_VIEW_DANISH,
   expandMultiDayEvents,
+  formatScheduleTimeRange,
 } from "../utils/scheduleHelpers"
 
 import type { TimeSlotClickData } from "../utils/scheduleHelpers"
@@ -83,6 +86,11 @@ export default function BookingsPage() {
 
   const [mobileViewMode, setMobileViewMode] =
     useState<MobileViewMode>("oversigt")
+
+  // The day whose bookings the mobile "oversigt" lists. Kept here rather than
+  // inside the library's view so that stepping a month moves it along; it
+  // stayed on the old day (in a month no longer shown) and listed nothing.
+  const [selectedDay, setSelectedDay] = useState(currentDate)
 
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null)
 
@@ -192,15 +200,36 @@ export default function BookingsPage() {
   // multi-day events as spanning bars and the mobile "oversigt" agenda lists
   // them, so both keep the original events.
 
+  // The library switches its responsive layout to the mobile view by the
+  // schedule's own width (a container query at 600 px), not the window's, so
+  // the page decides the same way: between 601 and 768 px it showed the desktop
+  // grid while the page treated taps as "oversigt" ones.
+  const { ref: scheduleRef, width: scheduleWidth } = useElementSize()
+
+  const compact = scheduleWidth > 0 ? scheduleWidth <= 600 : isMobile
+
+  const inOversigt = compact && mobileViewMode === "oversigt"
+
+  // Never in the "oversigt": whatever view the schedule last had (a day tapped
+  // in "skema"), its list shows whole bookings, not per-day chips.
   const splitMultiDayEvents =
-    currentView === "day" ||
-    (currentView === "month" && !(isMobile && mobileViewMode === "oversigt"))
+    !inOversigt && (currentView === "day" || currentView === "month")
 
   const scheduleEvents = useMemo(() => {
     const mapped = (bookings || []).map(bookingToScheduleData)
 
+    if (inOversigt) return forMobileMonthView(mapped, currentDate)
+
     return splitMultiDayEvents ? expandMultiDayEvents(mapped) : mapped
-  }, [bookings, splitMultiDayEvents])
+  }, [bookings, splitMultiDayEvents, inOversigt, currentDate])
+
+  const goToMonth = (delta: number) => {
+    const next = dayjs(currentDate).add(delta, "month").format("YYYY-MM-DD")
+
+    setCurrentDate(next)
+
+    setSelectedDay(next)
+  }
 
   const deleteMutation = useMutation({
     mutationFn: async ({
@@ -358,11 +387,22 @@ export default function BookingsPage() {
     [openCreateModal],
   )
 
-  const handleDayClick = useCallback((date: string) => {
-    setCurrentDate(date)
+  // In the "oversigt" a tap only chooses the day to list; in "skema" it opens
+  // the day view.
+  const handleDayClick = useCallback(
+    (date: string) => {
+      if (inOversigt) {
+        setSelectedDay(date)
 
-    setCurrentView("day")
-  }, [])
+        return
+      }
+
+      setCurrentDate(date)
+
+      setCurrentView("day")
+    },
+    [inOversigt],
+  )
 
   const isLoading = roomsLoading || bookingsLoading
 
@@ -487,12 +527,22 @@ export default function BookingsPage() {
         )}
       </Group>
 
-      {isMobile && (
+      {compact && (
         <Group justify="flex-end" mb="sm">
           <SegmentedControl
             size="xs"
             value={mobileViewMode}
-            onChange={(v) => setMobileViewMode(v as MobileViewMode)}
+            onChange={(v) => {
+              setMobileViewMode(v as MobileViewMode)
+
+              // The "oversigt" is the month list, whatever view "skema" was in,
+              // open on the day the reader was looking at there.
+              if (v === "oversigt") {
+                setCurrentView("month")
+
+                setSelectedDay(currentDate)
+              }
+            }}
             data={[
               {
                 value: "oversigt",
@@ -520,7 +570,7 @@ export default function BookingsPage() {
         </Group>
       )}
 
-      <div className="schedule-wrapper">
+      <div className="schedule-wrapper" ref={scheduleRef}>
         <Schedule
           events={scheduleEvents}
           view={currentView}
@@ -529,9 +579,7 @@ export default function BookingsPage() {
           onDateChange={setCurrentDate}
           locale="da"
           labels={{ ...DA_SCHEDULE_LABELS, noEvents: "Ingen reserveringer" }}
-          layout={
-            isMobile && mobileViewMode === "oversigt" ? "responsive" : undefined
-          }
+          layout={inOversigt ? "responsive" : undefined}
           onEventClick={handleEventClick}
           // Workaround: @mantine/schedule alpha doesn't destructure onTimeSlotClick
 
@@ -641,20 +689,18 @@ export default function BookingsPage() {
             monthYearSelectProps: { labels: DA_SCHEDULE_LABELS },
           }}
           mobileMonthViewProps={{
+            selectedDate: selectedDay,
+
+            onSelectedDateChange: (day) => day && setSelectedDay(day),
+
+            ...MOBILE_MONTH_VIEW_DANISH,
+
             renderHeader: () => (
               <Group justify="space-between" align="center" w="100%">
                 <ActionIcon
                   variant="subtle"
                   aria-label="Forrige måned"
-                  onClick={() =>
-                    setCurrentDate(
-                      dayjs(currentDate)
-
-                        .subtract(1, "month")
-
-                        .format("YYYY-MM-DD"),
-                    )
-                  }
+                  onClick={() => goToMonth(-1)}
                 >
                   <IconChevronLeft size={18} style={{ display: "block" }} />
                 </ActionIcon>
@@ -664,11 +710,7 @@ export default function BookingsPage() {
                 <ActionIcon
                   variant="subtle"
                   aria-label="Næste måned"
-                  onClick={() =>
-                    setCurrentDate(
-                      dayjs(currentDate).add(1, "month").format("YYYY-MM-DD"),
-                    )
-                  }
+                  onClick={() => goToMonth(1)}
                 >
                   <IconChevronRight size={18} style={{ display: "block" }} />
                 </ActionIcon>
@@ -685,12 +727,6 @@ export default function BookingsPage() {
               } | undefined
 
               const booking = payload?.booking
-
-              const startTime = dayjs(event.start).format("HH:mm")
-
-              const endTime = dayjs(event.end).format("HH:mm")
-
-              const isAllDay = startTime === "00:00" && endTime === "00:00"
 
               return (
                 <UnstyledButton {...buttonProps}>
@@ -723,7 +759,14 @@ export default function BookingsPage() {
                           marginTop: "calc(0.125rem * var(--mantine-scale))",
                         }}
                       >
-                        {isAllDay ? "Hele dagen" : `${startTime} – ${endTime}`}
+                        {/* The booking's own times: forMobileMonthView moves
+                            only where a booking is filed */}
+                        {booking
+                          ? formatScheduleTimeRange(
+                              booking.start_datetime,
+                              booking.end_datetime,
+                            )
+                          : formatScheduleTimeRange(event.start, event.end)}
                       </Text>
                       {booking && (
                         <Text size="xs" c="dimmed">

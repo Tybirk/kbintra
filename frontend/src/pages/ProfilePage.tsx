@@ -27,8 +27,6 @@ import {
   IconMessage,
 } from "@tabler/icons-react"
 
-import dayjs from "dayjs"
-
 import { usersApi } from "../api/users"
 
 import { messagingApi } from "../api/messaging"
@@ -38,6 +36,8 @@ import { useAuthStore } from "../store/authStore"
 import { useAccessibilityMode } from "../hooks/useAccessibilityMode"
 
 import { useHideClosedThreads } from "../hooks/useHideClosedThreads"
+
+import { formatBirthdateWithAge } from "../utils/birthdate"
 
 import { showErrorNotification } from "../utils/errorNotification"
 
@@ -127,10 +127,14 @@ export default function ProfilePage() {
 
     error,
   } = useQuery({
-    queryKey: ["user", userId || "me"],
+    // Your own profile via /profil/<your id> too: the public version hides
+    // your birth year from you if you chose to hide it from others.
+    queryKey: ["user", isOwnProfile ? "me" : userId],
 
     queryFn: () =>
-      userId ? usersApi.getUser(Number(userId)) : usersApi.getCurrentUser(),
+      isOwnProfile
+        ? usersApi.getCurrentUser()
+        : usersApi.getUser(Number(userId)),
   })
 
   if (isLoading) {
@@ -238,7 +242,7 @@ export default function ProfilePage() {
           {user.birthdate && (
             <Group gap="xs">
               <IconCake size={18} />
-              <Text>{dayjs(user.birthdate).format("D. MMMM")}</Text>
+              <Text>{formatBirthdateWithAge(user.birthdate)}</Text>
             </Group>
           )}
         </Stack>

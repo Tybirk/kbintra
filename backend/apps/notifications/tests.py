@@ -396,6 +396,33 @@ class TestPushRetryClassification:
             )
         assert PushSubscription.objects.filter(id=push_subscription.id).exists()
 
+    @pytest.mark.parametrize(
+        ("notification_type", "ttl"),
+        [
+            ("food_team_reminder", 20 * 3600),
+            ("food_takeaway_ready", 2 * 3600),
+            ("food_leftovers_ready", 3 * 3600),
+            ("new_announcement", 48 * 3600),
+        ],
+    )
+    def test_madhold_pushes_expire_with_their_evening(
+        self, push_subscription, notification_type, ttl
+    ):
+        """A phone that was off all evening must not be told "takeaway er klar"
+        the next morning."""
+        from apps.notifications.services import send_push_to_subscription
+
+        with patch("pywebpush.webpush", return_value=MagicMock(status_code=201)) as webpush:
+            send_push_to_subscription(
+                subscription=push_subscription,
+                notification_type=notification_type,
+                title="t",
+                message="m",
+                link="/x",
+            )
+
+        assert webpush.call_args.kwargs["ttl"] == ttl
+
     @pytest.mark.parametrize("status_code", [404, 410])
     def test_expired_does_not_raise_and_deletes_subscription(self, push_subscription, status_code):
         from apps.notifications.services import send_push_to_subscription
@@ -844,6 +871,20 @@ class TestEmailPreferenceFallback:
         ):
             assert should_send_email(user, notification_type) is default
 
+    def test_in_app_and_push_fall_back_to_the_defaults_too(self, user):
+        """Both used to answer True for everything, so a resident without a row got
+        birthday push, which is off by default for everyone else."""
+        from apps.notifications.services import get_user_preference, get_user_push_preference
+
+        NotificationPreference.objects.filter(user=user).delete()
+        user.refresh_from_db()
+
+        assert get_user_push_preference(user, NotificationType.BIRTHDAY) is False
+        assert get_user_preference(user, NotificationType.BIRTHDAY) is False
+        assert get_user_preference(user, NotificationType.EVENT_CREATED) is True
+        assert get_user_preference(user, NotificationType.SUBGROUP_ACTIVITY) is False
+        assert get_user_push_preference(user, NotificationType.NEW_MESSAGE) is True
+
     def test_an_explicit_opt_out_still_wins(self, user):
         from apps.notifications.email_service import should_send_email
 
@@ -852,3 +893,274 @@ class TestEmailPreferenceFallback:
         )
 
         assert should_send_email(user, NotificationType.NEW_MESSAGE) is False
+
+
+@pytest.mark.django_db
+class TestToggleLessTypesPiggybackOnEveryChannel:
+    """The types with no toggle of their own reach anyone who uses that channel.
+
+    The two hand-written lists this replaced had drifted: the e-mail one never
+    covered the four food toggles, ``email_car_sharing`` or ``email_reports``,
+    so a resident whose only e-mail was "påmindelse om madhold" got no
+    madholdsplan, no ønsker-åbnet — and no pause check, the one the code
+    comment says e-mail exists to deliver. Reading the toggles off the model
+    means a channel added later is covered without anyone remembering to.
+    """
+
+    TOGGLE_LESS = (
+        NotificationType.FOOD_TEAM_PAUSE_CHECK,
+        NotificationType.FOOD_TEAM_PLAN_READY,
+        NotificationType.FOOD_TEAM_WISHES_OPEN,
+        NotificationType.FOOD_TEAM_SHIFT_TAKEN,
+        NotificationType.EXPENSE_PROCESSED,
+    )
+
+    def _prefs(self, user, **on):
+        """Preferences with every channel off except the named ones."""
+        prefs, _ = NotificationPreference.objects.update_or_create(user=user)
+        for field in prefs._meta.fields:
+            if field.name.startswith(("email_", "push_")):
+                setattr(prefs, field.name, field.name in on)
+        prefs.save()
+        return prefs
+
+    @pytest.mark.parametrize(
+        "channel", ["email_food_team_reminder", "email_car_sharing", "email_reports"]
+    )
+    def test_a_single_food_or_late_added_email_toggle_is_enough(self, user, channel):
+        from apps.notifications.email_service import should_send_email
+
+        self._prefs(user, **{channel: True})
+
+        for notification_type in self.TOGGLE_LESS:
+            assert should_send_email(user, notification_type) is True, notification_type
+
+    def test_no_email_channel_at_all_still_means_no_email(self, user):
+        from apps.notifications.email_service import should_send_email
+
+        self._prefs(user)
+
+        for notification_type in self.TOGGLE_LESS:
+            assert should_send_email(user, notification_type) is False, notification_type
+
+    def test_push_covers_every_toggle_too(self, user):
+        from apps.notifications.services import get_user_push_preference
+
+        self._prefs(user, push_reports=True)
+
+        for notification_type in self.TOGGLE_LESS:
+            assert get_user_push_preference(user, notification_type) is True, notification_type
+
+    def test_the_channel_lists_cover_every_toggle_on_the_model(self, user):
+        """No toggle may be invisible to the piggyback rule."""
+        from apps.notifications.models import _channel_fields
+
+        booleans = {
+            f.name
+            for f in NotificationPreference._meta.fields
+            if f.name.startswith(("email_", "push_"))
+        }
+        covered = set(_channel_fields("email_")) | set(_channel_fields("push_"))
+        assert booleans == covered
+
+    def test_every_email_toggle_is_opt_in(self):
+        """E-mail is only ever on because a resident asked for it.
+
+        ``has_any_email_channel`` is the app's test for "does this person use
+        e-mail", and the toggle-less notifications ride on it. A toggle that
+        ships on — or that a data migration switches on, as 0019 did to
+        ``email_car_sharing`` — makes that test answer yes for people who never
+        opted in to e-mail at all.
+        """
+        on_by_default = [
+            f.name
+            for f in NotificationPreference._meta.fields
+            if f.name.startswith("email_") and f.default is True
+        ]
+        assert on_by_default == []
+
+    def test_a_fresh_resident_gets_no_email(self, user):
+        """The default row is silent on e-mail, including the toggle-less types."""
+        from apps.notifications.email_service import should_send_email
+
+        prefs = NotificationPreference.objects.create(user=user)
+        assert prefs.has_any_email_channel() is False
+
+        for notification_type in self.TOGGLE_LESS:
+            assert should_send_email(user, notification_type) is False, notification_type
+
+
+@pytest.mark.django_db
+class TestEmailHtmlIsSanitized:
+    """Posts reach the email template as stored, and any resident can store raw HTML
+    through the API, so the email is cleaned where it is built, not where it is saved."""
+
+    def test_script_and_event_handlers_are_removed(self, user, mailoutbox):
+        from apps.notifications.email_service import send_notification_email
+
+        NotificationPreference.objects.update_or_create(
+            user=user, defaults={"email_announcements": True}
+        )
+
+        send_notification_email(
+            user,
+            NotificationType.NEW_ANNOUNCEMENT,
+            "Opslag",
+            "Et nyt opslag",
+            html_content=(
+                '<p>Hej</p><img src="https://x.dk/a.jpg" onerror="alert(1)">'
+                '<script>alert(2)</script><a href="javascript:alert(3)">klik</a>'
+            ),
+        )
+
+        body = mailoutbox[0].body
+        assert "<p>Hej</p>" in body
+        assert 'src="https://x.dk/a.jpg"' in body
+        assert "onerror" not in body
+        assert "<script" not in body
+        assert "javascript:" not in body
+
+    def test_site_relative_links_become_absolute(self, user, mailoutbox, settings):
+        """A mention's /profil/5 points nowhere from a mail client."""
+        from apps.notifications.email_service import send_notification_email
+
+        settings.SITE_URL = "https://kb-intra.dk"
+        NotificationPreference.objects.update_or_create(
+            user=user, defaults={"email_announcements": True}
+        )
+
+        send_notification_email(
+            user,
+            NotificationType.NEW_ANNOUNCEMENT,
+            "Opslag",
+            "Et nyt opslag",
+            html_content='<p><a href="/profil/5">@Anna</a> <a href="https://x.dk/a">ude</a></p>',
+        )
+
+        body = mailoutbox[0].body
+        assert 'href="https://kb-intra.dk/profil/5"' in body
+        assert 'href="https://x.dk/a"' in body
+
+    def test_a_private_message_is_text_not_markup(
+        self, user, admin_user, mailoutbox, django_capture_on_commit_callbacks
+    ):
+        from apps.notifications.services import notify_new_message
+
+        NotificationPreference.objects.update_or_create(
+            user=user, defaults={"email_messages": True}
+        )
+
+        with django_capture_on_commit_callbacks(execute=True):
+            notify_new_message(user, admin_user, "Er a<b? <b>Ja</b>", 1)
+
+        assert "Er a&lt;b? &lt;b&gt;Ja&lt;/b&gt;" in mailoutbox[0].body
+
+
+@pytest.mark.django_db
+class TestAggregatedReplyTitle:
+    def test_the_count_is_replaced_not_appended(self, user, django_capture_on_commit_callbacks):
+        """Titles read "Mad (2 nye svar) (3 nye svar) (4 nye svar)" — 599 of them on prod."""
+        from apps.notifications.services import create_notification
+
+        with django_capture_on_commit_callbacks(execute=True):
+            for _ in range(4):
+                create_notification(
+                    user=user,
+                    notification_type=NotificationType.THREAD_REPLY,
+                    title="Mad",
+                    message="Nyt svar",
+                    link="/forum/faelles/traad/mad",
+                    group_key="/forum/faelles/traad/mad",
+                )
+
+        notification = Notification.objects.get(user=user)
+        assert notification.title == "Mad (4 nye svar)"
+
+    def test_the_migration_keeps_only_the_last_count(self):
+        from importlib import import_module
+
+        migration = import_module(
+            "apps.notifications.migrations.0027_collapse_stacked_reply_counts"
+        )
+
+        assert (
+            migration.STACKED.sub(r"\1", "Mad (2 nye svar) (3 nye svar) (4 nye svar)")
+            == "Mad (4 nye svar)"
+        )
+        assert migration.STACKED.sub(r"\1", "Mad (2 nye svar)") == "Mad (2 nye svar)"
+
+
+@pytest.mark.django_db
+def test_a_reply_in_an_event_thread_links_straight_to_the_thread(user, admin_user):
+    """A /kalender/ link only redirected to the thread, and the redirect left a
+    dead "Tilbage", a stale cached thread and an unread notification behind."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.events.models import Event
+    from apps.forum.models import Subgroup, Thread
+    from apps.notifications.services import notify_thread_reply
+
+    subgroup = Subgroup.objects.create(name="Fælles", slug="faelles")
+    thread = Thread.objects.create(subgroup=subgroup, title="Sommerfest", author=user)
+    Event.objects.create(
+        title="Sommerfest",
+        start_datetime=timezone.now() + timedelta(days=3),
+        end_datetime=timezone.now() + timedelta(days=3, hours=2),
+        created_by=user,
+        thread=thread,
+    )
+
+    notification = notify_thread_reply(
+        user, admin_user, "Sommerfest", thread.id, "faelles", thread.slug, "<p>Hej</p>", 42
+    )
+
+    assert notification is not None
+    assert notification.link == f"/forum/faelles/traad/{thread.slug}#post-42"
+
+
+@pytest.mark.django_db
+def test_old_event_thread_notifications_move_to_the_thread(user):
+    """Migration 0028: post notifications in event threads linked via /kalender/."""
+    from datetime import timedelta
+    from importlib import import_module
+
+    from django.apps import apps as django_apps
+    from django.utils import timezone
+
+    from apps.events.models import Event
+    from apps.forum.models import Subgroup, Thread
+
+    subgroup = Subgroup.objects.create(name="Fælles", slug="faelles")
+    thread = Thread.objects.create(subgroup=subgroup, title="Sommerfest", author=user)
+    event = Event.objects.create(
+        title="Sommerfest",
+        start_datetime=timezone.now() + timedelta(days=3),
+        end_datetime=timezone.now() + timedelta(days=3, hours=2),
+        created_by=user,
+        thread=thread,
+    )
+    reply = Notification.objects.create(
+        user=user,
+        notification_type=NotificationType.THREAD_REPLY,
+        title="Sommerfest",
+        link=f"/kalender/{event.slug}#post-42",
+        group_key=f"/kalender/{event.slug}",
+    )
+    reminder = Notification.objects.create(
+        user=user,
+        notification_type=NotificationType.EVENT_REMINDER,
+        title="Sommerfest i morgen",
+        link=f"/kalender/{event.slug}",
+    )
+
+    import_module("apps.notifications.migrations.0028_event_thread_links").forwards(
+        django_apps, None
+    )
+
+    reply.refresh_from_db()
+    reminder.refresh_from_db()
+    assert reply.link == f"/forum/faelles/traad/{thread.slug}#post-42"
+    assert reply.group_key == f"/forum/faelles/traad/{thread.slug}"
+    assert reminder.link == f"/kalender/{event.slug}"

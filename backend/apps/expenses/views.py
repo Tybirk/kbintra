@@ -93,12 +93,13 @@ def _csv_safe(value: object) -> str:
 def _can_view_expense(user: Any, expense: Expense) -> bool:
     """Whether *user* may read *expense* (not counting ownership).
 
-    Economy admins (the treasurer) see every expense; food admins see only the
-    ones flagged ``food_related`` (udlæg i forbindelse med fællesmad).
+    Economy admins (the treasurer) see every expense; food admins and the
+    madøkonomiansvarlig see only the ones flagged ``food_related`` (udlæg i
+    forbindelse med fællesmad).
     """
     if user.has_economy_admin:
         return True
-    return bool(user.has_food_admin and expense.food_related)
+    return bool((user.has_food_admin or user.is_food_economy_admin) and expense.food_related)
 
 
 def _create_attachments(expense: Expense, files: list) -> None:
@@ -223,9 +224,17 @@ class ExpenseDetailView(generics.RetrieveUpdateDestroyAPIView):
     def perform_update(self, serializer: Any) -> None:
         from .tasks import send_expense_notification_task
 
+        was_food_related = serializer.instance.food_related
         expense = serializer.save()
         # Notify the treasurer of the change, threaded under the original notice.
         send_expense_notification_task("edited", _expense_email_fields(expense))
+        if expense.food_related != was_food_related:
+            # Flipping the fællesmad flag moves the udlæg to the other inbox; tell
+            # the one that had it too, or it keeps waiting on an udlæg it no
+            # longer handles.
+            send_expense_notification_task(
+                "edited", {**_expense_email_fields(expense), "route_food_related": was_food_related}
+            )
 
     def perform_destroy(self, instance: Expense) -> None:
         from .tasks import send_expense_notification_task
@@ -362,45 +371,36 @@ def expense_combined_pdf(request: HttpRequest, pk: int) -> HttpResponse:
 ADMIN_PAGE_SIZE = 20
 
 
-class IsEconomyAdmin(permissions.BasePermission):
-    """Allow access to staff or users with is_economy_admin set.
-
-    Economy admins (the treasurer) — distinct from regular site admins — manage
-    expense reimbursements. Staff implicitly have the privilege via
-    ``User.has_economy_admin``.
-    """
-
-    def has_permission(self, request: Request, view: Any) -> bool:
-        u = request.user
-        return bool(u and u.is_authenticated and u.has_economy_admin)
-
-
 class IsExpenseAdmin(permissions.BasePermission):
-    """Allow economy admins (full access) or food admins (read-only).
+    """Allow economy admins (full access), the madøkonomiansvarlig or food admins.
 
-    Food admins may *view* the udlæg flagged ``food_related`` so they can keep
-    track of fællesmad expenses, but only economy admins change status. The
-    food-related restriction itself is enforced in ``_filter_admin_expenses``.
+    Food admins and the madøkonomiansvarlig see only the udlæg flagged
+    ``food_related``; that restriction is enforced in ``_filter_admin_expenses``.
+    Who may change a status is decided per expense in ``AdminExpenseStatusView``.
     """
 
     def has_permission(self, request: Request, view: Any) -> bool:
         u = request.user
-        return bool(u and u.is_authenticated and (u.has_economy_admin or u.has_food_admin))
+        return bool(
+            u
+            and u.is_authenticated
+            and (u.has_economy_admin or u.has_food_admin or u.is_food_economy_admin)
+        )
 
 
 def _filter_admin_expenses(request: Request) -> QuerySet[Expense]:
     """Apply the shared status/user/date filters used by list and export.
 
-    Food-admin-only users (no economy role) are restricted to ``food_related``
-    expenses; economy admins see everything and may opt into the same filter
-    via the ``food_related`` query param.
+    Users without the economy role (food admins, the madøkonomiansvarlig) are
+    restricted to ``food_related`` expenses; economy admins see everything and
+    may opt into the same filter via the ``food_related`` query param.
     """
     qs = Expense.objects.select_related("submitted_by", "processed_by").prefetch_related(
         "attachments"
     )
 
     if not request.user.has_economy_admin:
-        # Food-admin-only: never expose non-food expenses.
+        # No economy role: never expose non-food expenses.
         qs = qs.filter(food_related=True)
     else:
         food_param = request.query_params.get("food_related")
@@ -482,12 +482,18 @@ class AdminExpenseListView(APIView):
 
 
 class AdminExpenseStatusView(APIView):
-    """Set an expense's status to paid/rejected/pending (staff only)."""
+    """Set an expense's status to paid/rejected/pending.
 
-    permission_classes = [IsEconomyAdmin]
+    The treasurer may settle any udlæg, the madøkonomiansvarlig only the
+    fællesmad ones (``User.can_process_expense``).
+    """
+
+    permission_classes = [IsExpenseAdmin]
 
     def patch(self, request: Request, pk: int) -> Response:
         expense = generics.get_object_or_404(Expense, pk=pk)
+        if not request.user.can_process_expense(expense):
+            raise PermissionDenied("Du kan ikke ændre status på dette udlæg.")
         old_status = expense.status
         serializer = ExpenseAdminUpdateSerializer(expense, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)

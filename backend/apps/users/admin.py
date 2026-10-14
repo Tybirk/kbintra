@@ -6,6 +6,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
 from apps.forum.models import SubgroupSubscription
+from apps.notifications.admin import PREFERENCE_FIELDSETS
 from apps.notifications.models import NotificationPreference, PushSubscription
 
 from .models import EmailChangeToken, Invitation, PasswordResetToken, User
@@ -16,62 +17,7 @@ class NotificationPreferenceInline(admin.StackedInline):
     can_delete = False
     extra = 0
     min_num = 1
-    fieldsets = [
-        (
-            "In-app",
-            {
-                "fields": [
-                    "notify_message_reactions",
-                    "notify_announcements",
-                    "notify_announcement_updates",
-                    "notify_forum_subscriptions",
-                    "notify_subgroup_activity",
-                    "notify_thread_replies",
-                    "notify_post_reactions",
-                    "notify_events",
-                    "notify_event_reminders",
-                    "notify_food_tickets",
-                    "notify_mentions",
-                ]
-            },
-        ),
-        (
-            "Email",
-            {
-                "fields": [
-                    "email_messages",
-                    "email_announcements",
-                    "email_announcement_updates",
-                    "email_forum_subscriptions",
-                    "email_subgroup_activity",
-                    "email_thread_replies",
-                    "email_post_reactions",
-                    "email_events",
-                    "email_event_reminders",
-                    "email_food_tickets",
-                    "email_mentions",
-                ]
-            },
-        ),
-        (
-            "Push",
-            {
-                "fields": [
-                    "push_messages",
-                    "push_announcements",
-                    "push_announcement_updates",
-                    "push_forum_subscriptions",
-                    "push_subgroup_activity",
-                    "push_thread_replies",
-                    "push_post_reactions",
-                    "push_events",
-                    "push_event_reminders",
-                    "push_food_tickets",
-                    "push_mentions",
-                ]
-            },
-        ),
-    ]
+    fieldsets = PREFERENCE_FIELDSETS
 
 
 class PushSubscriptionInline(admin.TabularInline):
@@ -106,8 +52,16 @@ class UserAdmin(BaseUserAdmin):
         "house",
         "is_staff",
         "is_active",
+        "is_exempt_from_food_teams",
     )
-    list_filter = ("is_staff", "is_superuser", "is_active", "house")
+    list_filter = (
+        "is_staff",
+        "is_superuser",
+        "is_active",
+        "is_child",
+        "is_exempt_from_food_teams",
+        "house",
+    )
     search_fields = ("email", "first_name", "last_name")
     ordering = ("email",)
     inlines = [
@@ -126,12 +80,37 @@ class UserAdmin(BaseUserAdmin):
                     "last_name",
                     "phone_number",
                     "birthdate",
+                    "hide_birth_year",
                     "profile_picture",
+                    "profile_picture_thumbnail",
                     "bio",
                 )
             },
         ),
-        ("House", {"fields": ("house",)}),
+        ("House", {"fields": ("house", "is_child")}),
+        (
+            "Madhold",
+            {
+                "description": (
+                    "A pause is 'Exempt from food teams' plus an optional reason. "
+                    "Submitting madhold wishes with dates lifts it again."
+                ),
+                "fields": (
+                    "is_exempt_from_food_teams",
+                    "food_team_pause_reason",
+                    "can_be_head_chef",
+                    "prefers_cooking_with_housemate",
+                    "default_cooking_days",
+                    "is_over_50",
+                ),
+            },
+        ),
+        ("Preferences", {"fields": ("accessibility_mode", "hide_closed_threads")}),
+        ("Bank details (udlæg)", {"fields": ("bank_reg_nr", "bank_account_number")}),
+        (
+            "Bildeling",
+            {"fields": ("carsharing_terms_accepted_version", "carsharing_terms_accepted_at")},
+        ),
         (
             "Permissions",
             {
@@ -140,6 +119,7 @@ class UserAdmin(BaseUserAdmin):
                     "is_staff",
                     "is_food_admin",
                     "is_economy_admin",
+                    "is_food_economy_admin",
                     "is_superuser",
                     "groups",
                     "user_permissions",
