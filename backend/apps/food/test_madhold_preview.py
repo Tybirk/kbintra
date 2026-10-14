@@ -232,3 +232,48 @@ class TestWhySomeoneIsUnplaced:
             f"{day.day}/{day.month}: {placed} fra samme hus er allerede på holdet."
         ) in result.warnings
         assert not any("over-50" in w for w in result.warnings)
+
+
+@pytest.mark.django_db
+class TestWarningsDescribeTheFinalPlan:
+    def test_a_couple_placed_together_on_a_retry_is_not_reported_as_split(self, admin_user):
+        """Both over 50: the first attempt (max 2 over-50 per team) can't fit them next
+        to the over-50s already there, a retry with a higher cap can. The plan has
+        them together, so the warnings must not say otherwise."""
+        cycle = _cycle(admin_user, days=1)
+        for i in range(2):
+            User.objects.create_user(
+                email=f"ung{i}@example.com",
+                password="x",
+                first_name=f"Ung{i}",
+                house=House.objects.create(name=f"Hus {60 + i}"),
+            )
+        old = date(timezone.localdate().year - 60, 1, 1)
+        # Head chefs are placed before the couple, so they take the two over-50
+        # seats the first attempt allows.
+        for i in range(2):
+            User.objects.create_user(
+                email=f"old{i}@example.com",
+                password="x",
+                first_name=f"Ældre{i}",
+                house=House.objects.create(name=f"Hus {50 + i}"),
+                birthdate=old,
+                can_be_head_chef=True,
+            )
+        couple_house = House.objects.create(name="Hus 43")
+        for name in ("Anne", "Helge"):
+            User.objects.create_user(
+                email=f"{name.lower()}@example.com",
+                password="x",
+                first_name=name,
+                house=couple_house,
+                birthdate=old,
+                prefers_cooking_with_housemate=True,
+            )
+
+        generator = TeamGenerator(cycle)
+        result = generator.generate(save=False)
+
+        names = {m.name.split()[0] for t in result.teams for m in t.members}
+        assert {"Anne", "Helge"} <= names
+        assert not any("kunne ikke placeres sammen" in w for w in result.warnings)
