@@ -32,7 +32,7 @@ uv run python manage.py runserver          # Dev server (HTTP only)
 uv run daphne -b 0.0.0.0 -p 7000 config.asgi:application  # With WebSocket support
 uv run python manage.py migrate            # Apply migrations
 uv run python manage.py makemigrations     # Create migrations
-uv run pytest                              # Run all tests
+uv run pytest                              # Run all tests (parallel, pytest-xdist; -n0 for pdb)
 uv run pytest apps/forum/tests.py -v       # Run specific app tests
 uv run pytest -k "test_name"               # Run single test by name
 uv run ruff check .                        # Lint
