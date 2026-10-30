@@ -530,6 +530,8 @@ export interface Author {
   phone_number?: string
 }
 
+export type GroupType = "generalforsamling" | "faellesmoede" | "bestyrelse" | "udvalg" | "arbejdsgruppe" | "almindelig"
+
 export interface SubgroupMember {
   id: number
 
@@ -540,6 +542,14 @@ export interface SubgroupMember {
   house_name: string
 
   created_at: string
+}
+
+export interface SubgroupChild {
+  id: number
+
+  name: string
+
+  slug: string
 }
 
 export type SubgroupReporting = "off" | "open" | "closed"
@@ -559,11 +569,25 @@ export interface Subgroup {
 
   is_default: boolean
 
-  is_committee: boolean
+  group_type: GroupType
 
   is_main: boolean
 
   icon: string
+
+  parent: number | null
+
+  parent_name: string | null
+
+  parent_slug: string | null
+
+  children: SubgroupChild[]
+
+  established_on: string | null
+
+  expires_on: string | null
+
+  is_active: boolean
 
   thread_count: number
 
@@ -595,6 +619,40 @@ export interface Subgroup {
   members: SubgroupMember[]
 
   subscriber_count: number
+}
+
+export interface OrgNodeMember {
+  id: number
+
+  first_name: string
+
+  last_name: string
+
+  profile_picture: string | null
+}
+
+export interface OrgNode {
+  id: number
+
+  name: string
+
+  slug: string
+
+  group_type: GroupType
+
+  description: string
+
+  established_on: string | null
+
+  expires_on: string | null
+
+  is_active: boolean
+
+  member_count: number
+
+  members: OrgNodeMember[]
+
+  children: OrgNode[]
 }
 
 export interface SubgroupSubscriber {

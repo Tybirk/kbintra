@@ -9,12 +9,75 @@ from django.utils.text import slugify
 
 from .utils import danish_slugify
 
+MAX_PARENT_DEPTH = 10
+
+
+def validate_subgroup_parent(instance: "Subgroup", parent: "Subgroup | None") -> None:
+    """Validate a candidate parent for a Subgroup against the hierarchy rules.
+
+    Shared by Subgroup.clean() (so Django admin's ModelForm.full_clean() is
+    protected) and the serializer layer (so the API returns a clean 400
+    instead of a 500). Raises django.core.exceptions.ValidationError.
+
+    Rules:
+    - almindelig: parent must be None.
+    - organ types (generalforsamling/faellesmoede/bestyrelse/udvalg): parent must be None.
+    - arbejdsgruppe: parent must be an organ or another arbejdsgruppe (never almindelig,
+      never itself/a descendant); parent may also be None.
+    - No cycles: a group may not be its own ancestor (depth-capped ancestor walk).
+    """
+    if parent is None:
+        return
+
+    if instance.group_type == Subgroup.GroupType.ALMINDELIG:
+        raise ValidationError("En almindelig gruppe kan ikke have en forælder.")
+
+    if instance.group_type in Subgroup.ORGAN_TYPES:
+        raise ValidationError("Et organ kan ikke have en forælder.")
+
+    allowed_parent_types = Subgroup.ORGAN_TYPES | {Subgroup.GroupType.ARBEJDSGRUPPE}
+    if (
+        instance.group_type == Subgroup.GroupType.ARBEJDSGRUPPE
+        and parent.group_type not in allowed_parent_types
+    ):
+        raise ValidationError(
+            "En arbejdsgruppes forælder skal være et organ eller en anden arbejdsgruppe."
+        )
+
+    # Cycle check: walk up from the candidate parent, looking for `instance`.
+    current_id: int | None = parent.pk
+    depth = 0
+    while current_id is not None:
+        if instance.pk is not None and current_id == instance.pk:
+            raise ValidationError("En gruppe kan ikke være sin egen forfader.")
+        depth += 1
+        if depth > MAX_PARENT_DEPTH:
+            raise ValidationError("Hierarkiet er for dybt (muligvis en cyklus).")
+        current_id = (
+            Subgroup.objects.filter(pk=current_id).values_list("parent_id", flat=True).first()
+        )
+
 
 class Subgroup(models.Model):
     """
     A forum subgroup/category.
     Users can subscribe to subgroups to receive notifications.
     """
+
+    class GroupType(models.TextChoices):
+        GENERALFORSAMLING = "generalforsamling", "Generalforsamling"
+        FAELLESMOEDE = "faellesmoede", "Fællesmøde"
+        BESTYRELSE = "bestyrelse", "Bestyrelse"
+        UDVALG = "udvalg", "Udvalg"
+        ARBEJDSGRUPPE = "arbejdsgruppe", "Arbejdsgruppe"
+        ALMINDELIG = "almindelig", "Almindelig gruppe"
+
+    ORGAN_TYPES = {
+        GroupType.GENERALFORSAMLING,
+        GroupType.FAELLESMOEDE,
+        GroupType.BESTYRELSE,
+        GroupType.UDVALG,
+    }
 
     class Reporting(models.TextChoices):
         """Whether this group takes indrapporteringer, and who may read them.
@@ -45,9 +108,11 @@ class Subgroup(models.Model):
         default=False,
         help_text="If true, new users are automatically subscribed to this subgroup.",
     )
-    is_committee = models.BooleanField(
-        default=False,
-        help_text="If true, this subgroup is a committee (Udvalg).",
+    group_type = models.CharField(
+        max_length=20,
+        choices=GroupType.choices,
+        default=GroupType.ALMINDELIG,
+        db_index=True,
     )
     allows_members = models.BooleanField(
         default=False,
@@ -86,6 +151,25 @@ class Subgroup(models.Model):
         default="",
         help_text="Tabler icon name for display, e.g. 'users', 'home'. Empty = default per type.",
     )
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="children",
+        help_text="Soft navigation/structure link only — not a permission or visibility cascade.",
+    )
+    established_on = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Official creation date, distinct from the system created_at timestamp.",
+    )
+    expires_on = models.DateField(null=True, blank=True)
+    is_active = models.BooleanField(
+        default=True,
+        db_index=True,
+        help_text="False = afsluttet/arkiveret. Hidden from the forum list by default.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     last_activity_at = models.DateTimeField(
         null=True,
@@ -99,10 +183,12 @@ class Subgroup(models.Model):
         # the top for people who can't see the activity. Activity ordering is
         # done per-viewer in the serializer/frontend via latest_thread_activity_at.
         #
-        # `name` is the tiebreaker because those two flags leave 40 of the 50
-        # groups equal, and without it SQLite returns them in whatever order the
-        # rows happen to sit in — so a list could reshuffle after any edit.
-        ordering = ["-is_main", "-is_committee", "name"]
+        # `name` is the tiebreaker because is_main leaves nearly every group
+        # equal, and without it SQLite returns them in whatever order the rows
+        # happen to sit in — so a list could reshuffle after any edit. Organ
+        # grouping (generalforsamling → bestyrelse → udvalg) is a display
+        # concern handled per-view, not a stable database ordering.
+        ordering = ["-is_main", "name"]
 
     def __str__(self) -> str:
         return self.name
@@ -116,6 +202,7 @@ class Subgroup(models.Model):
         editable list, which is everywhere this gets flipped.
         """
         super().clean()
+        validate_subgroup_parent(self, self.parent)
         if self.reporting != self.Reporting.OFF and not self.allows_members:
             raise ValidationError(
                 {
@@ -136,6 +223,14 @@ class Subgroup(models.Model):
         if not self.slug:
             self.slug = danish_slugify(self.name)
         super().save(*args, **kwargs)
+
+    @property
+    def is_organ(self) -> bool:
+        return self.group_type in self.ORGAN_TYPES
+
+    @property
+    def is_working_group(self) -> bool:
+        return self.group_type == self.GroupType.ARBEJDSGRUPPE
 
 
 class SubgroupSubscription(models.Model):

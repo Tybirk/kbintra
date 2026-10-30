@@ -548,20 +548,20 @@ class TestIndexAndSearch:
         index_object(
             obj_type="thread",
             object_id=1,
-            title="Generalforsamling",
-            body="Referat fra generalforsamling",
+            title="Sommerfest",
+            body="Referat fra sommerfest",
             url="/forum/test/1",
             created_at="2020-01-01T00:00:00",
         )
         index_object(
             obj_type="thread",
             object_id=2,
-            title="Generalforsamling",
-            body="Referat fra generalforsamling",
+            title="Sommerfest",
+            body="Referat fra sommerfest",
             url="/forum/test/2",
             created_at="2025-12-01T00:00:00",
         )
-        results = fts_search("Generalforsamling")
+        results = fts_search("Sommerfest")
         assert len(results) == 2
         # The newer one (id=2) should come first
         assert results[0]["object_id"] == 2
@@ -608,7 +608,7 @@ class TestIndexAndSearch:
         index_object(
             obj_type="thread",
             object_id=1,
-            title="Generalforsamling",
+            title="Sommerfest",
             body="",
             url="/forum/test/1",
             created_at=old,
@@ -616,7 +616,7 @@ class TestIndexAndSearch:
         index_object(
             obj_type="user",
             object_id=2,
-            title="Generalforsamling Hansen",
+            title="Sommerfest Hansen",
             body="",
             url="/profil/2",
             created_at=old,
@@ -625,12 +625,12 @@ class TestIndexAndSearch:
         index_object(
             obj_type="thread",
             object_id=3,
-            title="Generalforsamling",
+            title="Sommerfest",
             body="",
             url="/forum/test/3",
             created_at=recent,
         )
-        results = fts_search("Generalforsamling")
+        results = fts_search("Sommerfest")
         assert len(results) == 3
         # Recent thread first
         assert results[0]["object_id"] == 3

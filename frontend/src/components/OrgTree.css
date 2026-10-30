@@ -1,0 +1,130 @@
+/* OrgTree.tsx — the indented mandate tree.
+   The geometry (PAD 14, STEP 18, INSET 7) lives in OrgTree.tsx and arrives as
+   inline `left` values; this file only styles what those numbers position.
+   Everything is scoped under .org-tree so nothing leaks into the rest of the app. */
+
+.org-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.org-tree-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* Comfortable touch target for the whole row. */
+  min-height: 44px;
+}
+
+/* A connector running the full height of the row: either an ancestor's line
+   passing behind this row, or this row's own line continuing to its next
+   sibling. */
+.org-tree-rail {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  pointer-events: none;
+}
+
+/* Drops from the parent's line and turns right towards this row's content.
+   Half a row tall, so it lands on the vertical centre. */
+.org-tree-elbow {
+  position: absolute;
+  top: 0;
+  height: 22px;
+  width: 11px;
+  border-left: 1px solid;
+  border-bottom: 1px solid;
+  border-bottom-left-radius: 4px;
+  pointer-events: none;
+}
+
+.org-tree-fold {
+  position: relative;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: 4px;
+  background: var(--mantine-color-body);
+  color: var(--mantine-color-dimmed);
+}
+
+.org-tree-fold:hover {
+  color: var(--mantine-color-text);
+  border-color: var(--mantine-color-dimmed);
+}
+
+/* The glyph is 20px, well under the 44px a finger needs. Grow the hit area into
+   the empty left gutter, where only decorative rails live — never to the right,
+   where it would steal taps meant for the group name. */
+.org-tree-fold::after {
+  content: "";
+  position: absolute;
+  inset: -12px -4px -12px -14px;
+}
+
+.org-tree-chevron {
+  transition: transform 150ms ease;
+}
+
+.org-tree-fold[aria-expanded="true"] .org-tree-chevron {
+  transform: rotate(90deg);
+}
+
+/* Stands in for the fold button on groups that have no children, so names stay
+   aligned down the whole column. */
+.org-tree-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin: 0 6px;
+  border-radius: 2px;
+}
+
+.org-tree-link {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: var(--mantine-radius-sm);
+  color: inherit;
+  text-decoration: none;
+}
+
+.org-tree-link:hover {
+  background: var(--mantine-color-default-hover);
+}
+
+.org-tree-row[data-selected] .org-tree-link {
+  background: var(--mantine-primary-color-light);
+  box-shadow: inset 2px 0 0 var(--mantine-primary-color-filled);
+}
+
+.org-tree-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.org-tree-meta {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .org-tree-chevron {
+    transition: none;
+  }
+}

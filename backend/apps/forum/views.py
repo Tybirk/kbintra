@@ -7,7 +7,19 @@ import uuid
 import zipfile
 from typing import Any
 
-from django.db.models import Count, F, Max, OuterRef, Prefetch, Q, Subquery
+from django.db.models import (
+    Case,
+    Count,
+    F,
+    IntegerField,
+    Max,
+    OuterRef,
+    Prefetch,
+    Q,
+    Subquery,
+    Value,
+    When,
+)
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -41,6 +53,7 @@ from .serializers import (
     FolderCreateSerializer,
     FolderSerializer,
     GalleryItemSerializer,
+    OrgNodeSerializer,
     PollSerializer,
     PollUpdateSerializer,
     PostCreateSerializer,
@@ -107,6 +120,17 @@ def _is_member(user: Any, subgroup: Subgroup) -> bool:
     return SubgroupMembership.objects.filter(user=user, subgroup=subgroup).exists()
 
 
+def _can_edit_organ(user: Any, subgroup: Subgroup) -> bool:
+    """Whether `user` may edit an organ subgroup's structural/identity fields.
+
+    Organs (generalforsamling/faellesmoede/bestyrelse/udvalg) require staff or
+    membership to edit name/description/icon/parent — unlike arbejdsgruppe/almindelig,
+    which any authenticated user may edit (no leader concept). Reused by slice 004
+    for the is_active archive toggle.
+    """
+    return bool(user and user.is_authenticated and (user.is_staff or _is_member(user, subgroup)))
+
+
 def _already_created(model: type[Thread] | type[Post], request: Request) -> Any:
     """What this author already created with the request's client token, if anything.
 
@@ -157,7 +181,8 @@ def _subgroup_list_queryset() -> Any:
     doesn't run a query per subgroup.
     """
     return (
-        Subgroup.objects.prefetch_related(
+        Subgroup.objects.select_related("parent")
+        .prefetch_related(
             Prefetch(
                 "threads",
                 queryset=Thread.objects.filter(is_closed=False).only(
@@ -176,19 +201,164 @@ def _subgroup_list_queryset() -> Any:
                     "user__first_name", "user__last_name"
                 ),
             ),
+            Prefetch(
+                "children",
+                queryset=Subgroup.objects.only("id", "name", "slug", "parent_id"),
+            ),
         )
         .annotate(subscriber_count=Count("subscriptions", distinct=True))
         # The annotate's GROUP BY makes Django drop Meta.ordering, which left the
-        # list in no order at all — visible in every group picker.
-        .order_by(*Subgroup._meta.ordering)
+        # list in no order at all — visible in every group picker. Fælles first,
+        # then the organer (bestyrelse, udvalg, ...), then the rest — each by name.
+        .order_by(
+            "-is_main",
+            Case(
+                When(group_type__in=Subgroup.ORGAN_TYPES, then=Value(0)),
+                default=Value(1),
+                output_field=IntegerField(),
+            ),
+            "name",
+        )
     )
+
+
+# Fixed root order: the three named organer first, in vedtægter order, then
+# the Udvalg (alphabetical by name, handled separately below since there can
+# be any number of them).
+_ROOT_TYPE_ORDER = [
+    Subgroup.GroupType.GENERALFORSAMLING,
+    Subgroup.GroupType.FAELLESMOEDE,
+    Subgroup.GroupType.BESTYRELSE,
+]
+
+
+def _org_node_member_payload(subgroup: Subgroup) -> list[dict]:
+    """Lightweight member list (avatar fields only) for an org-tree node."""
+    if not subgroup.allows_members:
+        return []
+    prefetched = getattr(subgroup, "_prefetched_objects_cache", {}).get("memberships")
+    memberships = prefetched if prefetched is not None else subgroup.memberships.all()
+    return [
+        {
+            "id": m.user.id,
+            "first_name": m.user.first_name,
+            "last_name": m.user.last_name,
+            "profile_picture": m.user.avatar_url,
+        }
+        for m in memberships
+    ]
+
+
+def _build_org_node(
+    subgroup: Subgroup,
+    children_by_parent: dict[int | None, list[Subgroup]],
+    include_inactive: bool,
+) -> dict | None:
+    """Build a single nested org-tree node dict from an already-fetched subgroup,
+    or None if this node should be pruned (display-only — no DB writes).
+
+    Recursion happens here, in Python, over data already pulled into memory by
+    OrganisationView.get() — no further queries are issued. If `subgroup` is
+    inactive and include_inactive is False, the whole subtree is dropped (its
+    children are never promoted to take its place).
+    """
+    if not include_inactive and not subgroup.is_active:
+        return None
+
+    children = sorted(children_by_parent.get(subgroup.id, []), key=lambda s: s.name)
+    built_children = [
+        node
+        for child in children
+        if (node := _build_org_node(child, children_by_parent, include_inactive)) is not None
+    ]
+    members = _org_node_member_payload(subgroup)
+    return {
+        "id": subgroup.id,
+        "name": subgroup.name,
+        "slug": subgroup.slug,
+        "group_type": subgroup.group_type,
+        "description": subgroup.description,
+        "established_on": subgroup.established_on,
+        "expires_on": subgroup.expires_on,
+        "is_active": subgroup.is_active,
+        "member_count": len(members),
+        "members": members,
+        "children": built_children,
+    }
+
+
+class OrganisationView(APIView):
+    """`GET /api/forum/organisation/` — the official organisation tree.
+
+    Returns organ roots (generalforsamling, fællesmøde, bestyrelse, udvalg) in
+    fixed order, with arbejdsgrupper recursively nested beneath them.
+    Almindelige grupper are always excluded.
+
+    Built from a single flat queryset of the relevant subgroups (organ types +
+    arbejdsgruppe), with memberships prefetched. The parent_id -> children map
+    and the recursive tree assembly both happen in Python (`_build_org_node`)
+    — the ORM is never asked to walk the hierarchy, so this stays at a fixed,
+    small query count regardless of tree depth.
+
+    `?include_inactive=true` includes afsluttede (is_active=False) nodes. By
+    default, a node that is itself inactive is pruned from the tree along with
+    its entire subtree — children of an archived node are never promoted to
+    take its place (no cascading `is_active` writes; this is display-only).
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        include_inactive = request.query_params.get("include_inactive") == "true"
+
+        relevant_types = Subgroup.ORGAN_TYPES | {Subgroup.GroupType.ARBEJDSGRUPPE}
+        subgroups = list(
+            Subgroup.objects.filter(group_type__in=relevant_types).prefetch_related(
+                Prefetch(
+                    "memberships",
+                    queryset=SubgroupMembership.objects.select_related("user").order_by(
+                        "user__first_name", "user__last_name"
+                    ),
+                )
+            )
+        )
+
+        children_by_parent: dict[int | None, list[Subgroup]] = {}
+        for s in subgroups:
+            children_by_parent.setdefault(s.parent_id, []).append(s)
+
+        roots: list[Subgroup] = []
+        for organ_type in _ROOT_TYPE_ORDER:
+            roots.extend(s for s in subgroups if s.group_type == organ_type and s.parent_id is None)
+        udvalg_roots = sorted(
+            (
+                s
+                for s in subgroups
+                if s.group_type == Subgroup.GroupType.UDVALG and s.parent_id is None
+            ),
+            key=lambda s: s.name,
+        )
+        roots.extend(udvalg_roots)
+
+        tree = [
+            node
+            for root in roots
+            if (node := _build_org_node(root, children_by_parent, include_inactive)) is not None
+        ]
+
+        return Response(OrgNodeSerializer(tree, many=True).data)
 
 
 class SubgroupListView(generics.ListCreateAPIView):
     """List all subgroups or create a new one."""
 
     permission_classes = [permissions.IsAuthenticated]
-    queryset = _subgroup_list_queryset()
+
+    def get_queryset(self) -> Any:
+        queryset = _subgroup_list_queryset()
+        if self.request.query_params.get("include_archived") == "true":
+            return queryset
+        return queryset.filter(is_active=True)
 
     def get_serializer_class(self) -> type:
         if self.request.method == "POST":
@@ -314,9 +484,34 @@ class SubgroupUpdateView(APIView):
     def patch(self, request: Request, slug: str) -> Response:
         subgroup = get_object_or_404(Subgroup, slug=slug)
         was_allowing = subgroup.allows_members
-        serializer = SubgroupUpdateSerializer(subgroup, data=request.data, partial=True)
+        serializer = SubgroupUpdateSerializer(
+            subgroup, data=request.data, partial=True, context={"request": request}
+        )
         serializer.is_valid(raise_exception=True)
         will_allow = serializer.validated_data.get("allows_members", was_allowing)
+
+        # Organ subgroups (generalforsamling/faellesmoede/bestyrelse/udvalg) require
+        # staff or membership to edit identity/structural fields. Arbejdsgruppe and
+        # almindelig groups stay open to any authenticated user (no leader concept).
+        organ_gated_fields = {
+            "name",
+            "description",
+            "icon",
+            "group_type",
+            "parent",
+            "established_on",
+            "expires_on",
+            "is_active",
+        }
+        if (
+            subgroup.is_organ
+            and organ_gated_fields & set(serializer.validated_data)
+            and not _can_edit_organ(request.user, subgroup)
+        ):
+            return Response(
+                {"detail": "Kun medlemmer eller administratorer kan redigere dette organ."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         if "links_info" in serializer.validated_data:
             can_edit_links = (

@@ -19,6 +19,7 @@ import {
   IconReceipt2,
   IconTool,
   IconSettings,
+  IconSitemap,
   IconUsersGroup,
 } from "@tabler/icons-react"
 
@@ -64,6 +65,8 @@ const navItems: NavItem[] = [
   },
 
   { icon: IconMessageCircle, label: "Forum", path: "/forum" },
+
+  { icon: IconSitemap, label: "Grafisk overblik", path: "/overblik" },
 
   { icon: IconSoup, label: "Mad", path: "/mad" },
 
