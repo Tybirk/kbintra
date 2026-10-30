@@ -1264,11 +1264,11 @@ class SuggestedCyclePlanView(APIView):
     def get(self, request: Request) -> Response:
         from .services import cycle_planning as planning
 
-        eligible = planning.eligible_food_team_count()
-        day_count = planning.suggested_day_count(eligible)
         # Continue after the latest period, but never on a day that can no
         # longer be planned before its own reminder goes out.
         start = max(planning.suggested_start_date(), planning.earliest_start_date())
+        eligible = planning.eligible_food_team_count(start)
+        day_count = planning.suggested_day_count(eligible)
         cooking_dates = planning.next_cooking_dates(day_count, start=start)
         name = planning.suggest_cycle_name(cooking_dates)
 

@@ -52,7 +52,8 @@ uv run python manage.py run_huey -w 2 -k thread --flush-locks
 **Existing tasks**:
 - `apps/notifications/tasks.py` — `send_email_task`, `send_push_task`, `notify_new_message_task`, `notify_message_reaction_task`, `notify_mentions_task`
 - `apps/events/tasks.py` — `send_event_reminders` (hourly periodic)
-- `apps/food/tasks.py` — `apply_weekly_defaults_task` (Thursday 1 AM periodic)
+- `apps/food/tasks.py` — `apply_weekly_defaults_task` (Thursday 1 AM periodic), `lift_ended_food_team_pauses` (daily 00:15)
+- `apps/houses/tasks.py` — `process_due_handovers` (hourly periodic), `send_invitation_email_task`
 
 ## Production Infrastructure
 

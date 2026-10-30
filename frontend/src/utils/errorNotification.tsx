@@ -6,6 +6,22 @@ import { isAxiosError } from "axios"
 
 import { useAuthStore } from "../store/authStore"
 
+/** Every message in a DRF error value, in order. Field errors can nest: an
+ * object for a nested serializer, a list of objects for a nested list (one per
+ * row, `{}` for a row without errors). */
+
+function collectMessages(value: unknown): string[] {
+  if (typeof value === "string") return [value]
+
+  if (Array.isArray(value)) return value.flatMap(collectMessages)
+
+  if (value && typeof value === "object") {
+    return Object.values(value).flatMap(collectMessages)
+  }
+
+  return []
+}
+
 /** Extract a user-friendly error message from a DRF API error */
 
 export function extractErrorMessage(error: unknown, fallback: string): string {
@@ -19,7 +35,8 @@ export function extractErrorMessage(error: unknown, fallback: string): string {
 
   const data = error.response?.data
 
-  if (!data) return fallback
+  // Not a DRF body: an HTML error page from the proxy, say.
+  if (!data || typeof data !== "object") return fallback
 
   if (typeof data.detail === "string") return data.detail
 
@@ -30,25 +47,9 @@ export function extractErrorMessage(error: unknown, fallback: string): string {
     return data.non_field_errors.join(" ")
   }
 
-  const fieldErrors: string[] = []
-
-  for (const key of Object.keys(data)) {
-    if (key === "non_field_errors" || key === "detail") continue
-
-    const value = data[key]
-
-    if (Array.isArray(value)) {
-      fieldErrors.push(...value as string[])
-    } else if (typeof value === "string") {
-      fieldErrors.push(value)
-    } else if (value && typeof value === "object") {
-      // Nested serializer errors: recurse into nested object
-
-      const nested = extractErrorMessage({ response: { data: value } }, "")
-
-      if (nested) fieldErrors.push(nested)
-    }
-  }
+  const fieldErrors = Object.entries(data)
+    .filter(([key]) => key !== "non_field_errors" && key !== "detail")
+    .flatMap(([, value]) => collectMessages(value))
 
   if (fieldErrors.length > 0) return fieldErrors.join(" ")
 

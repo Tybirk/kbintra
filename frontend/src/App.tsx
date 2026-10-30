@@ -18,6 +18,8 @@ import { trackNavigation } from "./utils/navigationHistory"
 
 import { ErrorBoundary } from "./components/ErrorBoundary"
 
+import { MovedOutNotice } from "./components/MovedOutNotice"
+
 import { useVersionCheck } from "./hooks/useVersionCheck"
 
 import { useScrollToTopOnNavigate } from "./hooks/useScrollToTopOnNavigate"
@@ -96,6 +98,8 @@ const NotificationPreferencesPage = lazy(
 )
 
 const AdminPage = lazy(() => import("./pages/AdminPage"))
+
+const HandoverPage = lazy(() => import("./pages/HandoverPage"))
 
 const ConfirmEmailChangePage = lazy(
   () => import("./pages/ConfirmEmailChangePage"),
@@ -297,6 +301,7 @@ function App() {
                 }
           }
         >
+          {!location.pathname.startsWith("/beskeder") && <MovedOutNotice />}
           <AuthenticatedRoutes />
         </AppShell.Main>
       </AppShell>
@@ -763,6 +768,17 @@ const AuthenticatedRoutes = memo(function AuthenticatedRoutes() {
             <ProtectedRoute>
               <ErrorBoundary>
                 <AdminPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/drift/flytning"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <HandoverPage />
               </ErrorBoundary>
             </ProtectedRoute>
           }

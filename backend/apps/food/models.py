@@ -520,6 +520,11 @@ class FoodTeamWish(models.Model):
         blank=True,
         help_text="The pause reason this wish cleared, restored if it is corrected to 'kan ikke'.",
     )
+    lifted_pause_until = models.DateField(
+        null=True,
+        blank=True,
+        help_text="The end date of the pause this wish cleared, restored along with its reason.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

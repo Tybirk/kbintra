@@ -52,6 +52,17 @@ class UserManager(BaseUserManager["User"]):
 
         return self.create_user(email, password, **extra_fields)
 
+    def members(self) -> models.QuerySet:
+        """Everyone who belongs to the community right now: active accounts,
+        minus residents who have moved out and only keep their login for a
+        while (see ``User.moved_out_on``).
+
+        Use this for "everybody" — the directory, @mentions, birthdays, search.
+        It still includes admin and test accounts without a house; for the
+        people who actually live here, see ``apps.food.utils.residents()``.
+        """
+        return self.filter(is_active=True, moved_out_on__isnull=True)
+
 
 class User(AbstractUser):
     """
@@ -118,6 +129,13 @@ class User(AbstractUser):
         related_name="inhabitants",
     )
 
+    # Set when a handover (houses.Handover) moves this resident out. From then on
+    # they have no house, so everything that goes by the house (madhold, meal
+    # registration, the house page, bildeling) lets go of them by itself, and
+    # User.objects.members() leaves them out of the rest. They can still log in
+    # until the handover's access_until, when the account is deactivated.
+    moved_out_on = models.DateField(null=True, blank=True)
+
     is_child = models.BooleanField(
         default=False,
         help_text=(
@@ -157,6 +175,16 @@ class User(AbstractUser):
             "Why this user is stepping back from food teams, shown to food admins "
             "next to is_exempt_from_food_teams. Free text: 'away until spring', "
             "'health', or nothing at all."
+        ),
+    )
+    food_team_pause_until = models.DateField(
+        null=True,
+        blank=True,
+        help_text=(
+            "The pause (is_exempt_from_food_teams) lifts itself on this day. New "
+            "residents start with one for their first month. Cleared whenever the "
+            "pause ends some other way or gets a new reason, so it can never end "
+            "a later pause."
         ),
     )
     is_food_admin = models.BooleanField(
@@ -286,7 +314,49 @@ class User(AbstractUser):
         """
         if self.email:
             self.email = self.email.strip().lower()
+        # A pause end date only belongs to the pause it was set with. Lifted by
+        # hand, by a wish or by the admin, the date goes too, or it would end the
+        # next pause this person sets themselves. Given a new reason, it is a new
+        # pause, and the old end date would cut it short.
+        if self.food_team_pause_until and (
+            not self.is_exempt_from_food_teams or self._pause_reason_changed(kwargs)
+        ):
+            self._clear_on_save(kwargs, "food_team_pause_until")
+        # Moved out means without a house. Someone an admin puts back in a house
+        # (they moved within the community after all) lives here again.
+        if self.house_id and self.moved_out_on:
+            self._clear_on_save(kwargs, "moved_out_on")
         super().save(*args, **kwargs)
+
+    def _pause_reason_changed(self, save_kwargs: dict) -> bool:
+        """Whether this save writes a new pause reason and leaves the end date as
+        it was. A save that sets the end date too (a wish giving a pause back)
+        keeps it. Only paused people with an end date get here, so the extra
+        query is rare."""
+        update_fields = save_kwargs.get("update_fields")
+        if self.pk is None or (
+            update_fields is not None and "food_team_pause_reason" not in update_fields
+        ):
+            return False
+        stored = (
+            type(self)
+            .objects.filter(pk=self.pk)
+            .values("food_team_pause_reason", "food_team_pause_until")
+            .first()
+        )
+        return bool(
+            stored
+            and stored["food_team_pause_until"] == self.food_team_pause_until
+            and stored["food_team_pause_reason"] != self.food_team_pause_reason
+        )
+
+    def _clear_on_save(self, save_kwargs: dict, field_name: str) -> None:
+        """Clear a field as part of this save, adding it to an explicit
+        update_fields so it is written too."""
+        setattr(self, field_name, None)
+        update_fields = save_kwargs.get("update_fields")
+        if update_fields is not None and field_name not in update_fields:
+            save_kwargs["update_fields"] = [*update_fields, field_name]
 
     def get_full_name(self) -> str:
         """Return the first_name plus the last_name, with a space in between."""
@@ -308,6 +378,22 @@ class Invitation(models.Model):
         related_name="invitations",
         help_text="The house the invited user will belong to",
     )
+    # Who is coming, as the admin typed it in: prefills the registration form,
+    # and the phone number is copied onto the new user.
+    first_name = models.CharField(max_length=150, blank=True)
+    last_name = models.CharField(max_length=150, blank=True)
+    phone_number = models.CharField(max_length=20, blank=True)
+    handover = models.ForeignKey(
+        "houses.Handover",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="invitations",
+    )
+    # A handover invitation is mailed on send_on (houses.handover). Invitations
+    # without one predate that and were never mailed by the app.
+    send_on = models.DateField(null=True, blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,

@@ -205,7 +205,8 @@ def notify_residents_of_new_cycle(cycle_id: int) -> None:
     deadline_label = _deadline_label(cycle)
 
     asked = invited = 0
-    for user in madhold_residents():
+    # Not those who move out before the period begins: it isn't theirs.
+    for user in madhold_residents(_period_start(cycle)):
         if user.is_exempt_from_food_teams:
             notify_food_team_pause_check(user, cycle.name, deadline_label)
             asked += 1
@@ -222,6 +223,11 @@ def notify_residents_of_new_cycle(cycle_id: int) -> None:
 # the window has to be wider than a day for a deadline at any hour to be caught;
 # 48h means everyone is nudged between one and two days before, never after.
 WISH_REMINDER_LEAD_HOURS = 48
+
+
+def _period_start(cycle) -> date | None:
+    """A period's first cooking day, for leaving out who has moved out by then."""
+    return date.fromisoformat(min(cycle.cooking_dates)) if cycle.cooking_dates else None
 
 
 @db_periodic_task(local_crontab(hour=17, minute=30))
@@ -249,7 +255,7 @@ def send_wish_deadline_reminders() -> None:
         submitted = set(FoodTeamWish.objects.filter(cycle=cycle).values_list("user_id", flat=True))
         deadline_label = _deadline_label(cycle)
         nudged = 0
-        for user in food_team_pool().exclude(pk__in=submitted):
+        for user in food_team_pool(_period_start(cycle)).exclude(pk__in=submitted):
             notify_food_team_wish_deadline(user, cycle.name, deadline_label)
             nudged += 1
 
@@ -326,3 +332,25 @@ def refresh_drive_menus_periodic() -> None:
         )
     except Exception:
         logger.exception("Periodic Drive menu refresh failed")
+
+
+@db_periodic_task(local_crontab(hour=0, minute=15))
+def lift_ended_food_team_pauses() -> None:
+    """Run daily at 00:15 to lift every madhold pause whose end date has come.
+
+    Only pauses with ``food_team_pause_until`` end by themselves — new residents
+    start with one for their first month. Lifting clears the reason as well, the
+    same as when someone ends a pause by submitting a wish.
+    """
+    from apps.users.models import User
+
+    today = timezone.localdate()
+    ended = User.objects.filter(is_exempt_from_food_teams=True, food_team_pause_until__lte=today)
+    lifted = 0
+    for user in ended:
+        user.is_exempt_from_food_teams = False
+        user.food_team_pause_reason = ""
+        # save() clears food_team_pause_until along with the pause.
+        user.save(update_fields=["is_exempt_from_food_teams", "food_team_pause_reason"])
+        lifted += 1
+    logger.info("Lifted %d madhold pauses that ended by %s", lifted, today)

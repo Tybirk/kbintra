@@ -439,6 +439,27 @@ def send_push_notification(
     return {"total": len(subscription_ids), "enqueued_ids": subscription_ids}
 
 
+# What still reaches a resident who has moved out (User.moved_out_on) while they
+# keep their login: what is about them personally. Everything addressed to the
+# community — posts, events, madhold, birthdays — stops the day they move.
+_MOVED_OUT_TYPES = frozenset(
+    {
+        NotificationType.NEW_MESSAGE,
+        NotificationType.MESSAGE_REACTION,
+        NotificationType.THREAD_REPLY,
+        NotificationType.POST_REPLY,
+        NotificationType.POST_REACTION,
+        NotificationType.MENTION,
+        NotificationType.POST_EDITED_BY_ADMIN,
+        NotificationType.EVENT_EDITED_BY_ADMIN,
+        NotificationType.ANNOUNCEMENT_EDITED_BY_ADMIN,
+        NotificationType.EXPENSE_PROCESSED,
+        NotificationType.CAR_LOAN_UPDATE,
+        NotificationType.REPORT_UPDATE,
+    }
+)
+
+
 def create_notification(
     user: User,
     notification_type: NotificationType,
@@ -476,6 +497,11 @@ def create_notification(
     Returns:
         The created (or updated) notification, or None if user opted out of in-app notifications
     """
+    # Checked here rather than in each recipient query, so a new broadcast can't
+    # forget it.
+    if user.moved_out_on and notification_type not in _MOVED_OUT_TYPES:
+        return None
+
     # A higher-priority type covers this activity on whichever channels the user has it
     # enabled — skip those channels here. (should_send_email / get_user_push_preference both
     # read the same cached user.notification_preferences, so this adds no extra queries.)
@@ -1046,6 +1072,31 @@ def notify_food_swap_answered(
         message=message,
         link=link,
         related_user=responder,
+    )
+
+
+def notify_food_swap_target_moved_out(swap_request: Any) -> Notification | None:
+    """Tell the requester that the person they asked to bytte with has moved out.
+
+    The move took that maddag off them, and the pending request went with it
+    (``apps.houses.handover.move_out``). Without this the request just vanishes
+    from the Bytte tab while the requester waits for an answer. Called after the
+    rows are gone, so ``swap_request`` must come with its memberships, teams and
+    users already loaded.
+    """
+    leaver = swap_request.target_membership.user
+    gave_up = _cooking_date_label(swap_request.requester_membership.team.date.isoformat())
+    took_on = _cooking_date_label(swap_request.target_membership.team.date.isoformat())
+    return create_notification(
+        user=swap_request.requester,
+        notification_type=NotificationType.FOOD_TEAM_SWAP_REQUEST,
+        title="Dit bytte gik ikke igennem",
+        message=(
+            f"{leaver.first_name} er flyttet og er ikke længere på madhold {took_on}. "
+            f"Du har stadig madhold {gave_up}"
+        ),
+        link="/madhold/bytte",
+        related_user=leaver,
     )
 
 

@@ -61,6 +61,28 @@ describe("RegisterPage", () => {
     })
   })
 
+  it("fills in the name the admin typed into the handover", async () => {
+    mockValidateInvitation.mockResolvedValue({
+      valid: true,
+
+      email: "inviteret@example.com",
+
+      first_name: "Ny",
+
+      last_name: "Beboer",
+
+      expires_at: "2026-12-31T00:00:00Z",
+    })
+
+    render(<RegisterPage />)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/fornavn/i)).toHaveValue("Ny")
+
+      expect(screen.getByLabelText(/efternavn/i)).toHaveValue("Beboer")
+    })
+  })
+
   it("shows first and last name inputs", async () => {
     render(<RegisterPage />)
 

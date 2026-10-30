@@ -912,9 +912,17 @@ class FoodTeamWishCreateUpdateSerializer(serializers.ModelSerializer):
             if existing is not None and existing.lifted_pause:
                 # This wish's dates ended a pause; the correction takes that back.
                 updates["is_exempt_from_food_teams"] = True
-                wish_fields = {"lifted_pause": False, "lifted_pause_reason": ""}
+                wish_fields = {
+                    "lifted_pause": False,
+                    "lifted_pause_reason": "",
+                    "lifted_pause_until": None,
+                }
                 if not reason:
                     reason = existing.lifted_pause_reason
+                    # The same pause, so it ends when it would have (a new
+                    # resident's first month).
+                    if existing.lifted_pause_until:
+                        updates["food_team_pause_until"] = existing.lifted_pause_until
             if reason is not None and reason != user.food_team_pause_reason:
                 updates["food_team_pause_reason"] = reason
         elif validated_data.get("available_dates"):
@@ -923,6 +931,7 @@ class FoodTeamWishCreateUpdateSerializer(serializers.ModelSerializer):
                 wish_fields = {
                     "lifted_pause": True,
                     "lifted_pause_reason": user.food_team_pause_reason,
+                    "lifted_pause_until": user.food_team_pause_until,
                 }
             if user.food_team_pause_reason:
                 updates["food_team_pause_reason"] = ""
