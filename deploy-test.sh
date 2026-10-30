@@ -1,10 +1,11 @@
 #!/bin/sh
 # Test-server deploy wrapper.
 #
-# 1. Read-only rsync of the production SQLite DB + WAL/SHM and media/ from
-#    kbintra-dev. Strictly one-way: prod is the rsync SOURCE only — nothing is
-#    created/modified/deleted on the prod host.
-# 2. Then runs the standard ./deploy.sh (build, migrate, swap containers).
+# 1. Read-only copy of the production SQLite DB (a sqlite backup) and media/
+#    from kbintra-dev. Strictly one-way: prod is the SOURCE only — nothing on
+#    the prod host is modified, apart from the snapshot in its /tmp.
+# 2. Stops the app containers, swaps the DB in, then runs the standard
+#    ./deploy.sh (pull images, migrate, start containers).
 #
 # Run as ghrunner, from /opt/kbintra-test2.
 set -e
@@ -32,6 +33,35 @@ rsync -avz "$PROD_REMOTE:$SNAPSHOT" ./data/db.sqlite3.new
 ssh "$PROD_REMOTE" "rm -f $SNAPSHOT"
 trap - EXIT
 
+# Media files written by the backend container are root-owned on the host (the
+# container runs as root). Without sudo, this deploy user can neither add prod's
+# new files to those folders nor let the rsync below --delete the test-only ones
+# (e.g. expense_receipts uploaded while testing). Hand ownership back to the
+# deploy user via a container first — root inside the container can chown freely.
+#
+# This runs while the app is still up, so the running backend can do it. It used
+# to run after the stop below, where the exec always failed and the silenced
+# fallback did nothing either: on 2026-10-30 rsync hit "Permission denied" on
+# every new prod file, and set -e left TEST stopped. The fallback (a brand-new
+# box, or a stopped backend) is a one-off container on the deployed commit's
+# image, the same way deploy.sh runs migrations.
+echo ">>> Reclaiming ownership of ./data/media so rsync can write and --delete..."
+mkdir -p ./data/media
+OWNER="$(id -u):$(id -g)"
+if ! docker compose exec -T backend chown -R "$OWNER" /app/data/media 2>/dev/null; then
+    IMAGE_TAG=$(git rev-parse HEAD) docker compose run --rm --no-deps -T \
+        --entrypoint chown backend -R "$OWNER" /app/data/media \
+        || echo "WARNING: could not chown ./data/media; rsync may fail on root-owned folders."
+fi
+
+# Media files (one-way: prod is SOURCE, local test is DEST).
+# --delete removes files in ./data/media/ that are gone from prod; prod is never written to.
+# Before the stop below, so a failure here leaves TEST running on its old data.
+echo ">>> Rsyncing prod media from $PROD_REMOTE:$PROD_DATA_DIR/media/ (read-only)..."
+rsync -avz --delete \
+    "$PROD_REMOTE:$PROD_DATA_DIR/media/" \
+    ./data/media/
+
 # Swap the file in only while nothing here has it open. A running container
 # holds the old database and its -wal; replacing them under it, it checkpointed
 # its stale pages into the new file on shutdown and left it malformed
@@ -40,35 +70,6 @@ echo ">>> Stopping the app containers to swap in the new database..."
 docker compose stop backend backend-ws huey
 mv ./data/db.sqlite3.new ./data/db.sqlite3
 rm -f ./data/db.sqlite3-wal ./data/db.sqlite3-shm
-
-# Media files written by the backend container are root-owned on the host (the
-# container runs as root). Without sudo, this deploy user can't let the rsync
-# below --delete the test-only ones (e.g. expense_receipts uploaded while
-# testing, which don't exist on prod). Hand ownership back to the deploy user
-# via a container first — root inside the container can chown freely.
-#
-# Best-effort: prefer the already-running backend container; fall back to a
-# one-off container on its image. On a brand-new box neither exists, but then
-# ./data/media is empty too, so there's nothing for --delete to trip over.
-echo ">>> Reclaiming ownership of ./data/media so --delete can clean test-only files..."
-OWNER="$(id -u):$(id -g)"
-if ! docker compose exec -T backend chown -R "$OWNER" /app/data/media 2>/dev/null; then
-    BACKEND_IMG=$(docker compose images -q backend 2>/dev/null | head -1)
-    if [ -n "$BACKEND_IMG" ]; then
-        # --entrypoint chown: the backend image's default entrypoint isn't a
-        # shell, so override it to run chown directly with the args below.
-        docker run --rm --entrypoint chown -v "$(pwd)/data:/app/data" \
-            "$BACKEND_IMG" -R "$OWNER" /app/data/media 2>/dev/null || true
-    fi
-fi
-
-# Media files (one-way: prod is SOURCE, local test is DEST).
-# --delete removes files in ./data/media/ that are gone from prod; prod is never written to.
-echo ">>> Rsyncing prod media from $PROD_REMOTE:$PROD_DATA_DIR/media/ (read-only)..."
-mkdir -p ./data/media
-rsync -avz --delete \
-    "$PROD_REMOTE:$PROD_DATA_DIR/media/" \
-    ./data/media/
 
 echo ">>> Running standard deploy.sh..."
 ./deploy.sh
