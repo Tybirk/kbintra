@@ -59,7 +59,7 @@ def send_birthday_notifications() -> None:
     def is_today(birthdate) -> bool:  # type: ignore[no-untyped-def]
         return _next_birthday(birthdate, today) == today
 
-    residents = list(User.objects.filter(is_active=True).select_related("notification_preferences"))
+    residents = list(User.objects.members().select_related("notification_preferences"))
     sent = 0
 
     for person in residents:

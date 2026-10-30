@@ -4,7 +4,7 @@ Admin configuration for House models.
 
 from django.contrib import admin
 
-from .models import Car, Child, House
+from .models import Car, Child, Handover, House
 
 
 class ChildInline(admin.TabularInline):
@@ -73,3 +73,28 @@ class CarAdmin(admin.ModelAdmin):
     list_filter = ("house", "is_electric")
     search_fields = ("license_plate", "house__name")
     ordering = ("house__name", "license_plate")
+
+
+@admin.register(Handover)
+class HandoverAdmin(admin.ModelAdmin):
+    """Read-mostly: handovers are made and carried out from /drift/flytning, and
+    their steps are stamped as they run."""
+
+    list_display = (
+        "house",
+        "handover_date",
+        "invite_on",
+        "access_until",
+        "reset_household",
+        "moved_out_at",
+        "access_ended_at",
+    )
+    list_filter = ("house",)
+    filter_horizontal = ("outgoing",)
+    readonly_fields = (
+        "created_by",
+        "created_at",
+        "household_reset_at",
+        "moved_out_at",
+        "access_ended_at",
+    )

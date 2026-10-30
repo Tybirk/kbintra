@@ -69,7 +69,12 @@ export default function RegisterPage() {
 
         setInvitationEmail(result.email)
 
-        setFormData((prev) => ({ ...prev, email: result.email }))
+        setFormData((prev) => ({
+          ...prev,
+          email: result.email,
+          firstName: result.first_name || prev.firstName,
+          lastName: result.last_name || prev.lastName,
+        }))
       } catch {
         setError("Ugyldig eller udløbet invitationskode.")
       } finally {

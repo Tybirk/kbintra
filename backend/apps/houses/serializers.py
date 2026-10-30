@@ -2,14 +2,18 @@
 Serializers for House models.
 """
 
+from datetime import date, timedelta
 from decimal import Decimal
+from typing import Any
 
+from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers
 
-from apps.users.models import User
+from apps.users.models import Invitation, User
 from apps.users.serializer_mixins import AvatarUrlMixin
 
-from .models import Car, Child, House
+from .models import Car, Child, Handover, House
 
 
 class ChildSerializer(AvatarUrlMixin, serializers.ModelSerializer):
@@ -294,3 +298,245 @@ class HouseUpdateSerializer(AvatarUrlMixin, serializers.ModelSerializer):
             "profile_picture",
         ]
         read_only_fields = ["id", "name", "address"]
+
+
+class HandoverOutgoingSerializer(serializers.ModelSerializer):
+    """A resident moving out, with the maddage they still hold after moving."""
+
+    upcoming_food_shifts = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "first_name",
+            "last_name",
+            "is_active",
+            "moved_out_on",
+            "upcoming_food_shifts",
+        ]
+
+    def get_upcoming_food_shifts(self, obj: User) -> list[str]:
+        """Maddage on or after the handover day: the move takes them off those
+        teams, so the admin can find a replacement in time. Empty once moved."""
+        from apps.food.models import FoodTeamMember
+
+        handover = self.context["handover"]
+        if handover.moved_out_at:
+            return []
+        today = timezone.localdate()
+        first = max(handover.handover_date, today + timedelta(days=1))
+        dates = FoodTeamMember.objects.filter(user=obj, team__date__gte=first).values_list(
+            "team__date", flat=True
+        )
+        return [d.isoformat() for d in sorted(dates)]
+
+
+class HandoverInvitationSerializer(serializers.ModelSerializer):
+    """A resident moving in: their invitation and how far it has got."""
+
+    status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Invitation
+        fields = [
+            "id",
+            "first_name",
+            "last_name",
+            "email",
+            "phone_number",
+            "send_on",
+            "sent_at",
+            "used_at",
+            "expires_at",
+            "status",
+        ]
+
+    def get_status(self, obj: Invitation) -> str:
+        if obj.used_at:
+            return "registered"
+        if not obj.sent_at:
+            return "scheduled"
+        return "sent" if obj.is_valid else "expired"
+
+
+class HandoverSerializer(serializers.ModelSerializer):
+    house_name = serializers.CharField(source="house.name", read_only=True)
+    house_slug = serializers.CharField(source="house.slug", read_only=True)
+    outgoing = serializers.SerializerMethodField()
+    invitations = serializers.SerializerMethodField()
+    created_by_name = serializers.SerializerMethodField()
+    can_cancel = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Handover
+        fields = [
+            "id",
+            "house",
+            "house_name",
+            "house_slug",
+            "handover_date",
+            "invite_on",
+            "access_until",
+            "reset_household",
+            "outgoing",
+            "invitations",
+            "created_by_name",
+            "created_at",
+            "household_reset_at",
+            "moved_out_at",
+            "access_ended_at",
+            "can_cancel",
+        ]
+
+    def get_outgoing(self, obj: Handover) -> list[dict]:
+        return HandoverOutgoingSerializer(
+            obj.outgoing.all(), many=True, context={"handover": obj}
+        ).data
+
+    def get_invitations(self, obj: Handover) -> list[dict]:
+        return HandoverInvitationSerializer(obj.invitations.order_by("id"), many=True).data
+
+    def get_created_by_name(self, obj: Handover) -> str:
+        return obj.created_by.get_full_name() if obj.created_by else ""
+
+    def get_can_cancel(self, obj: Handover) -> bool:
+        return not obj.has_started
+
+
+class HandoverIncomingSerializer(serializers.Serializer):
+    first_name = serializers.CharField(max_length=150)
+    last_name = serializers.CharField(max_length=150, allow_blank=True, default="")
+    email = serializers.EmailField()
+    phone_number = serializers.CharField(max_length=20, allow_blank=True, default="")
+
+    def validate_email(self, value: str) -> str:
+        return value.strip().lower()
+
+
+def _invitation_problem(email: str) -> str | None:
+    """Why this address can't be invited, or None. Checked on the handover rather
+    than per person, so the message names the address: DRF's nested list errors
+    reach the page as one string per field, not per row."""
+    if User.objects.filter(email__iexact=email).exists():
+        return f"{email} har allerede en bruger."
+    # On its way: still usable, or waiting for its handover's send day.
+    waiting = Invitation.objects.filter(email__iexact=email, used_at__isnull=True)
+    if any(inv.is_valid or (inv.send_on and not inv.sent_at) for inv in waiting):
+        return f"{email} har allerede en invitation på vej."
+    return None
+
+
+def _validate_dates(handover_date: date, access_until: date) -> None:
+    if access_until < handover_date:
+        raise serializers.ValidationError(
+            {"access_until": "Adgangen kan ikke slutte før overtagelsesdagen."}
+        )
+
+
+class HandoverCreateSerializer(serializers.Serializer):
+    """Register a handover: who moves out, who moves in, and the dates.
+
+    Saving only records it; the view then runs whatever is already due.
+    """
+
+    house = serializers.SlugRelatedField(slug_field="slug", queryset=House.objects.all())
+    handover_date = serializers.DateField()
+    invite_on = serializers.DateField(required=False)
+    access_until = serializers.DateField()
+    reset_household = serializers.BooleanField(default=False)
+    outgoing = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=User.objects.filter(is_active=True), required=False, default=list
+    )
+    incoming = HandoverIncomingSerializer(many=True, required=False, default=list)
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        house: House = attrs["house"]
+        outgoing: list[User] = attrs["outgoing"]
+        incoming: list[dict] = attrs["incoming"]
+        attrs.setdefault("invite_on", attrs["handover_date"])
+        _validate_dates(attrs["handover_date"], attrs["access_until"])
+
+        if not outgoing and not incoming:
+            raise serializers.ValidationError(
+                "Vælg nogen, der flytter ud, eller tilføj nogen, der flytter ind."
+            )
+        for user in outgoing:
+            if user.house_id != house.id:
+                raise serializers.ValidationError(
+                    {"outgoing": f"{user.get_full_name()} bor ikke i {house.name}."}
+                )
+        already = Handover.objects.filter(moved_out_at__isnull=True, outgoing__in=outgoing).exists()
+        if already:
+            raise serializers.ValidationError(
+                {"outgoing": "En af beboerne er allerede med i en anden fraflytning."}
+            )
+        if attrs["reset_household"]:
+            staying = house.inhabitants.filter(is_active=True).exclude(
+                pk__in=[u.pk for u in outgoing]
+            )
+            if staying.exists():
+                raise serializers.ValidationError(
+                    {
+                        "reset_household": (
+                            "Husets oplysninger kan kun nulstilles, når alle beboere flytter ud."
+                        )
+                    }
+                )
+        emails = [person["email"] for person in incoming]
+        if len(emails) != len(set(emails)):
+            raise serializers.ValidationError(
+                {"incoming": "Den samme emailadresse står der to gange."}
+            )
+        problems = [p for p in map(_invitation_problem, emails) if p]
+        if problems:
+            raise serializers.ValidationError({"incoming": problems})
+        return attrs
+
+    def create(self, validated_data: dict[str, Any]) -> Handover:
+        request = self.context["request"]
+        incoming = validated_data.pop("incoming")
+        outgoing = validated_data.pop("outgoing")
+        with transaction.atomic():
+            handover = Handover.objects.create(created_by=request.user, **validated_data)
+            handover.outgoing.set(outgoing)
+            for person in incoming:
+                Invitation.objects.create(
+                    house=handover.house,
+                    handover=handover,
+                    send_on=handover.invite_on,
+                    created_by=request.user,
+                    **person,
+                )
+        return handover
+
+
+class HandoverUpdateSerializer(serializers.ModelSerializer):
+    """Move a date that hasn't come yet. A step that has run can't be re-dated."""
+
+    class Meta:
+        model = Handover
+        fields = ["handover_date", "invite_on", "access_until"]
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        handover = self.instance
+        assert handover is not None
+        if "handover_date" in attrs and handover.moved_out_at:
+            raise serializers.ValidationError({"handover_date": "Beboerne er allerede flyttet ud."})
+        invited = handover.invitations.filter(sent_at__isnull=False).exists()
+        if "invite_on" in attrs and (invited or handover.household_reset_at):
+            raise serializers.ValidationError({"invite_on": "Invitationerne er allerede sendt."})
+        if "access_until" in attrs and handover.access_ended_at:
+            raise serializers.ValidationError({"access_until": "Adgangen er allerede lukket."})
+        _validate_dates(
+            attrs.get("handover_date", handover.handover_date),
+            attrs.get("access_until", handover.access_until),
+        )
+        return attrs
+
+    def update(self, instance: Handover, validated_data: dict[str, Any]) -> Handover:
+        with transaction.atomic():
+            handover = super().update(instance, validated_data)
+            if "invite_on" in validated_data:
+                handover.invitations.filter(sent_at__isnull=True).update(send_on=handover.invite_on)
+        return handover

@@ -56,6 +56,12 @@ export interface User {
   bank_reg_nr?: string
 
   bank_account_number?: string
+
+  /** Set once a handover has moved this resident out; they have no house then. */
+  moved_out_on: string | null
+
+  /** Only for the current user who has moved out: their last day with access. */
+  access_until?: string | null
 }
 
 export interface Child {
@@ -2705,4 +2711,118 @@ export interface ReportList {
   num_pages: number
 
   open_count: number
+}
+
+/** A resident moving out with a handover (GET /houses/handovers/). */
+export interface HandoverOutgoing {
+  id: number
+
+  first_name: string
+
+  last_name: string
+
+  is_active: boolean
+
+  moved_out_on: string | null
+
+  /** Maddage on or after the handover day, which the move takes them off. */
+  upcoming_food_shifts: string[]
+}
+
+export type HandoverInvitationStatus = "scheduled" | "sent" | "expired" | "registered"
+
+export interface HandoverInvitation {
+  id: number
+
+  first_name: string
+
+  last_name: string
+
+  email: string
+
+  phone_number: string
+
+  send_on: string | null
+
+  sent_at: string | null
+
+  used_at: string | null
+
+  expires_at: string
+
+  status: HandoverInvitationStatus
+}
+
+export interface Handover {
+  id: number
+
+  house: number
+
+  house_name: string
+
+  house_slug: string
+
+  handover_date: string
+
+  invite_on: string
+
+  access_until: string
+
+  reset_household: boolean
+
+  outgoing: HandoverOutgoing[]
+
+  invitations: HandoverInvitation[]
+
+  created_by_name: string
+
+  created_at: string
+
+  household_reset_at: string | null
+
+  moved_out_at: string | null
+
+  access_ended_at: string | null
+
+  can_cancel: boolean
+}
+
+export interface HandoverIncomingInput {
+  first_name: string
+
+  last_name: string
+
+  email: string
+
+  phone_number: string
+}
+
+export interface HandoverCreateInput {
+  house: string
+
+  handover_date: string
+
+  invite_on: string
+
+  access_until: string
+
+  reset_household: boolean
+
+  outgoing: number[]
+
+  incoming: HandoverIncomingInput[]
+}
+
+export interface HandoverDatesInput {
+  handover_date?: string
+
+  invite_on?: string
+
+  access_until?: string
+}
+
+export interface InvitationEmailPreview {
+  subject: string
+
+  body: string
 }

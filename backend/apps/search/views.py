@@ -108,9 +108,11 @@ class GlobalSearchView(APIView):
                     }
                 )
             # Also show residents of matching houses
-            residents = User.objects.filter(
-                is_active=True, house__name__iregex=rf"\b{house_num}$"
-            ).select_related("house")
+            residents = (
+                User.objects.members()
+                .filter(house__name__iregex=rf"\b{house_num}$")
+                .select_related("house")
+            )
             for user in residents[:limit]:
                 results["users"].append(
                     {
@@ -152,10 +154,13 @@ class GlobalSearchView(APIView):
 
         # Heuristic 2: User name priority — inject istartswith matches at top
         if len(query) >= 2:
-            name_matches = User.objects.filter(
-                Q(first_name__istartswith=query) | Q(last_name__istartswith=query),
-                is_active=True,
-            ).select_related("house")[:limit]
+            name_matches = (
+                User.objects.members()
+                .filter(
+                    Q(first_name__istartswith=query) | Q(last_name__istartswith=query),
+                )
+                .select_related("house")[:limit]
+            )
             injected = []
             for user in name_matches:
                 if user.id not in seen["users"]:
@@ -299,7 +304,7 @@ class GlobalSearchView(APIView):
 
         # Users — match against full name "First Last"
         if len(results["users"]) < limit:
-            user_rows = list(User.objects.filter(is_active=True).select_related("house"))
+            user_rows = list(User.objects.members().select_related("house"))
             pairs = [(u.id, f"{u.first_name} {u.last_name}".strip() or u.email) for u in user_rows]
             users_by_id = {u.id: u for u in user_rows}
             for uid in fuzzy_name_matches(query, pairs):
@@ -710,7 +715,7 @@ class AdvancedSearchView(APIView):
 
     @staticmethod
     def _collect_user_pairs():
-        rows = list(User.objects.filter(is_active=True).select_related("house"))
+        rows = list(User.objects.members().select_related("house"))
         pairs = [(u.id, f"{u.first_name} {u.last_name}".strip() or u.email) for u in rows]
         return pairs, {u.id: u for u in rows}
 

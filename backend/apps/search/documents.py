@@ -17,7 +17,8 @@ from .services import _isoformat, create_excerpt, strip_html
 
 
 def user_document(user) -> dict | None:  # type: ignore[no-untyped-def]
-    if not user.is_active:
+    # Only members (User.objects.members()): not a resident who has moved out.
+    if not user.is_active or user.moved_out_on:
         return None
     return {
         "obj_type": "user",

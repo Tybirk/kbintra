@@ -201,7 +201,7 @@ export default function AppNavbar({ onNavigate }: AppNavbarProps) {
             to="/drift"
             label="Admin"
             leftSection={<IconSettings size={20} />}
-            active={location.pathname === "/drift"}
+            active={location.pathname.startsWith("/drift")}
             onClick={onNavigate}
           />
         )}

@@ -49,10 +49,12 @@ class UserSerializer(AvatarUrlMixin, serializers.ModelSerializer):
             "default_cooking_days",
             "accessibility_mode",
             "hide_closed_threads",
+            "moved_out_on",
         ]
         read_only_fields = [
             "id",
             "email",
+            "moved_out_on",
             "is_staff",
             "is_food_admin",
             "is_economy_admin",
@@ -80,6 +82,7 @@ class CurrentUserSerializer(UserSerializer):
     """
 
     birthdate = serializers.DateField(read_only=True)
+    access_until = serializers.SerializerMethodField()
 
     class Meta(UserSerializer.Meta):
         fields = [
@@ -87,7 +90,16 @@ class CurrentUserSerializer(UserSerializer):
             "hide_birth_year",
             "bank_reg_nr",
             "bank_account_number",
+            "access_until",
         ]
+
+    def get_access_until(self, obj: User) -> str | None:
+        """The last day a resident who has moved out can still log in, for the
+        banner that tells them so. None for everyone else, without a query."""
+        if not obj.moved_out_on:
+            return None
+        handover = obj.move_outs.order_by("-handover_date").first()
+        return handover.access_until.isoformat() if handover else None
 
 
 def _validate_optional_reg_nr(value: str) -> str:
@@ -196,12 +208,24 @@ class UserRegistrationSerializer(serializers.Serializer):
                     {"token": "This invitation has already been used."}
                 )
 
+            extra: dict[str, Any] = {}
+            if invitation.phone_number:
+                extra["phone_number"] = invitation.phone_number
+            if invitation.handover_id:
+                from apps.houses.handover import new_resident_pause
+
+                pause = new_resident_pause(invitation.handover, timezone.localdate())
+                if pause:
+                    extra["is_exempt_from_food_teams"] = True
+                    extra["food_team_pause_until"], extra["food_team_pause_reason"] = pause
+
             user = User.objects.create_user(
                 email=validated_data["email"],
                 password=validated_data["password"],
                 first_name=validated_data["first_name"],
                 last_name=validated_data["last_name"],
                 house=invitation.house,  # Assign user to the house from invitation
+                **extra,
             )
 
             # Mark invitation as used

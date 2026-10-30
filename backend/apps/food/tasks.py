@@ -326,3 +326,25 @@ def refresh_drive_menus_periodic() -> None:
         )
     except Exception:
         logger.exception("Periodic Drive menu refresh failed")
+
+
+@db_periodic_task(local_crontab(hour=0, minute=15))
+def lift_ended_food_team_pauses() -> None:
+    """Run daily at 00:15 to lift every madhold pause whose end date has come.
+
+    Only pauses with ``food_team_pause_until`` end by themselves — new residents
+    start with one for their first month. Lifting clears the reason as well, the
+    same as when someone ends a pause by submitting a wish.
+    """
+    from apps.users.models import User
+
+    today = timezone.localdate()
+    ended = User.objects.filter(is_exempt_from_food_teams=True, food_team_pause_until__lte=today)
+    lifted = 0
+    for user in ended:
+        user.is_exempt_from_food_teams = False
+        user.food_team_pause_reason = ""
+        # save() clears food_team_pause_until along with the pause.
+        user.save(update_fields=["is_exempt_from_food_teams", "food_team_pause_reason"])
+        lifted += 1
+    logger.info("Lifted %d madhold pauses that ended by %s", lifted, today)

@@ -92,8 +92,11 @@ Users declare which dates they're available to cook. Without a usable wish we fa
 - **Eligible pool** = `utils.food_team_pool()`: residents (active, with a house) who are
   not children (`utils.madhold_residents()`) and not on a pause — the same pool as `cycle_planning.eligible_food_team_count()`, the admin
   roster, the period-opening notice and the wish nudge. A resident who has moved out
-  is *deactivated*, not exempted, and an admin or test account has no house; neither
-  may be planned as a cook.
+  has no house (a handover, `apps/houses/handover.py`, takes it and later deactivates
+  the account), and an admin or test account has none either; neither may be planned
+  as a cook. Someone with a handover still ahead is only planned before the day they
+  move (`leaving_dates()`), with a warning in the result. A new resident starts with a
+  pause that lifts itself after a month (`User.food_team_pause_until`).
 - **A couple we can't pair up is split, not refused.** Only one housemate flagged, or
   no date they can both cook: both are scheduled separately and named in a warning the
   admin sees in the result modal. Two people's wishes overlapping is the lucky case,

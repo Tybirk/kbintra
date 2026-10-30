@@ -439,6 +439,27 @@ def send_push_notification(
     return {"total": len(subscription_ids), "enqueued_ids": subscription_ids}
 
 
+# What still reaches a resident who has moved out (User.moved_out_on) while they
+# keep their login: what is about them personally. Everything addressed to the
+# community — posts, events, madhold, birthdays — stops the day they move.
+_MOVED_OUT_TYPES = frozenset(
+    {
+        NotificationType.NEW_MESSAGE,
+        NotificationType.MESSAGE_REACTION,
+        NotificationType.THREAD_REPLY,
+        NotificationType.POST_REPLY,
+        NotificationType.POST_REACTION,
+        NotificationType.MENTION,
+        NotificationType.POST_EDITED_BY_ADMIN,
+        NotificationType.EVENT_EDITED_BY_ADMIN,
+        NotificationType.ANNOUNCEMENT_EDITED_BY_ADMIN,
+        NotificationType.EXPENSE_PROCESSED,
+        NotificationType.CAR_LOAN_UPDATE,
+        NotificationType.REPORT_UPDATE,
+    }
+)
+
+
 def create_notification(
     user: User,
     notification_type: NotificationType,
@@ -476,6 +497,11 @@ def create_notification(
     Returns:
         The created (or updated) notification, or None if user opted out of in-app notifications
     """
+    # Checked here rather than in each recipient query, so a new broadcast can't
+    # forget it.
+    if user.moved_out_on and notification_type not in _MOVED_OUT_TYPES:
+        return None
+
     # A higher-priority type covers this activity on whichever channels the user has it
     # enabled — skip those channels here. (should_send_email / get_user_push_preference both
     # read the same cached user.notification_preferences, so this adds no extra queries.)
