@@ -230,13 +230,15 @@ class Handover(models.Model):
     carries it out step by step as each date comes round (the admin view runs it at
     once, and an hourly task catches up), and stamps each step so it runs once:
 
-    1. ``invite_on``: the household is reset if asked (children, cars, the house's
-       description and picture, meal preferences), then the incoming residents'
-       invitations are mailed, so they arrive to an empty house.
-    2. ``handover_date``: the outgoing residents lose their house and become
-       moved out (``User.moved_out_on``); their maddage from that day are dropped.
-       A reset that has not run yet (no one invited) runs now.
-    3. The day after ``access_until``: their accounts are deactivated. Never
+    1. ``invite_on``: the incoming residents' invitations are mailed.
+    2. When the first of them registers: the household is reset if asked
+       (children, cars, the house's description and picture, meal preferences),
+       so they arrive to an empty house while the old household keeps its things
+       until then.
+    3. ``handover_date``: the outgoing residents lose their house and become
+       moved out (``User.moved_out_on``); their maddage after that day are
+       dropped. A reset that has not run yet (nobody registered or invited) runs now.
+    4. The day after ``access_until``: their accounts are deactivated. Never
        deleted — that stays a decision for a person, in the Django admin.
     """
 

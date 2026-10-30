@@ -2,6 +2,7 @@
 Serializers for User models.
 """
 
+import logging
 import re
 from typing import Any
 
@@ -11,6 +12,8 @@ from rest_framework import serializers
 
 from .models import EmailChangeToken, Invitation, PasswordResetToken, User
 from .serializer_mixins import AvatarUrlMixin
+
+logger = logging.getLogger(__name__)
 
 _REG_NR_RE = re.compile(r"^\d{4}$")
 _ACCOUNT_RE = re.compile(r"^\d{1,10}$")
@@ -230,6 +233,18 @@ class UserRegistrationSerializer(serializers.Serializer):
 
             # Mark invitation as used
             invitation.mark_used()
+
+            if invitation.handover_id:
+                # The first newcomer in takes the house over: the old household's
+                # things are cleared now, before this one adds their own.
+                from apps.houses.handover import process_handover
+
+                try:
+                    process_handover(invitation.handover_id)
+                except Exception:
+                    # Never lock a new resident out over it: the hourly task tries
+                    # again (apps.houses.tasks.process_due_handovers).
+                    logger.exception("Handover %s failed at registration", invitation.handover_id)
 
             # Subscribe to default forum subgroups using bulk_create
             default_subgroups = Subgroup.objects.filter(is_default=True)

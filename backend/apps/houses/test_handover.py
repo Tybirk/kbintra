@@ -140,17 +140,22 @@ class TestHandoverSteps:
         assert Invitation.objects.get().sent_at is None
         assert house40.children.exists()
 
-        # Invite day: the house is cleared for the new household, who are invited.
+        # Invite day: the new household is invited. The old one still lives here
+        # and keeps its things until a newcomer takes the house over.
         process_handover(handover.pk, today=handover.invite_on)
         handover.refresh_from_db()
-        assert handover.household_reset_at is not None
         assert Invitation.objects.get().sent_at is not None
-        assert not house40.children.exists()
-        assert User.objects.filter(house=house40).count() == 2  # not moved yet
+        assert handover.household_reset_at is None
+        assert house40.children.exists()
+        assert User.objects.filter(house=house40).count() == 2
 
-        # Handover day: the old residents move out.
+        # Handover day: the old residents move out, and with nobody registered
+        # yet the house is cleared now.
         process_handover(handover.pk, today=handover.handover_date)
         assert not User.objects.filter(house=house40).exists()
+        handover.refresh_from_db()
+        assert handover.household_reset_at is not None
+        assert not house40.children.exists()
         assert all(u.is_active for u in User.objects.filter(pk__in=[u.pk for u in old_residents]))
 
         # The last day of access is still a day with access.
@@ -166,13 +171,32 @@ class TestHandoverSteps:
         # Deactivated, never deleted.
         assert User.objects.filter(pk__in=[u.pk for u in old_residents]).count() == 2
 
-    def test_what_the_new_household_adds_before_the_handover_stays(
-        self, house40, old_residents, today
+    def test_the_first_newcomer_to_register_takes_the_house_over(
+        self, api_client, house40, old_residents, today
     ):
-        handover = _handover(house40, old_residents, today)
-        process_handover(handover.pk, today=handover.invite_on)
+        handover = _handover(house40, old_residents, today, handover_in=2)
+        process_handover(handover.pk)
+        invitation = Invitation.objects.get()
+        assert invitation.sent_at is not None
+        assert house40.children.exists()
 
-        newcomer = User.objects.create_user(email="ny@example.com", password="x", house=house40)
+        response = _register(api_client, invitation)
+
+        assert response.status_code == 201, response.data
+        handover.refresh_from_db()
+        assert handover.household_reset_at is not None
+        assert not house40.children.exists()
+        assert not MealPreference.objects.filter(house=house40).exists()
+        assert User.objects.filter(house=house40).count() == 3  # the old ones still live here
+
+    def test_what_the_new_household_adds_before_the_handover_stays(
+        self, api_client, house40, old_residents, today
+    ):
+        handover = _handover(house40, old_residents, today, handover_in=2)
+        process_handover(handover.pk)
+        _register(api_client, Invitation.objects.get())
+        newcomer = User.objects.get(email="ny@example.com")
+
         Child.objects.create(house=house40, name="Ny baby")
         MealPreference.objects.create(house=house40, day_of_week=1, adults_veg=1)
 
@@ -198,7 +222,7 @@ class TestHandoverSteps:
         handover = _handover(house40, old_residents, today)
         User.objects.create_user(email="fremlejer@example.com", password="x", house=house40)
 
-        process_handover(handover.pk, today=handover.invite_on)
+        process_handover(handover.pk, today=handover.handover_date)
 
         handover.refresh_from_db()
         assert handover.reset_household is False
@@ -222,10 +246,58 @@ class TestHandoverSteps:
         )
         handover = _handover(house40, old_residents, today)
 
-        process_handover(handover.pk, today=handover.invite_on)
+        process_handover(handover.pk, today=handover.handover_date)
 
         car.refresh_from_db()
         assert car.is_shared is False
+
+    def test_requests_waiting_on_the_cars_are_answered(
+        self, house40, old_residents, user, today, django_capture_on_commit_callbacks
+    ):
+        from apps.carsharing.models import CarLoan, CarLoanCandidate
+        from apps.notifications.models import Notification
+
+        lent_before = house40.cars.get()
+        CarLoan.objects.create(
+            borrower=user,
+            car=lent_before,
+            status=CarLoan.Status.COMPLETED,
+            start_at=timezone.now() - timedelta(days=9),
+            end_at=timezone.now() - timedelta(days=8),
+            expected_km=10,
+            terms_version="1",
+        )
+        never_lent = Car.objects.create(house=house40, license_plate="CD67890", is_shared=True)
+        lent_before.is_shared = True
+        lent_before.save()
+        waiting = []
+        for car in (lent_before, never_lent):
+            loan = CarLoan.objects.create(
+                borrower=user,
+                start_at=timezone.now() + timedelta(days=10),
+                end_at=timezone.now() + timedelta(days=10, hours=2),
+                expected_km=10,
+                terms_version="1",
+            )
+            CarLoanCandidate.objects.create(loan=loan, car=car)
+            waiting.append(loan)
+        handover = _handover(house40, old_residents, today)
+
+        with django_capture_on_commit_callbacks(execute=True):
+            process_handover(handover.pk, today=handover.handover_date)
+
+        assert not Car.objects.filter(pk=never_lent.pk).exists()
+        assert lent_before.loan_candidacies.get().status == CarLoanCandidate.Status.DECLINED
+        # Nobody else was asked, so neither request is left waiting.
+        for loan in waiting:
+            loan.refresh_from_db()
+            assert loan.status == CarLoan.Status.DECLINED
+        assert (
+            Notification.objects.filter(
+                user=user, notification_type=NotificationType.CAR_LOAN_UPDATE
+            ).count()
+            == 2
+        )
 
     def test_moving_out_drops_upcoming_maddage_but_not_past_ones(
         self, admin_user, house40, old_residents, today
@@ -238,20 +310,63 @@ class TestHandoverSteps:
             status=CycleStatus.FINALIZED,
             created_by=admin_user,
         )
-        past = FoodTeam.objects.create(cycle=cycle, date=today - timedelta(days=3))
-        upcoming = FoodTeam.objects.create(cycle=cycle, date=today + timedelta(days=10))
-        FoodTeamMember.objects.create(team=past, user=cook)
-        FoodTeamMember.objects.create(team=upcoming, user=cook)
         handover = _handover(house40, old_residents, today)
+        past = FoodTeam.objects.create(cycle=cycle, date=today - timedelta(days=3))
+        # The handover day stays theirs: they've been reminded and may cook first.
+        moving_day = FoodTeam.objects.create(cycle=cycle, date=handover.handover_date)
+        upcoming = FoodTeam.objects.create(cycle=cycle, date=today + timedelta(days=10))
+        for team in (past, moving_day, upcoming):
+            FoodTeamMember.objects.create(team=team, user=cook)
 
         listed = handover_data(handover)
         assert listed["outgoing"][0]["upcoming_food_shifts"] == [upcoming.date.isoformat()]
 
         process_handover(handover.pk, today=handover.handover_date)
 
-        assert list(FoodTeamMember.objects.filter(user=cook).values_list("team_id", flat=True)) == [
-            past.pk
-        ]
+        kept = FoodTeamMember.objects.filter(user=cook).values_list("team_id", flat=True)
+        assert sorted(kept) == sorted([past.pk, moving_day.pk])
+
+    def test_a_neighbour_waiting_on_a_bytte_with_a_leaver_is_told(
+        self,
+        admin_user,
+        house40,
+        old_residents,
+        user_with_house,
+        today,
+        django_capture_on_commit_callbacks,
+    ):
+        from apps.food.models import TeamSwapRequest
+        from apps.notifications.models import Notification
+
+        cycle = FoodTeamCycle.objects.create(
+            name="P",
+            cooking_dates=[],
+            wish_deadline=timezone.now(),
+            status=CycleStatus.FINALIZED,
+            created_by=admin_user,
+        )
+        handover = _handover(house40, old_residents, today)
+        leavers_day = FoodTeam.objects.create(cycle=cycle, date=today + timedelta(days=10))
+        neighbours_day = FoodTeam.objects.create(cycle=cycle, date=today + timedelta(days=12))
+        swap = TeamSwapRequest.objects.create(
+            requester=user_with_house,
+            requester_membership=FoodTeamMember.objects.create(
+                team=neighbours_day, user=user_with_house
+            ),
+            target_membership=FoodTeamMember.objects.create(
+                team=leavers_day, user=old_residents[0]
+            ),
+        )
+
+        with django_capture_on_commit_callbacks(execute=True):
+            process_handover(handover.pk, today=handover.handover_date)
+
+        assert not TeamSwapRequest.objects.filter(pk=swap.pk).exists()
+        notice = Notification.objects.get(
+            user=user_with_house, notification_type=NotificationType.FOOD_TEAM_SWAP_REQUEST
+        )
+        assert notice.title == "Dit bytte gik ikke igennem"
+        assert "Gammel0 er flyttet" in notice.message
 
     def test_open_meal_registrations_from_the_handover_day_are_cleared(
         self, house40, old_residents, today
@@ -262,7 +377,7 @@ class TestHandoverSteps:
         MealRegistration.objects.create(house=house40, date=monday, adults_veg=2)
         MealRegistration.objects.create(house=house40, date=before, adults_veg=2)
 
-        process_handover(handover.pk, today=handover.invite_on)
+        process_handover(handover.pk, today=handover.handover_date)
 
         assert list(
             MealRegistration.objects.filter(house=house40).values_list("date", flat=True)
@@ -273,6 +388,21 @@ def handover_data(handover):
     from apps.houses.serializers import HandoverSerializer
 
     return HandoverSerializer(handover).data
+
+
+def _register(api_client, invitation):
+    return api_client.post(
+        "/api/auth/register/",
+        {
+            "token": invitation.token,
+            "email": invitation.email,
+            "password": "EtGodtKodeord123!",
+            "password_confirm": "EtGodtKodeord123!",
+            "first_name": "Ny",
+            "last_name": "Beboer",
+        },
+        format="json",
+    )
 
 
 class TestHandoverValidation:
@@ -305,6 +435,36 @@ class TestHandoverValidation:
         )
         assert response.status_code == 400
 
+    def test_invitations_cannot_go_out_after_the_handover(
+        self, admin_client, house40, old_residents, today
+    ):
+        later = (today + timedelta(days=1)).isoformat()
+        response = admin_client.post(
+            URL, _payload(house40, old_residents, today, invite_on=later), format="json"
+        )
+        assert response.status_code == 400
+        assert "invite_on" in response.data
+
+        handover = _handover(house40, old_residents, today)
+        response = admin_client.patch(
+            f"{URL}{handover.pk}/",
+            {"handover_date": (handover.invite_on - timedelta(days=1)).isoformat()},
+            format="json",
+        )
+        assert response.status_code == 400
+        assert "invite_on" in response.data
+
+    def test_a_newcomer_without_a_first_name_is_named_in_the_error(
+        self, admin_client, house40, old_residents, today
+    ):
+        payload = _payload(house40, old_residents, today)
+        payload["incoming"][0]["first_name"] = ""
+        response = admin_client.post(URL, payload, format="json")
+        assert response.status_code == 400
+        assert response.data["incoming"][0]["first_name"] == [
+            "Skriv fornavn på alle, der flytter ind."
+        ]
+
     def test_access_cannot_end_before_the_handover(
         self, admin_client, house40, old_residents, today
     ):
@@ -312,6 +472,37 @@ class TestHandoverValidation:
             house40, old_residents, today, access_until=(today - timedelta(days=1)).isoformat()
         )
         assert admin_client.post(URL, payload, format="json").status_code == 400
+
+
+class TestFailures:
+    def test_a_failing_step_leaves_nothing_saved(
+        self, admin_client, house40, old_residents, today, monkeypatch
+    ):
+        def broken(*args, **kwargs):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr("apps.houses.views.process_handover", broken)
+
+        with pytest.raises(RuntimeError):
+            admin_client.post(URL, _payload(house40, old_residents, today), format="json")
+
+        assert not Handover.objects.exists()
+        assert not Invitation.objects.exists()
+
+    def test_a_failing_step_does_not_stop_a_newcomer_registering(
+        self, api_client, house40, old_residents, today, monkeypatch
+    ):
+        handover = _handover(house40, old_residents, today, handover_in=2)
+        process_handover(handover.pk)
+
+        def broken(*args, **kwargs):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr("apps.houses.handover.process_handover", broken)
+        response = _register(api_client, Invitation.objects.get())
+
+        assert response.status_code == 201, response.data
+        assert User.objects.filter(email="ny@example.com", house=house40).exists()
 
 
 class TestChangingAndCancelling:
@@ -487,6 +678,54 @@ class TestPauseUntil:
         paused.refresh_from_db()
         assert paused.food_team_pause_until is None
 
+    def test_a_new_reason_is_a_new_pause_without_the_old_end_date(self, paused):
+        paused.food_team_pause_reason = "Rejser til foråret"
+        paused.save(update_fields=["food_team_pause_reason"])
+        paused.refresh_from_db()
+        assert paused.is_exempt_from_food_teams
+        assert paused.food_team_pause_until is None
+
+    def test_other_changes_keep_the_end_date(self, paused, today):
+        paused.phone_number = "87654321"
+        paused.save()
+        paused.refresh_from_db()
+        assert paused.food_team_pause_until == today
+
+    def test_a_wish_taken_back_gives_the_end_date_back(self, api_client, admin_user, paused):
+        from django.urls import reverse
+
+        until = paused.food_team_pause_until + timedelta(days=20)
+        paused.food_team_pause_until = until
+        paused.save()
+        cooking_day = until + timedelta(days=7)
+        cycle = FoodTeamCycle.objects.create(
+            name="P",
+            cooking_dates=[cooking_day.isoformat()],
+            wish_deadline=timezone.now() + timedelta(days=5),
+            status=CycleStatus.COLLECTING_WISHES,
+            created_by=admin_user,
+        )
+        api_client.force_authenticate(user=paused)
+        url = reverse("food:my-wish", kwargs={"cycle_id": cycle.id})
+
+        lifted = api_client.post(
+            url,
+            {"available_dates": [cooking_day.isoformat()], "is_unavailable": False},
+            format="json",
+        )
+        assert lifted.status_code in (200, 201), lifted.data
+        paused.refresh_from_db()
+        assert paused.food_team_pause_until is None
+
+        taken_back = api_client.post(
+            url, {"available_dates": [], "is_unavailable": True, "pause_reason": ""}, format="json"
+        )
+        assert taken_back.status_code in (200, 201), taken_back.data
+        paused.refresh_from_db()
+        assert paused.is_exempt_from_food_teams
+        assert paused.food_team_pause_reason == "Ny beboer"
+        assert paused.food_team_pause_until == until
+
 
 class TestGeneratorAndLeavers:
     def test_a_leaver_is_only_planned_before_moving(self, admin_user, today):
@@ -524,6 +763,38 @@ class TestGeneratorAndLeavers:
         dates = set(FoodTeamMember.objects.filter(user=leaver).values_list("team__date", flat=True))
         assert d2 not in dates
         assert any("flytter" in w for w in result.warnings)
+
+    def test_someone_gone_before_the_period_is_not_asked_or_counted(
+        self, admin_user, house40, old_residents, today
+    ):
+        from apps.food.services.cycle_planning import eligible_food_team_count
+        from apps.food.tasks import notify_residents_of_new_cycle
+        from apps.food.utils import food_team_pool
+        from apps.notifications.models import Notification
+
+        start = today + timedelta(days=14)
+        leaver, stayer = old_residents
+        handover = Handover.objects.create(
+            house=house40, handover_date=start, invite_on=start, access_until=start
+        )
+        handover.outgoing.set([leaver])
+
+        assert set(food_team_pool(start)) == {stayer}
+        # Moving after the first day, they can still cook before they go.
+        assert set(food_team_pool(start - timedelta(days=1))) == {leaver, stayer}
+        assert eligible_food_team_count(start) == 1
+
+        cycle = FoodTeamCycle.objects.create(
+            name="P",
+            cooking_dates=[start.isoformat()],
+            wish_deadline=timezone.now() + timedelta(days=5),
+            status=CycleStatus.COLLECTING_WISHES,
+            created_by=admin_user,
+        )
+        notify_residents_of_new_cycle.call_local(cycle.id)
+        told = set(Notification.objects.values_list("user_id", flat=True))
+        assert stayer.pk in told
+        assert leaver.pk not in told
 
 
 def test_one_month_after_keeps_to_the_shorter_month():

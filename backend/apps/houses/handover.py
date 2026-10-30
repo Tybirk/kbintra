@@ -2,8 +2,8 @@
 
 Each step stamps the handover when it is done, so ``process_handover`` can run any
 number of times. The admin view runs it straight after saving, which makes a date
-that has already come happen at once, and ``tasks.process_due_handovers`` runs it
-hourly for the dates still ahead.
+that has already come happen at once, registration runs it when a new resident
+joins, and ``tasks.process_due_handovers`` runs it hourly for the dates still ahead.
 """
 
 from __future__ import annotations
@@ -62,36 +62,45 @@ def leaving_dates() -> dict[int, date]:
 
 
 def process_handover(handover_id: int, today: date | None = None) -> None:
-    """Run every step of the handover whose date has come and that hasn't run yet."""
+    """Run every step of the handover whose date has come and that hasn't run yet.
+
+    One transaction, with the handover read inside it. Transactions take the write
+    lock up front (SQLite IMMEDIATE), so a second run at the same moment — the
+    hourly task while an admin saves — waits, and then sees the steps the first
+    one stamped instead of running them again.
+    """
     from .models import Handover
 
     today = today or timezone.localdate()
-    handover = Handover.objects.select_related("house").get(pk=handover_id)
+    with transaction.atomic():
+        handover = Handover.objects.select_related("house").get(pk=handover_id)
 
-    if handover.invite_on <= today:
-        # The new household arrives to an empty house: reset first, then invite.
+        if handover.invite_on <= today:
+            send_due_invitations(handover, today)
+
+        if handover.handover_date <= today and handover.moved_out_at is None:
+            move_out(handover, today)
+
+        # The old household keeps the house until the new one takes it over: when
+        # the first newcomer has registered (registration runs this straight after,
+        # so they arrive to an empty house), or on the handover day if nobody has
+        # by then or nobody was invited.
         if (
             handover.reset_household
             and handover.household_reset_at is None
-            and handover.invitations.exists()
+            and (
+                handover.handover_date <= today
+                or handover.invitations.filter(used_at__isnull=False).exists()
+            )
         ):
             reset_household(handover, today)
-        send_due_invitations(handover, today)
 
-    if handover.handover_date <= today:
-        if handover.moved_out_at is None:
-            move_out(handover, today)
-        # Nobody was invited, so the reset waited for the day itself.
-        handover.refresh_from_db(fields=["reset_household", "household_reset_at"])
-        if handover.reset_household and handover.household_reset_at is None:
-            reset_household(handover, today)
-
-    if (
-        handover.access_until < today
-        and handover.moved_out_at is not None
-        and handover.access_ended_at is None
-    ):
-        end_access(handover)
+        if (
+            handover.access_until < today
+            and handover.moved_out_at is not None
+            and handover.access_ended_at is None
+        ):
+            end_access(handover)
 
 
 def _other_residents(handover: Handover) -> list[User]:
@@ -110,8 +119,13 @@ def reset_household(handover: Handover, today: date) -> None:
     Children, cars, the house's description and picture, meal preferences, and the
     meal registrations from the handover day on that can still be changed. A car
     with loan history can't be deleted (the loans keep it), so it is only taken
-    out of the delebilpark and logged.
+    out of the delebilpark and logged. Either way the requests waiting on a car
+    are answered first, as when a household removes a car itself.
     """
+    from apps.carsharing.services import (
+        announce_withdrawn_requests,
+        withdraw_car_from_open_requests,
+    )
     from apps.food.models import MealPreference, MealRegistration
     from apps.food.serializers import is_after_deadline
 
@@ -133,6 +147,7 @@ def reset_household(handover: Handover, today: date) -> None:
         for child in house.children.all():
             child.delete()
         for car in house.cars.all():
+            withdrawn = withdraw_car_from_open_requests(car, by_user=None)
             if car.loans.exists():
                 logger.warning(
                     "Handover %s: car %s has loans and was kept, unshared", handover.pk, car.pk
@@ -141,13 +156,25 @@ def reset_household(handover: Handover, today: date) -> None:
                 car.save(update_fields=["is_shared"])
             else:
                 car.delete()
+            if withdrawn:
+                # Told only once the change is committed, like CarDetailView.
+                transaction.on_commit(
+                    lambda withdrawn=withdrawn, car=car: announce_withdrawn_requests(withdrawn, car)
+                )
 
-        if house.profile_picture:
-            house.profile_picture.delete(save=False)
-        if house.profile_picture_thumbnail:
-            house.profile_picture_thumbnail.delete(save=False)
+        # The files go once the database no longer points at them: deleted inside
+        # the transaction, a rollback would leave the house showing a missing image.
+        old_files = [
+            (field.storage, field.name)
+            for field in (house.profile_picture, house.profile_picture_thumbnail)
+            if field
+        ]
+        house.profile_picture = None
+        house.profile_picture_thumbnail = None
         house.description = ""
         house.save(update_fields=["description", "profile_picture", "profile_picture_thumbnail"])
+        for storage, name in old_files:
+            transaction.on_commit(lambda storage=storage, name=name: storage.delete(name))
 
         MealPreference.objects.filter(house=house).delete()
         upcoming = MealRegistration.objects.filter(
@@ -192,8 +219,13 @@ def move_out(handover: Handover, today: date) -> None:
     moves today has already been reminded and may well cook first. Someone the
     admin has already put in another house is moving within the community and is
     left where they are.
+
+    Dropping a maddag takes its pending byttes with it (the memberships cascade).
+    A neighbour who asked the leaver for that day is told their bytte is off; the
+    leaver's own requests and broadcasts just go, as when someone withdraws them.
     """
-    from apps.food.models import FoodTeamMember
+    from apps.food.models import FoodTeamMember, SwapRequestStatus, TeamSwapRequest
+    from apps.notifications.services import notify_food_swap_target_moved_out
 
     first_dropped = max(handover.handover_date, today + timedelta(days=1))
     with transaction.atomic():
@@ -201,11 +233,26 @@ def move_out(handover: Handover, today: date) -> None:
             user.house = None
             user.moved_out_on = handover.handover_date
             user.save(update_fields=["house", "moved_out_on"])
-            dropped, _ = FoodTeamMember.objects.filter(
-                user=user, team__date__gte=first_dropped
-            ).delete()
+            upcoming = FoodTeamMember.objects.filter(user=user, team__date__gte=first_dropped)
+            waiting = list(
+                TeamSwapRequest.objects.filter(
+                    status=SwapRequestStatus.PENDING, target_membership__in=upcoming
+                ).select_related(
+                    "requester",
+                    "requester_membership__team",
+                    "target_membership__team",
+                    "target_membership__user",
+                )
+            )
+            dropped, _ = upcoming.delete()
             if dropped:
                 logger.info("Handover %s: took user %s off upcoming teams", handover.pk, user.pk)
+            for swap_request in waiting:
+                transaction.on_commit(
+                    lambda swap_request=swap_request: notify_food_swap_target_moved_out(
+                        swap_request
+                    )
+                )
         handover.moved_out_at = timezone.now()
         handover.save(update_fields=["moved_out_at"])
     logger.info("Handover %s: moved out of %s", handover.pk, handover.house)

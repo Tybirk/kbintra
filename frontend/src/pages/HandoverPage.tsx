@@ -50,6 +50,7 @@ import type {
   HandoverIncomingInput,
   HandoverInvitation,
   House,
+  UserSummary,
 } from "../types"
 
 import { showErrorNotification } from "../utils/errorNotification"
@@ -66,6 +67,11 @@ function houseNumber(house: House): number {
   const parts = house.name.split(" ")
 
   return Number(parts[parts.length - 1]) || 0
+}
+
+/** The people who can move out: a deactivated account still in the house can't. */
+function activeInhabitants(house: House | undefined): UserSummary[] {
+  return (house?.inhabitants ?? []).filter((u) => u.is_active !== false)
 }
 
 function emptyPerson(): HandoverIncomingInput {
@@ -184,7 +190,7 @@ function HandoverCard({ handover }: { handover: Handover }) {
       show: handover.invitations.length > 0,
       done: invitationsSent,
       title: invitationsSent ? "Invitationer sendt" : "Invitationer sendes",
-      day: firstSent ?? handover.invite_on,
+      when: formatDay(firstSent ?? handover.invite_on),
     },
     {
       key: "reset",
@@ -193,25 +199,26 @@ function HandoverCard({ handover }: { handover: Handover }) {
       title: handover.household_reset_at
         ? "Husets oplysninger nulstillet"
         : "Husets oplysninger nulstilles",
-      day:
-        handover.household_reset_at ??
-        (handover.invitations.length > 0
-          ? handover.invite_on
-          : handover.handover_date),
+      // The old household keeps its things until a newcomer takes the house over.
+      when: handover.household_reset_at
+        ? formatDay(handover.household_reset_at)
+        : handover.invitations.length > 0
+          ? `Når den første nye beboer logger ind, senest ${formatDay(handover.handover_date)}`
+          : formatDay(handover.handover_date),
     },
     {
       key: "move",
       show: true,
       done: Boolean(handover.moved_out_at),
       title: handover.outgoing.length > 0 ? "Fraflytning" : "Overtagelse",
-      day: handover.handover_date,
+      when: formatDay(handover.handover_date),
     },
     {
       key: "access",
       show: handover.outgoing.length > 0,
       done,
       title: done ? "Adgang lukket" : "Fraflyttede har adgang til og med",
-      day: handover.access_ended_at ?? handover.access_until,
+      when: formatDay(handover.access_ended_at ?? handover.access_until),
     },
   ].filter((step) => step.show)
 
@@ -252,7 +259,7 @@ function HandoverCard({ handover }: { handover: Handover }) {
             title={<Text size="sm">{step.title}</Text>}
           >
             <Text size="xs" c="dimmed">
-              {formatDay(step.day)}
+              {step.when}
             </Text>
           </Timeline.Item>
         ))}
@@ -519,7 +526,7 @@ function HandoverFormModal({
 
   const house = houses?.find((h) => h.slug === houseSlug)
 
-  const inhabitants = house?.inhabitants ?? []
+  const inhabitants = activeInhabitants(house)
 
   const everyoneMoves =
     inhabitants.length > 0 && outgoing.length === inhabitants.length
@@ -598,7 +605,7 @@ function HandoverFormModal({
 
     const chosen = houses?.find((h) => h.slug === slug)
 
-    setOutgoing((chosen?.inhabitants ?? []).map((u) => String(u.id)))
+    setOutgoing(activeInhabitants(chosen).map((u) => String(u.id)))
 
     setResetHousehold(true)
   }

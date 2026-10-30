@@ -52,7 +52,7 @@ class Migration(migrations.Migration):
             name="food_team_pause_until",
             field=models.DateField(
                 blank=True,
-                help_text="The pause (is_exempt_from_food_teams) lifts itself on this day. New residents start with one for their first month. Cleared whenever the pause ends some other way, so it can never end a later pause.",
+                help_text="The pause (is_exempt_from_food_teams) lifts itself on this day. New residents start with one for their first month. Cleared whenever the pause ends some other way or gets a new reason, so it can never end a later pause.",
                 null=True,
             ),
         ),

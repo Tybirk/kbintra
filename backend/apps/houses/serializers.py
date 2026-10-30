@@ -212,6 +212,9 @@ class HouseInhabitantSerializer(AvatarUrlMixin, serializers.ModelSerializer):
             "phone_number",
             "email",
             "birthdate",
+            # Deactivated accounts can still be in a house; the handover form
+            # leaves them out (only active users can be moved out).
+            "is_active",
         ]
 
 
@@ -317,15 +320,17 @@ class HandoverOutgoingSerializer(serializers.ModelSerializer):
         ]
 
     def get_upcoming_food_shifts(self, obj: User) -> list[str]:
-        """Maddage on or after the handover day: the move takes them off those
-        teams, so the admin can find a replacement in time. Empty once moved."""
+        """Maddage after the handover day: the move takes them off those teams, so
+        the admin can find a replacement in time. The handover day itself stays
+        theirs (``handover.move_out`` leaves that day's team alone), so it is not
+        listed. Empty once moved."""
         from apps.food.models import FoodTeamMember
 
         handover = self.context["handover"]
         if handover.moved_out_at:
             return []
         today = timezone.localdate()
-        first = max(handover.handover_date, today + timedelta(days=1))
+        first = max(handover.handover_date, today) + timedelta(days=1)
         dates = FoodTeamMember.objects.filter(user=obj, team__date__gte=first).values_list(
             "team__date", flat=True
         )
@@ -405,10 +410,29 @@ class HandoverSerializer(serializers.ModelSerializer):
 
 
 class HandoverIncomingSerializer(serializers.Serializer):
-    first_name = serializers.CharField(max_length=150)
+    # The messages name the field: errors on a row reach the page without it, and
+    # "Dette felt er påkrævet." alone doesn't say which field.
+    first_name = serializers.CharField(
+        max_length=150,
+        error_messages={
+            "required": "Skriv fornavn på alle, der flytter ind.",
+            "blank": "Skriv fornavn på alle, der flytter ind.",
+        },
+    )
     last_name = serializers.CharField(max_length=150, allow_blank=True, default="")
-    email = serializers.EmailField()
-    phone_number = serializers.CharField(max_length=20, allow_blank=True, default="")
+    email = serializers.EmailField(
+        error_messages={
+            "required": "Skriv email på alle, der flytter ind.",
+            "blank": "Skriv email på alle, der flytter ind.",
+            "invalid": "Emailadressen er ikke gyldig.",
+        },
+    )
+    phone_number = serializers.CharField(
+        max_length=20,
+        allow_blank=True,
+        default="",
+        error_messages={"max_length": "Telefonnummeret må højst have 20 tegn."},
+    )
 
     def validate_email(self, value: str) -> str:
         return value.strip().lower()
@@ -416,8 +440,8 @@ class HandoverIncomingSerializer(serializers.Serializer):
 
 def _invitation_problem(email: str) -> str | None:
     """Why this address can't be invited, or None. Checked on the handover rather
-    than per person, so the message names the address: DRF's nested list errors
-    reach the page as one string per field, not per row."""
+    than per person, so the message names the address: an error on a nested row
+    reaches the page without saying which row it was."""
     if User.objects.filter(email__iexact=email).exists():
         return f"{email} har allerede en bruger."
     # On its way: still usable, or waiting for its handover's send day.
@@ -427,7 +451,13 @@ def _invitation_problem(email: str) -> str | None:
     return None
 
 
-def _validate_dates(handover_date: date, access_until: date) -> None:
+def _validate_dates(handover_date: date, invite_on: date, access_until: date) -> None:
+    if invite_on > handover_date:
+        # Otherwise the old residents move out, and the house may be reset, before
+        # anyone new is even invited.
+        raise serializers.ValidationError(
+            {"invite_on": "Invitationerne skal sendes senest på overtagelsesdagen."}
+        )
     if access_until < handover_date:
         raise serializers.ValidationError(
             {"access_until": "Adgangen kan ikke slutte før overtagelsesdagen."}
@@ -455,7 +485,7 @@ class HandoverCreateSerializer(serializers.Serializer):
         outgoing: list[User] = attrs["outgoing"]
         incoming: list[dict] = attrs["incoming"]
         attrs.setdefault("invite_on", attrs["handover_date"])
-        _validate_dates(attrs["handover_date"], attrs["access_until"])
+        _validate_dates(attrs["handover_date"], attrs["invite_on"], attrs["access_until"])
 
         if not outgoing and not incoming:
             raise serializers.ValidationError(
@@ -530,6 +560,7 @@ class HandoverUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"access_until": "Adgangen er allerede lukket."})
         _validate_dates(
             attrs.get("handover_date", handover.handover_date),
+            attrs.get("invite_on", handover.invite_on),
             attrs.get("access_until", handover.access_until),
         )
         return attrs

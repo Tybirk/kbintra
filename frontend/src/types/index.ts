@@ -407,6 +407,9 @@ export interface UserSummary {
   email?: string
 
   birthdate?: string | null
+
+  // Sent with a house's inhabitants: a deactivated account can still be in a house.
+  is_active?: boolean
 }
 
 /**

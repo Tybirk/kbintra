@@ -1075,6 +1075,31 @@ def notify_food_swap_answered(
     )
 
 
+def notify_food_swap_target_moved_out(swap_request: Any) -> Notification | None:
+    """Tell the requester that the person they asked to bytte with has moved out.
+
+    The move took that maddag off them, and the pending request went with it
+    (``apps.houses.handover.move_out``). Without this the request just vanishes
+    from the Bytte tab while the requester waits for an answer. Called after the
+    rows are gone, so ``swap_request`` must come with its memberships, teams and
+    users already loaded.
+    """
+    leaver = swap_request.target_membership.user
+    gave_up = _cooking_date_label(swap_request.requester_membership.team.date.isoformat())
+    took_on = _cooking_date_label(swap_request.target_membership.team.date.isoformat())
+    return create_notification(
+        user=swap_request.requester,
+        notification_type=NotificationType.FOOD_TEAM_SWAP_REQUEST,
+        title="Dit bytte gik ikke igennem",
+        message=(
+            f"{leaver.first_name} er flyttet og er ikke længere på madhold {took_on}. "
+            f"Du har stadig madhold {gave_up}"
+        ),
+        link="/madhold/bytte",
+        related_user=leaver,
+    )
+
+
 def notify_food_broadcast_accepted(
     requester: User, acceptor: User, gave_up_label: str, took_on_label: str
 ) -> Notification | None:

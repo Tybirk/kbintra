@@ -176,26 +176,6 @@ class ChildDetailView(generics.RetrieveUpdateDestroyAPIView):
         return Response(output_serializer.data)
 
 
-def _announce_withdrawn_requests(candidates, car) -> None:
-    """Tell the borrowers that a departing car has answered them.
-
-    Both ways a car can leave the delebilpark — removed outright, or un-shared —
-    end here, so the borrower is told the same thing either way and the two paths
-    cannot drift apart. Called only after the change is committed: announcing a
-    dead request and then rolling the change back would be worse than silence.
-    """
-    from apps.carsharing.realtime import broadcast_car_sharing_update, loan_audience
-    from apps.notifications.services import (
-        close_car_request_notifications,
-        notify_car_loan_declined,
-    )
-
-    for candidate in candidates:
-        close_car_request_notifications(candidate.loan, car)
-        notify_car_loan_declined(candidate)
-        broadcast_car_sharing_update(loan_audience(candidate.loan))
-
-
 class CarListCreateView(generics.ListCreateAPIView):
     """
     List cars in the current user's house or create a new car.
@@ -274,7 +254,10 @@ class CarDetailView(generics.RetrieveUpdateDestroyAPIView):
         car nobody can see, and the owner keeps a "Ja, den må lånes" button that
         would lend out a car that is no longer shared.
         """
-        from apps.carsharing.services import withdraw_car_from_open_requests
+        from apps.carsharing.services import (
+            announce_withdrawn_requests,
+            withdraw_car_from_open_requests,
+        )
 
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
@@ -290,7 +273,7 @@ class CarDetailView(generics.RetrieveUpdateDestroyAPIView):
                 else []
             )
 
-        _announce_withdrawn_requests(withdrawn, instance)
+        announce_withdrawn_requests(withdrawn, instance)
 
         output_serializer = CarSerializer(instance)
         return Response(output_serializer.data)
@@ -309,7 +292,10 @@ class CarDetailView(generics.RetrieveUpdateDestroyAPIView):
         ProtectedError is caught rather than pre-checked so that any protected
         relation added later is covered too, with no check-then-delete window.
         """
-        from apps.carsharing.services import withdraw_car_from_open_requests
+        from apps.carsharing.services import (
+            announce_withdrawn_requests,
+            withdraw_car_from_open_requests,
+        )
 
         with transaction.atomic():
             withdrawn = withdraw_car_from_open_requests(instance, by_user=self.request.user)
@@ -326,7 +312,7 @@ class CarDetailView(generics.RetrieveUpdateDestroyAPIView):
 
         # Only once the removal is real: telling someone their request is dead and
         # then rolling the delete back would be worse than saying nothing.
-        _announce_withdrawn_requests(withdrawn, instance)
+        announce_withdrawn_requests(withdrawn, instance)
 
 
 class HandoverListCreateView(generics.ListCreateAPIView):
@@ -354,8 +340,11 @@ class HandoverListCreateView(generics.ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        handover = serializer.save()
-        process_handover(handover.pk)
+        # One transaction: if a step fails, the handover isn't saved either, so the
+        # admin can simply try again instead of meeting "already in a handover".
+        with transaction.atomic():
+            handover = serializer.save()
+            process_handover(handover.pk)
         handover.refresh_from_db()
         return Response(HandoverSerializer(handover).data, status=status.HTTP_201_CREATED)
 
@@ -376,9 +365,10 @@ class HandoverDetailView(APIView):
         handover = self._get(pk)
         serializer = HandoverUpdateSerializer(handover, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
-        # A date moved to today or earlier happens now.
-        process_handover(handover.pk)
+        with transaction.atomic():
+            serializer.save()
+            # A date moved to today or earlier happens now.
+            process_handover(handover.pk)
         return Response(HandoverSerializer(self._get(pk)).data)
 
     def delete(self, request, pk: int):

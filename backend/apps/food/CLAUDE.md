@@ -94,8 +94,11 @@ Users declare which dates they're available to cook. Without a usable wish we fa
   roster, the period-opening notice and the wish nudge. A resident who has moved out
   has no house (a handover, `apps/houses/handover.py`, takes it and later deactivates
   the account), and an admin or test account has none either; neither may be planned
-  as a cook. Someone with a handover still ahead is only planned before the day they
-  move (`leaving_dates()`), with a warning in the result. A new resident starts with a
+  as a cook. Given the period's first cooking day (`food_team_pool(starting)`, also
+  `madhold_residents(starting)`), the pool leaves out residents whose handover moves
+  them out on or before it, so they get no wish invitation or nudge and don't count
+  toward the day count. Someone who moves during the period stays in and is only
+  planned before the day they move (`leaving_dates()`), with a warning in the result. A new resident starts with a
   pause that lifts itself after a month (`User.food_team_pause_until`).
 - **A couple we can't pair up is split, not refused.** Only one housemate flagged, or
   no date they can both cook: both are scheduled separately and named in a warning the

@@ -182,8 +182,10 @@ class TeamGenerator:
         # Residents not on a pause, the same pool as the suggested day count,
         # the roster and the reminders. A resident who has moved out has no
         # house any more, and an admin or test account never had one:
-        # neither may be planned as a cook.
-        users = food_team_pool().select_related("house")
+        # neither may be planned as a cook. Nor may someone who moves out
+        # before the period begins.
+        starting = min(self.cooking_dates) if self.cooking_dates else None
+        users = food_team_pool(starting).select_related("house")
 
         wishes = {w.user_id: w for w in FoodTeamWish.objects.filter(cycle=self.cycle)}
         # Residents with a handover ahead of them still live here, but must not be

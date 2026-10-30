@@ -182,6 +182,11 @@ describe("HandoverPage", () => {
 
     expect(screen.getByText(/Står på madhold 20\/11/)).toBeInTheDocument()
 
+    // The old household keeps its things until a newcomer takes over.
+    expect(
+      screen.getByText(/Når den første nye beboer logger ind, senest/),
+    ).toBeInTheDocument()
+
     expect(screen.getByRole("button", { name: "Annullér" })).toBeInTheDocument()
   })
 
@@ -239,6 +244,75 @@ describe("HandoverPage", () => {
           phone_number: "",
         },
       ],
+    })
+  })
+  it("leaves out a deactivated account still in the house", async () => {
+    mockGetHouses.mockResolvedValue([
+      {
+        ...house40,
+
+        inhabitants: [
+          ...(house40.inhabitants ?? []).map((u) => ({
+            ...u,
+            is_active: true,
+          })),
+          {
+            id: 99,
+
+            first_name: "Gammel",
+
+            last_name: "Deaktiveret",
+
+            profile_picture: null,
+
+            bio: "",
+
+            is_active: false,
+          },
+        ],
+      },
+    ])
+
+    render(<HandoverPage />)
+
+    fireEvent.click(await screen.findByRole("button", { name: /Ny$/ }))
+
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByPlaceholderText("Vælg hus"))
+
+    await user.click(
+      await screen.findByRole("option", {
+        name: "Kløverbakkevej 40",
+        hidden: true,
+      }),
+    )
+
+    expect(await screen.findByLabelText("Gammel Et")).toBeChecked()
+
+    expect(
+      screen.queryByLabelText("Gammel Deaktiveret"),
+    ).not.toBeInTheDocument()
+
+    // Everyone who can move does, so the house can still be reset.
+    expect(screen.getByLabelText(/Nulstil husets oplysninger/)).toBeChecked()
+
+    fireEvent.change(screen.getByLabelText("Fornavn"), {
+      target: { value: "Ny" },
+    })
+
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "ny@example.com" },
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "Gem" }))
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalled())
+
+    expect(mockCreate.mock.calls[0][0]).toMatchObject({
+      outgoing: [70, 81],
+
+      reset_household: true,
     })
   })
 })

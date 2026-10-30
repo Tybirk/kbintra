@@ -183,7 +183,8 @@ class User(AbstractUser):
         help_text=(
             "The pause (is_exempt_from_food_teams) lifts itself on this day. New "
             "residents start with one for their first month. Cleared whenever the "
-            "pause ends some other way, so it can never end a later pause."
+            "pause ends some other way or gets a new reason, so it can never end "
+            "a later pause."
         ),
     )
     is_food_admin = models.BooleanField(
@@ -313,16 +314,41 @@ class User(AbstractUser):
         """
         if self.email:
             self.email = self.email.strip().lower()
-        # A pause end date only belongs to a pause that is on. Lifted by hand, by
-        # a wish or by the admin, the date goes too, or it would end the next
-        # pause this person sets themselves.
-        if not self.is_exempt_from_food_teams and self.food_team_pause_until:
+        # A pause end date only belongs to the pause it was set with. Lifted by
+        # hand, by a wish or by the admin, the date goes too, or it would end the
+        # next pause this person sets themselves. Given a new reason, it is a new
+        # pause, and the old end date would cut it short.
+        if self.food_team_pause_until and (
+            not self.is_exempt_from_food_teams or self._pause_reason_changed(kwargs)
+        ):
             self._clear_on_save(kwargs, "food_team_pause_until")
         # Moved out means without a house. Someone an admin puts back in a house
         # (they moved within the community after all) lives here again.
         if self.house_id and self.moved_out_on:
             self._clear_on_save(kwargs, "moved_out_on")
         super().save(*args, **kwargs)
+
+    def _pause_reason_changed(self, save_kwargs: dict) -> bool:
+        """Whether this save writes a new pause reason and leaves the end date as
+        it was. A save that sets the end date too (a wish giving a pause back)
+        keeps it. Only paused people with an end date get here, so the extra
+        query is rare."""
+        update_fields = save_kwargs.get("update_fields")
+        if self.pk is None or (
+            update_fields is not None and "food_team_pause_reason" not in update_fields
+        ):
+            return False
+        stored = (
+            type(self)
+            .objects.filter(pk=self.pk)
+            .values("food_team_pause_reason", "food_team_pause_until")
+            .first()
+        )
+        return bool(
+            stored
+            and stored["food_team_pause_until"] == self.food_team_pause_until
+            and stored["food_team_pause_reason"] != self.food_team_pause_reason
+        )
 
     def _clear_on_save(self, save_kwargs: dict, field_name: str) -> None:
         """Clear a field as part of this save, adding it to an explicit
