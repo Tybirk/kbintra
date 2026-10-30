@@ -63,18 +63,33 @@ def residents():  # type: ignore[no-untyped-def]
     return User.objects.filter(is_active=True, house__isnull=False)
 
 
-def madhold_residents():  # type: ignore[no-untyped-def]
+def madhold_residents(starting: date | None = None):  # type: ignore[no-untyped-def]
     """The residents madhold concerns: everyone who lives here except the children.
 
     A child with an account (``User.is_child``) is never a cook, whatever their
     age, so they are neither invited, asked about a pause, nor planned.
+
+    With ``starting`` (a period's first cooking day), also leaves out residents
+    whose handover moves them out on or before that day: they won't be here for
+    any of it. Someone who moves during the period stays in, and the generator
+    plans them only before the move (``apps.houses.handover.leaving_dates``).
     """
-    return residents().filter(is_child=False)
+    queryset = residents().filter(is_child=False)
+    if starting is not None:
+        from apps.houses.models import Handover
+
+        leaving = Handover.objects.filter(moved_out_at__isnull=True, handover_date__lte=starting)
+        queryset = queryset.exclude(pk__in=leaving.values("outgoing"))
+    return queryset
 
 
-def food_team_pool():  # type: ignore[no-untyped-def]
-    """The residents madhold plans and asks: every adult not on a standing pause."""
-    return madhold_residents().filter(is_exempt_from_food_teams=False)
+def food_team_pool(starting: date | None = None):  # type: ignore[no-untyped-def]
+    """The residents madhold plans and asks: every adult not on a standing pause.
+
+    ``starting`` leaves out those who have moved out by then, see
+    ``madhold_residents``.
+    """
+    return madhold_residents(starting).filter(is_exempt_from_food_teams=False)
 
 
 def any_day_passed(*days: date) -> bool:

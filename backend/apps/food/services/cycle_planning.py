@@ -51,11 +51,12 @@ DANISH_MONTHS = {
 }
 
 
-def eligible_food_team_count() -> int:
-    """Number of residents who are not on a madhold pause."""
+def eligible_food_team_count(starting: date | None = None) -> int:
+    """Number of residents who are not on a madhold pause, leaving out those
+    who move out on or before ``starting`` (the period's first cooking day)."""
     from apps.food.utils import food_team_pool
 
-    return food_team_pool().count()
+    return food_team_pool(starting).count()
 
 
 def suggested_day_count(eligible: int | None = None) -> int:

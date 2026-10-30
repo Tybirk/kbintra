@@ -5,7 +5,15 @@
 import { apiClient } from "./client"
 import { asArray } from "./helpers"
 
-import type { Car, Child, House } from "../types"
+import type {
+  Car,
+  Child,
+  Handover,
+  HandoverCreateInput,
+  HandoverDatesInput,
+  House,
+  InvitationEmailPreview,
+} from "../types"
 
 export interface UpdateHouseData {
   description?: string
@@ -161,5 +169,50 @@ export const housesApi = {
 
   async deleteCar(id: number): Promise<void> {
     await apiClient.delete(`/houses/my/cars/${id}/`)
+  },
+}
+
+/** Staff only: handovers — residents moving out, new ones moving in. */
+export const handoversApi = {
+  async list(): Promise<Handover[]> {
+    const response = await apiClient.get("/houses/handovers/")
+
+    return asArray(response.data)
+  },
+
+  async create(data: HandoverCreateInput): Promise<Handover> {
+    const response = await apiClient.post<Handover>("/houses/handovers/", data)
+
+    return response.data
+  },
+
+  async updateDates(id: number, data: HandoverDatesInput): Promise<Handover> {
+    const response = await apiClient.patch<Handover>(
+      `/houses/handovers/${id}/`,
+      data,
+    )
+
+    return response.data
+  },
+
+  async cancel(id: number): Promise<void> {
+    await apiClient.delete(`/houses/handovers/${id}/`)
+  },
+
+  async resendInvitation(invitationId: number): Promise<Handover> {
+    const response = await apiClient.post<Handover>(
+      `/houses/handovers/invitations/${invitationId}/resend/`,
+    )
+
+    return response.data
+  },
+
+  async invitationPreview(firstName: string): Promise<InvitationEmailPreview> {
+    const response = await apiClient.get<InvitationEmailPreview>(
+      "/houses/handovers/invitation-preview/",
+      { params: { first_name: firstName } },
+    )
+
+    return response.data
   },
 }

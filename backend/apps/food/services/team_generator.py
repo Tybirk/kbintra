@@ -44,6 +44,7 @@ from apps.food.models import (
     FoodTeamWish,
 )
 from apps.food.utils import food_team_pool, house_number_for
+from apps.houses.handover import leaving_dates
 
 
 class SchedulingError(RuntimeError):
@@ -179,12 +180,17 @@ class TeamGenerator:
     def load_data(self) -> None:
         """Load persons and their wishes from the database."""
         # Residents not on a pause, the same pool as the suggested day count,
-        # the roster and the reminders. A resident who has moved out is
-        # deactivated, not exempted, and an admin or test account has no house:
-        # neither may be planned as a cook.
-        users = food_team_pool().select_related("house")
+        # the roster and the reminders. A resident who has moved out has no
+        # house any more, and an admin or test account never had one:
+        # neither may be planned as a cook. Nor may someone who moves out
+        # before the period begins.
+        starting = min(self.cooking_dates) if self.cooking_dates else None
+        users = food_team_pool(starting).select_related("house")
 
         wishes = {w.user_id: w for w in FoodTeamWish.objects.filter(cycle=self.cycle)}
+        # Residents with a handover ahead of them still live here, but must not be
+        # planned on the day they move or after (apps.houses.handover).
+        leaving = leaving_dates()
 
         for user in users:
             wish = wishes.get(user.id)
@@ -214,6 +220,18 @@ class TeamGenerator:
                 available_dates = [d for d in self.cooking_dates if d.weekday() in default_days]
             if not available_dates:
                 available_dates = list(self.cooking_dates)
+
+            leaves_on = leaving.get(user.id)
+            if leaves_on is not None:
+                before_moving = [d for d in available_dates if d < leaves_on]
+                if len(before_moving) < len(available_dates):
+                    self.warnings.append(
+                        f"{user.first_name} {user.last_name} flytter {leaves_on.day}/"
+                        f"{leaves_on.month} og planlægges kun før."
+                    )
+                if not before_moving:
+                    continue
+                available_dates = before_moving
 
             person = PersonData(
                 user_id=user.id,

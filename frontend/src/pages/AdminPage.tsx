@@ -10,10 +10,18 @@ import {
   Stack,
   Alert,
   Code,
+  Group,
   List,
 } from "@mantine/core"
 
-import { IconDatabase, IconPhoto, IconInfoCircle } from "@tabler/icons-react"
+import {
+  IconDatabase,
+  IconHomeShare,
+  IconPhoto,
+  IconInfoCircle,
+} from "@tabler/icons-react"
+
+import { Link } from "react-router-dom"
 
 import { getAccessToken } from "../api/client"
 
@@ -61,6 +69,22 @@ export default function AdminPage() {
       <Title order={2} mb="lg">
         Administration
       </Title>
+      <Card withBorder padding="lg" mb="md">
+        <Stack gap="xs">
+          <Group gap="sm" wrap="nowrap">
+            <IconHomeShare size={32} />
+            <div>
+              <Text fw={500}>Ind- og udflytning</Text>
+              <Text size="sm" c="dimmed">
+                Når et hus skifter hænder: flyt beboere ud og inviter de nye.
+              </Text>
+            </div>
+          </Group>
+          <Button component={Link} to="/drift/flytning" variant="light">
+            Åbn
+          </Button>
+        </Stack>
+      </Card>
       <SimpleGrid cols={2} mb="xl">
         <Card withBorder padding="lg">
           <Stack align="center" gap="md">

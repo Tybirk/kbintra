@@ -32,7 +32,7 @@ uv run python manage.py runserver          # Dev server (HTTP only)
 uv run daphne -b 0.0.0.0 -p 7000 config.asgi:application  # With WebSocket support
 uv run python manage.py migrate            # Apply migrations
 uv run python manage.py makemigrations     # Create migrations
-uv run pytest                              # Run all tests
+uv run pytest                              # Run all tests (parallel, pytest-xdist; -n0 for pdb)
 uv run pytest apps/forum/tests.py -v       # Run specific app tests
 uv run pytest -k "test_name"               # Run single test by name
 uv run ruff check .                        # Lint
@@ -122,6 +122,8 @@ Beyond one-off tasks:
 - **Registration materialization** (`apps/food/tasks.py`) — Thursday 00:30, freezes next week's meal registrations
 - **Drive menu refresh** (`apps/food/tasks.py`) — every 4 hours
 - **Birthday notifications** (`apps/users/tasks.py`) — daily 08:00, one per resident or child with a birthday today
+- **Handovers** (`apps/houses/tasks.py`) — hourly, carries out each dated step of an ind-/udflytning (see below)
+- **Madhold pause end** (`apps/food/tasks.py`) — daily 00:15, lifts pauses whose `food_team_pause_until` has come
 
 Use `@db_periodic_task(local_crontab(...))` (`config/scheduling.py`) for anything tied to a time of day — Huey reads a bare `crontab` in UTC, so `crontab(hour=8)` fires at 10:00 in summer. A bare `crontab` is fine for hourly tasks. Import the task module in the app's `AppConfig.ready()` to register it.
 
@@ -142,6 +144,10 @@ Custom service worker (`frontend/src/sw.ts`) handles push notifications with iOS
 
 ### Pre-commit hooks
 Uses `prek` (not standard `pre-commit`). Hooks run ruff, frontend lint/format/typecheck. They source `~/.nvm/nvm.sh` for Node access. Install with `uv tool install prek && prek install -f .`.
+
+### Moving in and out (handovers)
+Staff register an ind-/udflytning at `/drift/flytning` (`houses.Handover`, logic in `apps/houses/handover.py`). Nothing happens on save; `process_handover` runs each step on its day and stamps it, in one transaction, from the view straight away (in the save's transaction), from registration and from an hourly task: on `invite_on` the invitations are mailed (`Invitation.send_on`/`sent_at`, valid 14 days from sending, with a to-do list); when the first newcomer registers (or on `handover_date` if nobody has) the household is reset if asked (children, cars with their open loan requests answered, house description/picture, meal preferences, open meal registrations), so the old household keeps its things until then; on `handover_date` the outgoing residents lose their house and get `User.moved_out_on`, and their maddage after that day are dropped (a neighbour with a pending bytte on one is told); the day after `access_until` their accounts are deactivated, never deleted.
+A moved-out resident can still log in but is not a member: use `User.objects.members()` (active, not moved out) for "everybody" — directory, @mentions, birthdays, search — and `apps.food.utils.residents()` for the people who live here. `create_notification` drops everything for them except the personal types in `_MOVED_OUT_TYPES`, so a new broadcast can't forget them. Putting them back in a house clears `moved_out_on`. Someone who registers from a handover invitation starts with a madhold pause that lifts itself one month after the handover day (`food_team_pause_until`).
 
 ### Message encryption
 Private messages are encrypted at rest using Fernet. Key stored in `MESSAGES_ENCRYPTION_KEY` env var. Required in production, optional in dev. See `docs/architecture.md` for details.

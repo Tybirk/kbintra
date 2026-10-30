@@ -34,6 +34,13 @@ def _media_in_a_temporary_directory(settings, tmp_path):
     settings.MEDIA_ROOT = tmp_path / "media"
 
 
+@pytest.fixture(autouse=True)
+def _fast_password_hashing(settings):
+    """The default PBKDF2 hasher costs ~0.3 s per create_user/login by design; across the
+    suite that was most of the runtime. Tests don't need slow hashes."""
+    settings.PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+
+
 @pytest.fixture
 def api_client():
     """Return an API client instance."""

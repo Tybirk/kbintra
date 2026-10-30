@@ -221,3 +221,72 @@ class Car(models.Model):
         # Non-breaking, so a narrow screen never splits it into "(EA 78" / "950)".
         unbroken = plate.replace(" ", "\u00a0")
         return f"{self.display_name} ({unbroken})"
+
+
+class Handover(models.Model):
+    """A house changing hands: who moves out, who moves in, and when.
+
+    Nothing happens when the row is saved. ``apps.houses.handover.process_handover``
+    carries it out step by step as each date comes round (the admin view runs it at
+    once, and an hourly task catches up), and stamps each step so it runs once:
+
+    1. ``invite_on``: the incoming residents' invitations are mailed.
+    2. When the first of them registers: the household is reset if asked
+       (children, cars, the house's description and picture, meal preferences),
+       so they arrive to an empty house while the old household keeps its things
+       until then.
+    3. ``handover_date``: the outgoing residents lose their house and become
+       moved out (``User.moved_out_on``); their maddage after that day are
+       dropped. A reset that has not run yet (nobody registered or invited) runs now.
+    4. The day after ``access_until``: their accounts are deactivated. Never
+       deleted — that stays a decision for a person, in the Django admin.
+    """
+
+    house = models.ForeignKey(House, on_delete=models.CASCADE, related_name="handovers")
+    handover_date = models.DateField(help_text="Overtagelsesdag: the day the house changes hands")
+    invite_on = models.DateField(help_text="The day the incoming residents' invitations go out")
+    access_until = models.DateField(
+        help_text="The last day the outgoing residents can log in",
+    )
+    outgoing = models.ManyToManyField(
+        "users.User",
+        blank=True,
+        related_name="move_outs",
+        help_text="The residents moving out",
+    )
+    reset_household = models.BooleanField(
+        default=False,
+        help_text=(
+            "Clear what belongs to the old household — children, cars, the house's "
+            "description and picture, meal preferences — before the new one arrives"
+        ),
+    )
+
+    created_by = models.ForeignKey(
+        "users.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    household_reset_at = models.DateTimeField(null=True, blank=True)
+    moved_out_at = models.DateTimeField(null=True, blank=True)
+    access_ended_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-handover_date", "-id"]
+
+    def __str__(self) -> str:
+        return f"{self.house.name} {self.handover_date:%d/%m/%Y}"
+
+    @property
+    def has_started(self) -> bool:
+        """Whether any step has run, after which the handover can't be cancelled."""
+        return bool(
+            self.household_reset_at
+            or self.moved_out_at
+            or self.access_ended_at
+            or self.invitations.filter(sent_at__isnull=False).exists()
+        )

@@ -79,6 +79,8 @@ class ValidateInvitationView(APIView):
             {
                 "valid": True,
                 "email": invitation.email,
+                "first_name": invitation.first_name,
+                "last_name": invitation.last_name,
                 "expires_at": invitation.expires_at,
             }
         )
@@ -108,7 +110,7 @@ class UserListView(generics.ListAPIView):
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
     queryset = (
-        User.objects.filter(is_active=True)
+        User.objects.members()
         .select_related("house")
         .annotate(_house_inhabitant_count=Count("house__inhabitants"))
     )
@@ -128,7 +130,7 @@ class UserMentionListView(generics.ListAPIView):
 
     def get_queryset(self) -> QuerySet[User]:
         q = self.request.query_params.get("q", "").strip()
-        queryset = User.objects.filter(is_active=True)
+        queryset = User.objects.members()
         if q:
             # Through the search index for the same reason the indrapportering
             # queue does: LIKE folds case for ASCII only, so "øjvind" missed
@@ -208,7 +210,7 @@ class UpcomingBirthdaysView(APIView):
                 }
             )
 
-        users = User.objects.filter(is_active=True, birthdate__isnull=False).select_related("house")
+        users = User.objects.members().filter(birthdate__isnull=False).select_related("house")
         for user in users:
             name = f"{user.first_name} {user.last_name}".strip() or user.email
             add("user", user, name, user.house.slug if user.house else None, user.hide_birth_year)

@@ -87,7 +87,7 @@ class UserAdmin(BaseUserAdmin):
                 )
             },
         ),
-        ("House", {"fields": ("house", "is_child")}),
+        ("House", {"fields": ("house", "is_child", "moved_out_on")}),
         (
             "Madhold",
             {
@@ -98,6 +98,7 @@ class UserAdmin(BaseUserAdmin):
                 "fields": (
                     "is_exempt_from_food_teams",
                     "food_team_pause_reason",
+                    "food_team_pause_until",
                     "can_be_head_chef",
                     "prefers_cooking_with_housemate",
                     "default_cooking_days",
@@ -144,10 +145,19 @@ class UserAdmin(BaseUserAdmin):
 class InvitationAdmin(admin.ModelAdmin):
     """Admin configuration for Invitation model."""
 
-    list_display = ("email", "created_by", "created_at", "used_at", "is_valid_display")
+    list_display = (
+        "email",
+        "first_name",
+        "last_name",
+        "house",
+        "send_on",
+        "sent_at",
+        "used_at",
+        "is_valid_display",
+    )
     list_filter = ("created_at", "used_at")
-    search_fields = ("email", "created_by__email")
-    readonly_fields = ("token", "created_at", "used_at")
+    search_fields = ("email", "first_name", "last_name", "created_by__email")
+    readonly_fields = ("token", "created_at", "used_at", "sent_at", "handover")
     ordering = ("-created_at",)
 
     @admin.display(boolean=True, description="Valid")

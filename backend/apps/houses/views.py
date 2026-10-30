@@ -2,20 +2,25 @@
 Views for House models.
 """
 
+from django.conf import settings
 from django.db import transaction
-from django.db.models import ProtectedError
+from django.db.models import F, ProtectedError
 from django.http import Http404
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Car, Child, House
+from .handover import invitation_email, mark_sent_and_mail, process_handover
+from .models import Car, Child, Handover, House
 from .serializers import (
     CarCreateUpdateSerializer,
     CarSerializer,
     ChildCreateUpdateSerializer,
     ChildSerializer,
+    HandoverCreateSerializer,
+    HandoverSerializer,
+    HandoverUpdateSerializer,
     HouseListSerializer,
     HouseSerializer,
     HouseUpdateSerializer,
@@ -171,26 +176,6 @@ class ChildDetailView(generics.RetrieveUpdateDestroyAPIView):
         return Response(output_serializer.data)
 
 
-def _announce_withdrawn_requests(candidates, car) -> None:
-    """Tell the borrowers that a departing car has answered them.
-
-    Both ways a car can leave the delebilpark — removed outright, or un-shared —
-    end here, so the borrower is told the same thing either way and the two paths
-    cannot drift apart. Called only after the change is committed: announcing a
-    dead request and then rolling the change back would be worse than silence.
-    """
-    from apps.carsharing.realtime import broadcast_car_sharing_update, loan_audience
-    from apps.notifications.services import (
-        close_car_request_notifications,
-        notify_car_loan_declined,
-    )
-
-    for candidate in candidates:
-        close_car_request_notifications(candidate.loan, car)
-        notify_car_loan_declined(candidate)
-        broadcast_car_sharing_update(loan_audience(candidate.loan))
-
-
 class CarListCreateView(generics.ListCreateAPIView):
     """
     List cars in the current user's house or create a new car.
@@ -269,7 +254,10 @@ class CarDetailView(generics.RetrieveUpdateDestroyAPIView):
         car nobody can see, and the owner keeps a "Ja, den må lånes" button that
         would lend out a car that is no longer shared.
         """
-        from apps.carsharing.services import withdraw_car_from_open_requests
+        from apps.carsharing.services import (
+            announce_withdrawn_requests,
+            withdraw_car_from_open_requests,
+        )
 
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
@@ -285,7 +273,7 @@ class CarDetailView(generics.RetrieveUpdateDestroyAPIView):
                 else []
             )
 
-        _announce_withdrawn_requests(withdrawn, instance)
+        announce_withdrawn_requests(withdrawn, instance)
 
         output_serializer = CarSerializer(instance)
         return Response(output_serializer.data)
@@ -304,7 +292,10 @@ class CarDetailView(generics.RetrieveUpdateDestroyAPIView):
         ProtectedError is caught rather than pre-checked so that any protected
         relation added later is covered too, with no check-then-delete window.
         """
-        from apps.carsharing.services import withdraw_car_from_open_requests
+        from apps.carsharing.services import (
+            announce_withdrawn_requests,
+            withdraw_car_from_open_requests,
+        )
 
         with transaction.atomic():
             withdrawn = withdraw_car_from_open_requests(instance, by_user=self.request.user)
@@ -321,4 +312,103 @@ class CarDetailView(generics.RetrieveUpdateDestroyAPIView):
 
         # Only once the removal is real: telling someone their request is dead and
         # then rolling the delete back would be worse than saying nothing.
-        _announce_withdrawn_requests(withdrawn, instance)
+        announce_withdrawn_requests(withdrawn, instance)
+
+
+class HandoverListCreateView(generics.ListCreateAPIView):
+    """Staff: every handover, open ones first; or register a new one.
+
+    A new handover is carried out at once as far as its dates have come — a
+    handover dated today moves the residents out in the same request.
+    """
+
+    permission_classes = [permissions.IsAdminUser]
+    pagination_class = None
+
+    def get_serializer_class(self):
+        if self.request.method == "POST":
+            return HandoverCreateSerializer
+        return HandoverSerializer
+
+    def get_queryset(self):
+        return (
+            Handover.objects.select_related("house", "created_by")
+            .prefetch_related("outgoing", "invitations")
+            .order_by(F("access_ended_at").asc(nulls_first=True), "-handover_date", "-id")
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        # One transaction: if a step fails, the handover isn't saved either, so the
+        # admin can simply try again instead of meeting "already in a handover".
+        with transaction.atomic():
+            handover = serializer.save()
+            process_handover(handover.pk)
+        handover.refresh_from_db()
+        return Response(HandoverSerializer(handover).data, status=status.HTTP_201_CREATED)
+
+
+class HandoverDetailView(APIView):
+    """Staff: move a date that hasn't come yet, or cancel a handover that
+    hasn't started."""
+
+    permission_classes = [permissions.IsAdminUser]
+
+    def _get(self, pk: int) -> Handover:
+        handover = Handover.objects.select_related("house").filter(pk=pk).first()
+        if handover is None:
+            raise NotFound()
+        return handover
+
+    def patch(self, request, pk: int):
+        handover = self._get(pk)
+        serializer = HandoverUpdateSerializer(handover, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            serializer.save()
+            # A date moved to today or earlier happens now.
+            process_handover(handover.pk)
+        return Response(HandoverSerializer(self._get(pk)).data)
+
+    def delete(self, request, pk: int):
+        handover = self._get(pk)
+        if handover.has_started:
+            return Response(
+                {"detail": "Overdragelsen er gået i gang og kan ikke annulleres."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        handover.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class HandoverInvitationResendView(APIView):
+    """Staff: mail an invitation again, valid for another two weeks from now —
+    for the one that got lost in a spam folder or ran out."""
+
+    permission_classes = [permissions.IsAdminUser]
+
+    def post(self, request, pk: int):
+        from apps.users.models import Invitation
+
+        invitation = Invitation.objects.filter(pk=pk, handover__isnull=False).first()
+        if invitation is None:
+            raise NotFound()
+        if invitation.used_at:
+            raise ValidationError({"detail": "Invitationen er allerede brugt."})
+        if not invitation.sent_at:
+            raise ValidationError({"detail": "Invitationen er ikke sendt endnu."})
+        mark_sent_and_mail(invitation)
+        handover = Handover.objects.get(pk=invitation.handover_id)
+        return Response(HandoverSerializer(handover).data)
+
+
+class HandoverInvitationPreviewView(APIView):
+    """Staff: the invitation mail as it will be sent, with a placeholder link."""
+
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        first_name = request.query_params.get("first_name", "").strip()[:150]
+        subject, body = invitation_email(first_name, f"{settings.SITE_URL}/register?token=…")
+        return Response({"subject": subject, "body": body})

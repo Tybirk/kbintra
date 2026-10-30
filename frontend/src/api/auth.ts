@@ -14,6 +14,19 @@ import type {
   User,
 } from "../types"
 
+export interface InvitationValidation {
+  valid: boolean
+
+  email: string
+
+  /** As the admin typed them into the handover; empty for older invitations. */
+  first_name: string
+
+  last_name: string
+
+  expires_at: string
+}
+
 interface RegisterResponse {
   message: string
 
@@ -43,20 +56,11 @@ export const authApi = {
     return response.data
   },
 
-  async validateInvitation(token: string): Promise<{
-    valid: boolean
-
-    email: string
-
-    expires_at: string
-  }> {
-    const response = await apiClient.post<{
-      valid: boolean
-
-      email: string
-
-      expires_at: string
-    }>("/auth/validate-invitation/", { token })
+  async validateInvitation(token: string): Promise<InvitationValidation> {
+    const response = await apiClient.post<InvitationValidation>(
+      "/auth/validate-invitation/",
+      { token },
+    )
 
     return response.data
   },

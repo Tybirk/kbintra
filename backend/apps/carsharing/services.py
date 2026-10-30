@@ -263,3 +263,24 @@ def withdraw_car_from_open_requests(car: Car, *, by_user) -> list:
         candidate.responded_by = by_user
         close_loan_if_unanswerable(candidate.loan)
     return candidates
+
+
+def announce_withdrawn_requests(candidates, car) -> None:
+    """Tell the borrowers that a departing car has answered them.
+
+    Every way a car can leave the delebilpark — removed outright, un-shared, or
+    cleared with its household at a handover — ends here, so the borrower is told
+    the same thing each time and the paths cannot drift apart. Called only after
+    the change is committed: announcing a dead request and then rolling the change
+    back would be worse than silence.
+    """
+    from apps.carsharing.realtime import broadcast_car_sharing_update, loan_audience
+    from apps.notifications.services import (
+        close_car_request_notifications,
+        notify_car_loan_declined,
+    )
+
+    for candidate in candidates:
+        close_car_request_notifications(candidate.loan, car)
+        notify_car_loan_declined(candidate)
+        broadcast_car_sharing_update(loan_audience(candidate.loan))
