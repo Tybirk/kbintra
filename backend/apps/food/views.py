@@ -69,7 +69,7 @@ from .serializers import (
     is_after_deadline,
 )
 from .services.team_generator import TeamGenerator
-from .utils import danish_date_label, house_number_for, housemates_of
+from .utils import danish_date_label, house_number_for, housemates_of, wish_housemates
 
 logger = logging.getLogger(__name__)
 
@@ -1432,8 +1432,8 @@ class CycleResetTeamsView(APIView):
 # Food Team Wish Views
 
 
-class MyWishView(APIView):
-    """Get or create/update the current user's wish for a cycle."""
+class WishHouseholdView(APIView):
+    """Who the caller can give wishes for in this cycle, themselves first."""
 
     permission_classes = [permissions.IsAuthenticated]
 
@@ -1446,8 +1446,56 @@ class MyWishView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        people = [request.user, *wish_housemates(request.user, cycle)]
+        submitted = set(
+            FoodTeamWish.objects.filter(cycle=cycle, user__in=people).values_list(
+                "user_id", flat=True
+            )
+        )
+        return Response(
+            [
+                {
+                    "id": person.pk,
+                    "first_name": person.first_name,
+                    "is_self": person.pk == request.user.pk,
+                    "on_pause": person.is_exempt_from_food_teams,
+                    "has_wish": person.pk in submitted,
+                }
+                for person in people
+            ]
+        )
+
+
+class MyWishView(APIView):
+    """Get or create/update the caller's wish for a cycle, or a housemate's."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: Request, cycle_id: int) -> Response:
         try:
-            wish = FoodTeamWish.objects.get(cycle=cycle, user=request.user)
+            cycle = FoodTeamCycle.objects.get(id=cycle_id)
+        except FoodTeamCycle.DoesNotExist:
+            return Response(
+                {"detail": "Perioden blev ikke fundet."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        subject = request.user
+        for_user = request.query_params.get("for_user")
+        if for_user:
+            subject = (
+                wish_housemates(request.user, cycle).filter(pk=for_user).first()
+                if for_user.isdigit()
+                else None
+            )
+            if subject is None:
+                return Response(
+                    {"detail": "Du kan kun se ønsker for dine medbeboere."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+        try:
+            wish = FoodTeamWish.objects.get(cycle=cycle, user=subject)
             serializer = FoodTeamWishSerializer(wish, context={"request": request})
             return Response(serializer.data)
         except FoodTeamWish.DoesNotExist:

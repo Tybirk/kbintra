@@ -28,6 +28,7 @@ import type {
   CycleResetResult,
   FoodTeamWish,
   CreateWishData,
+  WishPerson,
   TeamGenerationResult,
   DriveMenu,
   TeamFavour,
@@ -403,10 +404,24 @@ export const foodApi = {
 
   // Food Team Wishes
 
-  getMyWish: async (cycleId: number): Promise<FoodTeamWish> => {
-    const response = await apiClient.get(`/food/cycles/${cycleId}/my-wish/`)
+  getMyWish: async (
+    cycleId: number,
+
+    forUserId?: number,
+  ): Promise<FoodTeamWish> => {
+    const response = await apiClient.get(`/food/cycles/${cycleId}/my-wish/`, {
+      params: forUserId ? { for_user: forUserId } : undefined,
+    })
 
     return response.data
+  },
+
+  getWishHousehold: async (cycleId: number): Promise<WishPerson[]> => {
+    const response = await apiClient.get(
+      `/food/cycles/${cycleId}/wish-household/`,
+    )
+
+    return asArray(response.data)
   },
 
   submitWish: async (

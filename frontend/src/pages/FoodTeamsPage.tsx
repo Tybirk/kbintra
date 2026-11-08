@@ -32,6 +32,7 @@ import {
   Checkbox,
   SimpleGrid,
   TextInput,
+  SegmentedControl,
   Switch,
   Chip,
   MultiSelect,
@@ -91,6 +92,7 @@ import type {
   SwapBroadcast,
   MyFoodProfile,
   CreateWishData,
+  WishPerson,
   CycleResetPreview,
   PlannedTeam,
 } from "../types"
@@ -737,8 +739,103 @@ interface WishSubmissionPanelProps {
   cycle: FoodTeamCycle
 }
 
+const OWN_WISH = "own"
+
+// A household often settles its wishes together, so the form can be filled in
+// for each person in it. Every form stays mounted: ticking a few dates and
+// glancing at a housemate's answer must not lose them.
 function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
+  const [selected, setSelected] = useState(OWN_WISH)
+
+  const { data: household = [] } = useQuery({
+    queryKey: ["food", "wishes", "household", cycle.id],
+
+    queryFn: () => foodApi.getWishHousehold(cycle.id),
+
+    enabled: cycle.is_accepting_wishes,
+  })
+
+  const housemates = household.filter((person) => !person.is_self)
+
+  const current = housemates.some((person) => String(person.id) === selected)
+    ? selected
+    : OWN_WISH
+
+  return (
+    <Stack gap="md">
+      {housemates.length > 0 && (
+        <SegmentedControl
+          aria-label="Hvem indsender du ønsker for?"
+          fullWidth
+          orientation={housemates.length > 2 ? "vertical" : "horizontal"}
+          value={current}
+          onChange={setSelected}
+          data={[
+            { value: OWN_WISH, label: "Mig" },
+
+            ...housemates.map((person) => ({
+              value: String(person.id),
+
+              label: person.first_name,
+            })),
+          ]}
+        />
+      )}
+
+      <div hidden={current !== OWN_WISH}>
+        <WishForm cycle={cycle} others={housemates} />
+      </div>
+
+      {housemates.map((person) => (
+        <div key={person.id} hidden={current !== String(person.id)}>
+          <WishForm
+            cycle={cycle}
+            person={person}
+            others={household.filter((other) => other.id !== person.id)}
+          />
+        </div>
+      ))}
+    </Stack>
+  )
+}
+
+// What ticking "samme ønsker" will do besides saving, said before it is done.
+function copyConsequence(target: WishPerson, namesDates: boolean) {
+  const notes: string[] = []
+
+  if (target.has_wish) {
+    notes.push(
+      target.is_self
+        ? "Erstatter de ønsker, du allerede har indsendt."
+        : `Erstatter de ønsker, ${target.first_name} allerede har indsendt.`,
+    )
+  }
+
+  if (target.on_pause && namesDates) {
+    notes.push(
+      target.is_self
+        ? "Du holder pause fra madhold, og pausen bliver ophævet."
+        : `${target.first_name} holder pause fra madhold, og pausen bliver ophævet.`,
+    )
+  }
+
+  return notes.join(" ") || undefined
+}
+
+interface WishFormProps {
+  cycle: FoodTeamCycle
+
+  /** The housemate this form answers for. Left out, it is your own. */
+  person?: WishPerson
+
+  /** The rest of the household, who can be given the same answer. */
+  others: WishPerson[]
+}
+
+function WishForm({ cycle, person, others }: WishFormProps) {
   const queryClient = useQueryClient()
+
+  const [copyTo, setCopyTo] = useState<number[]>([])
 
   const [selectedDates, setSelectedDates] = useState<string[]>([])
 
@@ -758,14 +855,17 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
     queryFn: foodApi.getMyFoodProfile,
   })
 
-  const pauseReason = reasonDraft ?? myProfile?.food_team_pause_reason ?? ""
+  // A housemate's reason is written for the madhold-ansvarlig, so it is never
+  // loaded here. Untouched, the server keeps whatever it has.
+  const pauseReason =
+    reasonDraft ?? (person ? "" : myProfile?.food_team_pause_reason) ?? ""
 
   // Fetch existing wish
 
   const { data: existingWish, isLoading: wishLoading } = useQuery({
-    queryKey: ["food", "wishes", "my", cycle.id],
+    queryKey: ["food", "wishes", "my", cycle.id, person?.id ?? OWN_WISH],
 
-    queryFn: () => foodApi.getMyWish(cycle.id),
+    queryFn: () => foodApi.getMyWish(cycle.id, person?.id),
 
     retry: false,
 
@@ -826,19 +926,29 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
         queryKey: ["food", "wishes", "my", cycle.id],
       })
 
+      queryClient.invalidateQueries({
+        queryKey: ["food", "wishes", "household", cycle.id],
+      })
+
       queryClient.invalidateQueries({ queryKey: ["food", "cycles", "active"] })
 
       // The reason just sent is now the profile's, so the field can follow
       // the profile again without flashing the old one before the refetch.
+      // A housemate's profile isn't read here, so their field keeps the text.
       const sentReason = data.pause_reason
 
-      if (sentReason !== undefined) {
-        queryClient.setQueryData<MyFoodProfile>(MY_FOOD_PROFILE_KEY, (old) =>
-          old ? { ...old, food_team_pause_reason: sentReason } : old,
-        )
+      if (!person) {
+        if (sentReason !== undefined) {
+          queryClient.setQueryData<MyFoodProfile>(MY_FOOD_PROFILE_KEY, (old) =>
+            old ? { ...old, food_team_pause_reason: sentReason } : old,
+          )
+        }
+
+        setReasonDraft(null)
       }
 
-      setReasonDraft(null)
+      // Off again, so a later correction doesn't overwrite anyone by surprise.
+      setCopyTo([])
 
       // The wish also settles the pause on the server (naming dates lifts it,
       // sitting the period out records why), so re-read what it decided.
@@ -846,10 +956,21 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
 
       queryClient.invalidateQueries({ queryKey: ["food", "roster"] })
 
+      const names = [
+        person ? person.first_name : "dig",
+
+        ...others
+          .filter((other) => data.also_for?.includes(other.id))
+          .map((other) => (other.is_self ? "dig" : other.first_name)),
+      ]
+
       notifications.show({
         title: "Ønsker indsendt",
 
-        message: "Dine datopræferencer er blevet gemt.",
+        message:
+          names.length === 1 && !person
+            ? "Dine datopræferencer er blevet gemt."
+            : `Ønskerne er gemt for ${names.join(" og ")}.`,
 
         color: "green",
       })
@@ -888,6 +1009,10 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
       ...(isUnavailable && reasonDraft !== null
         ? { pause_reason: reasonDraft }
         : {}),
+
+      ...(person ? { for_user: person.id } : {}),
+
+      ...(copyTo.length > 0 ? { also_for: copyTo } : {}),
     })
   }
 
@@ -900,6 +1025,10 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
   }
 
   const deadlinePassed = dayjs(cycle.wish_deadline).isBefore(dayjs())
+
+  const isOnPause = person
+    ? person.on_pause
+    : myProfile?.is_exempt_from_food_teams
 
   return (
     <Stack gap="lg">
@@ -940,7 +1069,9 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
           {existingWish && (
             <Alert color="blue" variant="light">
               <Text size="sm">
-                Du har allerede indsendt dine ønsker (
+                {person
+                  ? `${person.first_name} har allerede indsendt ønsker (`
+                  : "Du har allerede indsendt dine ønsker ("}
                 {existingWish.available_date_count} datoer valgt). Du kan
                 opdatere dem nedenfor indtil deadline.
               </Text>
@@ -959,72 +1090,83 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
                 withBorder
                 p="md"
                 radius="md"
+                // Not default-hover: in dark mode that is the colour of a switch
+                // that is off, and only its thumb would show.
                 bg={
                   isUnavailable
                     ? "var(--mantine-color-red-light)"
-                    : "var(--mantine-color-default-hover)"
+                    : "var(--mantine-color-body)"
                 }
               >
                 <Switch
                   checked={isUnavailable}
                   onChange={(e) => setIsUnavailable(e.currentTarget.checked)}
-                  label="Jeg er forhindret i hele perioden"
-                  description="Du kan melde dig fra perioden, hvis der er en god grund. Det kan være sygdom, også stress eller andet, der gør det svært lige nu, eller en lang rejse. Skriv kort, hvad grunden er."
+                  label={
+                    person
+                      ? `${person.first_name} er forhindret i hele perioden`
+                      : "Jeg er forhindret i hele perioden"
+                  }
+                  description={`Du kan melde ${
+                    person ? person.first_name : "dig"
+                  } fra perioden, hvis der er en god grund. Det kan være sygdom, også stress eller andet, der gør det svært lige nu, eller en lang rejse. Skriv kort, hvad grunden er.`}
                   color="red"
                 />
 
-                {myProfile?.is_exempt_from_food_teams && !isUnavailable && (
+                {isOnPause && !isUnavailable && (
                   <Alert color="blue" variant="light" mt="sm" p="xs">
-                    Du holder pause fra madhold lige nu. Indsender du ønsker,
-                    ophæver du pausen, og du kan komme på et hold igen.
+                    {person
+                      ? `${person.first_name} holder pause fra madhold lige nu. Indsender du ønsker, ophæver du pausen, og ${person.first_name} kan komme på et hold igen.`
+                      : "Du holder pause fra madhold lige nu. Indsender du ønsker, ophæver du pausen, og du kan komme på et hold igen."}
                   </Alert>
                 )}
               </Paper>
 
-              {/* Default cooking days section */}
-              <Paper
-                withBorder
-                p="md"
-                radius="md"
-                bg="var(--mantine-color-default-hover)"
-                style={
-                  isUnavailable
-                    ? { opacity: 0.5, pointerEvents: "none" }
-                    : undefined
-                }
-              >
-                <Text fw={500} mb="sm">
-                  Dine standard madlavningsdage
-                </Text>
-                <Text size="sm" c="dimmed" mb="md">
-                  Vælg din typiske tilgængelighed. Disse gemmes og kan bruges
-                  til fremtidige perioder.
-                </Text>
-                <Group gap="md" mb="md">
-                  {["Mandag", "Tirsdag", "Onsdag", "Torsdag"].map(
-                    (day, index) => (
-                      <Checkbox
-                        key={day}
-                        label={day}
-                        checked={defaultDays.includes(index)}
-                        onChange={() => handleDefaultDayToggle(index)}
-                      />
-                    ),
+              {/* Default cooking days: your own profile, so not on a housemate's form */}
+              {!person && (
+                <Paper
+                  withBorder
+                  p="md"
+                  radius="md"
+                  bg="var(--mantine-color-default-hover)"
+                  style={
+                    isUnavailable
+                      ? { opacity: 0.5, pointerEvents: "none" }
+                      : undefined
+                  }
+                >
+                  <Text fw={500} mb="sm">
+                    Dine standard madlavningsdage
+                  </Text>
+                  <Text size="sm" c="dimmed" mb="md">
+                    Vælg din typiske tilgængelighed. Disse gemmes og kan bruges
+                    til fremtidige perioder.
+                  </Text>
+                  <Group gap="md" mb="md">
+                    {["Mandag", "Tirsdag", "Onsdag", "Torsdag"].map(
+                      (day, index) => (
+                        <Checkbox
+                          key={day}
+                          label={day}
+                          checked={defaultDays.includes(index)}
+                          onChange={() => handleDefaultDayToggle(index)}
+                        />
+                      ),
+                    )}
+                  </Group>
+                  {defaultDays.length > 0 && !existingWish && (
+                    <Button
+                      variant="light"
+                      size="sm"
+                      onClick={applyDefaultsToSelection}
+                      disabled={defaultsApplied}
+                    >
+                      {defaultsApplied
+                        ? "Standarder anvendt"
+                        : "Anvend standarder til valget nedenfor"}
+                    </Button>
                   )}
-                </Group>
-                {defaultDays.length > 0 && !existingWish && (
-                  <Button
-                    variant="light"
-                    size="sm"
-                    onClick={applyDefaultsToSelection}
-                    disabled={defaultsApplied}
-                  >
-                    {defaultsApplied
-                      ? "Standarder anvendt"
-                      : "Anvend standarder til valget nedenfor"}
-                  </Button>
-                )}
-              </Paper>
+                </Paper>
+              )}
 
               <Divider />
 
@@ -1036,7 +1178,10 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
                 }
               >
                 <Group justify="space-between" mb="sm">
-                  <Text fw={500}>Vælg datoer hvor du kan lave mad:</Text>
+                  <Text fw={500}>
+                    Vælg datoer hvor {person ? person.first_name : "du"} kan
+                    lave mad:
+                  </Text>
                   <Group gap="xs">
                     <Button
                       variant="subtle"
@@ -1056,8 +1201,9 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
                   </Group>
                 </Group>
                 <Text size="sm" c="dimmed" mb="md">
-                  Vælg alle datoer hvor du KAN lave mad. Jo flere datoer du
-                  vælger, jo større chance har du for at blive tildelt.
+                  Vælg alle datoer hvor {person ? person.first_name : "du"} KAN
+                  lave mad. Jo flere datoer, jo større chance for at blive
+                  tildelt.
                 </Text>
                 <SimpleGrid cols={{ base: 2, sm: 3, md: 4 }} spacing="sm">
                   {cycle.cooking_dates.map((date) => {
@@ -1100,7 +1246,9 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
               {isUnavailable && (
                 <Textarea
                   label="Hvad er grunden?"
-                  description="Læses af madhold-ansvarlig. Gemmes på din profil, så den også gælder, hvis pausen varer længere end denne periode."
+                  description={`Læses af madhold-ansvarlig. Gemmes på ${
+                    person ? "profilen" : "din profil"
+                  }, så den også gælder, hvis pausen varer længere end denne periode.`}
                   placeholder="F.eks. sygdom, stress, på rejse hele perioden..."
                   value={pauseReason}
                   onChange={(e) => setReasonDraft(e.target.value)}
@@ -1108,10 +1256,32 @@ function WishSubmissionPanel({ cycle }: WishSubmissionPanelProps) {
                 />
               )}
 
+              {others.map((other) => (
+                <Switch
+                  key={other.id}
+                  label={`Indsend samme ønsker for ${
+                    other.is_self ? "mig" : other.first_name
+                  }`}
+                  description={copyConsequence(other, !isUnavailable)}
+                  checked={copyTo.includes(other.id)}
+                  onChange={(e) => {
+                    const { checked } = e.currentTarget
+
+                    setCopyTo((prev) =>
+                      checked
+                        ? [...prev, other.id]
+                        : prev.filter((id) => id !== other.id),
+                    )
+                  }}
+                />
+              ))}
+
               <Group justify="space-between">
                 <Text size="sm" c="dimmed">
                   {isUnavailable
-                    ? "Du har markeret, at du er forhindret i hele perioden"
+                    ? `Du har markeret, at ${
+                        person ? person.first_name : "du"
+                      } er forhindret i hele perioden`
                     : `${selectedDates.length} af ${cycle.cooking_dates.length} datoer valgt`}
                 </Text>
                 <Button

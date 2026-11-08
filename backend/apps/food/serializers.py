@@ -38,7 +38,7 @@ from .models import (
     TeamFavour,
     TeamSwapRequest,
 )
-from .utils import housemates_of
+from .utils import housemates_of, wish_housemates
 
 
 def get_registration_deadline(meal_date: date) -> datetime:
@@ -843,7 +843,11 @@ class FoodTeamWishSerializer(serializers.ModelSerializer):
 
 
 class FoodTeamWishCreateUpdateSerializer(serializers.ModelSerializer):
-    """Create or update the caller's wish, and settle their pause in the same call.
+    """Create or update a wish, and settle that person's pause in the same call.
+
+    The wish is the caller's own unless ``for_user`` names a housemate, and
+    ``also_for`` gives the same answer for more of the household. Everyone is
+    saved in one transaction, each with their own pause settled.
 
     The wish and the pause are one answer to one question — "can you cook in this
     period?" — so they are written together rather than left to the caller to
@@ -864,10 +868,21 @@ class FoodTeamWishCreateUpdateSerializer(serializers.ModelSerializer):
 
     # Write-only: it is stored on the user, not on the wish.
     pause_reason = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    for_user = serializers.IntegerField(required=False, write_only=True)
+    also_for = serializers.ListField(
+        child=serializers.IntegerField(), required=False, write_only=True
+    )
 
     class Meta:
         model = FoodTeamWish
-        fields = ["cycle", "available_dates", "is_unavailable", "pause_reason"]
+        fields = [
+            "cycle",
+            "available_dates",
+            "is_unavailable",
+            "pause_reason",
+            "for_user",
+            "also_for",
+        ]
 
     def validate_cycle(self, value: FoodTeamCycle) -> FoodTeamCycle:
         if not value.is_accepting_wishes:
@@ -896,6 +911,20 @@ class FoodTeamWishCreateUpdateSerializer(serializers.ModelSerializer):
             validated = [d for d, parsed in date_map.items() if parsed not in closed]
 
         return validated
+
+    def validate(self, attrs: dict) -> dict:
+        """Resolve ``for_user`` + ``also_for`` to ``people``, the one answered for first."""
+        caller: User = self.context["request"].user
+        allowed = {caller.pk: caller}
+        allowed.update({mate.pk: mate for mate in wish_housemates(caller, attrs["cycle"])})
+
+        requested = [attrs.pop("for_user", caller.pk), *attrs.pop("also_for", [])]
+        if any(pk not in allowed for pk in requested):
+            raise serializers.ValidationError(
+                "Du kan kun indsende ønsker for dig selv og dine medbeboere."
+            )
+        attrs["people"] = [allowed[pk] for pk in dict.fromkeys(requested)]
+        return attrs
 
     def _apply_to_user(
         self, user: User, validated_data: dict, existing: FoodTeamWish | None
@@ -942,34 +971,29 @@ class FoodTeamWishCreateUpdateSerializer(serializers.ModelSerializer):
             user.save(update_fields=list(updates))
         return wish_fields
 
+    def _save_wish(self, user: User, answer: dict, pause_reason: str | None) -> FoodTeamWish:
+        existing = FoodTeamWish.objects.filter(cycle=answer["cycle"], user=user).first()
+        fields = {
+            **answer,
+            **self._apply_to_user(user, {**answer, "pause_reason": pause_reason}, existing),
+        }
+
+        if existing:
+            for key, value in fields.items():
+                setattr(existing, key, value)
+            existing.save()
+            return existing
+
+        return FoodTeamWish.objects.create(user=user, **fields)
+
     def create(self, validated_data: dict) -> FoodTeamWish:
-        user = self.context["request"].user
-        validated_data["user"] = user
+        people: list[User] = validated_data.pop("people")
         # Not a wish field — it belongs on the user (see the class docstring).
         pause_reason = validated_data.pop("pause_reason", None)
 
         with transaction.atomic():
-            # Check if user already has a wish for this cycle
-            existing = FoodTeamWish.objects.filter(
-                cycle=validated_data["cycle"],
-                user=user,
-            ).first()
-
-            validated_data.update(
-                self._apply_to_user(
-                    user, {**validated_data, "pause_reason": pause_reason}, existing
-                )
-            )
-
-            if existing:
-                # Update existing wish
-                for key, value in validated_data.items():
-                    if key != "user":
-                        setattr(existing, key, value)
-                existing.save()
-                return existing
-
-            return super().create(validated_data)
+            wishes = [self._save_wish(person, validated_data, pause_reason) for person in people]
+        return wishes[0]
 
 
 class GenerateTeamsSerializer(serializers.Serializer):

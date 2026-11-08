@@ -47,7 +47,7 @@ Google Drive is the **source of truth** for weekly menus. The app fetches and ca
 Team management lives on a separate page (`FoodTeamsPage.tsx`). Key concepts:
 
 - **Cycles**: planning periods with wish deadlines
-- **Wishes**: users declare available cooking dates
+- **Wishes**: users declare available cooking dates, for themselves or a housemate (`WishSubmissionPanel` keeps one mounted `WishForm` per person, so switching doesn't lose ticked dates; `also_for` gives others in the household the same answer)
 - **Swaps**: users can request to swap team assignments with others
 - Preferences page (`FoodPreferencesPage.tsx`) handles default cooking day preferences
 

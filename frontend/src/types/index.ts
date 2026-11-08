@@ -2169,6 +2169,19 @@ export interface FoodTeamWish {
   updated_at: string
 }
 
+/** Someone in your household you can give madhold wishes for. */
+export interface WishPerson {
+  id: number
+
+  first_name: string
+
+  is_self: boolean
+
+  on_pause: boolean
+
+  has_wish: boolean
+}
+
 export interface CreateWishData {
   available_dates: string[]
 
@@ -2180,6 +2193,12 @@ export interface CreateWishData {
    * Only read when `is_unavailable` is true.
    */
   pause_reason?: string
+
+  /** Answer for this housemate instead of yourself. */
+  for_user?: number
+
+  /** The same answer for these people in the household as well. */
+  also_for?: number[]
 }
 
 export interface TeamGenerationResult {

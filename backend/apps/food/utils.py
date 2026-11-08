@@ -83,6 +83,31 @@ def madhold_residents(starting: date | None = None):  # type: ignore[no-untyped-
     return queryset
 
 
+def period_start(cycle) -> date | None:  # type: ignore[no-untyped-def]
+    """A period's first cooking day, for leaving out who has moved out by then."""
+    return date.fromisoformat(min(cycle.cooking_dates)) if cycle.cooking_dates else None
+
+
+def wish_housemates(user, cycle):  # type: ignore[no-untyped-def]
+    """The housemates ``user`` may give madhold wishes for in ``cycle``.
+
+    Exactly the people who are asked for a wish themselves, within the house.
+    A child is not asked, so a child can neither be answered for nor answer for
+    anyone else. Someone on a pause is included: submitting dates for them lifts
+    it, just as when they do it themselves, and the form says so.
+    """
+    from apps.users.models import User
+
+    if user.is_child or not user.house_id:
+        return User.objects.none()
+    return (
+        madhold_residents(period_start(cycle))
+        .filter(house_id=user.house_id)
+        .exclude(pk=user.pk)
+        .order_by("first_name")
+    )
+
+
 def food_team_pool(starting: date | None = None):  # type: ignore[no-untyped-def]
     """The residents madhold plans and asks: every adult not on a standing pause.
 
