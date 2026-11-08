@@ -10,6 +10,7 @@ from typing import Any
 from django.db import transaction
 from django.db.models import Count, Q, QuerySet, Sum
 from django.db.models.functions import Coalesce
+from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import generics, permissions, serializers, status
 from rest_framework.request import Request
@@ -68,6 +69,7 @@ from .serializers import (
     TeamSwapRequestSerializer,
     is_after_deadline,
 )
+from .services.team_calendar import my_teams_calendar
 from .services.team_generator import TeamGenerator
 from .utils import danish_date_label, house_number_for, housemates_of, wish_housemates
 
@@ -938,6 +940,18 @@ class MyTeamsView(generics.ListAPIView):
             .distinct()
             .order_by("date")
         )
+
+
+class MyTeamsICalView(MyTeamsView):
+    """The same upcoming cooking days, as one .ics file for your own calendar."""
+
+    def get(self, request: Request, *args: Any, **kwargs: Any) -> HttpResponse:
+        response = HttpResponse(
+            my_teams_calendar(self.get_queryset(), request.user),
+            content_type="text/calendar; charset=utf-8",
+        )
+        response["Content-Disposition"] = 'attachment; filename="madhold.ics"'
+        return response
 
 
 class HousemateTeamsView(generics.ListAPIView):

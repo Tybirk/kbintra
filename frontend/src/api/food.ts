@@ -288,6 +288,32 @@ export const foodApi = {
     return asArray(response.data)
   },
 
+  // Your upcoming maddage as one .ics file, via an authenticated request
+
+  downloadMyTeamsICal: async (): Promise<void> => {
+    const response = await apiClient.get("/food/teams/my/ical/", {
+      responseType: "blob",
+    })
+
+    const blob = new Blob([response.data], { type: "text/calendar" })
+
+    const url = URL.createObjectURL(blob)
+
+    const a = document.createElement("a")
+
+    a.href = url
+
+    a.download = "madhold.ics"
+
+    document.body.appendChild(a)
+
+    a.click()
+
+    document.body.removeChild(a)
+
+    URL.revokeObjectURL(url)
+  },
+
   getMyTeams: async (): Promise<FoodTeam[]> => {
     const response = await apiClient.get("/food/teams/my/")
 

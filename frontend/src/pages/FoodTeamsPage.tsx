@@ -411,6 +411,8 @@ export default function FoodTeamsPage() {
                 </Alert>
               )}
 
+              {(myTeams?.length ?? 0) > 0 && <MyTeamsCalendarButton />}
+
               {mineOgHusstandensDage.map((day) =>
                 day.kind === "min" ? (
                   <MyTeamCard
@@ -733,6 +735,40 @@ function useDefaultCookingDays(
   }
 
   return { days: draft ?? serverDays ?? [], setDays }
+}
+
+function MyTeamsCalendarButton() {
+  const download = useMutation({
+    mutationFn: foodApi.downloadMyTeamsICal,
+
+    onSuccess: () => {
+      notifications.show({
+        title: "Kalenderfil hentet",
+
+        message:
+          "Åbn filen for at lægge dine maddage i kalenderen. Bytter du en dag senere, skal du selv rette den dér.",
+
+        color: "green",
+      })
+    },
+
+    onError: (error: unknown) => {
+      showErrorNotification(error, "Kunne ikke hente kalenderfilen. Prøv igen.")
+    },
+  })
+
+  return (
+    <Group justify="flex-end">
+      <Button
+        variant="light"
+        leftSection={<IconDownload size={16} />}
+        loading={download.isPending}
+        onClick={() => download.mutate()}
+      >
+        Hent mine maddage til kalenderen
+      </Button>
+    </Group>
+  )
 }
 
 interface WishSubmissionPanelProps {
