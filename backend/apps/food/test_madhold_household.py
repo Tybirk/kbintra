@@ -557,3 +557,193 @@ class TestMyTeamsIsUpcomingOnly:
         assert resp.status_code == 200
         returned = [row["date"] for row in resp.data]
         assert returned == [today.isoformat(), (today + timedelta(days=3)).isoformat()]
+
+
+@pytest.mark.django_db
+class TestWishingForTheHousehold:
+    @pytest.fixture
+    def open_cycle(self, db, admin_user):
+        monday = timezone.localdate() + timedelta(weeks=130)
+        monday += timedelta(days=(7 - monday.weekday()) % 7)
+        return FoodTeamCycle.objects.create(
+            name="Ønskeperiode",
+            cooking_dates=[monday.isoformat(), (monday + timedelta(days=1)).isoformat()],
+            wish_deadline=timezone.now() + timedelta(days=7),
+            created_by=admin_user,
+        )
+
+    @staticmethod
+    def _url(cycle, name="food:my-wish"):
+        return reverse(name, kwargs={"cycle_id": cycle.id})
+
+    def _submit(self, api_client, user, cycle, **payload):
+        api_client.force_authenticate(user=user)
+        body = {"available_dates": cycle.cooking_dates[:1], "is_unavailable": False, **payload}
+        return api_client.post(self._url(cycle), body, format="json")
+
+    def test_a_wish_for_a_housemate_is_theirs_and_not_the_callers(
+        self, api_client, household, open_cycle
+    ):
+        anna, bo = household
+
+        resp = self._submit(api_client, anna, open_cycle, for_user=bo.id)
+
+        assert resp.status_code == 201, resp.data
+        assert resp.data["user"] == bo.id
+        assert (
+            FoodTeamWish.objects.get(cycle=open_cycle, user=bo).available_dates
+            == (open_cycle.cooking_dates[:1])
+        )
+        assert not FoodTeamWish.objects.filter(cycle=open_cycle, user=anna).exists()
+
+    def test_the_same_wishes_are_saved_for_both(self, api_client, household, open_cycle):
+        anna, bo = household
+
+        resp = self._submit(api_client, anna, open_cycle, also_for=[bo.id])
+
+        assert resp.status_code == 201, resp.data
+        assert resp.data["user"] == anna.id
+        for person in (anna, bo):
+            wish = FoodTeamWish.objects.get(cycle=open_cycle, user=person)
+            assert wish.available_dates == open_cycle.cooking_dates[:1]
+
+    def test_answering_for_a_housemate_can_copy_back_to_yourself(
+        self, api_client, household, open_cycle
+    ):
+        anna, bo = household
+
+        resp = self._submit(api_client, anna, open_cycle, for_user=bo.id, also_for=[anna.id])
+
+        assert resp.status_code == 201, resp.data
+        assert FoodTeamWish.objects.filter(cycle=open_cycle, user__in=[anna, bo]).count() == 2
+
+    def test_copying_replaces_what_the_housemate_already_submitted(
+        self, api_client, household, open_cycle
+    ):
+        anna, bo = household
+        FoodTeamWish.objects.create(
+            cycle=open_cycle, user=bo, available_dates=open_cycle.cooking_dates[1:]
+        )
+
+        self._submit(api_client, anna, open_cycle, also_for=[bo.id])
+
+        assert (
+            FoodTeamWish.objects.get(cycle=open_cycle, user=bo).available_dates
+            == (open_cycle.cooking_dates[:1])
+        )
+
+    def test_someone_from_another_house_is_refused_and_nothing_is_saved(
+        self, api_client, household, open_cycle
+    ):
+        from apps.houses.models import House
+
+        anna, bo = household
+        elsewhere = House.objects.create(name="Kløverbakkevej 99", slug="99")
+        neighbour = User.objects.create_user(
+            email="nabo@example.com", password="x", first_name="Nabo", house=elsewhere
+        )
+
+        resp = self._submit(api_client, anna, open_cycle, also_for=[bo.id, neighbour.id])
+
+        assert resp.status_code == 400
+        assert not FoodTeamWish.objects.filter(cycle=open_cycle).exists()
+
+    def test_a_child_can_neither_be_answered_for_nor_answer(
+        self, api_client, household, house, open_cycle
+    ):
+        anna, _ = household
+        child = User.objects.create_user(
+            email="barn@example.com", password="x", first_name="Barn", house=house, is_child=True
+        )
+
+        assert self._submit(api_client, anna, open_cycle, for_user=child.id).status_code == 400
+        assert self._submit(api_client, child, open_cycle, for_user=anna.id).status_code == 400
+
+    def test_dates_for_a_paused_housemate_lift_their_pause_and_not_the_callers(
+        self, api_client, household, open_cycle
+    ):
+        anna, bo = household
+        bo.is_exempt_from_food_teams = True
+        bo.food_team_pause_reason = "Barsel"
+        bo.save()
+
+        self._submit(api_client, anna, open_cycle, for_user=bo.id)
+
+        bo.refresh_from_db()
+        assert bo.is_exempt_from_food_teams is False
+        wish = FoodTeamWish.objects.get(cycle=open_cycle, user=bo)
+        assert wish.lifted_pause is True
+        assert wish.lifted_pause_reason == "Barsel"
+
+    def test_each_person_gets_their_own_pause_memory(self, api_client, household, open_cycle):
+        """Copying must not hand the first person's lifted pause to the next."""
+        anna, bo = household
+        anna.is_exempt_from_food_teams = True
+        anna.save()
+
+        self._submit(api_client, anna, open_cycle, also_for=[bo.id])
+
+        assert FoodTeamWish.objects.get(cycle=open_cycle, user=anna).lifted_pause is True
+        assert FoodTeamWish.objects.get(cycle=open_cycle, user=bo).lifted_pause is False
+
+    def test_sitting_out_for_a_housemate_records_the_reason_on_them(
+        self, api_client, household, open_cycle
+    ):
+        anna, bo = household
+
+        self._submit(
+            api_client,
+            anna,
+            open_cycle,
+            for_user=bo.id,
+            available_dates=[],
+            is_unavailable=True,
+            pause_reason="På rejse",
+        )
+
+        anna.refresh_from_db()
+        bo.refresh_from_db()
+        assert bo.food_team_pause_reason == "På rejse"
+        assert anna.food_team_pause_reason == ""
+
+    def test_a_housemates_wish_can_be_read_but_nobody_elses(
+        self, api_client, household, admin_user, open_cycle
+    ):
+        anna, bo = household
+        FoodTeamWish.objects.create(
+            cycle=open_cycle, user=bo, available_dates=open_cycle.cooking_dates
+        )
+        api_client.force_authenticate(user=anna)
+
+        resp = api_client.get(self._url(open_cycle), {"for_user": bo.id})
+        assert resp.status_code == 200
+        assert resp.data["user"] == bo.id
+
+        assert api_client.get(self._url(open_cycle), {"for_user": admin_user.id}).status_code == 404
+        assert api_client.get(self._url(open_cycle), {"for_user": "x"}).status_code == 404
+
+    def test_the_household_lists_who_can_be_answered_for(
+        self, api_client, household, house, open_cycle
+    ):
+        anna, bo = household
+        User.objects.create_user(
+            email="barn@example.com", password="x", first_name="Barn", house=house, is_child=True
+        )
+        bo.is_exempt_from_food_teams = True
+        bo.save()
+        FoodTeamWish.objects.create(cycle=open_cycle, user=bo, available_dates=[])
+        api_client.force_authenticate(user=anna)
+
+        resp = api_client.get(self._url(open_cycle, "food:wish-household"))
+
+        assert resp.status_code == 200
+        assert resp.data == [
+            {
+                "id": anna.id,
+                "first_name": "Anna",
+                "is_self": True,
+                "on_pause": False,
+                "has_wish": False,
+            },
+            {"id": bo.id, "first_name": "Bo", "is_self": False, "on_pause": True, "has_wish": True},
+        ]

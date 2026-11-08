@@ -195,7 +195,7 @@ def notify_residents_of_new_cycle(cycle_id: int) -> None:
     )
 
     from .models import FoodTeamCycle
-    from .utils import madhold_residents
+    from .utils import madhold_residents, period_start
 
     cycle = FoodTeamCycle.objects.filter(pk=cycle_id).first()
     if cycle is None:
@@ -206,7 +206,7 @@ def notify_residents_of_new_cycle(cycle_id: int) -> None:
 
     asked = invited = 0
     # Not those who move out before the period begins: it isn't theirs.
-    for user in madhold_residents(_period_start(cycle)):
+    for user in madhold_residents(period_start(cycle)):
         if user.is_exempt_from_food_teams:
             notify_food_team_pause_check(user, cycle.name, deadline_label)
             asked += 1
@@ -225,11 +225,6 @@ def notify_residents_of_new_cycle(cycle_id: int) -> None:
 WISH_REMINDER_LEAD_HOURS = 48
 
 
-def _period_start(cycle) -> date | None:
-    """A period's first cooking day, for leaving out who has moved out by then."""
-    return date.fromisoformat(min(cycle.cooking_dates)) if cycle.cooking_dates else None
-
-
 @db_periodic_task(local_crontab(hour=17, minute=30))
 def send_wish_deadline_reminders() -> None:
     """Nudge residents who still owe wishes, a day or two before the deadline.
@@ -241,7 +236,7 @@ def send_wish_deadline_reminders() -> None:
     from apps.notifications.services import notify_food_team_wish_deadline
 
     from .models import CycleStatus, FoodTeamCycle, FoodTeamWish
-    from .utils import food_team_pool
+    from .utils import food_team_pool, period_start
 
     now = timezone.now()
     cycles = FoodTeamCycle.objects.filter(
@@ -255,7 +250,7 @@ def send_wish_deadline_reminders() -> None:
         submitted = set(FoodTeamWish.objects.filter(cycle=cycle).values_list("user_id", flat=True))
         deadline_label = _deadline_label(cycle)
         nudged = 0
-        for user in food_team_pool(_period_start(cycle)).exclude(pk__in=submitted):
+        for user in food_team_pool(period_start(cycle)).exclude(pk__in=submitted):
             notify_food_team_wish_deadline(user, cycle.name, deadline_label)
             nudged += 1
 

@@ -55,6 +55,7 @@ from .views import (
     TodayTeamActionBoxView,
     TodayTeamRecipesView,
     WeekRecipesView,
+    WishHouseholdView,
 )
 
 app_name = "food"
@@ -140,6 +141,11 @@ urlpatterns = [
     ),
     path("cycles/<int:cycle_id>/wishes/", CycleWishesListView.as_view(), name="cycle-wishes"),
     path("cycles/<int:cycle_id>/my-wish/", MyWishView.as_view(), name="my-wish"),
+    path(
+        "cycles/<int:cycle_id>/wish-household/",
+        WishHouseholdView.as_view(),
+        name="wish-household",
+    ),
     # Team Generation
     path("generate-teams/", GenerateTeamsView.as_view(), name="generate-teams"),
     # User Preferences
