@@ -33,6 +33,7 @@ import {
   SimpleGrid,
   TextInput,
   SegmentedControl,
+  ActionIcon,
   Switch,
   Chip,
   MultiSelect,
@@ -51,6 +52,7 @@ import { DatePickerInput, DateTimePicker } from "@mantine/dates"
 import {
   IconUsers,
   IconCalendar,
+  IconCalendarPlus,
   IconArrowsExchange,
   IconAlertCircle,
   IconInfoCircle,
@@ -737,16 +739,17 @@ function useDefaultCookingDays(
   return { days: draft ?? serverDays ?? [], setDays }
 }
 
-function MyTeamsCalendarButton() {
-  const download = useMutation({
-    mutationFn: foodApi.downloadMyTeamsICal,
+function useCalendarDownload() {
+  return useMutation({
+    mutationFn: (teamId: number | undefined) =>
+      foodApi.downloadMyTeamsICal(teamId),
 
     onSuccess: () => {
       notifications.show({
         title: "Kalenderfil hentet",
 
         message:
-          "Åbn filen for at lægge dine maddage i kalenderen. Bytter du en dag senere, skal du selv rette den dér.",
+          "Åbn filen for at lægge det i kalenderen. Bytter du en dag senere, skal du selv rette den dér.",
 
         color: "green",
       })
@@ -756,6 +759,10 @@ function MyTeamsCalendarButton() {
       showErrorNotification(error, "Kunne ikke hente kalenderfilen. Prøv igen.")
     },
   })
+}
+
+function MyTeamsCalendarButton() {
+  const download = useCalendarDownload()
 
   return (
     <Group justify="flex-end">
@@ -763,11 +770,32 @@ function MyTeamsCalendarButton() {
         variant="light"
         leftSection={<IconDownload size={16} />}
         loading={download.isPending}
-        onClick={() => download.mutate()}
+        onClick={() => download.mutate(undefined)}
       >
         Hent mine maddage til kalenderen
       </Button>
     </Group>
+  )
+}
+
+interface TeamCalendarButtonProps {
+  teamId: number
+}
+
+function TeamCalendarButton({ teamId }: TeamCalendarButtonProps) {
+  const download = useCalendarDownload()
+
+  return (
+    <ActionIcon
+      variant="light"
+      size="lg"
+      aria-label="Hent denne maddag til kalenderen"
+      title="Hent denne maddag til kalenderen"
+      loading={download.isPending}
+      onClick={() => download.mutate(teamId)}
+    >
+      <IconCalendarPlus size={18} />
+    </ActionIcon>
   )
 }
 
@@ -3008,9 +3036,13 @@ function MyTeamCard({
     <Card withBorder p="md" radius="md">
       {/* wrap, not nowrap: on a phone the two bytte-buttons drop under the date */}
       <Group justify="space-between" mb="sm" align="flex-start">
-        <Text fw={600} size="lg">
-          {team.day_name}, {dayjs(team.date).format("D. MMMM YYYY")}
-        </Text>
+        <Group gap="xs" wrap="nowrap" align="center">
+          <Text fw={600} size="lg">
+            {team.day_name}, {dayjs(team.date).format("D. MMMM YYYY")}
+          </Text>
+
+          <TeamCalendarButton teamId={team.id} />
+        </Group>
         <SwapShiftActions
           team={team}
           allTeams={allTeams}

@@ -942,16 +942,34 @@ class MyTeamsView(generics.ListAPIView):
         )
 
 
+def _calendar_download(calendar: str, filename: str) -> HttpResponse:
+    response = HttpResponse(calendar, content_type="text/calendar; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
 class MyTeamsICalView(MyTeamsView):
     """The same upcoming cooking days, as one .ics file for your own calendar."""
 
     def get(self, request: Request, *args: Any, **kwargs: Any) -> HttpResponse:
-        response = HttpResponse(
-            my_teams_calendar(self.get_queryset(), request.user),
-            content_type="text/calendar; charset=utf-8",
+        return _calendar_download(
+            my_teams_calendar(self.get_queryset(), request.user), "madhold.ics"
         )
-        response["Content-Disposition"] = 'attachment; filename="madhold.ics"'
-        return response
+
+
+class MyTeamICalView(MyTeamsView):
+    """One of your upcoming cooking days as an .ics file, for the button on its card."""
+
+    def get(self, request: Request, pk: int, *args: Any, **kwargs: Any) -> HttpResponse:
+        team = self.get_queryset().filter(pk=pk).first()
+        if team is None:
+            return Response(
+                {"detail": "Maddagen blev ikke fundet."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return _calendar_download(
+            my_teams_calendar([team], request.user), f"madhold-{team.date.isoformat()}.ics"
+        )
 
 
 class HousemateTeamsView(generics.ListAPIView):

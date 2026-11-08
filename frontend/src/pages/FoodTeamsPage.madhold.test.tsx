@@ -789,9 +789,9 @@ describe("wishing for the household", () => {
 })
 
 describe("calendar download on Mine hold", () => {
-  const buttonName = "Hent mine maddage til kalenderen"
+  const allDays = "Hent mine maddage til kalenderen"
 
-  it("is offered once you have a maddag and downloads on click", async () => {
+  it("downloads all your days from the top of the page", async () => {
     api.getMyTeams.mockResolvedValue([myTeam])
 
     api.downloadMyTeamsICal.mockResolvedValue(undefined)
@@ -800,10 +800,30 @@ describe("calendar download on Mine hold", () => {
 
     const user = userEvent.setup()
 
-    await user.click(await screen.findByRole("button", { name: buttonName }))
+    await user.click(await screen.findByRole("button", { name: allDays }))
 
     await waitFor(() =>
-      expect(api.downloadMyTeamsICal).toHaveBeenCalledTimes(1),
+      expect(api.downloadMyTeamsICal).toHaveBeenCalledWith(undefined),
+    )
+  })
+
+  it("downloads a single day from its card", async () => {
+    api.getMyTeams.mockResolvedValue([myTeam])
+
+    api.downloadMyTeamsICal.mockResolvedValue(undefined)
+
+    renderAt("/madhold/mine-hold")
+
+    const user = userEvent.setup()
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Hent denne maddag til kalenderen",
+      }),
+    )
+
+    await waitFor(() =>
+      expect(api.downloadMyTeamsICal).toHaveBeenCalledWith(30),
     )
   })
 
@@ -813,7 +833,7 @@ describe("calendar download on Mine hold", () => {
     await screen.findByText("Du er ikke tildelt nogle kommende madhold.")
 
     expect(
-      screen.queryByRole("button", { name: buttonName }),
+      screen.queryByRole("button", { name: allDays }),
     ).not.toBeInTheDocument()
   })
 })

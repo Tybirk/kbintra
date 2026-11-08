@@ -38,6 +38,7 @@ from .views import (
     MonthlyFoodCostView,
     MyFoodProfileView,
     MyMonthlyExpensesView,
+    MyTeamICalView,
     MyTeamsICalView,
     MyTeamsView,
     MyTicketsView,
@@ -88,6 +89,7 @@ urlpatterns = [
     path("leftovers/today/", TodayLeftoversView.as_view(), name="leftovers-today"),
     path("teams/takeover/", TakeoverView.as_view(), name="team-takeover"),
     path("teams/<int:pk>/", FoodTeamDetailView.as_view(), name="team-detail"),
+    path("teams/<int:pk>/ical/", MyTeamICalView.as_view(), name="my-team-ical"),
     path(
         "teams/<int:pk>/notify-takeaway/",
         NotifyTakeawayReadyView.as_view(),
