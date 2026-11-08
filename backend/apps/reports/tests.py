@@ -30,7 +30,7 @@ def du(db):
     return Subgroup.objects.create(
         name="Driftsudvalget",
         slug="driftsudvalget",
-        is_committee=True,
+        group_type=Subgroup.GroupType.UDVALG,
         allows_members=True,
         reporting=Subgroup.Reporting.OPEN,
         reporting_intro="Fejlmelding af inventar",
@@ -42,7 +42,7 @@ def other_udvalg(db):
     return Subgroup.objects.create(
         name="Grønt udvalg",
         slug="groent-udvalg",
-        is_committee=True,
+        group_type=Subgroup.GroupType.UDVALG,
         allows_members=True,
         reporting=Subgroup.Reporting.OPEN,
     )
@@ -54,7 +54,7 @@ def bestyrelsen(db):
     return Subgroup.objects.create(
         name="Bestyrelsen",
         slug="bestyrelsen",
-        is_committee=True,
+        group_type=Subgroup.GroupType.BESTYRELSE,
         allows_members=True,
         reporting=Subgroup.Reporting.CLOSED,
     )

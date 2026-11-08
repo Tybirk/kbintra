@@ -188,7 +188,9 @@ class TestEventAPI:
         assert event.thread.subgroup.slug == "arrangementer"
 
         # Assign a real udvalg via edit.
-        udvalg = Subgroup.objects.create(name="Madudvalget", slug="madudvalget", is_committee=True)
+        udvalg = Subgroup.objects.create(
+            name="Madudvalget", slug="madudvalget", group_type=Subgroup.GroupType.UDVALG
+        )
         patch = authenticated_client.patch(
             f"/api/events/{event.slug}/",
             {"subgroup_id": udvalg.id},
@@ -246,7 +248,7 @@ class TestEventAPI:
         assert event.folder.subgroup.slug == "arrangementer"
 
         udvalg = Subgroup.objects.create(
-            name="Festudvalget", slug="festudvalget", is_committee=True
+            name="Festudvalget", slug="festudvalget", group_type=Subgroup.GroupType.UDVALG
         )
         patch = authenticated_client.patch(
             f"/api/events/{event.slug}/",
@@ -295,7 +297,9 @@ class TestEventAPI:
             format="multipart",
         )
 
-        udvalg = Subgroup.objects.create(name="Havegruppen", slug="havegruppen", is_committee=True)
+        udvalg = Subgroup.objects.create(
+            name="Havegruppen", slug="havegruppen", group_type=Subgroup.GroupType.UDVALG
+        )
         patch = authenticated_client.patch(
             f"/api/events/{event.slug}/", {"subgroup_id": udvalg.id}, format="json"
         )
@@ -326,7 +330,9 @@ class TestEventAPI:
 
         from apps.forum.models import Subgroup
 
-        udvalg = Subgroup.objects.create(name="Festudvalg", slug="festudvalg", is_committee=True)
+        udvalg = Subgroup.objects.create(
+            name="Festudvalg", slug="festudvalg", group_type=Subgroup.GroupType.UDVALG
+        )
         now = timezone.now()
 
         slugs = []

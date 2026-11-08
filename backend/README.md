@@ -132,9 +132,9 @@ Internet → Cloudflare Tunnel → Traefik → Backend (Daphne, port 8000)
 **Subgroup** - Forum categories
 - `name`, `description`, `slug`
 - `is_default` - Auto-subscribe new users
-- `is_committee` - Committee (udvalg) styling
+- `group_type` - Classification (generalforsamling/faellesmoede/bestyrelse/udvalg/arbejdsgruppe/almindelig)
 - `last_activity_at` - For sorting
-- Ordering: committees first, then by last activity
+- Ordering: main group first, then by last activity
 
 **SubgroupSubscription** - User subscriptions
 - `user`, `subgroup` (unique together)
