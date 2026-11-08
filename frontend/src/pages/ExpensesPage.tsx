@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import {
   ActionIcon,
@@ -58,14 +58,15 @@ import { AttachmentArea } from "../components/FileDropzone"
 
 import { AttachmentBadge } from "../components/AttachmentBadge"
 
-import {
-  EXPENSE_MAX_ATTACHMENT_SIZE,
-  EXPENSE_MAX_ATTACHMENT_SIZE_MB,
-} from "../config"
+import { EXPENSE_MAX_ATTACHMENT_SIZE_MB } from "../config"
 
 import { useAuthStore } from "../store/authStore"
 
 import { saveDraft, loadDraft, clearDraft } from "../utils/draftStorage"
+
+import { extractErrorMessage } from "../utils/errorNotification"
+
+import { prepareExpenseAttachment } from "../utils/receiptPhoto"
 
 import type { AdminExpenseFilters } from "../api/expenses"
 
@@ -163,11 +164,16 @@ function ExpenseFormModal({ opened, onClose, expense }: ExpenseFormModalProps) {
   const [approvalReference, setApprovalReference] = useState("")
   const [foodRelated, setFoodRelated] = useState(false)
   const [files, setFiles] = useState<File[]>([])
+  const [preparingFiles, setPreparingFiles] = useState(0)
+  // Bumped when the form resets, so a photo still being shrunk can't land in
+  // the next udlæg.
+  const formSession = useRef(0)
   const [error, setError] = useState<string | null>(null)
 
   // Reset the form each time the modal opens (for create or a specific expense).
   useEffect(() => {
     if (!opened) return
+    formSession.current += 1
     setRegNr(expense?.reg_nr ?? profile?.bank_reg_nr ?? "")
     setAccountNumber(
       expense?.account_number ?? profile?.bank_account_number ?? "",
@@ -222,21 +228,29 @@ function ExpenseFormModal({ opened, onClose, expense }: ExpenseFormModalProps) {
     )
   }, [opened, isEdit, amount, description, approvalReference, foodRelated])
 
-  const handleAddFiles = (incoming: File[]) => {
-    const accepted: File[] = []
-    for (const file of incoming) {
-      if (file.size > EXPENSE_MAX_ATTACHMENT_SIZE) {
-        const sizeMb = (file.size / 1_000_000).toFixed(1)
-        notifications.show({
-          title: "Filen er for stor",
-          message: `"${file.name}" fylder ${sizeMb} MB. Et bilag må højst fylde ${EXPENSE_MAX_ATTACHMENT_SIZE_MB} MB, så det kan vedhæftes mailen til økonomi.`,
-          color: "red",
-        })
-      } else {
-        accepted.push(file)
+  const handleAddFiles = async (incoming: File[]) => {
+    const session = formSession.current
+    setPreparingFiles((count) => count + 1)
+    try {
+      // One at a time: decoding several full-size photos at once can run an
+      // older iPhone out of memory.
+      for (const file of incoming) {
+        const prepared = await prepareExpenseAttachment(file)
+        if (session !== formSession.current) return
+        if ("error" in prepared) {
+          notifications.show({
+            title: "Filen er for stor",
+            message: prepared.error,
+            color: "red",
+            autoClose: false,
+          })
+        } else {
+          setFiles((prev) => [...prev, prepared.file])
+        }
       }
+    } finally {
+      setPreparingFiles((count) => count - 1)
     }
-    setFiles((prev) => [...prev, ...accepted])
   }
 
   const removeAttachmentMutation = useMutation({
@@ -276,8 +290,10 @@ function ExpenseFormModal({ opened, onClose, expense }: ExpenseFormModalProps) {
       })
       onClose()
     },
-    onError: () => {
-      setError("Noget gik galt. Tjek felterne og prøv igen.")
+    onError: (err) => {
+      setError(
+        extractErrorMessage(err, "Noget gik galt. Tjek felterne og prøv igen."),
+      )
     },
   })
 
@@ -411,6 +427,11 @@ function ExpenseFormModal({ opened, onClose, expense }: ExpenseFormModalProps) {
           <Text size="sm" fw={500} mb={4}>
             {isEdit ? "Tilføj bilag" : "Bilag (købsbilag og evt. godkendelse)"}
           </Text>
+          <Text size="xs" c="dimmed" mb={4}>
+            Vælg billederne direkte fra din telefon, gerne flere ad gangen. De
+            bliver automatisk gjort mindre. Andre filer, f.eks. PDF, må højst
+            fylde {EXPENSE_MAX_ATTACHMENT_SIZE_MB} MB pr. fil.
+          </Text>
           <AttachmentArea onAddFiles={handleAddFiles}>
             {files.length > 0 && (
               <Group gap="xs">
@@ -426,6 +447,14 @@ function ExpenseFormModal({ opened, onClose, expense }: ExpenseFormModalProps) {
               </Group>
             )}
           </AttachmentArea>
+          {preparingFiles > 0 && (
+            <Group gap="xs" mt={4}>
+              <Loader size="xs" />
+              <Text size="xs" c="dimmed">
+                Gør billederne klar …
+              </Text>
+            </Group>
+          )}
         </Box>
 
         {error && (
@@ -438,7 +467,10 @@ function ExpenseFormModal({ opened, onClose, expense }: ExpenseFormModalProps) {
           <Button variant="default" onClick={onClose}>
             Annuller
           </Button>
-          <Button onClick={handleSubmit} loading={mutation.isPending}>
+          <Button
+            onClick={handleSubmit}
+            loading={mutation.isPending || preparingFiles > 0}
+          >
             {isEdit ? "Gem ændringer" : "Send udlæg"}
           </Button>
         </Group>
