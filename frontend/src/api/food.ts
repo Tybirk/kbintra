@@ -288,6 +288,35 @@ export const foodApi = {
     return asArray(response.data)
   },
 
+  // Your upcoming maddage, or just one of them, as an .ics file via an
+  // authenticated request. Works the same way as eventsApi.downloadICal.
+
+  downloadMyTeamsICal: async (teamId?: number): Promise<void> => {
+    const path = teamId ? `/food/teams/${teamId}/ical/` : "/food/teams/my/ical/"
+
+    const response = await apiClient.get(path, { responseType: "blob" })
+
+    const blob = new Blob([response.data], { type: "text/calendar" })
+
+    const url = URL.createObjectURL(blob)
+
+    const a = document.createElement("a")
+
+    a.href = url
+
+    a.download =
+      response.headers["content-disposition"]?.match(/filename="(.+)"/)?.[1] ??
+      "madhold.ics"
+
+    document.body.appendChild(a)
+
+    a.click()
+
+    document.body.removeChild(a)
+
+    URL.revokeObjectURL(url)
+  },
+
   getMyTeams: async (): Promise<FoodTeam[]> => {
     const response = await apiClient.get("/food/teams/my/")
 

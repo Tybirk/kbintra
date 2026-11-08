@@ -38,6 +38,8 @@ from .views import (
     MonthlyFoodCostView,
     MyFoodProfileView,
     MyMonthlyExpensesView,
+    MyTeamICalView,
+    MyTeamsICalView,
     MyTeamsView,
     MyTicketsView,
     MyWishView,
@@ -79,6 +81,7 @@ urlpatterns = [
     # Teams
     path("teams/", FoodTeamListView.as_view(), name="team-list"),
     path("teams/my/", MyTeamsView.as_view(), name="my-teams"),
+    path("teams/my/ical/", MyTeamsICalView.as_view(), name="my-teams-ical"),
     path("teams/housemates/", HousemateTeamsView.as_view(), name="housemate-teams"),
     path("teams/today/", TodayTeamActionBoxView.as_view(), name="team-today"),
     path("teams/today/recipes/", TodayTeamRecipesView.as_view(), name="team-today-recipes"),
@@ -86,6 +89,7 @@ urlpatterns = [
     path("leftovers/today/", TodayLeftoversView.as_view(), name="leftovers-today"),
     path("teams/takeover/", TakeoverView.as_view(), name="team-takeover"),
     path("teams/<int:pk>/", FoodTeamDetailView.as_view(), name="team-detail"),
+    path("teams/<int:pk>/ical/", MyTeamICalView.as_view(), name="my-team-ical"),
     path(
         "teams/<int:pk>/notify-takeaway/",
         NotifyTakeawayReadyView.as_view(),

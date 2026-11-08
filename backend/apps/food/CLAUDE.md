@@ -193,6 +193,8 @@ A shift is a household's evening, so both halves of it are told about it:
 - Every team list (`teams/`, `teams/housemates/`) carries `members_preview`: the team member by member with name, house number, avatar, `is_own` and `is_housemate`. Mine hold and Alle hold both print the whole team as faces with names and no fold-out (it only ever held the same names), with your own house in bold — on a household day that bold name is what says why the day is listed at all. Each face links to `/profil/<id>`. `members_display` stays for the one place a single dimmed line is all that fits: the bytte date picker.
 - The 20:00 reminder task notifies each cook and then the rest of each cook's house (`notify_food_team_housemate_reminder`, "Anna har madhold i morgen"). It reuses `FOOD_TEAM_REMINDER`, so one preference governs both, and it skips housemates who are on the team themselves — nobody gets two reminders for one evening.
 
+Mine hold offers your maddage for your own calendar: `teams/my/ical/` is the same list as `teams/my/` as one .ics download, and `teams/<id>/ical/` is one of those days, behind the icon on its card (`services/team_calendar.py`). Every event runs 15:00-20:00 Danish time (`constants.FOOD_TEAM_CALENDAR_START/END`). It downloads the same way as the event .ics. It is a one-off file and not a subscription, so a day swapped later has to be corrected in the calendar by hand; the toast after the download says so.
+
 "Household" is the house (`utils.housemates_of`); that is the only grouping the app has, and what "min medbeboer" already meant here.
 
 ## Menus come from Google Drive

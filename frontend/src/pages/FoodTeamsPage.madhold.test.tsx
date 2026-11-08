@@ -34,6 +34,7 @@ vi.mock("@mantine/notifications", () => ({
 
 const api = vi.hoisted(() => ({
   getMyTeams: vi.fn(),
+  downloadMyTeamsICal: vi.fn(),
   getTeams: vi.fn(),
   getHousemateTeams: vi.fn(),
   getSwapRequests: vi.fn(),
@@ -784,6 +785,56 @@ describe("wishing for the household", () => {
     })
 
     expect(screen.getByText("Dine standard madlavningsdage")).not.toBeVisible()
+  })
+})
+
+describe("calendar download on Mine hold", () => {
+  const allDays = "Hent mine maddage til kalenderen"
+
+  it("downloads all your days from the top of the page", async () => {
+    api.getMyTeams.mockResolvedValue([myTeam])
+
+    api.downloadMyTeamsICal.mockResolvedValue(undefined)
+
+    renderAt("/madhold/mine-hold")
+
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole("button", { name: allDays }))
+
+    await waitFor(() =>
+      expect(api.downloadMyTeamsICal).toHaveBeenCalledWith(undefined),
+    )
+  })
+
+  it("downloads a single day from its card", async () => {
+    api.getMyTeams.mockResolvedValue([myTeam])
+
+    api.downloadMyTeamsICal.mockResolvedValue(undefined)
+
+    renderAt("/madhold/mine-hold")
+
+    const user = userEvent.setup()
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Hent denne maddag til kalenderen",
+      }),
+    )
+
+    await waitFor(() =>
+      expect(api.downloadMyTeamsICal).toHaveBeenCalledWith(30),
+    )
+  })
+
+  it("is not offered without any maddage of your own", async () => {
+    renderAt("/madhold/mine-hold")
+
+    await screen.findByText("Du er ikke tildelt nogle kommende madhold.")
+
+    expect(
+      screen.queryByRole("button", { name: allDays }),
+    ).not.toBeInTheDocument()
   })
 })
 
