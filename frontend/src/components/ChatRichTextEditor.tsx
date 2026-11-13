@@ -13,9 +13,12 @@ import {
   Popover,
   UnstyledButton,
   Avatar,
+  rem,
 } from "@mantine/core"
 
-import { useMediaQuery } from "@mantine/hooks"
+import { useElementSize, useMediaQuery } from "@mantine/hooks"
+
+import { buttonsStand } from "../utils/composerButtons"
 
 import { notifications } from "@mantine/notifications"
 
@@ -31,6 +34,7 @@ import {
 import {
   useRef,
   useEffect,
+  useLayoutEffect,
   useState,
   lazy,
   Suspense,
@@ -39,6 +43,28 @@ import {
 } from "react"
 
 import { filterFilesBySize } from "../config"
+
+/** Between the buttons beside the input, lying or standing. */
+const BUTTON_GAP = 2
+
+const SEND_HINT = " (Ctrl+Enter for at sende)"
+
+let measuringCanvas: HTMLCanvasElement | null = null
+
+/** How wide `text` is in `element`'s font, in px. */
+function textWidth(text: string, element: HTMLElement): number {
+  const style = getComputedStyle(element)
+
+  measuringCanvas ??= document.createElement("canvas")
+
+  const context = measuringCanvas.getContext("2d")
+
+  if (!context) return 0
+
+  context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+
+  return context.measureText(text).width
+}
 
 const EmojiPicker = lazy(() => import("./EmojiPicker"))
 
@@ -160,6 +186,29 @@ export default function ChatRichTextEditor({
   const buttonSize = isMobile ? "md" : "lg"
 
   const buttonIconSize = isMobile ? 18 : 20
+
+  const buttonCount =
+    (offersPhotoPicker ? 1 : 0) +
+    1 +
+    (onCreatePoll ? 1 : 0) +
+    (isMobile ? 0 : 1)
+
+  // Stood up, the buttons make one column, or two by two when there are four.
+  const stackColumns = buttonCount > 3 ? 2 : 1
+
+  const stackRows = Math.ceil(buttonCount / stackColumns)
+
+  const buttonsRef = useRef<HTMLDivElement>(null)
+
+  const [stacked, setStacked] = useState(false)
+
+  // The composer's own width, which a two-pane page can leave small on a big
+  // screen; the checks below run again when it changes.
+  const { ref: composerRef, width: composerWidth } = useElementSize()
+
+  // On a computer the placeholder also tells how to send, when that fits on
+  // one line: autosize sizes an empty box by its placeholder.
+  const [sendHintFits, setSendHintFits] = useState(true)
 
   const [attachExpanded, setAttachExpanded] = useState(false)
 
@@ -341,6 +390,51 @@ export default function ChatRichTextEditor({
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     }
   }, [draftKey, content])
+
+  // A tall message stands the buttons up in a column, giving the text their
+  // width (see buttonsStand). A phone folds them away while typing instead.
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current
+
+    // A button, not FileButton's hidden input that comes first.
+    const button = buttonsRef.current?.querySelector("button")
+
+    // An empty box lies them down whatever its placeholder takes.
+    if (isMobile || !content || !textarea || !button) {
+      setStacked(false)
+
+      return
+    }
+
+    // What the text needs: autosize sets it inline (this runs after it), and
+    // the min-height a column adds below is a separate property.
+    const needed = parseFloat(textarea.style.height)
+
+    if (!needed) return
+
+    const line = parseFloat(getComputedStyle(textarea).lineHeight)
+
+    const column =
+      stackRows * button.offsetHeight + (stackRows - 1) * BUTTON_GAP
+
+    setStacked((was) => buttonsStand(was, needed, line, column))
+  }, [content, isMobile, stackRows, composerWidth])
+
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current
+
+    // Only while it shows, in the box as it stands then (buttons lying down).
+    if (isMobile || content || stacked || !textarea) return
+
+    const style = getComputedStyle(textarea)
+
+    const room =
+      textarea.clientWidth -
+      parseFloat(style.paddingLeft) -
+      parseFloat(style.paddingRight)
+
+    setSendHintFits(textWidth(`${placeholder}${SEND_HINT}`, textarea) <= room)
+  }, [content, isMobile, stacked, composerWidth, placeholder])
 
   const handlePaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
     const items = event.clipboardData?.items
@@ -759,9 +853,8 @@ export default function ChatRichTextEditor({
 
   // Add hint about Ctrl/Cmd+Enter on desktop
 
-  const actualPlaceholder = isMobile
-    ? placeholder
-    : `${placeholder} (Ctrl+Enter for at sende)`
+  const actualPlaceholder =
+    isMobile || !sendHintFits ? placeholder : `${placeholder}${SEND_HINT}`
 
   return (
     <Stack gap="xs">
@@ -854,6 +947,7 @@ export default function ChatRichTextEditor({
         </ScrollArea>
       )}
       <Group
+        ref={composerRef}
         gap={isMobile ? 4 : "xs"}
         align="flex-end"
         wrap="nowrap"
@@ -871,7 +965,19 @@ export default function ChatRichTextEditor({
             <IconChevronRight size={18} />
           </ActionIcon>
         ) : (
-          <Group gap={2} wrap="nowrap" mb={1}>
+          <Box
+            ref={buttonsRef}
+            mb={1}
+            style={{
+              display: "grid",
+
+              gridTemplateColumns: `repeat(${
+                stacked ? stackColumns : buttonCount
+              }, auto)`,
+
+              gap: BUTTON_GAP,
+            }}
+          >
             {offersPhotoPicker && (
               <FileButton
                 onChange={handleFilesSelected}
@@ -923,7 +1029,7 @@ export default function ChatRichTextEditor({
                 <EmojiPicker onSelect={handleEmojiSelect} disabled={disabled} />
               </Suspense>
             )}
-          </Group>
+          </Box>
         )}
 
         {/* Message input with mention/emoji popover */}
@@ -964,6 +1070,11 @@ export default function ChatRichTextEditor({
                   paddingLeft: 10,
 
                   paddingRight: 10,
+
+                  // Standing, the buttons are as tall as the box at least.
+                  minHeight: stacked
+                    ? `calc(${stackRows} * ${rem(34)} + ${(stackRows - 1) * BUTTON_GAP}px)`
+                    : undefined,
                 },
               }}
             />
