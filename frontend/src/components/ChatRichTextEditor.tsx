@@ -13,7 +13,6 @@ import {
   Popover,
   UnstyledButton,
   Avatar,
-  rem,
 } from "@mantine/core"
 
 import { useMediaQuery } from "@mantine/hooks"
@@ -154,14 +153,13 @@ export default function ChatRichTextEditor({
     ? "Vedhæft fil"
     : "Vedhæft fil eller billede"
 
-  // Desktop: the buttons stand in one column (two with the photo button, which
-  // makes four), and the text box is as tall as they are.
-  const desktopButtons =
-    (offersPhotoPicker ? 1 : 0) + (onCreatePoll ? 1 : 0) + 2
+  // The buttons sit in one row at the foot of the input, which starts one line
+  // high and grows as the message does. A phone keeps them small and folds them
+  // away while typing; a computer has room to keep them out, the emoji picker
+  // too (a phone keyboard has its own).
+  const buttonSize = isMobile ? "md" : "lg"
 
-  const desktopColumns = offersPhotoPicker ? 2 : 1
-
-  const desktopRows = Math.ceil(desktopButtons / desktopColumns)
+  const buttonIconSize = isMobile ? 18 : 20
 
   const [attachExpanded, setAttachExpanded] = useState(false)
 
@@ -861,84 +859,19 @@ export default function ChatRichTextEditor({
         wrap="nowrap"
         style={{ minWidth: 0 }}
       >
-        {isMobile ? (
-          /* Mobile: show attachment buttons by default, collapse to chevron on focus */
-
-          attachExpanded ? (
-            <ActionIcon
-              variant="subtle"
-              color="gray"
-              size="md"
-              mb={1}
-              onClick={() => setAttachExpanded(false)}
-              title="Vis vedhæftninger"
-            >
-              <IconChevronRight size={18} />
-            </ActionIcon>
-          ) : (
-            <Group gap={2} wrap="nowrap" mb={1}>
-              {offersPhotoPicker && (
-                <FileButton
-                  onChange={handleFilesSelected}
-                  multiple
-                  accept="image/*"
-                >
-                  {(props) => (
-                    <ActionIcon
-                      {...props}
-                      variant="subtle"
-                      color="gray"
-                      size="md"
-                      disabled={disabled}
-                      title="Vælg billeder"
-                    >
-                      <IconPhoto size={18} />
-                    </ActionIcon>
-                  )}
-                </FileButton>
-              )}
-              <FileButton onChange={handleFilesSelected} multiple>
-                {(props) => (
-                  <ActionIcon
-                    {...props}
-                    variant="subtle"
-                    color="gray"
-                    size="md"
-                    disabled={disabled}
-                    title={attachTitle}
-                  >
-                    <IconPaperclip size={18} />
-                  </ActionIcon>
-                )}
-              </FileButton>
-              {onCreatePoll && (
-                <ActionIcon
-                  variant="subtle"
-                  color="gray"
-                  size="md"
-                  disabled={disabled}
-                  onClick={onCreatePoll}
-                  title="Opret afstemning"
-                >
-                  <IconChartBar size={18} />
-                </ActionIcon>
-              )}
-            </Group>
-          )
-        ) : (
-          /* Desktop: always show all action icons, stacked beside the input
-             so they take little of its width */
-
-          <Box
+        {isMobile && attachExpanded ? (
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            size="md"
             mb={1}
-            style={{
-              display: "grid",
-
-              gridTemplateColumns: `repeat(${desktopColumns}, auto)`,
-
-              gap: 2,
-            }}
+            onClick={() => setAttachExpanded(false)}
+            title="Vis vedhæftninger"
           >
+            <IconChevronRight size={18} />
+          </ActionIcon>
+        ) : (
+          <Group gap={2} wrap="nowrap" mb={1}>
             {offersPhotoPicker && (
               <FileButton
                 onChange={handleFilesSelected}
@@ -950,11 +883,11 @@ export default function ChatRichTextEditor({
                     {...props}
                     variant="subtle"
                     color="gray"
-                    size="lg"
+                    size={buttonSize}
                     disabled={disabled}
                     title="Vælg billeder"
                   >
-                    <IconPhoto size={20} />
+                    <IconPhoto size={buttonIconSize} />
                   </ActionIcon>
                 )}
               </FileButton>
@@ -965,11 +898,11 @@ export default function ChatRichTextEditor({
                   {...props}
                   variant="subtle"
                   color="gray"
-                  size="lg"
+                  size={buttonSize}
                   disabled={disabled}
                   title={attachTitle}
                 >
-                  <IconPaperclip size={20} />
+                  <IconPaperclip size={buttonIconSize} />
                 </ActionIcon>
               )}
             </FileButton>
@@ -977,18 +910,20 @@ export default function ChatRichTextEditor({
               <ActionIcon
                 variant="subtle"
                 color="gray"
-                size="lg"
+                size={buttonSize}
                 disabled={disabled}
                 onClick={onCreatePoll}
                 title="Opret afstemning"
               >
-                <IconChartBar size={20} />
+                <IconChartBar size={buttonIconSize} />
               </ActionIcon>
             )}
-            <Suspense fallback={null}>
-              <EmojiPicker onSelect={handleEmojiSelect} disabled={disabled} />
-            </Suspense>
-          </Box>
+            {!isMobile && (
+              <Suspense fallback={null}>
+                <EmojiPicker onSelect={handleEmojiSelect} disabled={disabled} />
+              </Suspense>
+            )}
+          </Group>
         )}
 
         {/* Message input with mention/emoji popover */}
@@ -1029,13 +964,6 @@ export default function ChatRichTextEditor({
                   paddingLeft: 10,
 
                   paddingRight: 10,
-
-                  // On desktop, as tall as the buttons beside it (rows of
-                  // size="lg" ActionIcons, 2 px apart) instead of one line at
-                  // their foot.
-                  minHeight: isMobile
-                    ? undefined
-                    : `calc(${desktopRows} * ${rem(34)} + ${desktopRows - 1} * 2px)`,
                 },
               }}
             />
