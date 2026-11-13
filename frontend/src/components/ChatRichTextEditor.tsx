@@ -18,7 +18,7 @@ import {
 
 import { useElementSize, useMediaQuery } from "@mantine/hooks"
 
-import { buttonsStand } from "../utils/composerButtons"
+import { buttonColumns, buttonsWidth } from "../utils/composerButtons"
 
 import { notifications } from "@mantine/notifications"
 
@@ -48,6 +48,71 @@ import { filterFilesBySize } from "../config"
 const BUTTON_GAP = 2
 
 const SEND_HINT = " (Ctrl+Enter for at sende)"
+
+const SIZING_STYLES = [
+  "boxSizing",
+  "fontFamily",
+  "fontSize",
+  "fontStyle",
+  "fontWeight",
+  "letterSpacing",
+  "lineHeight",
+  "paddingTop",
+  "paddingBottom",
+  "paddingLeft",
+  "paddingRight",
+  "borderTopWidth",
+  "borderBottomWidth",
+  "borderLeftWidth",
+  "borderRightWidth",
+  "borderStyle",
+  "tabSize",
+  "textIndent",
+  "textTransform",
+  "whiteSpace",
+  "wordBreak",
+  "wordSpacing",
+  "overflowWrap",
+] as const
+
+let measuringTextarea: HTMLTextAreaElement | null = null
+
+/** How tall `textarea` would be with its text in a box `width` px wide. */
+function textHeightAt(textarea: HTMLTextAreaElement, width: number): number {
+  if (!measuringTextarea) {
+    measuringTextarea = document.createElement("textarea")
+
+    measuringTextarea.setAttribute("aria-hidden", "true")
+
+    measuringTextarea.tabIndex = -1
+
+    Object.assign(measuringTextarea.style, {
+      position: "absolute",
+      top: "0",
+      left: "-10000px",
+      visibility: "hidden",
+      overflow: "hidden",
+      height: "0",
+      minHeight: "0",
+      maxHeight: "none",
+    })
+
+    document.body.appendChild(measuringTextarea)
+  }
+
+  const style = getComputedStyle(textarea)
+
+  for (const key of SIZING_STYLES) measuringTextarea.style[key] = style[key]
+
+  measuringTextarea.style.width = `${width}px`
+
+  measuringTextarea.value = textarea.value
+
+  const border =
+    parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth)
+
+  return measuringTextarea.scrollHeight + border
+}
 
 let measuringCanvas: HTMLCanvasElement | null = null
 
@@ -193,14 +258,19 @@ export default function ChatRichTextEditor({
     (onCreatePoll ? 1 : 0) +
     (isMobile ? 0 : 1)
 
-  // Stood up, the buttons make one column, or two by two when there are four.
-  const stackColumns = buttonCount > 3 ? 2 : 1
-
-  const stackRows = Math.ceil(buttonCount / stackColumns)
-
   const buttonsRef = useRef<HTMLDivElement>(null)
 
-  const [stacked, setStacked] = useState(false)
+  // Fewer columns as the message grows (see buttonColumns); null while they
+  // all lie in one row.
+  const [columns, setColumns] = useState<number | null>(null)
+
+  const buttonColumnCount = columns ?? buttonCount
+
+  const buttonRows = Math.ceil(buttonCount / buttonColumnCount)
+
+  // Two rows of three leave a place empty: the first one, so the buttons
+  // gather at the foot of the box.
+  const emptyPlaces = buttonRows * buttonColumnCount - buttonCount
 
   // The composer's own width, which a two-pane page can leave small on a big
   // screen; the checks below run again when it changes.
@@ -391,40 +461,54 @@ export default function ChatRichTextEditor({
     }
   }, [draftKey, content])
 
-  // A tall message stands the buttons up in a column, giving the text their
-  // width (see buttonsStand). A phone folds them away while typing instead.
+  // A taller message stands the buttons up in fewer columns, giving the text
+  // their width (see buttonColumns). A phone folds them away while typing.
   useLayoutEffect(() => {
     const textarea = textareaRef.current
 
-    // A button, not FileButton's hidden input that comes first.
-    const button = buttonsRef.current?.querySelector("button")
+    const block = buttonsRef.current
 
-    // An empty box lies them down whatever its placeholder takes.
-    if (isMobile || !content || !textarea || !button) {
-      setStacked(false)
+    // A button, not FileButton's hidden input that comes first.
+    const button = block?.querySelector("button")
+
+    // An empty box lies them down whatever its placeholder takes. Without
+    // autosize (tests) there is no height to go by.
+    if (
+      isMobile ||
+      !content ||
+      !textarea ||
+      !block ||
+      !button ||
+      !textarea.style.height
+    ) {
+      setColumns(null)
 
       return
     }
 
-    // What the text needs: autosize sets it inline (this runs after it), and
-    // the min-height a column adds below is a separate property.
-    const needed = parseFloat(textarea.style.height)
-
-    if (!needed) return
+    const side = button.offsetWidth
 
     const line = parseFloat(getComputedStyle(textarea).lineHeight)
 
-    const column =
-      stackRows * button.offsetHeight + (stackRows - 1) * BUTTON_GAP
+    // The box takes whatever width the buttons leave.
+    const textHeight = (candidate: number) =>
+      textHeightAt(
+        textarea,
+        textarea.offsetWidth +
+          block.offsetWidth -
+          buttonsWidth(candidate, side, BUTTON_GAP),
+      )
 
-    setStacked((was) => buttonsStand(was, needed, line, column))
-  }, [content, isMobile, stackRows, composerWidth])
+    const best = buttonColumns(buttonCount, side, BUTTON_GAP, line, textHeight)
+
+    setColumns(best === buttonCount ? null : best)
+  }, [content, isMobile, buttonCount, composerWidth])
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current
 
     // Only while it shows, in the box as it stands then (buttons lying down).
-    if (isMobile || content || stacked || !textarea) return
+    if (isMobile || content || columns !== null || !textarea) return
 
     const style = getComputedStyle(textarea)
 
@@ -434,7 +518,7 @@ export default function ChatRichTextEditor({
       parseFloat(style.paddingRight)
 
     setSendHintFits(textWidth(`${placeholder}${SEND_HINT}`, textarea) <= room)
-  }, [content, isMobile, stacked, composerWidth, placeholder])
+  }, [content, isMobile, columns, composerWidth, placeholder])
 
   const handlePaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
     const items = event.clipboardData?.items
@@ -971,13 +1055,14 @@ export default function ChatRichTextEditor({
             style={{
               display: "grid",
 
-              gridTemplateColumns: `repeat(${
-                stacked ? stackColumns : buttonCount
-              }, auto)`,
+              gridTemplateColumns: `repeat(${buttonColumnCount}, auto)`,
 
               gap: BUTTON_GAP,
             }}
           >
+            {Array.from({ length: emptyPlaces }, (_, place) => (
+              <span key={place} aria-hidden />
+            ))}
             {offersPhotoPicker && (
               <FileButton
                 onChange={handleFilesSelected}
@@ -1072,9 +1157,10 @@ export default function ChatRichTextEditor({
                   paddingRight: 10,
 
                   // Standing, the buttons are as tall as the box at least.
-                  minHeight: stacked
-                    ? `calc(${stackRows} * ${rem(34)} + ${(stackRows - 1) * BUTTON_GAP}px)`
-                    : undefined,
+                  minHeight:
+                    buttonRows > 1
+                      ? `calc(${buttonRows} * ${rem(34)} + ${(buttonRows - 1) * BUTTON_GAP}px)`
+                      : undefined,
                 },
               }}
             />

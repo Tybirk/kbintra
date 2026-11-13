@@ -1,20 +1,49 @@
 /**
- * Whether the buttons beside the message box stand in a column (giving the
- * text their width) rather than lie in a row at its foot.
+ * How many columns the buttons beside the message box stand in: all in one
+ * row while the message is short, then two rows, then one column, as the text
+ * grows tall enough to hold them. Each step gives the text more of the width.
  *
- * They stand once the text needs as much height as the column, so it costs no
- * room, and lie down again only when the text fits on one line. Not on height
- * both ways: standing, the box is wider, the text takes fewer lines, and it
- * would flip back and forth as you type.
+ * Each arrangement is judged by how tall the text would be at the width it
+ * leaves the box (`textHeight(columns)`), not by how tall it is now: a
+ * narrower block widens the box and the text takes fewer lines, so reacting
+ * to the current height would flip back and forth as you type. Judged this
+ * way the answer depends only on the text and the room, and the buttons lie
+ * down again step by step as the text shrinks.
  *
- * `needed` is the height the text takes at the box's current width, `line` one
- * line of it, `column` the height of the buttons standing; all in px.
+ * The narrowest arrangement whose buttons are no taller than the text, give
+ * or take half a line, wins: two rows of buttons are a little taller than two
+ * lines of text, and that much the box may grow. Row counts that need no
+ * fewer columns than a lower one (three rows of four buttons) are skipped, so
+ * four buttons go two by two, not three and one.
+ *
+ * `button` is a button's side and `gap` the space between buttons, in px;
+ * `line` one line of the text.
  */
-export function buttonsStand(
-  standing: boolean,
-  needed: number,
+export function buttonColumns(
+  count: number,
+  button: number,
+  gap: number,
   line: number,
-  column: number,
-): boolean {
-  return standing ? needed >= 2 * line : needed >= column
+  textHeight: (columns: number) => number,
+): number {
+  let best = count
+
+  for (let rows = 2; rows <= count; rows++) {
+    const columns = Math.ceil(count / rows)
+
+    if (columns >= best) continue
+
+    const height = rows * button + (rows - 1) * gap
+
+    if (height > textHeight(columns) + line / 2) break
+
+    best = columns
+  }
+
+  return best
+}
+
+/** How wide `columns` columns of buttons are, in px. */
+export function buttonsWidth(columns: number, button: number, gap: number) {
+  return columns * button + (columns - 1) * gap
 }
