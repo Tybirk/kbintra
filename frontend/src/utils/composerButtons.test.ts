@@ -1,31 +1,52 @@
 import { describe, it, expect } from "vitest"
 
-import { buttonsStand } from "./composerButtons"
+import { buttonColumns, buttonsWidth } from "./composerButtons"
 
-// One line of text is 23 px; three buttons standing make 106 px.
+// Buttons of 34 px, 2 px apart; a line of text is 23 px, plus 14 px of
+// padding and border; a character is 10 px wide.
+const button = 34
+
+const gap = 2
+
 const line = 23
 
-const column = 106
+/** The text's height in a box that is `boxWithRow` wide beside a row of `count`. */
+const textOf =
+  (characters: number, count: number, boxWithRow: number) =>
+  (columns: number) => {
+    const box =
+      boxWithRow +
+      buttonsWidth(count, button, gap) -
+      buttonsWidth(columns, button, gap)
 
-describe("buttonsStand", () => {
-  it("keeps them lying while the text is lower than the column", () => {
-    expect(buttonsStand(false, 37, line, column)).toBe(false)
+    const lines = Math.max(1, Math.ceil((characters * 10) / (box - 20)))
 
-    expect(buttonsStand(false, 84, line, column)).toBe(false)
+    return lines * line + 14
+  }
+
+describe("buttonColumns", () => {
+  it("keeps three buttons in a row for a line of text", () => {
+    expect(buttonColumns(3, button, gap, line, textOf(10, 3, 174))).toBe(3)
   })
 
-  it("stands them up once the text is as tall as the column", () => {
-    expect(buttonsStand(false, 107, line, column)).toBe(true)
+  it("puts them in two rows once the text takes two lines there", () => {
+    // 30 characters: two lines in the 210 px box two columns leave.
+    expect(buttonColumns(3, button, gap, line, textOf(30, 3, 174))).toBe(2)
   })
 
-  it("keeps them standing when the wider box takes fewer lines", () => {
-    // Four lines in a row became three beside the column: still standing.
-    expect(buttonsStand(true, 84, line, column)).toBe(true)
-
-    expect(buttonsStand(true, 61, line, column)).toBe(true)
+  it("keeps the row when the wider box would hold the text on one line", () => {
+    // 17 characters: two lines beside a row (154 px of text), one beside two
+    // columns (190 px). Going to two rows would only flip back.
+    expect(buttonColumns(3, button, gap, line, textOf(17, 3, 174))).toBe(3)
   })
 
-  it("lies them down when the text fits on one line", () => {
-    expect(buttonsStand(true, 37, line, column)).toBe(false)
+  it("stands them in one column once the text is four lines there", () => {
+    expect(buttonColumns(3, button, gap, line, textOf(90, 3, 174))).toBe(1)
+  })
+
+  it("puts four buttons two by two, never three and one", () => {
+    expect(buttonColumns(4, button, gap, line, textOf(60, 4, 318))).toBe(2)
+
+    expect(buttonColumns(4, button, gap, line, textOf(400, 4, 318))).toBe(1)
   })
 })
