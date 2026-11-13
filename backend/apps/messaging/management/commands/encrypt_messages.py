@@ -1,5 +1,6 @@
 """
-Management command to encrypt existing plaintext messages.
+Management command to encrypt existing plaintext messages, and the text of polls
+(their question and options are encrypted the same way — see forum.Poll).
 
 Safe to run multiple times — already-encrypted messages are decrypted
 and re-encrypted (idempotent).
@@ -10,11 +11,12 @@ Usage:
 
 from django.core.management.base import BaseCommand, CommandError
 
+from apps.forum.models import Poll, PollOption
 from apps.messaging.models import Message
 
 
 class Command(BaseCommand):
-    help = "Encrypt all message content using MESSAGES_ENCRYPTION_KEY"
+    help = "Encrypt all message content and poll text using MESSAGES_ENCRYPTION_KEY"
 
     def handle(self, *args, **options):
         from django.conf import settings
@@ -33,3 +35,12 @@ class Command(BaseCommand):
             count += 1
 
         self.stdout.write(self.style.SUCCESS(f"Encrypted {count} messages."))
+
+        for model, field in ((Poll, "question"), (PollOption, "text")):
+            count = 0
+            for obj in model.objects.all().iterator(chunk_size=500):
+                obj.save(update_fields=[field])
+                count += 1
+            self.stdout.write(
+                self.style.SUCCESS(f"Encrypted {count} {model._meta.verbose_name_plural}.")
+            )

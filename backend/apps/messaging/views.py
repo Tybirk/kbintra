@@ -11,6 +11,8 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.forum.models import Poll
+
 from .models import Conversation, Message, MessageReaction, MessageReadStatus
 from .serializers import (
     AddParticipantsSerializer,
@@ -21,6 +23,7 @@ from .serializers import (
     MessageAttachmentSerializer,
     MessageSerializer,
     create_message_attachment,
+    last_active_by_sender,
     message_page,
     serialize_messages,
 )
@@ -39,7 +42,7 @@ class ConversationListCreateView(generics.ListCreateAPIView):
     def get_queryset(self) -> QuerySet[Conversation]:
         return (
             Conversation.objects.filter(participants=self.request.user)
-            .prefetch_related("participants")
+            .prefetch_related("participants__house")
             # A conversation without messages yet sorts by when it was made:
             # NULL sorted it last, off-screen while it was the one just opened.
             .annotate(last_activity=Coalesce(Max("messages__created_at"), "created_at"))
@@ -61,7 +64,8 @@ class ConversationListCreateView(generics.ListCreateAPIView):
                 .values_list("last_id", flat=True)
             )
             last_msgs = {
-                m.conversation_id: m for m in Message.objects.filter(id__in=last_msg_id_qs)
+                m.conversation_id: m
+                for m in Message.objects.filter(id__in=last_msg_id_qs).select_related("poll")
             }
             # Batch unread counts: 1 query instead of N
             unread_counts = dict(
@@ -79,6 +83,8 @@ class ConversationListCreateView(generics.ListCreateAPIView):
         context = self.get_serializer_context()
         context["last_messages"] = last_msgs
         context["unread_counts"] = {cid: unread_counts.get(cid, 0) for cid in conv_ids}
+        # Who wrote last in each, for the avatar order: 1 query instead of N
+        context["last_active"] = last_active_by_sender(conv_ids)
 
         serializer = ConversationSerializer(instances, many=True, context=context)
         if page is not None:
@@ -225,7 +231,7 @@ class ConversationDetailView(generics.RetrieveAPIView):
         # fetches (and prefetches) just the last 50 messages itself, so prefetching
         # the full message history on the conversation would be wasted work.
         return Conversation.objects.filter(participants=self.request.user).prefetch_related(
-            "participants"
+            "participants__house"
         )
 
     def retrieve(self, request: Request, *args, **kwargs) -> Response:
@@ -632,6 +638,8 @@ class MessageUnsendView(APIView):
         # kept handing out their links. One by one, so each removes its files.
         for attachment in message.attachments.all():
             attachment.delete()
+        # And a poll with its votes (the message row itself stays, so no cascade).
+        Poll.objects.filter(message=message).delete()
 
         # Broadcast deletion via WebSocket
         from asgiref.sync import async_to_sync

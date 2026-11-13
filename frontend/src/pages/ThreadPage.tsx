@@ -1634,7 +1634,7 @@ function PostCard({
             )}
 
             {post.poll && (
-              <PollDisplay poll={post.poll} threadQueryKey={threadQueryKey} />
+              <PollDisplay poll={post.poll} queryKey={threadQueryKey} />
             )}
 
             <Divider my="sm" />

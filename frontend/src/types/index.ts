@@ -1457,6 +1457,9 @@ export interface Participant {
   last_name: string
 
   profile_picture: string | null
+
+  /** "22" for Kløverbakkevej 22; empty without a house. Absent on WebSocket senders. */
+  house_number?: string
 }
 
 export interface MessageAttachment {
@@ -1534,6 +1537,8 @@ export interface Message {
   attachments: MessageAttachment[]
 
   reactions?: MessageReactionSummary[]
+
+  poll?: Poll | null
 }
 
 export interface LastMessage {
@@ -1662,7 +1667,18 @@ export interface WsConversationRenamed {
   name: string
 }
 
-export type WsMessage = WsNewMessage | WsMessagesRead | WsTyping | WsNewConversation | WsNewNotification | WsCarSharingUpdate | WsMessageEdited | WsMessageDeleted | WsMessageReacted | WsConversationRenamed
+/** A poll in a chat changed; `poll` is rendered for this reader (their votes). */
+export interface WsPollUpdated {
+  type: "poll_updated"
+
+  message_id: number
+
+  conversation_id: number
+
+  poll: Poll
+}
+
+export type WsMessage = WsNewMessage | WsMessagesRead | WsTyping | WsNewConversation | WsNewNotification | WsCarSharingUpdate | WsMessageEdited | WsMessageDeleted | WsMessageReacted | WsConversationRenamed | WsPollUpdated
 
 // Notification Types
 

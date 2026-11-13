@@ -4,11 +4,15 @@ Serializers for Messaging models.
 
 import logging
 from collections import defaultdict
+from datetime import UTC, datetime
 
-from django.db.models import Q
+from django.db.models import Max, Q
 from rest_framework import serializers
 
 from apps.backup.signing import signed_media_url
+from apps.food.utils import house_number_for
+from apps.forum.serializers import PollDataField, PollSerializer
+from apps.forum.services import create_poll
 from apps.users.models import User
 from apps.users.serializer_mixins import AvatarUrlMixin
 
@@ -20,9 +24,35 @@ logger = logging.getLogger(__name__)
 class ParticipantSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """Minimal serializer for conversation participants."""
 
+    house_number = serializers.SerializerMethodField()
+
     class Meta:
         model = User
-        fields = ["id", "first_name", "last_name", "profile_picture"]
+        fields = ["id", "first_name", "last_name", "profile_picture", "house_number"]
+
+    def get_house_number(self, obj: User) -> str:
+        """ "22" for Kløverbakkevej 22, "" without a house: a chat without a name is
+        titled by its people as "Lars (22), Mette (7)", like the madhold."""
+        return house_number_for(obj.house)
+
+
+# Sorts after any real time: participants who never wrote in a conversation.
+_NEVER_ACTIVE = datetime.min.replace(tzinfo=UTC)
+
+
+def last_active_by_sender(conversation_ids: list[int]) -> dict[int, dict[int, datetime]]:
+    """When each participant last wrote in each conversation, in one query:
+    {conversation_id: {user_id: created_at of their latest message}}."""
+    last_active: dict[int, dict[int, datetime]] = defaultdict(dict)
+    rows = (
+        Message.objects.filter(conversation_id__in=conversation_ids)
+        .values("conversation_id", "sender_id")
+        .annotate(last=Max("created_at"))
+        .values_list("conversation_id", "sender_id", "last")
+    )
+    for conversation_id, sender_id, last in rows:
+        last_active[conversation_id][sender_id] = last
+    return last_active
 
 
 def message_attachment_preview_url(att: MessageAttachment) -> str:
@@ -41,6 +71,11 @@ def message_attachment_thumbnail_url(att: MessageAttachment) -> str:
     if att.thumbnail:
         return signed_media_url(att.thumbnail.url)
     return message_attachment_preview_url(att)
+
+
+def poll_preview(poll) -> str:
+    """How a poll message reads in the conversation list and in notifications."""
+    return f"Afstemning: {poll.question}"[:100]
 
 
 def create_message_attachment(
@@ -112,6 +147,7 @@ class MessageSerializer(serializers.ModelSerializer):
     is_read = serializers.SerializerMethodField()
     attachments = MessageAttachmentSerializer(many=True, read_only=True)
     reactions = serializers.SerializerMethodField()
+    poll = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
@@ -128,6 +164,7 @@ class MessageSerializer(serializers.ModelSerializer):
             "created_at",
             "attachments",
             "reactions",
+            "poll",
         ]
         read_only_fields = [
             "id",
@@ -143,6 +180,11 @@ class MessageSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             return obj.sender_id == request.user.id
         return False
+
+    def get_poll(self, obj: Message) -> dict | None:
+        # A missing reverse one-to-one raises DoesNotExist, which is an AttributeError.
+        poll = getattr(obj, "poll", None)
+        return PollSerializer(poll, context=self.context).data if poll else None
 
     def get_reactions(self, obj: Message) -> list:
         request = self.context.get("request")
@@ -223,11 +265,22 @@ class ConversationSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "updated_at"]
 
     def get_other_participants(self, obj: Conversation) -> list:
+        """Everyone but the reader, whoever wrote most recently first: the chat
+        header and the list show them left to right in this order. People who
+        haven't written yet come last."""
         request = self.context.get("request")
-        if request and request.user.is_authenticated:
-            others = [p for p in obj.participants.all() if p.id != request.user.id]
-            return ParticipantSerializer(others, many=True).data
-        return []
+        if not (request and request.user.is_authenticated):
+            return []
+        batched = self.context.get("last_active")
+        last_active = (
+            batched.get(obj.id, {})
+            if batched is not None
+            else last_active_by_sender([obj.id])[obj.id]
+        )
+        others = [p for p in obj.participants.all() if p.id != request.user.id]
+        # Stable, so people with the same (or no) last message keep their order.
+        others.sort(key=lambda p: last_active.get(p.id, _NEVER_ACTIVE), reverse=True)
+        return ParticipantSerializer(others, many=True).data
 
     def get_last_message(self, obj: Conversation) -> dict | None:
         last_messages = self.context.get("last_messages")
@@ -236,12 +289,14 @@ class ConversationSerializer(serializers.ModelSerializer):
         else:
             last_msg = obj.messages.order_by("-created_at").first()
         if last_msg:
-            # A message without text is an attachment, or one taken back: the
-            # list showed an empty line for both.
+            # A message without text is a poll, an attachment, or one taken back:
+            # the list showed an empty line for them.
             if last_msg.content:
                 preview = last_msg.content[:100]
             elif last_msg.is_deleted:
                 preview = "Besked slettet"
+            elif poll := getattr(last_msg, "poll", None):
+                preview = poll_preview(poll)
             else:
                 preview = "(Vedhæftet fil)"
             return {
@@ -275,8 +330,8 @@ def message_page(conversation: Conversation, before: Message | None = None) -> t
     With `before`, the page ends just before that message, which is how the chat
     loads history one page at a time as the reader scrolls up.
     """
-    messages = conversation.messages.select_related("sender").prefetch_related(
-        "reactions__user", "attachments"
+    messages = conversation.messages.select_related("sender__house", "poll").prefetch_related(
+        "reactions__user", "attachments", "poll__options__votes__user"
     )
     if before is not None:
         messages = messages.filter(
@@ -396,10 +451,11 @@ class CreateMessageSerializer(serializers.ModelSerializer):
         write_only=True,
         default=list,
     )
+    poll_data = PollDataField(write_only=True, required=False)
 
     class Meta:
         model = Message
-        fields = ["content", "attachments", "mentioned_user_ids"]
+        fields = ["content", "attachments", "mentioned_user_ids", "poll_data"]
 
     def validate_attachments(self, value: list) -> list:
         from apps.forum.utils import validate_file_size
@@ -411,9 +467,9 @@ class CreateMessageSerializer(serializers.ModelSerializer):
     def validate(self, attrs: dict) -> dict:
         content = attrs.get("content", "").strip()
         attachments = attrs.get("attachments", [])
-        if not content and not attachments:
+        if not content and not attachments and not attrs.get("poll_data"):
             raise serializers.ValidationError(
-                "Beskeden skal indeholde tekst eller en vedhæftet fil."
+                "Beskeden skal indeholde tekst, en vedhæftet fil eller en afstemning."
             )
 
         # Filter mentioned_user_ids to only include actual conversation participants
@@ -434,12 +490,14 @@ class CreateMessageSerializer(serializers.ModelSerializer):
 
         attachments = validated_data.pop("attachments", [])
         mentioned_user_ids = validated_data.pop("mentioned_user_ids", [])
+        poll_data = validated_data.pop("poll_data", None)
         validated_data["sender"] = self.context["request"].user
         validated_data["conversation"] = self.context["conversation"]
         message = super().create(validated_data)
 
         user = self.context["request"].user
         attachment_objects = [create_message_attachment(message, user, f) for f in attachments]
+        poll = create_poll(poll_data, user, message=message) if poll_data else None
 
         # Update conversation's updated_at
         message.conversation.save()
@@ -461,6 +519,9 @@ class CreateMessageSerializer(serializers.ModelSerializer):
             "is_system_message": message.is_system_message,
             "created_at": message.created_at.isoformat(),
             "attachments": MessageAttachmentSerializer(attachment_objects, many=True).data,
+            # Nobody has voted yet, so one rendering fits every reader; the
+            # consumer sets the poll's is_own per socket, like the message's.
+            "poll": PollSerializer(poll).data if poll else None,
         }
         async_to_sync(channel_layer.group_send)(
             f"conversation_{message.conversation.id}",
@@ -481,7 +542,7 @@ class CreateMessageSerializer(serializers.ModelSerializer):
                 notify_new_message_task(
                     recipient_id=participant.id,
                     sender_id=sender.id,
-                    message_content=message.content,
+                    message_content=message.content or (poll_preview(poll) if poll else ""),
                     conversation_id=message.conversation.id,
                     message_id=message.id,
                 )

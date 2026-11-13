@@ -59,7 +59,9 @@ from .serializers import (
 )
 from .services import (
     add_member,
+    broadcast_poll_update,
     can_view_file,
+    can_view_poll,
     can_view_thread,
     filter_visible_files,
     filter_visible_threads,
@@ -1510,13 +1512,22 @@ class SubgroupRoleListView(APIView):
 
 
 # Poll Views
+def _get_visible_poll(user: Any, poll_id: int) -> Poll:
+    """The poll, if the user can see where it is (see can_view_poll). Otherwise 404,
+    the same answer as for a thread they can't see — a poll id is easy to guess."""
+    poll = get_object_or_404(Poll.objects.select_related("post__thread", "message"), pk=poll_id)
+    if not can_view_poll(user, poll):
+        raise Http404
+    return poll
+
+
 class PollVoteView(APIView):
     """Vote on a poll option (toggle)."""
 
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request: Request, poll_id: int) -> Response:
-        poll = get_object_or_404(Poll, pk=poll_id)
+        poll = _get_visible_poll(request.user, poll_id)
         option_id = request.data.get("option_id")
 
         if not option_id:
@@ -1533,6 +1544,7 @@ class PollVoteView(APIView):
         if existing_vote:
             # Toggle off - remove the vote
             existing_vote.delete()
+            broadcast_poll_update(poll)
             return Response(
                 {"detail": "Din stemme er fjernet.", "action": "removed"},
                 status=status.HTTP_200_OK,
@@ -1543,6 +1555,7 @@ class PollVoteView(APIView):
             PollVote.objects.filter(option__poll=poll, user=request.user).delete()
 
         PollVote.objects.create(option=option, user=request.user)
+        broadcast_poll_update(poll)
         return Response(
             {"detail": "Din stemme er registreret.", "action": "added"},
             status=status.HTTP_201_CREATED,
@@ -1555,7 +1568,7 @@ class PollDeleteView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def patch(self, request: Request, poll_id: int) -> Response:
-        poll = get_object_or_404(Poll, pk=poll_id)
+        poll = _get_visible_poll(request.user, poll_id)
 
         if poll.created_by != request.user:
             return Response(
@@ -1613,15 +1626,24 @@ class PollDeleteView(APIView):
                 else:
                     PollOption.objects.create(poll=poll, text=option_data["text"], order=i)
 
+        broadcast_poll_update(poll)
         return Response(PollSerializer(poll, context={"request": request}).data)
 
     def delete(self, request: Request, poll_id: int) -> Response:
-        poll = get_object_or_404(Poll, pk=poll_id)
+        poll = _get_visible_poll(request.user, poll_id)
 
         if poll.created_by != request.user:
             return Response(
                 {"detail": "Du har ikke rettigheder til at slette denne afstemning."},
                 status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # In a chat the poll is the message: it goes when the message is unsent,
+        # rather than leaving an empty bubble behind.
+        if poll.message_id is not None:
+            return Response(
+                {"detail": "Fortryd afsendelsen af beskeden for at fjerne afstemningen."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         poll.delete()
@@ -1634,7 +1656,7 @@ class PollAddOptionView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request: Request, poll_id: int) -> Response:
-        poll = get_object_or_404(Poll, pk=poll_id)
+        poll = _get_visible_poll(request.user, poll_id)
 
         is_creator = poll.created_by_id == request.user.id
         if not (is_creator or poll.allow_others_to_add_options):
@@ -1664,6 +1686,7 @@ class PollAddOptionView(APIView):
         next_order = (poll.options.aggregate(m=Max("order"))["m"] or -1) + 1
         PollOption.objects.create(poll=poll, text=text, order=next_order)
 
+        broadcast_poll_update(poll)
         return Response(PollSerializer(poll, context={"request": request}).data)
 
 

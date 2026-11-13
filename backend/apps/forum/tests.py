@@ -2,12 +2,16 @@
 Tests for the Forum app.
 """
 
+import io
 import json
 import uuid
 from unittest.mock import patch
 
 import pytest
+from cryptography.fernet import Fernet
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
+from django.db import IntegrityError, connection, transaction
 
 from apps.forum.models import (
     File,
@@ -18,6 +22,7 @@ from apps.forum.models import (
     Post,
     PostAttachment,
     Subgroup,
+    SubgroupMembership,
     SubgroupSubscription,
     Thread,
 )
@@ -1734,6 +1739,98 @@ class TestPollAddOptionView:
             {"text": "   "},
         )
         assert response.status_code == 400
+
+
+class TestPollVisibility:
+    """A poll answers only those who can see the thread it is in — poll ids are
+    sequential, so they are easy to guess."""
+
+    @pytest.fixture
+    def private_poll(self, db, user, member_subgroup):
+        thread = Thread.objects.create(
+            subgroup=member_subgroup, title="Privat tråd", author=user, members_only=True
+        )
+        post = Post.objects.create(thread=thread, author=user, content="<p>Hvornår?</p>")
+        poll = Poll.objects.create(
+            post=post,
+            question="Hvornår mødes vi?",
+            allow_others_to_add_options=True,
+            created_by=user,
+        )
+        PollOption.objects.create(poll=poll, text="Mandag", order=0)
+        PollOption.objects.create(poll=poll, text="Tirsdag", order=1)
+        return poll
+
+    def test_non_member_cannot_vote(self, second_authenticated_client, private_poll):
+        option = private_poll.options.first()
+        response = second_authenticated_client.post(
+            f"/api/forum/polls/{private_poll.id}/vote/",
+            {"option_id": option.id},
+        )
+        assert response.status_code == 404
+        assert not PollVote.objects.exists()
+
+    def test_non_member_cannot_add_option(self, second_authenticated_client, private_poll):
+        """Not even to a poll open for new options: the reply was the whole poll,
+        voters included."""
+        response = second_authenticated_client.post(
+            f"/api/forum/polls/{private_poll.id}/options/",
+            {"text": "Onsdag"},
+        )
+        assert response.status_code == 404
+        assert private_poll.options.count() == 2
+
+    def test_member_can_vote(self, api_client, second_user, member_subgroup, private_poll):
+        SubgroupMembership.objects.create(user=second_user, subgroup=member_subgroup)
+        api_client.force_authenticate(user=second_user)
+        option = private_poll.options.first()
+        response = api_client.post(
+            f"/api/forum/polls/{private_poll.id}/vote/",
+            {"option_id": option.id},
+        )
+        assert response.status_code == 201
+
+
+class TestPollStorage:
+    """Poll text is encrypted at rest like message content; a poll sits in a post
+    or in a chat message."""
+
+    @pytest.fixture
+    def encryption_key(self, settings):
+        settings.MESSAGES_ENCRYPTION_KEY = Fernet.generate_key().decode()
+
+    @staticmethod
+    def _stored(table: str, column: str, pk: int) -> str:
+        with connection.cursor() as cursor:
+            cursor.execute(f"SELECT {column} FROM {table} WHERE id = %s", [pk])  # noqa: S608
+            return cursor.fetchone()[0]
+
+    def test_question_and_options_are_encrypted(self, encryption_key, user, post):
+        poll = Poll.objects.create(post=post, question="Hvilken farve?", created_by=user)
+        option = PollOption.objects.create(poll=poll, text="Rød", order=0)
+
+        assert self._stored("forum_poll", "question", poll.id).startswith("fernet:")
+        assert self._stored("forum_polloption", "text", option.id).startswith("fernet:")
+        assert Poll.objects.get(id=poll.id).question == "Hvilken farve?"
+        assert PollOption.objects.get(id=option.id).text == "Rød"
+
+    def test_plaintext_from_before_reads_and_encrypt_messages_encrypts_it(
+        self, encryption_key, poll
+    ):
+        """Polls from before the text was encrypted read back as they are, and
+        encrypt_messages encrypts them along with the messages."""
+        with connection.cursor() as cursor:
+            cursor.execute("UPDATE forum_poll SET question = %s WHERE id = %s", ["Gammel", poll.id])
+        assert Poll.objects.get(id=poll.id).question == "Gammel"
+
+        call_command("encrypt_messages", stdout=io.StringIO())
+
+        assert self._stored("forum_poll", "question", poll.id).startswith("fernet:")
+        assert Poll.objects.get(id=poll.id).question == "Gammel"
+
+    def test_poll_needs_a_post_or_a_message(self, db, user):
+        with pytest.raises(IntegrityError), transaction.atomic():
+            Poll.objects.create(question="Hvor?", created_by=user)
 
 
 # =============================================================================
