@@ -1005,6 +1005,39 @@ def test_economy_email_skips_the_merge_when_it_would_blow_the_size_budget(
 
 
 @pytest.mark.django_db
+def test_economy_email_still_goes_out_and_says_so_when_bilag_exceed_the_budget(
+    settings, mailoutbox, monkeypatch, authenticated_client
+):
+    """Each bilag fits on its own, the total does not: the treasurer is told."""
+    settings.ECONOMY_EMAIL = "oekonomi@example.com"
+    settings.EXPENSE_EMAIL_MAX_ATTACHMENT_BYTES = 30
+
+    from apps.expenses import pdf as pdf_module
+
+    # The merge can't rescue it either, so the second original must be dropped.
+    monkeypatch.setattr(pdf_module, "build_combined_pdf", lambda parts: b"%PDF-" + b"x" * 10_000)
+
+    resp = authenticated_client.post(
+        "/api/expenses/",
+        {
+            "reg_nr": "1234",
+            "account_number": "9876543",
+            "amount": "120.00",
+            "description": "Kaffe og filtre",
+            "files": [_receipt("bon1.pdf"), _receipt("bon2.pdf")],
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 201, resp.data
+    assert ExpenseAttachment.objects.count() == 2
+
+    msg = mailoutbox[0]
+    assert [a[0] for a in msg.attachments] == ["bon1.pdf"]
+    assert "for store til at vedhæfte" in msg.body
+    assert "/udlaeg" in msg.body
+
+
+@pytest.mark.django_db
 def test_economy_email_html_escapes_user_input(settings, mailoutbox, authenticated_client):
     settings.ECONOMY_EMAIL = "oekonomi@example.com"
     resp = authenticated_client.post(
