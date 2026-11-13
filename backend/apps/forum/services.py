@@ -13,6 +13,8 @@ from django.db.models import Q
 from .models import (
     File,
     Folder,
+    Poll,
+    PollOption,
     Subgroup,
     SubgroupMembership,
     SubgroupSubscription,
@@ -22,7 +24,10 @@ from .models import (
 if TYPE_CHECKING:
     from django.db.models import QuerySet
 
+    from apps.messaging.models import Message
     from apps.users.models import User
+
+    from .models import Post
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +82,19 @@ def can_view_thread(user: User, thread: Thread) -> bool:
     if thread.author_id == user.id:
         return True
     return SubgroupMembership.objects.filter(user=user, subgroup_id=thread.subgroup_id).exists()
+
+
+def can_view_poll(user: User, poll: Poll) -> bool:
+    """Whether the user can see a poll, and so vote in it.
+
+    A poll in the forum follows its thread (see can_view_thread); a poll in a chat
+    is for the conversation's participants only.
+    """
+    if not user or not user.is_authenticated:
+        return False
+    if poll.message_id is not None:
+        return poll.message.conversation.participants.filter(id=user.id).exists()
+    return can_view_thread(user, poll.post.thread)
 
 
 def can_view_file(user: User, file: File) -> bool:
@@ -174,3 +192,58 @@ def visible_folder_ids(user: User, subgroup: Subgroup) -> set[int]:
             visible.add(cur)
             cur = parent_map.get(cur)
     return visible
+
+
+# ---------------------------------------------------------------------------
+# Polls — one model for the forum and the chat
+# ---------------------------------------------------------------------------
+
+
+def create_poll(
+    data: dict,
+    created_by: User,
+    *,
+    post: Post | None = None,
+    message: Message | None = None,
+) -> Poll:
+    """Create a poll and its options from validated `poll_data` (PollDataField),
+    in a forum post or in a chat message."""
+    poll = Poll.objects.create(
+        post=post,
+        message=message,
+        question=data["question"],
+        allow_multiple_votes=data["allow_multiple_votes"],
+        is_anonymous=data["is_anonymous"],
+        allow_others_to_add_options=data["allow_others_to_add_options"],
+        created_by=created_by,
+    )
+    PollOption.objects.bulk_create(
+        PollOption(poll=poll, text=option["text"], order=i)
+        for i, option in enumerate(data["options"])
+    )
+    return poll
+
+
+def broadcast_poll_update(poll: Poll) -> None:
+    """Tell an open chat that a poll in it changed (a vote, a new option, an edit).
+
+    Only the poll's id travels: each socket re-reads the poll for its own user,
+    so `has_voted` and `is_own` are right for everyone and an anonymous poll never
+    sends anyone the voters. A forum poll needs nothing — the thread refetches.
+    """
+    if poll.message_id is None:
+        return
+
+    from asgiref.sync import async_to_sync
+    from channels.layers import get_channel_layer
+
+    conversation_id = poll.message.conversation_id
+    async_to_sync(get_channel_layer().group_send)(
+        f"conversation_{conversation_id}",
+        {
+            "type": "poll_updated",
+            "poll_id": poll.id,
+            "message_id": poll.message_id,
+            "conversation_id": conversation_id,
+        },
+    )

@@ -107,6 +107,7 @@ Private messages are encrypted at rest using Fernet (AES-128-CBC + HMAC). The en
 - `EncryptedTextField` — custom Django field that encrypts via `get_prep_value()` and decrypts via `from_db_value()`
 - Encrypted values are prefixed with `fernet:` to distinguish from plaintext
 - Decryption failure (wrong/missing key) returns `[krypteret besked]`
+- Polls (`forum.Poll.question`, `forum.PollOption.text`) use the same field — a poll can sit in a chat message as well as in a forum post. Text written before that stays plaintext and reads as-is until `encrypt_messages` is run, which covers polls too. Admin can't search encrypted columns.
 
 **Generating a key**:
 ```bash

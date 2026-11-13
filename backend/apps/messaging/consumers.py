@@ -175,6 +175,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """Send message to WebSocket."""
         # Compute is_own dynamically based on who is receiving the message
         message = {**event["message"], "is_own": event["message"]["sender"]["id"] == self.user.id}
+        if message.get("poll"):
+            # The sender created the poll, so it is theirs exactly when the message is.
+            message["poll"] = {**message["poll"], "is_own": message["is_own"]}
         await self.send(
             json.dumps(
                 {
@@ -286,6 +289,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
         )
 
+    async def poll_updated(self, event):
+        """A poll in the chat changed: send it as this socket's user sees it."""
+        poll = await self.render_poll(event["poll_id"])
+        if poll is None:
+            return
+        await self.send(
+            json.dumps(
+                {
+                    "type": "poll_updated",
+                    "message_id": event["message_id"],
+                    "conversation_id": event["conversation_id"],
+                    "poll": poll,
+                }
+            )
+        )
+
     async def new_notification(self, event):
         """Send notification to user via WebSocket."""
         await self.send(
@@ -314,6 +333,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
         return list(
             Conversation.objects.filter(participants=self.user).values_list("id", flat=True)
         )
+
+    @database_sync_to_async
+    def render_poll(self, poll_id: int) -> dict | None:
+        """The poll as this socket's user sees it (their votes, whether it's theirs),
+        or None if it is gone by now (its message was unsent)."""
+        from apps.forum.models import Poll
+        from apps.forum.serializers import PollSerializer
+
+        poll = Poll.objects.filter(pk=poll_id).prefetch_related("options__votes__user").first()
+        if poll is None:
+            return None
+        return PollSerializer(poll, context={"user": self.user}).data
 
     @database_sync_to_async
     def is_conversation_participant(self, conversation_id: int) -> bool:

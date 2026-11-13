@@ -33,25 +33,32 @@ rsync -avz "$PROD_REMOTE:$SNAPSHOT" ./data/db.sqlite3.new
 ssh "$PROD_REMOTE" "rm -f $SNAPSHOT"
 trap - EXIT
 
-# Media files written by the backend container are root-owned on the host (the
-# container runs as root). Without sudo, this deploy user can neither add prod's
-# new files to those folders nor let the rsync below --delete the test-only ones
-# (e.g. expense_receipts uploaded while testing). Hand ownership back to the
-# deploy user via a container first — root inside the container can chown freely.
+# The rsync below needs to own ./data/media to add prod's new files and --delete
+# the test-only ones (e.g. expense_receipts uploaded while testing). Without
+# sudo, a container does the chown, as root inside it.
 #
-# This runs while the app is still up, so the running backend can do it. It used
-# to run after the stop below, where the exec always failed and the silenced
-# fallback did nothing either: on 2026-10-30 rsync hit "Permission denied" on
-# every new prod file, and set -e left TEST stopped. The fallback (a brand-new
-# box, or a stopped backend) is a one-off container on the deployed commit's
-# image, the same way deploy.sh runs migrations.
+# Which owner to ask for depends on the Docker daemon. Rootful: the container's
+# root is the host's root, so the backend leaves root-owned files and we chown
+# to our own uid. Rootless (thylakoid): the container's root *is* this deploy
+# user on the host, and container uid N is a sub-uid (subuid start + N - 1).
+# There, chowning to our own uid hands the files to that sub-uid instead: it
+# left ./data/media owned by 363148 and rsync got "Permission denied" on every
+# new prod file (2026-10-30). Root inside is us outside, so ask for 0:0.
+#
+# This runs while the app is still up, so the running backend can do it. The
+# fallback (a brand-new box, or a stopped backend) is a one-off container on
+# the deployed commit's image, the same way deploy.sh runs migrations.
 echo ">>> Reclaiming ownership of ./data/media so rsync can write and --delete..."
 mkdir -p ./data/media
-OWNER="$(id -u):$(id -g)"
+if docker info -f '{{.SecurityOptions}}' 2>/dev/null | grep -q rootless; then
+    OWNER=0:0
+else
+    OWNER="$(id -u):$(id -g)"
+fi
 if ! docker compose exec -T backend chown -R "$OWNER" /app/data/media 2>/dev/null; then
     IMAGE_TAG=$(git rev-parse HEAD) docker compose run --rm --no-deps -T \
         --entrypoint chown backend -R "$OWNER" /app/data/media \
-        || echo "WARNING: could not chown ./data/media; rsync may fail on root-owned folders."
+        || echo "WARNING: could not chown ./data/media; rsync may fail on folders it does not own."
 fi
 
 # Media files (one-way: prod is SOURCE, local test is DEST).

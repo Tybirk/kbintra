@@ -9,6 +9,7 @@ import type {
   Conversation,
   ConversationDetail,
   CreateConversationData,
+  CreatePollData,
   Message,
   MessagePage,
 } from "../types"
@@ -137,6 +138,24 @@ export const messagingApi = {
     )
 
     return response.data
+  },
+
+  // Send a poll: a message without text whose content is the poll (the same
+  // Poll as in the forum, voted on through forumApi.votePoll)
+
+  sendPoll: async (
+    conversationId: number,
+
+    pollData: CreatePollData,
+  ): Promise<void> => {
+    await apiClient.post(
+      `/messages/conversations/${conversationId}/messages/`,
+      {
+        content: "",
+
+        poll_data: pollData,
+      },
+    )
   },
 
   // Mark messages as read

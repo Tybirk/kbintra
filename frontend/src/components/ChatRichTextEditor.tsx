@@ -25,6 +25,7 @@ import {
   IconFile,
   IconPhoto,
   IconChevronRight,
+  IconChartBar,
 } from "@tabler/icons-react"
 
 import {
@@ -95,6 +96,9 @@ interface ChatRichTextEditorProps {
    */
 
   onClearDraft?: () => void
+
+  /** Shows a poll button beside the attachment buttons when given. */
+  onCreatePoll?: () => void
 }
 
 function isImageFile(file: File): boolean {
@@ -130,6 +134,7 @@ export default function ChatRichTextEditor({
 
   draftKey,
   onClearDraft,
+  onCreatePoll,
 }: ChatRichTextEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -881,12 +886,34 @@ export default function ChatRichTextEditor({
                   </ActionIcon>
                 )}
               </FileButton>
+              {onCreatePoll && (
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size="md"
+                  disabled={disabled}
+                  onClick={onCreatePoll}
+                  title="Opret afstemning"
+                >
+                  <IconChartBar size={18} />
+                </ActionIcon>
+              )}
             </Group>
           )
         ) : (
-          /* Desktop: always show all action icons */
+          /* Desktop: always show all action icons, two by two so they take
+             less of the input's width */
 
-          <Group gap={4} wrap="nowrap" mb={1}>
+          <Box
+            mb={1}
+            style={{
+              display: "grid",
+
+              gridTemplateColumns: "repeat(2, auto)",
+
+              gap: 2,
+            }}
+          >
             <FileButton
               onChange={handleFilesSelected}
               multiple
@@ -919,10 +946,22 @@ export default function ChatRichTextEditor({
                 </ActionIcon>
               )}
             </FileButton>
+            {onCreatePoll && (
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                size="lg"
+                disabled={disabled}
+                onClick={onCreatePoll}
+                title="Opret afstemning"
+              >
+                <IconChartBar size={20} />
+              </ActionIcon>
+            )}
             <Suspense fallback={null}>
               <EmojiPicker onSelect={handleEmojiSelect} disabled={disabled} />
             </Suspense>
-          </Group>
+          </Box>
         )}
 
         {/* Message input with mention/emoji popover */}
@@ -963,6 +1002,10 @@ export default function ChatRichTextEditor({
                   paddingLeft: 10,
 
                   paddingRight: 10,
+
+                  // On desktop, as tall as the two rows of buttons beside it
+                  // (2 × 34 px + 2 px gap) instead of one line at their foot.
+                  minHeight: isMobile ? undefined : 70,
                 },
               }}
             />

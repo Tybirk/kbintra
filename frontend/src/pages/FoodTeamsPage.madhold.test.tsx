@@ -34,6 +34,7 @@ vi.mock("@mantine/notifications", () => ({
 
 const api = vi.hoisted(() => ({
   getMyTeams: vi.fn(),
+  downloadMyTeamsICal: vi.fn(),
   getTeams: vi.fn(),
   getHousemateTeams: vi.fn(),
   getSwapRequests: vi.fn(),
@@ -43,6 +44,7 @@ const api = vi.hoisted(() => ({
   getMyFoodProfile: vi.fn(),
   updateMyFoodProfile: vi.fn(),
   getMyWish: vi.fn(),
+  getWishHousehold: vi.fn(),
   submitWish: vi.fn(),
   getCycles: vi.fn(),
   getFoodRoster: vi.fn(),
@@ -242,6 +244,7 @@ beforeEach(() => {
   api.getSwapBroadcasts.mockResolvedValue([])
   api.getMyFoodProfile.mockResolvedValue(profile)
   api.getMyWish.mockRejectedValue(notFound)
+  api.getWishHousehold.mockResolvedValue([])
   api.getCycles.mockResolvedValue([])
   api.getFoodRoster.mockResolvedValue({ residents: [], cycle: null })
 })
@@ -641,6 +644,197 @@ describe("F3: a pause reason saved under Min profil survives the wish form", () 
         pause_reason: "rejse",
       }),
     )
+  })
+})
+
+describe("wishing for the household", () => {
+  const me = {
+    id: 1,
+    first_name: "Anna",
+    is_self: true,
+    on_pause: false,
+    has_wish: false,
+  }
+
+  const bo = {
+    id: 2,
+    first_name: "Bo",
+    is_self: false,
+    on_pause: false,
+    has_wish: false,
+  }
+
+  const firstDate = /, 14\. /
+
+  async function openWishes(housemate = bo) {
+    api.getActiveCycle.mockResolvedValue(cycle)
+
+    api.submitWish.mockResolvedValue({})
+
+    api.getWishHousehold.mockResolvedValue([me, housemate])
+
+    renderAt("/madhold/oensker")
+
+    await screen.findByRole("radiogroup", {
+      name: "Hvem indsender du ønsker for?",
+    })
+
+    return userEvent.setup()
+  }
+
+  async function tickFirstDate(user: ReturnType<typeof userEvent.setup>) {
+    const visible = screen
+      .getAllByText(firstDate)
+      .find((date) => date.closest("[hidden]") === null)
+
+    await user.click(visible as HTMLElement)
+  }
+
+  it("shows no switcher for someone living alone", async () => {
+    api.getActiveCycle.mockResolvedValue(cycle)
+
+    api.getWishHousehold.mockResolvedValue([me])
+
+    renderAt("/madhold/oensker")
+
+    await screen.findByText("Jeg er forhindret i hele perioden")
+
+    expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument()
+
+    expect(
+      screen.queryByRole("switch", { name: /Indsend samme ønsker/ }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("sends a housemate's wish as theirs", async () => {
+    const user = await openWishes()
+
+    await user.click(screen.getByRole("radio", { name: "Bo" }))
+
+    expect(api.getMyWish).toHaveBeenCalledWith(7, 2)
+
+    await screen.findByRole("switch", {
+      name: /Bo er forhindret i hele perioden/,
+    })
+
+    await tickFirstDate(user)
+
+    await user.click(screen.getByRole("button", { name: "Indsend ønsker" }))
+
+    await waitFor(() =>
+      expect(api.submitWish).toHaveBeenCalledWith(
+        7,
+        expect.objectContaining({ for_user: 2 }),
+      ),
+    )
+  })
+
+  it("sends the same wishes for the housemate when the switch is on", async () => {
+    const user = await openWishes()
+
+    await tickFirstDate(user)
+
+    await user.click(
+      screen.getByRole("switch", { name: /Indsend samme ønsker for Bo/ }),
+    )
+
+    await user.click(screen.getByRole("button", { name: "Indsend ønsker" }))
+
+    await waitFor(() => expect(api.submitWish).toHaveBeenCalledTimes(1))
+
+    const sent = api.submitWish.mock.calls[0][1]
+
+    expect(sent.also_for).toEqual([2])
+
+    expect(sent.for_user).toBeUndefined()
+  })
+
+  it("keeps ticked dates when looking at the housemate and back", async () => {
+    const user = await openWishes()
+
+    await tickFirstDate(user)
+
+    await user.click(screen.getByRole("radio", { name: "Bo" }))
+
+    await user.click(screen.getByRole("radio", { name: "Mig" }))
+
+    expect(screen.getByText(/^1 af \d+ datoer valgt/)).toBeInTheDocument()
+  })
+
+  it("says before submitting what copying does to the housemate", async () => {
+    await openWishes({ ...bo, has_wish: true, on_pause: true })
+
+    const copy = screen.getByRole("switch", {
+      name: /Indsend samme ønsker for Bo/,
+    })
+
+    expect(copy).toHaveAccessibleDescription(
+      /Erstatter de ønsker, Bo allerede har indsendt.*pausen bliver ophævet/,
+    )
+  })
+
+  it("does not show a housemate's standard days form", async () => {
+    const user = await openWishes()
+
+    expect(screen.getByText("Dine standard madlavningsdage")).toBeVisible()
+
+    await user.click(screen.getByRole("radio", { name: "Bo" }))
+
+    await screen.findByRole("switch", {
+      name: /Bo er forhindret i hele perioden/,
+    })
+
+    expect(screen.getByText("Dine standard madlavningsdage")).not.toBeVisible()
+  })
+})
+
+describe("calendar download on Mine hold", () => {
+  const allDays = "Hent mine maddage til kalenderen"
+
+  it("downloads all your days from the top of the page", async () => {
+    api.getMyTeams.mockResolvedValue([myTeam])
+
+    api.downloadMyTeamsICal.mockResolvedValue(undefined)
+
+    renderAt("/madhold/mine-hold")
+
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole("button", { name: allDays }))
+
+    await waitFor(() =>
+      expect(api.downloadMyTeamsICal).toHaveBeenCalledWith(undefined),
+    )
+  })
+
+  it("downloads a single day from its card", async () => {
+    api.getMyTeams.mockResolvedValue([myTeam])
+
+    api.downloadMyTeamsICal.mockResolvedValue(undefined)
+
+    renderAt("/madhold/mine-hold")
+
+    const user = userEvent.setup()
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Hent denne maddag til kalenderen",
+      }),
+    )
+
+    await waitFor(() =>
+      expect(api.downloadMyTeamsICal).toHaveBeenCalledWith(30),
+    )
+  })
+
+  it("is not offered without any maddage of your own", async () => {
+    renderAt("/madhold/mine-hold")
+
+    await screen.findByText("Du er ikke tildelt nogle kommende madhold.")
+
+    expect(
+      screen.queryByRole("button", { name: allDays }),
+    ).not.toBeInTheDocument()
   })
 })
 
