@@ -111,14 +111,15 @@ class PollAdmin(admin.ModelAdmin):
     list_display = [
         "question",
         "post",
+        "message",
         "created_by",
         "allow_multiple_votes",
         "is_anonymous",
         "created_at",
     ]
     list_filter = ["allow_multiple_votes", "is_anonymous"]
-    search_fields = ["question"]
-    raw_id_fields = ["post", "created_by"]
+    # No search: the question is encrypted in the database, so a search can't match it.
+    raw_id_fields = ["post", "message", "created_by"]
     inlines = [PollOptionInline]
 
 

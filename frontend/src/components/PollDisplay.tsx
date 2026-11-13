@@ -31,7 +31,11 @@ import type { Poll, PollOption } from "../types"
 interface PollDisplayProps {
   poll: Poll
 
-  threadQueryKey: (string | number)[]
+  /** The query holding this poll (a thread, a chat's messages), refetched after a change. */
+  queryKey: (string | number)[]
+
+  /** False in a chat, where the poll goes with its message ("Fortryd afsendelse"). */
+  allowDelete?: boolean
 }
 
 function RadioIndicator({ checked }: { checked: boolean }) {
@@ -273,7 +277,9 @@ function OptionBar({
 export default function PollDisplay({
   poll,
 
-  threadQueryKey,
+  queryKey,
+
+  allowDelete = true,
 }: PollDisplayProps) {
   const queryClient = useQueryClient()
 
@@ -285,7 +291,7 @@ export default function PollDisplay({
     mutationFn: (optionId: number) => forumApi.votePoll(poll.id, optionId),
 
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: threadQueryKey })
+      queryClient.invalidateQueries({ queryKey })
     },
 
     onError: (error: unknown) => {
@@ -298,7 +304,7 @@ export default function PollDisplay({
 
     onSuccess: () => {
       setNewOptionText("")
-      queryClient.invalidateQueries({ queryKey: threadQueryKey })
+      queryClient.invalidateQueries({ queryKey })
     },
 
     onError: (error: unknown) => {
@@ -313,7 +319,7 @@ export default function PollDisplay({
     mutationFn: () => forumApi.deletePoll(poll.id),
 
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: threadQueryKey })
+      queryClient.invalidateQueries({ queryKey })
 
       notifications.show({
         title: "Afstemning slettet",
@@ -369,7 +375,7 @@ export default function PollDisplay({
               Åben
             </Badge>
           )}
-          {poll.is_own && (
+          {poll.is_own && allowDelete && (
             <ActionIcon
               variant="subtle"
               color="red"

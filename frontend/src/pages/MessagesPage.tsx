@@ -1,4 +1,12 @@
-import { useState, useEffect, useRef, memo, type RefObject } from "react"
+import {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  memo,
+  type CSSProperties,
+  type RefObject,
+} from "react"
 
 import { Link, useParams, useNavigate, useLocation } from "react-router-dom"
 
@@ -70,6 +78,7 @@ import { useAuthStore } from "../store/authStore"
 import type {
   Conversation,
   ConversationDetail,
+  CreatePollData,
   Message,
   WsMessage,
   WsMessageEdited,
@@ -77,13 +86,19 @@ import type {
   WsMessageReacted,
   WsConversationRenamed,
   WsMessageReactionEntry,
+  WsPollUpdated,
   MessageReactionSummary,
+  Participant,
   ReactionType,
   User,
   MessageAttachment,
 } from "../types"
 
 import ChatRichTextEditor from "../components/ChatRichTextEditor"
+
+import PollCreator from "../components/PollCreator"
+
+import PollDisplay from "../components/PollDisplay"
 
 import { clearDraft, loadDraft, saveDraft } from "../utils/draftStorage"
 
@@ -95,6 +110,10 @@ import {
 } from "../hooks/useConversationMessages"
 
 import { messageElementId, useChatScroll } from "../hooks/useChatScroll"
+
+import { useNow } from "../hooks/useNow"
+
+import { compactTime } from "../utils/compactTime"
 
 import UserLink from "../components/UserLink"
 
@@ -133,6 +152,73 @@ const DEFAULT_EMOJIS: string[] = [
 ]
 
 const NEW_MESSAGE_PATH = "ny"
+
+/** "Lars Hansen": how a person reads in the title of a chat without a name. */
+function participantLabel(p: Participant): string {
+  return `${p.first_name} ${p.last_name}`.trim()
+}
+
+type AvatarPerson = Pick<Participant, "id" | "first_name" | "profile_picture">
+
+interface ParticipantAvatarsProps {
+  /** Most recently active first, as the backend orders `other_participants`. */
+  participants: AvatarPerson[]
+
+  /** Room for this many, the "+N" count included. The list is narrower. */
+  max?: number
+
+  style?: CSSProperties
+}
+
+/**
+ * Avatars left to right, at most `max` of them. Each sits on top of the one
+ * after it, so the leftmost — whoever wrote last — is the one shown whole.
+ * When there are more people, the last place goes to a "+N" count, tucked
+ * just under the avatar before it but not so far that it covers the number;
+ * it is smaller and blue, so it reads as a count and not as one more person
+ * without a picture (those are grey initials). It is never "+1": that one
+ * person's avatar takes no more room than the count would.
+ */
+function ParticipantAvatars({
+  participants,
+  max = 4,
+  style,
+}: ParticipantAvatarsProps) {
+  const shown =
+    participants.length <= max ? participants : participants.slice(0, max - 1)
+
+  const hidden = participants.length - shown.length
+
+  return (
+    // isolate: the z-indexes below order the avatars among themselves only, and
+    // must not lift them over the unread dot the list puts on the group.
+    <Avatar.Group spacing="sm" style={{ isolation: "isolate", ...style }}>
+      {shown.map((p, i) => (
+        <Avatar
+          key={p.id}
+          src={p.profile_picture}
+          radius="xl"
+          size="md"
+          style={{ zIndex: shown.length - i }}
+        >
+          {p.first_name?.[0]}
+        </Avatar>
+      ))}
+      {hidden > 0 && (
+        <Avatar
+          radius="xl"
+          size="sm"
+          color="blue"
+          variant="light"
+          aria-label={`${hidden} flere`}
+          style={{ marginInlineStart: -4, alignSelf: "center", zIndex: 0 }}
+        >
+          +{hidden}
+        </Avatar>
+      )}
+    </Avatar.Group>
+  )
+}
 
 export default function MessagesPage() {
   const { user } = useAuthStore()
@@ -344,8 +430,11 @@ export default function MessagesPage() {
           queryClient,
           deletedData.conversation_id,
           deletedData.message_id,
-          { is_deleted: true, content: "" },
+          { is_deleted: true, content: "", poll: null },
         )
+
+        // The list previews the last message; an unsent one must not linger there.
+        queryClient.invalidateQueries({ queryKey: ["conversations"] })
       } else if (wsData.type === "message_reacted") {
         const reactedData = wsData as WsMessageReacted
 
@@ -369,6 +458,17 @@ export default function MessagesPage() {
                 users: r.users,
               }),
             ),
+          },
+        )
+      } else if (wsData.type === "poll_updated") {
+        const pollData = wsData as WsPollUpdated
+
+        updateMessage(
+          queryClient,
+          pollData.conversation_id,
+          pollData.message_id,
+          {
+            poll: pollData.poll,
           },
         )
       } else if (wsData.type === "conversation_renamed") {
@@ -694,6 +794,7 @@ export default function MessagesPage() {
             <NewConversationArea
               onBack={isMobile ? handleCancelNewMessage : undefined}
               onSuccess={handleNewConversationCreated}
+              isMobile={isMobile}
             />
           ) : selectedConversation ? (
             conversationLoading ? (
@@ -799,6 +900,120 @@ export default function MessagesPage() {
   )
 }
 
+const emptyPoll = (): CreatePollData => ({
+  question: "",
+
+  allow_multiple_votes: false,
+
+  is_anonymous: false,
+
+  allow_others_to_add_options: false,
+
+  options: [{ text: "" }, { text: "" }],
+})
+
+interface PollComposerProps {
+  opened: boolean
+
+  onClose: () => void
+
+  /** Sends the poll. The dialog closes when this resolves, and stays open
+   * with what was written if it throws. */
+  onSend: (poll: CreatePollData) => Promise<unknown>
+
+  fullScreen?: boolean
+}
+
+/** "Ny afstemning": the same dialog in a chat and in a new message. */
+function PollComposer({
+  opened,
+  onClose,
+  onSend,
+  fullScreen,
+}: PollComposerProps) {
+  const [draft, setDraft] = useState(emptyPoll)
+
+  const [isSending, setIsSending] = useState(false)
+
+  const close = () => {
+    setDraft(emptyPoll())
+
+    onClose()
+  }
+
+  const send = async () => {
+    if (isSending) return
+
+    if (!draft.question.trim() || draft.options.some((o) => !o.text.trim())) {
+      notifications.show({
+        title: "Afstemningen er ikke færdig",
+        message: "Skriv et spørgsmål og tekst i alle valgmuligheder.",
+        color: "red",
+      })
+      return
+    }
+
+    setIsSending(true)
+
+    try {
+      await onSend(draft)
+
+      close()
+    } catch (error) {
+      showErrorNotification(error, "Kunne ikke sende afstemningen. Prøv igen.")
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  return (
+    <Modal
+      opened={opened}
+      onClose={close}
+      title="Ny afstemning"
+      size="lg"
+      fullScreen={fullScreen}
+    >
+      <Stack gap="md">
+        <PollCreator pollData={draft} onChange={setDraft} />
+        <Group justify="flex-end">
+          <Button variant="light" onClick={close}>
+            Annuller
+          </Button>
+          <Button onClick={() => void send()} loading={isSending}>
+            Send afstemning
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  )
+}
+
+interface LastActivityProps {
+  at: string
+}
+
+/**
+ * When the last message came, on one line: "3 min", "14:32", "i går". It
+ * keeps itself current, so "nu" doesn't stay "nu" while the list sits open.
+ */
+function LastActivity({ at }: LastActivityProps) {
+  const now = useNow()
+
+  const time = dayjs(at)
+
+  return (
+    <Text
+      size="xs"
+      c="dimmed"
+      title={time.format("D. MMMM YYYY [kl.] HH:mm")}
+      style={{ flexShrink: 0, whiteSpace: "nowrap" }}
+    >
+      {compactTime(time, now)}
+    </Text>
+  )
+}
+
 interface ConversationItemProps {
   conversation: Conversation
 
@@ -828,7 +1043,7 @@ function ConversationItem({
     ? conversation.name
     : hasNoParticipants
       ? "Slettet bruger"
-      : otherParticipants.map((p) => p.first_name).join(", ")
+      : otherParticipants.map(participantLabel).join(", ")
 
   const avatar = otherParticipants[0]
 
@@ -862,23 +1077,7 @@ function ConversationItem({
           zIndex={1}
         >
           {isGroupChat ? (
-            <Avatar.Group spacing="sm">
-              {otherParticipants.slice(0, 3).map((p) => (
-                <Avatar
-                  key={p.id}
-                  src={p.profile_picture}
-                  radius="xl"
-                  size="md"
-                >
-                  {p.first_name?.[0]}
-                </Avatar>
-              ))}
-              {otherParticipants.length > 3 && (
-                <Avatar radius="xl" size="md">
-                  +{otherParticipants.length - 3}
-                </Avatar>
-              )}
-            </Avatar.Group>
+            <ParticipantAvatars participants={otherParticipants} max={3} />
           ) : (
             <Avatar src={avatar?.profile_picture} radius="xl" size="md">
               {avatar?.first_name?.[0]}
@@ -897,9 +1096,7 @@ function ConversationItem({
               {displayName}
             </Text>
             {conversation.last_message && (
-              <Text size="xs" c="dimmed">
-                {dayjs(conversation.last_message.created_at).fromNow()}
-              </Text>
+              <LastActivity at={conversation.last_message.created_at} />
             )}
           </Group>
           {conversation.last_message && (
@@ -980,6 +1177,19 @@ function getDateLabel(date: dayjs.Dayjs): string {
 }
 
 const TIME_GAP_MINUTES = 20
+
+/**
+ * The avatar marks where someone's messages start, so it sits beside the first
+ * line of their first bubble rather than down by its time. Centred on that
+ * line: the bubble's padding plus half a line of its text, less half the
+ * avatar. From Mantine's variables, so it holds with "Stor skrift" too.
+ */
+const SENDER_AVATAR_STYLE: CSSProperties = {
+  alignSelf: "flex-start",
+
+  marginTop:
+    "calc(var(--mantine-spacing-xs) + var(--mantine-font-size-sm) * var(--mantine-line-height-sm) / 2 - var(--avatar-size) / 2)",
+}
 
 interface MessageListProps {
   messages: Message[]
@@ -1218,6 +1428,9 @@ function ChatArea({
 
   const [isRenaming, setIsRenaming] = useState(false)
 
+  const [pollOpened, { open: openPoll, close: closePoll }] =
+    useDisclosure(false)
+
   const queryClient = useQueryClient()
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -1262,7 +1475,19 @@ function ChatArea({
     },
   })
 
-  const otherParticipants = conversation.other_participants ?? []
+  // Whoever wrote last first, as the backend orders them, kept current while the
+  // chat is open: someone who writes now moves to the front. People with nothing
+  // in the loaded messages keep the backend's order, after the rest — their last
+  // message is older than everything loaded.
+  const otherParticipants = useMemo(() => {
+    const lastWrote = new Map<number, number>()
+
+    messages.forEach((m, index) => lastWrote.set(m.sender.id, index))
+
+    return [...(conversation.other_participants ?? [])].sort(
+      (a, b) => (lastWrote.get(b.id) ?? -1) - (lastWrote.get(a.id) ?? -1),
+    )
+  }, [conversation.other_participants, messages])
 
   const allParticipants = conversation.participants ?? []
 
@@ -1274,11 +1499,15 @@ function ChatArea({
     ? conversation.name
     : hasNoParticipants
       ? "Slettet bruger"
-      : otherParticipants
+      : otherParticipants.map(participantLabel).join(", ")
 
-          .map((p) => `${p.first_name} ${p.last_name}`)
-
-          .join(", ")
+  // Says who is in it, you included: "2 deltagere" left the reader guessing
+  // whether they were counted.
+  const membersLine = hasNoParticipants
+    ? "Kun dig"
+    : otherParticipants.length === 1
+      ? `Dig og ${participantLabel(otherParticipants[0])}`
+      : `Dig og ${otherParticipants.length} andre`
 
   const handleRename = async () => {
     setIsRenaming(true)
@@ -1354,6 +1583,19 @@ function ChatArea({
     }
   }
 
+  const handleSendPoll = async (poll: CreatePollData) => {
+    await messagingApi.sendPoll(conversation.id, poll)
+
+    followBottom()
+
+    // Sent over REST, like attachments: refetch rather than wait for the socket.
+    queryClient.invalidateQueries({
+      queryKey: conversationMessagesKey(conversation.id),
+    })
+
+    queryClient.invalidateQueries({ queryKey: ["conversations"] })
+  }
+
   return (
     <FileDropzone
       onDrop={handleDrop}
@@ -1418,23 +1660,10 @@ function ChatArea({
                   }}
                 >
                   {isGroupChat ? (
-                    <Avatar.Group spacing="sm" style={{ flexShrink: 0 }}>
-                      {otherParticipants.slice(0, 3).map((p) => (
-                        <Avatar
-                          key={p.id}
-                          src={p.profile_picture}
-                          radius="xl"
-                          size="md"
-                        >
-                          {p.first_name?.[0]}
-                        </Avatar>
-                      ))}
-                      {otherParticipants.length > 3 && (
-                        <Avatar radius="xl" size="md">
-                          +{otherParticipants.length - 3}
-                        </Avatar>
-                      )}
-                    </Avatar.Group>
+                    <ParticipantAvatars
+                      participants={otherParticipants}
+                      style={{ flexShrink: 0 }}
+                    />
                   ) : (
                     <Avatar
                       src={otherParticipants[0]?.profile_picture}
@@ -1455,7 +1684,7 @@ function ChatArea({
                       {displayName}
                     </Text>
                     <Text size="xs" c="dimmed">
-                      {allParticipants.length} deltagere
+                      {membersLine}
                     </Text>
                   </div>
                 </UnstyledButton>
@@ -1609,6 +1838,13 @@ function ChatArea({
         </form>
       </Modal>
 
+      <PollComposer
+        opened={pollOpened}
+        onClose={closePoll}
+        onSend={handleSendPoll}
+        fullScreen={isMobile}
+      />
+
       {/* Messages */}
       <MessageList
         messages={messages}
@@ -1640,6 +1876,7 @@ function ChatArea({
           onMentionedUsersChange={setMentionedUserIds}
           mentionableUsers={otherParticipants}
           draftKey={"msg-" + conversation.id}
+          onCreatePoll={openPoll}
         />
       </Box>
     </FileDropzone>
@@ -1919,7 +2156,11 @@ const MessageBubble = memo(function MessageBubble({
             src={message.sender.profile_picture}
             radius="xl"
             size="sm"
-            style={{ visibility: showAvatar ? "visible" : "hidden" }}
+            style={{
+              ...SENDER_AVATAR_STYLE,
+
+              visibility: showAvatar ? "visible" : "hidden",
+            }}
           >
             {message.sender.first_name?.[0]}
           </Avatar>
@@ -1946,6 +2187,9 @@ const MessageBubble = memo(function MessageBubble({
   const hasContent = message.content.trim().length > 0
 
   const hasAttachments = message.attachments && message.attachments.length > 0
+
+  // A poll message has no text to edit or copy; it goes with "Fortryd afsendelse".
+  const hasPoll = !!message.poll
 
   // Sort attachments: images first, then other files
 
@@ -1998,7 +2242,7 @@ const MessageBubble = memo(function MessageBubble({
         </ActionIcon>
       </Menu.Target>
       <Menu.Dropdown>
-        {isOwn && (
+        {isOwn && !hasPoll && (
           <Menu.Item
             leftSection={<IconEdit size={14} />}
             onClick={handleStartEdit}
@@ -2006,9 +2250,11 @@ const MessageBubble = memo(function MessageBubble({
             Rediger
           </Menu.Item>
         )}
-        <Menu.Item leftSection={<IconCopy size={14} />} onClick={handleCopy}>
-          Kopiér
-        </Menu.Item>
+        {!hasPoll && (
+          <Menu.Item leftSection={<IconCopy size={14} />} onClick={handleCopy}>
+            Kopiér
+          </Menu.Item>
+        )}
         {!isOwn && (
           <Menu.Item
             leftSection={<IconMailOpened size={14} />}
@@ -2201,21 +2447,23 @@ const MessageBubble = memo(function MessageBubble({
         </Group>
         <Divider my="xs" />
         <Stack gap={0}>
-          <UnstyledButton
-            px="xs"
-            py={6}
-            style={{ borderRadius: "var(--mantine-radius-sm)" }}
-            onClick={() => {
-              handleCopy()
+          {!hasPoll && (
+            <UnstyledButton
+              px="xs"
+              py={6}
+              style={{ borderRadius: "var(--mantine-radius-sm)" }}
+              onClick={() => {
+                handleCopy()
 
-              setReactionPickerOpened(false)
-            }}
-          >
-            <Group gap="xs">
-              <IconCopy size={14} color="var(--mantine-color-dimmed)" />
-              <Text size="sm">Kopiér</Text>
-            </Group>
-          </UnstyledButton>
+                setReactionPickerOpened(false)
+              }}
+            >
+              <Group gap="xs">
+                <IconCopy size={14} color="var(--mantine-color-dimmed)" />
+                <Text size="sm">Kopiér</Text>
+              </Group>
+            </UnstyledButton>
+          )}
           {!isOwn && (
             <UnstyledButton
               px="xs"
@@ -2233,7 +2481,7 @@ const MessageBubble = memo(function MessageBubble({
               </Group>
             </UnstyledButton>
           )}
-          {isOwn && (
+          {isOwn && !hasPoll && (
             <UnstyledButton
               px="xs"
               py={6}
@@ -2347,7 +2595,11 @@ const MessageBubble = memo(function MessageBubble({
             src={message.sender.profile_picture}
             radius="xl"
             size="sm"
-            style={{ visibility: showAvatar ? "visible" : "hidden" }}
+            style={{
+              ...SENDER_AVATAR_STYLE,
+
+              visibility: showAvatar ? "visible" : "hidden",
+            }}
           >
             {message.sender.first_name?.[0]}
           </Avatar>
@@ -2358,6 +2610,18 @@ const MessageBubble = memo(function MessageBubble({
         {isOwn && !isMobileDevice && menuButton}
 
         <Box style={{ maxWidth: "70%", minWidth: 0, overflow: "hidden" }}>
+          {message.poll && (
+            <Box
+              style={{ width: 320, maxWidth: "100%" }}
+              mb={hasContent || hasAttachments ? "xs" : 0}
+            >
+              <PollDisplay
+                poll={message.poll}
+                queryKey={conversationMessagesKey(message.conversation)}
+                allowDelete={false}
+              />
+            </Box>
+          )}
           {hasAttachments && (
             <Stack
               gap="xs"
@@ -2420,7 +2684,7 @@ const MessageBubble = memo(function MessageBubble({
               })}
             </Stack>
           )}
-          {showInlineTime && !hasContent && hasAttachments && (
+          {showInlineTime && !hasContent && (hasAttachments || hasPoll) && (
             <Group gap={4} justify={isOwn ? "flex-end" : "flex-start"} mt={2}>
               {showTime &&
                 isOwn &&
@@ -2612,9 +2876,15 @@ interface NewConversationAreaProps {
   onBack?: () => void
 
   onSuccess: (conversationId: number) => void
+
+  isMobile?: boolean
 }
 
-function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
+function NewConversationArea({
+  onBack,
+  onSuccess,
+  isMobile,
+}: NewConversationAreaProps) {
   const { user: currentUser } = useAuthStore()
 
   const queryClient = useQueryClient()
@@ -2661,10 +2931,13 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
     },
   })
 
+  const [pollOpened, { open: openPoll, close: closePoll }] =
+    useDisclosure(false)
+
   const createMutation = useMutation({
     mutationFn: messagingApi.createConversation,
 
-    onSuccess: (data) => {
+    onSuccess: async (data, sent) => {
       // Seed the conversation cache so the header shows without waiting for a
       // fetch; the messages load through useConversationMessages.
 
@@ -2676,17 +2949,23 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
 
       queryClient.invalidateQueries({ queryKey: ["conversations"] })
 
+      // A poll goes without the text written beside it. That waits in the
+      // chat's box instead, as it would after a poll sent in the chat.
+      const chatDraft = "msg-" + data.id
+
+      if (sent.poll_data && message.trim() && !(await loadDraft(chatDraft))) {
+        await saveDraft(chatDraft, message)
+      }
+
       clearDraft(NEW_MESSAGE_DRAFT)
 
       clearDraft(NEW_MESSAGE_RECIPIENTS_DRAFT)
 
       onSuccess(data.id)
     },
-
-    onError: (error: unknown) => {
-      showErrorNotification(error, "Kunne ikke starte samtale")
-    },
   })
+
+  const recipientIds = () => selectedUsers.map((u) => u.id)
 
   // Bring back the recipients of an unsent message once the user list is here.
   useEffect(() => {
@@ -2763,14 +3042,29 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
     const messageContent =
       contentOverride !== undefined ? contentOverride : message
 
-    createMutation.mutate({
-      participant_ids: selectedUsers.map((u) => u.id),
+    createMutation.mutate(
+      {
+        participant_ids: recipientIds(),
 
-      initial_message: messageContent.trim() || undefined,
+        content: messageContent.trim() || undefined,
 
-      attachments: attachments.length > 0 ? attachments : undefined,
-    })
+        attachments: attachments.length > 0 ? attachments : undefined,
+      },
+      {
+        onError: (error: unknown) => {
+          showErrorNotification(error, "Kunne ikke starte samtale")
+        },
+      },
+    )
   }
+
+  // The poll is the first message; PollComposer reports a failure itself.
+  const handleSendPoll = (poll: CreatePollData) =>
+    createMutation.mutateAsync({
+      participant_ids: recipientIds(),
+
+      poll_data: poll,
+    })
 
   const showDropdown =
     search.trim().length > 0 || (isSearchFocused && selectedUsers.length === 0)
@@ -2939,16 +3233,7 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
         ) : (
           <Center style={{ height: "100%" }}>
             <Stack align="center" gap="xs">
-              <Avatar.Group>
-                {selectedUsers.slice(0, 3).map((u) => (
-                  <Avatar key={u.id} src={u.profile_picture} radius="xl">
-                    {u.first_name?.[0]}
-                  </Avatar>
-                ))}
-                {selectedUsers.length > 3 && (
-                  <Avatar radius="xl">+{selectedUsers.length - 3}</Avatar>
-                )}
-              </Avatar.Group>
+              <ParticipantAvatars participants={selectedUsers} />
               <Text fw={500}>
                 {selectedUsers.length === 1
                   ? `${
@@ -2981,8 +3266,16 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
           onAttachmentsChange={setAttachments}
           draftKey={NEW_MESSAGE_DRAFT}
           onClearDraft={() => setSelectedUsers([])}
+          onCreatePoll={openPoll}
         />
       </Box>
+
+      <PollComposer
+        opened={pollOpened}
+        onClose={closePoll}
+        onSend={handleSendPoll}
+        fullScreen={isMobile}
+      />
     </>
   )
 }

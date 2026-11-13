@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
-import { screen, waitFor } from "@testing-library/react"
+import { act, screen, waitFor, within } from "@testing-library/react"
 
 import userEvent from "@testing-library/user-event"
 
@@ -10,15 +10,15 @@ import MessagesPage from "./MessagesPage"
 
 import { useAuthStore } from "../store/authStore"
 
-import { messagingApi } from "../api/messaging"
+import { messagingApi, chatWs } from "../api/messaging"
 
 import { apiClient } from "../api/client"
 
-import { saveDraft } from "../utils/draftStorage"
+import { loadDraft, saveDraft } from "../utils/draftStorage"
 
 import { Route, Routes } from "react-router-dom"
 
-import type { Conversation, Message, Participant, User } from "../types"
+import type { Conversation, Message, Participant, Poll, User } from "../types"
 
 // Mock the messaging API
 
@@ -33,6 +33,8 @@ vi.mock("../api/messaging", () => ({
     getMessages: vi.fn(),
 
     sendMessage: vi.fn(),
+
+    sendPoll: vi.fn(),
 
     markAsRead: vi.fn(),
 
@@ -290,7 +292,7 @@ describe("MessagesPage", () => {
     renderMessagesPage()
 
     await waitFor(() => {
-      expect(screen.getByText("Alice")).toBeInTheDocument()
+      expect(screen.getByText("Alice Smith")).toBeInTheDocument()
     })
   })
 
@@ -303,7 +305,7 @@ describe("MessagesPage", () => {
       renderMessagesPage()
 
       await waitFor(() => {
-        expect(screen.getByText("Alice, Bob")).toBeInTheDocument()
+        expect(screen.getByText("Alice Smith, Bob Johnson")).toBeInTheDocument()
       })
     })
 
@@ -766,6 +768,476 @@ describe("MessagesPage", () => {
       expect(
         screen.queryByRole("link", { name: "Alice" }),
       ).not.toBeInTheDocument()
+    })
+  })
+
+  describe("Polls", () => {
+    const alice: Participant = mockGroupConversation.other_participants[0]
+
+    const makePoll = (votes: number): Poll => ({
+      id: 5,
+
+      question: "Pizza fredag?",
+
+      allow_multiple_votes: false,
+
+      is_anonymous: false,
+
+      allow_others_to_add_options: false,
+
+      options: [
+        {
+          id: 1,
+
+          text: "Ja",
+
+          order: 0,
+
+          vote_count: votes,
+
+          has_voted: false,
+
+          voters: [],
+        },
+        {
+          id: 2,
+
+          text: "Nej",
+
+          order: 1,
+
+          vote_count: 0,
+
+          has_voted: false,
+
+          voters: [],
+        },
+      ],
+
+      total_voters: votes,
+
+      is_own: false,
+
+      created_at: "2024-01-15T14:01:00Z",
+    })
+
+    const pollMessage: Message = {
+      id: 1,
+
+      conversation: 2,
+
+      sender: alice,
+
+      content: "",
+
+      is_own: false,
+
+      is_read: true,
+
+      is_system_message: false,
+
+      is_deleted: false,
+
+      edited_at: null,
+
+      created_at: "2024-01-15T14:01:00Z",
+
+      attachments: [],
+
+      poll: makePoll(0),
+    }
+
+    const renderGroupChat = () => {
+      vi.mocked(messagingApi.getConversations).mockResolvedValue([
+        mockGroupConversation,
+      ])
+
+      vi.mocked(messagingApi.getConversation).mockResolvedValue(
+        mockGroupConversation,
+      )
+
+      vi.mocked(messagingApi.getMessages).mockResolvedValue({
+        results: [pollMessage],
+
+        has_more: false,
+      })
+
+      return renderMessagesPage(`/beskeder/${mockGroupConversation.id}`)
+    }
+
+    it("shows a poll message as the poll", async () => {
+      renderGroupChat()
+
+      expect(await screen.findByText("Pizza fredag?")).toBeInTheDocument()
+
+      expect(screen.getByText("Ja")).toBeInTheDocument()
+
+      expect(screen.getByText("0 personer har stemt")).toBeInTheDocument()
+    })
+
+    it("updates the poll in place when the chat says it changed", async () => {
+      renderGroupChat()
+
+      await screen.findByText("Pizza fredag?")
+
+      const onWsMessage = vi.mocked(chatWs.onMessage).mock.calls.at(-1)![0]
+
+      act(() => {
+        onWsMessage({
+          type: "poll_updated",
+
+          conversation_id: 2,
+
+          message_id: 1,
+
+          poll: makePoll(1),
+        })
+      })
+
+      expect(await screen.findByText("1 person har stemt")).toBeInTheDocument()
+    })
+
+    it("sends a poll from the composer", async () => {
+      const user = userEvent.setup()
+
+      vi.mocked(messagingApi.sendPoll).mockResolvedValue(undefined)
+
+      renderGroupChat()
+
+      await screen.findByText("Pizza fredag?")
+
+      await user.click(screen.getByTitle("Opret afstemning"))
+
+      await user.type(
+        await screen.findByPlaceholderText("Stil et spørgsmål..."),
+        "Grill lørdag?",
+      )
+
+      await user.type(screen.getByPlaceholderText("Valgmulighed 1"), "Ja")
+
+      await user.type(screen.getByPlaceholderText("Valgmulighed 2"), "Nej")
+
+      await user.click(screen.getByRole("button", { name: "Send afstemning" }))
+
+      await waitFor(() => {
+        expect(messagingApi.sendPoll).toHaveBeenCalledWith(2, {
+          question: "Grill lørdag?",
+
+          allow_multiple_votes: false,
+
+          is_anonymous: false,
+
+          allow_others_to_add_options: false,
+
+          options: [{ text: "Ja" }, { text: "Nej" }],
+        })
+      })
+    })
+  })
+
+  describe("A poll as the first message", () => {
+    const grill = {
+      question: "Grill lørdag?",
+
+      allow_multiple_votes: false,
+
+      is_anonymous: false,
+
+      allow_others_to_add_options: false,
+
+      options: [{ text: "Ja" }, { text: "Nej" }],
+    }
+
+    beforeEach(() => {
+      vi.mocked(apiClient.get).mockResolvedValue({ data: mockUsers })
+
+      const created = { ...mockConversation, id: 9, messages: [] }
+
+      vi.mocked(messagingApi.createConversation).mockResolvedValue(created)
+
+      // Where the page goes once it is made.
+      vi.mocked(messagingApi.getConversation).mockResolvedValue(created)
+
+      vi.mocked(messagingApi.getMessages).mockResolvedValue({
+        results: [],
+
+        has_more: false,
+      })
+    })
+
+    const firstCall = () =>
+      vi.mocked(messagingApi.createConversation).mock.calls[0]?.[0]
+
+    const writeToAlice = async (user: ReturnType<typeof userEvent.setup>) => {
+      renderMessagesPage(`/beskeder/ny`)
+
+      await user.click(
+        await screen.findByPlaceholderText(/søg efter personer/i),
+      )
+
+      await user.click(await screen.findByText("Alice Smith"))
+
+      await screen.findByText("Ny samtale med Alice")
+    }
+
+    const sendGrillPoll = async (user: ReturnType<typeof userEvent.setup>) => {
+      await user.click(screen.getByTitle("Opret afstemning"))
+
+      await user.type(
+        await screen.findByPlaceholderText("Stil et spørgsmål..."),
+        "Grill lørdag?",
+      )
+
+      await user.type(screen.getByPlaceholderText("Valgmulighed 1"), "Ja")
+
+      await user.type(screen.getByPlaceholderText("Valgmulighed 2"), "Nej")
+
+      await user.click(screen.getByRole("button", { name: "Send afstemning" }))
+    }
+
+    it("starts the conversation with the poll", async () => {
+      const user = userEvent.setup()
+
+      await writeToAlice(user)
+
+      await sendGrillPoll(user)
+
+      await waitFor(() => {
+        expect(firstCall()).toEqual({ participant_ids: [2], poll_data: grill })
+      })
+
+      expect(messagingApi.sendPoll).not.toHaveBeenCalled()
+    })
+
+    it("keeps the text written beside it for the chat", async () => {
+      const user = userEvent.setup()
+
+      await writeToAlice(user)
+
+      await user.type(
+        screen.getByPlaceholderText(/skriv en besked/i),
+        "Hvem tager kul med?",
+      )
+
+      await sendGrillPoll(user)
+
+      await waitFor(async () => {
+        expect(await loadDraft("msg-9")).toBe("Hvem tager kul med?")
+      })
+    })
+
+    it("sends text as the first message's content", async () => {
+      const user = userEvent.setup()
+
+      await writeToAlice(user)
+
+      await user.type(screen.getByPlaceholderText(/skriv en besked/i), "Hej")
+
+      await user.click(screen.getByRole("button", { name: "Send" }))
+
+      await waitFor(() => {
+        expect(firstCall()).toEqual({
+          participant_ids: [2],
+
+          content: "Hej",
+
+          attachments: undefined,
+        })
+      })
+    })
+  })
+
+  describe("Who's in a chat", () => {
+    const person = (
+      id: number,
+      firstName: string,
+      lastName: string,
+    ): Participant => ({
+      id,
+
+      first_name: firstName,
+
+      last_name: lastName,
+
+      profile_picture: null,
+    })
+
+    const lars = person(2, "Lars", "Holm")
+
+    const mette = person(3, "Mette", "Berg")
+
+    const groupWith = (others: Participant[]): Conversation => ({
+      ...mockGroupConversation,
+
+      participants: [mockGroupConversation.participants[0], ...others],
+
+      other_participants: others,
+    })
+
+    const wrote = (id: number, sender: Participant): Message => ({
+      id,
+
+      conversation: 2,
+
+      sender,
+
+      content: `Besked ${id}`,
+
+      is_own: false,
+
+      is_read: true,
+
+      is_system_message: false,
+
+      is_deleted: false,
+
+      edited_at: null,
+
+      created_at: `2024-01-15T14:0${id}:00Z`,
+
+      attachments: [],
+    })
+
+    const openChat = (conversation: Conversation, messages: Message[]) => {
+      vi.mocked(messagingApi.getConversations).mockResolvedValue([conversation])
+
+      vi.mocked(messagingApi.getConversation).mockResolvedValue(conversation)
+
+      vi.mocked(messagingApi.getMessages).mockResolvedValue({
+        results: messages,
+
+        has_more: false,
+      })
+
+      return renderMessagesPage(`/beskeder/${conversation.id}`)
+    }
+
+    it("titles a chat without a name by its people's full names", async () => {
+      openChat(groupWith([lars, mette]), [])
+
+      expect(
+        await screen.findByRole("option", {
+          name: /Samtale med Lars Holm, Mette Berg/,
+        }),
+      ).toBeInTheDocument()
+    })
+
+    it("puts whoever wrote last first in the header", async () => {
+      // The backend's order is from when the chat was opened; Mette has
+      // written since, so the header moves her to the front.
+      openChat(groupWith([lars, mette]), [wrote(1, lars), wrote(2, mette)])
+
+      expect(
+        await screen.findByText("Mette Berg, Lars Holm"),
+      ).toBeInTheDocument()
+    })
+
+    it("shows a fourth person rather than +1", async () => {
+      openChat(
+        groupWith([
+          lars,
+          mette,
+          person(4, "Ole", "Dam"),
+          person(5, "Pia", "Krog"),
+        ]),
+        [],
+      )
+
+      await screen.findAllByText(/^Lars Holm, Mette Berg, Ole Dam, Pia/)
+
+      expect(screen.queryByText("+1")).not.toBeInTheDocument()
+    })
+
+    it("counts the rest as +N from two more", async () => {
+      openChat(
+        groupWith([
+          lars,
+          mette,
+          person(4, "Ole", "Dam"),
+          person(5, "Pia", "Krog"),
+          person(6, "Rasmus", "Lund"),
+        ]),
+        [],
+      )
+
+      expect((await screen.findAllByText("+2")).length).toBeGreaterThan(0)
+    })
+
+    it("says who is in it, the reader included, under the title", async () => {
+      openChat(groupWith([lars]), [])
+
+      expect(await screen.findByText("Dig og Lars Holm")).toBeInTheDocument()
+    })
+
+    it("counts the others in a group under the title", async () => {
+      openChat(groupWith([lars, mette]), [])
+
+      expect(await screen.findByText("Dig og 2 andre")).toBeInTheDocument()
+    })
+
+    const listItem = () =>
+      screen.findByRole("option", { name: /^Samtale med Lars/ })
+
+    it("shows up to three people in the list", async () => {
+      openChat(groupWith([lars, mette, person(4, "Ole", "Dam")]), [])
+
+      const item = await listItem()
+
+      for (const initial of ["L", "M", "O"]) {
+        expect(within(item).getByText(initial)).toBeInTheDocument()
+      }
+
+      expect(within(item).queryByLabelText(/flere$/)).not.toBeInTheDocument()
+    })
+
+    it("fits four people in the list's three places as two and +2", async () => {
+      // The header has room for all four; the list is narrower (bug 24412).
+      openChat(
+        groupWith([
+          lars,
+          mette,
+          person(4, "Ole", "Dam"),
+          person(5, "Pia", "Krog"),
+        ]),
+        [],
+      )
+
+      const item = await listItem()
+
+      expect(within(item).getByText("L")).toBeInTheDocument()
+
+      expect(within(item).getByText("M")).toBeInTheDocument()
+
+      expect(within(item).queryByText("O")).not.toBeInTheDocument()
+
+      expect(within(item).getByLabelText("2 flere")).toHaveTextContent("+2")
+    })
+
+    it("says when the last message came in a few letters", async () => {
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60_000).toISOString()
+
+      openChat(
+        {
+          ...groupWith([lars, mette]),
+
+          last_message: {
+            id: 2,
+
+            content: "Group message",
+
+            created_at: fiveMinutesAgo,
+
+            sender_id: 2,
+          },
+        },
+        [],
+      )
+
+      const item = await listItem()
+
+      expect(within(item).getByText("5 min")).toBeInTheDocument()
+
+      expect(within(item).queryByText(/siden/)).not.toBeInTheDocument()
     })
   })
 

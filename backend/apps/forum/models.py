@@ -7,6 +7,8 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.text import slugify
 
+from apps.messaging.encryption import EncryptedTextField
+
 from .utils import danish_slugify
 
 
@@ -414,15 +416,29 @@ class Reaction(models.Model):
 
 class Poll(models.Model):
     """
-    A poll attached to a forum post. Supports single/multiple choice and anonymous voting.
+    A poll in a forum post or in a chat message — exactly one of the two. Supports
+    single/multiple choice and anonymous voting.
+
+    The question and the options are encrypted at rest like message content, so a
+    poll in a private chat is as private as the messages around it. Lengths are
+    checked by the serializers (300/200 characters); the columns hold ciphertext.
     """
 
     post = models.OneToOneField(
         Post,
         on_delete=models.CASCADE,
         related_name="poll",
+        null=True,
+        blank=True,
     )
-    question = models.CharField(max_length=300)
+    message = models.OneToOneField(
+        "messaging.Message",
+        on_delete=models.CASCADE,
+        related_name="poll",
+        null=True,
+        blank=True,
+    )
+    question = EncryptedTextField()
     allow_multiple_votes = models.BooleanField(default=False)
     is_anonymous = models.BooleanField(default=False)
     allow_others_to_add_options = models.BooleanField(default=False)
@@ -433,6 +449,17 @@ class Poll(models.Model):
         related_name="polls",
     )
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(post__isnull=False, message__isnull=True)
+                    | models.Q(post__isnull=True, message__isnull=False)
+                ),
+                name="poll_in_post_or_message",
+            ),
+        ]
 
     def __str__(self) -> str:
         return self.question
@@ -448,7 +475,7 @@ class PollOption(models.Model):
         on_delete=models.CASCADE,
         related_name="options",
     )
-    text = models.CharField(max_length=200)
+    text = EncryptedTextField()
     order = models.PositiveIntegerField(default=0)
 
     class Meta:

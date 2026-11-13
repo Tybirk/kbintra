@@ -9,6 +9,7 @@ import type {
   Conversation,
   ConversationDetail,
   CreateConversationData,
+  CreatePollData,
   Message,
   MessagePage,
 } from "../types"
@@ -44,8 +45,8 @@ export const messagingApi = {
         formData.append("participant_ids", id.toString())
       })
 
-      if (data.initial_message) {
-        formData.append("initial_message", data.initial_message)
+      if (data.content) {
+        formData.append("content", data.content)
       }
 
       data.attachments.forEach((file) => {
@@ -137,6 +138,24 @@ export const messagingApi = {
     )
 
     return response.data
+  },
+
+  // Send a poll: a message without text whose content is the poll (the same
+  // Poll as in the forum, voted on through forumApi.votePoll)
+
+  sendPoll: async (
+    conversationId: number,
+
+    pollData: CreatePollData,
+  ): Promise<void> => {
+    await apiClient.post(
+      `/messages/conversations/${conversationId}/messages/`,
+      {
+        content: "",
+
+        poll_data: pollData,
+      },
+    )
   },
 
   // Mark messages as read

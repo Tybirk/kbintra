@@ -13,9 +13,12 @@ import {
   Popover,
   UnstyledButton,
   Avatar,
+  rem,
 } from "@mantine/core"
 
-import { useMediaQuery } from "@mantine/hooks"
+import { useElementSize, useMediaQuery } from "@mantine/hooks"
+
+import { buttonsStand } from "../utils/composerButtons"
 
 import { notifications } from "@mantine/notifications"
 
@@ -25,11 +28,13 @@ import {
   IconFile,
   IconPhoto,
   IconChevronRight,
+  IconChartBar,
 } from "@tabler/icons-react"
 
 import {
   useRef,
   useEffect,
+  useLayoutEffect,
   useState,
   lazy,
   Suspense,
@@ -38,6 +43,28 @@ import {
 } from "react"
 
 import { filterFilesBySize } from "../config"
+
+/** Between the buttons beside the input, lying or standing. */
+const BUTTON_GAP = 2
+
+const SEND_HINT = " (Ctrl+Enter for at sende)"
+
+let measuringCanvas: HTMLCanvasElement | null = null
+
+/** How wide `text` is in `element`'s font, in px. */
+function textWidth(text: string, element: HTMLElement): number {
+  const style = getComputedStyle(element)
+
+  measuringCanvas ??= document.createElement("canvas")
+
+  const context = measuringCanvas.getContext("2d")
+
+  if (!context) return 0
+
+  context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+
+  return context.measureText(text).width
+}
 
 const EmojiPicker = lazy(() => import("./EmojiPicker"))
 
@@ -95,6 +122,9 @@ interface ChatRichTextEditorProps {
    */
 
   onClearDraft?: () => void
+
+  /** Shows a poll button beside the attachment buttons when given. */
+  onCreatePoll?: () => void
 }
 
 function isImageFile(file: File): boolean {
@@ -130,10 +160,55 @@ export default function ChatRichTextEditor({
 
   draftKey,
   onClearDraft,
+  onCreatePoll,
 }: ChatRichTextEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const isMobile = useMediaQuery("(max-width: 768px)")
+
+  // A phone or tablet tells a picture from a file: the photo button opens the
+  // photo library or camera, the paperclip the files. A computer opens the
+  // same file dialog for both, so there the paperclip alone takes pictures too.
+  // By the pointer, not the width: a narrow window on a computer has no camera
+  // roll, and a tablet on its side still has one.
+  const offersPhotoPicker = useMediaQuery("(pointer: coarse)", undefined, {
+    getInitialValueInEffect: false,
+  })
+
+  const attachTitle = offersPhotoPicker
+    ? "Vedhæft fil"
+    : "Vedhæft fil eller billede"
+
+  // The buttons sit in one row at the foot of the input, which starts one line
+  // high and grows as the message does. A phone keeps them small and folds them
+  // away while typing; a computer has room to keep them out, the emoji picker
+  // too (a phone keyboard has its own).
+  const buttonSize = isMobile ? "md" : "lg"
+
+  const buttonIconSize = isMobile ? 18 : 20
+
+  const buttonCount =
+    (offersPhotoPicker ? 1 : 0) +
+    1 +
+    (onCreatePoll ? 1 : 0) +
+    (isMobile ? 0 : 1)
+
+  // Stood up, the buttons make one column, or two by two when there are four.
+  const stackColumns = buttonCount > 3 ? 2 : 1
+
+  const stackRows = Math.ceil(buttonCount / stackColumns)
+
+  const buttonsRef = useRef<HTMLDivElement>(null)
+
+  const [stacked, setStacked] = useState(false)
+
+  // The composer's own width, which a two-pane page can leave small on a big
+  // screen; the checks below run again when it changes.
+  const { ref: composerRef, width: composerWidth } = useElementSize()
+
+  // On a computer the placeholder also tells how to send, when that fits on
+  // one line: autosize sizes an empty box by its placeholder.
+  const [sendHintFits, setSendHintFits] = useState(true)
 
   const [attachExpanded, setAttachExpanded] = useState(false)
 
@@ -315,6 +390,51 @@ export default function ChatRichTextEditor({
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     }
   }, [draftKey, content])
+
+  // A tall message stands the buttons up in a column, giving the text their
+  // width (see buttonsStand). A phone folds them away while typing instead.
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current
+
+    // A button, not FileButton's hidden input that comes first.
+    const button = buttonsRef.current?.querySelector("button")
+
+    // An empty box lies them down whatever its placeholder takes.
+    if (isMobile || !content || !textarea || !button) {
+      setStacked(false)
+
+      return
+    }
+
+    // What the text needs: autosize sets it inline (this runs after it), and
+    // the min-height a column adds below is a separate property.
+    const needed = parseFloat(textarea.style.height)
+
+    if (!needed) return
+
+    const line = parseFloat(getComputedStyle(textarea).lineHeight)
+
+    const column =
+      stackRows * button.offsetHeight + (stackRows - 1) * BUTTON_GAP
+
+    setStacked((was) => buttonsStand(was, needed, line, column))
+  }, [content, isMobile, stackRows, composerWidth])
+
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current
+
+    // Only while it shows, in the box as it stands then (buttons lying down).
+    if (isMobile || content || stacked || !textarea) return
+
+    const style = getComputedStyle(textarea)
+
+    const room =
+      textarea.clientWidth -
+      parseFloat(style.paddingLeft) -
+      parseFloat(style.paddingRight)
+
+    setSendHintFits(textWidth(`${placeholder}${SEND_HINT}`, textarea) <= room)
+  }, [content, isMobile, stacked, composerWidth, placeholder])
 
   const handlePaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
     const items = event.clipboardData?.items
@@ -733,9 +853,8 @@ export default function ChatRichTextEditor({
 
   // Add hint about Ctrl/Cmd+Enter on desktop
 
-  const actualPlaceholder = isMobile
-    ? placeholder
-    : `${placeholder} (Ctrl+Enter for at sende)`
+  const actualPlaceholder =
+    isMobile || !sendHintFits ? placeholder : `${placeholder}${SEND_HINT}`
 
   return (
     <Stack gap="xs">
@@ -828,27 +947,38 @@ export default function ChatRichTextEditor({
         </ScrollArea>
       )}
       <Group
+        ref={composerRef}
         gap={isMobile ? 4 : "xs"}
         align="flex-end"
         wrap="nowrap"
         style={{ minWidth: 0 }}
       >
-        {isMobile ? (
-          /* Mobile: show attachment buttons by default, collapse to chevron on focus */
+        {isMobile && attachExpanded ? (
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            size="md"
+            mb={1}
+            onClick={() => setAttachExpanded(false)}
+            title="Vis vedhæftninger"
+          >
+            <IconChevronRight size={18} />
+          </ActionIcon>
+        ) : (
+          <Box
+            ref={buttonsRef}
+            mb={1}
+            style={{
+              display: "grid",
 
-          attachExpanded ? (
-            <ActionIcon
-              variant="subtle"
-              color="gray"
-              size="md"
-              mb={1}
-              onClick={() => setAttachExpanded(false)}
-              title="Vis vedhæftninger"
-            >
-              <IconChevronRight size={18} />
-            </ActionIcon>
-          ) : (
-            <Group gap={2} wrap="nowrap" mb={1}>
+              gridTemplateColumns: `repeat(${
+                stacked ? stackColumns : buttonCount
+              }, auto)`,
+
+              gap: BUTTON_GAP,
+            }}
+          >
+            {offersPhotoPicker && (
               <FileButton
                 onChange={handleFilesSelected}
                 multiple
@@ -859,70 +989,47 @@ export default function ChatRichTextEditor({
                     {...props}
                     variant="subtle"
                     color="gray"
-                    size="md"
+                    size={buttonSize}
                     disabled={disabled}
                     title="Vælg billeder"
                   >
-                    <IconPhoto size={18} />
+                    <IconPhoto size={buttonIconSize} />
                   </ActionIcon>
                 )}
               </FileButton>
-              <FileButton onChange={handleFilesSelected} multiple>
-                {(props) => (
-                  <ActionIcon
-                    {...props}
-                    variant="subtle"
-                    color="gray"
-                    size="md"
-                    disabled={disabled}
-                    title="Vedhæft fil"
-                  >
-                    <IconPaperclip size={18} />
-                  </ActionIcon>
-                )}
-              </FileButton>
-            </Group>
-          )
-        ) : (
-          /* Desktop: always show all action icons */
-
-          <Group gap={4} wrap="nowrap" mb={1}>
-            <FileButton
-              onChange={handleFilesSelected}
-              multiple
-              accept="image/*"
-            >
-              {(props) => (
-                <ActionIcon
-                  {...props}
-                  variant="subtle"
-                  color="gray"
-                  size="lg"
-                  disabled={disabled}
-                  title="Vælg billeder"
-                >
-                  <IconPhoto size={20} />
-                </ActionIcon>
-              )}
-            </FileButton>
+            )}
             <FileButton onChange={handleFilesSelected} multiple>
               {(props) => (
                 <ActionIcon
                   {...props}
                   variant="subtle"
                   color="gray"
-                  size="lg"
+                  size={buttonSize}
                   disabled={disabled}
-                  title="Vedhæft fil"
+                  title={attachTitle}
                 >
-                  <IconPaperclip size={20} />
+                  <IconPaperclip size={buttonIconSize} />
                 </ActionIcon>
               )}
             </FileButton>
-            <Suspense fallback={null}>
-              <EmojiPicker onSelect={handleEmojiSelect} disabled={disabled} />
-            </Suspense>
-          </Group>
+            {onCreatePoll && (
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                size={buttonSize}
+                disabled={disabled}
+                onClick={onCreatePoll}
+                title="Opret afstemning"
+              >
+                <IconChartBar size={buttonIconSize} />
+              </ActionIcon>
+            )}
+            {!isMobile && (
+              <Suspense fallback={null}>
+                <EmojiPicker onSelect={handleEmojiSelect} disabled={disabled} />
+              </Suspense>
+            )}
+          </Box>
         )}
 
         {/* Message input with mention/emoji popover */}
@@ -963,6 +1070,11 @@ export default function ChatRichTextEditor({
                   paddingLeft: 10,
 
                   paddingRight: 10,
+
+                  // Standing, the buttons are as tall as the box at least.
+                  minHeight: stacked
+                    ? `calc(${stackRows} * ${rem(34)} + ${(stackRows - 1) * BUTTON_GAP}px)`
+                    : undefined,
                 },
               }}
             />

@@ -2,6 +2,8 @@
 Serializers for Forum models.
 """
 
+import json
+
 from rest_framework import serializers
 
 from apps.backup.signing import signed_media_url
@@ -21,6 +23,7 @@ from .models import (
     SubgroupSubscription,
     Thread,
 )
+from .services import create_poll
 
 
 def _create_post_attachment(
@@ -384,6 +387,17 @@ class ReactionSummarySerializer(serializers.Serializer):
     users = serializers.ListField(child=serializers.DictField())
 
 
+def _viewer(context: dict) -> User | None:
+    """Whom a poll is rendered for: the request's user, or `user` from the context
+    where there is no request — a chat socket renders a poll for its own user."""
+    if "user" in context:
+        return context["user"]
+    request = context.get("request")
+    if request and request.user.is_authenticated:
+        return request.user
+    return None
+
+
 class PollVoterSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """Minimal serializer for poll voters."""
 
@@ -407,10 +421,10 @@ class PollOptionSerializer(serializers.ModelSerializer):
         return obj.votes.count()
 
     def get_has_voted(self, obj: PollOption) -> bool:
-        request = self.context.get("request")
-        if request and request.user.is_authenticated:
-            return obj.votes.filter(user=request.user).exists()
-        return False
+        viewer = _viewer(self.context)
+        if viewer is None:
+            return False
+        return any(vote.user_id == viewer.id for vote in obj.votes.all())
 
     def get_voters(self, obj: PollOption) -> list[dict]:
         if obj.poll.is_anonymous:
@@ -444,10 +458,8 @@ class PollSerializer(serializers.ModelSerializer):
         return PollVote.objects.filter(option__poll=obj).values("user_id").distinct().count()
 
     def get_is_own(self, obj: Poll) -> bool:
-        request = self.context.get("request")
-        if request and request.user.is_authenticated:
-            return obj.created_by_id == request.user.id
-        return False
+        viewer = _viewer(self.context)
+        return viewer is not None and obj.created_by_id == viewer.id
 
 
 class PollOptionCreateSerializer(serializers.Serializer):
@@ -476,6 +488,22 @@ class PollCreateSerializer(serializers.Serializer):
         if len(value) > 20:
             raise serializers.ValidationError("En afstemning kan højst have 20 valgmuligheder.")
         return value
+
+
+class PollDataField(serializers.JSONField):
+    """`poll_data` on anything a poll can be created with — a thread, a post, a chat
+    message. Arrives as an object, or as a JSON string inside a multipart form next
+    to attachments; comes out as PollCreateSerializer's validated data."""
+
+    def to_internal_value(self, data: object) -> dict:
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (json.JSONDecodeError, TypeError):
+                raise serializers.ValidationError("Ugyldig afstemningsdata.") from None
+        serializer = PollCreateSerializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        return serializer.validated_data
 
 
 class PollOptionUpdateSerializer(serializers.Serializer):
@@ -603,7 +631,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
         required=False,
         allow_empty=True,
     )
-    poll_data = serializers.JSONField(write_only=True, required=False)
+    poll_data = PollDataField(write_only=True, required=False)
 
     class Meta:
         model = Post
@@ -631,20 +659,6 @@ class PostCreateSerializer(serializers.ModelSerializer):
         for file in value:
             validate_file_size(file)
         return value
-
-    def validate_poll_data(self, value: object) -> dict:
-        if value is None:
-            return value
-        if isinstance(value, str):
-            import json
-
-            try:
-                value = json.loads(value)
-            except (json.JSONDecodeError, TypeError):
-                raise serializers.ValidationError("Ugyldig afstemningsdata.") from None
-        serializer = PollCreateSerializer(data=value)
-        serializer.is_valid(raise_exception=True)
-        return serializer.validated_data
 
     def update(self, instance: Post, validated_data: dict) -> Post:
         attachments = validated_data.pop("attachments", [])
@@ -686,18 +700,8 @@ class PostCreateSerializer(serializers.ModelSerializer):
         for attachment_file in attachments:
             _create_post_attachment(post, post.author, attachment_file)
 
-        # Create poll if poll_data is provided
         if poll_data:
-            poll = Poll.objects.create(
-                post=post,
-                question=poll_data["question"],
-                allow_multiple_votes=poll_data.get("allow_multiple_votes", False),
-                is_anonymous=poll_data.get("is_anonymous", False),
-                allow_others_to_add_options=poll_data.get("allow_others_to_add_options", False),
-                created_by=post.author,
-            )
-            for i, option_data in enumerate(poll_data["options"]):
-                PollOption.objects.create(poll=poll, text=option_data["text"], order=i)
+            create_poll(poll_data, post.author, post=post)
 
         thread = post.thread
         author = post.author
@@ -983,7 +987,7 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
         required=False,
         allow_empty=True,
     )
-    poll_data = serializers.JSONField(write_only=True, required=False)
+    poll_data = PollDataField(write_only=True, required=False)
 
     class Meta:
         model = Thread
@@ -1015,20 +1019,6 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
             validate_file_size(file)
         return value
 
-    def validate_poll_data(self, value: object) -> dict:
-        if value is None:
-            return value
-        if isinstance(value, str):
-            import json
-
-            try:
-                value = json.loads(value)
-            except (json.JSONDecodeError, TypeError):
-                raise serializers.ValidationError("Ugyldig afstemningsdata.") from None
-        serializer = PollCreateSerializer(data=value)
-        serializer.is_valid(raise_exception=True)
-        return serializer.validated_data
-
     def create(self, validated_data: dict) -> Thread:
         from django.utils import timezone
 
@@ -1051,18 +1041,8 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
         for attachment_file in attachments:
             _create_post_attachment(post, post.author, attachment_file)
 
-        # Create poll if poll_data is provided
         if poll_data:
-            poll = Poll.objects.create(
-                post=post,
-                question=poll_data["question"],
-                allow_multiple_votes=poll_data.get("allow_multiple_votes", False),
-                is_anonymous=poll_data.get("is_anonymous", False),
-                allow_others_to_add_options=poll_data.get("allow_others_to_add_options", False),
-                created_by=post.author,
-            )
-            for i, option_data in enumerate(poll_data["options"]):
-                PollOption.objects.create(poll=poll, text=option_data["text"], order=i)
+            create_poll(poll_data, post.author, post=post)
 
         # Update subgroup's last activity timestamp
         thread.subgroup.last_activity_at = timezone.now()
