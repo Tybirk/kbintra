@@ -13,6 +13,7 @@ import {
   Popover,
   UnstyledButton,
   Avatar,
+  rem,
 } from "@mantine/core"
 
 import { useMediaQuery } from "@mantine/hooks"
@@ -139,6 +140,28 @@ export default function ChatRichTextEditor({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const isMobile = useMediaQuery("(max-width: 768px)")
+
+  // A phone or tablet tells a picture from a file: the photo button opens the
+  // photo library or camera, the paperclip the files. A computer opens the
+  // same file dialog for both, so there the paperclip alone takes pictures too.
+  // By the pointer, not the width: a narrow window on a computer has no camera
+  // roll, and a tablet on its side still has one.
+  const offersPhotoPicker = useMediaQuery("(pointer: coarse)", undefined, {
+    getInitialValueInEffect: false,
+  })
+
+  const attachTitle = offersPhotoPicker
+    ? "Vedhæft fil"
+    : "Vedhæft fil eller billede"
+
+  // Desktop: the buttons stand in one column (two with the photo button, which
+  // makes four), and the text box is as tall as they are.
+  const desktopButtons =
+    (offersPhotoPicker ? 1 : 0) + (onCreatePoll ? 1 : 0) + 2
+
+  const desktopColumns = offersPhotoPicker ? 2 : 1
+
+  const desktopRows = Math.ceil(desktopButtons / desktopColumns)
 
   const [attachExpanded, setAttachExpanded] = useState(false)
 
@@ -854,24 +877,26 @@ export default function ChatRichTextEditor({
             </ActionIcon>
           ) : (
             <Group gap={2} wrap="nowrap" mb={1}>
-              <FileButton
-                onChange={handleFilesSelected}
-                multiple
-                accept="image/*"
-              >
-                {(props) => (
-                  <ActionIcon
-                    {...props}
-                    variant="subtle"
-                    color="gray"
-                    size="md"
-                    disabled={disabled}
-                    title="Vælg billeder"
-                  >
-                    <IconPhoto size={18} />
-                  </ActionIcon>
-                )}
-              </FileButton>
+              {offersPhotoPicker && (
+                <FileButton
+                  onChange={handleFilesSelected}
+                  multiple
+                  accept="image/*"
+                >
+                  {(props) => (
+                    <ActionIcon
+                      {...props}
+                      variant="subtle"
+                      color="gray"
+                      size="md"
+                      disabled={disabled}
+                      title="Vælg billeder"
+                    >
+                      <IconPhoto size={18} />
+                    </ActionIcon>
+                  )}
+                </FileButton>
+              )}
               <FileButton onChange={handleFilesSelected} multiple>
                 {(props) => (
                   <ActionIcon
@@ -880,7 +905,7 @@ export default function ChatRichTextEditor({
                     color="gray"
                     size="md"
                     disabled={disabled}
-                    title="Vedhæft fil"
+                    title={attachTitle}
                   >
                     <IconPaperclip size={18} />
                   </ActionIcon>
@@ -901,37 +926,39 @@ export default function ChatRichTextEditor({
             </Group>
           )
         ) : (
-          /* Desktop: always show all action icons, two by two so they take
-             less of the input's width */
+          /* Desktop: always show all action icons, stacked beside the input
+             so they take little of its width */
 
           <Box
             mb={1}
             style={{
               display: "grid",
 
-              gridTemplateColumns: "repeat(2, auto)",
+              gridTemplateColumns: `repeat(${desktopColumns}, auto)`,
 
               gap: 2,
             }}
           >
-            <FileButton
-              onChange={handleFilesSelected}
-              multiple
-              accept="image/*"
-            >
-              {(props) => (
-                <ActionIcon
-                  {...props}
-                  variant="subtle"
-                  color="gray"
-                  size="lg"
-                  disabled={disabled}
-                  title="Vælg billeder"
-                >
-                  <IconPhoto size={20} />
-                </ActionIcon>
-              )}
-            </FileButton>
+            {offersPhotoPicker && (
+              <FileButton
+                onChange={handleFilesSelected}
+                multiple
+                accept="image/*"
+              >
+                {(props) => (
+                  <ActionIcon
+                    {...props}
+                    variant="subtle"
+                    color="gray"
+                    size="lg"
+                    disabled={disabled}
+                    title="Vælg billeder"
+                  >
+                    <IconPhoto size={20} />
+                  </ActionIcon>
+                )}
+              </FileButton>
+            )}
             <FileButton onChange={handleFilesSelected} multiple>
               {(props) => (
                 <ActionIcon
@@ -940,7 +967,7 @@ export default function ChatRichTextEditor({
                   color="gray"
                   size="lg"
                   disabled={disabled}
-                  title="Vedhæft fil"
+                  title={attachTitle}
                 >
                   <IconPaperclip size={20} />
                 </ActionIcon>
@@ -1003,9 +1030,12 @@ export default function ChatRichTextEditor({
 
                   paddingRight: 10,
 
-                  // On desktop, as tall as the two rows of buttons beside it
-                  // (2 × 34 px + 2 px gap) instead of one line at their foot.
-                  minHeight: isMobile ? undefined : 70,
+                  // On desktop, as tall as the buttons beside it (rows of
+                  // size="lg" ActionIcons, 2 px apart) instead of one line at
+                  // their foot.
+                  minHeight: isMobile
+                    ? undefined
+                    : `calc(${desktopRows} * ${rem(34)} + ${desktopRows - 1} * 2px)`,
                 },
               }}
             />
