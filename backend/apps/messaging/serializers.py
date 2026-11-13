@@ -10,7 +10,6 @@ from django.db.models import Max, Q
 from rest_framework import serializers
 
 from apps.backup.signing import signed_media_url
-from apps.food.utils import house_number_for
 from apps.forum.serializers import PollDataField, PollSerializer
 from apps.forum.services import create_poll
 from apps.users.models import User
@@ -24,16 +23,9 @@ logger = logging.getLogger(__name__)
 class ParticipantSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """Minimal serializer for conversation participants."""
 
-    house_number = serializers.SerializerMethodField()
-
     class Meta:
         model = User
-        fields = ["id", "first_name", "last_name", "profile_picture", "house_number"]
-
-    def get_house_number(self, obj: User) -> str:
-        """ "22" for Kløverbakkevej 22, "" without a house: a chat without a name is
-        titled by its people as "Lars (22), Mette (7)", like the madhold."""
-        return house_number_for(obj.house)
+        fields = ["id", "first_name", "last_name", "profile_picture"]
 
 
 # Sorts after any real time: participants who never wrote in a conversation.
@@ -330,7 +322,7 @@ def message_page(conversation: Conversation, before: Message | None = None) -> t
     With `before`, the page ends just before that message, which is how the chat
     loads history one page at a time as the reader scrolls up.
     """
-    messages = conversation.messages.select_related("sender__house", "poll").prefetch_related(
+    messages = conversation.messages.select_related("sender", "poll").prefetch_related(
         "reactions__user", "attachments", "poll__options__votes__user"
     )
     if before is not None:

@@ -40,7 +40,7 @@ class ConversationListCreateView(generics.ListCreateAPIView):
     def get_queryset(self) -> QuerySet[Conversation]:
         return (
             Conversation.objects.filter(participants=self.request.user)
-            .prefetch_related("participants__house")
+            .prefetch_related("participants")
             # A conversation without messages yet sorts by when it was made:
             # NULL sorted it last, off-screen while it was the one just opened.
             .annotate(last_activity=Coalesce(Max("messages__created_at"), "created_at"))
@@ -178,7 +178,7 @@ class ConversationDetailView(generics.RetrieveAPIView):
         # fetches (and prefetches) just the last 50 messages itself, so prefetching
         # the full message history on the conversation would be wasted work.
         return Conversation.objects.filter(participants=self.request.user).prefetch_related(
-            "participants__house"
+            "participants"
         )
 
     def retrieve(self, request: Request, *args, **kwargs) -> Response:

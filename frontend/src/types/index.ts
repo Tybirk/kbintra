@@ -1457,9 +1457,6 @@ export interface Participant {
   last_name: string
 
   profile_picture: string | null
-
-  /** "22" for Kløverbakkevej 22; empty without a house. Absent on WebSocket senders. */
-  house_number?: string
 }
 
 export interface MessageAttachment {

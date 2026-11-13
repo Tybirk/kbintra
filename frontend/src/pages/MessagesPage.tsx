@@ -153,9 +153,9 @@ const DEFAULT_EMOJIS: string[] = [
 
 const NEW_MESSAGE_PATH = "ny"
 
-/** "Lars (22)": how a person reads in the title of a chat without a name. */
+/** "Lars Hansen": how a person reads in the title of a chat without a name. */
 function participantLabel(p: Participant): string {
-  return p.house_number ? `${p.first_name} (${p.house_number})` : p.first_name
+  return `${p.first_name} ${p.last_name}`.trim()
 }
 
 type AvatarPerson = Pick<Participant, "id" | "first_name" | "profile_picture">

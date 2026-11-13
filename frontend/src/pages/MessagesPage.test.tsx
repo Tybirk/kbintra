@@ -292,7 +292,7 @@ describe("MessagesPage", () => {
     renderMessagesPage()
 
     await waitFor(() => {
-      expect(screen.getByText("Alice")).toBeInTheDocument()
+      expect(screen.getByText("Alice Smith")).toBeInTheDocument()
     })
   })
 
@@ -305,7 +305,7 @@ describe("MessagesPage", () => {
       renderMessagesPage()
 
       await waitFor(() => {
-        expect(screen.getByText("Alice, Bob")).toBeInTheDocument()
+        expect(screen.getByText("Alice Smith, Bob Johnson")).toBeInTheDocument()
       })
     })
 
@@ -1051,22 +1051,20 @@ describe("MessagesPage", () => {
     const person = (
       id: number,
       firstName: string,
-      houseNumber: string,
+      lastName: string,
     ): Participant => ({
       id,
 
       first_name: firstName,
 
-      last_name: "Hansen",
+      last_name: lastName,
 
       profile_picture: null,
-
-      house_number: houseNumber,
     })
 
-    const lars = person(2, "Lars", "22")
+    const lars = person(2, "Lars", "Holm")
 
-    const mette = person(3, "Mette", "7")
+    const mette = person(3, "Mette", "Berg")
 
     const groupWith = (others: Participant[]): Conversation => ({
       ...mockGroupConversation,
@@ -1114,12 +1112,12 @@ describe("MessagesPage", () => {
       return renderMessagesPage(`/beskeder/${conversation.id}`)
     }
 
-    it("titles a chat without a name by first name and house number", async () => {
+    it("titles a chat without a name by its people's full names", async () => {
       openChat(groupWith([lars, mette]), [])
 
       expect(
         await screen.findByRole("option", {
-          name: /Samtale med Lars \(22\), Mette \(7\)/,
+          name: /Samtale med Lars Holm, Mette Berg/,
         }),
       ).toBeInTheDocument()
     })
@@ -1130,17 +1128,22 @@ describe("MessagesPage", () => {
       openChat(groupWith([lars, mette]), [wrote(1, lars), wrote(2, mette)])
 
       expect(
-        await screen.findByText("Mette (7), Lars (22)"),
+        await screen.findByText("Mette Berg, Lars Holm"),
       ).toBeInTheDocument()
     })
 
     it("shows a fourth person rather than +1", async () => {
       openChat(
-        groupWith([lars, mette, person(4, "Ole", "1"), person(5, "Pia", "2")]),
+        groupWith([
+          lars,
+          mette,
+          person(4, "Ole", "Dam"),
+          person(5, "Pia", "Krog"),
+        ]),
         [],
       )
 
-      await screen.findAllByText(/^Lars \(22\), Mette \(7\), Ole \(1\), Pia/)
+      await screen.findAllByText(/^Lars Holm, Mette Berg, Ole Dam, Pia/)
 
       expect(screen.queryByText("+1")).not.toBeInTheDocument()
     })
@@ -1150,9 +1153,9 @@ describe("MessagesPage", () => {
         groupWith([
           lars,
           mette,
-          person(4, "Ole", "1"),
-          person(5, "Pia", "2"),
-          person(6, "Rasmus", "3"),
+          person(4, "Ole", "Dam"),
+          person(5, "Pia", "Krog"),
+          person(6, "Rasmus", "Lund"),
         ]),
         [],
       )
@@ -1163,7 +1166,7 @@ describe("MessagesPage", () => {
     it("says who is in it, the reader included, under the title", async () => {
       openChat(groupWith([lars]), [])
 
-      expect(await screen.findByText("Dig og Lars (22)")).toBeInTheDocument()
+      expect(await screen.findByText("Dig og Lars Holm")).toBeInTheDocument()
     })
 
     it("counts the others in a group under the title", async () => {
@@ -1176,7 +1179,7 @@ describe("MessagesPage", () => {
       screen.findByRole("option", { name: /^Samtale med Lars/ })
 
     it("shows up to three people in the list", async () => {
-      openChat(groupWith([lars, mette, person(4, "Ole", "1")]), [])
+      openChat(groupWith([lars, mette, person(4, "Ole", "Dam")]), [])
 
       const item = await listItem()
 
@@ -1190,7 +1193,12 @@ describe("MessagesPage", () => {
     it("fits four people in the list's three places as two and +2", async () => {
       // The header has room for all four; the list is narrower (bug 24412).
       openChat(
-        groupWith([lars, mette, person(4, "Ole", "1"), person(5, "Pia", "2")]),
+        groupWith([
+          lars,
+          mette,
+          person(4, "Ole", "Dam"),
+          person(5, "Pia", "Krog"),
+        ]),
         [],
       )
 
