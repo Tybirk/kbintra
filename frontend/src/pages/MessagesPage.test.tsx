@@ -14,7 +14,7 @@ import { messagingApi, chatWs } from "../api/messaging"
 
 import { apiClient } from "../api/client"
 
-import { saveDraft } from "../utils/draftStorage"
+import { loadDraft, saveDraft } from "../utils/draftStorage"
 
 import { Route, Routes } from "react-router-dom"
 
@@ -930,6 +930,118 @@ describe("MessagesPage", () => {
           allow_others_to_add_options: false,
 
           options: [{ text: "Ja" }, { text: "Nej" }],
+        })
+      })
+    })
+  })
+
+  describe("A poll as the first message", () => {
+    const grill = {
+      question: "Grill lørdag?",
+
+      allow_multiple_votes: false,
+
+      is_anonymous: false,
+
+      allow_others_to_add_options: false,
+
+      options: [{ text: "Ja" }, { text: "Nej" }],
+    }
+
+    beforeEach(() => {
+      vi.mocked(apiClient.get).mockResolvedValue({ data: mockUsers })
+
+      const created = { ...mockConversation, id: 9, messages: [] }
+
+      vi.mocked(messagingApi.createConversation).mockResolvedValue(created)
+
+      // Where the page goes once it is made.
+      vi.mocked(messagingApi.getConversation).mockResolvedValue(created)
+
+      vi.mocked(messagingApi.getMessages).mockResolvedValue({
+        results: [],
+
+        has_more: false,
+      })
+    })
+
+    const firstCall = () =>
+      vi.mocked(messagingApi.createConversation).mock.calls[0]?.[0]
+
+    const writeToAlice = async (user: ReturnType<typeof userEvent.setup>) => {
+      renderMessagesPage(`/beskeder/ny`)
+
+      await user.click(
+        await screen.findByPlaceholderText(/søg efter personer/i),
+      )
+
+      await user.click(await screen.findByText("Alice Smith"))
+
+      await screen.findByText("Ny samtale med Alice")
+    }
+
+    const sendGrillPoll = async (user: ReturnType<typeof userEvent.setup>) => {
+      await user.click(screen.getByTitle("Opret afstemning"))
+
+      await user.type(
+        await screen.findByPlaceholderText("Stil et spørgsmål..."),
+        "Grill lørdag?",
+      )
+
+      await user.type(screen.getByPlaceholderText("Valgmulighed 1"), "Ja")
+
+      await user.type(screen.getByPlaceholderText("Valgmulighed 2"), "Nej")
+
+      await user.click(screen.getByRole("button", { name: "Send afstemning" }))
+    }
+
+    it("starts the conversation with the poll", async () => {
+      const user = userEvent.setup()
+
+      await writeToAlice(user)
+
+      await sendGrillPoll(user)
+
+      await waitFor(() => {
+        expect(firstCall()).toEqual({ participant_ids: [2], poll_data: grill })
+      })
+
+      expect(messagingApi.sendPoll).not.toHaveBeenCalled()
+    })
+
+    it("keeps the text written beside it for the chat", async () => {
+      const user = userEvent.setup()
+
+      await writeToAlice(user)
+
+      await user.type(
+        screen.getByPlaceholderText(/skriv en besked/i),
+        "Hvem tager kul med?",
+      )
+
+      await sendGrillPoll(user)
+
+      await waitFor(async () => {
+        expect(await loadDraft("msg-9")).toBe("Hvem tager kul med?")
+      })
+    })
+
+    it("sends text as the first message's content", async () => {
+      const user = userEvent.setup()
+
+      await writeToAlice(user)
+
+      await user.type(screen.getByPlaceholderText(/skriv en besked/i), "Hej")
+
+      await user.click(screen.getByRole("button", { name: "Send" }))
+
+      await waitFor(() => {
+        expect(firstCall()).toEqual({
+          participant_ids: [2],
+
+          content: "Hej",
+
+          attachments: undefined,
         })
       })
     })

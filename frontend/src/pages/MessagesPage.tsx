@@ -794,6 +794,7 @@ export default function MessagesPage() {
             <NewConversationArea
               onBack={isMobile ? handleCancelNewMessage : undefined}
               onSuccess={handleNewConversationCreated}
+              isMobile={isMobile}
             />
           ) : selectedConversation ? (
             conversationLoading ? (
@@ -896,6 +897,95 @@ export default function MessagesPage() {
         </Box>
       </Paper>
     </Box>
+  )
+}
+
+const emptyPoll = (): CreatePollData => ({
+  question: "",
+
+  allow_multiple_votes: false,
+
+  is_anonymous: false,
+
+  allow_others_to_add_options: false,
+
+  options: [{ text: "" }, { text: "" }],
+})
+
+interface PollComposerProps {
+  opened: boolean
+
+  onClose: () => void
+
+  /** Sends the poll. The dialog closes when this resolves, and stays open
+   * with what was written if it throws. */
+  onSend: (poll: CreatePollData) => Promise<unknown>
+
+  fullScreen?: boolean
+}
+
+/** "Ny afstemning": the same dialog in a chat and in a new message. */
+function PollComposer({
+  opened,
+  onClose,
+  onSend,
+  fullScreen,
+}: PollComposerProps) {
+  const [draft, setDraft] = useState(emptyPoll)
+
+  const [isSending, setIsSending] = useState(false)
+
+  const close = () => {
+    setDraft(emptyPoll())
+
+    onClose()
+  }
+
+  const send = async () => {
+    if (isSending) return
+
+    if (!draft.question.trim() || draft.options.some((o) => !o.text.trim())) {
+      notifications.show({
+        title: "Afstemningen er ikke færdig",
+        message: "Skriv et spørgsmål og tekst i alle valgmuligheder.",
+        color: "red",
+      })
+      return
+    }
+
+    setIsSending(true)
+
+    try {
+      await onSend(draft)
+
+      close()
+    } catch (error) {
+      showErrorNotification(error, "Kunne ikke sende afstemningen. Prøv igen.")
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  return (
+    <Modal
+      opened={opened}
+      onClose={close}
+      title="Ny afstemning"
+      size="lg"
+      fullScreen={fullScreen}
+    >
+      <Stack gap="md">
+        <PollCreator pollData={draft} onChange={setDraft} />
+        <Group justify="flex-end">
+          <Button variant="light" onClick={close}>
+            Annuller
+          </Button>
+          <Button onClick={() => void send()} loading={isSending}>
+            Send afstemning
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
   )
 }
 
@@ -1325,9 +1415,8 @@ function ChatArea({
 
   const [isRenaming, setIsRenaming] = useState(false)
 
-  const [pollDraft, setPollDraft] = useState<CreatePollData | null>(null)
-
-  const [isSendingPoll, setIsSendingPoll] = useState(false)
+  const [pollOpened, { open: openPoll, close: closePoll }] =
+    useDisclosure(false)
 
   const queryClient = useQueryClient()
 
@@ -1481,41 +1570,17 @@ function ChatArea({
     }
   }
 
-  const handleSendPoll = async () => {
-    if (!pollDraft || isSendingPoll) return
+  const handleSendPoll = async (poll: CreatePollData) => {
+    await messagingApi.sendPoll(conversation.id, poll)
 
-    if (
-      !pollDraft.question.trim() ||
-      pollDraft.options.some((o) => !o.text.trim())
-    ) {
-      notifications.show({
-        title: "Afstemningen er ikke færdig",
-        message: "Skriv et spørgsmål og tekst i alle valgmuligheder.",
-        color: "red",
-      })
-      return
-    }
+    followBottom()
 
-    setIsSendingPoll(true)
+    // Sent over REST, like attachments: refetch rather than wait for the socket.
+    queryClient.invalidateQueries({
+      queryKey: conversationMessagesKey(conversation.id),
+    })
 
-    try {
-      await messagingApi.sendPoll(conversation.id, pollDraft)
-
-      setPollDraft(null)
-
-      followBottom()
-
-      // Sent over REST, like attachments: refetch rather than wait for the socket.
-      queryClient.invalidateQueries({
-        queryKey: conversationMessagesKey(conversation.id),
-      })
-
-      queryClient.invalidateQueries({ queryKey: ["conversations"] })
-    } catch (error) {
-      showErrorNotification(error, "Kunne ikke sende afstemningen. Prøv igen.")
-    } finally {
-      setIsSendingPoll(false)
-    }
+    queryClient.invalidateQueries({ queryKey: ["conversations"] })
   }
 
   return (
@@ -1760,30 +1825,12 @@ function ChatArea({
         </form>
       </Modal>
 
-      <Modal
-        opened={pollDraft !== null}
-        onClose={() => setPollDraft(null)}
-        title="Ny afstemning"
-        size="lg"
+      <PollComposer
+        opened={pollOpened}
+        onClose={closePoll}
+        onSend={handleSendPoll}
         fullScreen={isMobile}
-      >
-        {pollDraft && (
-          <Stack gap="md">
-            <PollCreator pollData={pollDraft} onChange={setPollDraft} />
-            <Group justify="flex-end">
-              <Button variant="light" onClick={() => setPollDraft(null)}>
-                Annuller
-              </Button>
-              <Button
-                onClick={() => void handleSendPoll()}
-                loading={isSendingPoll}
-              >
-                Send afstemning
-              </Button>
-            </Group>
-          </Stack>
-        )}
-      </Modal>
+      />
 
       {/* Messages */}
       <MessageList
@@ -1816,19 +1863,7 @@ function ChatArea({
           onMentionedUsersChange={setMentionedUserIds}
           mentionableUsers={otherParticipants}
           draftKey={"msg-" + conversation.id}
-          onCreatePoll={() =>
-            setPollDraft({
-              question: "",
-
-              allow_multiple_votes: false,
-
-              is_anonymous: false,
-
-              allow_others_to_add_options: false,
-
-              options: [{ text: "" }, { text: "" }],
-            })
-          }
+          onCreatePoll={openPoll}
         />
       </Box>
     </FileDropzone>
@@ -2820,9 +2855,15 @@ interface NewConversationAreaProps {
   onBack?: () => void
 
   onSuccess: (conversationId: number) => void
+
+  isMobile?: boolean
 }
 
-function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
+function NewConversationArea({
+  onBack,
+  onSuccess,
+  isMobile,
+}: NewConversationAreaProps) {
   const { user: currentUser } = useAuthStore()
 
   const queryClient = useQueryClient()
@@ -2869,10 +2910,13 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
     },
   })
 
+  const [pollOpened, { open: openPoll, close: closePoll }] =
+    useDisclosure(false)
+
   const createMutation = useMutation({
     mutationFn: messagingApi.createConversation,
 
-    onSuccess: (data) => {
+    onSuccess: async (data, sent) => {
       // Seed the conversation cache so the header shows without waiting for a
       // fetch; the messages load through useConversationMessages.
 
@@ -2884,17 +2928,23 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
 
       queryClient.invalidateQueries({ queryKey: ["conversations"] })
 
+      // A poll goes without the text written beside it. That waits in the
+      // chat's box instead, as it would after a poll sent in the chat.
+      const chatDraft = "msg-" + data.id
+
+      if (sent.poll_data && message.trim() && !(await loadDraft(chatDraft))) {
+        await saveDraft(chatDraft, message)
+      }
+
       clearDraft(NEW_MESSAGE_DRAFT)
 
       clearDraft(NEW_MESSAGE_RECIPIENTS_DRAFT)
 
       onSuccess(data.id)
     },
-
-    onError: (error: unknown) => {
-      showErrorNotification(error, "Kunne ikke starte samtale")
-    },
   })
+
+  const recipientIds = () => selectedUsers.map((u) => u.id)
 
   // Bring back the recipients of an unsent message once the user list is here.
   useEffect(() => {
@@ -2971,14 +3021,29 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
     const messageContent =
       contentOverride !== undefined ? contentOverride : message
 
-    createMutation.mutate({
-      participant_ids: selectedUsers.map((u) => u.id),
+    createMutation.mutate(
+      {
+        participant_ids: recipientIds(),
 
-      initial_message: messageContent.trim() || undefined,
+        content: messageContent.trim() || undefined,
 
-      attachments: attachments.length > 0 ? attachments : undefined,
-    })
+        attachments: attachments.length > 0 ? attachments : undefined,
+      },
+      {
+        onError: (error: unknown) => {
+          showErrorNotification(error, "Kunne ikke starte samtale")
+        },
+      },
+    )
   }
+
+  // The poll is the first message; PollComposer reports a failure itself.
+  const handleSendPoll = (poll: CreatePollData) =>
+    createMutation.mutateAsync({
+      participant_ids: recipientIds(),
+
+      poll_data: poll,
+    })
 
   const showDropdown =
     search.trim().length > 0 || (isSearchFocused && selectedUsers.length === 0)
@@ -3180,8 +3245,16 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
           onAttachmentsChange={setAttachments}
           draftKey={NEW_MESSAGE_DRAFT}
           onClearDraft={() => setSelectedUsers([])}
+          onCreatePoll={openPoll}
         />
       </Box>
+
+      <PollComposer
+        opened={pollOpened}
+        onClose={closePoll}
+        onSend={handleSendPoll}
+        fullScreen={isMobile}
+      />
     </>
   )
 }
