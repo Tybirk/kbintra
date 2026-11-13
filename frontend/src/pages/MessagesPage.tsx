@@ -1178,6 +1178,19 @@ function getDateLabel(date: dayjs.Dayjs): string {
 
 const TIME_GAP_MINUTES = 20
 
+/**
+ * The avatar marks where someone's messages start, so it sits beside the first
+ * line of their first bubble rather than down by its time. Centred on that
+ * line: the bubble's padding plus half a line of its text, less half the
+ * avatar. From Mantine's variables, so it holds with "Stor skrift" too.
+ */
+const SENDER_AVATAR_STYLE: CSSProperties = {
+  alignSelf: "flex-start",
+
+  marginTop:
+    "calc(var(--mantine-spacing-xs) + var(--mantine-font-size-sm) * var(--mantine-line-height-sm) / 2 - var(--avatar-size) / 2)",
+}
+
 interface MessageListProps {
   messages: Message[]
 
@@ -2143,7 +2156,11 @@ const MessageBubble = memo(function MessageBubble({
             src={message.sender.profile_picture}
             radius="xl"
             size="sm"
-            style={{ visibility: showAvatar ? "visible" : "hidden" }}
+            style={{
+              ...SENDER_AVATAR_STYLE,
+
+              visibility: showAvatar ? "visible" : "hidden",
+            }}
           >
             {message.sender.first_name?.[0]}
           </Avatar>
@@ -2578,7 +2595,11 @@ const MessageBubble = memo(function MessageBubble({
             src={message.sender.profile_picture}
             radius="xl"
             size="sm"
-            style={{ visibility: showAvatar ? "visible" : "hidden" }}
+            style={{
+              ...SENDER_AVATAR_STYLE,
+
+              visibility: showAvatar ? "visible" : "hidden",
+            }}
           >
             {message.sender.first_name?.[0]}
           </Avatar>
