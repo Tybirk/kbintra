@@ -45,8 +45,8 @@ export const messagingApi = {
         formData.append("participant_ids", id.toString())
       })
 
-      if (data.initial_message) {
-        formData.append("initial_message", data.initial_message)
+      if (data.content) {
+        formData.append("content", data.content)
       }
 
       data.attachments.forEach((file) => {

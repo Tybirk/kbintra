@@ -1579,12 +1579,16 @@ export interface MessagePage {
   has_more: boolean
 }
 
+/** Starts a conversation (or opens the 1:1 that exists). Any message fields
+ * make a first message, sent the way every message is. */
 export interface CreateConversationData {
   participant_ids: number[]
 
-  initial_message?: string
+  content?: string
 
   attachments?: File[]
+
+  poll_data?: CreatePollData
 }
 
 // WebSocket message types

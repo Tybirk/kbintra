@@ -74,13 +74,13 @@ describe("messagingApi", () => {
       const result = await messagingApi.createConversation({
         participant_ids: [2],
 
-        initial_message: "Hello!",
+        content: "Hello!",
       })
 
       expect(apiClient.post).toHaveBeenCalledWith("/messages/conversations/", {
         participant_ids: [2],
 
-        initial_message: "Hello!",
+        content: "Hello!",
       })
 
       expect(result).toEqual(mockConversation)

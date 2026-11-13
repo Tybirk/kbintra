@@ -20,9 +20,7 @@ from .serializers import (
     ConversationSerializer,
     CreateConversationSerializer,
     CreateMessageSerializer,
-    MessageAttachmentSerializer,
     MessageSerializer,
-    create_message_attachment,
     last_active_by_sender,
     message_page,
     serialize_messages,
@@ -91,132 +89,81 @@ class ConversationListCreateView(generics.ListCreateAPIView):
             return self.get_paginated_response(serializer.data)
         return Response(serializer.data)
 
+    # Any of these makes a first message.
+    FIRST_MESSAGE_FIELDS = ("content", "attachments", "poll_data")
+
     def create(self, request: Request, *args, **kwargs) -> Response:
+        """Start a conversation, or open the 1:1 that already exists, and send
+        the first message into it if one came along."""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        # The first message goes the way every message goes, so it can be
+        # anything a message can (text, files, a poll) and is broadcast and
+        # notified like the rest. It is checked before anything is made, so a
+        # bad one doesn't leave an empty conversation behind.
+        first_message = None
+        if any(request.data.get(field) for field in self.FIRST_MESSAGE_FIELDS):
+            first_message = CreateMessageSerializer(
+                data=request.data, context=self.get_serializer_context()
+            )
+            first_message.is_valid(raise_exception=True)
+
         participant_ids = serializer.validated_data["participant_ids"]
-        initial_message = serializer.validated_data.get("initial_message", "")
-        attachments = serializer.validated_data.get("attachments", [])
+        conversation = existing_one_to_one(request.user, participant_ids)
+        created = conversation is None
+        if conversation is None:
+            conversation = Conversation.objects.create()
+            conversation.participants.add(request.user, *participant_ids)
 
-        # For 1-on-1 conversations, check if one already exists
-        if len(participant_ids) == 1:
-            other_user_id = participant_ids[0]
-            existing = Conversation.objects.filter(participants=request.user).filter(
-                participants=other_user_id
-            )
-            # Find conversation with exactly these 2 participants
-            for conv in existing:
-                if conv.participants.count() == 2:
-                    # Send the initial message into the existing conversation if provided
-                    if initial_message or attachments:
-                        message = Message.objects.create(
-                            conversation=conv,
-                            sender=request.user,
-                            content=initial_message,
-                        )
-                        attachment_objects = [
-                            create_message_attachment(message, request.user, f) for f in attachments
-                        ]
+        if first_message is not None:
+            first_message.save(conversation=conversation)
 
-                        # Broadcast message via WebSocket so all clients update instantly
-                        from asgiref.sync import async_to_sync
-                        from channels.layers import get_channel_layer
-
-                        channel_layer = get_channel_layer()
-                        user = request.user
-                        message_data = {
-                            "id": message.id,
-                            "conversation": conv.id,
-                            "sender": {
-                                "id": user.id,
-                                "first_name": user.first_name,
-                                "last_name": user.last_name,
-                                "profile_picture": user.avatar_url,
-                            },
-                            "content": message.content,
-                            "is_own": False,  # set per-client by the consumer
-                            "is_read": False,
-                            "is_system_message": False,
-                            "created_at": message.created_at.isoformat(),
-                            "attachments": MessageAttachmentSerializer(
-                                attachment_objects, many=True
-                            ).data,
-                        }
-                        async_to_sync(channel_layer.group_send)(
-                            f"conversation_{conv.id}",
-                            {"type": "chat_message", "message": message_data},
-                        )
-
-                        from apps.notifications.tasks import notify_new_message_task
-
-                        for participant in conv.participants.exclude(id=request.user.id):
-                            notify_new_message_task(
-                                recipient_id=participant.id,
-                                sender_id=request.user.id,
-                                message_content=initial_message or "(Vedhæftet fil)",
-                                conversation_id=conv.id,
-                                message_id=message.id,
-                            )
-                    return Response(
-                        ConversationDetailSerializer(conv, context={"request": request}).data,
-                        status=status.HTTP_200_OK,
-                    )
-
-        # Create new conversation
-        conversation = Conversation.objects.create()
-        conversation.participants.add(request.user, *participant_ids)
-
-        # Create initial message if provided (with text or attachments)
-        if initial_message or attachments:
-            message = Message.objects.create(
-                conversation=conversation,
-                sender=request.user,
-                content=initial_message,
-            )
-
-            for attachment_file in attachments:
-                create_message_attachment(message, request.user, attachment_file)
-
-            # Send notifications to other participants in background
-            from apps.notifications.tasks import notify_new_message_task
-
-            for participant in conversation.participants.exclude(id=request.user.id):
-                notify_new_message_task(
-                    recipient_id=participant.id,
-                    sender_id=request.user.id,
-                    message_content=initial_message or "(Vedhæftet fil)",
-                    conversation_id=conversation.id,
-                    message_id=message.id,
-                )
-
-        # Notify every participant over WebSocket so their conversation list
-        # refreshes and each of their open sockets joins the conversation group.
-        # The creator too: their sockets connected before the conversation existed,
-        # and a text message is shown to its sender only when the group broadcast
-        # comes back. Excluding them meant a conversation started from a profile or
-        # a post ("Send besked", which doesn't join from the client) swallowed every
-        # message its creator wrote until they reloaded the app.
-        from asgiref.sync import async_to_sync
-        from channels.layers import get_channel_layer
-
-        channel_layer = get_channel_layer()
-        conversation_data = ConversationDetailSerializer(
-            conversation, context={"request": request}
-        ).data
-        for participant in conversation.participants.all():
-            async_to_sync(channel_layer.group_send)(
-                f"user_{participant.id}",
-                {
-                    "type": "new_conversation",
-                    "conversation_id": conversation.id,
-                    "conversation": conversation_data,
-                },
-            )
+        if created:
+            announce_new_conversation(conversation, request)
 
         return Response(
             ConversationDetailSerializer(conversation, context={"request": request}).data,
-            status=status.HTTP_201_CREATED,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+def existing_one_to_one(user, participant_ids: list[int]) -> Conversation | None:
+    """The conversation of just `user` and the one other person, if there is one."""
+    if len(participant_ids) != 1:
+        return None
+    candidates = Conversation.objects.filter(participants=user).filter(
+        participants=participant_ids[0]
+    )
+    return next((c for c in candidates if c.participants.count() == 2), None)
+
+
+def announce_new_conversation(conversation: Conversation, request: Request) -> None:
+    """Tell every participant's sockets about a new conversation, after its first
+    message (if any), which the announcement carries.
+
+    The sockets join its group on this, so their conversation list refreshes and
+    later messages reach them. The creator too: their sockets connected before
+    the conversation existed, and a text message is shown to its sender only
+    when the group broadcast comes back. Excluding them meant a conversation
+    started from a profile or a post ("Send besked", which doesn't join from the
+    client) swallowed every message its creator wrote until they reloaded the app.
+    """
+    from asgiref.sync import async_to_sync
+    from channels.layers import get_channel_layer
+
+    channel_layer = get_channel_layer()
+    conversation_data = ConversationDetailSerializer(
+        conversation, context={"request": request}
+    ).data
+    for participant in conversation.participants.all():
+        async_to_sync(channel_layer.group_send)(
+            f"user_{participant.id}",
+            {
+                "type": "new_conversation",
+                "conversation_id": conversation.id,
+                "conversation": conversation_data,
+            },
         )
 
 
@@ -264,11 +211,8 @@ class MessageListCreateView(generics.ListCreateAPIView):
             pk=self.kwargs["conversation_id"],
         )
 
-    def get_serializer_context(self):
-        context = super().get_serializer_context()
-        if self.request.method == "POST":
-            context["conversation"] = self.get_conversation()
-        return context
+    def perform_create(self, serializer: CreateMessageSerializer) -> None:
+        serializer.save(conversation=self.get_conversation())
 
     def list(self, request: Request, *args, **kwargs) -> Response:
         """One page of messages, oldest first: the newest page, or with

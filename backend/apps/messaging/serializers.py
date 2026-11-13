@@ -393,17 +393,19 @@ class CreateConversationSerializer(serializers.Serializer):
         min_length=1,
         max_length=200,
     )
+    # The first message, if any, comes as the fields of a message (content,
+    # attachments, poll_data) and is sent by CreateMessageSerializer.
+    #
+    # Until 2026-11-13 its text came as initial_message. An app from before
+    # then (it reloads itself within minutes) is asked to reload, rather than
+    # having the text quietly dropped. Can go once no such app is left.
     initial_message = serializers.CharField(required=False, allow_blank=True)
-    attachments = serializers.ListField(
-        child=serializers.FileField(),
-        required=False,
-    )
 
-    def validate_attachments(self, value: list) -> list:
-        from apps.forum.utils import validate_file_size
-
-        for file in value:
-            validate_file_size(file)
+    def validate_initial_message(self, value: str) -> str:
+        if value.strip():
+            raise serializers.ValidationError(
+                "KB Intra er blevet opdateret. Genindlæs siden, og send beskeden igen."
+            )
         return value
 
     def validate_participant_ids(self, value: list) -> list:
@@ -471,20 +473,14 @@ class CreateMessageSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Beskeden skal indeholde tekst, en vedhæftet fil eller en afstemning."
             )
-
-        # Filter mentioned_user_ids to only include actual conversation participants
-        mentioned_ids = attrs.get("mentioned_user_ids", [])
-        if mentioned_ids:
-            conversation = self.context.get("conversation")
-            if conversation:
-                participant_ids = set(conversation.participants.values_list("id", flat=True))
-                attrs["mentioned_user_ids"] = [
-                    uid for uid in mentioned_ids if uid in participant_ids
-                ]
-
         return attrs
 
     def create(self, validated_data: dict) -> Message:
+        """Send the message into `conversation`, given as save(conversation=...).
+
+        Every message goes this way, the first one in a new conversation too: so
+        it can be validated before that conversation exists.
+        """
         from asgiref.sync import async_to_sync
         from channels.layers import get_channel_layer
 
@@ -492,7 +488,11 @@ class CreateMessageSerializer(serializers.ModelSerializer):
         mentioned_user_ids = validated_data.pop("mentioned_user_ids", [])
         poll_data = validated_data.pop("poll_data", None)
         validated_data["sender"] = self.context["request"].user
-        validated_data["conversation"] = self.context["conversation"]
+        conversation = validated_data["conversation"]
+        if mentioned_user_ids:
+            # Only people in the conversation can be mentioned in it.
+            participant_ids = set(conversation.participants.values_list("id", flat=True))
+            mentioned_user_ids = [uid for uid in mentioned_user_ids if uid in participant_ids]
         message = super().create(validated_data)
 
         user = self.context["request"].user

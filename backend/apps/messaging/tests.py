@@ -76,7 +76,7 @@ class TestConversationAPI:
             "/api/messages/conversations/",
             {
                 "participant_ids": [second_user.id],
-                "initial_message": "Hi there!",
+                "content": "Hi there!",
             },
             format="json",
         )
@@ -122,15 +122,15 @@ class TestConversationAPI:
         assert response.status_code == 200
         assert response.json()["id"] == conversation.id
 
-    def test_create_conversation_existing_sends_initial_message(
+    def test_create_conversation_existing_sends_the_first_message(
         self, authenticated_client, second_user, conversation
     ):
-        """When sending to an existing 1-on-1 conversation, the initial_message must be delivered."""
+        """When sending to an existing 1-on-1 conversation, the first message must be delivered."""
         response = authenticated_client.post(
             "/api/messages/conversations/",
             {
                 "participant_ids": [second_user.id],
-                "initial_message": "Hej igen!",
+                "content": "Hej igen!",
             },
             format="json",
         )
@@ -138,7 +138,7 @@ class TestConversationAPI:
         assert response.status_code == 200
         assert response.json()["id"] == conversation.id
         assert Conversation.objects.count() == 1
-        # The initial message must have been created in the existing conversation
+        # The first message must have been created in the existing conversation
         assert Message.objects.filter(content="Hej igen!", conversation=conversation).exists()
 
     def test_list_previews_a_message_without_text(
@@ -188,7 +188,7 @@ class TestGroupConversationAPI:
             "/api/messages/conversations/",
             {
                 "participant_ids": [second_user.id, admin_user.id],
-                "initial_message": "Hello group!",
+                "content": "Hello group!",
             },
             format="json",
         )
@@ -859,6 +859,128 @@ def outsider(db):
     return User.objects.create_user(
         email="outsider@example.com", password="testpass123", first_name="Ude"
     )
+
+
+class TestFirstMessage:
+    """The first message of a new conversation goes the way every message goes."""
+
+    def test_a_conversation_can_start_with_a_poll(
+        self, authenticated_client, user, second_user, admin_user, channel_events, monkeypatch
+    ):
+        notified: list[dict] = []
+        monkeypatch.setattr(
+            "apps.notifications.tasks.notify_new_message_task",
+            lambda **kwargs: notified.append(kwargs),
+        )
+
+        response = authenticated_client.post(
+            "/api/messages/conversations/",
+            {"participant_ids": [second_user.id, admin_user.id], "poll_data": POLL_DATA},
+            format="json",
+        )
+
+        assert response.status_code == 201
+        message = Message.objects.get(conversation_id=response.json()["id"])
+        assert message.sender == user
+        assert message.poll.question == "Pizza fredag?"
+        # The announcement the others' sockets join on carries the poll.
+        announced = [e for _, e in channel_events if e["type"] == "new_conversation"]
+        assert len(announced) == 3
+        for event in announced:
+            (first,) = event["conversation"]["messages"]
+            assert first["poll"]["question"] == "Pizza fredag?"
+        # And they hear of it as of any poll.
+        assert {(n["recipient_id"], n["message_content"]) for n in notified} == {
+            (second_user.id, "Afstemning: Pizza fredag?"),
+            (admin_user.id, "Afstemning: Pizza fredag?"),
+        }
+
+    def test_a_poll_into_the_one_to_one_that_exists(
+        self, authenticated_client, second_user, conversation, channel_events
+    ):
+        response = authenticated_client.post(
+            "/api/messages/conversations/",
+            {"participant_ids": [second_user.id], "poll_data": POLL_DATA},
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert response.json()["id"] == conversation.id
+        assert Conversation.objects.count() == 1
+        assert Message.objects.get(conversation=conversation).poll.question == "Pizza fredag?"
+        (event,) = [e for _, e in channel_events if e["type"] == "chat_message"]
+        assert event["message"]["poll"]["question"] == "Pizza fredag?"
+
+    def test_a_bad_first_message_leaves_no_empty_conversation(
+        self, authenticated_client, second_user
+    ):
+        response = authenticated_client.post(
+            "/api/messages/conversations/",
+            {
+                "participant_ids": [second_user.id],
+                "poll_data": {**POLL_DATA, "options": [{"text": "Ja"}]},
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert not Conversation.objects.exists()
+
+    def test_a_first_message_with_files(self, authenticated_client, second_user):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        upload = SimpleUploadedFile("noter.pdf", b"%PDF-1.4 x", content_type="application/pdf")
+
+        response = authenticated_client.post(
+            "/api/messages/conversations/",
+            {"participant_ids": [second_user.id], "content": "Se her", "attachments": [upload]},
+            format="multipart",
+        )
+
+        assert response.status_code == 201
+        message = Message.objects.get(conversation_id=response.json()["id"])
+        assert message.content == "Se her"
+        assert [a.name for a in message.attachments.all()] == ["noter.pdf"]
+
+    def test_opening_a_conversation_sends_nothing(self, authenticated_client, second_user):
+        response = authenticated_client.post(
+            "/api/messages/conversations/",
+            {"participant_ids": [second_user.id], "content": ""},
+            format="json",
+        )
+
+        assert response.status_code == 201
+        assert not Message.objects.exists()
+
+    def test_an_app_from_before_is_asked_to_reload(self, authenticated_client, second_user):
+        """It sent its text as initial_message; dropping that would lose it unseen."""
+        response = authenticated_client.post(
+            "/api/messages/conversations/",
+            {"participant_ids": [second_user.id], "initial_message": "Hej!"},
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert "Genindlæs siden" in response.json()["initial_message"][0]
+        assert not Conversation.objects.exists()
+
+    def test_only_people_in_the_conversation_are_mentioned(
+        self, authenticated_client, second_user, admin_user, conversation
+    ):
+        from apps.notifications.models import Notification
+
+        response = authenticated_client.post(
+            f"/api/messages/conversations/{conversation.id}/messages/",
+            {
+                "content": "Hej @Second og @Admin",
+                "mentioned_user_ids": [second_user.id, admin_user.id],
+            },
+            format="json",
+        )
+
+        assert response.status_code == 201
+        mentioned = Notification.objects.filter(notification_type="mention")
+        assert [n.user for n in mentioned] == [second_user]
 
 
 class TestPollsInMessages:
