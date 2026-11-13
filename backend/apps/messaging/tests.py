@@ -1128,21 +1128,18 @@ class TestPollsInMessages:
 
 
 # =============================================================================
-# Who's in a chat: most recently active first, "Lars (22)"
+# Who's in a chat: most recently active first
 # =============================================================================
 
 
 class TestParticipantOrder:
     """A chat's people come most recently active first — the header and the list
-    show their avatars left to right in that order — each with a house number."""
+    show their avatars left to right in that order."""
 
     @pytest.fixture
     def group(self, db, user, second_user):
-        from apps.houses.models import House
         from apps.users.models import User
 
-        second_user.house = House.objects.create(name="Kløverbakkevej 22", slug="22")
-        second_user.save()
         third = User.objects.create_user(
             email="third@example.com", password="testpass123", first_name="Tredje"
         )
@@ -1179,17 +1176,8 @@ class TestParticipantOrder:
 
         assert self._others(authenticated_client, conversation) == [third.id, second.id]
 
-    def test_participants_carry_their_house_number(self, authenticated_client, group):
-        conversation, second, third = group
-
-        others = authenticated_client.get(f"/api/messages/conversations/{conversation.id}/").json()[
-            "other_participants"
-        ]
-
-        assert {p["id"]: p["house_number"] for p in others} == {second.id: "22", third.id: ""}
-
     def test_list_queries_do_not_grow_with_conversations(self, authenticated_client, user, group):
-        """Houses and the last-writer lookup are fetched once for the whole list."""
+        """Participants and the last-writer lookup are fetched once for the whole list."""
         from django.db import connection
         from django.test.utils import CaptureQueriesContext
 
