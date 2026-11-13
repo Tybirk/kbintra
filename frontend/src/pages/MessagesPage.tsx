@@ -111,6 +111,10 @@ import {
 
 import { messageElementId, useChatScroll } from "../hooks/useChatScroll"
 
+import { useNow } from "../hooks/useNow"
+
+import { compactTime } from "../utils/compactTime"
+
 import UserLink from "../components/UserLink"
 
 import EmojiMartPicker, {
@@ -154,24 +158,34 @@ function participantLabel(p: Participant): string {
   return p.house_number ? `${p.first_name} (${p.house_number})` : p.first_name
 }
 
+type AvatarPerson = Pick<Participant, "id" | "first_name" | "profile_picture">
+
 interface ParticipantAvatarsProps {
   /** Most recently active first, as the backend orders `other_participants`. */
-  participants: Participant[]
+  participants: AvatarPerson[]
+
+  /** Room for this many, the "+N" count included. The list is narrower. */
+  max?: number
 
   style?: CSSProperties
 }
 
 /**
- * Up to three avatars, left to right. Each sits on top of the one after it, so
- * the leftmost — whoever wrote last — is the one shown whole. More people show
- * as a "+N" count, tucked just under the last avatar but not so far that it
- * covers the number; it is smaller and blue, so it reads as a count and not as
- * one more person without a picture (those are grey initials). With just one
- * more person, their avatar takes no more room than a "+1" would.
+ * Avatars left to right, at most `max` of them. Each sits on top of the one
+ * after it, so the leftmost — whoever wrote last — is the one shown whole.
+ * When there are more people, the last place goes to a "+N" count, tucked
+ * just under the avatar before it but not so far that it covers the number;
+ * it is smaller and blue, so it reads as a count and not as one more person
+ * without a picture (those are grey initials). It is never "+1": that one
+ * person's avatar takes no more room than the count would.
  */
-function ParticipantAvatars({ participants, style }: ParticipantAvatarsProps) {
+function ParticipantAvatars({
+  participants,
+  max = 4,
+  style,
+}: ParticipantAvatarsProps) {
   const shown =
-    participants.length <= 4 ? participants : participants.slice(0, 3)
+    participants.length <= max ? participants : participants.slice(0, max - 1)
 
   const hidden = participants.length - shown.length
 
@@ -885,6 +899,31 @@ export default function MessagesPage() {
   )
 }
 
+interface LastActivityProps {
+  at: string
+}
+
+/**
+ * When the last message came, on one line: "3 min", "14:32", "i går". It
+ * keeps itself current, so "nu" doesn't stay "nu" while the list sits open.
+ */
+function LastActivity({ at }: LastActivityProps) {
+  const now = useNow()
+
+  const time = dayjs(at)
+
+  return (
+    <Text
+      size="xs"
+      c="dimmed"
+      title={time.format("D. MMMM YYYY [kl.] HH:mm")}
+      style={{ flexShrink: 0, whiteSpace: "nowrap" }}
+    >
+      {compactTime(time, now)}
+    </Text>
+  )
+}
+
 interface ConversationItemProps {
   conversation: Conversation
 
@@ -948,7 +987,7 @@ function ConversationItem({
           zIndex={1}
         >
           {isGroupChat ? (
-            <ParticipantAvatars participants={otherParticipants} />
+            <ParticipantAvatars participants={otherParticipants} max={3} />
           ) : (
             <Avatar src={avatar?.profile_picture} radius="xl" size="md">
               {avatar?.first_name?.[0]}
@@ -967,9 +1006,7 @@ function ConversationItem({
               {displayName}
             </Text>
             {conversation.last_message && (
-              <Text size="xs" c="dimmed">
-                {dayjs(conversation.last_message.created_at).fromNow()}
-              </Text>
+              <LastActivity at={conversation.last_message.created_at} />
             )}
           </Group>
           {conversation.last_message && (
@@ -3110,16 +3147,7 @@ function NewConversationArea({ onBack, onSuccess }: NewConversationAreaProps) {
         ) : (
           <Center style={{ height: "100%" }}>
             <Stack align="center" gap="xs">
-              <Avatar.Group>
-                {selectedUsers.slice(0, 3).map((u) => (
-                  <Avatar key={u.id} src={u.profile_picture} radius="xl">
-                    {u.first_name?.[0]}
-                  </Avatar>
-                ))}
-                {selectedUsers.length > 3 && (
-                  <Avatar radius="xl">+{selectedUsers.length - 3}</Avatar>
-                )}
-              </Avatar.Group>
+              <ParticipantAvatars participants={selectedUsers} />
               <Text fw={500}>
                 {selectedUsers.length === 1
                   ? `${

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
-import { act, screen, waitFor } from "@testing-library/react"
+import { act, screen, waitFor, within } from "@testing-library/react"
 
 import userEvent from "@testing-library/user-event"
 
@@ -1058,6 +1058,66 @@ describe("MessagesPage", () => {
       openChat(groupWith([lars, mette]), [])
 
       expect(await screen.findByText("Dig og 2 andre")).toBeInTheDocument()
+    })
+
+    const listItem = () =>
+      screen.findByRole("option", { name: /^Samtale med Lars/ })
+
+    it("shows up to three people in the list", async () => {
+      openChat(groupWith([lars, mette, person(4, "Ole", "1")]), [])
+
+      const item = await listItem()
+
+      for (const initial of ["L", "M", "O"]) {
+        expect(within(item).getByText(initial)).toBeInTheDocument()
+      }
+
+      expect(within(item).queryByLabelText(/flere$/)).not.toBeInTheDocument()
+    })
+
+    it("fits four people in the list's three places as two and +2", async () => {
+      // The header has room for all four; the list is narrower (bug 24412).
+      openChat(
+        groupWith([lars, mette, person(4, "Ole", "1"), person(5, "Pia", "2")]),
+        [],
+      )
+
+      const item = await listItem()
+
+      expect(within(item).getByText("L")).toBeInTheDocument()
+
+      expect(within(item).getByText("M")).toBeInTheDocument()
+
+      expect(within(item).queryByText("O")).not.toBeInTheDocument()
+
+      expect(within(item).getByLabelText("2 flere")).toHaveTextContent("+2")
+    })
+
+    it("says when the last message came in a few letters", async () => {
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60_000).toISOString()
+
+      openChat(
+        {
+          ...groupWith([lars, mette]),
+
+          last_message: {
+            id: 2,
+
+            content: "Group message",
+
+            created_at: fiveMinutesAgo,
+
+            sender_id: 2,
+          },
+        },
+        [],
+      )
+
+      const item = await listItem()
+
+      expect(within(item).getByText("5 min")).toBeInTheDocument()
+
+      expect(within(item).queryByText(/siden/)).not.toBeInTheDocument()
     })
   })
 
