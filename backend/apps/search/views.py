@@ -5,13 +5,13 @@ Global search API endpoint using FTS5 full-text search.
 import re
 from collections import defaultdict
 
-from django.db.models import Q
+from django.db.models import Q, QuerySet
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.forum.models import File, Folder, Post, Subgroup, Thread
-from apps.forum.services import member_subgroup_ids
+from apps.forum.services import visible_files_q, visible_threads_q
 from apps.houses.models import Car, House
 from apps.houses.utils import format_license_plate, normalize_license_plate
 from apps.reports.models import Report
@@ -374,97 +374,37 @@ class GlobalSearchView(APIView):
                     break
 
 
+def _visible_querysets(user: User) -> dict[str, QuerySet]:
+    """For each result bucket, the rows `user` may see — the apps' own rules,
+    asked of the database rather than restated here."""
+    groups = Subgroup.objects.visible_to(user)
+    return {
+        "subgroups": groups,
+        "threads": Thread.objects.filter(visible_threads_q(user)),
+        "posts": Post.objects.filter(visible_threads_q(user, prefix="thread__")),
+        "files": File.objects.filter(visible_files_q(user)),
+        # A folder's name is enough to give a secret group away.
+        "folders": Folder.objects.filter(Q(subgroup__isnull=True) | Q(subgroup__in=groups)),
+        # A closed udvalg's queue belongs to its members, plus whoever reported
+        # the individual case.
+        "reports": Report.objects.filter(readable_reports_q(user)),
+    }
+
+
 def apply_visibility_filters(results: dict[str, list[dict]], user: User) -> None:
-    """Drop members-only threads/posts/files from results when user can't see them."""
-    member_ids = set(member_subgroup_ids(user)) if user and user.is_authenticated else set()
+    """Drop every result the user may not see.
 
-    # Threads
-    thread_items = results.get("threads") or []
-    if thread_items:
-        ids = [item["id"] for item in thread_items]
-        private = dict(
-            Thread.objects.filter(id__in=ids, members_only=True).values_list("id", "subgroup_id")
-        )
-        authored = (
-            set(
-                Thread.objects.filter(id__in=private.keys(), author=user).values_list(
-                    "id", flat=True
-                )
-            )
-            if user and user.is_authenticated
-            else set()
-        )
-        results["threads"] = [
-            item
-            for item in thread_items
-            if item["id"] not in private
-            or private[item["id"]] in member_ids
-            or item["id"] in authored
-        ]
-
-    # Posts (visible iff their thread is visible)
-    post_items = results.get("posts") or []
-    if post_items:
-        ids = [item["id"] for item in post_items]
-        posts = dict(Post.objects.filter(id__in=ids).values_list("id", "thread_id"))
-        thread_ids = list({tid for tid in posts.values() if tid is not None})
-        private_threads = dict(
-            Thread.objects.filter(id__in=thread_ids, members_only=True).values_list(
-                "id", "subgroup_id"
-            )
-        )
-        authored_threads = (
-            set(
-                Thread.objects.filter(id__in=private_threads.keys(), author=user).values_list(
-                    "id", flat=True
-                )
-            )
-            if user and user.is_authenticated
-            else set()
-        )
-        results["posts"] = [
-            item
-            for item in post_items
-            if (tid := posts.get(item["id"])) is None
-            or tid not in private_threads
-            or private_threads[tid] in member_ids
-            or tid in authored_threads
-        ]
-
-    # Files
-    file_items = results.get("files") or []
-    if file_items:
-        ids = [item["id"] for item in file_items]
-        private = dict(
-            File.objects.filter(id__in=ids, members_only=True).values_list("id", "subgroup_id")
-        )
-        uploaded_by = (
-            set(
-                File.objects.filter(id__in=private.keys(), uploaded_by=user).values_list(
-                    "id", flat=True
-                )
-            )
-            if user and user.is_authenticated
-            else set()
-        )
-        results["files"] = [
-            item
-            for item in file_items
-            if item["id"] not in private
-            or private[item["id"]] in member_ids
-            or item["id"] in uploaded_by
-        ]
-
-    # Reports (a closed udvalg's queue belongs to its members, plus whoever
-    # reported the individual case). Asking the database which of these ids are
-    # readable, rather than restating the rule here, keeps one definition of it.
-    report_items = results.get("reports") or []
-    if report_items:
-        ids = [item["id"] for item in report_items]
-        visible = set(
-            Report.objects.filter(readable_reports_q(user), id__in=ids).values_list("id", flat=True)
-        )
-        results["reports"] = [item for item in report_items if item["id"] in visible]
+    Done after collection (rather than at FTS time) because the FTS index
+    doesn't know who may see what — members-only threads and files, secret
+    groups and everything in them, closed report queues.
+    """
+    for key, visible in _visible_querysets(user).items():
+        items = results.get(key)
+        if not items:
+            continue
+        ids = [item["id"] for item in items]
+        keep = set(visible.filter(id__in=ids).values_list("id", flat=True))
+        results[key] = [item for item in items if item["id"] in keep]
 
 
 # Types that can be searched via the advanced endpoint. Order matters — used

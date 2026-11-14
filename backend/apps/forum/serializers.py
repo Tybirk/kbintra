@@ -23,7 +23,7 @@ from .models import (
     SubgroupSubscription,
     Thread,
 )
-from .services import create_poll
+from .services import create_poll, thread_viewer_ids
 
 
 def _create_post_attachment(
@@ -214,6 +214,7 @@ class SubgroupSerializer(serializers.ModelSerializer):
             "is_main",
             "allows_members",
             "default_members_only",
+            "is_secret",
             "reporting",
             "reporting_intro",
             "icon",
@@ -355,11 +356,12 @@ class SubgroupUpdateSerializer(serializers.ModelSerializer):
 
 
 class SubgroupCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating a new subgroup."""
+    """Serializer for creating a new subgroup. Secrecy is chosen here and only here
+    (see Subgroup.is_secret); a secret group always has members."""
 
     class Meta:
         model = Subgroup
-        fields = ["name", "description", "allows_members"]
+        fields = ["name", "description", "allows_members", "is_secret"]
 
 
 class SubgroupSubscriptionSerializer(serializers.ModelSerializer):
@@ -716,15 +718,9 @@ class PostCreateSerializer(serializers.ModelSerializer):
 
         mentioned_ids = set(extract_mention_ids(post.content)) if post.content else set()
 
-        # For members-only threads, drop mentions of users who aren't members of the
-        # subgroup (silently — non-members can't see the thread).
-        if thread.members_only and mentioned_ids:
-            allowed_member_ids = set(
-                SubgroupMembership.objects.filter(
-                    subgroup_id=thread.subgroup_id, user_id__in=mentioned_ids
-                ).values_list("user_id", flat=True)
-            )
-            mentioned_ids = {mid for mid in mentioned_ids if mid in allowed_member_ids}
+        # Drop mentions of anyone who can't see the thread (silently — they would
+        # get its title and a link to a 404).
+        mentioned_ids = thread_viewer_ids(thread, mentioned_ids)
 
         # Only exclude mentioned users who will actually receive MENTION.
         # Users with notify_mentions=False won't get MENTION, so they should fall back
@@ -745,9 +741,23 @@ class PostCreateSerializer(serializers.ModelSerializer):
         def _reply_superseded_by(user_id: int) -> tuple[str, ...]:
             return (NotificationType.MENTION,) if user_id in mentioned_who_opt_out else ()
 
+        previous_posters = set(
+            Post.objects.filter(thread=thread)
+            .exclude(author=author)
+            .values_list("author", flat=True)
+            .distinct()
+        )
+        # Only those who can still see the thread hear about the reply: someone who
+        # wrote in a private thread and has since left the group has lost it.
+        can_see = thread_viewer_ids(thread, {thread.author_id, *previous_posters})
+
         # Notify thread author in background
         # thread.author can be None if the original author was deleted
-        if thread.author is not None and thread.author.id not in effective_mentioned_ids:
+        if (
+            thread.author is not None
+            and thread.author.id in can_see
+            and thread.author.id not in effective_mentioned_ids
+        ):
             notify_thread_reply_task(
                 thread_author_id=thread.author.id,
                 replier_id=author.id,
@@ -765,15 +775,9 @@ class PostCreateSerializer(serializers.ModelSerializer):
         notified_users = {author.id}
         if thread.author is not None:
             notified_users.add(thread.author.id)
-        previous_posters = (
-            Post.objects.filter(thread=thread)
-            .exclude(author=author)
-            .values_list("author", flat=True)
-            .distinct()
-        )
         for poster_id in previous_posters:
             if poster_id is not None and poster_id not in notified_users:
-                if poster_id not in effective_mentioned_ids:
+                if poster_id in can_see and poster_id not in effective_mentioned_ids:
                     notify_post_reply_task(
                         post_author_id=poster_id,
                         replier_id=author.id,
@@ -932,7 +936,8 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if not (request and request.user.is_authenticated):
             return False
-        if not obj.subgroup.allows_members:
+        # Nothing to toggle in a secret group: everything there is members-only.
+        if not obj.subgroup.allows_members or obj.subgroup.is_secret:
             return False
         user = request.user
         if obj.author_id == user.id or user.is_staff:
@@ -1074,14 +1079,10 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
             mentioned_who_opt_out = set()
             effective_mention_ids = []
 
-        # For members-only threads, drop mention IDs that aren't members of the subgroup
-        # (silently — non-members get no mention notification, since they can't see the thread).
-        if thread.members_only and mention_ids:
-            allowed_member_ids = set(
-                SubgroupMembership.objects.filter(
-                    subgroup=thread.subgroup, user_id__in=mention_ids
-                ).values_list("user_id", flat=True)
-            )
+        # Drop mentions of anyone who can't see the thread (silently — they would
+        # get its title and a link to a 404).
+        if mention_ids:
+            allowed_member_ids = thread_viewer_ids(thread, mention_ids)
             mention_ids = [m for m in mention_ids if m in allowed_member_ids]
             effective_mention_ids = [m for m in effective_mention_ids if m in allowed_member_ids]
             mentioned_who_opt_out = {m for m in mentioned_who_opt_out if m in allowed_member_ids}
@@ -1238,6 +1239,8 @@ class FileSerializer(serializers.ModelSerializer):
         if not (request and request.user.is_authenticated):
             return False
         if obj.subgroup_id is None or not obj.subgroup.allows_members:
+            return False
+        if obj.subgroup.is_secret:
             return False
         user = request.user
         if obj.uploaded_by_id == user.id or user.is_staff:

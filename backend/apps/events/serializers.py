@@ -217,6 +217,18 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id"]
 
+    def validate_subgroup_id(self, value: int | None) -> int | None:
+        """The calendar is everybody's, so an event can't belong to a secret group —
+        it would show the group to all. The same answer for a group that doesn't
+        exist, so the error can't be used to find secret ones."""
+        from apps.forum.models import Subgroup
+
+        if value and not Subgroup.objects.filter(id=value, is_secret=False).exists():
+            raise serializers.ValidationError(
+                "Vælg en gruppe fra listen. Arrangementer kan ikke høre til en hemmelig gruppe."
+            )
+        return value
+
     def validate(self, data: dict) -> dict:
         # For partial updates, use instance values as fallback
         start = data.get("start_datetime")
