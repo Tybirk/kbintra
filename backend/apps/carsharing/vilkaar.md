@@ -37,11 +37,11 @@ Filen ligger i backend'en fordi den skal med i serverimaget.
 
 Vilkårene er de samme for alle biler i delebilparken. Du er ansvarlig for bilen,
 mens du har den. Sker der noget, siger du det med det samme. Ved skade betaler
-du ejerens selvrisiko, dog højst 6.000 kr. — er bilen uden kasko, betaler du
-reparationen. Koster skaden ejeren skadefri år, betaler du 3.000 kr. oveni.
-Uanset hvad er dit samlede ansvar højst 9.000 kr. pr. lån. Bøder og afgifter er
-dine. Du betaler en forudbestemt takst pr. kørt km, minus hvad du selv har lagt
-ud til strøm eller brændstof.
+du højst 9.000 kr. pr. lån, med eller uden kasko. Med kasko er det selvrisikoen,
+dog højst 6.000 kr., plus 3.000 kr., hvis ejeren mister skadefri år. Uden kasko
+er det reparationen, dog højst 9.000 kr. i alt. Bøder og afgifter er dine. Du
+betaler en forudbestemt takst pr. kørt km, minus hvad du selv har lagt ud til
+strøm eller brændstof.
 
 ## 1. Hvem aftalen er mellem
 
@@ -99,25 +99,22 @@ hverken hvad du betaler, eller hvad du hæfter for.
 
 ## 5. Hvad du betaler, hvis der er sket skade
 
-- **Er bilen kaskoforsikret, og anmeldes skaden:** du betaler ejerens selvrisiko,
-  dog højst 6.000 kr. Er selvrisikoen højere end det, bærer ejeren resten.
-- **Anmeldes skaden ikke:** du betaler de dokumenterede reparationsudgifter, dog
-  højst det selvrisikoen ville have været og aldrig over 6.000 kr.
-- **Er bilen ikke kaskoforsikret:** du betaler de dokumenterede
-  reparationsudgifter, dog højst 9.000 kr. Ejeren oplyser inden lånet, at bilen
-  er uden kasko (punkt 9). Skader på andre biler, ting og personer er dækket af
-  den lovpligtige ansvarsforsikring, uanset om bilen har kasko.
-- **Tab af skadefri år:** påvirker skaden ejerens præmie, betaler du 3.000 kr.
-  som fuld og endelig dækning af den højere præmie fremover. Der gøres ikke krav
-  op derudover. Beløbet betales ikke, hvis skaden ikke påvirker præmien — fx
-  fordi policen har bonusbeskyttelse, eller fordi det er en rude- eller
-  friskade, der efter ejerens police ikke koster skadefri år.
+Du betaler højst 9.000 kr. pr. lån, med eller uden kasko. Skader på andre biler,
+ting og personer dækker bilens lovpligtige ansvarsforsikring.
+
+- **Har bilen kasko:** du betaler ejerens selvrisiko, dog højst 6.000 kr.
+  Anmelder ejeren ikke skaden, betaler du i stedet reparationen, dog aldrig mere
+  end selvrisikoen.
+- **Har bilen ikke kasko:** du betaler reparationen, dog højst 9.000 kr. — det
+  samme som det mest, en bil med kasko kan koste dig. Ejeren oplyser inden
+  lånet, at bilen er uden kasko (punkt 9).
+- **Skadefri år:** koster skaden ejeren skadefri år, betaler du desuden
+  3.000 kr. som fuld og endelig dækning af den højere præmie. Ikke hvis policen
+  har bonusbeskyttelse, eller skaden efter policen ikke koster skadefri år (fx
+  en rudeskade).
 - **Loft:** dit samlede ansvar for ét lån er højst 9.000 kr., uanset hvordan
-  beløbet er sammensat, og uanset om bilen har kasko. Alt derover bærer ejeren —
-  det er den risiko, der følger med at melde sin bil i delebilparken. Er bilen
-  uden kasko, er der ingen forsikring til at dække resten, og det ejeren bærer,
-  er hele skaden over de 9.000 kr. Det er en beslutning, ejeren træffer bevidst
-  ved at melde bilen ind uden kasko.
+  beløbet er sammensat. Alt derover bærer ejeren — det er den risiko, der følger
+  med at melde sin bil i delebilparken.
 - **Loftet gælder ikke,** hvis du har handlet forsætligt eller groft uagtsomt
   (fx spirituskørsel, grov hastighedsovertrædelse, kørsel uden gyldigt kørekort),
   eller har brugt bilen i strid med punkt 2 eller 3. Så hæfter du for ejerens

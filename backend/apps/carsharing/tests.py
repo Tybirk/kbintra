@@ -240,8 +240,10 @@ def test_a_bold_opening_becomes_a_lead_label():
     # Keyed on the case that decides the money rather than on one phrasing of it:
     # the leads are the labels a resident reads to find their own situation, and
     # they get reworded — "Anmeldes skaden:" became two cases when cars without
-    # kasko were let into the pool.
-    assert any(lead.startswith("Er bilen") for lead in leads)
+    # kasko were let into the pool, and the cases became "with" and "without"
+    # kasko when the amounts were simplified.
+    assert "Har bilen kasko:" in leads
+    assert "Har bilen ikke kasko:" in leads
     assert "Loft:" in leads
     # The lead is split off, not duplicated into the body.
     cap = next(item for item in bullets if item["lead"] == "Loft:")
