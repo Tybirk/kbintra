@@ -30,15 +30,13 @@ import dayjs from "dayjs"
 
 import { carSharingApi } from "../../api/carsharing"
 
-import { formatLicensePlate } from "../../utils/licensePlate"
+import { CarListing } from "./CarListing"
 
 import {
   conflictMeta,
   errorMessage,
   formatDateTime,
-  formatRatePerKm,
   kmInputError,
-  LicensePlateBadge,
   LONG_DATE_TIME,
   SHORT_DATE_TIME,
   TermsConsent,
@@ -415,22 +413,10 @@ export function BorrowTab({ onRequested }: BorrowTabProps) {
                       : undefined,
                   }}
                 >
-                  <Group
-                    justify="space-between"
-                    align="flex-start"
-                    wrap="nowrap"
-                  >
-                    <Stack gap={2} style={{ flex: 1 }}>
-                      <Group gap="xs" wrap="wrap">
-                        <Text fw={600}>{car.display_name}</Text>
-                        <Text size="sm" c="dimmed">
-                          {car.house_name}
-                        </Text>
-                        {car.license_plate &&
-                          car.display_name !==
-                            formatLicensePlate(car.license_plate) && (
-                            <LicensePlateBadge plate={car.license_plate} />
-                          )}
+                  <CarListing
+                    car={car}
+                    badges={
+                      <>
                         {meta && (
                           <Badge color={meta.color} variant="light" size="sm">
                             {meta.label}
@@ -441,41 +427,18 @@ export function BorrowTab({ onRequested }: BorrowTabProps) {
                             Opfylder ikke dine krav
                           </Badge>
                         )}
-                      </Group>
-                      <Text size="sm" c="dimmed">
-                        {[
-                          car.seats ? `${car.seats} sæder` : null,
-                          car.is_electric ? "Elbil" : null,
-                          car.has_isofix ? "Isofix" : null,
-                          car.has_tow_hitch ? "Træk" : null,
-                          car.dogs_allowed ? "Hunde tilladt" : null,
-                          car.has_charge_fob ? "Ladebrik" : null,
-                          formatRatePerKm(car.effective_rate_per_km),
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </Text>
-                      {/* The owner is invited to list autostol, tagbøjler and
-                          the rest, and until now wrote it into a void: nothing
-                          rendered it anywhere a borrower could see. */}
-                      {car.equipment_note && (
-                        <Text size="xs" c="dimmed">
-                          {car.equipment_note}
-                        </Text>
-                      )}
-                      {car.conflict_note && (
-                        <Text size="xs" c="dimmed">
-                          {car.conflict_note}
-                        </Text>
-                      )}
-                    </Stack>
-                    <Checkbox
-                      checked={isSelected}
-                      disabled={!car.selectable}
-                      onChange={() => toggleCar(car)}
-                      aria-label={`Vælg ${car.display_name}`}
-                    />
-                  </Group>
+                      </>
+                    }
+                    footnote={car.conflict_note}
+                    trailing={
+                      <Checkbox
+                        checked={isSelected}
+                        disabled={!car.selectable}
+                        onChange={() => toggleCar(car)}
+                        aria-label={`Vælg ${car.display_name}`}
+                      />
+                    }
+                  />
                 </Card>
               )
             })}
