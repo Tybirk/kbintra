@@ -1,6 +1,6 @@
 # Vilkår for lån af bil i delebilparken
 
-Version: 2026-08-07
+Version: 2026-11-14
 
 <!--
 Dette er den eneste kilde til vilkårene. Appen læser filen direkte, så en
@@ -21,6 +21,9 @@ Regler for filen:
 - Vilkårene nævner med vilje ingen km-takst. Taksten kan være forskellig fra bil
   til bil, og ét tal i en fælles tekst ville kunne modsige det lånerens egen bil
   koster. Beløbet står på bilkortet og i afregningen, hvor bilen er kendt.
+- Vilkårene er de samme for alle biler. Der er med vilje intet felt til en
+  bils egne vilkår: det, ejeren skriver om bilen ("Andet udstyr", "Praktisk
+  info"), er oplysninger og ændrer ikke vilkårene (punkt 1).
 - Beløbene i punkt 5 hænger sammen: 6.000 kr. for selvrisikoen plus 3.000 kr.
   for tab af skadefri år er præcis loftet på 9.000 kr. Ændrer du ét af dem,
   skal de andre to følge med, ellers kan en låner komme til at skylde mere end
@@ -32,13 +35,13 @@ Filen ligger i backend'en fordi den skal med i serverimaget.
 
 ## Kort fortalt
 
-Du er ansvarlig for bilen, mens du har den. Sker der noget, siger du det med det
-samme. Ved skade betaler du ejerens selvrisiko, dog højst 6.000 kr. — er bilen
-uden kasko, betaler du reparationen. Koster skaden ejeren skadefri år, betaler du
-3.000 kr. oveni. Uanset hvad er dit samlede ansvar højst 9.000 kr. pr. lån.
-Bøder og afgifter er dine.
-Du betaler en forudbestemt takst pr. kørt km, minus hvad du selv har
-lagt ud til strøm eller brændstof.
+Vilkårene er de samme for alle biler i delebilparken. Du er ansvarlig for bilen,
+mens du har den. Sker der noget, siger du det med det samme. Ved skade betaler
+du ejerens selvrisiko, dog højst 6.000 kr. — er bilen uden kasko, betaler du
+reparationen. Koster skaden ejeren skadefri år, betaler du 3.000 kr. oveni.
+Uanset hvad er dit samlede ansvar højst 9.000 kr. pr. lån. Bøder og afgifter er
+dine. Du betaler en forudbestemt takst pr. kørt km, minus hvad du selv har lagt
+ud til strøm eller brændstof.
 
 ## 1. Hvem aftalen er mellem
 
@@ -49,6 +52,10 @@ ikke part i aftalen og hæfter ikke for skader, tab eller udgifter.
 Når du sender en forespørgsel, accepterer du de vilkår der vises i appen på det
 tidspunkt. Den version gemmes på lånet, og det er den der gælder for netop det
 lån — også hvis vilkårene ændres bagefter.
+
+Vilkårene er de samme for alle biler i delebilparken. Ejeren kan ikke sætte
+egne vilkår for sin bil, og det, der står om bilen i appen, ændrer dem ikke —
+hverken hvad du betaler, eller hvad du hæfter for.
 
 ## 2. Hvem må køre bilen
 
@@ -65,7 +72,8 @@ lån — også hvis vilkårene ændres bagefter.
 
 - Kør forsigtigt, følg færdselsloven, og aflever bilen til aftalt tid, ryddet op
   og i samme stand som du fik den. Sæt elbilen til at lade, hvis den er under 50 %.
-- Overhold de vilkår ejeren oplyser om bilen og dens forsikring.
+- Følg ejerens praktiske oplysninger om bilen, fx hvordan den lades, og hvor
+  nøglen skal ligge.
 - Bilen må ikke bruges til: erhvervsmæssig kørsel (herunder mad- og
   pakkeudbringning og taxikørsel), motorsport, bane- eller terrænkørsel,
   videreudlån, træk af mere end bilen er godkendt til, eller kørsel uden for

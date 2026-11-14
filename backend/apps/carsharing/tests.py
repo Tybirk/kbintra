@@ -220,10 +220,14 @@ def test_a_blank_line_separates_two_paragraphs():
 
     section = next(s for s in loan_terms_sections() if s["heading"].startswith("1."))
     paragraphs = [b["text"] for b in section["blocks"] if b["kind"] == "paragraph"]
-    assert len(paragraphs) == 2
+    assert len(paragraphs) == 3
     assert paragraphs[0].startswith("Et lån er en privat aftale")
     assert paragraphs[0].endswith("skader, tab eller udgifter.")
     assert paragraphs[1].startswith("Når du sender en forespørgsel")
+    # One set of terms for every car: what an owner writes on the car card is
+    # information, and cannot raise what the borrower pays or answers for.
+    assert paragraphs[2].startswith("Vilkårene er de samme for alle biler")
+    assert "Ejeren kan ikke sætte egne vilkår" in paragraphs[2]
 
 
 def test_a_bold_opening_becomes_a_lead_label():

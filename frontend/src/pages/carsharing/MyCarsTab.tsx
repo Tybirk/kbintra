@@ -339,7 +339,7 @@ function MyCarCard({ car }: MyCarCardProps) {
                 compact
                 collapsible
                 terms={terms}
-                intro="Dette er de vilkår, låneren accepterer, når din bil lånes. Som ejer bekræfter du, at din bil udlånes på dem."
+                intro="Vilkårene er de samme for alle biler i delebilparken. Som ejer bekræfter du, at din bil udlånes på dem og ikke på egne vilkår."
                 label="Jeg har læst og accepterer vilkårene for at udlåne min bil"
                 checked={acceptTerms}
                 onChange={setAcceptTerms}
@@ -492,7 +492,7 @@ function MyCarCard({ car }: MyCarCardProps) {
             </Group>
             <Textarea
               label="Andet udstyr"
-              description="Fx. autostol, selepude, hundebur, tagbøjler, osv."
+              description="Fx. autostol, selepude, hundebur, tagbøjler. Ikke vilkår — de er de samme for alle biler."
               value={draft.equipment_note}
               onChange={(event) =>
                 setDraft({
