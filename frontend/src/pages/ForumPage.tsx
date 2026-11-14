@@ -38,6 +38,7 @@ import {
   IconChecks,
   IconPlus,
   IconMessageCircle,
+  IconEyeOff,
 } from "@tabler/icons-react"
 
 import { useNavigate, Link } from "react-router-dom"
@@ -79,6 +80,8 @@ export default function ForumPage() {
   const [newDescription, setNewDescription] = useState("")
 
   const [newAllowsMembers, setNewAllowsMembers] = useState(false)
+
+  const [newIsSecret, setNewIsSecret] = useState(false)
 
   const {
     data: subgroups,
@@ -167,6 +170,8 @@ export default function ForumPage() {
       setNewDescription("")
 
       setNewAllowsMembers(false)
+
+      setNewIsSecret(false)
 
       closeCreate()
 
@@ -303,8 +308,15 @@ export default function ForumPage() {
           <Checkbox
             label="Tillad medlemskab"
             description="Relevant hvis der ønskes mulighed for private tråde."
-            checked={newAllowsMembers}
+            checked={newAllowsMembers || newIsSecret}
+            disabled={newIsSecret}
             onChange={(e) => setNewAllowsMembers(e.currentTarget.checked)}
+          />
+          <Checkbox
+            label="Hemmelig"
+            description="Kun medlemmer kan se gruppen og alt i den – andre kan ikke finde den. Du bliver første medlem og tilføjer selv de andre. Kan ikke ændres senere."
+            checked={newIsSecret}
+            onChange={(e) => setNewIsSecret(e.currentTarget.checked)}
           />
           <Group justify="flex-end">
             <Button variant="default" onClick={closeCreate}>
@@ -317,7 +329,9 @@ export default function ForumPage() {
 
                   description: newDescription,
 
-                  allows_members: newAllowsMembers,
+                  allows_members: newAllowsMembers || newIsSecret,
+
+                  is_secret: newIsSecret,
                 })
               }
               loading={createSubgroupMutation.isPending}
@@ -548,6 +562,20 @@ function SubgroupCard({
             <Text fw={500} style={{ wordBreak: "break-word" }}>
               {subgroup.name}
             </Text>
+            {subgroup.is_secret && (
+              <Tooltip
+                label="Hemmelig – kun medlemmer kan se gruppen"
+                withArrow
+                events={{ hover: true, focus: false, touch: true }}
+              >
+                <IconEyeOff
+                  size={16}
+                  aria-label="Hemmelig gruppe"
+                  color="var(--mantine-color-grape-6)"
+                  style={{ flexShrink: 0, position: "relative", zIndex: 2 }}
+                />
+              </Tooltip>
+            )}
           </Group>
           {!hideBell && (
             <Group

@@ -396,6 +396,10 @@ export default function ThreadPage() {
     queryFn: forumApi.getSubgroups,
   })
 
+  const targetIsSecret = !!subgroups?.find(
+    (sg) => sg.slug === targetSubgroupSlug,
+  )?.is_secret
+
   // If thread was moved to a different subgroup, update the URL to reflect the new location
 
   useEffect(() => {
@@ -1184,14 +1188,21 @@ export default function ThreadPage() {
               ?.filter((sg) => sg.slug !== thread.subgroup_slug)
               .map((sg) => ({
                 value: sg.slug,
-                label: subgroupOptionLabel(sg),
+                label: sg.is_secret
+                  ? `${subgroupOptionLabel(sg)} (hemmelig)`
+                  : subgroupOptionLabel(sg),
               })) ?? []
           }
           value={targetSubgroupSlug}
           onChange={setTargetSubgroupSlug}
-          mb="lg"
+          mb={targetIsSecret ? "xs" : "lg"}
           searchable
         />
+        {targetIsSecret && (
+          <Text size="sm" c="dimmed" mb="lg">
+            Gruppen er hemmelig: tråden bliver kun synlig for dens medlemmer.
+          </Text>
+        )}
         <Group justify="flex-end">
           <Button variant="light" onClick={closeMoveModal}>
             Annuller

@@ -293,11 +293,14 @@ export default function CalendarPage() {
     [goToMonth],
   )
 
-  const subgroupOptions = (subgroups || []).map((s) => ({
-    value: String(s.id),
+  // A secret group can't have events: the calendar is everybody's.
+  const subgroupOptions = (subgroups || [])
+    .filter((s) => !s.is_secret)
+    .map((s) => ({
+      value: String(s.id),
 
-    label: subgroupOptionLabel(s),
-  }))
+      label: subgroupOptionLabel(s),
+    }))
 
   if (error) {
     return (

@@ -102,6 +102,8 @@ export const forumApi = {
     description: string
 
     allows_members?: boolean
+
+    is_secret?: boolean
   }): Promise<Subgroup> => {
     const response = await apiClient.post("/forum/subgroups/", data)
 

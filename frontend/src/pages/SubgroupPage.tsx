@@ -731,12 +731,14 @@ When done, print a short summary:
               minHeight={120}
             />
           </Box>
-          <Checkbox
-            label="Tillad medlemskab"
-            description="Relevant hvis der ønskes mulighed for private tråde."
-            checked={editAllowsMembers}
-            onChange={(e) => setEditAllowsMembers(e.currentTarget.checked)}
-          />
+          {!subgroup.is_secret && (
+            <Checkbox
+              label="Tillad medlemskab"
+              description="Relevant hvis der ønskes mulighed for private tråde."
+              checked={editAllowsMembers}
+              onChange={(e) => setEditAllowsMembers(e.currentTarget.checked)}
+            />
+          )}
           <Group justify="flex-end">
             <Button variant="default" onClick={closeEditGroup}>
               Annuller
@@ -907,15 +909,18 @@ When done, print a short summary:
                   </ActionIcon>
                 </Tooltip>
               )}
-              <Button
-                variant="light"
-                leftSection={<IconCalendarPlus size={16} />}
-                onClick={() =>
-                  navigate(`/kalender/opret?subgroup=${subgroup.id}`)
-                }
-              >
-                Ny begivenhed
-              </Button>
+              {/* The calendar is everybody's, so a secret group has no events. */}
+              {!subgroup.is_secret && (
+                <Button
+                  variant="light"
+                  leftSection={<IconCalendarPlus size={16} />}
+                  onClick={() =>
+                    navigate(`/kalender/opret?subgroup=${subgroup.id}`)
+                  }
+                >
+                  Ny begivenhed
+                </Button>
+              )}
               <Button
                 leftSection={<IconPlus size={16} />}
                 onClick={openCreateThreadModal}
@@ -943,6 +948,7 @@ When done, print a short summary:
                   key={thread.id}
                   thread={thread}
                   to={`/forum/${slug}/traad/${thread.slug}`}
+                  markPrivate={!subgroup.is_secret}
                 />
               ))
             )}
@@ -967,6 +973,7 @@ When done, print a short summary:
           <DocumentsTab
             subgroupSlug={slug!}
             allowsMembers={subgroup?.allows_members ?? false}
+            isSecret={subgroup?.is_secret ?? false}
             isMember={subgroup?.is_member ?? false}
             defaultMembersOnly={subgroup?.default_members_only ?? false}
             initialFolderSlug={initialFolderSlug}
@@ -1138,7 +1145,9 @@ When done, print a short summary:
         onClose={closeCreateThreadModal}
         subgroupSlug={slug!}
         subgroupName={subgroup?.name ?? ""}
-        allowsMembers={subgroup?.allows_members ?? false}
+        allowsMembers={
+          (subgroup?.allows_members ?? false) && !subgroup?.is_secret
+        }
         defaultMembersOnly={subgroup?.default_members_only ?? false}
         onSuccess={(thread) => {
           queryClient.invalidateQueries({ queryKey: ["threads", slug] })
@@ -1160,9 +1169,14 @@ interface ThreadRowProps {
   thread: Thread
 
   to: string
+
+  /** Mark a members-only thread — pointless in a secret group, where all are. */
+  markPrivate: boolean
 }
 
-function ThreadRow({ thread, to }: ThreadRowProps) {
+function ThreadRow({ thread, to, markPrivate }: ThreadRowProps) {
+  const isPrivate = thread.members_only && markPrivate
+
   return (
     <Paper
       withBorder
@@ -1173,7 +1187,7 @@ function ThreadRow({ thread, to }: ThreadRowProps) {
 
         position: "relative",
 
-        ...(thread.members_only && {
+        ...(isPrivate && {
           borderColor: "var(--mantine-color-grape-8)",
 
           borderWidth: 2,
@@ -1190,7 +1204,7 @@ function ThreadRow({ thread, to }: ThreadRowProps) {
           borderRadius: "inherit",
         }}
       />
-      {thread.members_only && (
+      {isPrivate && (
         <Tooltip label="Kun for medlemmer">
           <Box
             style={{
@@ -1646,6 +1660,9 @@ interface DocumentsTabProps {
 
   allowsMembers: boolean
 
+  /** Everything here is members-only: no privacy choice, no per-file mark. */
+  isSecret: boolean
+
   isMember: boolean
 
   defaultMembersOnly: boolean
@@ -1659,6 +1676,8 @@ function DocumentsTab({
   subgroupSlug,
 
   allowsMembers,
+
+  isSecret,
 
   isMember,
 
@@ -2065,7 +2084,7 @@ function DocumentsTab({
           ))}
         </Breadcrumbs>
         <Group gap="xs">
-          {allowsMembers && (
+          {allowsMembers && !isSecret && (
             <Tooltip label="Næste upload markeres som kun synlig for medlemmer">
               <Checkbox
                 label="Upload som privat"
@@ -2135,6 +2154,7 @@ function DocumentsTab({
                 subgroupSlug={subgroupSlug}
                 canModify={canModify}
                 allowsMembers={allowsMembers}
+                markPrivate={!isSecret}
                 onDelete={invalidateFiles}
                 onMove={invalidateFiles}
                 onUpdate={invalidateFiles}
@@ -2426,6 +2446,9 @@ interface FileRowProps {
 
   allowsMembers?: boolean
 
+  /** Mark a members-only file — pointless in a secret group, where all are. */
+  markPrivate: boolean
+
   onDelete: () => void
 
   onMove: () => void
@@ -2439,6 +2462,8 @@ function FileRow({
   subgroupSlug,
 
   canModify,
+
+  markPrivate,
 
   onDelete,
 
@@ -2564,14 +2589,15 @@ function FileRow({
         style={{
           position: "relative",
 
-          ...(file.members_only && {
-            borderColor: "var(--mantine-color-grape-8)",
+          ...(file.members_only &&
+            markPrivate && {
+              borderColor: "var(--mantine-color-grape-8)",
 
-            borderWidth: 2,
-          }),
+              borderWidth: 2,
+            }),
         }}
       >
-        {file.members_only && (
+        {file.members_only && markPrivate && (
           <Tooltip label="Kun for medlemmer">
             <Box
               style={{
@@ -3060,6 +3086,18 @@ function StatsChips({ subgroup, currentUserId, isMobile }: StatsChipsProps) {
   return (
     <>
       <Group gap="xs" mt="sm">
+        {subgroup.is_secret && (
+          <Badge
+            size="lg"
+            variant="light"
+            color="grape"
+            leftSection={<IconEyeOff size={14} />}
+            style={{ cursor: "pointer", textTransform: "none" }}
+            onClick={() => setMembersOpened(true)}
+          >
+            Hemmelig
+          </Badge>
+        )}
         {subgroup.allows_members && (
           <Badge
             size="lg"
@@ -3120,6 +3158,7 @@ function MembersModal({
   isMobile,
 }: MembersModalProps) {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const { user } = useAuthStore()
 
   const { data: roleOptions } = useQuery({
@@ -3141,6 +3180,9 @@ function MembersModal({
     useDisclosure(false)
 
   const canManage = subgroup.is_member || !!user?.is_staff
+
+  // Nobody could see a secret group without members, so the last one stays.
+  const isLastOfSecret = subgroup.is_secret && subgroup.members.length === 1
 
   const sortedMembers = [...subgroup.members].sort((a, b) => {
     const an = `${a.user.first_name} ${a.user.last_name}`.toLowerCase()
@@ -3210,9 +3252,15 @@ function MembersModal({
         message: `Du er ikke længere medlem af ${subgroup.name}.`,
         color: "green",
       })
-      invalidateSubgroup()
       closeLeave()
       onClose()
+      if (subgroup.is_secret) {
+        // The group is gone for them now: back to the list, which no longer has it.
+        queryClient.invalidateQueries({ queryKey: ["subgroups"] })
+        navigate("/forum")
+      } else {
+        invalidateSubgroup()
+      }
     },
     onError: (error: unknown) => {
       showErrorNotification(error, "Kunne ikke forlade gruppen.")
@@ -3233,6 +3281,19 @@ function MembersModal({
       size="md"
     >
       <Stack gap="xs">
+        {subgroup.is_secret && (
+          <Group gap={8} wrap="nowrap" align="flex-start" mb="xs">
+            <IconEyeOff
+              size={16}
+              color="var(--mantine-color-grape-6)"
+              style={{ flexShrink: 0, marginTop: 2 }}
+            />
+            <Text size="sm" c="dimmed">
+              Gruppen er hemmelig: kun medlemmerne kan se den og alt i den.
+              Tilføj nogen for at give dem adgang.
+            </Text>
+          </Group>
+        )}
         {sortedMembers.length === 0 && (
           <Text c="dimmed" size="sm">
             Ingen medlemmer endnu. Tilføj det første medlem for at komme i gang.
@@ -3303,7 +3364,7 @@ function MembersModal({
                   {m.role || "Medlem"}
                 </Badge>
               )}
-              {canManage && (
+              {canManage && !isLastOfSecret && (
                 <ActionIcon
                   color="red"
                   variant="subtle"
@@ -3385,24 +3446,40 @@ function MembersModal({
         title="Forlad gruppe"
         size="sm"
       >
-        <Stack gap="md">
-          <Text>
-            Er du sikker på, at du vil forlade <strong>{subgroup.name}</strong>?
-            Dit abonnement bevares — du kan stadig følge med i gruppen.
-          </Text>
-          <Group justify="flex-end">
-            <Button variant="light" onClick={closeLeave}>
-              Annuller
-            </Button>
-            <Button
-              color="red"
-              loading={leaveMutation.isPending}
-              onClick={() => leaveMutation.mutate()}
-            >
-              Forlad
-            </Button>
-          </Group>
-        </Stack>
+        {isLastOfSecret ? (
+          <Stack gap="md">
+            <Text>
+              Du er det sidste medlem af <strong>{subgroup.name}</strong>. En
+              hemmelig gruppe skal have mindst ét medlem, ellers kan ingen finde
+              den igen. Tilføj en anden, før du går.
+            </Text>
+            <Group justify="flex-end">
+              <Button onClick={closeLeave}>OK</Button>
+            </Group>
+          </Stack>
+        ) : (
+          <Stack gap="md">
+            <Text>
+              Er du sikker på, at du vil forlade{" "}
+              <strong>{subgroup.name}</strong>?{" "}
+              {subgroup.is_secret
+                ? "Gruppen er hemmelig, så du kan ikke længere se den eller noget i den – heller ikke det, du selv har skrevet. Kun et medlem kan tilføje dig igen."
+                : "Dit abonnement bevares — du kan stadig følge med i gruppen."}
+            </Text>
+            <Group justify="flex-end">
+              <Button variant="light" onClick={closeLeave}>
+                Annuller
+              </Button>
+              <Button
+                color="red"
+                loading={leaveMutation.isPending}
+                onClick={() => leaveMutation.mutate()}
+              >
+                Forlad
+              </Button>
+            </Group>
+          </Stack>
+        )}
       </Modal>
     </Modal>
   )
