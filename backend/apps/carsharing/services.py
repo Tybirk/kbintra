@@ -9,12 +9,13 @@ unanswered request is neither — it is information.
 import datetime
 from dataclasses import dataclass
 
+from django.db import transaction
 from django.db.models import Prefetch, Q
 from django.utils import timezone
 
 from apps.houses.models import Car
 
-from .constants import DEFAULT_RATE_PER_KM, TERMS_VERSION
+from .constants import DEFAULT_RATE_PER_KM, TERMS_VERSION, UNFINISHED_LOAN_CLOSE_DAYS
 from .models import CarBlock, CarLoan, CarLoanCandidate
 
 # Ordering weight per conflict kind: free cars first, lent-out cars last.
@@ -228,6 +229,80 @@ def close_loan_if_unanswerable(loan) -> bool:
             status=CarLoan.Status.DECLINED
         )
     )
+
+
+def expire_unanswered_requests(now: datetime.datetime) -> list[CarLoan]:
+    """Close requests whose window is over without anyone saying yes.
+
+    Nobody can lend a car for a time that has passed, yet the request kept the
+    borrower "waiting" and the asked households holding an unread question. The
+    households still asked are released exactly as a cancellation releases them.
+    """
+    expired = []
+    for loan in CarLoan.objects.filter(status=CarLoan.Status.REQUESTED, end_at__lte=now):
+        with transaction.atomic():
+            # Conditional, so an owner's yes landing in the same moment wins or
+            # loses cleanly instead of being overwritten.
+            if not CarLoan.objects.filter(pk=loan.pk, status=CarLoan.Status.REQUESTED).update(
+                status=CarLoan.Status.EXPIRED
+            ):
+                continue
+            loan.candidates.filter(status=CarLoanCandidate.Status.ASKED).update(
+                status=CarLoanCandidate.Status.CLOSED
+            )
+        loan.status = CarLoan.Status.EXPIRED
+        expired.append(loan)
+    return expired
+
+
+def unfinished_loan_close_date(loan) -> datetime.date:
+    """The day an unfinished loan is closed without settlement, in local time."""
+    return timezone.localdate(loan.end_at) + datetime.timedelta(days=UNFINISHED_LOAN_CLOSE_DAYS)
+
+
+def close_unfinished_loans(now: datetime.datetime) -> list[CarLoan]:
+    """Stop waiting for a borrower who never finished the loan.
+
+    Only the borrower can enter the kilometres, so an unfinished loan stayed
+    "Aktivt lån" for good, for both households. After the deadline it is closed
+    with no amount, and the households settle from the odometer as the terms say.
+    """
+    today = timezone.localdate(now)
+    closed = []
+    for loan in CarLoan.objects.filter(status=CarLoan.Status.ACTIVE, end_at__lt=now).select_related(
+        "borrower", "car", "car__house"
+    ):
+        if unfinished_loan_close_date(loan) > today:
+            continue
+        if CarLoan.objects.filter(pk=loan.pk, status=CarLoan.Status.ACTIVE).update(
+            status=CarLoan.Status.EXPIRED
+        ):
+            loan.status = CarLoan.Status.EXPIRED
+            closed.append(loan)
+    return closed
+
+
+def remind_unfinished_loans(now: datetime.datetime) -> list[CarLoan]:
+    """Loans that ended before today and whose borrower has not been reminded.
+
+    "Before today" rather than "some hours ago": the task runs in the morning, so
+    the reminder arrives the morning after the trip, never in the night and never
+    while the borrower is still parking the car.
+    """
+    start_of_today = timezone.make_aware(
+        datetime.datetime.combine(timezone.localdate(now), datetime.time.min)
+    )
+    reminded = []
+    for loan in CarLoan.objects.filter(
+        status=CarLoan.Status.ACTIVE,
+        end_at__lt=start_of_today,
+        completion_reminded_at__isnull=True,
+    ).select_related("borrower", "car", "car__house"):
+        if CarLoan.objects.filter(pk=loan.pk, completion_reminded_at__isnull=True).update(
+            completion_reminded_at=now
+        ):
+            reminded.append(loan)
+    return reminded
 
 
 def withdraw_car_from_open_requests(car: Car, *, by_user) -> list:

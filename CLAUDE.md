@@ -124,6 +124,7 @@ Beyond one-off tasks:
 - **Birthday notifications** (`apps/users/tasks.py`) — daily 08:00, one per resident or child with a birthday today
 - **Handovers** (`apps/houses/tasks.py`) — hourly, carries out each dated step of an ind-/udflytning (see below)
 - **Madhold pause end** (`apps/food/tasks.py`) — daily 00:15, lifts pauses whose `food_team_pause_until` has come
+- **Bildeling upkeep** (`apps/carsharing/tasks.py`) — daily 10:00, expires requests whose window passed without a yes, reminds borrowers the morning after a loan ended to finish it, and closes loans still unfinished 14 days after (status `expired`)
 
 Use `@db_periodic_task(local_crontab(...))` (`config/scheduling.py`) for anything tied to a time of day — Huey reads a bare `crontab` in UTC, so `crontab(hour=8)` fires at 10:00 in summer. A bare `crontab` is fine for hourly tasks. Import the task module in the app's `AppConfig.ready()` to register it.
 

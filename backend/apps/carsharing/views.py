@@ -300,6 +300,8 @@ class CandidateRespondView(APIView):
             return "Låneren har aflyst forespørgslen."
         if loan.status == CarLoan.Status.DECLINED:
             return "Forespørgslen er lukket — ingen kunne låne ud."
+        if loan.status == CarLoan.Status.EXPIRED or loan.end_at <= timezone.now():
+            return "Tidsrummet er forbi, så bilen kan ikke længere lånes ud."
         return "Forespørgslen er ikke længere åben."
 
     def _decline(self, candidate, user):
@@ -352,7 +354,12 @@ class CandidateRespondView(APIView):
             # late accept — a sleeping phone, a background tab — reported the
             # generic "no longer open" and the reassuring message below was
             # effectively unreachable.
-            claimed = CarLoan.objects.filter(pk=loan.pk, status=CarLoan.Status.REQUESTED).update(
+            # A window that has passed cannot be lent for. The morning task closes
+            # such a request, and until it has run a yes must not start a loan
+            # that is already over.
+            claimed = CarLoan.objects.filter(
+                pk=loan.pk, status=CarLoan.Status.REQUESTED, end_at__gt=timezone.now()
+            ).update(
                 status=CarLoan.Status.ACTIVE,
                 car=candidate.car,
                 approved_by=user,

@@ -220,10 +220,14 @@ def test_a_blank_line_separates_two_paragraphs():
 
     section = next(s for s in loan_terms_sections() if s["heading"].startswith("1."))
     paragraphs = [b["text"] for b in section["blocks"] if b["kind"] == "paragraph"]
-    assert len(paragraphs) == 2
+    assert len(paragraphs) == 3
     assert paragraphs[0].startswith("Et lån er en privat aftale")
     assert paragraphs[0].endswith("skader, tab eller udgifter.")
     assert paragraphs[1].startswith("Når du sender en forespørgsel")
+    # One set of terms for every car: what an owner writes on the car card is
+    # information, and cannot raise what the borrower pays or answers for.
+    assert paragraphs[2].startswith("Vilkårene er de samme for alle biler")
+    assert "Ejeren kan ikke sætte egne vilkår" in paragraphs[2]
 
 
 def test_a_bold_opening_becomes_a_lead_label():
@@ -236,8 +240,10 @@ def test_a_bold_opening_becomes_a_lead_label():
     # Keyed on the case that decides the money rather than on one phrasing of it:
     # the leads are the labels a resident reads to find their own situation, and
     # they get reworded — "Anmeldes skaden:" became two cases when cars without
-    # kasko were let into the pool.
-    assert any(lead.startswith("Er bilen") for lead in leads)
+    # kasko were let into the pool, and the cases became "with" and "without"
+    # kasko when the amounts were simplified.
+    assert "Har bilen kasko:" in leads
+    assert "Har bilen ikke kasko:" in leads
     assert "Loft:" in leads
     # The lead is split off, not duplicated into the body.
     cap = next(item for item in bullets if item["lead"] == "Loft:")

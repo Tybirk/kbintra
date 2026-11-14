@@ -1,6 +1,6 @@
 # Vilkår for lån af bil i delebilparken
 
-Version: 2026-08-07
+Version: 2026-11-14
 
 <!--
 Dette er den eneste kilde til vilkårene. Appen læser filen direkte, så en
@@ -21,6 +21,9 @@ Regler for filen:
 - Vilkårene nævner med vilje ingen km-takst. Taksten kan være forskellig fra bil
   til bil, og ét tal i en fælles tekst ville kunne modsige det lånerens egen bil
   koster. Beløbet står på bilkortet og i afregningen, hvor bilen er kendt.
+- Vilkårene er de samme for alle biler. Der er med vilje intet felt til en
+  bils egne vilkår: det, ejeren skriver om bilen ("Andet udstyr", "Praktisk
+  info"), er oplysninger og ændrer ikke vilkårene (punkt 1).
 - Beløbene i punkt 5 hænger sammen: 6.000 kr. for selvrisikoen plus 3.000 kr.
   for tab af skadefri år er præcis loftet på 9.000 kr. Ændrer du ét af dem,
   skal de andre to følge med, ellers kan en låner komme til at skylde mere end
@@ -32,13 +35,13 @@ Filen ligger i backend'en fordi den skal med i serverimaget.
 
 ## Kort fortalt
 
-Du er ansvarlig for bilen, mens du har den. Sker der noget, siger du det med det
-samme. Ved skade betaler du ejerens selvrisiko, dog højst 6.000 kr. — er bilen
-uden kasko, betaler du reparationen. Koster skaden ejeren skadefri år, betaler du
-3.000 kr. oveni. Uanset hvad er dit samlede ansvar højst 9.000 kr. pr. lån.
-Bøder og afgifter er dine.
-Du betaler en forudbestemt takst pr. kørt km, minus hvad du selv har
-lagt ud til strøm eller brændstof.
+Vilkårene er de samme for alle biler i delebilparken. Du er ansvarlig for bilen,
+mens du har den. Sker der noget, siger du det med det samme. Ved skade betaler
+du højst 9.000 kr. pr. lån, med eller uden kasko. Med kasko er det selvrisikoen,
+dog højst 6.000 kr., plus 3.000 kr., hvis ejeren mister skadefri år. Uden kasko
+er det reparationen, dog højst 9.000 kr. i alt. Bøder og afgifter er dine. Du
+betaler en forudbestemt takst pr. kørt km, minus hvad du selv har lagt ud til
+strøm eller brændstof.
 
 ## 1. Hvem aftalen er mellem
 
@@ -49,6 +52,10 @@ ikke part i aftalen og hæfter ikke for skader, tab eller udgifter.
 Når du sender en forespørgsel, accepterer du de vilkår der vises i appen på det
 tidspunkt. Den version gemmes på lånet, og det er den der gælder for netop det
 lån — også hvis vilkårene ændres bagefter.
+
+Vilkårene er de samme for alle biler i delebilparken. Ejeren kan ikke sætte
+egne vilkår for sin bil, og det, der står om bilen i appen, ændrer dem ikke —
+hverken hvad du betaler, eller hvad du hæfter for.
 
 ## 2. Hvem må køre bilen
 
@@ -65,12 +72,15 @@ lån — også hvis vilkårene ændres bagefter.
 
 - Kør forsigtigt, følg færdselsloven, og aflever bilen til aftalt tid, ryddet op
   og i samme stand som du fik den. Sæt elbilen til at lade, hvis den er under 50 %.
-- Overhold de vilkår ejeren oplyser om bilen og dens forsikring.
+- Følg ejerens praktiske oplysninger om bilen, fx hvordan den lades, og hvor
+  nøglen skal ligge.
 - Bilen må ikke bruges til: erhvervsmæssig kørsel (herunder mad- og
   pakkeudbringning og taxikørsel), motorsport, bane- eller terrænkørsel,
   videreudlån, træk af mere end bilen er godkendt til, eller kørsel uden for
   Danmark uden ejerens ja på forhånd. Flere af tingene kan koste dækningen på
   ejerens forsikring, og så står du med hele regningen (punkt 5).
+- Kørsel til og fra arbejde er ikke erhvervsmæssig kørsel. Det er almindelig
+  privat kørsel, og den er tilladt.
 - Dyr kun hvis det står i bilens beskrivelse.
 - Autostol til børn og andet du har brug for, sørger du selv for.
 - Dine egne ting i bilen er ikke forsikret.
@@ -91,25 +101,22 @@ lån — også hvis vilkårene ændres bagefter.
 
 ## 5. Hvad du betaler, hvis der er sket skade
 
-- **Er bilen kaskoforsikret, og anmeldes skaden:** du betaler ejerens selvrisiko,
-  dog højst 6.000 kr. Er selvrisikoen højere end det, bærer ejeren resten.
-- **Anmeldes skaden ikke:** du betaler de dokumenterede reparationsudgifter, dog
-  højst det selvrisikoen ville have været og aldrig over 6.000 kr.
-- **Er bilen ikke kaskoforsikret:** du betaler de dokumenterede
-  reparationsudgifter, dog højst 9.000 kr. Ejeren oplyser inden lånet, at bilen
-  er uden kasko (punkt 9). Skader på andre biler, ting og personer er dækket af
-  den lovpligtige ansvarsforsikring, uanset om bilen har kasko.
-- **Tab af skadefri år:** påvirker skaden ejerens præmie, betaler du 3.000 kr.
-  som fuld og endelig dækning af den højere præmie fremover. Der gøres ikke krav
-  op derudover. Beløbet betales ikke, hvis skaden ikke påvirker præmien — fx
-  fordi policen har bonusbeskyttelse, eller fordi det er en rude- eller
-  friskade, der efter ejerens police ikke koster skadefri år.
+Du betaler højst 9.000 kr. pr. lån, med eller uden kasko. Skader på andre biler,
+ting og personer dækker bilens lovpligtige ansvarsforsikring.
+
+- **Har bilen kasko:** du betaler ejerens selvrisiko, dog højst 6.000 kr.
+  Anmelder ejeren ikke skaden, betaler du i stedet reparationen, dog aldrig mere
+  end selvrisikoen.
+- **Har bilen ikke kasko:** du betaler reparationen, dog højst 9.000 kr. — det
+  samme som det mest, en bil med kasko kan koste dig. Ejeren oplyser inden
+  lånet, at bilen er uden kasko (punkt 9).
+- **Skadefri år:** koster skaden ejeren skadefri år, betaler du desuden
+  3.000 kr. som fuld og endelig dækning af den højere præmie. Ikke hvis policen
+  har bonusbeskyttelse, eller skaden efter policen ikke koster skadefri år (fx
+  en rudeskade).
 - **Loft:** dit samlede ansvar for ét lån er højst 9.000 kr., uanset hvordan
-  beløbet er sammensat, og uanset om bilen har kasko. Alt derover bærer ejeren —
-  det er den risiko, der følger med at melde sin bil i delebilparken. Er bilen
-  uden kasko, er der ingen forsikring til at dække resten, og det ejeren bærer,
-  er hele skaden over de 9.000 kr. Det er en beslutning, ejeren træffer bevidst
-  ved at melde bilen ind uden kasko.
+  beløbet er sammensat. Alt derover bærer ejeren — det er den risiko, der følger
+  med at melde sin bil i delebilparken.
 - **Loftet gælder ikke,** hvis du har handlet forsætligt eller groft uagtsomt
   (fx spirituskørsel, grov hastighedsovertrædelse, kørsel uden gyldigt kørekort),
   eller har brugt bilen i strid med punkt 2 eller 3. Så hæfter du for ejerens

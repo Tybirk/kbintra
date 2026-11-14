@@ -277,6 +277,9 @@ function closedOutReason(loan: CarLoan): string {
   if (loan.status === "declined") {
     return "Forespørgslen er lukket — ingen kunne låne ud."
   }
+  if (loan.status === "expired" && !wasLentOut(loan)) {
+    return "Forespørgslen er lukket — tidsrummet er forbi."
+  }
   return "En anden ejer var først — du skal ikke gøre mere."
 }
 
@@ -324,6 +327,22 @@ function presentLoan(loan: CarLoan): LoanPresentation {
       closedNotice: null,
     }
   }
+  // The app stopped waiting, and which wait it was decides the words: a request
+  // nobody answered in time never became a loan; a loan nobody finished did, and
+  // still has money in it that the two households settle themselves.
+  if (loan.status === "expired") {
+    return wasLentOut(loan)
+      ? {
+          badge: "Lukket uden afregning",
+          badgeColor: "orange",
+          closedNotice: null,
+        }
+      : {
+          badge: "Ingen nåede at svare",
+          badgeColor: "gray",
+          closedNotice: null,
+        }
+  }
   if (loan.status === "active" && !loan.has_started) {
     return {
       // With the date alone, a loan starting in 25 minutes read "starter 6. aug."
@@ -342,6 +361,8 @@ function presentLoan(loan: CarLoan): LoanPresentation {
     completed: ["Afsluttet", "gray"],
     cancelled: ["Aflyst", "gray"],
     declined: ["Ingen kunne låne ud", "orange"],
+    // Answered above; here so the table stays total.
+    expired: ["Udløbet", "gray"],
   }
   const [badge, badgeColor] = labels[loan.status]
   return { badge, badgeColor, closedNotice: null }
@@ -360,7 +381,7 @@ function describeParties(loan: CarLoan): string {
   if (loan.status === "requested") return `${who} vil låne`
   if (loan.status === "active") return `${who} låner`
   if (loan.status === "completed") return `${who} lånte`
-  // declined, or cancelled — past tense only if a car actually went out.
+  // declined, cancelled or expired — past tense only if a car actually went out.
   return wasLentOut(loan) ? `${who} lånte` : `${who} ville låne`
 }
 
@@ -573,6 +594,31 @@ export function LoanCard({ loan, highlight }: LoanCardProps) {
                   Prøv et andet tidsrum, eller spørg flere biler.
                 </Text>
               </Stack>
+            )}
+
+            {/* Borrower, and the window passed without a yes */}
+            {loan.is_borrower &&
+              loan.status === "expired" &&
+              !wasLentOut(loan) && (
+                <Stack gap="xs">
+                  <Text size="sm" fw={500}>
+                    Ingen nåede at svare, før tidsrummet var forbi.
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    Prøv et andet tidsrum, eller spørg flere biler.
+                  </Text>
+                </Stack>
+              )}
+
+            {/* Both sides of a loan the borrower never finished. Only the
+                borrower can enter the kilometres, so after two weeks the app
+                stops waiting — and says what is left for the two of them. */}
+            {loan.status === "expired" && wasLentOut(loan) && (
+              <Text size="sm">
+                {loan.is_borrower
+                  ? `Du afsluttede ikke lånet, så det er lukket uden afregning. Gør beløbet op med ${loan.car_house_name} ud fra kilometertælleren.`
+                  : `${loan.borrower_name} afsluttede ikke lånet, så det er lukket uden afregning. Gør beløbet op ud fra kilometertælleren.`}
+              </Text>
             )}
 
             {/* Owner: answer a request about your own car. The status check is

@@ -2220,6 +2220,77 @@ def notify_car_loan_completed(loan: Any) -> list[Notification]:
     return created
 
 
+def notify_car_loan_completion_reminder(loan: Any) -> Notification | None:
+    """Remind the borrower, the morning after, to finish the loan in the app.
+
+    Only the borrower can enter the kilometres, so until they do the lending
+    household has no amount and the loan reads "Aktivt lån" for both. It says the
+    day the app stops waiting, so one reminder is enough.
+    """
+    from apps.carsharing.services import unfinished_loan_close_date
+
+    if loan.car is None:
+        return None
+    close_on = unfinished_loan_close_date(loan)
+    close_day = f"{_DANISH_WEEKDAYS_SHORT[close_on.weekday()]} {close_on:%d-%m-%Y}"
+    return create_notification(
+        user=loan.borrower,
+        notification_type=NotificationType.CAR_LOAN_UPDATE,
+        title="Husk at afslutte lånet",
+        message=(
+            f"Skriv de kørte kilometer for {loan.car.name_with_plate} "
+            f"{_format_loan_window(loan)}, så {loan.car.house.name} kan se beløbet. "
+            f"Ellers lukkes lånet {close_day} uden afregning i appen."
+        ),
+        link=_car_loan_link(loan),
+        related_user=loan.approved_by,
+    )
+
+
+def notify_car_loan_closed_unfinished(loan: Any) -> list[Notification]:
+    """Tell both sides that a loan nobody finished is closed without settlement.
+
+    Something may still be owed — the app just no longer works it out — so each
+    side is pointed at the odometer, as the terms (point 7) say.
+    """
+    if loan.car is None:
+        return []
+    window = _format_loan_window(loan)
+    title = "Billånet er lukket uden afregning"
+    created = []
+
+    notification = create_notification(
+        user=loan.borrower,
+        notification_type=NotificationType.CAR_LOAN_UPDATE,
+        title=title,
+        message=(
+            f"Du afsluttede ikke lånet af {loan.car.display_name} {window}, så det er "
+            f"lukket. Gør beløbet op med {loan.car.house.name} ud fra kilometertælleren."
+        ),
+        link=_car_loan_link(loan),
+        related_user=loan.approved_by,
+    )
+    if notification is not None:
+        created.append(notification)
+
+    for recipient in _car_household_recipients(loan.car, loan.borrower_id):
+        notification = create_notification(
+            user=recipient,
+            notification_type=NotificationType.CAR_LOAN_UPDATE,
+            title=title,
+            message=(
+                f"{loan.borrower.first_name} afsluttede ikke lånet af "
+                f"{loan.car.display_name} {window}, så det er lukket. Gør beløbet op "
+                f"med {loan.borrower.first_name} ud fra kilometertælleren."
+            ),
+            link=_car_loan_link(loan),
+            related_user=loan.borrower,
+        )
+        if notification is not None:
+            created.append(notification)
+    return created
+
+
 def notify_birthday(
     user: User,
     label: str,

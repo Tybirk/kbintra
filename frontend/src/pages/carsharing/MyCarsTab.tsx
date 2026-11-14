@@ -38,6 +38,8 @@ import { housesApi } from "../../api/houses"
 
 import { WeekHourGrid } from "../../components/WeekHourGrid"
 
+import { useAuthStore } from "../../store/authStore"
+
 import { formatLicensePlate } from "../../utils/licensePlate"
 
 import { toDanishDecimal } from "../../utils/decimalInput"
@@ -52,10 +54,11 @@ import {
 
 import { carDraftDirty, carPayload, unsavedChangesHint } from "./carDraft"
 
+import { CarListing } from "./CarListing"
+
 import {
   errorMessage,
   formatKr,
-  LicensePlateBadge,
   moneyInputError,
   TermsConsent,
   useCarSharingMutation,
@@ -70,6 +73,8 @@ import type { Car, CarBlock } from "../../types"
 
 interface MyCarCardProps {
   car: Car
+  /** Shown beside the name, as borrowers see it. */
+  houseName: string
 }
 
 /**
@@ -85,7 +90,7 @@ class ScheduleSaveError extends Error {
   }
 }
 
-function MyCarCard({ car }: MyCarCardProps) {
+function MyCarCard({ car, houseName }: MyCarCardProps) {
   const queryClient = useQueryClient()
   const [expanded, setExpanded] = useState(false)
   const [acceptTerms, setAcceptTerms] = useState(false)
@@ -249,50 +254,57 @@ function MyCarCard({ car }: MyCarCardProps) {
           aria-expanded={expanded}
           aria-label={`Indstillinger for ${car.display_name}`}
         >
-          <Group justify="space-between" wrap="nowrap" gap="sm">
-            <Group gap="xs" wrap="wrap">
-              <Text fw={600}>{car.display_name}</Text>
-              {car.license_plate &&
-                car.display_name !== formatLicensePlate(car.license_plate) && (
-                  <LicensePlateBadge plate={car.license_plate} />
+          {/* The car exactly as the neighbours see it on "Lån en bil" — from
+              the saved car, not the draft, because that is what they see. Only
+              the badges are the owner's own: sharing state instead of
+              availability. */}
+          <CarListing
+            car={{
+              ...car,
+              house_name: houseName,
+              effective_rate_per_km:
+                car.rate_per_km ?? terms?.default_rate_per_km ?? null,
+            }}
+            badges={
+              <>
+                <Badge
+                  color={car.is_shared ? "green" : "gray"}
+                  variant="light"
+                  size="sm"
+                >
+                  {car.is_shared ? "I delebilparken" : "Ikke delt"}
+                </Badge>
+                {!car.license_plate && (
+                  <Badge color="yellow" variant="light" size="sm">
+                    Mangler nummerplade
+                  </Badge>
                 )}
-              {/* The saved state, not the draft — the badge should say what the
-                  rest of the community can see right now. */}
-              <Badge
-                color={car.is_shared ? "green" : "gray"}
-                variant="light"
-                size="sm"
-              >
-                {car.is_shared ? "I delebilparken" : "Ikke delt"}
-              </Badge>
-              {!car.license_plate && (
-                <Badge color="yellow" variant="light" size="sm">
-                  Mangler nummerplade
-                </Badge>
-              )}
-              {car.is_shared && !car.has_accepted_current_terms && (
-                <Badge color="yellow" variant="light" size="sm">
-                  Vilkår mangler accept
-                </Badge>
-              )}
-              {/* The one badge that is about the draft rather than the saved car.
-                  The save sits below the week grid now, so a card folded away
-                  mid-edit has to admit that something is still waiting. */}
-              {dirty && (
-                <Badge color="blue" variant="light" size="sm">
-                  Ikke gemt
-                </Badge>
-              )}
-            </Group>
-            <IconChevronDown
-              size={18}
-              style={{
-                flexShrink: 0,
-                transition: "transform 150ms ease",
-                transform: expanded ? "rotate(180deg)" : undefined,
-              }}
-            />
-          </Group>
+                {car.is_shared && !car.has_accepted_current_terms && (
+                  <Badge color="yellow" variant="light" size="sm">
+                    Vilkår mangler accept
+                  </Badge>
+                )}
+                {/* The one badge that is about the draft rather than the saved
+                    car. The save sits below the week grid, so a card folded
+                    away mid-edit has to admit that something is still waiting. */}
+                {dirty && (
+                  <Badge color="blue" variant="light" size="sm">
+                    Ikke gemt
+                  </Badge>
+                )}
+              </>
+            }
+            trailing={
+              <IconChevronDown
+                size={18}
+                style={{
+                  flexShrink: 0,
+                  transition: "transform 150ms ease",
+                  transform: expanded ? "rotate(180deg)" : undefined,
+                }}
+              />
+            }
+          />
         </UnstyledButton>
 
         {/* keepMounted={false} is not the default: without it the hidden fields
@@ -339,7 +351,7 @@ function MyCarCard({ car }: MyCarCardProps) {
                 compact
                 collapsible
                 terms={terms}
-                intro="Dette er de vilkår, låneren accepterer, når din bil lånes. Som ejer bekræfter du, at din bil udlånes på dem."
+                intro="Vilkårene er de samme for alle biler i delebilparken. Som ejer bekræfter du, at din bil udlånes på dem og ikke på egne vilkår."
                 label="Jeg har læst og accepterer vilkårene for at udlåne min bil"
                 checked={acceptTerms}
                 onChange={setAcceptTerms}
@@ -492,7 +504,7 @@ function MyCarCard({ car }: MyCarCardProps) {
             </Group>
             <Textarea
               label="Andet udstyr"
-              description="Fx. autostol, selepude, hundebur, tagbøjler, osv."
+              description="Fx. autostol, selepude, hundebur, tagbøjler. Ikke vilkår — de er de samme for alle biler."
               value={draft.equipment_note}
               onChange={(event) =>
                 setDraft({
@@ -652,6 +664,7 @@ function AddCarCard() {
 }
 
 export function MyCarsTab() {
+  const houseName = useAuthStore((state) => state.user?.house_name ?? "")
   const { data: cars, isLoading } = useQuery({
     queryKey: ["cars"],
     queryFn: housesApi.getCars,
@@ -667,13 +680,18 @@ export function MyCarsTab() {
 
   return (
     <Stack gap="md" mt="md">
-      {(cars ?? []).length === 0 && (
+      {(cars ?? []).length === 0 ? (
         <Text size="sm" c="dimmed">
           Din husstand har ingen biler registreret endnu.
         </Text>
+      ) : (
+        <Text size="sm" c="dimmed">
+          Sådan ser dine biler ud for andre på listen under "Lån en bil". Tryk
+          på en bil for at rette den.
+        </Text>
       )}
       {(cars ?? []).map((car) => (
-        <MyCarCard key={car.id} car={car} />
+        <MyCarCard key={car.id} car={car} houseName={houseName} />
       ))}
       <AddCarCard />
       <Text size="xs" c="dimmed">

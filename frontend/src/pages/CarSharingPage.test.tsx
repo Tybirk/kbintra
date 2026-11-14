@@ -646,6 +646,41 @@ describe("CarSharingPage", () => {
     expect(screen.queryByText("Ikke gemt")).not.toBeInTheDocument()
   })
 
+  it("shows my own car the way borrowers see it on the list", async () => {
+    mockGetCars.mockResolvedValue([
+      ownCar({
+        is_electric: true,
+        has_isofix: true,
+        equipment_note: "Tagbøjler i skuret",
+        // No rate of its own: borrowers see the community's default.
+        rate_per_km: null,
+      }),
+      ownCar({
+        id: 8,
+        display_name: "Toyota Yaris",
+        license_plate: "CD67890",
+        seats: 4,
+        rate_per_km: "0.00",
+      }),
+    ])
+
+    render(<CarSharingPage />)
+
+    await userEvent.click(screen.getByRole("tab", { name: "Mine biler" }))
+
+    // Folded, each card is the entry from "Lån en bil": the household, the
+    // facts, the rate and the equipment note — not just a name and a badge.
+    await waitFor(() => {
+      expect(
+        screen.getByText("5 sæder · Elbil · Isofix · 3,94 kr./km"),
+      ).toBeInTheDocument()
+    })
+    expect(screen.getByText("Tagbøjler i skuret")).toBeInTheDocument()
+    expect(screen.getByText("4 sæder · Gratis")).toBeInTheDocument()
+    expect(screen.getAllByText("House 1")).toHaveLength(2)
+    expect(screen.queryByLabelText("Mærke")).not.toBeInTheDocument()
+  })
+
   /** A save that the car list then reflects, the way the server's would. */
   function updateCarLikeTheServer(overrides: Partial<Car>) {
     mockUpdateCar.mockImplementation(async () => {
@@ -1479,6 +1514,67 @@ describe("CarSharingPage", () => {
     // phrasing: the borrow tab carries similar copy and is always mounted.
     expect(
       screen.queryByText(/Afventer svar\. Den første ejer der siger ja/),
+    ).not.toBeInTheDocument()
+  })
+
+  it("says nobody answered in time when a request ran out", async () => {
+    mockGetLoans.mockResolvedValue([
+      activeLoan({
+        status: "expired",
+        car: null,
+        can_cancel: false,
+        activated_at: null,
+        candidates: [candidate({ status: "closed", is_own_household: false })],
+      }),
+    ])
+
+    render(<CarSharingPage />)
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    await waitFor(() => {
+      expect(screen.getByText("Ingen nåede at svare")).toBeInTheDocument()
+    })
+    expect(
+      screen.getByText("Ingen nåede at svare, før tidsrummet var forbi."),
+    ).toBeInTheDocument()
+    // Nothing went out, so nobody "lånte".
+    expect(screen.getByText(/Du ville låne/)).toBeInTheDocument()
+    // Not the declined copy: nobody said no.
+    expect(screen.queryByText(/har sagt nej/)).not.toBeInTheDocument()
+  })
+
+  it("tells both sides to settle an unfinished loan themselves", async () => {
+    mockGetLoans.mockResolvedValue([
+      activeLoan({ status: "expired", can_cancel: false }),
+      activeLoan({
+        id: 43,
+        status: "expired",
+        can_cancel: false,
+        is_borrower: false,
+        viewer_role: "lender",
+        borrower_name: "Bo",
+      }),
+    ])
+
+    render(<CarSharingPage />)
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Lukket uden afregning")).toHaveLength(2)
+    })
+    expect(
+      screen.getByText(
+        "Du afsluttede ikke lånet, så det er lukket uden afregning. Gør beløbet op med Kløverbakkevej 7 ud fra kilometertælleren.",
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "Bo afsluttede ikke lånet, så det er lukket uden afregning. Gør beløbet op ud fra kilometertælleren.",
+      ),
+    ).toBeInTheDocument()
+    // Closed is closed: no settlement form to fill in after all.
+    expect(
+      screen.queryByRole("button", { name: "Afslut lån" }),
     ).not.toBeInTheDocument()
   })
 

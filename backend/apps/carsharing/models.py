@@ -89,6 +89,11 @@ class CarLoan(models.Model):
         # "all candidates declined" check, so a dead request leaves the open list
         # and stops counting as an unanswered request against the car.
         DECLINED = "declined", "Ingen kunne låne ud"
+        # The app stopped waiting (apps/carsharing/tasks.py). A request whose window
+        # passed without a yes, or a loan the borrower never finished: car is set
+        # in the second case only, which is how the two are told apart — the same
+        # way a cancellation before and after the car went out is.
+        EXPIRED = "expired", "Udløbet"
 
     borrower = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="car_loans"
@@ -137,6 +142,9 @@ class CarLoan(models.Model):
     damage_note = models.TextField(blank=True, default="")
     amount_due = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+    # When the borrower was reminded to finish a loan that had ended. Once only:
+    # the reminder names the day the loan is closed without them.
+    completion_reminded_at = models.DateTimeField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
