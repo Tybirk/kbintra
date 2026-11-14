@@ -646,6 +646,41 @@ describe("CarSharingPage", () => {
     expect(screen.queryByText("Ikke gemt")).not.toBeInTheDocument()
   })
 
+  it("shows my own car the way borrowers see it on the list", async () => {
+    mockGetCars.mockResolvedValue([
+      ownCar({
+        is_electric: true,
+        has_isofix: true,
+        equipment_note: "Tagbøjler i skuret",
+        // No rate of its own: borrowers see the community's default.
+        rate_per_km: null,
+      }),
+      ownCar({
+        id: 8,
+        display_name: "Toyota Yaris",
+        license_plate: "CD67890",
+        seats: 4,
+        rate_per_km: "0.00",
+      }),
+    ])
+
+    render(<CarSharingPage />)
+
+    await userEvent.click(screen.getByRole("tab", { name: "Mine biler" }))
+
+    // Folded, each card is the entry from "Lån en bil": the household, the
+    // facts, the rate and the equipment note — not just a name and a badge.
+    await waitFor(() => {
+      expect(
+        screen.getByText("5 sæder · Elbil · Isofix · 3,94 kr./km"),
+      ).toBeInTheDocument()
+    })
+    expect(screen.getByText("Tagbøjler i skuret")).toBeInTheDocument()
+    expect(screen.getByText("4 sæder · Gratis")).toBeInTheDocument()
+    expect(screen.getAllByText("House 1")).toHaveLength(2)
+    expect(screen.queryByLabelText("Mærke")).not.toBeInTheDocument()
+  })
+
   /** A save that the car list then reflects, the way the server's would. */
   function updateCarLikeTheServer(overrides: Partial<Car>) {
     mockUpdateCar.mockImplementation(async () => {
