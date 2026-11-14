@@ -79,6 +79,8 @@ hverken hvad du betaler, eller hvad du hæfter for.
   videreudlån, træk af mere end bilen er godkendt til, eller kørsel uden for
   Danmark uden ejerens ja på forhånd. Flere af tingene kan koste dækningen på
   ejerens forsikring, og så står du med hele regningen (punkt 5).
+- Kørsel til og fra arbejde er ikke erhvervsmæssig kørsel. Det er almindelig
+  privat kørsel, og den er tilladt.
 - Dyr kun hvis det står i bilens beskrivelse.
 - Autostol til børn og andet du har brug for, sørger du selv for.
 - Dine egne ting i bilen er ikke forsikret.
