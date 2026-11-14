@@ -6,9 +6,12 @@ These helpers centralize rules so views, signals, and notification tasks all agr
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from typing import TYPE_CHECKING
 
 from django.db.models import Q
+from django.http import Http404
+from django.shortcuts import get_object_or_404
 
 from .models import (
     File,
@@ -50,14 +53,39 @@ def add_member(subgroup: Subgroup, user: User, role: str = "Medlem") -> Subgroup
     return membership
 
 
-def remove_member(subgroup: Subgroup, user: User) -> bool:
-    """Remove a membership. Does NOT delete the subscription."""
-    deleted, _ = SubgroupMembership.objects.filter(user=user, subgroup=subgroup).delete()
+def remove_member(subgroup: Subgroup, user_id: int) -> bool:
+    """Remove a membership. Does NOT delete the subscription — except in a secret
+    group, where it would keep the group's name in the leaver's list of groups they
+    follow, and so on their screen after they lost the right to see it."""
+    deleted, _ = SubgroupMembership.objects.filter(user_id=user_id, subgroup=subgroup).delete()
+    if deleted and subgroup.is_secret:
+        SubgroupSubscription.objects.filter(user_id=user_id, subgroup=subgroup).delete()
     return bool(deleted)
+
+
+def is_last_secret_member(subgroup: Subgroup, user_id: int) -> bool:
+    """Whether removing this member would leave a secret group with nobody at all —
+    and so nobody who could see it, add anyone or delete it again."""
+    if not subgroup.is_secret:
+        return False
+    members = SubgroupMembership.objects.filter(subgroup=subgroup)
+    return members.filter(user_id=user_id).exists() and members.count() == 1
 
 
 # ---------------------------------------------------------------------------
 # Visibility
+#
+# One rule, in three shapes: can_view_thread for one user and one thread,
+# visible_threads_q as a filter for one user and many threads, and
+# thread_viewer_ids for one thread and many users (who may be told about it).
+#
+#   A member of the thread's group sees everything in it. Outside a secret
+#   group, everybody sees the public threads, and the author also sees their
+#   own private one. In a secret group nobody else sees anything — not even an
+#   author who has since left.
+#
+# Files follow the same rule with the uploader in the author's place.
+# is_staff has NO bypass — admins must be members to view private content.
 # ---------------------------------------------------------------------------
 
 
@@ -68,20 +96,39 @@ def member_subgroup_ids(user: User) -> set[int]:
     return set(SubgroupMembership.objects.filter(user=user).values_list("subgroup_id", flat=True))
 
 
-def can_view_thread(user: User, thread: Thread) -> bool:
-    """Whether the user can see a given thread.
+def get_visible_subgroup_or_404(user: User, slug: str) -> Subgroup:
+    """The group with this slug, unless it is secret and `user` isn't a member: then
+    404, the same answer as for a group that doesn't exist."""
+    return get_object_or_404(Subgroup.objects.visible_to(user), slug=slug)
 
-    Public threads: always visible.
-    Private threads: visible to (a) members of the subgroup, (b) the author.
-    is_staff has NO bypass — admins must be members to view private content.
-    """
-    if not thread.members_only:
+
+def can_view_thread(user: User, thread: Thread) -> bool:
+    """Whether the user can see a given thread (the rule is above)."""
+    if not thread.members_only and not thread.subgroup.is_secret:
         return True
     if not user or not user.is_authenticated:
         return False
-    if thread.author_id == user.id:
+    if SubgroupMembership.objects.filter(user=user, subgroup_id=thread.subgroup_id).exists():
         return True
-    return SubgroupMembership.objects.filter(user=user, subgroup_id=thread.subgroup_id).exists()
+    return thread.author_id == user.id and not thread.subgroup.is_secret
+
+
+def thread_viewer_ids(thread: Thread, user_ids: Iterable[int | None]) -> set[int]:
+    """Which of `user_ids` can see `thread` — for deciding who may be notified
+    about it, since a notification carries its title and often its text."""
+    ids = {uid for uid in user_ids if uid is not None}
+    if not ids:
+        return set()
+    if not thread.members_only and not thread.subgroup.is_secret:
+        return ids
+    members = set(
+        SubgroupMembership.objects.filter(
+            subgroup_id=thread.subgroup_id, user_id__in=ids
+        ).values_list("user_id", flat=True)
+    )
+    if thread.author_id in ids and not thread.subgroup.is_secret:
+        members.add(thread.author_id)
+    return members
 
 
 def can_view_poll(user: User, poll: Poll) -> bool:
@@ -98,36 +145,42 @@ def can_view_poll(user: User, poll: Poll) -> bool:
 
 
 def can_view_file(user: User, file: File) -> bool:
-    """Whether the user can see a given file.
-
-    Public files: always visible.
-    Private files: visible to (a) members of the file's subgroup, (b) the uploader.
-    """
-    if not file.members_only:
+    """Whether the user can see a given file (the rule is above). A private file
+    outside any group is visible to everybody, as it always was."""
+    if file.subgroup_id is None or (not file.members_only and not file.subgroup.is_secret):
         return True
     if not user or not user.is_authenticated:
         return False
-    if file.uploaded_by_id == user.id:
+    if SubgroupMembership.objects.filter(user=user, subgroup_id=file.subgroup_id).exists():
         return True
-    if file.subgroup_id is None:
-        return True
-    return SubgroupMembership.objects.filter(user=user, subgroup_id=file.subgroup_id).exists()
+    return file.uploaded_by_id == user.id and not file.subgroup.is_secret
 
 
-def visible_threads_q(user: User) -> Q:
-    """A Q filter that returns only threads the user is allowed to see."""
+def _prefixed(prefix: str) -> Callable[..., Q]:
+    """Q() with every lookup under `prefix`, so a rule written for threads can
+    filter the posts or attachments that hang off them."""
+    return lambda **lookups: Q(**{prefix + key: value for key, value in lookups.items()})
+
+
+def visible_threads_q(user: User, prefix: str = "") -> Q:
+    """Threads the user may see (the rule is above), as a filter. Pass e.g.
+    prefix="thread__" to filter posts by their thread."""
+    q = _prefixed(prefix)
     if not user or not user.is_authenticated:
-        return Q(members_only=False)
-    member_ids = member_subgroup_ids(user)
-    return Q(members_only=False) | Q(subgroup_id__in=member_ids) | Q(author=user)
+        return q(members_only=False, subgroup__is_secret=False)
+    return q(subgroup_id__in=member_subgroup_ids(user)) | (
+        q(subgroup__is_secret=False) & (q(members_only=False) | q(author=user))
+    )
 
 
 def visible_files_q(user: User) -> Q:
-    """A Q filter that returns only files the user is allowed to see."""
+    """Files the user may see (the rule is above), as a filter."""
+    not_secret = Q(subgroup__isnull=True) | Q(subgroup__is_secret=False)
     if not user or not user.is_authenticated:
-        return Q(members_only=False)
-    member_ids = member_subgroup_ids(user)
-    return Q(members_only=False) | Q(subgroup_id__in=member_ids) | Q(uploaded_by=user)
+        return not_secret & Q(members_only=False)
+    return Q(subgroup_id__in=member_subgroup_ids(user)) | (
+        not_secret & (Q(members_only=False) | Q(uploaded_by=user))
+    )
 
 
 def filter_visible_threads(qs: QuerySet[Thread], user: User) -> QuerySet[Thread]:
@@ -192,6 +245,15 @@ def visible_folder_ids(user: User, subgroup: Subgroup) -> set[int]:
             visible.add(cur)
             cur = parent_map.get(cur)
     return visible
+
+
+def get_visible_folder_or_404(user: User, pk: int) -> Folder:
+    """The folder, if `user` can see it (see visible_folder_ids); otherwise 404, so
+    a guessed id says nothing about a group the user can't see."""
+    folder = get_object_or_404(Folder.objects.select_related("subgroup"), pk=pk)
+    if folder.subgroup is not None and folder.id not in visible_folder_ids(user, folder.subgroup):
+        raise Http404
+    return folder
 
 
 # ---------------------------------------------------------------------------

@@ -875,13 +875,32 @@ class TestFolderViews:
         assert response.data == {"file_count": 2, "subfolder_count": 2}
 
     def test_delete_preview_forbidden_for_non_member_in_members_only_subgroup(
-        self, second_authenticated_client, member_subgroup
+        self, second_authenticated_client, member_subgroup, user
     ):
-        folder = Folder.objects.create(subgroup=member_subgroup, name="Privat")
+        """A folder the non-member can see (it holds a public file): 403."""
+        folder = Folder.objects.create(subgroup=member_subgroup, name="Referater")
+        File.objects.create(
+            subgroup=member_subgroup,
+            folder=folder,
+            uploaded_by=user,
+            file=SimpleUploadedFile("a.txt", b"a"),
+            name="a.txt",
+        )
         response = second_authenticated_client.get(
             f"/api/forum/folders/{folder.id}/delete-preview/"
         )
         assert response.status_code == 403
+
+    def test_delete_preview_404_for_folder_the_user_cannot_see(
+        self, second_authenticated_client, member_subgroup
+    ):
+        """An empty folder in a members-only group is hidden from non-members, so
+        its delete preview is a 404 like the folder itself, not a 403 confirming it."""
+        folder = Folder.objects.create(subgroup=member_subgroup, name="Privat")
+        response = second_authenticated_client.get(
+            f"/api/forum/folders/{folder.id}/delete-preview/"
+        )
+        assert response.status_code == 404
 
     def test_cannot_create_duplicate_root_folder(self, authenticated_client, subgroup, folder):
         """Two root-level folders cannot share a name (NULL parent edge case)."""
