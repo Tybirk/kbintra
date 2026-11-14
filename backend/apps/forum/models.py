@@ -2,9 +2,12 @@
 Forum models for KB Intra community platform.
 """
 
+import secrets
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
 from django.utils.text import slugify
 
 from apps.messaging.encryption import EncryptedTextField
@@ -12,11 +15,23 @@ from apps.messaging.encryption import EncryptedTextField
 from .utils import danish_slugify
 
 
+class SubgroupQuerySet(models.QuerySet):
+    def visible_to(self, user: object) -> "SubgroupQuerySet":
+        """The groups `user` may know exist: every group but the secret ones they
+        aren't a member of. Staff get no bypass, as with private threads."""
+        if not getattr(user, "is_authenticated", False):
+            return self.filter(is_secret=False)
+        mine = SubgroupMembership.objects.filter(user=user).values("subgroup_id")
+        return self.filter(Q(is_secret=False) | Q(id__in=mine))
+
+
 class Subgroup(models.Model):
     """
     A forum subgroup/category.
     Users can subscribe to subgroups to receive notifications.
     """
+
+    objects = models.Manager.from_queryset(SubgroupQuerySet)()
 
     class Reporting(models.TextChoices):
         """Whether this group takes indrapporteringer, and who may read them.
@@ -58,6 +73,16 @@ class Subgroup(models.Model):
     default_members_only = models.BooleanField(
         default=False,
         help_text="If true, the 'Privat tråd' checkbox is checked by default when creating threads/files.",
+    )
+    is_secret = models.BooleanField(
+        default=False,
+        help_text=(
+            "Only members know the group exists: it is left out of every list, search and "
+            "picker for everybody else, and its threads and files are always members-only. "
+            "Chosen when the group is created and fixed after that — turning it on later "
+            "would hide what non-members already wrote, turning it off would publish what "
+            "was written in confidence. Members add each other; there is no staff bypass."
+        ),
     )
     reporting = models.CharField(
         max_length=10,
@@ -127,6 +152,14 @@ class Subgroup(models.Model):
                     )
                 }
             )
+        # A secret group's members are the only ones who may see it, so it can't
+        # appear where everybody looks: the 'Til:' picker or a new resident's list.
+        if self.is_secret and self.reporting != self.Reporting.OFF:
+            raise ValidationError({"reporting": "En hemmelig gruppe kan ikke tage imod sager."})
+        if self.is_secret and self.is_default:
+            raise ValidationError(
+                {"is_default": "En hemmelig gruppe kan ikke følges automatisk af alle."}
+            )
 
     @property
     def reporting_is_closed(self) -> bool:
@@ -135,9 +168,29 @@ class Subgroup(models.Model):
 
     def save(self, *args: object, **kwargs: object) -> None:
         """Generate slug from name if not provided."""
+        if self.is_secret:
+            self.allows_members = True  # its members are the only way in
         if not self.slug:
-            self.slug = danish_slugify(self.name)
+            self.slug = self._generate_slug()
         super().save(*args, **kwargs)
+
+    def _generate_slug(self) -> str:
+        """The name as a slug, numbered if taken.
+
+        A secret group's slug also gets a random tail. Otherwise a resident
+        creating "Bandet" would get "bandet-2" — or before that a crash — and
+        learn that a group of that name is hidden from them. With the tail the
+        two never compete for a slug, and the address can't be guessed either.
+        """
+        base = (danish_slugify(self.name) or "gruppe")[:90]
+        if self.is_secret:
+            base = f"{base}-{secrets.token_hex(3)}"
+        slug = base
+        n = 2
+        while Subgroup.objects.filter(slug=slug).exists():
+            slug = f"{base}-{n}"
+            n += 1
+        return slug
 
 
 class SubgroupSubscription(models.Model):
@@ -167,6 +220,22 @@ class SubgroupSubscription(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user} -> {self.subgroup}"
+
+
+def _keep_secret(obj: "Thread | File", save_kwargs: dict) -> None:
+    """Everything in a secret group is for its members only.
+
+    Enforced here rather than in each view so a thread or file can't land in a
+    secret group by any road — created, moved in, made by an event, edited in
+    admin — and be public. The notifications and @mention filters key on
+    members_only, so this is what keeps them from reaching outsiders.
+    """
+    if obj.members_only or obj.subgroup_id is None or not obj.subgroup.is_secret:
+        return
+    obj.members_only = True
+    update_fields = save_kwargs.get("update_fields")
+    if update_fields is not None:
+        save_kwargs["update_fields"] = {*update_fields, "members_only"}
 
 
 class Thread(models.Model):
@@ -220,6 +289,7 @@ class Thread(models.Model):
     def save(self, *args: object, **kwargs: object) -> None:
         if not self.slug:
             self.slug = self._generate_slug()
+        _keep_secret(self, kwargs)
         super().save(*args, **kwargs)
 
     def _generate_slug(self) -> str:
@@ -602,6 +672,10 @@ class File(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+    def save(self, *args: object, **kwargs: object) -> None:
+        _keep_secret(self, kwargs)
+        super().save(*args, **kwargs)
 
     def delete(self, *args: object, **kwargs: object) -> tuple:
         """Delete the file from storage when the model instance is deleted."""

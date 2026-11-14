@@ -28,6 +28,7 @@ class SubgroupAdmin(admin.ModelAdmin):
         "is_default",
         "allows_members",
         "default_members_only",
+        "is_secret",
         "reporting",
         "reporting_intro",
         "created_at",
@@ -37,10 +38,14 @@ class SubgroupAdmin(admin.ModelAdmin):
         "is_default",
         "allows_members",
         "default_members_only",
+        "is_secret",
         "reporting",
     ]
     search_fields = ["name", "description"]
     prepopulated_fields = {"slug": ("name",)}
+    # Chosen by whoever creates the group in the app, who becomes its first
+    # member; fixed after that (see Subgroup.is_secret).
+    readonly_fields = ["is_secret"]
 
 
 @admin.register(SubgroupSubscription)

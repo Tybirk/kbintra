@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from apps.announcements.models import Announcement
 from apps.events.models import Event
+from apps.forum.models import Subgroup, Thread
 from apps.search.services import (
     build_fts_query,
     create_excerpt,
@@ -986,14 +987,18 @@ class TestGlobalSearchAPI:
         author = User.objects.create_user(
             email="dist@example.com", password="x", first_name="Dist", last_name="Author"
         )
-        # 20 file-like entries (high title-weight matches) that would dominate a global top-K
+        # 20 files (high title-weight matches) that would dominate a global top-K.
+        # Real rows: search only shows what the database says the user may see.
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from apps.forum.models import File
+
         for i in range(20):
-            index_object(
-                obj_type="file",
-                object_id=10000 + i,
-                title=f"Krydsord-{i:02d}.pdf",
-                body="",
-                url=f"/forum/test/{i}",
+            File.objects.create(
+                subgroup=subgroup,
+                uploaded_by=author,
+                name=f"Krydsord-{i:02d}.pdf",
+                file=SimpleUploadedFile(f"Krydsord-{i:02d}.pdf", b"x"),
             )
         # One thread and one announcement that should still appear in their buckets
         thread = Thread.objects.create(
@@ -1020,7 +1025,6 @@ class TestGlobalSearchAPI:
 
     def test_fuzzy_finds_subgroup_with_typo(self, authenticated_client, db):
         """Subgroup names with single-edit typos should still be found."""
-        from apps.forum.models import Subgroup
 
         Subgroup.objects.create(name="Husgruppen", slug="husgruppen")
         response = authenticated_client.get("/api/search/?q=Husgrupen")
@@ -1045,8 +1049,6 @@ class TestGlobalSearchAPI:
         — we just need to confirm the right subgroup was returned, by id.
         """
         from urllib.parse import quote
-
-        from apps.forum.models import Subgroup
 
         sg = Subgroup.objects.create(name="Grønt udvalg", slug="groent-udvalg")
         response = authenticated_client.get(f"/api/search/?q={quote('grønt-udvalg')}")
@@ -1119,29 +1121,23 @@ class TestAdvancedSearchAPI:
         assert response.status_code == 200
         assert response.data["fuzziness"] == "prefix"
 
-    def test_exact_mode_does_not_prefix_match(self, authenticated_client):
+    def test_exact_mode_does_not_prefix_match(self, authenticated_client, subgroup, user):
         # Title "Generalforsamling" should match the exact word "Generalforsamling"
         # but NOT a partial query "General".
-        index_object(
-            obj_type="thread",
-            object_id=1,
-            title="Generalforsamling",
-            body="",
-            url="/forum/test/1",
-        )
+        thread = Thread.objects.create(subgroup=subgroup, title="Generalforsamling", author=user)
         prefix_resp = authenticated_client.get(
             "/api/search/advanced/?q=General&fuzziness=prefix&types=thread"
         )
         exact_resp = authenticated_client.get(
             "/api/search/advanced/?q=General&fuzziness=exact&types=thread"
         )
-        assert any(t["id"] == 1 for t in prefix_resp.data["results"].get("threads", []))
-        assert not any(t["id"] == 1 for t in exact_resp.data["results"].get("threads", []))
+        threads = prefix_resp.data["results"].get("threads", [])
+        assert any(t["id"] == thread.id for t in threads)
+        assert not any(t["id"] == thread.id for t in exact_resp.data["results"].get("threads", []))
 
     def test_titles_returned_with_original_danish_chars(self, authenticated_client):
         # FTS indexes folded titles ('Grønt' -> 'Groent') so MATCH catches both
         # spellings. Response should still display the original.
-        from apps.forum.models import Subgroup
 
         sg = Subgroup.objects.create(name="Grønt udvalg", slug="groent-udvalg")
         # Both query forms should locate it; both should return original name
@@ -1156,7 +1152,6 @@ class TestAdvancedSearchAPI:
     def test_fuzzy_mode_substring_matches_subgroup_infix(self, authenticated_client):
         # 'udva' should match 'Børne- og ungeudvalget' in fuzzy mode even though
         # FTS prefix matching alone would not — 'udva' is not a token prefix.
-        from apps.forum.models import Subgroup
 
         sg = Subgroup.objects.create(name="Børne- og ungeudvalget", slug="boerne-ungeudvalget")
         response = authenticated_client.get(
@@ -1166,28 +1161,25 @@ class TestAdvancedSearchAPI:
         subgroups = response.data["results"].get("subgroups", [])
         assert any(s["id"] == sg.id for s in subgroups)
 
-    def test_sort_newest_orders_by_created_at_desc(self, authenticated_client):
-        index_object(
-            obj_type="thread",
-            object_id=1,
-            title="Generalforsamling",
-            body="",
-            url="/forum/test/1",
-            created_at="2023-01-01T00:00:00",
+    def test_sort_newest_orders_by_created_at_desc(self, authenticated_client, subgroup, user):
+        old, new = (
+            Thread.objects.create(subgroup=subgroup, title="Generalforsamling", author=user)
+            for _ in range(2)
         )
-        index_object(
-            obj_type="thread",
-            object_id=2,
-            title="Generalforsamling",
-            body="",
-            url="/forum/test/2",
-            created_at="2025-01-01T00:00:00",
-        )
+        for thread, created_at in ((old, "2023-01-01T00:00:00"), (new, "2025-01-01T00:00:00")):
+            index_object(
+                obj_type="thread",
+                object_id=thread.id,
+                title="Generalforsamling",
+                body="",
+                url=f"/forum/test/{thread.id}",
+                created_at=created_at,
+            )
         response = authenticated_client.get(
             "/api/search/advanced/?q=Generalforsamling&sort=newest&types=thread"
         )
         threads = response.data["results"]["threads"]
-        assert [t["id"] for t in threads[:2]] == [2, 1]
+        assert [t["id"] for t in threads[:2]] == [new.id, old.id]
 
 
 # =============================================================================

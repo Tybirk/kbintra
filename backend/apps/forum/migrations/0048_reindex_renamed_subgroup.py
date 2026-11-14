@@ -20,7 +20,13 @@ def reindex_renamed_subgroup(apps, schema_editor):
     historical models: the payload written here has to match what the handlers
     write, and restating it would just drift from them. Wrapped defensively —
     a stale search index must never be the reason a deploy's migrations fail.
+
+    The real model is only touched once the historical one says there is
+    something to do: on a fresh database (tests, a new dev setup) it may
+    already have columns that a later migration adds, and querying it fails.
     """
+    if not apps.get_model("forum", "Subgroup").objects.filter(slug=RENAMED_SLUG).exists():
+        return
     try:
         from apps.forum.models import Subgroup
         from apps.search.signals import index_file, index_folder, index_thread
