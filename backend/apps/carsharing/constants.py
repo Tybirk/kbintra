@@ -25,6 +25,12 @@ MAX_CANDIDATES_PER_LOAN = 10
 # Guards the availability day-walk and keeps loans reviewable.
 MAX_LOAN_DAYS = 30
 
+# A loan the borrower never finishes in the app is closed this many days after
+# it ended, and the two households settle from the odometer (terms, point 7).
+# The borrower is reminded the morning after it ends; two weeks covers a trip
+# away, and is still recent enough to remember the kilometres.
+UNFINISHED_LOAN_CLOSE_DAYS = 14
+
 # A painted week can at worst need one window per day per gap; well above that.
 MAX_BLOCKS_PER_CAR = 60
 

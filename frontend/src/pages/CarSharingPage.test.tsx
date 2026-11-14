@@ -1517,6 +1517,67 @@ describe("CarSharingPage", () => {
     ).not.toBeInTheDocument()
   })
 
+  it("says nobody answered in time when a request ran out", async () => {
+    mockGetLoans.mockResolvedValue([
+      activeLoan({
+        status: "expired",
+        car: null,
+        can_cancel: false,
+        activated_at: null,
+        candidates: [candidate({ status: "closed", is_own_household: false })],
+      }),
+    ])
+
+    render(<CarSharingPage />)
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    await waitFor(() => {
+      expect(screen.getByText("Ingen nåede at svare")).toBeInTheDocument()
+    })
+    expect(
+      screen.getByText("Ingen nåede at svare, før tidsrummet var forbi."),
+    ).toBeInTheDocument()
+    // Nothing went out, so nobody "lånte".
+    expect(screen.getByText(/Du ville låne/)).toBeInTheDocument()
+    // Not the declined copy: nobody said no.
+    expect(screen.queryByText(/har sagt nej/)).not.toBeInTheDocument()
+  })
+
+  it("tells both sides to settle an unfinished loan themselves", async () => {
+    mockGetLoans.mockResolvedValue([
+      activeLoan({ status: "expired", can_cancel: false }),
+      activeLoan({
+        id: 43,
+        status: "expired",
+        can_cancel: false,
+        is_borrower: false,
+        viewer_role: "lender",
+        borrower_name: "Bo",
+      }),
+    ])
+
+    render(<CarSharingPage />)
+    await userEvent.click(screen.getByRole("tab", { name: "Mine lån" }))
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Lukket uden afregning")).toHaveLength(2)
+    })
+    expect(
+      screen.getByText(
+        "Du afsluttede ikke lånet, så det er lukket uden afregning. Gør beløbet op med Kløverbakkevej 7 ud fra kilometertælleren.",
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "Bo afsluttede ikke lånet, så det er lukket uden afregning. Gør beløbet op ud fra kilometertælleren.",
+      ),
+    ).toBeInTheDocument()
+    // Closed is closed: no settlement form to fill in after all.
+    expect(
+      screen.queryByRole("button", { name: "Afslut lån" }),
+    ).not.toBeInTheDocument()
+  })
+
   it("does not open the settlement form before the loan starts", async () => {
     mockGetLoans.mockResolvedValue([
       activeLoan({ has_started: false, start_at: "2027-06-12T09:00:00Z" }),

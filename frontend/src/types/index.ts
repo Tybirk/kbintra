@@ -202,8 +202,10 @@ export interface SharedCarsResponse {
   cars: SharedCar[]
 }
 
-/** "declined" is terminal: every asked household said no, so nobody is coming. */
-export type CarLoanStatus = "requested" | "active" | "completed" | "cancelled" | "declined"
+/** "declined" is terminal: every asked household said no, so nobody is coming.
+ *  "expired" is terminal too: the app stopped waiting — for a yes before the
+ *  window passed (`car` is null), or for the borrower to finish (`car` is set). */
+export type CarLoanStatus = "requested" | "active" | "completed" | "cancelled" | "declined" | "expired"
 
 /**
  * What the signed-in viewer is to a loan, decided by the server.
