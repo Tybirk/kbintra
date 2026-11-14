@@ -584,6 +584,10 @@ export interface Subgroup {
 
   default_members_only: boolean
 
+  /** Only members know the group exists; everything in it is members-only.
+   *  Chosen at creation, fixed after that. */
+  is_secret: boolean
+
   /** "off" = no indrapportering; "closed" = only the udvalg reads the queue. */
   reporting: SubgroupReporting
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
-import { screen, waitFor } from "@testing-library/react"
+import { screen, waitFor, within } from "@testing-library/react"
 
 import userEvent from "@testing-library/user-event"
 
@@ -34,6 +34,8 @@ const mockUnsubscribe = vi.fn()
 
 const mockMarkAllRead = vi.fn()
 
+const mockCreateSubgroup = vi.fn()
+
 vi.mock("../api/forum", () => ({
   forumApi: {
     getSubgroups: () => mockGetSubgroups(),
@@ -43,6 +45,8 @@ vi.mock("../api/forum", () => ({
     unsubscribe: (...args: unknown[]) => mockUnsubscribe(...args),
 
     markAllRead: () => mockMarkAllRead(),
+
+    createSubgroup: (...args: unknown[]) => mockCreateSubgroup(...args),
   },
 }))
 
@@ -225,5 +229,88 @@ describe("ForumPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Ingen grupper fundet.")).toBeInTheDocument()
     })
+  })
+
+  it("marks a secret group on its card", async () => {
+    mockGetSubgroups.mockResolvedValue([
+      ...mockSubgroups,
+      {
+        ...mockSubgroups[0],
+
+        id: 3,
+
+        name: "Bandet",
+
+        slug: "bandet-3fa9c1",
+
+        is_default: false,
+
+        is_member: true,
+
+        is_secret: true,
+      },
+    ])
+
+    render(<ForumPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Bandet")).toBeInTheDocument()
+    })
+
+    expect(screen.getAllByLabelText("Hemmelig gruppe")).toHaveLength(1)
+  })
+
+  it("creates a secret group, which always has members", async () => {
+    const user = userEvent.setup()
+
+    mockCreateSubgroup.mockResolvedValue({
+      ...mockSubgroups[0],
+
+      id: 3,
+
+      name: "Bandet",
+
+      slug: "bandet-3fa9c1",
+
+      is_secret: true,
+    })
+
+    render(<ForumPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Fællesgruppe")).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole("button", { name: "Opret gruppe" }))
+
+    await user.type(await screen.findByLabelText(/Navn/), "Bandet")
+
+    await user.click(screen.getByLabelText("Hemmelig"))
+
+    const allowsMembers = screen.getByLabelText("Tillad medlemskab")
+
+    expect(allowsMembers).toBeChecked()
+
+    expect(allowsMembers).toBeDisabled()
+
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Opret gruppe",
+      }),
+    )
+
+    await waitFor(() => {
+      expect(mockCreateSubgroup).toHaveBeenCalled()
+    })
+
+    expect(mockCreateSubgroup.mock.calls[0][0]).toMatchObject({
+      name: "Bandet",
+
+      allows_members: true,
+
+      is_secret: true,
+    })
+
+    expect(mockNavigate).toHaveBeenCalledWith("/forum/bandet-3fa9c1")
   })
 })
