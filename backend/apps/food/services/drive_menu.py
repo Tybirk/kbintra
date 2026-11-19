@@ -54,6 +54,9 @@ class ParsedMenu:
     thursday: str
     raw_content: str
     folder_id: str = ""
+    # Per-day detail pages parsed from the same document; None when they
+    # couldn't be parsed, so the cached ones are left alone.
+    front_pages: list[dict] | None = None
 
 
 class DriveMenuService:
@@ -457,6 +460,15 @@ class DriveMenuService:
             if not is_day_header and not self.STOP_SECTION_PATTERN.match(overflow_paragraph):
                 menus[current_day] = overflow_paragraph.replace("\n", " ")
 
+        # Parse the per-day pages from this same download, so a refresh updates
+        # them along with the overview. They used to be cached once and never
+        # read again, so a dish changed in Drive stayed old on those pages.
+        front_pages: list[dict] | None = None
+        try:
+            front_pages = self._parse_front_pages(doc)
+        except Exception:
+            logger.exception("Error parsing front pages for week %d", week_number)
+
         return ParsedMenu(
             week_number=week_number,
             monday=menus["monday"],
@@ -464,6 +476,7 @@ class DriveMenuService:
             wednesday=menus["wednesday"],
             thursday=menus["thursday"],
             raw_content=raw_content,
+            front_pages=front_pages,
         )
 
     # --- Per-day "forside" parsing ----------------------------------------- #
@@ -682,18 +695,35 @@ class DriveMenuService:
         )
 
     def _save_to_cache(self, menu: ParsedMenu, year: int) -> DriveMenuCache:
-        """Save parsed menu to cache."""
+        """Save parsed menu to cache, with the week's per-day pages and recipes.
+
+        Everything the app shows from the week's folder is refreshed together:
+        the overview, the per-day pages ("Dagens forside") and the recipe
+        spreadsheet. Before, only the overview was, so a dish changed in Drive
+        stayed old on the other two however often the menu was refreshed.
+        """
+        defaults = {
+            "monday_menu": menu.monday,
+            "tuesday_menu": menu.tuesday,
+            "wednesday_menu": menu.wednesday,
+            "thursday_menu": menu.thursday,
+            "raw_content": menu.raw_content,
+            "drive_folder_id": menu.folder_id,
+            "fetched_at": timezone.now(),
+        }
+        if menu.front_pages is not None:
+            defaults["daily_front_pages"] = menu.front_pages
         cache_entry, _ = DriveMenuCache.objects.update_or_create(
             week_number=menu.week_number,
             year=year,
-            defaults={
-                "monday_menu": menu.monday,
-                "tuesday_menu": menu.tuesday,
-                "wednesday_menu": menu.wednesday,
-                "thursday_menu": menu.thursday,
-                "raw_content": menu.raw_content,
-                "drive_folder_id": menu.folder_id,
-                "fetched_at": timezone.now(),
-            },
+            defaults=defaults,
         )
+
+        from apps.food.services.recipe_sheets import RecipeSheetService
+
+        try:
+            RecipeSheetService().get_recipes_for_week(menu.week_number, year, force_refresh=True)
+            cache_entry.refresh_from_db(fields=["recipe_sheets", "recipe_file_id"])
+        except Exception:
+            logger.exception("Error refreshing recipe sheets for week %d", menu.week_number)
         return cache_entry
