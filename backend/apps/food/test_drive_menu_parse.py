@@ -353,3 +353,71 @@ def test_page2_rescue_still_drops_the_weekly_shopping_block(
         week_number=4,
     )
     assert parsed.thursday == "", "the shopping block must not become Thursday's dish"
+
+
+@pytest.mark.django_db
+def test_refresh_replaces_cached_day_pages_and_recipes(service: DriveMenuService) -> None:
+    """A dish changed in Drive reaches the day pages and recipes, not only the overview.
+
+    Uge 49 2026: Torsdag was changed in Drive, the overview updated, but the
+    Torsdag page and the recipe list kept the old dish, because both were cached
+    once and a refresh never read them again.
+    """
+    from unittest.mock import patch
+
+    from apps.food.models import DriveMenuCache
+    from apps.food.services.drive_menu import FRONT_PAGE_SCHEMA_VERSION
+
+    old_page = {"day": 3, "weekday": "Torsdag", "title": "Æggekage", "blocks": []}
+    DriveMenuCache.objects.create(
+        week_number=49,
+        year=2099,
+        thursday_menu="Æggekage",
+        drive_folder_id="folder",
+        daily_front_pages=[{**old_page, "_v": FRONT_PAGE_SCHEMA_VERSION}],
+        recipe_sheets=[{"code": "To1", "day": 3, "name": "Æggekage"}],
+    )
+
+    parsed = service._parse_docx(
+        _make_docx_with_pagebreak(
+            ["Mandag", "Risret", "Torsdag", "Tortillatærte"],
+            ["Torsdag", "Tortillatærte", "Tilbehør", "Pæresalat"],
+        ),
+        week_number=49,
+    )
+    parsed.folder_id = "folder"
+    assert parsed.front_pages, "the day pages are parsed from the same download"
+
+    new_recipes = [{"code": "To1", "day": 3, "name": "Tortillatærte"}]
+
+    def fake_refresh(_self, week_number, year, force_refresh=False):
+        assert force_refresh
+        cache = DriveMenuCache.objects.get(week_number=week_number, year=year)
+        cache.recipe_sheets = new_recipes
+        cache.save(update_fields=["recipe_sheets"])
+        return new_recipes
+
+    with patch(
+        "apps.food.services.recipe_sheets.RecipeSheetService.get_recipes_for_week",
+        fake_refresh,
+    ):
+        cache = service._save_to_cache(parsed, 2099)
+
+    assert cache.thursday_menu == "Tortillatærte"
+    thursday = next(p for p in cache.daily_front_pages if p["day"] == 3)
+    assert thursday["title"] == "Tortillatærte"
+    assert cache.recipe_sheets == new_recipes
+
+
+@pytest.mark.django_db
+def test_failed_recipe_refresh_still_saves_the_menu(service: DriveMenuService) -> None:
+    """Drive failing on the spreadsheet must not lose the overview we just parsed."""
+    from unittest.mock import patch
+
+    parsed = service._parse_docx(_make_docx(["Torsdag", "Tortillatærte"]), week_number=49)
+    with patch(
+        "apps.food.services.recipe_sheets.RecipeSheetService.get_recipes_for_week",
+        side_effect=RuntimeError("Drive nede"),
+    ):
+        cache = service._save_to_cache(parsed, 2099)
+    assert cache.thursday_menu == "Tortillatærte"

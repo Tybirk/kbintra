@@ -201,6 +201,8 @@ Mine hold offers your maddage for your own calendar: `teams/my/ical/` is the sam
 
 Google Drive is the **source of truth** for weekly menus. Cooking teams write menus as .docx files in a shared Drive folder. The app fetches and caches them via `services/drive_menu.py` (`DriveMenuCache` model, 12-hour TTL). The app never creates or edits menus — it only reads and displays them. Lookup is by ISO week number + year.
 
+One refresh (the "Opdater fra Google Drive" button, the 4-hourly task, or a stale read) updates everything the app shows from a week's folder: the overview (`*_menu`), the per-day pages (`daily_front_pages`, parsed from the same .docx download) and the recipe spreadsheet (`recipe_sheets`, re-read with `force_refresh`). The last two used to be cached once and never re-read, so a dish changed in Drive stayed old on "Dagens forside" and "Ugens opskrifter" (uge 49, 2026).
+
 ## Stats are computed, not stored
 
 `DailyRegistrationStatsView` computes totals on the fly: active registrations + virtual contributions (pre-deadline) - available tickets + claimed ticket adjustments. Bucketed by dining_option x seating_time.
